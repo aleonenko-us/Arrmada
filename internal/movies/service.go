@@ -339,7 +339,7 @@ type ScanOptions struct {
 func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts ScanOptions) (ScanResult, error) {
 	res := ScanResult{Duplicates: []ScanDuplicate{}, Unmatched: []UnmatchedFolder{}}
 	if !s.meta.Available() {
-		return res, fmt.Errorf("movie metadata isn't configured — add a TMDB key in Settings → System → API keys")
+		return res, fmt.Errorf("movie metadata isn't configured — add a TMDB key in Settings → Connections")
 	}
 	root := rootOverride
 	if root == "" {

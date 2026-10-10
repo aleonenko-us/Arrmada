@@ -11,11 +11,11 @@ export function MetadataMissing({ variant }: { variant: "banner" | "empty" }) {
   const text = isAdmin(user) ? (
     <>
       <b>Movie and TV metadata isn't set up.</b> Add a free TMDB key in{" "}
-      <Link to={LINKS.apiKeys} className="font-semibold underline" style={{ color: "inherit" }}>Settings → System → API keys</Link>
+      <Link to={LINKS.apiKeys} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>
       {" "}— it takes effect straight away, no restart.
     </>
   ) : isStaff(user) ? (
-    <><b>Movie and TV metadata isn't set up.</b> Ask an admin to add a TMDB key (Settings → System → API keys).</>
+    <><b>Movie and TV metadata isn't set up.</b> Ask an admin to add a TMDB key (Settings → Connections).</>
   ) : (
     <>Movie and TV browsing isn't set up on this server yet — ask the person who runs it.</>
   );

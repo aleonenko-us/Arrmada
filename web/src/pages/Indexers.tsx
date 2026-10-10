@@ -253,7 +253,7 @@ function FlareSolverrLine() {
     body = (
       <>
         not set up — TorrentLeech and 1337x can't get past Cloudflare without it. Add its URL in{" "}
-        <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → System → API keys</Link>.
+        <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.
       </>
     );
   } else if (s.ok) {

@@ -1,5 +1,5 @@
 import type {
-  ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
+  APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
   FormatInfo, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
@@ -228,6 +228,15 @@ export const blocklist: { items: BlocklistRow[]; total: number } = {
     { id: 1, type: "movie", item_id: 1, item_title: "Fixture Movie", title: "Fixture.Movie.2020.1080p.WEB-DL-GRP", indexer: "Fixture Indexer", reason: "manually blocklisted", created_at: "2026-09-30 08:00:00" },
   ],
   total: 2,
+};
+
+// The key statuses an admin's Connections page edits inside the metadata cards.
+export const apiKeys: { keys: APIKeyStatus[] } = {
+  keys: [
+    { id: "tmdb", label: "TMDB", purpose: "Movie and TV metadata, artwork, and discovery. Required.", help_url: "https://www.themoviedb.org/settings/api", steps: "Use the v3 key.", secret: true, testable: true, tests_candidate: true, configured: true, source: "settings", hint: "…9e14", env_set: false },
+    { id: "tvdb", label: "TheTVDB", purpose: "Anime episode numbering. Optional.", help_url: "https://www.thetvdb.com/dashboard/account/apikey", steps: "Generate a v4 API key.", secret: true, testable: true, tests_candidate: true, configured: false, source: "", env_set: false },
+    { id: "flaresolverr", label: "FlareSolverr URL", purpose: "Gets TorrentLeech, 1337x and TheXEM past Cloudflare.", help_url: "https://github.com/FlareSolverr/FlareSolverr", steps: "The bundled container answers at http://arrmada-flaresolverr:8191.", secret: false, testable: true, configured: true, source: "env", hint: "http://arrmada-flaresolverr:8191", env_set: true, env_hint: "http://arrmada-flaresolverr:8191" },
+  ],
 };
 
 // Settings → Connections: one of each card the page draws differently (working, failing,

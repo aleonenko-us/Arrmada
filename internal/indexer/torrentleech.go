@@ -336,7 +336,7 @@ func (t *TorrentLeechSearcher) dropSession(id int64, sess *tlSession) {
 // errNoFlareSolverr is a TorrentLeech login or download that Cloudflare stopped while no
 // FlareSolverr URL is set — saying where to set it. (With a URL set but the container
 // down, the error is FlareSolverr's own: "FlareSolverr at … isn't answering".)
-var errNoFlareSolverr = errors.New("torrentleech: Cloudflare blocked TorrentLeech and FlareSolverr isn't set up; add its URL in Settings → System → API keys")
+var errNoFlareSolverr = errors.New("torrentleech: Cloudflare blocked TorrentLeech and FlareSolverr isn't set up; add its URL in Settings → Connections")
 
 // Reset forgets everything held for the indexer — its session, a login under way and
 // any login pause — because it was edited or deleted: new credentials get a login at once.

@@ -3,13 +3,15 @@ import type { ReactNode } from "react";
 // ConnectionSection is one group of cards (#search, #downloads, #metadata, #other): its
 // title, a line on what it holds, the header's own actions (Add indexer, Sync Prowlarr…),
 // and the cards — one column on a phone, two from tablet width.
-export function ConnectionSection({ id, title, subtitle, actions, above, children }: {
+export function ConnectionSection({ id, title, subtitle, actions, above, below, children }: {
   id: string;
   title: string;
   subtitle: ReactNode;
   actions?: ReactNode;
   /** Panels between the header and the cards (an Add form, the Prowlarr sync). */
   above?: ReactNode;
+  /** Settings that belong with the section but aren't a connection (the Discovery region). */
+  below?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -23,6 +25,7 @@ export function ConnectionSection({ id, title, subtitle, actions, above, childre
       </div>
       {above}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+      {below}
     </section>
   );
 }

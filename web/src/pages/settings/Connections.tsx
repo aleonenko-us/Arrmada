@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { ConnectionCard, type CardFix, type CardTest } from "../../components/connections/ConnectionCard";
 import { ConnectionSection } from "../../components/connections/ConnectionSection";
+import { DiscoveryRegion, KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
 import { LINKS } from "../../lib/links";
+import { isAdmin, useMe } from "../../lib/me";
 import { useQuery } from "../../lib/query";
 import { useLive } from "../../lib/useLive";
 import { usePoll } from "../../lib/usePoll";
@@ -15,12 +17,13 @@ const NO_SECTIONS: ConnectionSectionData[] = [];
 const SUBTITLES: Record<ConnectionSectionId, string> = {
   search: "Where releases are found: Prowlarr, FlareSolverr for Cloudflare-protected trackers, and every indexer.",
   downloads: "Where grabbed releases are sent to download.",
-  metadata: "Keys for the services titles, ratings, books and subtitles come from.",
+  metadata: "The API keys titles, ratings, books and subtitles come from. A key saved here works at once, no restart, and replaces one set at install; it's never shown back, only whether it's set.",
   other: "Plex, where alerts go, and the server listening apps connect to.",
 };
 
 // Each section's anchor. They differ from the API's section ids where those would clash
-// with another card's anchor ("downloads" is a section, "metadata" a card under Naming).
+// with another card's anchor ("downloads" is a section, "metadata" a card under Naming);
+// the metadata keys keep the API keys card's old anchor, so old links still land on them.
 const SECTION_ANCHOR: Record<ConnectionSectionId, string> = {
   search: "search",
   downloads: "download-clients",
@@ -35,14 +38,20 @@ const SLOW_POLL_MS = 60_000;
 
 // Settings → Connections: every integration Arrmada talks to as a card with a status dot,
 // its last success or error, and a Test. The list comes from what the server already knows,
-// so opening the page calls nothing outside Arrmada; Test asks the one connection.
+// so opening the page calls nothing outside Arrmada; Test asks the one connection. Admins
+// edit the metadata keys and the FlareSolverr URL inside their cards.
 export function ConnectionsSettings() {
+  const { user } = useMe();
+  const admin = isAdmin(user);
   const q = useQuery("connections", () => connectionsApi.list(), { staleMs: 0 });
   const sections = q.data ?? NO_SECTIONS;
   const error = q.error?.message ?? null;
   const [tests, setTests] = useState<Record<string, CardTest>>({});
+  const [editing, setEditing] = useState<string | null>(null);
   const { hash } = useLocation();
   const refetch = q.refetch;
+  const refresh = useCallback(() => { void refetch(); }, [refetch]);
+  const keys = useAPIKeys(admin, refresh);
 
   const { last } = useLive();
   useEffect(() => {
@@ -79,24 +88,53 @@ export function ConnectionsSettings() {
     return error ? <ErrorState what="connections" message={error} onRetry={refetch} busy={q.loading} /> : <Skeleton variant="list" count={4} />;
   }
 
+  // The editor a card opens inside itself, if it has one for this viewer.
+  const editorFor = (it: ConnectionItem): ReactNode | undefined => {
+    if (!admin) return undefined;
+    switch (it.kind) {
+      case "apikey":
+        return <KeyEditor ids={keyRowsFor(it.ref)} ctl={keys} />;
+      case "flaresolverr":
+        return <KeyEditor ids={["flaresolverr"]} ctl={keys} />;
+    }
+    return undefined;
+  };
+
+  const card = (it: ConnectionItem) => {
+    const editor = editorFor(it);
+    const open = editing === it.card;
+    const toggle = () => setEditing(open ? null : it.card);
+    return (
+      <ConnectionCard
+        key={it.card}
+        item={it}
+        test={tests[it.card]}
+        onTest={() => void runTest(it)}
+        fix={editor ? { onClick: () => setEditing(it.card) } : fixFor(it)}
+        onEdit={editor ? toggle : undefined}
+        editing={open}
+        targeted={hash === `#${it.card}`}
+      >
+        {open && editor}
+      </ConnectionCard>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-8">
       {error && <StaleBanner message={error} onRetry={refetch} />}
       {sections.map((s) => (
-        <ConnectionSection key={s.id} id={SECTION_ANCHOR[s.id] ?? s.id} title={s.title} subtitle={SUBTITLES[s.id] ?? ""}>
+        <ConnectionSection
+          key={s.id}
+          id={SECTION_ANCHOR[s.id] ?? s.id}
+          title={s.title}
+          subtitle={SUBTITLES[s.id] ?? ""}
+          below={s.id === "metadata" && admin ? <DiscoveryRegion /> : undefined}
+        >
           {s.items.length === 0 ? (
             <p className="m-0 text-[12px] text-ink-dim">{s.id === "downloads" ? "No download client yet." : "Nothing here yet."}</p>
           ) : (
-            s.items.map((it) => (
-              <ConnectionCard
-                key={it.card}
-                item={it}
-                test={tests[it.card]}
-                onTest={() => void runTest(it)}
-                fix={fixFor(it)}
-                targeted={hash === `#${it.card}`}
-              />
-            ))
+            s.items.map(card)
           )}
         </ConnectionSection>
       ))}
@@ -104,7 +142,8 @@ export function ConnectionsSettings() {
   );
 }
 
-// fixFor is where a card's Fix (or Set up) goes: the page that edits it today.
+// fixFor is where a card's Fix (or Set up) goes when it isn't edited in place: the page
+// that edits it today. A manager's key cards have none — keys are the admin's.
 function fixFor(it: ConnectionItem): CardFix | undefined {
   switch (it.kind) {
     case "indexer":
@@ -114,7 +153,7 @@ function fixFor(it: ConnectionItem): CardFix | undefined {
       return { to: LINKS.downloadClients };
     case "apikey":
     case "flaresolverr":
-      return { to: LINKS.apiKeys };
+      return undefined;
   }
   return it.fix_path ? { to: it.fix_path } : undefined;
 }

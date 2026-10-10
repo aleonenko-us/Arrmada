@@ -23,11 +23,14 @@ export interface CardFix {
 // day, and one main action — Test, or Fix while it's failing (Set up when it isn't). Its
 // id is the card's anchor, so a health warning's link lands on it; the targeted card is
 // outlined.
-export function ConnectionCard({ item, test, onTest, fix, menu, targeted, children }: {
+export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu, targeted, children }: {
   item: ConnectionItem;
   test?: CardTest;
   onTest?: () => void;
   fix?: CardFix;
+  /** Opens (or closes) the editor inside the card. */
+  onEdit?: () => void;
+  editing?: boolean;
   menu?: MenuItem[];
   targeted?: boolean;
   /** An editor opened inside the card. */
@@ -36,7 +39,7 @@ export function ConnectionCard({ item, test, onTest, fix, menu, targeted, childr
   const line = connectionStatusLine(item);
   const counts = countsLine(item.counts);
   const failing = needsFix(item);
-  const setUp = !item.configured && !!fix;
+  const setUp = !item.configured && !!fix && !editing;
   const canTest = item.testable && !!onTest;
 
   const fixButton = (label: string) =>
@@ -49,7 +52,7 @@ export function ConnectionCard({ item, test, onTest, fix, menu, targeted, childr
   return (
     <div
       id={item.card}
-      className="flex min-w-0 scroll-mt-20 flex-col gap-1.5 rounded-xl p-4"
+      className={`flex min-w-0 scroll-mt-20 flex-col gap-1.5 rounded-xl p-4 ${editing ? "md:col-span-2" : ""}`}
       style={{ background: "var(--panel)", border: `1px solid ${targeted ? "var(--accent)" : "var(--line)"}` }}
     >
       <div className="flex items-start gap-2.5">
@@ -93,11 +96,14 @@ export function ConnectionCard({ item, test, onTest, fix, menu, targeted, childr
         </div>
       )}
 
-      {(canTest || failing || setUp || (fix && item.fix_path)) && (
+      {(canTest || failing || setUp || onEdit || (fix && item.fix_path)) && (
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          {setUp ? fixButton("Set up") : failing && fix ? fixButton("Fix") : null}
+          {setUp ? fixButton("Set up") : failing && fix && !editing ? fixButton("Fix") : null}
           {canTest && (
             <Button size="sm" variant="secondary" onClick={onTest} busy={test?.running} busyLabel="Testing…">Test</Button>
+          )}
+          {onEdit && (item.configured || editing) && (
+            <Button size="sm" variant="ghost" onClick={onEdit} aria-expanded={!!editing}>{editing ? "Close" : "Edit"}</Button>
           )}
           {!setUp && !failing && fix?.to && item.fix_path && (
             <Link to={fix.to} className="text-[11.5px] font-semibold no-underline" style={{ color: "var(--accent)" }}>Edit →</Link>

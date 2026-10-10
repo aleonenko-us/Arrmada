@@ -2,7 +2,7 @@
 // uses. When a page or a setting moves, change it here and every banner, toast and hint
 // follows — rather than hunting the old address down string by string.
 export const LINKS = {
-  apiKeys: "/settings/system#api-keys",
+  apiKeys: "/settings/connections#api-keys",
   connections: "/settings/connections",
   diskGuard: "/settings/downloads#disk-guard",
   recycleBin: "/settings/downloads#recycle-bin",

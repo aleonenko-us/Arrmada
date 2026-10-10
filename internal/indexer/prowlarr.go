@@ -264,7 +264,7 @@ func (s *Service) SyncProwlarr(ctx context.Context, o ProwlarrSync) (SyncResult,
 			res.Notes = append(res.Notes, "Couldn't add Arrmada's FlareSolverr to Prowlarr: "+err.Error())
 		}
 	case o.AddFlareSolverrProxy:
-		res.Notes = append(res.Notes, "FlareSolverr isn't set up in Arrmada, so it wasn't added to Prowlarr. Add its URL in Settings → System → API keys.")
+		res.Notes = append(res.Notes, "FlareSolverr isn't set up in Arrmada, so it wasn't added to Prowlarr. Add its URL in Settings → Connections.")
 	}
 	res.FlareSolverrReady = s.prowlarrHasFlareSolverr(ctx, base, o.APIKey)
 	return res, nil

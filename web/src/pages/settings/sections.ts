@@ -12,7 +12,7 @@ export interface SettingsSection {
 }
 
 // Rail order. The names match the paths copy already uses ("Settings → Library",
-// "Settings → Downloads", "Settings → System → API keys", "Settings → Users").
+// "Settings → Downloads", "Settings → Connections", "Settings → Users").
 export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
@@ -73,8 +73,8 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
-  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials", section: "system", anchor: "api-keys" },
-  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "system", anchor: "discovery-region" },
+  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
+  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
@@ -107,13 +107,15 @@ export function sectionFromPath(pathname: string): string {
 
 // settingsRedirect says where a /settings URL should go instead, or null when it already
 // names a section this viewer can open. A card anchor wins over ?tab= (it's the more
-// specific of the two); a section this viewer can't open falls back to the default, like
-// an unknown ?tab= used to. ?tab= is dropped; other query params and the #anchor are kept.
+// specific of the two), and over the section in the path when the card has moved to
+// another section (/settings/system#api-keys → /settings/connections#api-keys); a section
+// this viewer can't open falls back to the default, like an unknown ?tab= used to. ?tab=
+// is dropped; other query params and the #anchor are kept.
 export function settingsRedirect(pathname: string, search: string, hash: string, visible: readonly string[]): string | null {
   const current = sectionFromPath(pathname);
-  if (current && visible.includes(current)) return null;
-  const params = new URLSearchParams(search);
   const fromAnchor = ANCHOR_SECTION[hash.replace(/^#/, "")];
+  if (current && visible.includes(current) && (!fromAnchor || fromAnchor === current || !visible.includes(fromAnchor))) return null;
+  const params = new URLSearchParams(search);
   const fromTab = TAB_SECTION[params.get("tab") ?? ""];
   const target = [fromAnchor, fromTab].find((s) => s && visible.includes(s)) ?? DEFAULT_SECTION;
   params.delete("tab");

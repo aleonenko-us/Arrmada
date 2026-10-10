@@ -10,7 +10,7 @@ var (
 	FixLibraryFolders  = &Fix{Key: "libraryFolders", Path: "/settings/library#media-folders", Label: "Choose folders"}
 	FixDiskGuard       = &Fix{Key: "diskGuard", Path: "/settings/downloads#disk-guard", Label: "Disk guard settings"}
 	FixRecycleBin      = &Fix{Key: "recycleBin", Path: "/settings/downloads#recycle-bin", Label: "Recycle bin settings"}
-	FixAPIKeys         = &Fix{Key: "apiKeys", Path: "/settings/system#api-keys", Label: "API keys"}
+	FixAPIKeys         = &Fix{Key: "apiKeys", Path: "/settings/connections#api-keys", Label: "API keys"}
 	FixAudiobookServer = &Fix{Key: "audiobookServer", Path: "/audiobooks", Label: "Audiobook server"}
 	FixPlexConnection  = &Fix{Key: "plexConnection", Path: "/settings/plex#plex-connection", Label: "Plex connection"}
 	FixTasks           = &Fix{Key: "tasks", Path: "/settings/status#tasks", Label: "Tasks"}

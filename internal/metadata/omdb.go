@@ -35,7 +35,7 @@ type OMDb struct {
 	disk *DiskCache // ratings kept across opens and restarts; nil = none
 	log  *slog.Logger
 
-	// The last failure and when, for Settings → System → API keys, and which key it was
+	// The last failure and when, for Settings → Connections, and which key it was
 	// made with: a failure with a key since replaced says nothing about the new one.
 	mu        sync.Mutex
 	lastErr   string
