@@ -43,6 +43,26 @@ test.describe("admin", () => {
 
     await expect(page.getByText("Web Push to every device the account turned push on for.")).toBeVisible();
     await expect(page.getByText("On iPhone, push works only when Arrmada is added to the Home Screen.")).toBeVisible();
+    // A connection made before the forms is a custom (raw link) one.
+    await expect(discord.getByText("Custom (Apprise URL)")).toBeVisible();
+  });
+
+  // OBS-16: "Add alert" asks where alerts go; Discord needs only the pasted webhook, and
+  // the page sends the form's fields — the server builds the link.
+  test("Add alert offers presets and sends a Discord webhook as a field", async ({ page, api }) => {
+    await page.goto("/settings/alerts");
+    await page.getByRole("button", { name: "+ Add alert" }).click();
+    await expect(page.getByText("Where should alerts go?")).toBeVisible();
+    await page.getByRole("button", { name: /^Discord/ }).click();
+    await expect(page.getByText("Discord: Server Settings → Integrations → Webhooks → Copy URL.")).toBeVisible();
+    const webhook = page.getByLabel("Webhook URL");
+    await expect(webhook).toHaveAttribute("type", "password");
+    await webhook.fill("https://discord.com/api/webhooks/1/test-token");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/notifications").filter((c) => c.path === "/api/v1/notifications").length).toBe(1);
+    const sent = api.callsTo("POST", "/api/v1/notifications").find((c) => c.path === "/api/v1/notifications")!.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ kind: "discord", name: "Discord", fields: { webhook_url: "https://discord.com/api/webhooks/1/test-token" } });
+    expect(sent).not.toHaveProperty("url");
   });
 });
 
@@ -54,6 +74,6 @@ test.describe("manager", () => {
     await expect(page.getByText("Only an admin can add or change alert connections.")).toBeVisible();
     await expect(page.getByText("discord://••••OKEN")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "+ Add connection" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "+ Add alert" })).toHaveCount(0);
   });
 });

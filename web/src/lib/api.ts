@@ -563,6 +563,10 @@ export interface NotificationConn {
   config?: { user_id?: number };
   url_hint?: string;
   url_set?: boolean;
+  /** The form it's edited with: a preset kind, "webpush", or "custom" (a raw Apprise URL). */
+  preset?: string;
+  /** A preset's saved form values: each secret is "" with `<name>_set: true` beside it. */
+  fields?: Record<string, string | boolean>;
   /** A URL saved before validation existed that no longer passes it (it still sends). */
   invalid_reason?: string;
   /** The latest delivery: "" never sent, "retrying" = the last try failed and another is due. */
@@ -575,7 +579,18 @@ export interface NotificationConn {
 export interface AlertDelivery { id: number; event_key: string; title: string; body: string; status: "queued" | "sending" | "sent" | "failed"; attempts: number; last_error: string; created_at: number; next_attempt_at: number; sent_at: number }
 
 // What create, update and test take. On update, a missing or blank url keeps the saved one.
-export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events" | "enabled"> & { url?: string };
+export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events" | "enabled"> & {
+  url?: string;
+  /** A preset's form values; the server builds the URL. A secret left "" keeps the saved one. */
+  fields?: Record<string, string>;
+  /** On a Test of an unsaved edit: the saved connection whose secrets fill the blanks. */
+  id?: number;
+};
+
+/** One input on an alert preset's form. options = a choice, the first being the default. */
+export interface AlertPresetField { name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[] }
+/** A "Where should alerts go?" tile. */
+export interface AlertPreset { kind: string; label: string; hint: string; fields: AlertPresetField[] }
 
 // The alert event catalog: what a connection can subscribe to, grouped for the page.
 export interface AlertEvent { key: string; group: string; label: string; hint: string; default_on: boolean; module?: "books" | "music" }
@@ -2323,6 +2338,7 @@ export const api = {
   notifications: () =>
     req<{ notifications: NotificationConn[] }>("/api/v1/notifications").then((r) => r.notifications),
   alertCatalog: () => req<AlertCatalog>("/api/v1/notifications/catalog"),
+  alertPresets: () => req<{ presets: AlertPreset[] }>("/api/v1/notifications/presets").then((r) => r.presets),
   alertDeliveries: (id: number, limit = 20) =>
     req<{ deliveries: AlertDelivery[] }>(`/api/v1/notifications/${id}/deliveries?limit=${limit}`).then((r) => r.deliveries),
   createNotification: (body: NotificationInput) =>

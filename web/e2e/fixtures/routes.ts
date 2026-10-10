@@ -163,6 +163,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Settings → Alerts
     get("/api/v1/notifications", alerts.connections),
     get("/api/v1/notifications/catalog", alerts.catalog),
+    get("/api/v1/notifications/presets", alerts.presets),
+    { method: "POST", path: "/api/v1/notifications", respond: ({ body }) => ({ id: 3, url_set: true, url_hint: "discord://••••", ...(body as object) }) },
     get(/^\/api\/v1\/notifications\/\d+\/deliveries$/, alerts.deliveries),
     { method: "POST", path: /^\/api\/v1\/notifications\/\d+\/test$/, body: { ok: true } },
   ];
