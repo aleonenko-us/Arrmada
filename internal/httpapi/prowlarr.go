@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 )
@@ -57,6 +58,12 @@ func (a *api) handleProwlarrSync(w http.ResponseWriter, r *http.Request) {
 	res, err := a.deps.Indexers.SyncProwlarr(ctx, indexer.ProwlarrSync{
 		URL: url, APIKey: key, FlareSolverrURL: flare, AddFlareSolverrProxy: req.AddFlareSolverrProxy,
 	})
+	// The sync is Prowlarr answering or not, so its card on Settings → Connections shows it.
+	// A failure with an address or key that was only typed says nothing about the saved
+	// connection; a success becomes the saved one just below.
+	if err == nil || (url == a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL) && key == a.deps.Settings.Get(ctx, keyProwlarrKey, "")) {
+		a.deps.ConnStatus.Record(connKindProwlarr, prowlarrRef, connstatus.Outcome{Err: err, Name: "Prowlarr"})
+	}
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return

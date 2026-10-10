@@ -130,7 +130,16 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 
 	if v, ok := a.deps.Discovery.(tmdbValidator); ok && a.deps.APIKeys != nil {
 		reg.Register(health.TMDBCheck(a.deps.APIKeys.Func("tmdb"), func(ctx context.Context) error {
-			return tmdbValidate(ctx, v)
+			err := tmdbValidate(ctx, v)
+			// Its answer is the TMDB card's last check on Settings → Connections too.
+			if ctx.Err() == nil && !errors.Is(err, health.ErrKeyMissing) {
+				rec := err
+				if errors.Is(err, health.ErrKeyRejected) {
+					rec = errors.New("TMDB rejected the key")
+				}
+				a.deps.ConnStatus.Record(connKindAPIKey, "tmdb", connstatus.Outcome{Err: rec, Name: "TMDB"})
+			}
+			return err
 		}))
 	}
 

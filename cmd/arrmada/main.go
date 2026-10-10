@@ -996,6 +996,7 @@ func main() {
 		Logs:         logRing,
 		APIKeys:      keyStore,
 		FlareSolverr: flare,
+		ConnStatus:   connStatus,
 		KeyVerifiers: keyVerifiers,
 		AudioServer:  audioSrv,
 		AudioManager: audioMgr,

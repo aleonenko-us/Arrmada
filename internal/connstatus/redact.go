@@ -15,12 +15,16 @@ var (
 	urlQueryRe = regexp.MustCompile(`(?i)(\b[a-z][a-z0-9+.\-]*://[^\s"'<>?#]*)\?[^\s"'<>]*`)
 	// Secret-looking key=value pairs outside a URL (a form body echoed in an error, say).
 	secretParamRe = regexp.MustCompile(`(?i)\b(apikey|api_key|api-key|passkey|token|access_token|mam_id|password)=[^&\s"'<>;,]*`)
+	// A URL's user:password@ part (an address saved as http://user:pass@host).
+	urlUserinfoRe = regexp.MustCompile(`(?i)(\b[a-z][a-z0-9+.\-]*://)[^\s"'<>/?#@]*@`)
 )
 
-// Redact makes an error safe to store and show to staff: URL query strings and secret
-// parameters (apikey=, api_key=, passkey=, token=, mam_id=, password=) are removed, and
-// the text is capped at 300 characters. Every error the tracker keeps goes through it.
+// Redact makes an error safe to store and show to staff: URL query strings, a URL's
+// user:password@ part and secret parameters (apikey=, api_key=, passkey=, token=, mam_id=,
+// password=) are removed, and the text is capped at 300 characters. Every error the
+// tracker keeps goes through it.
 func Redact(msg string) string {
+	msg = urlUserinfoRe.ReplaceAllString(msg, "$1")
 	msg = urlQueryRe.ReplaceAllString(msg, "$1?…")
 	msg = secretParamRe.ReplaceAllString(msg, "$1=…")
 	msg = strings.TrimSpace(msg)
