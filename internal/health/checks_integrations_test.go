@@ -22,7 +22,7 @@ func TestDownloadClientsCheck(t *testing.T) {
 		download.ClientState{ID: 1, Name: "qBittorrent (bundled)", OK: true},
 		download.ClientState{ID: 2, Name: "qBittorrent (seedbox)", Err: "connection refused"}))
 	if len(got) != 1 || got[0].Key != "downloads.client.2" || got[0].Level != LevelWarning ||
-		!strings.Contains(got[0].Message, "qBittorrent (seedbox) is unreachable") || got[0].Fix != FixDownloadClients {
+		!strings.Contains(got[0].Message, "qBittorrent (seedbox) is unreachable") || got[0].Fix.Path != "/settings/connections#download_client-2" {
 		t.Errorf("second client down: %+v", got)
 	}
 
@@ -158,5 +158,38 @@ func TestTasksFailingCheck(t *testing.T) {
 	if len(got) != 1 || got[0].Key != "tasks.failing.rss-sync" || got[0].Fix != FixTasks ||
 		got[0].Message != "“Check indexer feeds for new movies” has failed 3 times in a row: indexer timeout" {
 		t.Errorf("got %+v", got)
+	}
+}
+
+// FlareSolverr is only judged while an indexer needs it: down or missing names the
+// indexers that depend on it and links to its card; up, or nothing needing it, is quiet
+// (and FlareSolverr isn't even asked).
+func TestFlareSolverrCheck(t *testing.T) {
+	var asked atomic.Int32
+	check := func(names []string, st FlareSolverrState) []Finding {
+		return run(FlareSolverrCheck(
+			func(context.Context) ([]string, error) { return names, nil },
+			func(context.Context) FlareSolverrState { asked.Add(1); return st }))
+	}
+
+	got := check([]string{"TorrentLeech"}, FlareSolverrState{Configured: true, Err: "connection refused"})
+	if len(got) != 1 || got[0].Level != LevelWarning || got[0].Fix.Path != "/settings/connections#flaresolverr" ||
+		!strings.Contains(got[0].Message, "TorrentLeech can't get past Cloudflare") || !strings.Contains(got[0].Message, "connection refused") {
+		t.Errorf("down: %+v", got)
+	}
+	got = check([]string{"TorrentLeech", "1337x", "Mirror"}, FlareSolverrState{})
+	if len(got) != 1 || !strings.Contains(got[0].Message, "isn't set up, so TorrentLeech, 1337x and Mirror") {
+		t.Errorf("not set up: %+v", got)
+	}
+	if got := check([]string{"1337x"}, FlareSolverrState{Configured: true, OK: true}); len(got) != 0 {
+		t.Errorf("up: %+v", got)
+	}
+	asked.Store(0)
+	if got := check(nil, FlareSolverrState{}); len(got) != 0 || asked.Load() != 0 {
+		t.Errorf("no dependent indexer: %+v (asked %d)", got, asked.Load())
+	}
+	if got := run(FlareSolverrCheck(func(context.Context) ([]string, error) { return nil, errors.New("db") },
+		func(context.Context) FlareSolverrState { return FlareSolverrState{} })); len(got) != 0 {
+		t.Errorf("read error: %+v", got)
 	}
 }

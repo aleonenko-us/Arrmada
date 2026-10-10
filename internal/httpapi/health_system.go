@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
@@ -66,27 +68,35 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			}
 			return n, err
 		}))
-		// Indexers backing off after repeated failures, from the integration status
-		// tracker (the same state as the dots on the Indexers page).
-		reg.Register(health.IndexerStatusCheck(func(ctx context.Context) (int, []health.PausedIndexer, error) {
+		// Indexers that keep failing, from the integration status tracker (the same state
+		// as the dots on their cards). Nothing here asks a tracker anything.
+		reg.Register(health.IndexerStatusCheck(func(ctx context.Context) (int, []health.TroubledIndexer, error) {
 			ix, err := a.deps.Indexers.List(ctx)
 			if err != nil {
 				return 0, nil, err
 			}
-			now := time.Now()
 			enabled := 0
-			var paused []health.PausedIndexer
+			var failing []health.TroubledIndexer
 			for _, i := range ix {
 				if !a.deps.Indexers.Searched(i) {
 					continue
 				}
 				enabled++
 				st, _, ok := a.deps.Indexers.Status(i.ID)
-				if ok && now.Before(st.BackoffUntil) {
-					paused = append(paused, health.PausedIndexer{ID: i.ID, Name: i.Name, Failures: st.ConsecutiveFailures, Until: st.BackoffUntil, LastError: st.LastError})
+				if ok && st.ConsecutiveFailures > 0 {
+					failing = append(failing, health.TroubledIndexer{ID: i.ID, Name: i.Name, Failures: st.ConsecutiveFailures,
+						FailingSince: st.FailingSince, Until: st.BackoffUntil, LastError: st.LastError})
 				}
 			}
-			return enabled, paused, nil
+			return enabled, failing, nil
+		}))
+		// TorrentLeech and 1337x get past Cloudflare through FlareSolverr; a dead one
+		// otherwise only shows as those trackers failing. Status reuses its answer for a
+		// minute, so this asks FlareSolverr at most once a minute, and only while one of
+		// them is switched on.
+		reg.Register(health.FlareSolverrCheck(a.flareSolverrDependents, func(ctx context.Context) health.FlareSolverrState {
+			st := a.deps.FlareSolverr.Status(ctx)
+			return health.FlareSolverrState{Configured: st.Configured, OK: st.OK, Err: connstatus.Redact(st.Error)}
 		}))
 	}
 
@@ -231,4 +241,20 @@ func heldInQueue(held map[string]bool, queue []download.Item) int {
 		}
 	}
 	return n
+}
+
+// flareSolverrDependents names the switched-on indexers that reach their site through
+// FlareSolverr (TorrentLeech and 1337x sit behind Cloudflare).
+func (a *api) flareSolverrDependents(ctx context.Context) ([]string, error) {
+	ix, err := a.deps.Indexers.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, i := range ix {
+		if a.deps.Indexers.Searched(i) && (i.Kind == indexer.KindTorrentLeech || i.Kind == indexer.KindX1337) {
+			names = append(names, i.Name)
+		}
+	}
+	return names, nil
 }

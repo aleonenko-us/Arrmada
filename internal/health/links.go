@@ -24,3 +24,13 @@ var (
 	FixDownloadProblems   = &Fix{Key: "downloadProblems", Path: "/downloads?show=problems", Label: "Downloads"}
 	FixDownloadsSearching = &Fix{Key: "downloadsSearching", Path: "/downloads?tab=searching", Label: "What's searching"}
 )
+
+// connectionsPath is Settings → Connections, where every integration has a card.
+const connectionsPath = "/settings/connections"
+
+// ConnectionFix links to one integration's card on Settings → Connections ("indexer-12",
+// "download_client-1", "flaresolverr"). It carries no LINKS key: the card's anchor is the
+// point, and a key would resolve to the page without it.
+func ConnectionFix(card, label string) *Fix {
+	return &Fix{Path: connectionsPath + "#" + card, Label: label}
+}
