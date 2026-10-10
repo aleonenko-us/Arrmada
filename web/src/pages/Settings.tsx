@@ -3,7 +3,7 @@ import { Navigate, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { inputStyle } from "../components/settings/ui";
 import { useMe, isAdmin } from "../lib/me";
-import { SettingsProvider, useSettingsDraft } from "../lib/useSettings";
+import { SettingsProvider, useSettingsStore } from "../lib/useSettings";
 import { searchSettings, sectionFromPath, settingsRedirect, visibleSections, type SearchEntry, type SectionId } from "./settings/sections";
 import { LibrarySettings } from "./settings/LibrarySettings";
 import { NamingSettings } from "./settings/Naming";
@@ -47,7 +47,7 @@ function SettingsHub() {
   const ids = sections.map((s) => s.id);
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
-  const { s, error } = useSettingsDraft();
+  const { s, error } = useSettingsStore();
   const [query, setQuery] = useState("");
 
   // Bare /settings, an old ?tab=system#api-keys link, or a section this viewer

@@ -7,14 +7,15 @@ import { api, type AuthUser, type PlexBlock, type UserImpact } from "../../lib/a
 import { accountApi } from "../../lib/accountApi";
 import { LINKS } from "../../lib/links";
 import { useMe } from "../../lib/me";
-import { SaveBar, useLoadedSettings } from "../../lib/useSettings";
+import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
+import { useLoadedSettings } from "../../lib/useSettings";
+import { useAutoSave } from "../../lib/useAutoSave";
 import { managerExceptions, requesterPages } from "./roles";
 
 // Settings → Users (admin only): the accounts and their request limits. Who may sign in
 // with Plex lives in Settings → Plex.
 export function UsersSettings() {
   const { user, booksEnabled } = useMe();
-  const { s, patch } = useLoadedSettings();
   return (
     <div className="flex flex-col gap-6">
       <UsersManager meId={user?.id} />
@@ -22,42 +23,50 @@ export function UsersSettings() {
         Who may sign in with Plex, and what new Plex sign-ins auto-approve, is in <Link to={LINKS.plexSignIn} style={{ color: "var(--accent)" }}>Settings → Plex</Link>.
       </p>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
-        <div className="flex flex-wrap items-end gap-3">
-          <QuotaField label="Movies" value={s.request_quota_movies ?? 0} onChange={(v) => patch({ request_quota_movies: v })} />
-          <QuotaField label="Seasons" value={s.request_quota_seasons ?? 0} onChange={(v) => patch({ request_quota_seasons: v })} />
-          {booksEnabled && <QuotaField label="Books" value={s.request_quota_books ?? 0} onChange={(v) => patch({ request_quota_books: v })} />}
-          <QuotaField label="Every … days" value={s.request_quota_days ?? 7} min={1} max={365} onChange={(v) => patch({ request_quota_days: v })} />
-          <button
-            type="button"
-            onClick={() => patch({ request_quota_movies: 10, request_quota_seasons: 5, request_quota_books: 10, request_quota_days: 7 })}
-            className="min-h-[36px] rounded-lg px-3 text-[12px] font-semibold"
-            style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
-          >
-            Typical household
-          </button>
-        </div>
+        <RequestLimits books={booksEnabled} />
         <p className="m-0 text-[11px] text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person by editing them under Users.</p>
       </Section>
-      <SaveBar />
     </div>
   );
 }
 
-// QuotaField is one number in the request limits card.
-function QuotaField({ label, value, onChange, min = 0, max = 1000 }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+type QuotaKey = "request_quota_movies" | "request_quota_seasons" | "request_quota_books" | "request_quota_days";
+const TYPICAL: Record<QuotaKey, number> = { request_quota_movies: 10, request_quota_seasons: 5, request_quota_books: 10, request_quota_days: 7 };
+
+// useQuota is one number in the request limits card, saved when its field is left.
+function useQuota(key: QuotaKey, label: string, min: number, max: number) {
+  const { s, commit } = useLoadedSettings();
+  return useAutoSave(String(s[key] ?? (key === "request_quota_days" ? 7 : 0)), (v) => commit({ [key]: Number(v) }), { validate: wholeNumber(min, max, label) });
+}
+
+// RequestLimits is the global request limits; each number saves itself, and Typical
+// household saves all four at once.
+function RequestLimits({ books }: { books: boolean }) {
+  const { commit } = useLoadedSettings();
+  const movies = useQuota("request_quota_movies", "Movies", 0, 1000);
+  const seasons = useQuota("request_quota_seasons", "Seasons", 0, 1000);
+  const bookQ = useQuota("request_quota_books", "Books", 0, 1000);
+  const days = useQuota("request_quota_days", "Every … days", 1, 365);
+  const typical = useAutoSave<string>("", async () => { await commit(TYPICAL); });
+  const field = "w-[96px] rounded-lg px-3 py-2 text-[12.5px]";
   return (
-    <label className="flex flex-col gap-1">
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => { const n = Math.round(Number(e.target.value)); if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n))); }}
-        className="w-[96px] rounded-lg px-3 py-2 text-[12.5px]"
-        style={inputStyle}
-      />
-    </label>
+    <div className="flex flex-wrap items-start gap-3">
+      <AutoNumber label="Movies" save={movies} min={0} max={1000} className={field} />
+      <AutoNumber label="Seasons" save={seasons} min={0} max={1000} className={field} />
+      {books && <AutoNumber label="Books" save={bookQ} min={0} max={1000} className={field} />}
+      <AutoNumber label="Every … days" save={days} min={1} max={365} className={field} />
+      <div className="flex flex-col gap-1 pt-[18px]">
+        <button
+          type="button"
+          onClick={() => void typical.commit("typical")}
+          className="min-h-[36px] rounded-lg px-3 text-[12px] font-semibold"
+          style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
+        >
+          Typical household
+        </button>
+        <SavedTick save={typical} />
+      </div>
+    </div>
   );
 }
 

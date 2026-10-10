@@ -1,25 +1,28 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Section, Toggle } from "../../components/settings/ui";
+import { AutoToggle } from "../../components/settings/auto";
+import { Section } from "../../components/settings/ui";
 import { api, type APIKeyStatus, type PendingRestart } from "../../lib/api";
 import { useMe } from "../../lib/me";
 import { busyLines, restartAppAndWait } from "../../lib/restart";
 import { ago } from "../../lib/taskTime";
-import { SaveBar, useLoadedSettings } from "../../lib/useSettings";
+import { useLoadedSettings, useSetting } from "../../lib/useSettings";
 import { Backups } from "./Backups";
 
 // Settings → System (admin only): which modules are on, the API keys, restarting Arrmada
 // and the database backups.
 export function SystemSettings() {
-  const { s, patch, syncRegion } = useLoadedSettings();
+  const { syncRegion } = useLoadedSettings();
+  // A module switch shows in the nav and Discover as soon as it's saved.
+  const books = useSetting("books_enabled");
+  const music = useSetting("music_enabled");
   return (
     <div className="flex flex-col gap-6">
       <Section id="modules" title="Modules" subtitle="Turn modules on or off. Disabling hides a module from the navigation and from Discover — nothing is deleted, and it can be re-enabled anytime.">
-        <Toggle label="Books" hint="Ebook and audiobook library, and the Books tab in Discover. Metadata comes from Hardcover when a key is set, otherwise Open Library." checked={s.books_enabled} onChange={(v) => patch({ books_enabled: v })} />
-        <Toggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." checked={s.music_enabled} onChange={(v) => patch({ music_enabled: v })} />
+        <AutoToggle label="Books" hint="Ebook and audiobook library, and the Books tab in Discover. Metadata comes from Hardcover when a key is set, otherwise Open Library." save={books} />
+        <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." save={music} />
       </Section>
-      <SaveBar />
       <APIKeysSection onRegionSaved={syncRegion} />
       <RestartSection />
       <Backups />
