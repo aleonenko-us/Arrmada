@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { PageHeader } from "../components/PageHeader";
 import { api, type ImportRecord } from "../lib/api";
 import { usePoll } from "../lib/usePoll";
 
@@ -10,7 +9,8 @@ function bytes(n: number): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 }
 
-export function History() {
+// HistoryPanel is Activity → History.
+export function HistoryPanel() {
   const [items, setItems] = useState<ImportRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -23,8 +23,7 @@ export function History() {
 
   return (
     <>
-      <PageHeader title="History" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <div className="max-w-[1200px]">
         {error && (
           <div className="mb-3 rounded-lg p-3 text-[12.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}

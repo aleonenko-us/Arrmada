@@ -27,8 +27,14 @@ describe("visibleNav", () => {
 });
 
 describe("NAV", () => {
-  it("groups the sidebar as Home, Activity, Library, Tools, Plex, System", () => {
-    expect(NAV.map((g) => g.group)).toEqual(["", "Activity", "Library", "Tools", "Plex", "System"]);
+  it("groups the sidebar as Home, Library, Tools, Plex, System", () => {
+    expect(NAV.map((g) => g.group)).toEqual(["", "Library", "Tools", "Plex", "System"]);
+  });
+
+  it("has one Activity entry, with the pill, instead of Downloads, History, Review and Blocklist", () => {
+    const items = NAV.flatMap((g) => g.items);
+    expect(items.filter((i) => i.to === "/activity")).toEqual([expect.objectContaining({ label: "Activity", badge: "activity" })]);
+    for (const old of ["/downloads", "/history", "/review", "/blocklist"]) expect(items.map((i) => i.to)).not.toContain(old);
   });
 
   it("gives every entry an icon and a unique address", () => {
@@ -52,7 +58,7 @@ describe("crumbFor", () => {
   it("names the group the sidebar shows the page in", () => {
     expect(crumbFor("/quality")).toBe("System / Quality profiles");
     expect(crumbFor("/convert")).toBe("Tools / Convert");
-    expect(crumbFor("/downloads")).toBe("Activity / Downloads");
+    expect(crumbFor("/activity/queue")).toBe("Home / Activity");
     expect(crumbFor("/insights")).toBe("Plex / Insights");
     expect(crumbFor("/discover")).toBe("Home / Discover");
     expect(crumbFor("/settings/system")).toBe("System / Settings");

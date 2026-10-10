@@ -15,7 +15,7 @@ type oneReview struct{}
 
 func (oneReview) Name() string { return "reviews" }
 func (oneReview) Collect(context.Context, *attention.Frame) ([]attention.Item, error) {
-	return []attention.Item{{Key: "review:1", Kind: attention.KindReview, Title: "Dune is held", Link: "/review"}}, nil
+	return []attention.Item{{Key: "review:1", Kind: attention.KindReview, Title: "Dune is held", Link: "/activity/needs-you"}}, nil
 }
 
 // The Needs-you feed is staff-only: a requester's shell shows none of these counts, so

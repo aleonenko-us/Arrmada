@@ -134,7 +134,7 @@ func (e *alertEnv) diffs(a *Alerter, n int, items ...Item) {
 
 func dl(hash string) Item {
 	return Item{Key: KindDownload + ":" + hash, Kind: KindDownload, Level: LevelError, Name: hash,
-		Title: hash + " errored in the download client", Link: "/downloads?show=problems"}
+		Title: hash + " errored in the download client", Link: "/activity/queue?filter=problems"}
 }
 
 func hl(key, msg string) Item {
@@ -165,7 +165,7 @@ func TestAlertNewKeyOnce(t *testing.T) {
 	if c.dedupe != "download.failed:download:aaa:"+fmt.Sprint(e.clk.now().Add(-61*time.Second).UnixMilli()) {
 		t.Errorf("dedupe = %q", c.dedupe)
 	}
-	if c.data["title"] != "aaa errored in the download client" || c.data["link"] != "/downloads?show=problems" {
+	if c.data["title"] != "aaa errored in the download client" || c.data["link"] != "/activity/queue?filter=problems" {
 		t.Errorf("payload = %v", c.data)
 	}
 	e.diffs(a, 20, item)
@@ -343,7 +343,7 @@ func TestBatchingAboveFive(t *testing.T) {
 	e.diffs(a, 3, six...)
 	wantSent(t, em, "download.failed 6")
 	m, ok := mustDef(t, notify.EventDownloadFailed).Format(em.last().data)
-	if !ok || m.Body != "❌ 6 downloads failed: t0, t1, t2 and 3 more" || m.Link != "/downloads?show=problems" {
+	if !ok || m.Body != "❌ 6 downloads failed: t0, t1, t2 and 3 more" || m.Link != "/activity/queue?filter=problems" {
 		t.Errorf("summary = %+v", m)
 	}
 	e.diffs(a, 10, six...)
@@ -454,7 +454,7 @@ func TestRefreshAndKicksSendOnce(t *testing.T) {
 	s := New(nil, nil, quiet, src)
 	s.now = e.clk.now
 	s.SetAlerts(a)
-	src.set(Item{Key: "review:4", Kind: KindReview, Level: LevelWarning, Name: "Dune", Title: "Dune is held: it looks like a different title", Link: "/review"})
+	src.set(Item{Key: "review:4", Kind: KindReview, Level: LevelWarning, Name: "Dune", Title: "Dune is held: it looks like a different title", Link: "/activity/needs-you"})
 	ctx := context.Background()
 	for i := 0; i < 12; i++ {
 		e.clk.add(10 * time.Second)

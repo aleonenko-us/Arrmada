@@ -67,7 +67,7 @@ describe("buildRoutes", () => {
 
   it("keeps today's staff addresses and redirects", () => {
     const p = paths(buildRoutes({ role: "admin", external: false }));
-    for (const want of ["/", "/downloads", "/activity", "/history", "/review", "/movies/:id", "/series/:id", "/music/album/:id",
+    for (const want of ["/", "/activity/:tab", "/downloads", "/activity", "/history", "/review", "/blocklist", "/movies/:id", "/series/:id", "/music/album/:id",
       "/books/author/:name", "/notifications", "/library", "/settings/*", "*"]) {
       expect(p).toContain(want);
     }

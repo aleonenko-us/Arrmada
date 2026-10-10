@@ -110,7 +110,7 @@ export function UploadTorrentModal({
             )}
             <div className="mt-3 flex items-center gap-3">
               {grabbed ? (
-                <span className="text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>✓ Grabbed — it'll appear in Downloads.</span>
+                <span className="text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>✓ Grabbed — follow it in Activity → Queue.</span>
               ) : (
                 <>
                   {targets && targets.length > 0 && (

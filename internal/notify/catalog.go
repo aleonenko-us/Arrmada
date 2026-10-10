@@ -26,7 +26,7 @@ import (
 // Never declare an event about what someone listens to (the audiobook privacy rule):
 // admins see how much and when, never what.
 
-// Message is one alert as it's sent: a title, a body and an in-app link ("/review",
+// Message is one alert as it's sent: a title, a body and an in-app link ("/activity/needs-you",
 // "/movies/12") a push notification opens.
 type Message struct {
 	Title string `json:"title"`
@@ -112,7 +112,7 @@ var builtinEvents = []EventDef{
 			if title == "" {
 				return Message{}, false
 			}
-			return Message{Title: "Grabbed", Body: "🎬 " + title, Link: "/downloads"}, true
+			return Message{Title: "Grabbed", Body: "🎬 " + title, Link: "/activity/queue"}, true
 		},
 	},
 	{

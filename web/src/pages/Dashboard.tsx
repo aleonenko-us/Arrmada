@@ -177,7 +177,7 @@ export function Dashboard() {
             warn={!!lib && lib.books_missing > 0}
           />
           <Tile
-            to="/downloads"
+            to={LINKS.activityQueue}
             label="Downloading"
             value={data && !data.queue_note ? data.queue.downloading : "—"}
             sub={data ? downloadingSub(data) : ""}

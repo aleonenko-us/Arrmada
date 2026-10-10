@@ -24,8 +24,8 @@ const (
 // sentence), detail and link. Several gathered into one message: count n with names
 // (the items' short names, in order) and the link of the page that lists them all.
 //
-//	{"count": 1, "title": "...", "detail": "...", "link": "/review", "level": "error"}
-//	{"count": 6, "names": ["A", "B", ...], "link": "/downloads?show=problems"}
+//	{"count": 1, "title": "...", "detail": "...", "link": "/activity/needs-you", "level": "error"}
+//	{"count": 6, "names": ["A", "B", ...], "link": "/activity/queue?filter=problems"}
 func init() {
 	for _, d := range []EventDef{
 		needsYouEvent(EventImportHeld, "Held for review", true,

@@ -13,7 +13,7 @@ export interface NavItem {
   module?: "books" | "music";
   /**
    * A live count beside the label, from the Needs-you feed (lib/useAttention.ts badgeFor):
-   * requests waiting, downloads that need a look, held imports, health problems.
+   * requests waiting, held imports plus downloads that need a look, health problems.
    */
   badge?: "requests" | "activity" | "review" | "issues";
   /** A status dot beside the label: the audiobook server's running state. */
@@ -29,8 +29,9 @@ export interface NavGroup {
 }
 
 
-// The sidebar, grouped by how the app works: what's happening now (Activity), what you
-// have (Library), things that work on files (Tools), Plex monitoring, and setup (System).
+// The sidebar, grouped by how the app works: the day-to-day (Dashboard, Discover,
+// Requests, Activity), what you have (Library), things that work on files (Tools), Plex
+// monitoring, and setup (System).
 // Routes don't follow this grouping; only the sidebar and the page breadcrumbs do.
 export const NAV: NavGroup[] = [
   {
@@ -41,15 +42,9 @@ export const NAV: NavGroup[] = [
       { to: "/discover", label: "Discover", icon: "discover" },
       // Pending requests are decided on the Requests page; its pill counts them.
       { to: "/requests", label: "Requests", icon: "requests", badge: "requests" },
-    ],
-  },
-  {
-    group: "Activity",
-    items: [
-      { to: "/downloads", label: "Downloads", icon: "downloads", badge: "activity" },
-      { to: "/history", label: "History", icon: "history" },
-      { to: "/review", label: "Review", icon: "review", badge: "review" },
-      { to: "/blocklist", label: "Blocklist", icon: "blocklist" },
+      // Queue, Needs you, Wanted, History and Blocklist are tabs of one page; its pill
+      // counts held imports and downloads that need a look.
+      { to: "/activity", label: "Activity", icon: "downloads", badge: "activity" },
     ],
   },
   {

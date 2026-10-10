@@ -86,7 +86,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
               <span className="min-w-0">
                 <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject)" : "var(--ink)" }}>Cancel the download in progress and delete its partial data</span>
                 <span className="mt-0.5 block break-all text-[11px] text-ink-faint">{d.title} · {Math.round(d.progress * 100)}%</span>
-                {!cancelDownloads && <span className="mt-0.5 block text-[11px] text-ink-faint">Left running, it waits in Review when it finishes instead of coming back into the library.</span>}
+                {!cancelDownloads && <span className="mt-0.5 block text-[11px] text-ink-faint">Left running, it waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
               </span>
             </label>
           ))}

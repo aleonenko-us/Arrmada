@@ -81,8 +81,14 @@ export function badgeFor(badge: NonNullable<NavItem["badge"]>, c: AttentionCount
     case "review":
       return c.reviews > 0 ? { count: c.reviews, tone: "accent", label: plural(c.reviews, "import needs review", "imports need review") } : null;
     case "activity": {
-      const n = c.downloads + c.imports;
-      return n > 0 ? { count: n, tone: "accent", label: plural(n, "download needs a look", "downloads need a look") } : null;
+      // The Activity page holds Review too (its Needs you tab), so its pill counts both.
+      const n = c.reviews + c.downloads + c.imports;
+      if (n === 0) return null;
+      const parts = [
+        c.reviews > 0 ? plural(c.reviews, "import needs review", "imports need review") : "",
+        c.downloads + c.imports > 0 ? plural(c.downloads + c.imports, "download needs a look", "downloads need a look") : "",
+      ].filter(Boolean);
+      return { count: n, tone: "accent", label: parts.join(", ") };
     }
     case "issues":
       if (c.health_errors > 0) return { count: c.health_errors, tone: "reject", label: plural(c.health_errors, "health error", "health errors") };

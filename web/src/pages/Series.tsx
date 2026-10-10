@@ -171,7 +171,7 @@ export function Series() {
   const search = async (s: SeriesT) => {
     try {
       await api.searchSeries(s.id);
-      flash(`Searching for “${s.title}” — packs/episodes appear in Downloads once grabbed.`);
+      flash(`Searching for “${s.title}” — follow packs and episodes in Activity → Queue once grabbed.`);
     } catch (e) {
       flash((e as Error).message);
     }
@@ -315,7 +315,7 @@ export function Series() {
         )}
 
         {searchFor && (
-          <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { flash(`Grabbed for ${searchFor.title} — it will show in Downloads.`); refresh(); }} />
+          <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { flash(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
         )}
         {toast && (
           <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>

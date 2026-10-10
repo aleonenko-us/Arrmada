@@ -23,11 +23,11 @@ const ITEMIZED = new Set<AttentionKind>(["health", "import", "wrongcat"]);
 
 const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   request: ["Review it", "Review them"],
-  review: ["Open Review", "Open Review"],
+  review: ["Decide", "Decide"],
   download: ["See it", "See them"],
   stalled: ["See it", "See them"],
-  import: ["See downloads", "See downloads"],
-  wrongcat: ["See downloads", "See downloads"],
+  import: ["See it", "See them"],
+  wrongcat: ["See it", "See them"],
   search: ["See what's searching", "See what's searching"],
   health: ["Fix", "Fix"],
 };

@@ -202,7 +202,7 @@ export function Movies() {
     try {
       const r = await api.searchMovie(m.id);
       const note = queuedNote(r);
-      flash(note ? `“${m.title}”: ${note}.` : `Searching for “${m.title}” — follow it in ${PAGE.downloads} → Searching.`);
+      flash(note ? `“${m.title}”: ${note}.` : `Searching for “${m.title}” — follow it in ${PAGE.activity} → Wanted.`);
     } catch (e) {
       flash((e as Error).message);
     }

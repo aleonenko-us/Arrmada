@@ -368,7 +368,7 @@ function Toolbar({ series, onChange, flash }: { series: SeriesT; onChange: () =>
         >
           {busy === "type" ? "Saving…" : series.series_type === "anime" ? "Anime ✓" : "Anime"}
         </button>
-        <button className={btn} style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }} disabled={busy !== null || search.running} onClick={() => run("search", async () => { setSearchResult(null); const r = await api.searchSeries(series.id); if (r.job_id) setSearchJob(r.job_id); flash("Searching — packs and episodes will show in Downloads once grabbed."); })}>
+        <button className={btn} style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }} disabled={busy !== null || search.running} onClick={() => run("search", async () => { setSearchResult(null); const r = await api.searchSeries(series.id); if (r.job_id) setSearchJob(r.job_id); flash("Searching — follow packs and episodes in Activity → Queue once grabbed."); })}>
           {busy === "search" || search.running ? "Searching…" : "Auto-grab missing"}
         </button>
         <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>

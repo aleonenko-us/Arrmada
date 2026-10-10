@@ -1,4 +1,4 @@
-// Words for the Wanted view (the Downloads page's Searching and Upcoming tabs): what is
+// Words for the Wanted view (Activity → Wanted: Searching and Upcoming): what is
 // really happening to each wanted title, and when it was and will next be searched. The
 // server sends states and times; the sentences are here, in one place.
 import type { WantedRow } from "./api";
@@ -61,7 +61,7 @@ export function wantedLine(r: WantedRow, now = Date.now()): string {
     case "waiting_download":
       return `Waiting on ${r.waiting_on ?? "a download"}${r.stalled ? " (stalled — nobody is sending data)" : ""} — not searched until it finishes or fails`;
     case "held_for_review":
-      return "Its download finished but is held in Review — not searched again until it's decided";
+      return "Its download finished but is held in Activity → Needs you — not searched again until it's decided";
   }
   const parts: string[] = [];
   const s = r.last_search;
