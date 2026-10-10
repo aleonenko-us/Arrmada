@@ -331,6 +331,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleSetClientSettings))
 	mux.HandleFunc("POST /api/v1/downloadclients/restore-bundled", a.requireRole(auth.RoleManager, a.handleRestoreBundledClient))
 	mux.HandleFunc("GET /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrInfo))
+	mux.HandleFunc("PUT /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrSettings))
 	mux.HandleFunc("POST /api/v1/indexers/prowlarr/sync", a.requireRole(auth.RoleManager, a.handleProwlarrSync))
 	// Alert connections: staff see the list (URLs redacted); writes and sends are the
 	// admin's, since a connection decides where the server posts.

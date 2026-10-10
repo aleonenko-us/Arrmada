@@ -392,6 +392,7 @@ PUT /api/v1/books/{id}/profile staff -
 PUT /api/v1/convert/settings staff -
 PUT /api/v1/downloadclients/{id} staff -
 PUT /api/v1/downloadclients/{id}/settings staff -
+PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -

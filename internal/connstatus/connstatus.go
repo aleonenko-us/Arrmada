@@ -33,6 +33,7 @@ const (
 	KindIndexer        = "indexer"
 	KindDownloadClient = "download_client"
 	KindFlareSolverr   = "flaresolverr"
+	KindProwlarr       = "prowlarr" // the Prowlarr sync (ref "default"); its indexers are KindIndexer
 )
 
 // Phases an integration can be in, as the API and the UI name them.

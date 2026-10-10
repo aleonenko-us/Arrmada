@@ -77,6 +77,29 @@ export interface ProwlarrSyncResult {
   notes?: string[];
 }
 
+/** How the latest Prowlarr sync went, hourly or clicked. failed_runs counts scheduled runs in a row. */
+export interface ProwlarrLastSync {
+  at: string;
+  trigger: "schedule" | "manual";
+  added: number;
+  updated: number;
+  disabled: number;
+  reenabled: number;
+  error?: string;
+  failed_runs?: number;
+}
+
+/** The Prowlarr panel: the sync URL, whether a key is saved, the last sync, and where Prowlarr's web UI is. */
+export interface ProwlarrInfo {
+  url: string;
+  has_key: boolean;
+  /** The host port Prowlarr's UI is published on (install.sh may pick 9697 or 9698). */
+  ui_port?: string;
+  /** A saved address for a Prowlarr on another machine; wins over ui_port. */
+  ui_url?: string;
+  last_sync?: ProwlarrLastSync;
+}
+
 /**
  * IndexerStatus is one indexer's health from the integration status tracker. "failing"
  * failed last time but sweeps still ask it; "backing_off" is left alone by sweeps until
@@ -2203,7 +2226,9 @@ export const api = {
   testIndexerSettings: (body: NewIndexer & { id?: number }) =>
     req<IndexerTestResult>("/api/v1/indexers/test", { method: "POST", body: JSON.stringify(body) }),
   flareSolverrStatus: () => req<FlareSolverrStatus>("/api/v1/flaresolverr/status"),
-  prowlarrInfo: () => req<{ url: string; has_key: boolean }>("/api/v1/indexers/prowlarr"),
+  prowlarrInfo: () => req<ProwlarrInfo>("/api/v1/indexers/prowlarr"),
+  saveProwlarrUIURL: (ui_url: string) =>
+    req<{ ui_url: string }>("/api/v1/indexers/prowlarr", { method: "PUT", body: JSON.stringify({ ui_url }) }),
   syncProwlarr: (body: { url: string; api_key: string; add_flaresolverr_proxy?: boolean }) =>
     req<ProwlarrSyncResult>("/api/v1/indexers/prowlarr/sync", { method: "POST", body: JSON.stringify(body) }),
 

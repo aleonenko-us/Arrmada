@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Indexer, type IndexerStatus, type NewIndexer } from "../lib/api";
-import { INDEXER_DOT, indexerStatusLine, prowlarrSyncMessage } from "../lib/indexerStatus";
+import { INDEXER_DOT, indexerStatusLine, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../lib/indexerStatus";
 import { LINKS } from "../lib/links";
 import { useQuery } from "../lib/query";
 import { useLive } from "../lib/useLive";
@@ -124,6 +124,11 @@ export function Indexers() {
                         >
                           {idx.kind}
                         </span>
+                        {Boolean(idx.prowlarr_id) && (
+                          <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Its name, address and key come from Prowlarr, which syncs every hour">
+                            Managed by Prowlarr
+                          </span>
+                        )}
                         {!idx.enabled && (
                           <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px]" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>
                             disabled
@@ -290,13 +295,21 @@ function ProwlarrSync({ onSynced }: { onSynced: () => void }) {
   const [busy, setBusy] = useState(false);
   const [addProxy, setAddProxy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [uiUrl, setUiUrl] = useState("");
+  const [uiMsg, setUiMsg] = useState<{ ok: boolean; msg: string } | null>(null);
   // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
   // Prowlarr is someone's own setup and is only changed when this box is ticked.
   const bundled = isBundledProwlarr(url);
+  // Re-read after a sync (manual or the hourly one) so "Last synced" stays current.
+  const info = useQuery("prowlarr-info", () => api.prowlarrInfo(), { staleMs: 60_000 });
 
   useEffect(() => {
-    api.prowlarrInfo().then((i) => { setUrl(i.url); setHasKey(i.has_key); }).catch(() => {});
-  }, []);
+    const i = info.data;
+    if (!i) return;
+    setUrl((u) => u || i.url);
+    setHasKey(i.has_key);
+    setUiUrl((u) => u || i.ui_url || "");
+  }, [info.data]);
 
   const sync = async () => {
     setBusy(true);
@@ -311,21 +324,37 @@ function ProwlarrSync({ onSynced }: { onSynced: () => void }) {
       setResult({ ok: false, msg: (e as Error).message });
     } finally {
       setBusy(false);
+      void info.refetch();
+    }
+  };
+
+  const saveUiUrl = async () => {
+    setUiMsg(null);
+    try {
+      const r = await api.saveProwlarrUIURL(uiUrl.trim());
+      setUiUrl(r.ui_url);
+      setUiMsg({ ok: true, msg: r.ui_url ? "Saved" : "Cleared — the link uses this host again" });
+      void info.refetch();
+    } catch (e) {
+      setUiMsg({ ok: false, msg: (e as Error).message });
     }
   };
 
   const field = "w-full rounded-lg px-3 py-2 text-[13px]";
   const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
-  // Prowlarr's own UI — reachable from the user's browser (same host, port 9696),
-  // not the internal service name Arrmada uses to talk to it.
-  const prowlarrUI = `${window.location.protocol}//${window.location.hostname}:9696`;
+  // Prowlarr's own UI as the user's browser reaches it (this host on the port Prowlarr is
+  // published on, or a saved address), not the internal name Arrmada uses to talk to it.
+  const prowlarrUI = prowlarrUILink(info.data, window.location);
+  const port = info.data?.ui_port || "9696";
+  const last = prowlarrLastSyncLine(info.data?.last_sync);
 
   return (
     <div className="mb-4 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3 text-left">
         <div>
           <div className="text-[13px] font-semibold">Sync from Prowlarr <span className="ml-1 rounded px-1.5 py-0.5 align-middle font-mono text-[9px] uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>fast</span></div>
-          <div className="mt-0.5 text-[11.5px] text-ink-faint">Pull your Prowlarr indexers in as Torznab feeds — API search, no scraping. Re-syncing keeps what you set here; indexers disabled or removed in Prowlarr are turned off. Add trackers in Prowlarr first.</div>
+          <div className="mt-0.5 text-[11.5px] text-ink-faint">Pull your Prowlarr indexers in as Torznab feeds — API search, no scraping. Once synced it re-syncs every hour: what you set here is kept; indexers disabled or removed in Prowlarr are turned off. Add trackers in Prowlarr first.</div>
+          {last && <div className="mt-1 break-words text-[11.5px]" style={{ color: last.color }}>{last.text}</div>}
         </div>
         <span className="font-mono text-[16px] text-ink-faint">{open ? "−" : "+"}</span>
       </button>
@@ -338,7 +367,7 @@ function ProwlarrSync({ onSynced }: { onSynced: () => void }) {
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">API key {hasKey && <span className="text-[8.5px] normal-case" style={{ color: "var(--good)" }}>· saved</span>}</span>
-              <input type="password" className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={hasKey ? "•••••••• (leave blank to reuse)" : "Prowlarr → Settings → General"} autoComplete="off" />
+              <input type="password" className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={hasKey ? "•••••••• (leave blank to reuse)" : `${bundled ? `Bundled Prowlarr (port ${port})` : "Prowlarr"} → Settings → General`} autoComplete="off" />
             </label>
           </div>
           <p className="mt-2.5 text-[10.5px] text-ink-faint">
@@ -348,7 +377,21 @@ function ProwlarrSync({ onSynced }: { onSynced: () => void }) {
           <div className="mt-3 flex flex-col gap-1.5 rounded-lg p-3 text-[11.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
             <div>
               <span className="text-ink-faint">Open Prowlarr to add trackers:</span>{" "}
-              <a href={prowlarrUI} target="_blank" rel="noreferrer" className="font-mono font-semibold" style={{ color: "var(--accent)" }}>{prowlarrUI} ↗</a>
+              <a href={prowlarrUI} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent)" }}>{prowlarrUI} ↗</a>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                aria-label="Prowlarr web address"
+                className="min-w-[200px] flex-1 rounded-lg px-2.5 py-1.5 text-[12px]"
+                style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
+                value={uiUrl}
+                onChange={(e) => setUiUrl(e.target.value)}
+                placeholder="Prowlarr on another machine? Its address, e.g. http://192.168.1.10:9696"
+              />
+              <button type="button" onClick={saveUiUrl} className="rounded-lg px-3 py-1.5 text-[12px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
+                Save address
+              </button>
+              {uiMsg && <span className="text-[11px]" style={{ color: uiMsg.ok ? "var(--good)" : "var(--reject)" }}>{uiMsg.msg}</span>}
             </div>
             <div className="text-ink-dim">
               For a Cloudflare-protected tracker, add the{" "}
@@ -576,12 +619,12 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
     <form onSubmit={submit} className="mt-3 rounded-lg p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
       {managed && (
         <p className="mb-3 mt-0 text-[11.5px] text-ink-dim">
-          Synced from Prowlarr: its name, URL and key come from Prowlarr. Change them there and sync again; the settings below stay yours.
+          Managed by Prowlarr: its name, URL and key come from Prowlarr. Change them in Prowlarr; it syncs hourly. Scope, seeding, minimum seeders, tie-break and on/off below stay yours.
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Labeled label="Name">
-          <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} required readOnly={managed} />
+        <Labeled label="Name" hint={managed ? "Change this in Prowlarr; it syncs hourly" : undefined}>
+          <input className={field} style={{ ...fieldStyle, ...(managed ? { opacity: 0.6, cursor: "not-allowed" } : {}) }} value={name} onChange={(e) => setName(e.target.value)} required readOnly={managed} aria-readonly={managed} />
         </Labeled>
         <Labeled label="Tie-break priority (1–50)" hint={TIE_BREAK_HELP}>
           <input type="number" min={1} max={50} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
