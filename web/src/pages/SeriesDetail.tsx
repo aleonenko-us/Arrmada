@@ -14,8 +14,9 @@ import { NumberingBanner } from "./series/NumberingReviewModal";
 import { MONITOR_PRESETS } from "./series/presets";
 import { usePoll } from "../lib/usePoll";
 import { libraryStatus } from "../lib/status";
-import { useLive } from "../lib/useLive";
-import { downloadingCount, mergeDownloads } from "./series/downloads";
+import { useLiveConnected, useLiveEvent } from "../lib/live";
+import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
+import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress } from "./series/downloads";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { attemptLine, outcomeTone, searchFinishedFor, searchJobLine } from "../lib/searchOutcome";
 import { LastSearches, refreshSearches, useSearchAttempts } from "../components/LastSearch";
@@ -27,6 +28,10 @@ import { api, importListNotice, type FitItem, type Series as SeriesT, type Seaso
 // buttons read the latest one back from the server — what was found and why nothing was
 // taken — rather than a "Requested" mark kept in this browser.
 const seasonScope = (n: number) => `S${String(n).padStart(2, "0")}`;
+// What the page listens for besides the queue (see SeriesDetail).
+const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
+// The download bars' backstop when queue.progress and queue.changed move them.
+const DOWNLOAD_FALLBACK_MS = 30_000;
 // The old marks are dead weight in this browser now; drop them once.
 try { localStorage.removeItem("arrmada.grabRequested"); } catch { /* storage unavailable */ }
 
@@ -76,26 +81,33 @@ export function SeriesDetail() {
     api.libraryFitEpisodes(sid).then((r) => setFits(new Map((r.items ?? []).map((it) => [`${it.season}:${it.episode}`, it])))).catch(() => {});
   }, [sid]);
 
-  // While any episode is downloading, poll the light downloads endpoint so the progress
-  // ticks up — not the whole show every three seconds. The full detail reloads when the
-  // server announces an import or a search for this show.
-  const live = useLive();
+  // While any episode is downloading its bar moves from queue.progress (by the torrent's
+  // hash), and a queue.changed naming one of its torrents reads the light downloads
+  // endpoint — not the whole show. That endpoint is also the slow backstop (quick only
+  // when an old grab has no hash to follow). The full detail reloads when the server
+  // announces an import or a search for this show.
+  const connected = useLiveConnected();
   const downloading = s ? downloadingCount(s) : 0;
+  const { hashes: dlHashes, complete: allHashed } = useMemo(() => (s ? downloadHashes(s) : { hashes: [], complete: true }), [s]);
   const lastCount = useRef(0);
+  const grabLook = useRef<number | undefined>(undefined);
   const pollDownloads = useCallback(() => {
     return api.seriesDownloads(sid).then((dls) => {
       // Without the websocket nothing announces the import, so a download leaving the
       // list (finished, failed or removed) is the cue to reload instead.
-      if (!live.connected && dls.length < lastCount.current) load();
+      if (!connected && dls.length < lastCount.current) load();
       lastCount.current = dls.length;
       setS((cur) => (cur ? mergeDownloads(cur, dls) : cur));
     }).catch(() => { /* the next tick tries again */ });
-  }, [sid, load, live.connected]);
+  }, [sid, load, connected]);
   useEffect(() => { lastCount.current = downloading; }, [downloading]);
-  usePoll(pollDownloads, downloading > 0 ? 3000 : null, { immediate: false });
-  useEffect(() => {
-    const ev = live.last;
-    if (!ev) return;
+  usePoll(pollDownloads, downloading > 0 ? (connected && allHashed ? DOWNLOAD_FALLBACK_MS : 3000) : null, { immediate: false });
+  useLiveEvent([QUEUE_PROGRESS, QUEUE_CHANGED], (ev) => {
+    if (queueChangedFor(ev, dlHashes)) { void pollDownloads(); return; }
+    const p = progressByHash(ev);
+    if (p) setS((cur) => (cur ? patchSeriesProgress(cur, p) : cur));
+  }, downloading > 0);
+  useLiveEvent(SERIES_TOPICS, (ev) => {
     const evID = (ev.data as { id?: number } | null)?.id;
     if ((ev.topic === "series.imported" || ev.topic === "series.searched") && evID === sid) {
       load();
@@ -107,13 +119,12 @@ export function SeriesDetail() {
     } else if (ev.topic === "release.grabbed") {
       // The grab names no show, and the client takes a moment to list the torrent: look
       // twice, cheaply, rather than reload the whole page for every grab anywhere.
-      pollDownloads();
-      const t = window.setTimeout(pollDownloads, 5000);
-      return () => window.clearTimeout(t);
+      void pollDownloads();
+      window.clearTimeout(grabLook.current);
+      grabLook.current = window.setTimeout(() => void pollDownloads(), 5000);
     }
-    // Only a new event should act; load and pollDownloads change with the page's state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.last]);
+  });
+  useEffect(() => () => window.clearTimeout(grabLook.current), []);
 
   if (notFound) return <Shell><div className="py-10 text-center text-[13px] text-ink-dim">That series isn't in your library. <Link to="/series" className="underline" style={{ color: "var(--accent)" }}>Back to Series</Link></div></Shell>;
   if (!s) return <Shell><p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p></Shell>;

@@ -5,11 +5,11 @@ import { useTabParam } from "../lib/useTabParam";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
-import { usePoll } from "../lib/usePoll";
 import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
 import { useMe } from "../lib/me";
-import { useQuery } from "../lib/query";
-import { useLive } from "../lib/useLive";
+import { useLiveEvent } from "../lib/live";
+import { useLiveQuery, useLiveRefresh } from "../lib/useLiveQuery";
+import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "../lib/queueLive";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
@@ -131,10 +131,14 @@ function ProfileChip({ profile }: { profile: string }) {
 }
 
 // How often the Wanted half refreshes on its own. It reads the search history, so it
-// isn't polled with the queue every three seconds; a finished search, a grab or an import
-// announced over the socket refreshes it sooner.
+// isn't refreshed with the queue; a finished search, a grab or an import announced over
+// the socket refreshes it sooner.
 const WANTED_POLL_MS = 30_000;
 const WANTED_TOPICS = ["search.finished", "release.grabbed", "download.imported", "series.imported", "series.searched"];
+// What changes the queue's rows (beyond the bars, which queue.progress moves in place),
+// and the backstop for an event the socket dropped.
+const QUEUE_TOPICS = [QUEUE_CHANGED, "release.grabbed", "download.imported", "import.held", "download.stalled"];
+const QUEUE_FALLBACK_MS = 10_000;
 
 export function Downloads() {
   const [downloads, setDownloads] = useState<ActivityDownload[]>([]);
@@ -170,9 +174,12 @@ export function Downloads() {
     }).catch(() => {});
   }, []);
 
-  // Consecutive failed polls; one blip isn't worth a "reconnecting" banner.
+  // Consecutive failed reads; one blip isn't worth a "reconnecting" banner.
   const fails = useRef(0);
-  usePoll(() =>
+  // The queue refreshes when the server says its shape moved (a torrent arrived, left,
+  // finished or changed phase) and on a slow backstop; between those the bars move from
+  // queue.progress below. Both come from the server's one shared read of the client.
+  useLiveRefresh(() =>
     api.activity().then((a) => {
       fails.current = 0;
       setDownloads(a.downloads ?? []);
@@ -187,20 +194,17 @@ export function Downloads() {
       fails.current += 1;
       setLoaded(true);
       if (fails.current >= 2) setReconnecting(true);
-    }), 3000);
+    }), { topics: QUEUE_TOPICS, fallbackMs: QUEUE_FALLBACK_MS, immediate: true });
+  useLiveEvent(QUEUE_PROGRESS, (ev) => {
+    const live = progressByHash(ev);
+    if (!live) return;
+    setDownloads((ds) => patchProgress(ds, live, (d) => ({ hash: d.hash, progress: d.progress, phase: d.phase || d.state }),
+      (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state })));
+  });
 
-  // The Wanted view (Searching and Upcoming): its own, slower read.
-  const wanted = useQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000 });
-  const refetchWanted = wanted.refetch;
-  usePoll(refetchWanted, WANTED_POLL_MS, { immediate: false });
-  const live = useLive();
-  // A sweep finishes searches in bursts: one refresh for the lot, a moment after.
-  const wantedTimer = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!live.last || !WANTED_TOPICS.includes(live.last.topic) || wantedTimer.current !== undefined) return;
-    wantedTimer.current = window.setTimeout(() => { wantedTimer.current = undefined; void refetchWanted(); }, 1500);
-  }, [live.last, refetchWanted]);
-  useEffect(() => () => window.clearTimeout(wantedTimer.current), []);
+  // The Wanted view (Searching and Upcoming): its own, slower read. A sweep finishes
+  // searches in bursts: one refresh for the lot, a moment after.
+  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
   const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
   const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 
