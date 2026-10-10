@@ -503,9 +503,6 @@ function AddForm({ onAdded }: { onAdded: () => void }) {
             <Labeled label="Password">
               <input type="password" className={field} style={fieldStyle} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
             </Labeled>
-            <Labeled label="RSS key (optional)" span2>
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="optional; FlareSolverr handles auth now" />
-            </Labeled>
           </>
         ) : is1337 ? (
           <Labeled label="Site URL (optional mirror)" span2>
@@ -537,7 +534,7 @@ function AddForm({ onAdded }: { onAdded: () => void }) {
       )}
       {isTL && (
         <p className="mt-3 text-[11px] text-ink-faint">
-          Native — no Prowlarr/Jackett needed. Credentials stored on your server. Uses FlareSolverr for Cloudflare. 2FA not supported yet.
+          Native — no Prowlarr/Jackett needed. Credentials stored on your server. Uses FlareSolverr for Cloudflare. New uploads are checked every 15 minutes. 2FA not supported yet.
         </p>
       )}
       {isMAM && (
@@ -639,9 +636,6 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
             </Labeled>
             <Labeled label="Password (blank = keep)">
               <input type="password" className={field} style={fieldStyle} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            </Labeled>
-            <Labeled label="RSS key (blank = keep)" span2>
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="leave blank to keep current" />
             </Labeled>
           </>
         ) : is1337 ? (

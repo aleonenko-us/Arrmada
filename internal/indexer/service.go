@@ -212,12 +212,22 @@ func (s *Service) Get(ctx context.Context, id int64) (Indexer, error) { return s
 
 // Create stores a new indexer.
 func (s *Service) Create(ctx context.Context, idx Indexer) (Indexer, error) {
+	dropUnusedSecrets(&idx)
 	return s.repo.Create(ctx, idx)
+}
+
+// dropUnusedSecrets blanks a secret the indexer's kind never reads, so it isn't stored.
+// TorrentLeech's "RSS key" is the one: everything goes through the logged-in session.
+func dropUnusedSecrets(idx *Indexer) {
+	if idx.Kind == KindTorrentLeech {
+		idx.APIKey = ""
+	}
 }
 
 // Update changes an indexer's settings. A change to how it's reached clears its recorded
 // failures and any cached login, so the new settings get a fair first try.
 func (s *Service) Update(ctx context.Context, idx Indexer) error {
+	dropUnusedSecrets(&idx)
 	old, oldErr := s.repo.Get(ctx, idx.ID)
 	if err := s.repo.Update(ctx, idx); err != nil {
 		return err
@@ -549,6 +559,7 @@ func (s *Service) fetchRecent(ctx context.Context, limit int) (SearchResult, err
 		eligible int
 		failed   int
 		skipped  int
+		counts   []string // "name=items" per feed that answered, for the log
 	)
 	for _, idx := range indexers {
 		if s.skipUsenet(idx) {
@@ -611,10 +622,18 @@ func (s *Service) fetchRecent(ctx context.Context, limit int) (SearchResult, err
 			}
 			mu.Lock()
 			result.Releases = append(result.Releases, releases...)
+			counts = append(counts, fmt.Sprintf("%s=%d", idx.Name, len(releases)))
 			mu.Unlock()
 		}(idx, rec)
 	}
 	wg.Wait()
+
+	// One line per pull naming what each feed returned, so the owner can see every
+	// indexer — TorrentLeech and MyAnonaMouse included — is actually being polled.
+	if len(counts) > 0 {
+		sort.Strings(counts)
+		s.log.Info("indexer feeds read", "items", strings.Join(counts, ", "), "failed", failed, "paused", skipped)
+	}
 
 	result.Releases = filterAdult(result.Releases)
 
