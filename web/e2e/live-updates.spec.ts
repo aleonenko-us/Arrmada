@@ -29,7 +29,7 @@ test.describe("live updates", () => {
   test("the Movies grid refreshes on a websocket event, without polling", async ({ page, api }) => {
     const live = await liveSocket(page);
     await page.goto("/movies");
-    await expect.poll(() => live.opened()).toBeGreaterThan(0);
+    await expect.poll(() => live.opened()).toBe(1);
     await api.quiet();
     const movies = () => api.callsTo("GET", "/api/v1/movies").filter((c) => c.path === "/api/v1/movies").length;
     const before = movies();
@@ -55,7 +55,23 @@ test.describe("live updates", () => {
     await expect.poll(movies, { timeout: 4000 }).toBe(before + 2);
 
     // Every listener on the page shares the one socket.
-    expect(live.opened()).toBeLessThanOrEqual(2); // FE-28 folds the Needs-you line in too
+    expect(live.opened()).toBe(1);
+  });
+
+  // FE-28: the sidebar's Needs-you pills follow attention.changed on the same socket.
+  test("the sidebar pills refresh on attention.changed", async ({ page, api }) => {
+    const live = await liveSocket(page);
+    await page.goto("/movies");
+    await expect.poll(() => live.opened()).toBe(1);
+    await api.quiet();
+    const reads = () => api.callsTo("GET", "/api/v1/attention").length;
+    expect(reads()).toBe(1);
+    await page.route("**/api/v1/attention", (route) => route.fulfill({
+      json: { at: null, stale: false, counts: { requests: 5, reviews: 0, downloads: 0, imports: 0, searches: 0, health: 0, health_errors: 0, total: 5 }, groups: [], items: [] },
+    }));
+    live.send("attention.changed", { total: 5 });
+    await expect(page.getByRole("complementary").locator('a[href="/requests"]')).toContainText("5");
+    await expect(page).toHaveTitle(/^\(5\) /);
   });
 
   test("a hidden Downloads tab doesn't poll", async ({ page, api }) => {
@@ -77,7 +93,7 @@ test.describe("live updates", () => {
   test("download bars move from queue.progress without asking the server", async ({ page, api }) => {
     const live = await liveSocket(page);
     await page.goto("/downloads");
-    await expect.poll(() => live.opened()).toBeGreaterThan(0);
+    await expect.poll(() => live.opened()).toBe(1);
     await api.quiet();
     const reads = () => api.callsTo("GET", "/api/v1/downloads").length;
     const before = reads();

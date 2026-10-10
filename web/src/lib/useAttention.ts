@@ -1,7 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { api, SIGNED_OUT_EVENT, type Attention, type AttentionCounts } from "./api";
 import type { NavItem } from "./nav";
-import { usePoll } from "./usePoll";
+import { useLiveRefresh } from "./useLiveRefresh";
+import { setTitleCount } from "./title";
 
 // The Needs-you feed, shared by every part of the staff shell that shows it: the sidebar
 // badges, the mobile menu dot and the Dashboard card all read one answer, and one poller
@@ -11,7 +12,9 @@ import { usePoll } from "./usePoll";
 // A small store of its own rather than lib/query: the shell is part of every first load,
 // requesters' included, and this keeps the query cache out of it.
 
-export const ATTENTION_POLL_MS = 30_000;
+// The backstop poll: attention.changed over the shared socket is what keeps it current.
+export const ATTENTION_POLL_MS = 60_000;
+export const ATTENTION_TOPIC = "attention.changed";
 
 let current: Attention | undefined;
 let inflight: Promise<void> | null = null;
@@ -37,11 +40,23 @@ function subscribe(fn: () => void) {
   return () => { listeners.delete(fn); };
 }
 
-/** The poller. Mount exactly once, in the staff layout. */
+/**
+ * The poller. Mount exactly once, in the staff layout. The server publishes
+ * attention.changed (counts only, staff-only) about a second after a request is made or
+ * decided, a review lands or health moves; asking for the snapshot then puts a family
+ * member's new request on the sidebar within seconds. The tab's shared socket carries it;
+ * the poll is only the backstop for an event it dropped.
+ */
 export function useAttentionPoll() {
-  usePoll(loadAttention, ATTENTION_POLL_MS);
-  // And the live line that asks again the moment the counts move (lib/attentionLive).
-  useEffect(() => { void import("./attentionLive").then((m) => m.startAttentionLive(), () => {}); }, []);
+  useLiveRefresh(loadAttention, { topics: [ATTENTION_TOPIC], fallbackMs: ATTENTION_POLL_MS, debounceMs: 300, immediate: true });
+  // The browser tab says "(3) Movies · Arrmada" while requests or reviews wait on someone,
+  // so a pinned tab shows it without being opened.
+  const c = useAttention()?.counts;
+  const actionable = (c?.requests ?? 0) + (c?.reviews ?? 0);
+  useEffect(() => {
+    setTitleCount(actionable);
+    return () => setTitleCount(0);
+  }, [actionable]);
 }
 
 /** The latest Needs-you snapshot; undefined until the first answer. Never fetches itself. */
