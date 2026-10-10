@@ -26,6 +26,8 @@ func TestPolicyAllowed(t *testing.T) {
 		{"file.removed", user7, false},
 		{"queue.progress", user7, false}, // download hashes and progress: staff only
 		{"queue.progress", staff, true},
+		{"queue.changed", user7, false}, // which torrents came and went: staff only
+		{"queue.changed", staff, true},
 		{"request.updated", user7, false}, // everyone's requests: staff only
 		{"request.updated", staff, true},
 		{"something.new", user7, false}, // unknown topics are staff-only

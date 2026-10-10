@@ -6,12 +6,14 @@ import "strconv"
 // realtime policy (internal/realtime/policy.go): a plain topic is staff-only, and a
 // user.<id>.* topic goes to that one user. So:
 //   - queue.progress is staff-only. It carries hashes and progress numbers, never titles.
+//   - queue.changed is staff-only, with the hashes that arrived, left or changed phase.
 //   - request.updated is staff-only, with ids and status (no titles).
 //   - each requester (and subscriber) hears about their own request on
 //     user.<id>.request.updated, with the request's id, status and media type only.
 //   - attention.changed is staff-only, with the Needs-you counts and nothing else.
 const (
 	TopicQueueProgress    = "queue.progress"
+	TopicQueueChanged     = "queue.changed"
 	TopicRequestUpdated   = "request.updated"
 	TopicAttentionChanged = "attention.changed"
 )
