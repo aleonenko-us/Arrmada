@@ -2,6 +2,18 @@
 // each under pages/settings/) look the same. The auto-saving controls (AutoToggle,
 // AutoText, AutoNumber, AutoSelect, SavedTick) are in ./auto.tsx, built on
 // lib/useAutoSave (any endpoint) and lib/useSettings useSetting (the /settings keys).
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+
+// useScrollWhenLoaded scrolls a card that fills in after its own fetch back into view when
+// the address names it (/settings/tools#convert): the hub's own scroll ran before the card,
+// or the ones above it, had their full height.
+export function useScrollWhenLoaded(id: string, loaded: boolean) {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (loaded && hash === `#${id}`) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [loaded, hash, id]);
+}
 
 export const input = "w-full rounded-lg px-3 py-2 font-mono text-[12.5px]";
 export const inputStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;

@@ -61,6 +61,9 @@ var bannedCopy = []bannedPhrase{
 	// CFG-13: Settings is a hub of sections with their own URLs.
 	phrase(`Settings → System → (Recycle bin|Disk guard|Download disk guard)`, "the recycle bin and disk guard live in Settings → Downloads (LINKS.recycleBin, LINKS.diskGuard)"),
 	webPhrase(`/settings\?tab=`, "each Settings section has its own URL — link through LINKS (/settings/<section>#card)"),
+	// CFG-17: module settings moved out of their pages' Settings tabs into the hub.
+	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles & Convert and Settings → Audiobook server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
+	webPhrase(`/(convert|subtitles)\?tab=settings|/audiobooks\?tab=server`, "the old Settings tabs only redirect now — link through LINKS"),
 	// COPY-08: the Insights intro only asks to connect while Plex isn't connected.
 	webPhrase(`Connect your server in`, "the intro's call to action is the 'Connect your Plex server in the Settings tab' button, shown only while not connected"),
 	// COPY-10: system strings that described an older build.
@@ -224,6 +227,8 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`re-run ./update.sh`,
 		`restorable from Settings → System → Recycle bin`,
 		`<Link to="/settings?tab=system#api-keys">`,
+		`set that in Convert → Settings`,
+		`<Link to="/subtitles?tab=settings">Settings</Link>`,
 		`Connect your server in <b>Settings</b> to begin.`,
 		`<Stat k="Auth" v={status?.auth_enabled ? "enabled" : "disabled"} />`,
 		`lines — kept in memory, up to 5000.`,

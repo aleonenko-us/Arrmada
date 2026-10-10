@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type AudioImportPreview, type AudioImportResult, type AudioListening, type AudioServerAdmin } from "../lib/api";
-import { useMe } from "../lib/me";
-import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, fmtHours, ghost, inputStyle, primary } from "./audiobooks/shared";
+import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, fmtHours, inputStyle, primary } from "./audiobooks/shared";
 
-// The admin half of Audiobooks: the server switch, who may connect, everyone's listening
-// (how much and when, never what) and the Audiobookshelf import. It is its own chunk, loaded
-// only when an admin opens one of these tabs, so requesters never download it.
+// The admin half of Audiobooks: who may connect, everyone's listening (how much and when,
+// never what) and the Audiobookshelf import. It is its own chunk, loaded only when an admin
+// opens one of these tabs, so requesters never download it. The server's own settings live
+// in Settings → Audiobook server.
 
-export type AdminTab = "server" | "people" | "listening" | "import";
+export type AdminTab = "people" | "listening" | "import";
 
 export function AudiobooksAdmin({ tab }: { tab: AdminTab }) {
-  if (tab === "server") return <ServerView />;
   if (tab === "people") return <PeopleView />;
   if (tab === "listening") return <AllListeningView />;
   return <ImportView />;
@@ -22,69 +21,6 @@ function useAdmin() {
   const load = () => api.audioServer().then(setData).catch((e) => setError((e as Error).message));
   useEffect(() => { load(); }, []);
   return { data, setData, error, load };
-}
-
-function ServerView() {
-  const { external } = useMe();
-  const { data, setData, error } = useAdmin();
-  const [url, setUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  if (!data) return <Loading error={error} />;
-  const toggle = async () => { setBusy(true); try { setData(await api.setAudioServer({ enabled: !data.enabled })); } finally { setBusy(false); } };
-  const saveURL = async () => { setBusy(true); try { setData(await api.setAudioServer({ public_url: url ?? "" })); setUrl(null); } finally { setBusy(false); } };
-  const state = data.enabled ? (data.running ? "Running" : "Switched on, not running") : "Switched off";
-  const dot = data.enabled ? (data.running ? "var(--good)" : "var(--reject)") : "var(--ink-faint)";
-  return (
-    <div className="flex flex-col gap-4">
-      <section className="flex items-center justify-between gap-3 rounded-xl p-4" style={card}>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[14px] font-bold"><span className="h-2 w-2 rounded-full" style={{ background: dot }} />{state}</div>
-          <div className="text-[12px] text-ink-dim">
-            {data.running ? `${data.items} audiobook${data.items === 1 ? "" : "s"} served${data.items_ready < data.items ? ` · reading chapters for ${data.items - data.items_ready}` : ""}.` : data.error ? data.error : "Listening apps can't connect while it's off."}
-            {" "}Switching it off also turns off listening in Arrmada.
-          </div>
-        </div>
-        <button onClick={toggle} disabled={busy} className="flex-none rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={data.enabled ? ghost : primary}>{data.enabled ? "Switch off" : "Switch on"}</button>
-      </section>
-      <Card title="Address">
-        {!external && <div className="text-[12px] text-ink-dim">At home, apps connect to <code>http://{window.location.hostname}:{data.host_port}</code> (port {data.host_port}, set by <code>ARRMADA_AUDIOBOOK_PORT</code> in .env).</div>}
-        <div className="mt-2 text-[12px] text-ink-dim">
-          To listen away from home, point a Cloudflare Tunnel hostname (or another reverse proxy) at port {data.host_port} and put that address here. Only the audiobook server answers on that port, never the rest of Arrmada.
-        </div>
-        <div className="mt-2 flex gap-2">
-          <input value={url ?? data.public_url} onChange={(e) => setUrl(e.target.value)} placeholder="https://books.example.com" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 font-mono text-[12px]" style={inputStyle} />
-          <button onClick={saveURL} disabled={busy || url === null} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50" style={primary}>Save</button>
-        </div>
-      </Card>
-      <TraceCard data={data} setData={setData} />
-      <Card title="How places are kept">
-        <p className="m-0 text-[12px] text-ink-dim">
-          Play sessions are saved as they happen and survive restarts. Moving forward is saved straight away. A big jump backwards is held until playback carries on from there for 30 seconds, so a glitch can't reset anyone to the start — and the person can confirm it sooner (Keep it now in the player, or Use this spot on the book). A jump to the very end of a book needs the same proof, so one bad report can't mark it finished. Older offline listening never replaces a newer place, and everyone can put back an earlier place — or a later spot an app sent that wasn't used, or one an app removed. A place an app sets without playing, and Arrmada's own web player, follow the same rules.
-        </p>
-      </Card>
-    </div>
-  );
-}
-
-// TraceCard switches on a day of logging every request listening apps make — how a new
-// app that fails quietly gets debugged. Lines name the kind of call, never the book.
-function TraceCard({ data, setData }: { data: AudioServerAdmin; setData: (d: AudioServerAdmin) => void }) {
-  const [busy, setBusy] = useState(false);
-  const set = async (hours: number) => { setBusy(true); try { setData(await api.setAudioServer({ trace_hours: hours })); } finally { setBusy(false); } };
-  const on = data.trace_until > 0; // the server answers 0 once it has run out
-  const until = on ? new Date(data.trace_until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-  return (
-    <Card title="Trace app requests">
-      <div className="flex items-center justify-between gap-3">
-        <p className="m-0 min-w-0 text-[12px] text-ink-dim">
-          {on
-            ? <>Tracing until {until} — every request an app makes is logged (routes only, never which book).</>
-            : "When an app connects but something doesn't work, switch this on and try again: for the next 24 hours every request apps make is logged on the Logs page (routes only, never which book). It switches itself off."}
-        </p>
-        <button onClick={() => set(on ? 0 : 24)} disabled={busy} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-60" style={on ? ghost : primary}>{on ? "Stop" : "Trace for 24 hours"}</button>
-      </div>
-    </Card>
-  );
 }
 
 function PeopleView() {

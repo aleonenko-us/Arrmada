@@ -14,14 +14,29 @@ import { SystemSettings } from "./settings/SystemSettings";
 import { StatusSection } from "./settings/Status";
 import { AlertsSettings } from "./settings/AlertsSettings";
 import { PlexSettings } from "./settings/PlexSettings";
+import { SubtitlesSettings } from "./settings/SubtitlesSettings";
+import { ConvertSettings } from "./settings/ConvertSettings";
+import { AudiobookServerSettings } from "./settings/AudiobookServer";
+
+// Settings → Subtitles & Convert: both modules' settings, one after the other.
+function ToolsSettings() {
+  return (
+    <div className="flex flex-col gap-8">
+      <SubtitlesSettings />
+      <ConvertSettings />
+    </div>
+  );
+}
 
 // What each section renders; sections.ts says who sees it and where its cards are.
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   library: LibrarySettings,
   media: NamingSettings,
   downloads: DownloadsSettings,
+  tools: ToolsSettings,
   alerts: AlertsSettings,
   plex: PlexSettings,
+  "audiobook-server": AudiobookServerSettings,
   users: UsersSettings,
   import: ImportSettings,
   system: SystemSettings,

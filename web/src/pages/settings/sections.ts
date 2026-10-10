@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "downloads" | "tools" | "alerts" | "plex" | "audiobook-server" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -17,11 +17,14 @@ export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
   { id: "downloads", label: "Downloads", adminOnly: true },
+  // The Subtitles and Convert modules' settings (#subtitles, #convert); managers run both.
+  { id: "tools", label: "Subtitles & Convert", adminOnly: false },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
   // The Plex connection is a manager setting (Insights reads it); the sign-in cards on the
   // same page are shown to admins only.
   { id: "plex", label: "Plex", adminOnly: false },
+  { id: "audiobook-server", label: "Audiobook server", adminOnly: true },
   { id: "users", label: "Users", adminOnly: true },
   { id: "import", label: "Import", adminOnly: true },
   { id: "system", label: "System", adminOnly: true },
@@ -58,6 +61,9 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
   { label: "Upgrades per sweep", keywords: "upgrade limit budget sweep quality profile replace better release grabs at once", section: "downloads", anchor: "upgrade-limit" },
   { label: "Recycle bin", keywords: "trash deleted restore empty retention size cap purge undo", section: "downloads", anchor: "recycle-bin" },
+  { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles", section: "tools", anchor: "subtitles" },
+  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores", section: "tools", anchor: "convert" },
+  { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
   { label: "Users", keywords: "add user people accounts roles admin manager requester read-only password auto-approve block delete disable sign in", section: "users", anchor: "users" },
   { label: "Plex connection", keywords: "plex server url token connect sign in monitoring insights poll interval", section: "plex", anchor: "plex-connection" },

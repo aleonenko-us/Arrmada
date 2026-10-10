@@ -95,7 +95,7 @@ export function useAutoSave<T>(saved: T, save: (v: T) => Promise<unknown>, opts:
     const invalid = cur.validate?.(v) ?? null;
     if (invalid) {
       seq.current++; // an older save still in flight no longer speaks for this field
-      setDraft({ v });
+      setDraft(keepOnError ? { v } : null);
       setStatus("error"); setError(invalid); setCanRetry(false);
       failed.current = null;
       return false;

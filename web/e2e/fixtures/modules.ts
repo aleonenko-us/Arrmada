@@ -1,6 +1,6 @@
 import type {
   Artist, ConvertEncoder, ConvertJob, ConvertLibraryStats, ConvertMediaStats, ConvertSettings, ConvertStatus, ImportRun, InsightsStats, Job,
-  PlexConfig, SubtitleCoverage, SubtitleJob, SubtitleSettings, TautulliConfig,
+  PlexConfig, SubtitleCoverage, SubtitleJob, SubtitleSettings, TautulliConfig, WhisperStatus,
 } from "../../src/lib/api";
 import { NOW } from "./clock";
 import type { PlexScanView } from "../../src/lib/plexLibraryApi";
@@ -44,6 +44,12 @@ export const subtitleSettings: SubtitleSettings = {
 };
 
 export const subtitleJobs: { jobs: SubtitleJob[] } = { jobs: [] };
+
+// Settings → Subtitles & Convert: whisper is in the build, with no model downloaded yet.
+export const subtitleModels: WhisperStatus = {
+  binary_ready: true, ready: false,
+  models: [{ name: "ggml-large-v3-turbo.bin", label: "Turbo (English)", size_mb: 1600, present: false, downloading: false }],
+};
 
 export const plexConfig: PlexConfig = { url: "", token_set: false, enabled: false, poll_seconds: 30, status: "unconfigured" };
 
