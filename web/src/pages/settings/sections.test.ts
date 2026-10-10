@@ -6,8 +6,8 @@ const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
 
 describe("visibleSections", () => {
-  it("gives a manager what the old Media and Library tabs showed, plus Alerts (read-only) and the Plex connection", () => {
-    expect(manager).toEqual(["library", "media", "alerts", "plex"]);
+  it("gives a manager what the old Media and Library tabs showed, plus Connections, Alerts (read-only) and the Plex connection", () => {
+    expect(manager).toEqual(["library", "media", "connections", "alerts", "plex"]);
   });
 
   it("gives an admin every section, Status included", () => {
@@ -55,7 +55,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);
@@ -84,7 +84,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Metadata", "Plex connection", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {

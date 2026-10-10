@@ -77,6 +77,8 @@ export const NAV: NavGroup[] = [
   {
     group: "System",
     items: [
+      // Every integration's status, Test and editing (Settings → Connections).
+      { to: "/settings/connections", label: "Connections", icon: "connections" },
       { to: "/indexers", label: "Indexers", icon: "indexers" },
       { to: "/downloadclients", label: "Download clients", icon: "downloadClients" },
       { to: "/quality", label: "Quality profiles", icon: "quality" },

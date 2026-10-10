@@ -3,6 +3,7 @@
 // follows — rather than hunting the old address down string by string.
 export const LINKS = {
   apiKeys: "/settings/system#api-keys",
+  connections: "/settings/connections",
   diskGuard: "/settings/downloads#disk-guard",
   recycleBin: "/settings/downloads#recycle-bin",
   libraryFolders: "/settings/library#media-folders",

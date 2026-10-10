@@ -108,6 +108,7 @@ const PATHS = {
       <path d="M7 7.5h.01M7 16.5h.01" />
     </>
   ),
+  connections: <path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0V8zM12 17v4" />,
   quality: (
     <>
       <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" />

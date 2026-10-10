@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "connections" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -16,6 +16,9 @@ export interface SettingsSection {
 export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
+  // Every integration with its live status. Managers run the indexers and download clients
+  // day to day; the metadata keys on it are read-only for them.
+  { id: "connections", label: "Connections", adminOnly: false },
   { id: "downloads", label: "Downloads", adminOnly: true },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
@@ -53,6 +56,9 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },
   { label: "Metadata", keywords: "nfo movie.nfo artwork poster fanart kodi plex jellyfin emby sidecar", section: "media", anchor: "metadata" },
+  { label: "Indexers and Prowlarr", keywords: "indexer indexers tracker trackers torznab prowlarr sync torrentleech 1337x myanonamouse flaresolverr cloudflare search status test", section: "connections", anchor: "search" },
+  { label: "Download clients", keywords: "qbittorrent torrent client clients download order bundled status test", section: "connections", anchor: "download-clients" },
+  { label: "Other connections", keywords: "plex alerts apprise audiobook server listening apps status connected", section: "connections", anchor: "other-connections" },
   { label: "Download clients and indexers", keywords: "qbittorrent prowlarr torrent client indexer", section: "downloads", anchor: "download-links" },
   { label: "Download disk guard", keywords: "disk full space free pause resume threshold percent drive cache", section: "downloads", anchor: "disk-guard" },
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
