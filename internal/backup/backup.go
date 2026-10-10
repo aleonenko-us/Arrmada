@@ -442,21 +442,3 @@ func (s *Service) RunNightly(ctx context.Context) error {
 	}
 	return nil
 }
-
-// HealthWarning is the Dashboard's line when nightly backups have stopped: they're on,
-// the app has been up long enough to have made one, and the newest is over 48 hours old.
-// "" when all is well.
-func (s *Service) HealthWarning(ctx context.Context, uptime time.Duration) string {
-	if !s.Enabled(ctx) || uptime < 24*time.Hour {
-		return ""
-	}
-	newest := s.newest(store.BackupNightly)
-	if newest.IsZero() {
-		return "No nightly database backup has been made yet — check the log for why (often a full disk)."
-	}
-	age := s.now().Sub(newest)
-	if age <= 48*time.Hour {
-		return ""
-	}
-	return fmt.Sprintf("No database backup in %d days — check the log for why (often a full disk).", int(age.Hours()/24))
-}

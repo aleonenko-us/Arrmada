@@ -262,20 +262,6 @@ func AudiobookServerCheck(state func(ctx context.Context) (on, running bool, las
 	}
 }
 
-// BackupsCheck passes on the backup service's own warning when nightly backups have
-// stopped (usually a full disk on the data volume).
-func BackupsCheck(warning func(ctx context.Context) string) Check {
-	return Check{
-		Key: "backups", Name: "Database backups", Category: CategoryStorage,
-		Run: func(ctx context.Context) []Finding {
-			if msg := warning(ctx); msg != "" {
-				return []Finding{{Key: "backups.age", Level: LevelWarning, Message: msg, Fix: FixBackups}}
-			}
-			return nil
-		},
-	}
-}
-
 func plural(n int) string {
 	if n == 1 {
 		return ""

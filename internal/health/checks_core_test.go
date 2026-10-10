@@ -104,12 +104,3 @@ func TestLibraryFoldersCheck(t *testing.T) {
 		}
 	}
 }
-
-func TestBackupsCheck(t *testing.T) {
-	if got := run(BackupsCheck(func(context.Context) string { return "No database backup in 3 days" })); len(got) != 1 || got[0].Fix != FixBackups {
-		t.Errorf("stale backups: %+v", got)
-	}
-	if got := run(BackupsCheck(func(context.Context) string { return "" })); len(got) != 0 {
-		t.Errorf("fresh backups: %+v", got)
-	}
-}

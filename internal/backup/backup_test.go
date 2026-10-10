@@ -205,25 +205,24 @@ func TestDeleteRejectsNonBackupNames(t *testing.T) {
 	}
 }
 
-// The health line appears only once nightlies are on, the app has been up a day, and the
-// newest is over 48 hours old.
-func TestHealthWarning(t *testing.T) {
+// LastNightly is the newest nightly backup's time — what the health check judges (the
+// thresholds live in internal/health BackupsCheck) — and zero before the first one.
+// Other kinds of backup don't count.
+func TestLastNightly(t *testing.T) {
 	s, _ := newService(t, fakeSettings{})
-	ctx := context.Background()
-	touch(t, s.Dir(), store.BackupNightly, time.Now().Add(-72*time.Hour))
-	if msg := s.HealthWarning(ctx, time.Hour); msg != "" {
-		t.Errorf("warned after an hour of uptime: %q", msg)
+	if !s.LastNightly().IsZero() {
+		t.Fatal("no backups yet, but LastNightly isn't zero")
 	}
-	if msg := s.HealthWarning(ctx, 25*time.Hour); msg == "" {
-		t.Error("no warning with a 3-day-old newest nightly")
+	old := time.Now().Add(-72 * time.Hour).Truncate(time.Second)
+	touch(t, s.Dir(), store.BackupNightly, old)
+	touch(t, s.Dir(), store.BackupManual, time.Now())
+	if got := s.LastNightly(); !got.Equal(old) {
+		t.Errorf("LastNightly = %v, want the nightly from %v (a manual backup doesn't count)", got, old)
 	}
-	touch(t, s.Dir(), store.BackupNightly, time.Now().Add(-time.Hour))
-	if msg := s.HealthWarning(ctx, 25*time.Hour); msg != "" {
-		t.Errorf("warned with a fresh nightly: %q", msg)
-	}
-	off, _ := newService(t, fakeSettings{KeyEnabled: "false"})
-	if msg := off.HealthWarning(ctx, 100*time.Hour); msg != "" {
-		t.Errorf("warned with backups switched off: %q", msg)
+	newer := time.Now().Add(-time.Hour).Truncate(time.Second)
+	touch(t, s.Dir(), store.BackupNightly, newer)
+	if got := s.LastNightly(); !got.Equal(newer) {
+		t.Errorf("LastNightly = %v, want the newest nightly %v", got, newer)
 	}
 }
 

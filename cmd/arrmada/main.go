@@ -1080,7 +1080,9 @@ func main() {
 	healthReg.Register(health.TasksFailingCheck(func() []health.TaskState {
 		var out []health.TaskState
 		for _, t := range sched.Snapshot() {
-			if t.Hidden {
+			// The Prowlarr sync has a health line of its own (the "prowlarr" check) that
+			// says more; a second "task failing" line for it would only repeat it.
+			if t.Hidden || t.Name == "prowlarr-sync" {
 				continue
 			}
 			out = append(out, health.TaskState{Name: t.Name, Label: t.Label, LastError: t.LastError, ConsecutiveFailures: int(t.ConsecutiveFailures)})
