@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
-  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, Movie, MovieDeletePreview, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, Movie, MovieBulkUpdateReply, MovieDeletePreview, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
@@ -79,6 +79,19 @@ export function movieDetail(id: number): Movie | null {
     versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
     acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
   };
+}
+
+// PUT /api/v1/movies/bulk: the mass editor's one update. A profile change finds The
+// Cartographer (id 1) too big for it; a search for Driftwood (id 3) can't be queued.
+export function bulkUpdate(body: unknown): MovieBulkUpdateReply {
+  const b = (body ?? {}) as { ids?: number[]; quality_profile?: string; search?: string };
+  const ids = b.ids ?? [];
+  const exceeds = b.quality_profile && ids.includes(1)
+    ? [{ id: 1, title: "The Cartographer", size_bytes: 9_000_000_000, reason: "Over your 20 Mbps ceiling (36.4 Mbps)", smaller: true }]
+    : [];
+  const errors = !b.quality_profile && b.search && b.search !== "none" && ids.includes(3) ? [{ id: 3, msg: "couldn't queue its search just now" }] : [];
+  const searchable = b.search && b.search !== "none" ? ids.filter((id) => id === 2).length : 0;
+  return { updated: b.quality_profile ? ids.length : 0, queued: searchable, duplicates: 0, not_monitored: 0, exceeds_profile: exceeds, errors };
 }
 
 // GET /api/v1/movies/{id}/delete-preview: no files on disk, nothing downloading.

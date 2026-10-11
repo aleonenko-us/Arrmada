@@ -1301,6 +1301,29 @@ export interface OrganizePreview {
   offset: number;
   token: string;
 }
+// The mass editor's one update (MOV-19): what changed and what it queued. exceeds_profile
+// lists films whose file the profile no longer accepts — left alone, with "Download smaller
+// versions" on offer (smaller: above a ceiling; otherwise a different kind of release).
+export interface MovieBulkUpdate {
+  ids: number[];
+  monitored?: boolean;
+  quality_profile?: string;
+  min_availability?: string;
+  search?: "none" | "missing" | "missing_and_upgrade";
+}
+export interface MovieBulkUpdateReply {
+  updated: number;
+  queued: number;
+  duplicates: number;
+  not_monitored: number;
+  exceeds_profile: { id: number; title: string; size_bytes?: number; reason?: string; smaller: boolean }[];
+  errors: { id: number; msg: string }[];
+}
+export interface MovieBulkDeleteReply {
+  deleted: number;
+  failed: number;
+  results: { id: number; deleted: boolean; error?: string; moved?: string[]; failed?: string[] }[];
+}
 // The organize job's result.
 export interface OrganizeSummary {
   total: number;
@@ -3183,6 +3206,15 @@ export const api = {
   // Applies the previewed items the person ticked; anything changed since is skipped.
   renameMovie: (id: number, items: MovieRenameItem[]) =>
     req<MovieRenameReply>(`/api/v1/movies/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
+  // The mass editor: every field commits together or not at all (404 names films that are
+  // gone); searches join the throttled movie search queue.
+  bulkUpdateMovies: (body: MovieBulkUpdate) =>
+    req<MovieBulkUpdateReply>("/api/v1/movies/bulk", { method: "PUT", body: JSON.stringify(body) }),
+  bulkRegrabMovies: (ids: number[]) =>
+    req<{ queued: number; duplicates: number; errors: { id: number; msg: string }[] }>("/api/v1/movies/bulk/regrab", { method: "POST", body: JSON.stringify({ ids }) }),
+  // Per-film results; stops at the first film the recycle bin refuses.
+  bulkDeleteMovies: (ids: number[], deleteFiles: boolean, cancelDownloads: boolean) =>
+    req<MovieBulkDeleteReply>("/api/v1/movies/bulk", { method: "DELETE", body: JSON.stringify({ ids, delete_files: deleteFiles, cancel_downloads: cancelDownloads }) }),
   // Organize: a dry run over the library (no ids) or a selection; nothing moves.
   organizePreview: (ids?: number[], offset = 0, limit = 200) =>
     req<OrganizePreview>(`/api/v1/movies/organize?ids=${ids?.length ? ids.join(",") : "all"}&offset=${offset}&limit=${limit}`),

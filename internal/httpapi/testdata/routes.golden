@@ -15,6 +15,7 @@ DELETE /api/v1/me/audio/items/{key}/bookmarks/{time} user ext
 DELETE /api/v1/me/audio/password user ext
 DELETE /api/v1/me/plex/link user ext
 DELETE /api/v1/me/sessions/{id} user ext
+DELETE /api/v1/movies/bulk staff -
 DELETE /api/v1/movies/{id} staff -
 DELETE /api/v1/movies/{id}/blocklist/{bid} staff -
 DELETE /api/v1/movies/{id}/file staff -
@@ -309,6 +310,7 @@ POST /api/v1/me/push/subscribe user ext
 POST /api/v1/me/push/unsubscribe user ext
 POST /api/v1/me/sessions/revoke-others user ext
 POST /api/v1/movies staff -
+POST /api/v1/movies/bulk/regrab staff -
 POST /api/v1/movies/import staff -
 POST /api/v1/movies/organize staff -
 POST /api/v1/movies/scan staff -
@@ -414,6 +416,7 @@ PUT /api/v1/insights/plex/scan staff -
 PUT /api/v1/me/apprise user ext
 PUT /api/v1/me/audio/password user ext
 PUT /api/v1/me/notify-prefs user ext
+PUT /api/v1/movies/bulk staff -
 PUT /api/v1/movies/{id}/availability staff -
 PUT /api/v1/movies/{id}/monitor staff -
 PUT /api/v1/movies/{id}/profile staff -

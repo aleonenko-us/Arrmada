@@ -434,6 +434,11 @@ func (a *api) registerRoutes(mux *router) {
 	// Organize: a library-wide (or selection-wide) rename preview, then a background apply.
 	mux.HandleFunc("GET /api/v1/movies/organize", a.requireRole(auth.RoleManager, a.handleOrganizePreview))
 	mux.HandleFunc("POST /api/v1/movies/organize", a.requireRole(auth.RoleManager, a.handleOrganizeApply))
+	// The mass editor: one transactional update, "download smaller versions", and a delete
+	// with per-film results.
+	mux.HandleFunc("PUT /api/v1/movies/bulk", a.requireRole(auth.RoleManager, a.handleBulkUpdateMovies))
+	mux.HandleFunc("POST /api/v1/movies/bulk/regrab", a.requireRole(auth.RoleManager, a.handleBulkRegrabMovies))
+	mux.HandleFunc("DELETE /api/v1/movies/bulk", a.requireRole(auth.RoleManager, a.handleBulkDeleteMovies))
 	mux.HandleFunc("GET /api/v1/movies/{id}", a.requireRole(auth.RoleManager, a.handleGetMovie))
 	// Who has played it on Plex: staff only, never a requester.
 	mux.HandleFunc("GET /api/v1/movies/{id}/watch-stats", a.requireRole(auth.RoleManager, a.handleMovieWatchStats))

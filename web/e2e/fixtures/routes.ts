@@ -142,6 +142,14 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "DELETE", path: /^\/api\/v1\/movies\/\d+$/, status: 204 },
     get("/api/v1/recycle/mode", media.movieDeletePreview.recycle),
     get("/api/v1/library/fit", { items: [] }),
+    // The mass editor (MOV-19): a profile change finds The Cartographer's file too big;
+    // Driftwood's search can't be queued (a partial failure).
+    { method: "PUT", path: "/api/v1/movies/bulk", respond: ({ body }) => media.bulkUpdate(body) },
+    { method: "POST", path: "/api/v1/movies/bulk/regrab", status: 202, respond: ({ body }) => ({ queued: ((body as { ids?: number[] })?.ids ?? []).length, duplicates: 0, errors: [] }) },
+    { method: "DELETE", path: "/api/v1/movies/bulk", respond: ({ body }) => {
+      const ids = (body as { ids?: number[] })?.ids ?? [];
+      return { deleted: ids.length, failed: 0, results: ids.map((id) => ({ id, deleted: true })) };
+    } },
     get("/api/v1/series/unmatched", { unmatched: [] }),
     get("/api/v1/books", media.books),
     get("/api/v1/books/upgrade", media.bookUpgrade),

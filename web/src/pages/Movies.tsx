@@ -18,6 +18,7 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash, queueChan
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { OrganizeModal } from "../components/OrganizeModal";
+import { MovieBulkBar } from "../components/MovieBulkBar";
 import { useCanHover } from "../lib/useCanHover";
 import { Button, ErrorState, Menu, Modal, Skeleton, StaleBanner, StatusChip, type MenuItem } from "../ui";
 
@@ -79,7 +80,6 @@ export function Movies() {
   const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [view, setView] = usePersisted("movies.view", "grid", ["grid", "table"] as const);
   const [searchFor, setSearchFor] = useState<MovieSummary | null>(null); // the table's per-row "Search indexers"
@@ -137,30 +137,6 @@ export function Movies() {
   const exitMultiSelect = () => {
     setMultiSelect(false);
     clearSelect();
-  };
-
-  const bulkMonitor = async (mon: boolean) => {
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selected].map((id) => api.setMonitored(id, mon)));
-      flash(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
-      clearSelect();
-      refresh();
-    } finally {
-      setBulkBusy(false);
-    }
-  };
-  const bulkProfile = async (profile: string) => {
-    setBulkBusy(true);
-    try {
-      const res = await Promise.all([...selected].map((id) => api.setQualityProfile(id, profile)));
-      const queued = res.filter((r) => r.queued).length;
-      flash(`Quality profile set on ${selected.size} movies.${queued ? ` ${queued} ${queued === 1 ? "search" : "searches"} queued — they run two at a time.` : ""}`);
-      clearSelect();
-      refresh();
-    } finally {
-      setBulkBusy(false);
-    }
   };
 
   // While anything downloads, the bars move from queue.progress (by torrent hash) without
@@ -290,29 +266,19 @@ export function Movies() {
           />
         </div>
 
-        {/* Bulk actions */}
+        {/* The mass editor: one bulk request per action, in grid and table views alike.
+            MERGE NOTE (phase10/library): mount this from LibraryGrid's selection API —
+            selected / onSelect / visibleIds are all it needs. */}
         {multiSelect && (
-          <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-            <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
-            <button onClick={() => setSelected(new Set(filtered.map((m) => m.id)))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
-            <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Monitor</button>
-            <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <select
-              defaultValue=""
-              disabled={selected.size === 0 || bulkBusy}
-              onChange={(e) => e.target.value && (bulkProfile(e.target.value), (e.target.value = ""))}
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            >
-              <option value="">Set quality profile…</option>
-              {profiles.map((p) => (
-                <option key={p.key} value={p.key}>{p.name}</option>
-              ))}
-            </select>
-          </div>
+          <MovieBulkBar
+            selected={selected}
+            onSelect={setSelected}
+            movies={movies}
+            visibleIds={filtered.map((m) => m.id)}
+            profiles={profiles}
+            onChanged={refresh}
+            flash={flash}
+          />
         )}
 
         {!metaOK && <MetadataMissing variant="banner" />}
