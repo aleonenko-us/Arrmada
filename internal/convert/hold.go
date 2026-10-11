@@ -37,6 +37,7 @@ const (
 	defaultHoldDays  = 14
 	defaultHoldMaxGB = 500
 	maxHoldDays      = 365
+	maxHoldGB        = 1 << 20 // a petabyte: "no limit" is 0, this only stops typos overflowing
 )
 
 // The ledger's hold_state values.
@@ -385,8 +386,12 @@ func (s *Service) releaseHold(ctx context.Context, id int64, why string) (Histor
 	return e, nil
 }
 
-// holdFreed is told when the hold shrinks. CONV-09's budget hooks in here.
+// holdFreed is told when the hold shrinks (or its budget changes): files paused on a full
+// hold are tried again straight away rather than at their retry time.
 func (s *Service) holdFreed(ctx context.Context) {
+	if s.skips != nil {
+		s.skips.clearKind(ctx, SkipHoldFull)
+	}
 	s.invalidateLibraryCache()
 	s.wakeUp()
 }

@@ -55,7 +55,7 @@ func retryDelay(kind string, attempts int) time.Duration {
 		return 12 * time.Hour
 	case SkipCancelled:
 		return 30 * 24 * time.Hour
-	case SkipBinFull:
+	case SkipBinFull, SkipHoldFull:
 		return 24 * time.Hour
 	}
 	if backoffSkip(kind) {
@@ -113,6 +113,12 @@ type Skipped struct {
 // this kind (1 for a new or different kind), which sets how long a backing-off skip waits.
 // Only one job runs per item at a time, so the read and the write can't interleave.
 func (st *skipStore) record(ctx context.Context, key, kind, reason string) int {
+	return st.recordAt(ctx, key, kind, reason, 0)
+}
+
+// recordAt is record with the retry time given (unix seconds) instead of worked out from
+// the kind; 0 works it out as record does.
+func (st *skipStore) recordAt(ctx context.Context, key, kind, reason string, retryAt int64) int {
 	if key == "" || kind == "" || kind == SkipAlreadyTarget {
 		return 0 // "already the target codec" isn't a problem, it's success
 	}
@@ -127,8 +133,8 @@ func (st *skipStore) record(ctx context.Context, key, kind, reason string) int {
 		Scan(&prevKind, &prevAttempts) == nil && prevKind == kind {
 		attempts = prevAttempts + 1
 	}
-	var retry int64
-	if d := retryDelay(kind, attempts); d > 0 {
+	retry := retryAt
+	if d := retryDelay(kind, attempts); retry == 0 && d > 0 {
 		retry = time.Now().Add(d).Unix()
 	}
 	_, _ = st.db.ExecContext(ctx,

@@ -105,8 +105,9 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 	}
 	waiting := s.skips.waitingKeys(ctx)
 	blocked := s.failures.blockedKeys(ctx, maxFailures)
+	holdFull := s.holdTooFull(ctx) // the originals hold's budget (holdbudget.go)
 	for _, c := range s.autoCandidates(ctx, p) {
-		if waiting[c.Key] || blocked[c.Key] {
+		if waiting[c.Key] || blocked[c.Key] || holdFull(c) {
 			continue
 		}
 		it, _ := parseKey(c.Key)
@@ -457,6 +458,10 @@ func (s *Service) Status(ctx context.Context) Status {
 		st.State, st.Message = "waiting", fmt.Sprintf("Waiting for your encode hours (%s)", st.Window)
 	default:
 		st.State, st.Message = "starting", "Starting the next file"
+		// The next file waits on the originals hold's budget (holdbudget.go).
+		if msg := s.holdPausedMessage(ctx, st.UpNext[0].Size); msg != "" {
+			st.State, st.Message = "paused", msg
+		}
 	}
 	return st
 }

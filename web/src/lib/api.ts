@@ -2179,6 +2179,10 @@ export interface ConvertHistoryEntry {
 export type ConvertHoldState = "" | "held" | "released" | "reverted" | "missing";
 // What the startup self-check found for one library folder's originals hold.
 export interface ConvertHoldCheck { root: string; label: string; instant: boolean; err?: string }
+// What the originals hold keeps (GET /convert/hardware → hold). budget_bytes 0 = no limit.
+export interface ConvertHoldStats {
+  held_bytes: number; held_saving_bytes: number; held_count: number; next_release_at?: number; budget_bytes: number; hold_days: number;
+}
 export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string }
 export interface ConvertRequest { key: string; title: string; requested_at: number }
 export interface ConvertStatus {
@@ -2190,7 +2194,7 @@ export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
-  hold_days: number;
+  hold_days: number; hold_max_gb: number;
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
   server_time: string; server_tz: string; plex_watching_known: boolean; can_pause: boolean;
   has_gpu: boolean; gpu_does_av1: boolean; hdr10plus_tool: boolean;
@@ -3120,7 +3124,7 @@ export const api = {
 
   // Convert
   convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;
-    hold_check?: ConvertHoldCheck[] }>("/api/v1/convert/hardware"),
+    hold_check?: ConvertHoldCheck[]; hold?: ConvertHoldStats }>("/api/v1/convert/hardware"),
   convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
   convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
   updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),
@@ -3160,6 +3164,10 @@ export const api = {
     return req<{ items: ConvertHistoryEntry[]; next: string }>(`/api/v1/convert/history${qs ? `?${qs}` : ""}`);
   },
   convertHistoryEntry: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}`),
+  // Deletes a held original for good (its conversion can't be undone after).
+  convertReleaseHold: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/release`, { method: "POST" }),
+  convertReleaseHolds: (olderThanDays = 0) =>
+    req<{ released: number; freed_bytes: number }>(`/api/v1/convert/history/release?older_than_days=${olderThanDays}`, { method: "POST" }),
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,

@@ -84,6 +84,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   const holdDays = useAutoSave(String(s.hold_days), (v) => commit({ hold_days: Number(v) }), {
     validate: (v) => (/^\d{1,3}$/.test(v.trim()) && Number(v) <= 365 ? null : "Keep originals for 0 to 365 days."),
   });
+  const holdMax = useAutoSave(String(s.hold_max_gb), (v) => commit({ hold_max_gb: Number(v) }), {
+    validate: (v) => (/^\d{1,7}$/.test(v.trim()) ? null : "The hold's size is a number of GB (0 = no limit)."),
+  });
 
   const [hw, setHw] = useState<{ dir: string; free: number; need: number; needTitle: string; devices: { path: string; pci: string; vendor: string }[]; holdCheck: ConvertHoldCheck[] } | null>(null);
   const loadHw = useCallback(() => {
@@ -184,6 +187,12 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </span>
         </Field>
         {holdDays.value.trim() === "0" && <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
+        <Field label="Hold up to" hint="GB · when the next original wouldn't fit, conversions pause until one is released — nothing is deleted to make room · 0 = no limit" save={holdMax}>
+          <span className="flex items-center gap-1.5 text-[12px]">
+            <input aria-label="Hold up to (GB)" inputMode="numeric" className={`${inp} w-[90px]`} {...textProps(holdMax)} onChange={(e) => holdMax.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))} />
+            <span className="text-ink-faint">GB</span>
+          </span>
+        </Field>
         {hw && hw.holdCheck.length > 0 && (
           <div className="flex flex-col gap-1 text-[11.5px]">
             {hw.holdCheck.map((c) => (

@@ -37,6 +37,8 @@ func (a *api) handleConvertHardware(w http.ResponseWriter, r *http.Request) {
 		"vaapi_device":       vaapiDevice,
 		// Whether moving an original into each library folder's hold is an instant rename.
 		"hold_check": a.deps.Convert.HoldChecks(),
+		// What the hold keeps: Space saved shows freed (reclaimed_bytes) and held apart.
+		"hold": a.deps.Convert.HoldStats(ctx),
 	})
 }
 

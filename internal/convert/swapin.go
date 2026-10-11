@@ -212,10 +212,20 @@ func (s *Service) ensureHistory(job *Job) int64 {
 }
 
 // holdRoom checks, before any heavy work, that this file's original will have somewhere to
-// go: a library folder with a hold on its drive.
+// go: a library folder with a hold on its drive, and room under the hold's budget. A full
+// hold pauses the file until the next release — nothing is deleted to make room. The
+// budget is checked here, not again at the swap: an original that arrives over it after a
+// long encode still goes in (it takes no new space — it was already on the disk).
 func (s *Service) holdRoom(ctx context.Context, job *Job, src string, mi *MediaInfo) bool {
 	if _, why := s.holdRootFor(src); why != "" {
 		s.finishSkip(job, SkipNoHold, why)
+		return false
+	}
+	if s.holdDays(ctx) == 0 {
+		return true // nothing is kept, so there's no budget to keep within
+	}
+	if ok, why, retryAt := s.holdFits(ctx, mi.SizeBytes); !ok {
+		s.finishSkipUntil(job, SkipHoldFull, why, retryAt)
 		return false
 	}
 	return true

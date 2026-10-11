@@ -10,8 +10,9 @@ import { RescanButton, ago } from "../components/RescanButton";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
-  type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision,
+  type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision, type ConvertHoldStats,
 } from "../lib/api";
+import { HeldSummary, ReleaseButton, holdLine } from "./convert/hold";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
@@ -80,7 +81,7 @@ function ConvertPage() {
   const [status, setStatus] = useState<ConvertStatus | null>(null);
   const [jobs, setJobs] = useState<ConvertJob[]>([]);
   const [stats, setStats] = useState<ConvertLibraryStats | null>(null);
-  const [hw, setHw] = useState<{ using: string; reclaimed_bytes: number } | null>(null);
+  const [hw, setHw] = useState<{ using: string; reclaimed_bytes: number; hold?: ConvertHoldStats } | null>(null);
   const [settings, setSettings] = useState<ConvertSettings | null>(null);
   const [compareKey, setCompareKey] = useState<string | null>(null);
   const [libReload, setLibReload] = useState(0); // bumped when Compare closes: it may have measured a file
@@ -110,7 +111,8 @@ function ConvertPage() {
     api.convertJobs().then(setJobs).catch(() => {});
     api.convertStatus().then(setStatus).catch(() => {});
     loadStats();
-  }, [loadStats]);
+    loadHw(); // freed and held space (a release moves bytes from one to the other)
+  }, [loadStats, loadHw]);
 
   const rescanLibrary = useCallback(async (): Promise<boolean> => {
     const r = await api.convertReindex();
@@ -174,7 +176,7 @@ function ConvertPage() {
           {tab === "problems" && <Problems flash={flash} />}
           {tab === "activity" && (
             <div className="flex flex-col gap-3.5">
-              <HistoryLedger reload={jobs.filter((j) => !ACTIVE.has(j.state)).length} />
+              <HistoryLedger reload={jobs.filter((j) => !ACTIVE.has(j.state)).length} flash={flash} />
               <LogsConsole />
             </div>
           )}
@@ -193,7 +195,7 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onRescan, onShowProblems }: {
-  status: ConvertStatus | null; jobs: ConvertJob[]; stats: ConvertLibraryStats | null; hw: { using: string; reclaimed_bytes: number } | null; originals: string;
+  status: ConvertStatus | null; jobs: ConvertJob[]; stats: ConvertLibraryStats | null; hw: { using: string; reclaimed_bytes: number; hold?: ConvertHoldStats } | null; originals: string;
   flash: (m: string) => void; onChanged: () => void; onRescan: () => Promise<boolean>; onShowProblems: () => void;
 }) {
   const [rescanning, setRescanning] = useState(false);
@@ -232,7 +234,11 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
             <RescanButton busy={rescanning} title={stats?.as_of ? `Rescan the library · figures as of ${ago(stats.as_of)}` : "Rescan the library"}
               onClick={async () => { setRescanning(true); try { await onRescan(); } catch { /* flashed */ } finally { setRescanning(false); } }} />
           </div>
-          <div className="mt-2 text-[30px] font-extrabold tracking-tight">{fmtSize(hw?.reclaimed_bytes)}</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-[30px] font-extrabold tracking-tight">{fmtSize(hw?.reclaimed_bytes)}</span>
+            <span className="text-[12px] text-ink-faint">freed</span>
+          </div>
+          <HeldSummary hold={hw?.hold} flash={flash} onChanged={onChanged} />
           <div className="mt-3 border-t pt-3 text-[12px] text-ink-dim" style={{ borderColor: "var(--line-soft)" }}>
             <span style={{ color: "var(--good)" }}>~{fmtSize(t?.reclaimable)}</span> more to save ·{" "}
             <b style={{ color: "var(--ink)" }}>{(t?.convertible ?? 0).toLocaleString()}</b> of {n.toLocaleString()} files worth converting
@@ -768,6 +774,7 @@ const SKIP_LABEL: Record<string, string> = {
   library_full: "The library disk hasn't room for the converted file next to the original. The originals were kept; each is tried again after an hour, then six, then once a day",
   source_gone: "The library file was missing when Convert went to read it — usually mid-import or mid-upgrade. Checked again later",
   transient: "These hit a problem that usually clears on its own (often a full disk). Each is tried again after an hour, then six, then once a day",
+  hold_full: "The originals hold is full: each converted file's original is kept for the undo window, and the hold has reached the size you set. Nothing is deleted to make room — these convert after the next original is released (its window ends, or you release some from History), or once you raise the hold's size in Convert's settings",
   name_taken: "The converted file would take the name of a file another library record points at (a second version, say), so it was left alone and the originals kept. Each is tried again after an hour, then six, then once a day",
   no_hold: "There's nowhere on the file's own disk to keep the original while the conversion can be undone — usually the file is outside your library folders, or a library folder isn't mounted. The originals were kept; each is tried again after an hour, then six, then once a day",
 };
@@ -886,7 +893,7 @@ function cropLabel(crop?: string): string {
   return m ? `bars removed → ${m[1]}×${m[2]}` : "";
 }
 
-function HistoryLedger({ reload }: { reload: number }) {
+function HistoryLedger({ reload, flash }: { reload: number; flash: (m: string) => void }) {
   const [outcome, setOutcome] = useState<ConvertHistoryOutcome | "">("");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<ConvertHistoryEntry[] | null>(null);
@@ -926,7 +933,8 @@ function HistoryLedger({ reload }: { reload: number }) {
       <div className="mt-3 flex flex-col">
         {items === null ? <div className="text-[12px] text-ink-faint">Loading…</div>
           : items.length === 0 ? <div className="text-[12px] text-ink-faint">Nothing recorded yet{outcome || q ? " that matches" : ""}.</div>
-          : items.map((e) => <HistoryRow key={e.id} e={e} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)} />)}
+          : items.map((e) => <HistoryRow key={e.id} e={e} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)}
+            flash={flash} onChanged={(next) => setItems((cur) => (cur ?? []).map((x) => (x.id === next.id ? { ...x, ...next } : x)))} />)}
       </div>
       {next && (
         <button onClick={more} disabled={busy} className="mt-2.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={ghostBtn}>
@@ -937,7 +945,9 @@ function HistoryLedger({ reload }: { reload: number }) {
   );
 }
 
-function HistoryRow({ e, open, onToggle }: { e: ConvertHistoryEntry; open: boolean; onToggle: () => void }) {
+function HistoryRow({ e, open, onToggle, flash, onChanged }: {
+  e: ConvertHistoryEntry; open: boolean; onToggle: () => void; flash: (m: string) => void; onChanged: (e: ConvertHistoryEntry) => void;
+}) {
   const pct = e.outcome === "done" && e.src_size > 0 && e.out_size > 0 ? Math.round((1 - e.out_size / e.src_size) * 100) : null;
   const windows = e.ssim_windows ?? [];
   const track = (d: ConvertTrackDecision) =>
@@ -981,7 +991,13 @@ function HistoryRow({ e, open, onToggle }: { e: ConvertHistoryEntry; open: boole
             </div>
           )}
           {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid)" }}>{w}</div>)}
-          {e.reclaim_deferred && <div className="text-ink-faint">Space not freed yet — the download client still holds a hardlinked copy of the original.</div>}
+          {e.reclaim_deferred && <div className="text-ink-faint">Releasing the original won't free its space — the download client still holds a hardlinked copy of it.</div>}
+          {holdLine(e) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span><span className={lbl}>Original</span> {holdLine(e)}</span>
+              <ReleaseButton e={e} flash={flash} onDone={onChanged} />
+            </div>
+          )}
           {e.out_path && <div className="truncate font-mono text-[10.5px] text-ink-faint" title={e.out_path}>{e.out_path}</div>}
         </div>
       )}
