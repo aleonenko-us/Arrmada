@@ -109,7 +109,7 @@ const limitValue = (s: string) => (s.trim() === "" ? -1 : Math.min(1000, Math.ro
 const limitProblem = (what: string) => (v: string) => (v.trim() === "" || /^\d{1,4}$/.test(v.trim()) && Number(v) <= 1000 ? null : `${what}: blank for the usual limit, or 0–1000.`);
 
 const ROLE_TONE: Record<string, string> = { admin: "var(--reject)", manager: "var(--accent)", requester: "var(--good)", readonly: "var(--ink-faint)" };
-const ROLES: { value: UserRole; label: string }[] = [
+export const ROLES: { value: UserRole; label: string }[] = [
   { value: "requester", label: "Requester" },
   { value: "readonly", label: "Read-only" },
   { value: "manager", label: "Manager" },
@@ -355,6 +355,19 @@ function useOwnLimit(p: Person, k: keyof UserQuota, label: string, ctx: RowConte
   return useAutoSave(limitText(p.quota[k]), (v) => ctx.update(p.id, (cur) => ({ quota: { ...cur.quota, [k]: limitValue(v) } })), { validate: limitProblem(label) });
 }
 
+// plexUnlinkConfirm is the question before unlinking someone's Plex account, here and on
+// Settings → Plex's linked accounts: a Plex-only account loses its only way in.
+export function plexUnlinkConfirm(p: Person) {
+  return {
+    title: `Unlink ${p.username}'s Plex account${p.plex_username ? ` (${p.plex_username})` : ""}?`,
+    body: p.plex_only
+      ? "Plex is their only way in: nobody knows a password for this account. After unlinking, their next Sign in with Plex makes a new, empty account. Set a new password in Settings → People & access first if they should keep using this one."
+      : "Sign in with Plex won't open this account any more, and Discover stops using their Plex watch history. They can link it again from their account menu.",
+    confirmLabel: "Unlink",
+    tone: "danger" as const,
+  };
+}
+
 // PersonMore is what's changed less often: their own request limits, a new password, and
 // their Plex link (unlink, block, or merge a duplicate account into another).
 function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext }) {
@@ -376,13 +389,7 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
   const confirm = useConfirm();
   const plexAction = async (kind: "unlink" | "block") => {
     const ok = await confirm(kind === "unlink"
-      ? {
-          title: `Unlink ${p.username}'s Plex account${p.plex_username ? ` (${p.plex_username})` : ""}?`,
-          body: p.plex_only
-            ? "Plex is their only way in: nobody knows a password for this account. After unlinking, their next Sign in with Plex makes a new, empty account. Set a new password here first if they should keep using this one."
-            : "Sign in with Plex won't open this account any more, and Discover stops using their Plex watch history. They can link it again from their account menu.",
-          confirmLabel: "Unlink", tone: "danger",
-        }
+      ? plexUnlinkConfirm(p)
       : {
           title: `Block ${p.username}'s Plex account?`,
           body: "They won't be able to sign in here with Plex. Devices they're already signed in on stay signed in — Disable them to sign them out too.",

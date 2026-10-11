@@ -60,7 +60,8 @@ test.describe("admin", () => {
     await expect(page.getByRole("cell", { name: /The Cartographer/ })).toBeVisible();
     await banner.getByRole("button", { name: "Turn on" }).click();
     await expect.poll(() => puts.length).toBe(1);
-    expect(puts[0]).toEqual({ url: "http://plex.lan:32400", enabled: true });
+    // Only the switch is sent: the saved address stays as it is.
+    expect(puts[0]).toEqual({ enabled: true });
     await expect(banner).toHaveCount(0);
     await expect(page.getByText("Recording", { exact: true })).toBeVisible();
   });
@@ -118,7 +119,7 @@ test.describe("admin", () => {
 
   test("Convert says pausing needs monitoring when it is off", async ({ page }) => {
     await page.goto("/convert?tab=settings");
-    await expect(page.getByText(/Needs Plex monitoring turned on/)).toBeVisible();
-    await expect(page.getByRole("link", { name: "Plex settings" })).toBeVisible();
+    await expect(page.getByText(/Needs Plex watch monitoring turned on/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings → Plex" })).toHaveAttribute("href", "/settings/plex#plex-monitoring");
   });
 });

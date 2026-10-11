@@ -94,13 +94,13 @@ function InsightsPage() {
   const status = cfg?.status;
   const connected = !!status && status !== "unconfigured";
 
-  // Turn on is the banner's one-click fix; it saves only the switch (the URL goes back
-  // unchanged because the endpoint always writes it).
+  // Turn on is the banner's one-click fix; it saves only the switch (a missing URL keeps
+  // the saved one).
   const [turningOn, setTurningOn] = useState(false);
   const turnOn = async () => {
     if (!cfg) return;
     setTurningOn(true);
-    try { setCfg(await api.updateInsightsConfig({ url: cfg.url, enabled: true })); flash("Monitoring is on"); }
+    try { setCfg(await api.updateInsightsConfig({ enabled: true })); flash("Monitoring is on"); }
     catch (e) { flash((e as Error).message); } finally { setTurningOn(false); }
   };
 
@@ -112,7 +112,11 @@ function InsightsPage() {
           <p className="max-w-[64ch] text-[12.5px] text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
             {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
           </p>
-          {cfg && <MonitoringBadge c={cfg} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {cfg && <MonitoringBadge c={cfg} />}
+            {/* Monitoring, library updates, sign-in and linked accounts: one Plex page. */}
+            <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
+          </div>
         </div>
 
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="insights" label="Insights sections" />

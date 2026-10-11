@@ -12,6 +12,7 @@ export const LINKS = {
   // Arrmada uses Plex — library updates, sign-in, linked accounts — is Settings → Plex.
   plexConnection: "/settings/connections#plex",
   plex: "/settings/plex",
+  plexMonitoring: "/settings/plex#plex-monitoring",
   plexSignIn: "/settings/plex#plex-sign-in",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",

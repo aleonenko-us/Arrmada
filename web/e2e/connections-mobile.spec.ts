@@ -38,4 +38,13 @@ test.describe("admin on a phone", () => {
     await expect(page.getByRole("form", { name: "Add an indexer" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
+
+  // PLEX-17: the one Plex page, every card on it, fits a phone too.
+  test("Settings → Plex fits a 375 px screen", async ({ page, api }) => {
+    await page.goto("/settings/plex");
+    await expect(page.locator("#plex-accounts").getByText("Plex · grandadplex")).toBeVisible();
+    await expect(page.locator("#plex-tautulli")).toBeVisible();
+    await api.quiet();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
 });

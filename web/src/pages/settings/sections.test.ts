@@ -74,7 +74,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexMonitoring, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);
@@ -103,7 +103,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex server", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {

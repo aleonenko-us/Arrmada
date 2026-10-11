@@ -20,8 +20,6 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
   const [cfg, setCfg] = useState<PlexConfig | null>(null);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
-  const [poll, setPoll] = useState("5");
-  const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const [test, setTest] = useState<PlexTestResult | null>(null);
   const [, setParams] = useSearchParams();
@@ -32,9 +30,6 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
   useEffect(() => {
     if (!cfg) return;
     setUrl(cfg.url);
-    setPoll(String(cfg.poll_seconds || 5));
-    // Until someone chooses, monitoring starts ticked: connecting Plex is for recording.
-    setEnabled(cfg.enabled_set ? cfg.enabled : true);
   }, [cfg]);
 
   // Sign in with Plex: a popup on a computer, the whole page on a phone (plex.tv sends it
@@ -62,10 +57,12 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
   });
   const signingIn = plex.phase !== "idle";
 
-  const body = (u = url) => ({ url: u.trim(), token: token.trim() || undefined, enabled, poll_seconds: Number(poll) || 5 });
+  // Only the connection: monitoring and its interval are Settings → Plex's and save on
+  // their own. A first connection switches monitoring on by itself (the server does it).
+  const body = (u = url) => ({ url: u.trim(), token: token.trim() || undefined });
   const save = async (u?: string) => {
     setBusy("save");
-    try { setCfg(await api.updateInsightsConfig(body(u))); setToken(""); setChoices([]); onChanged?.(); toast("Plex settings saved", { tone: "good" }); }
+    try { setCfg(await api.updateInsightsConfig(body(u))); setToken(""); setChoices([]); onChanged?.(); toast("Plex connection saved", { tone: "good" }); }
     catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
   };
   const runTest = async () => {
@@ -112,17 +109,6 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
         <span className="mt-1 block text-[10.5px] text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
       </label>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="block">
-          <span className="mb-1 block text-[12px] font-semibold">Poll interval</span>
-          <span className="flex items-center gap-1.5"><input value={poll} onChange={(e) => setPoll(e.target.value)} type="number" min="2" max="60" className="w-[70px] rounded-lg px-2.5 py-1.5 text-[12px]" style={inputStyle} /><span className="text-[11px] text-ink-faint">seconds</span></span>
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 pt-4 text-[12px]">
-          <input type="checkbox" aria-label="Enable monitoring" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          <span><b className="font-semibold">Enable monitoring</b><span className="block text-[10.5px] text-ink-faint">{cfg && !cfg.enabled_set && cfg.token_set && cfg.url && enabled ? "not recording yet — Save to start" : "record activity in the background"}</span></span>
-        </label>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
         <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
@@ -143,7 +129,7 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
         </div>
       )}
       <p className="m-0 text-[11px] text-ink-faint">
-        Library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex →</Link>
+        Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex →</Link>
       </p>
     </div>
   );

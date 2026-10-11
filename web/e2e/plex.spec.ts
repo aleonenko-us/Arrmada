@@ -1,9 +1,10 @@
 import { test, expect } from "./mockApi";
 import { personas } from "./fixtures/users";
 import { settings, status } from "./fixtures/system";
+import { plexConfig } from "./fixtures/modules";
 import type { MockRoute } from "./fixtures/routes";
 
-// PLEX-06/07/14/15, APP-04: Settings → Plex, Sign in with Plex's popup and redirect paths,
+// PLEX-06/07/14/15/17, APP-04: Settings → Plex, Sign in with Plex's popup and redirect paths,
 // linking your own Plex account and merging a duplicate into it. plex.tv is never contacted:
 // app.plex.tv answers from a stub, and every PIN call is a fixture.
 
@@ -12,13 +13,63 @@ const PLEX_STUB = "<!doctype html><title>Plex</title><p>Plex sign-in (e2e stub)<
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
-  test("Settings → Plex holds the server, library updates and the sign-in policy", async ({ page }) => {
+  test("Settings → Plex holds everything about using Plex, and links to the connection", async ({ page }) => {
     await page.goto("/settings/plex");
-    await expect(page.getByRole("heading", { name: "Plex server" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Plex library updates" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Plex sign-in" })).toBeVisible();
+    for (const name of ["Plex server", "Watch monitoring", "Plex library updates", "Plex sign-in", "Linked Plex accounts", "Import from Tautulli"]) {
+      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    }
     // The connection itself is the Plex card on Connections.
     await expect(page.locator("#plex-server").getByRole("link", { name: "Connect your Plex server →" })).toHaveAttribute("href", "/settings/connections#plex");
+    await expect(page.locator("#plex-tautulli").getByRole("link", { name: "Open the Tautulli import →" })).toHaveAttribute("href", "/settings/import#tautulli-import");
+    // Insights' header links here.
+    await page.goto("/insights");
+    await page.getByRole("link", { name: "Plex settings →" }).click();
+    await expect(page).toHaveURL(/\/settings\/plex$/);
+  });
+
+  test("watch monitoring saves itself, sending only what changed", async ({ page, api }) => {
+    let cfg = { ...plexConfig, url: "http://plex.lan:32400", token_set: true, enabled: true, enabled_set: true, status: "recording" as const, server_name: "Basement" };
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg },
+      { method: "PUT", path: "/api/v1/insights/plex", respond: ({ body }) => {
+        const b = body as { enabled?: boolean; poll_seconds?: number };
+        cfg = { ...cfg, ...b, status: b.enabled === false ? "off" as const : cfg.status } as typeof cfg;
+        return cfg;
+      } },
+    ]);
+    await page.goto("/settings/plex");
+    const server = page.locator("#plex-server");
+    await expect(server.getByText("Connected to Basement")).toBeVisible();
+    await expect(server.getByText("Connected · recording what's watched")).toBeVisible();
+
+    const monitoring = page.locator("#plex-monitoring");
+    await monitoring.getByRole("switch", { name: /Record what's watched/ }).click();
+    await expect(monitoring.getByText("Saved ✓")).toBeVisible();
+    await expect(server.getByText("Connected · watch monitoring is off")).toBeVisible();
+
+    const every = monitoring.getByLabel("Ask Plex every (seconds)");
+    await every.fill("90");
+    await every.press("Enter");
+    await expect(monitoring.getByText("The interval must be between 2 and 60.")).toBeVisible();
+    await every.fill("12");
+    await every.press("Enter");
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/insights/plex").length).toBe(2);
+    // Never the address or the token: those belong to the connection card.
+    expect(api.callsTo("PUT", "/api/v1/insights/plex").map((c) => c.body)).toEqual([{ enabled: false }, { poll_seconds: 12 }]);
+  });
+
+  test("linked Plex accounts are listed and can be unlinked after a confirm", async ({ page, api }) => {
+    await page.goto("/settings/plex");
+    const accounts = page.locator("#plex-accounts");
+    const row = accounts.getByTestId("plex-account").filter({ hasText: "Grandad" });
+    await expect(row.getByText("Plex · grandadplex")).toBeVisible();
+    await expect(accounts.getByTestId("plex-account")).toHaveCount(1);
+    await row.getByRole("button", { name: "Unlink Grandad's Plex account" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Unlink Grandad's Plex account (grandadplex)?")).toBeVisible();
+    await dialog.getByRole("button", { name: "Unlink" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/users/5").map((c) => c.body)).toEqual([{ plex_unlink: true }]);
+    await expect(accounts.getByRole("link", { name: "Settings → People & access" })).toHaveAttribute("href", "/settings/users");
   });
 
   test("links Plex from the sidebar in a popup that closes itself when done", async ({ page, api }) => {
@@ -88,11 +139,17 @@ test.describe("admin", () => {
 test.describe("manager", () => {
   test.use({ persona: "manager" });
 
-  test("sees the Plex server and library updates but not who may sign in", async ({ page }) => {
+  test("sees the Plex server, monitoring and library updates but not the admin cards", async ({ page, api }) => {
     await page.goto("/settings/plex");
     await expect(page.getByRole("heading", { name: "Plex server" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Watch monitoring" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Plex library updates" })).toBeVisible();
+    // Sign-in, linked accounts and the Tautulli import are an admin's.
     await expect(page.getByRole("heading", { name: "Plex sign-in" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Linked Plex accounts" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Import from Tautulli" })).toHaveCount(0);
+    await api.quiet();
+    expect(api.callsTo("GET", "/api/v1/people")).toHaveLength(0);
   });
 });
 
