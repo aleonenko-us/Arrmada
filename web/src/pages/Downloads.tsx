@@ -183,7 +183,7 @@ export function Downloads() {
   // The queue refreshes when the server says its shape moved (a torrent arrived, left,
   // finished or changed phase) and on a slow backstop; between those the bars move from
   // queue.progress below. Both come from the server's one shared read of the client.
-  useLiveRefresh(() =>
+  const refreshQueue = useLiveRefresh(() =>
     api.activity().then((a) => {
       fails.current = 0;
       setDownloads(a.downloads ?? []);
@@ -202,6 +202,13 @@ export function Downloads() {
   useLiveEvent(QUEUE_PROGRESS, (ev) => {
     const live = progressByHash(ev);
     if (!live) return;
+    // Paused or errored (or back) from elsewhere — the client's own UI, the disk guard:
+    // the row's buttons follow its state, so read it properly rather than patch the bar.
+    const halted = (s?: string) => s === "paused" || s === "error";
+    if (downloads.some((d) => { const p = live.get(d.hash.toLowerCase()); return !!p && halted(p.state) !== halted(d.phase || d.state); })) {
+      refreshQueue();
+      return;
+    }
     setDownloads((ds) => patchProgress(ds, live, (d) => ({ hash: d.hash, progress: d.progress, phase: d.phase || d.state }),
       (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state })));
   });
@@ -216,7 +223,7 @@ export function Downloads() {
   // holding a torrent) is an error toast, since a refresh alone can't say why nothing changed.
   const act = async (hash: string, fn: () => Promise<unknown>) => {
     setBusy((b) => ({ ...b, [hash]: true }));
-    try { await fn(); } catch (e) { fail((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
+    try { await fn(); refreshQueue(); } catch (e) { fail((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
   };
   const resumeAll = () => act("all", async () => {
     const r = await api.resumeDownload("all");

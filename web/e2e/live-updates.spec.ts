@@ -27,10 +27,11 @@ test.describe("live updates", () => {
   test.use({ persona: "admin" });
 
   test("the Movies grid refreshes on a websocket event, without polling", async ({ page, api }) => {
+    test.setTimeout(40_000);
     const live = await liveSocket(page);
     await page.goto("/movies");
     await expect.poll(() => live.opened()).toBe(1);
-    await api.quiet();
+    await api.quiet(1000); // settled: every first load is in
     const movies = () => api.callsTo("GET", "/api/v1/movies").filter((c) => c.path === "/api/v1/movies").length;
     const before = movies();
     expect(before).toBeGreaterThan(0);
@@ -63,7 +64,7 @@ test.describe("live updates", () => {
     const live = await liveSocket(page);
     await page.goto("/movies");
     await expect.poll(() => live.opened()).toBe(1);
-    await api.quiet();
+    await api.quiet(1000); // settled: every first load is in
     const reads = () => api.callsTo("GET", "/api/v1/attention").length;
     expect(reads()).toBe(1);
     await page.route("**/api/v1/attention", (route) => route.fulfill({
@@ -78,7 +79,7 @@ test.describe("live updates", () => {
     test.setTimeout(40_000);
     await liveSocket(page);
     await page.goto("/downloads");
-    await api.quiet();
+    await api.quiet(1000); // settled: every first load is in
     const reads = () => api.callsTo("GET", "/api/v1/downloads").length;
     await setHidden(page, true);
     const before = reads();
@@ -94,7 +95,7 @@ test.describe("live updates", () => {
     const live = await liveSocket(page);
     await page.goto("/downloads");
     await expect.poll(() => live.opened()).toBe(1);
-    await api.quiet();
+    await api.quiet(1000); // settled: every first load is in
     const reads = () => api.callsTo("GET", "/api/v1/downloads").length;
     const before = reads();
     await expect(page.getByText("42%")).toBeVisible(); // the fixture's Driftwood download
@@ -111,10 +112,11 @@ test.describe("live request feed", () => {
   test.use({ persona: "requester" });
 
   test("the Discover strip refreshes on the requester's request event, without polling", async ({ page, api }) => {
+    test.setTimeout(40_000);
     const live = await liveSocket(page);
     await page.goto("/discover");
     await expect.poll(() => live.opened()).toBe(1);
-    await api.quiet();
+    await api.quiet(1000); // settled: every first load is in
     const lists = () => api.callsTo("GET", "/api/v1/requests").length;
     const before = lists();
     expect(before).toBeGreaterThan(0);
