@@ -74,12 +74,13 @@ const (
 // Why one release wasn't taken, besides the quality profile's own reject codes
 // (quality.Reject*). Stored in reasons_json; never rename one.
 const (
-	DropWrongTitle  = "wrong_title"  // for a different film, show, book or album
-	DropBlocklisted = "blocklisted"  // blocklisted for this title
-	DropPending     = "pending"      // already grabbed and still downloading
-	DropOutOfScope  = "out_of_scope" // the right title, but other episodes, another edition or version
-	DropNotTorrent  = "not_torrent"  // a usenet release, which no download client takes
-	DropNotWanted   = "not_wanted"   // a book format the profile doesn't want
+	DropWrongTitle   = "wrong_title"   // for a different film, show, book or album
+	DropBlocklisted  = "blocklisted"   // blocklisted for this title
+	DropPending      = "pending"       // already grabbed and still downloading
+	DropOutOfScope   = "out_of_scope"  // the right title, but other episodes, another edition or version
+	DropNotTorrent   = "not_torrent"   // a usenet release, which no download client takes
+	DropNotWanted    = "not_wanted"    // a book format the profile doesn't want
+	DropWrongEdition = "wrong_edition" // a movie track wants another edition (or another track wants this one)
 	// The two "taken" states, never counted as reasons.
 	classEligible = "eligible"
 	classGrabbed  = "grabbed"
@@ -98,7 +99,7 @@ func classRank(code string) int {
 		return 4
 	case classEligible:
 		return 3
-	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent:
+	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent, DropWrongEdition:
 		return 1
 	}
 	return 2 // a profile rejection
@@ -218,7 +219,7 @@ func (n *searchNotes) tally() tally {
 			t.wrongTitle++
 		case DropBlocklisted:
 			t.blocklisted++
-		case DropOutOfScope:
+		case DropOutOfScope, DropWrongEdition:
 			t.outOfScope++
 		case DropNotTorrent, DropNotWanted:
 		default:
@@ -743,6 +744,7 @@ var reasonLabels = map[string]string{
 	DropBlocklisted:               "blocklisted",
 	DropPending:                   "already downloading",
 	DropOutOfScope:                "for other episodes or editions",
+	DropWrongEdition:              "not the edition a version wants",
 	DropNotTorrent:                "usenet only",
 	DropNotWanted:                 "a format you don't want",
 	rejectedUncoded:               "rejected by your profile",

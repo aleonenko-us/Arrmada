@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
+	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
 
@@ -764,9 +766,26 @@ func (a *api) handleMovieReleases(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// ?version=VID ranks for that track (0 = the default track): its profile, its edition.
+	// Without it the movie is ranked as a whole, as it always was.
+	versionID := int64(-1)
+	if v := r.URL.Query().Get("version"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			a.writeError(w, http.StatusBadRequest, "version must be a version id")
+			return
+		}
+		versionID = n
+	}
 	ctx, cancel := context.WithTimeout(indexer.WithInteractive(r.Context()), 90*time.Second)
 	defer cancel()
-	list, err := a.deps.Automation.RankReleases(ctx, id)
+	var list automation.ReleaseList
+	var err error
+	if versionID >= 0 {
+		list, err = a.deps.Automation.RankReleasesFor(ctx, id, versionID, nil)
+	} else {
+		list, err = a.deps.Automation.RankReleases(ctx, id)
+	}
 	if errors.Is(err, movies.ErrNotFound) {
 		a.writeError(w, http.StatusNotFound, "movie not found")
 		return
@@ -775,8 +794,19 @@ func (a *api) handleMovieReleases(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	a.tokenize(r, &list, automation.ReleaseRef{MediaKind: automation.ReleaseKindMovie, MediaID: id})
+	// The token carries the track, so the grab files the download under it.
+	scope := automation.ReleaseRef{MediaKind: automation.ReleaseKindMovie, MediaID: id}
+	if versionID > 0 {
+		scope.VersionID = versionID
+	}
+	a.tokenize(r, &list, scope)
 	a.writeJSON(w, http.StatusOK, list)
+}
+
+// handleMovieEditions lists the editions release names are recognised by, for the version
+// form's edition picker.
+func (a *api) handleMovieEditions(w http.ResponseWriter, r *http.Request) {
+	a.writeJSON(w, http.StatusOK, map[string]any{"editions": parser.Editions()})
 }
 
 // handleSetMonitored toggles a movie's monitoring from the detail page.

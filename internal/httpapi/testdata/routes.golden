@@ -158,6 +158,7 @@ GET /api/v1/media/series/{id}/seasons user ext
 GET /api/v1/media/{media}/{id} user ext
 GET /api/v1/movies staff -
 GET /api/v1/movies/downloads staff -
+GET /api/v1/movies/editions staff -
 GET /api/v1/movies/lookup staff -
 GET /api/v1/movies/search-queue staff -
 GET /api/v1/movies/unmatched staff -

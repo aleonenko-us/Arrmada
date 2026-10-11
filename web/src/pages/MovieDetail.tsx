@@ -515,6 +515,45 @@ function ClearRecordDialog({ movieId, versionId, file, onDone, onCancel }: {
   );
 }
 
+// EditionField picks a version's edition from the ones release names are recognised by,
+// or "Other…" for free text. An edition is a requirement: the version only grabs releases
+// that carry it, so the hint says so.
+function EditionField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [known, setKnown] = useState<string[]>([]);
+  const [other, setOther] = useState(false);
+  useEffect(() => {
+    api.movieEditions().then(setKnown).catch(() => {});
+  }, []);
+  const isKnown = value === "" || known.includes(value);
+  const showText = other || (!isKnown && known.length > 0);
+  const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
+  return (
+    <>
+      <label htmlFor="version-edition" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
+      <select
+        id="version-edition"
+        value={showText ? "__other" : value}
+        onChange={(e) => {
+          if (e.target.value === "__other") { setOther(true); onChange(""); }
+          else { setOther(false); onChange(e.target.value); }
+        }}
+        className="mb-2 w-full rounded-lg px-3 py-2 text-[12.5px]"
+        style={fieldStyle}
+      >
+        <option value="">Any — no particular edition</option>
+        {known.map((e) => <option key={e} value={e}>{e}</option>)}
+        <option value="__other">Other…</option>
+      </select>
+      {showText && (
+        <input aria-label="Edition name" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. Ultimate Cut" className="mb-2 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+      )}
+      <p className="mb-4 mt-0 text-[11px] text-ink-faint">
+        {value.trim() ? `Only releases whose names say “${value.trim()}” are grabbed for this version, and its file is named as a Plex edition.` : "Any release that fits the profile can fill this version."}
+      </p>
+    </>
+  );
+}
+
 function AddVersionModal({ movieId, onClose, onAdded }: { movieId: number; onClose: () => void; onAdded: () => void }) {
   const [label, setLabel] = useState("");
   const [profile, setProfile] = useState("");
@@ -561,8 +600,7 @@ function AddVersionModal({ movieId, onClose, onAdded }: { movieId: number; onClo
           {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
         </select>
 
-        <label className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
-        <input value={edition} onChange={(e) => setEdition(e.target.value)} placeholder="e.g. Director's Cut" className="mb-4 w-full rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+        <EditionField value={edition} onChange={setEdition} />
 
         {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="flex gap-2.5">

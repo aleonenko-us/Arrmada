@@ -3094,7 +3094,12 @@ export const api = {
     req<{ status: string }>(`/api/v1/series/${id}/duplicates`, { method: "DELETE", body: JSON.stringify({ path }) }),
   seriesHistory: (id: number) =>
     req<{ events: MovieEvent[] }>(`/api/v1/series/${id}/history`).then((r) => r.events),
-  movieReleases: (id: number) => req<ReleaseList>(`/api/v1/movies/${id}/releases`),
+  // versionId ranks for one track (0 = the default track): its profile and edition, with
+  // the releases it can't take marked ineligible. Without it the movie is ranked as a whole.
+  movieReleases: (id: number, versionId?: number) =>
+    req<ReleaseList>(`/api/v1/movies/${id}/releases${versionId === undefined ? "" : `?version=${versionId}`}`),
+  /** The editions release names are recognised by, for the version form's picker. */
+  movieEditions: () => req<{ editions: string[] }>("/api/v1/movies/editions").then((r) => r.editions),
   blocklist: (id: number) => req<{ blocklist: BlockEntry[] }>(`/api/v1/movies/${id}/blocklist`).then((r) => r.blocklist),
   // Block a search result by its token, or any release by title alone.
   blockRelease: (id: number, body: { token: string; search_again?: boolean } | { title: string; indexer?: string; search_again?: boolean }) =>

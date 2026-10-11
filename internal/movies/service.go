@@ -1245,6 +1245,9 @@ func (s *Service) AddVersion(ctx context.Context, movieID int64, label, profile,
 	if label == "" {
 		label = "Version"
 	}
+	// Stored as the parser names it ("directors cut" → "Director's Cut"), so the edition
+	// filter and the file name agree on one spelling.
+	edition = parser.CanonicalEdition(edition)
 	v, err := s.repo.CreateVersion(ctx, movieID, Version{Label: label, QualityProfile: profile, Edition: edition, Monitored: monitored})
 	if err != nil {
 		return Version{}, err
@@ -1255,7 +1258,7 @@ func (s *Service) AddVersion(ctx context.Context, movieID int64, label, profile,
 
 // UpdateVersion edits an extra version's mutable fields.
 func (s *Service) UpdateVersion(ctx context.Context, versionID int64, label, profile, edition string, monitored bool) error {
-	return s.repo.UpdateVersion(ctx, versionID, label, profile, edition, monitored)
+	return s.repo.UpdateVersion(ctx, versionID, label, profile, parser.CanonicalEdition(edition), monitored)
 }
 
 // setDefaultFile records the default file path AND caches its media info — the one read

@@ -11,6 +11,7 @@ export const REASON_LABELS: Record<string, string> = {
   blocklisted: "blocklisted",
   pending: "already downloading",
   out_of_scope: "for other episodes or editions",
+  wrong_edition: "not the edition a version wants",
   not_torrent: "usenet only",
   not_wanted: "a format you don't want",
   rejected: "rejected by your profile",
