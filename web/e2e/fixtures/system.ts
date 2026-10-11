@@ -1,5 +1,5 @@
 import type {
-  AppSettings, Attention, AuthUser, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth,
+  AppSettings, Attention, AuthUser, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
   TaskStatus,
 } from "../../src/lib/api";
 import type { PersonaInfo } from "./users";
@@ -157,6 +157,19 @@ export const users: { users: AuthUser[] } = {
       id: 5, username: "Grandad", role: "requester", plex_linked: true, created_at: "2026-02-01 10:00:00",
       auto_approve: true, auto_approve_movie: true, auto_approve_series: true, auto_approve_book: true,
     },
+  ],
+};
+
+// System → Status: a build with its commit, a 180 MB database, a nightly backup from three
+// hours ago, and every library on one array with the downloads on their own cache drive.
+export const systemStatus: SystemStatus = {
+  version: "2026.10.08", commit: "abc1234", go: "go1.25.1", started_at: "2026-10-09T08:00:00Z", uptime_seconds: 14400,
+  data_dir: "/data", db_bytes: 180 * 1024 ** 2,
+  last_backup: { at: new Date(NOW - 3 * 3_600_000).toISOString(), kind: "nightly", file: "arrmada-nightly-20261011-030000.db" },
+  disks: [
+    { name: "Movies", path: "/media/movies", measurable: true, total: 16e12, free: 4e12, used_pct: 75, shared_with: [{ name: "TV", path: "/media/tv" }, { name: "Books & audiobooks", path: "/media/books" }] },
+    { name: "Downloads", path: "/media/downloads", measurable: true, total: 1e12, free: 0.08e12, used_pct: 92, shared_with: [] },
+    { name: "Database & backups", path: "/data", measurable: true, total: 0.5e12, free: 0.4e12, used_pct: 20, shared_with: [] },
   ],
 };
 

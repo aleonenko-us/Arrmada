@@ -1413,6 +1413,30 @@ export interface AuthUser {
   plex_only?: boolean;
 }
 
+/** One filesystem on System → Status, with the other folders that share it. */
+export interface SystemDisk {
+  name: string;
+  path: string;
+  measurable: boolean;
+  total: number;
+  free: number;
+  used_pct: number;
+  shared_with: { name: string; path: string }[];
+}
+/** GET /system/status (admin). */
+export interface SystemStatus {
+  version: string;
+  commit: string;
+  go: string;
+  started_at: string;
+  uptime_seconds: number;
+  data_dir: string;
+  /** The database, its write-ahead log and index, together. */
+  db_bytes: number;
+  last_backup: { at: string; kind: string; file: string } | null;
+  disks: SystemDisk[];
+}
+
 /**
  * One person on Settings → People & access (GET /people, admin). Times are unix ms, 0 =
  * never. Listening is when, never what: there is no book in here.
@@ -2169,6 +2193,8 @@ export async function req<T>(path: string, opts?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => req<Status>("/api/v1/status"),
+  // System → Status (admin): build, database size, last backup, drive space.
+  systemStatus: () => req<SystemStatus>("/api/v1/system/status"),
   health: () => req<Health>("/api/health"),
 
   me: () => req<{ user: AuthUser }>("/api/v1/auth/me").then((r) => r.user),

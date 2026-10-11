@@ -191,6 +191,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library", a.requireRole(auth.RoleManager, a.handleGetLibraryPaths))
 	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.handleSetLibraryPaths))
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
+	// System → Status: build, database size, last backup and drive space (CFG-26).
+	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
 	mux.HandleFunc("GET /api/v1/system/pending-restart",a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.

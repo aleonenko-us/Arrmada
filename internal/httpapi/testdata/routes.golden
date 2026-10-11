@@ -227,6 +227,7 @@ GET /api/v1/system/browse admin -
 GET /api/v1/system/library staff -
 GET /api/v1/system/library/check admin -
 GET /api/v1/system/pending-restart staff -
+GET /api/v1/system/status admin -
 GET /api/v1/system/tasks staff -
 GET /api/v1/users admin -
 GET /api/v1/users/plex-blocks admin -
