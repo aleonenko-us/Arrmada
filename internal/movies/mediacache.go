@@ -184,6 +184,10 @@ func (s *Service) VersionsLive(ctx context.Context, id int64) ([]Version, error)
 		}
 		cached := v.File
 		fi, statErr := s.statFile(v.FilePath)
+		if v.IsDefault {
+			// The page saw the file's real state: keep the grid's "File missing" in step.
+			s.noteDefaultFile(ctx, id, v.FilePath, v.missingSince, statErr)
+		}
 		if statErr != nil {
 			// Tracked but gone: say so, with whatever the cache knew about the file.
 			f := nameFacts(v.FilePath)

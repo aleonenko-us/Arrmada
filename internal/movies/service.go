@@ -75,6 +75,8 @@ type Service struct {
 	// scanning is held for the whole of a library scan: two scans at once would race to
 	// create the same films and each replace the other's needs-review list.
 	scanning sync.Mutex
+	// missing is the last missing-file sweep's outcome, for the health panel (missing.go).
+	missing missingState
 }
 
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently
@@ -1085,6 +1087,7 @@ func defaultVersionRow(m Movie) Version {
 		QualityProfile: m.QualityProfile, Monitored: m.Monitored,
 		HasFile: m.HasFile, FilePath: m.MovieFilePath, SourceRelease: m.SourceRelease, UpgradeHold: m.UpgradeHold,
 		ConvertedFromRelease: m.ConvertedFromRelease, ConvertedFromSize: m.ConvertedFromSize,
+		missingSince: m.FileMissingSince,
 	}
 	if m.HasFile && m.File != nil {
 		f := *m.File

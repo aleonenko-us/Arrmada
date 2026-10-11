@@ -3384,6 +3384,10 @@ export interface Movie {
   upgrades_allowed?: boolean;
   /** The default file is kept out of profile-driven upgrades ("keep existing files"). */
   upgrade_hold?: boolean;
+  /** The recorded default file is gone from disk (the daily missing-file check, or the
+   * detail page's own look); file_missing_since says when it was noticed. MOV-21. */
+  file_missing?: boolean;
+  file_missing_since?: string;
   /** Detail only: what Arrmada will do about this movie, from the facts the sweeps act on. */
   acquisition?: MovieAcquisition;
   // Detail only (MOV-04): the missing-sweep's backoff, when it next searches (absent when

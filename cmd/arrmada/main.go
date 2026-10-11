@@ -581,6 +581,13 @@ func main() {
 		coordinator.UpgradeMovies(ctx)
 		return nil
 	}, scheduler.Label("Look for better movie releases"), scheduler.Description("Grabs a better release when a movie's quality profile allows upgrades, up to the per-sweep limit (Settings → Downloads)."))
+	// Notice movie files that vanished from disk (MOV-21). Daily, not more often: it's the
+	// one periodic job that stats library files, and each look can wake an array disk. It
+	// only flags; with the movies folder looking unmounted it flags nothing and warns.
+	sched.Register("movies-missing-files", 24*time.Hour, false, func(ctx context.Context) error {
+		_, err := movieSvc.CheckMissingFiles(ctx)
+		return err
+	}, scheduler.Label("Check for missing movie files"), scheduler.Description("Marks movies whose file has vanished from disk as File missing. Never deletes or searches; if the movies folder looks unmounted it marks nothing and raises a health warning."))
 	// Fail over stalled downloads: replace, then remove, after the profile's (or the global
 	// default) timeout with no progress.
 	sched.Register("detect-stalled", 2*time.Minute, false, func(ctx context.Context) error {

@@ -49,7 +49,7 @@ func (r *Repo) inTx(ctx context.Context, fn func(tx *sql.Tx, r *Repo) error) err
 
 const movieCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, runtime, status,
 	monitored, quality_profile, min_availability, has_file, movie_file_path, added_at, extra_json, media_json,
-	source_release, upgrade_hold, converted_from_release, converted_from_size`
+	source_release, upgrade_hold, converted_from_release, converted_from_size, COALESCE(file_missing_since, '')`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (Movie, error) {
 	var (
@@ -59,13 +59,14 @@ func (r *Repo) scan(row interface{ Scan(...any) error }) (Movie, error) {
 	)
 	err := row.Scan(&m.ID, &m.TMDBID, &m.IMDBID, &m.Title, &m.Year, &m.Overview, &m.PosterURL,
 		&m.Runtime, &m.Status, &mon, &m.QualityProfile, &m.MinAvailability, &hf, &m.MovieFilePath,
-		&m.AddedAt, &extraJSON, &mediaJSON, &m.SourceRelease, &hold, &m.ConvertedFromRelease, &m.ConvertedFromSize)
+		&m.AddedAt, &extraJSON, &mediaJSON, &m.SourceRelease, &hold, &m.ConvertedFromRelease, &m.ConvertedFromSize, &m.FileMissingSince)
 	if err != nil {
 		return Movie{}, err
 	}
 	m.Monitored = mon != 0
 	m.HasFile = hf != 0
 	m.UpgradeHold = hold != 0
+	m.FileMissing = m.HasFile && m.FileMissingSince != ""
 	if extraJSON != "" {
 		var ex MovieExtra
 		if json.Unmarshal([]byte(extraJSON), &ex) == nil {
@@ -100,7 +101,8 @@ func (r *Repo) SetMediaInfoForPath(ctx context.Context, id int64, path, mediaJSO
 // and the rest of it never leave the database) and the media facts from media_json.
 func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 	rows, err := r.q().QueryContext(ctx, `SELECT id, title, year, poster_url, monitored, has_file, quality_profile,
-		min_availability, added_at, COALESCE(CASE WHEN json_valid(extra_json) THEN json_extract(extra_json, '$.vote_average') END, 0), media_json
+		min_availability, added_at, COALESCE(CASE WHEN json_valid(extra_json) THEN json_extract(extra_json, '$.vote_average') END, 0), media_json,
+		file_missing_since IS NOT NULL
 		FROM movies ORDER BY added_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
@@ -113,9 +115,10 @@ func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 			mon, hf   int
 			vote      float64
 			mediaJSON string
+			missing   bool
 		)
 		if err := rows.Scan(&s.ID, &s.Title, &s.Year, &s.PosterURL, &mon, &hf, &s.QualityProfile,
-			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON); err != nil {
+			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON, &missing); err != nil {
 			return nil, err
 		}
 		s.Monitored, s.HasFile, s.VoteAverage = mon != 0, hf != 0, vote
@@ -134,6 +137,8 @@ func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 			}
 			// The same test as Movie.MediaStale.
 			s.mediaStale = f == nil || (!f.Missing && f.MediaVersion < MediaVersion)
+			// Flagged by the missing-file check (MOV-21): read from the column, no stat.
+			s.FileMissing = s.FileMissing || missing
 		}
 		out = append(out, s)
 	}
@@ -382,14 +387,15 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, movieID int64) {
 
 // SetFile marks a movie as having a file at path.
 func (r *Repo) SetFile(ctx context.Context, id int64, path string) error {
-	_, err := r.q().ExecContext(ctx, `UPDATE movies SET has_file = 1, movie_file_path = ? WHERE id = ?`, path, id)
+	// A file recorded now is one that's there: any old "missing" flag goes with the old record.
+	_, err := r.q().ExecContext(ctx, `UPDATE movies SET has_file = 1, movie_file_path = ?, file_missing_since = NULL WHERE id = ?`, path, id)
 	return err
 }
 
 // ClearFile marks a movie as having no file (after its file is deleted).
 func (r *Repo) ClearFile(ctx context.Context, id int64) error {
 	_, err := r.q().ExecContext(ctx, `UPDATE movies SET has_file = 0, movie_file_path = '', media_json = '', source_release = '', upgrade_hold = 0,
-		converted_from_release = '', converted_from_size = 0 WHERE id = ?`, id)
+		converted_from_release = '', converted_from_size = 0, file_missing_since = NULL WHERE id = ?`, id)
 	return err
 }
 

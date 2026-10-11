@@ -338,6 +338,12 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 			}
 			a.deps.Log.Info("library scan complete", "imported", res.Imported, "attached", res.Attached, "duplicates", len(res.Duplicates),
 				"skipped", res.Skipped, "unmatched", len(res.Unmatched))
+			// The scan just read the whole folder, so the disks are awake: notice files that
+			// vanished now rather than at tomorrow's check (it marks nothing if the folder
+			// looks unmounted).
+			if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
+				a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+			}
 			a.deps.Bus.Publish("library.scanned", map[string]any{"media": "movie", "imported": res.Imported, "unmatched": len(res.Unmatched),
 				"attached": res.Attached, "duplicates": len(res.Duplicates)})
 			p.SetMessage(movieScanMessage(res))
@@ -432,6 +438,8 @@ func (a *api) handleGetMovie(w http.ResponseWriter, r *http.Request) {
 	if versions, verr := a.deps.Movies.VersionsLive(r.Context(), id); verr == nil {
 		m.Versions = versions
 		m.File = versions[0].File
+		// What the page just saw beats the stored flag, which that read brought up to date.
+		m.FileMissing = m.HasFile && m.File != nil && m.File.Missing
 	}
 	// What's in flight for it, by the acquisition record (ACQ-25), joined to the queue by
 	// info hash: the progress bar and the Acquisition card read the same grabs, whatever
