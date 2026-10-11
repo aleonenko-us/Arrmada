@@ -579,6 +579,11 @@ func (s *Service) historyRowFor(job *Job, outcome, note string) historyRow {
 			end = time.Now()
 		}
 		r.encodeSecs = end.Sub(rec.encodeStart).Seconds()
+		if j.activeSecs > 0 {
+			// The time actually spent encoding: a film frozen across four nights' worth of
+			// daytime took a day to encode, not four — and the forecast learns from this.
+			r.encodeSecs = j.activeSecs
+		}
 	}
 	return r
 }

@@ -2175,12 +2175,18 @@ export interface ConvertHistoryEntry {
   started_at: number; finished_at?: number; encode_secs?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;
 }
-export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string }
+export interface ConvertUpNext {
+  key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string;
+  eta_sec?: number; nights?: number; // the time forecast: seconds, and nights of the encode hours
+}
 export interface ConvertRequest { key: string; title: string; requested_at: number }
 export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;
   auto: boolean; window?: string; watching: boolean;
   requests: ConvertRequest[]; up_next: ConvertUpNext[]; remaining: number;
+  // The time forecast: the remaining list's encoding time (spread over the conversions that
+  // run at once) and in nights of the hours; the encoding a restart now would lose.
+  backlog_sec?: number; backlog_nights?: number; in_flight_secs?: number;
 }
 export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;

@@ -644,6 +644,7 @@ func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, 
 func (s *Service) readProgress(job *Job, r io.Reader, durationSec float64) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
+		s.tickActive(job) // encoding time for the forecast and the ledger (pauses excluded)
 		k, v, ok := strings.Cut(sc.Text(), "=")
 		if !ok {
 			continue

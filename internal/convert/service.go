@@ -95,6 +95,10 @@ type Job struct {
 	cancelled bool
 	procs     map[int]bool // process groups currently running for this job (for pausing)
 	rec       *jobRecord   // what the ledger keeps about it (see history.go)
+	// activeSecs is how long the full encode has actually been encoding, pauses excluded
+	// (tickActive, throughput.go); lastTick is its last progress line.
+	activeSecs float64
+	lastTick   time.Time
 }
 
 // Service runs the conversion engine: workers that pick the next file worth converting,
@@ -137,6 +141,8 @@ type Service struct {
 	libraryChanged atomic.Pointer[func(kind, dir string)]
 	// bus is where lifecycle events go (see events.go, SetBus); nil = nowhere.
 	bus atomic.Pointer[Publisher]
+	// tput is the time forecast's speed model (throughput.go).
+	tput throughputCache
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool

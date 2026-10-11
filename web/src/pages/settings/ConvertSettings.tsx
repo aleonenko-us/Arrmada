@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
 import { api, type ConvertSettings as Settings } from "../../lib/api";
+import { backlogLine } from "../../lib/convertForecast";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
@@ -87,6 +88,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [] })).catch(() => {});
   }, []);
   useEffect(loadHw, [loadHw]);
+  // The backlog's encoding time, so the hours show what they mean before they're saved.
+  const [backlogSec, setBacklogSec] = useState(0);
+  useEffect(() => { api.convertStatus().then((st) => setBacklogSec(st.backlog_sec ?? 0)).catch(() => {}); }, []);
   // A new transcode folder changes the free space shown under it.
   useEffect(() => { if (scratch.status === "saved") loadHw(); }, [scratch.status, loadHw]);
 
@@ -131,6 +135,11 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
             <span className={`text-[11px] ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
               {clockSkewed ? "⚠ " : ""}Read on the server's clock: {s.server_time} {s.server_tz}{clockSkewed ? ` — yours says ${browserTime}. Set TZ in your .env and recreate the container (docker compose up -d).` : "."}
             </span>
+            {backlogSec > 0 && hours.value.hours_start && hours.value.hours_end && (
+              <span className="text-[11px] text-ink-dim">
+                At these hours: {backlogLine(backlogSec, hours.value.hours_start, hours.value.hours_end)} — at this machine's pace so far.
+              </span>
+            )}
           </div>
         )}
         <Toggle save={pause} label="Pause while someone is watching Plex"
