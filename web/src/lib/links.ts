@@ -9,8 +9,13 @@ export const LINKS = {
   users: "/settings/users",
   plexConnection: "/settings/plex#plex-connection",
   plexSignIn: "/settings/plex#plex-sign-in",
-  downloadsSearching: "/downloads?tab=searching",
-  downloadProblems: "/downloads?show=problems",
+  // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
+  activityQueue: "/activity/queue",
+  downloadsSearching: "/activity/wanted",
+  downloadProblems: "/activity/queue?filter=problems",
+  importProblems: "/activity/queue?show=finishing&filter=problems",
+  history: "/activity/history",
+  blocklist: "/activity/blocklist",
   downloadClients: "/downloadclients",
   indexers: "/indexers",
   subtitlesSettings: "/subtitles?tab=settings",
@@ -21,7 +26,7 @@ export const LINKS = {
   audiobookServer: "/audiobooks",
   status: "/settings/status",
   tasks: "/settings/status#tasks",
-  review: "/review",
+  review: "/activity/needs-you",
   alerts: "/settings/alerts",
 } as const;
 
@@ -35,9 +40,9 @@ export function fixLink(w: { link?: string; link_key?: string }): string | undef
   return to && to.startsWith("/") && !to.startsWith("//") ? to : undefined;
 }
 
-// Page names as they appear in the sidebar, for sentences like "follow it in Downloads".
+// Page names as they appear in the sidebar, for sentences like "follow it in Activity".
 export const PAGE = {
-  downloads: "Downloads",
+  activity: "Activity",
   settings: "Settings",
   insights: "Insights",
 } as const;

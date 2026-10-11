@@ -35,7 +35,7 @@ describe("phaseLabel", () => {
   it("labels metadata, queued and error phases, and plain downloading only for downloading", () => {
     expect(phaseLabel(dl({ phase: "metadata" }), NOW).text).toBe("Fetching metadata");
     expect(phaseLabel(dl({ phase: "queued" }), NOW).text).toBe("Queued");
-    expect(phaseLabel(dl({ phase: "error" }), NOW)).toMatchObject({ text: "Error", tone: "var(--avoid)" });
+    expect(phaseLabel(dl({ phase: "error" }), NOW)).toMatchObject({ text: "Failed", tone: "var(--avoid)" });
     expect(phaseLabel(dl({ phase: "downloading" }), NOW).text).toBe("Downloading");
   });
 });

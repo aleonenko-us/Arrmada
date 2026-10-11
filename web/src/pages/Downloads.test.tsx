@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { Downloads } from "./Downloads";
+import { QueuePanel } from "./Downloads";
 import { api, type ActivityFeed } from "../lib/api";
 import { clearQueryCache } from "../lib/query";
 import { resetLiveForTests } from "../lib/live";
@@ -37,10 +37,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Downloads actions", () => {
+describe("Queue actions", () => {
   it("shows an error toast when pausing fails", async () => {
     vi.spyOn(api, "pauseDownload").mockRejectedValue(new Error("qBittorrent isn't answering"));
-    render(<ToastProvider><MemoryRouter><Downloads /></MemoryRouter></ToastProvider>);
+    render(<ToastProvider><MemoryRouter><QueuePanel /></MemoryRouter></ToastProvider>);
     const pause = await screen.findByRole("button", { name: "Pause" });
     await act(async () => { fireEvent.click(pause); });
     const alert = await screen.findByRole("alert");

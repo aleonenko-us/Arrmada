@@ -12,6 +12,7 @@ import {
   type NowListening,
 } from "../lib/api";
 import { LINKS } from "../lib/links";
+import { eventHref } from "../lib/events";
 import { needsYouRows } from "../lib/needsYou";
 import { useAttention } from "../lib/useAttention";
 import { useLiveConnected } from "../lib/live";
@@ -182,7 +183,7 @@ export function Dashboard() {
             warn={!!lib && lib.books_missing > 0}
           />
           <Tile
-            to="/downloads"
+            to={LINKS.activityQueue}
             label="Downloading"
             value={data && !data.queue_note ? data.queue.downloading : "—"}
             sub={data ? downloadingSub(data) : ""}
@@ -191,8 +192,8 @@ export function Dashboard() {
           />
         </div>
 
-        {/* What Arrmada has been doing — the per-title event tables, unified. */}
-        <SectionLabel>Recent activity</SectionLabel>
+        {/* What Arrmada has been doing — the newest of Activity → History. */}
+        <SectionLabel link={{ to: LINKS.history, label: "See all →" }}>Recent activity</SectionLabel>
         <Card>
           {!data ? (
             <p className="m-0 text-[12.5px] text-ink-faint">Loading…</p>
@@ -443,8 +444,7 @@ const EVENT_ICON: Record<string, string> = {
 };
 
 function ActivityRow({ e }: { e: ActivityEvent }) {
-  const href =
-    e.kind === "movie" ? `/movies/${e.id}` : e.kind === "series" ? `/series/${e.id}` : `/books/${e.id}`;
+  const href = eventHref(e.kind, e.id);
   const icon = EVENT_ICON[e.event.toLowerCase()] ?? "•";
   return (
     <li className="flex items-baseline gap-2.5 py-1.5 text-[12.5px]" style={{ borderTop: "1px solid var(--line)" }}>
@@ -524,11 +524,12 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SectionLabel({ children, right }: { children: React.ReactNode; right?: string }) {
+function SectionLabel({ children, right, link }: { children: React.ReactNode; right?: string; link?: { to: string; label: string } }) {
   return (
     <div className="mb-3 mt-6 flex items-baseline justify-between font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">
       <span>{children}</span>
       {right && <span className="font-normal normal-case tracking-normal">{right}</span>}
+      {link && <Link to={link.to} className="font-semibold normal-case tracking-normal no-underline" style={{ color: "var(--accent)" }}>{link.label}</Link>}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageHeader } from "../components/PageHeader";
 import { api, type ImportReview, type ReviewFile, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
 import { formatAgo, formatBytes } from "../lib/format";
 import { useLiveRefresh } from "../lib/useLiveQuery";
@@ -37,9 +36,9 @@ function heldAt(s: string): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-// Reviews — finished downloads held back from import. Each card says why, and offers only
-// the actions that can work for that reason.
-export function Reviews() {
+// ReviewsPanel is Activity → Needs you: finished downloads held back from import. Each
+// card says why, and offers only the actions that can work for that reason.
+export function ReviewsPanel() {
   const [list, setList] = useState<ImportReview[] | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -143,8 +142,7 @@ export function Reviews() {
 
   return (
     <>
-      <PageHeader title="Review" />
-      <div className="mx-auto w-full max-w-[960px] px-4 py-6 sm:px-6">
+      <div className="max-w-[960px]">
         <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
           Finished downloads Arrmada held back instead of importing. Each says why: the content doesn't match what it was
           grabbed for, it isn't linked to anything in your library, its files' episode numbering couldn't be read, its import

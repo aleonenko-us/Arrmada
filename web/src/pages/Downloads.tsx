@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { PageHeader } from "../components/PageHeader";
 import { useTabParam } from "../lib/useTabParam";
-import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
 import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
@@ -13,7 +11,8 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "..
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
-import { ErrorState, Menu, Skeleton, useToast } from "../ui";
+import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
+import { ErrorState, Menu, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
@@ -60,9 +59,11 @@ const STATE_TONE: Record<string, string> = {
   downloading: "var(--accent)", seeding: "var(--good)", paused: "var(--ink-faint)", error: "var(--avoid)", checking: "var(--avoid)",
   stalled: "var(--avoid)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid)", allocating: "var(--ink-faint)",
 };
+// The client's phases in the words of the shared stage model (lib/stages), so this chip
+// and a requester's card say the same thing; the client-only phases keep their own.
 const PHASE_TEXT: Record<string, string> = {
-  downloading: "Downloading", seeding: "Seeding", paused: "Paused", error: "Error", checking: "Checking",
-  stalled: "Stalled", metadata: "Fetching metadata", queued: "Queued", moving: "Moving", allocating: "Allocating",
+  downloading: STAGE.downloading.label, seeding: STAGE.seeding.label, paused: STAGE.paused.label, error: STAGE.failed.label, checking: "Checking",
+  stalled: STAGE.stalled.label, metadata: STAGE.fetching_metadata.label, queued: STAGE.queued.label, moving: "Moving", allocating: "Allocating",
 };
 
 // mins humanizes a span of minutes: "45m", "3h", "2d 4h".
@@ -115,32 +116,62 @@ export function stallLine(it: ActivityDownload): string | null {
 }
 
 // isProblem: a download that needs a look — errored, stalled, or stuck fetching its file
-// list. What ?show=problems (the Needs-you card's link) narrows the lists to.
-export function isProblem(it: Pick<ActivityDownload, "phase" | "state">): boolean {
+// list, or finished and not importing (the import keeps failing, it's held, it's in a
+// category nothing imports from). What ?filter=problems (the Needs-you links) narrows to.
+export function isProblem(it: Pick<ActivityDownload, "phase" | "state" | "stage">): boolean {
+  if (it.stage === "import_retrying" || it.stage === "wrong_category" || it.stage === "needs_review") return true;
   const phase = it.phase || it.state;
   return phase === "error" || phase === "stalled" || phase === "metadata" || it.state === "error";
 }
 
 type SortKey = "name" | "progress" | "speed" | "size" | "ratio" | "seedtime";
-type Tab = "downloads" | "seeding" | "searching" | "upcoming";
-const TAB_KEYS: readonly Tab[] = ["downloads", "seeding", "searching", "upcoming"];
+
+// The Queue tab's sub-views (?show=): what's still arriving, what's finished but not in the
+// library yet, and what's in the library and sharing — split on the shared stage model.
+const QUEUE_VIEWS: readonly QueueGroup[] = ["downloading", "finishing", "seeding"];
+// The Wanted tab's sub-views (?show=): what's being searched for, and what isn't out yet.
+type WantedView = "searching" | "upcoming";
+const WANTED_VIEWS: readonly WantedView[] = ["searching", "upcoming"];
 
 function ProfileChip({ profile }: { profile: string }) {
   const na = profile === "n/a";
   return <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: na ? "var(--panel-2)" : "var(--accent-soft)", color: na ? "var(--ink-faint)" : "var(--accent)" }}>{profile}</span>;
 }
 
-// How often the Wanted half refreshes on its own. It reads the search history, so it
+// How often the Wanted tab refreshes on its own. It reads the search history, so it
 // isn't refreshed with the queue; a finished search, a grab or an import announced over
 // the socket refreshes it sooner.
 const WANTED_POLL_MS = 30_000;
 const WANTED_TOPICS = ["search.finished", "release.grabbed", "download.imported", "series.imported", "series.searched"];
-// What changes the queue's rows (beyond the bars, which queue.progress moves in place),
-// and the backstop for an event the socket dropped.
-const QUEUE_TOPICS = [QUEUE_CHANGED, "release.grabbed", "download.imported", "import.held", "download.stalled"];
+// What changes the queue's rows (beyond the bars, which queue.progress moves in place) —
+// including a finished download moving from Finishing to Seeding once any importer has
+// it — and the backstop for an event the socket dropped.
+const QUEUE_TOPICS = [QUEUE_CHANGED, "release.grabbed", "*.imported", "import.held", "download.stalled"];
 const QUEUE_FALLBACK_MS = 10_000;
 
-export function Downloads() {
+// SubPills switches a tab's sub-view; each is a pill with its count, like the type filter.
+function SubPills<T extends string>({ views, labels, counts, value, onChange, label }: { views: readonly T[]; labels: Record<T, string>; counts: Record<T, number>; value: T; onChange: (v: T) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
+      {views.map((v) => {
+        const on = v === value;
+        return (
+          <button key={v} type="button" aria-pressed={on} onClick={() => onChange(v)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+            {labels[v]} <span className="font-mono text-[10.5px] opacity-70">{counts[v]}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Search…" aria-label="Search this list" className="w-[200px] rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />;
+}
+
+// QueuePanel is Activity → Queue: the download client's transfers, live, with the queue
+// controls. Mounted only while its tab shows, so the three-second poll stops elsewhere.
+export function QueuePanel() {
   const [downloads, setDownloads] = useState<ActivityDownload[]>([]);
   const [totals, setTotals] = useState<{ down_speed: number; up_speed: number; active: number }>({ down_speed: 0, up_speed: 0, active: 0 });
   const [freeGb, setFreeGb] = useState<number | null>(null);
@@ -162,12 +193,12 @@ export function Downloads() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [clientId, setClientId] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [tab, setTab] = useTabParam(TAB_KEYS, "downloads");
+  const [view, setView] = useTabParam(QUEUE_VIEWS, "downloading", "show");
   const [seedSort, setSeedSort] = useState<SortKey>("ratio");
-  // ?show=problems: only the downloads that need a look (linked from Needs you).
+  // ?filter=problems: only the downloads that need a look (linked from Needs you).
   const [params, setParams] = useSearchParams();
-  const problemsOnly = params.get("show") === "problems";
-  const showAll = () => setParams((p) => { const next = new URLSearchParams(p); next.delete("show"); return next; }, { replace: true });
+  const problemsOnly = params.get("filter") === "problems";
+  const showAll = () => setParams((p) => { const next = new URLSearchParams(p); next.delete("filter"); return next; }, { replace: true });
 
   useEffect(() => {
     api.downloadClients().then((cs) => {
@@ -182,7 +213,8 @@ export function Downloads() {
   const fails = useRef(0);
   // The queue refreshes when the server says its shape moved (a torrent arrived, left,
   // finished or changed phase) and on a slow backstop; between those the bars move from
-  // queue.progress below. Both come from the server's one shared read of the client.
+  // queue.progress below. Both come from the server's one shared read of the client. Only
+  // this tab is mounted while it shows, so nothing reads the queue from another tab.
   const refreshQueue = useLiveRefresh(() =>
     api.activity().then((a) => {
       fails.current = 0;
@@ -213,12 +245,6 @@ export function Downloads() {
       (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state })));
   });
 
-  // The Wanted view (Searching and Upcoming): its own, slower read. A sweep finishes
-  // searches in bursts: one refresh for the lot, a moment after.
-  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
-  const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
-  const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
-
   // The next refresh shows what happened; a failure (the client down, the disk guard
   // holding a torrent) is an error toast, since a refresh alone can't say why nothing changed.
   const act = async (hash: string, fn: () => Promise<unknown>) => {
@@ -231,8 +257,9 @@ export function Downloads() {
     note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
 
-  const activeDownloads = useMemo(() => downloads.filter((d) => d.progress < 1), [downloads]);
-  const seedingDownloads = useMemo(() => downloads.filter((d) => d.progress >= 1), [downloads]);
+  const activeDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "downloading"), [downloads]);
+  const finishingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "finishing"), [downloads]);
+  const seedingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "seeding"), [downloads]);
 
   const filterSort = (list: ActivityDownload[], sortKey: SortKey) => {
     const q = query.trim().toLowerCase();
@@ -253,6 +280,141 @@ export function Downloads() {
   };
   const shownDownloads = useMemo(() => filterSort(activeDownloads, sort), [activeDownloads, query, sort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownSeeding = useMemo(() => filterSort(seedingDownloads, seedSort), [seedingDownloads, query, seedSort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownFinishing = useMemo(() => filterSort(finishingDownloads, "name"), [finishingDownloads, query, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const base = view === "seeding" ? seedingDownloads : view === "finishing" ? finishingDownloads : activeDownloads;
+  const typeCount = (k: MediaFilter) => (k === "all" ? base.length : base.filter((d) => (d.media_type ?? "movie") === k).length);
+  // With the problems filter on, the counts are of problems, so the pills say where they are.
+  const viewCount = (l: ActivityDownload[]) => (problemsOnly ? l.filter(isProblem).length : l.length);
+
+  // No download client at all: there is no queue to show or control.
+  const noClient = clients?.configured === 0;
+  // A client that isn't answering looks exactly like an empty queue unless it's said.
+  const clientDown = !!clients && clients.configured > 0 && !clients.ok;
+
+  return (
+    <>
+      {/* Header: live totals + free disk + controls */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+        {!noClient && (
+          <>
+            <span className="flex items-center gap-1.5 font-mono text-[11px]" style={{ color: reconnecting || clientDown ? "var(--avoid)" : "var(--ink-faint)" }}>
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: reconnecting || clientDown ? "var(--avoid)" : "var(--accent)" }} />
+              {reconnecting ? "Reconnecting…" : clientDown ? "Client offline" : "Live"}
+            </span>
+            <Stat label="↓" value={`${bytes(totals.down_speed)}/s`} tone="var(--accent)" />
+            <Stat label="↑" value={`${bytes(totals.up_speed)}/s`} tone="var(--good)" />
+            <Stat label="active" value={String(totals.active)} />
+            {freeGb != null && <Stat label="free" value={`${freeGb.toFixed(0)} GB`} tone={freeGb < 20 ? "var(--reject)" : undefined} title={diskPath ? `Free space on ${diskPath}` : undefined} />}
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {!noClient && (
+            <>
+              <button onClick={() => act("all", () => api.pauseDownload("all"))} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Pause all</button>
+              <button onClick={resumeAll} title={guard ? "Torrents the disk guard paused stay paused until the volume drains" : undefined} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Resume all{guard && guard.holding > 0 ? ` (${guard.holding} held by disk guard)` : ""}</button>
+            </>
+          )}
+          {clientId != null && (
+            <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
+          )}
+        </div>
+      </div>
+
+      {showSettings && clientId != null && <SettingsPanel clientId={clientId} onClose={() => setShowSettings(false)} />}
+
+      {clients && clients.configured > 0 && clients.enabled === 0 && (
+        <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          Every download client is switched off, so Arrmada can't grab anything. Enable one on the{" "}
+          <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
+        </div>
+      )}
+      {clientDown && clients && (
+        <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          {clients.name || "A download client"} unreachable{clients.since ? ` since ${sinceLabel(clients.since)}` : ""} — searches are paused until it's back
+          {clients.error ? ` (${clients.error})` : ""}. Check it on the{" "}
+          <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
+        </div>
+      )}
+
+      {/* Sub-view + search + sort, then the type filter */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SubPills views={QUEUE_VIEWS} labels={{ downloading: "Downloading", finishing: "Finishing", seeding: "Seeding" }} counts={{ downloading: viewCount(activeDownloads), finishing: viewCount(finishingDownloads), seeding: viewCount(seedingDownloads) }} value={view} onChange={setView} label="Queue views" />
+        <div className="ml-auto flex items-center gap-2">
+          <SearchBox value={query} onChange={setQuery} />
+          {view === "downloading" && (
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort downloads" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+              <option value="progress">Sort: Progress</option>
+              <option value="name">Sort: Name</option>
+              <option value="speed">Sort: Speed</option>
+              <option value="size">Sort: Size</option>
+            </select>
+          )}
+          {view === "seeding" && (
+            <select value={seedSort} onChange={(e) => setSeedSort(e.target.value as SortKey)} aria-label="Sort seeding" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+              <option value="ratio">Sort: Ratio</option>
+              <option value="seedtime">Sort: Seed time</option>
+              <option value="name">Sort: Name</option>
+              <option value="size">Sort: Size</option>
+            </select>
+          )}
+        </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {TYPE_PILLS.filter((p) => p.key !== "music" || musicEnabled).map((p) => {
+          const on = typeFilter === p.key;
+          return (
+            <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+              {p.label} <span className="font-mono text-[10.5px] opacity-70">{typeCount(p.key)}</span>
+            </button>
+          );
+        })}
+        {problemsOnly && (
+          <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+            Problems only ✕
+          </button>
+        )}
+      </div>
+
+      {!loaded ? null : noClient ? (
+        <NoClientCard />
+      ) : view === "downloading" ? (
+        shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
+          <div className="flex flex-col gap-2">
+            {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} />)}
+          </div>
+        )
+      ) : view === "finishing" ? (
+        shownFinishing.length === 0 ? <Empty>{problemsOnly ? "No finished download needs a look right now." : "Nothing waiting to import. Finished downloads pass through here on their way into the library."}</Empty> : (
+          <div className="flex flex-col gap-2">
+            {shownFinishing.map((it) => <FinishingCard key={it.hash} it={it} busy={!!busy[it.hash]} onRemoved={(m) => { note(m); refreshQueue(); }} />)}
+          </div>
+        )
+      ) : (
+        shownSeeding.length === 0 ? <Empty>{problemsOnly ? "No seeding download needs a look right now." : "Nothing seeding right now."}</Empty> : (
+          <div className="flex flex-col gap-2">
+            <SeedingSummary items={shownSeeding} />
+            {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} />)}
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
+// WantedPanel is Activity → Wanted: the titles Arrmada is still looking for (Searching)
+// and the ones that aren't out yet (Upcoming), across movies, series, books and albums.
+export function WantedPanel() {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useTabParam(WANTED_VIEWS, "searching", "show");
+  const toast = useToast();
+  const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
+
+  // Its own, slower read, refreshed by events. A sweep finishes searches in bursts: one
+  // refresh for the lot, a moment after.
+  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
+  const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
+  const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 
   const shownSearching = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -264,140 +426,27 @@ export function Downloads() {
     return [...list].sort((a, b) => (a.available_at ?? "").localeCompare(b.available_at ?? ""));
   }, [upcoming, query]);
 
-  const base = tab === "seeding" ? seedingDownloads : activeDownloads;
-  const typeCount = (k: MediaFilter) => (k === "all" ? base.length : base.filter((d) => (d.media_type ?? "movie") === k).length);
-
-  const TABS: TabItem<Tab>[] = [
-    { key: "downloads", label: "Downloads", count: activeDownloads.length },
-    { key: "seeding", label: "Seeding", count: seedingDownloads.length },
-    { key: "searching", label: "Searching", count: searching.length },
-    { key: "upcoming", label: "Upcoming", count: upcoming.length },
-  ];
-  const isDownloadTab = tab === "downloads" || tab === "seeding";
-  // No download client at all: there is no queue to show or control. Searching and
-  // Upcoming still work — they're the library's side.
-  const noClient = clients?.configured === 0;
-  // A client that isn't answering looks exactly like an empty queue unless it's said.
-  const clientDown = !!clients && clients.configured > 0 && !clients.ok;
-
   return (
     <>
-      <PageHeader title="Downloads" />
-      <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6">
-        {/* Header: live totals + free disk + controls */}
-        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-          {!noClient && (
-            <>
-              <span className="flex items-center gap-1.5 font-mono text-[11px]" style={{ color: reconnecting || clientDown ? "var(--avoid)" : "var(--ink-faint)" }}>
-                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: reconnecting || clientDown ? "var(--avoid)" : "var(--accent)" }} />
-                {reconnecting ? "Reconnecting…" : clientDown ? "Client offline" : "Live"}
-              </span>
-              <Stat label="↓" value={`${bytes(totals.down_speed)}/s`} tone="var(--accent)" />
-              <Stat label="↑" value={`${bytes(totals.up_speed)}/s`} tone="var(--good)" />
-              <Stat label="active" value={String(totals.active)} />
-              {freeGb != null && <Stat label="free" value={`${freeGb.toFixed(0)} GB`} tone={freeGb < 20 ? "var(--reject)" : undefined} title={diskPath ? `Free space on ${diskPath}` : undefined} />}
-            </>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {!noClient && (
-              <>
-                <button onClick={() => act("all", () => api.pauseDownload("all"))} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Pause all</button>
-                <button onClick={resumeAll} title={guard ? "Torrents the disk guard paused stay paused until the volume drains" : undefined} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Resume all{guard && guard.holding > 0 ? ` (${guard.holding} held by disk guard)` : ""}</button>
-              </>
-            )}
-            {clientId != null && (
-              <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
-            )}
-          </div>
-        </div>
-
-        {showSettings && clientId != null && <SettingsPanel clientId={clientId} onClose={() => setShowSettings(false)} />}
-
-        {clients && clients.configured > 0 && clients.enabled === 0 && (
-          <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-            Every download client is switched off, so Arrmada can't grab anything. Enable one on the{" "}
-            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
-          </div>
-        )}
-        {clientDown && clients && (
-          <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-            {clients.name || "A download client"} unreachable{clients.since ? ` since ${sinceLabel(clients.since)}` : ""} — searches are paused until it's back
-            {clients.error ? ` (${clients.error})` : ""}. Check it on the{" "}
-            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
-          </div>
-        )}
-
-        <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="downloads" label="Downloads lists" className="mb-4 border-b" />
-
-        <TabPanel idPrefix="downloads" value={tab}>
-          {/* Filters: type pills (download tabs only) + search + sort */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {isDownloadTab && TYPE_PILLS.filter((p) => p.key !== "music" || musicEnabled).map((p) => {
-              const on = typeFilter === p.key;
-              return (
-                <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
-                  {p.label} <span className="font-mono text-[10.5px] opacity-70">{typeCount(p.key)}</span>
-                </button>
-              );
-            })}
-            {isDownloadTab && problemsOnly && (
-              <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-                Problems only ✕
-              </button>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" className="w-[200px] rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-              {tab === "downloads" && (
-                <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                  <option value="progress">Sort: Progress</option>
-                  <option value="name">Sort: Name</option>
-                  <option value="speed">Sort: Speed</option>
-                  <option value="size">Sort: Size</option>
-                </select>
-              )}
-              {tab === "seeding" && (
-                <select value={seedSort} onChange={(e) => setSeedSort(e.target.value as SortKey)} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                  <option value="ratio">Sort: Ratio</option>
-                  <option value="seedtime">Sort: Seed time</option>
-                  <option value="name">Sort: Name</option>
-                  <option value="size">Sort: Size</option>
-                </select>
-              )}
-            </div>
-          </div>
-
-          {!loaded ? null : noClient && isDownloadTab ? (
-            <NoClientCard />
-          ) : tab === "downloads" ? (
-            shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
-              <div className="flex flex-col gap-2">
-                {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} />)}
-              </div>
-            )
-          ) : tab === "seeding" ? (
-            shownSeeding.length === 0 ? <Empty>Nothing seeding right now.</Empty> : (
-              <div className="flex flex-col gap-2">
-                <SeedingSummary items={shownSeeding} />
-                {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} />)}
-              </div>
-            )
-          ) : !wanted.data ? (
-            wanted.error ? <ErrorState what="what's wanted" message={wanted.error.message} onRetry={() => void wanted.refetch()} busy={wanted.loading} /> : <Skeleton variant="list" count={4} />
-          ) : tab === "searching" ? (
-            shownSearching.length === 0 ? <Empty>Nothing is being searched. Monitored, available titles that are missing a file show up here.</Empty> : (
-              <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} onError={fail} />)}
-              </div>
-            )
-          ) : (
-            shownUpcoming.length === 0 ? <Empty>Nothing upcoming. Unreleased films and albums, and unaired episodes you monitor, land here.</Empty> : (
-              <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} onError={fail} />)}
-              </div>
-            )
-          )}
-        </TabPanel>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SubPills views={WANTED_VIEWS} labels={{ searching: "Searching", upcoming: "Upcoming" }} counts={{ searching: searching.length, upcoming: upcoming.length }} value={view} onChange={setView} label="Wanted views" />
+        <div className="ml-auto"><SearchBox value={query} onChange={setQuery} /></div>
       </div>
+      {!wanted.data ? (
+        wanted.error ? <ErrorState what="what's wanted" message={wanted.error.message} onRetry={() => void wanted.refetch()} busy={wanted.loading} /> : <Skeleton variant="list" count={4} />
+      ) : view === "searching" ? (
+        shownSearching.length === 0 ? <Empty>Nothing is being searched. Monitored, available titles that are missing a file show up here.</Empty> : (
+          <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
+            {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} onError={fail} />)}
+          </div>
+        )
+      ) : (
+        shownUpcoming.length === 0 ? <Empty>Nothing upcoming. Unreleased films and albums, and unaired episodes you monitor, land here.</Empty> : (
+          <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
+            {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} onError={fail} />)}
+          </div>
+        )
+      )}
     </>
   );
 }
@@ -509,6 +558,37 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
   );
 }
 
+// FinishingCard is a finished transfer that isn't in the library yet: importing, held for
+// review, an import being retried, or filed where nothing imports it. Its stage chip and
+// why line say which, so it never passes for a healthy seed.
+function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
+  const [removing, setRemoving] = useState(false);
+  const st = it.stage ? STAGE[it.stage] : STAGE.importing;
+  return (
+    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <StatusChip tone={st.tone}>{st.label}</StatusChip>
+            <TypeChip mediaType={it.media_type} />
+            <ProfileChip profile={it.quality_profile} />
+            <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
+          </div>
+          {it.why && <div className="mt-1 text-[11.5px] text-ink-dim" data-testid="stage-why">{it.why}</div>}
+        </div>
+        <div className="flex flex-none items-center gap-1">
+          {it.stage === "needs_review" && (
+            <Link to={LINKS.review} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link>
+          )}
+          <IconBtn label="Delete" tone="var(--reject)" title="Remove from the client — asks what to do with the files" disabled={busy} onClick={() => setRemoving(true)} />
+        </div>
+      </div>
+      {removing && <RemoveDownloadDialog it={it} onClose={() => setRemoving(false)} onDone={(r) => { setRemoving(false); onRemoved(removedMessage(r)); }} />}
+    </div>
+  );
+}
+
 // seedGoal computes the removal target for a seeding torrent and how far along it is.
 function seedGoal(it: ActivityDownload): { label: string; frac: number | null } {
   if (!it.seed_known) return { label: "Not managed by Arrmada — no seed rule", frac: null };
@@ -556,7 +636,10 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
         <div className="min-w-0 flex-1">
           <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? "paused" : "seeding"}</span>}
+            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : it.stage === "not_managed" ? (
+              // Nothing in Arrmada grabbed or imported it: a muted chip, no seed rule.
+              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
+            ) : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
             <TypeChip mediaType={it.media_type} />
             <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
             <span className="font-mono text-[10.5px]" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>
@@ -622,7 +705,7 @@ function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind
   const line = upcoming ? "" : running ? "Searching your indexers now…" : result ? result.text : wantedLine(item);
   const lineTone = !upcoming && !running && result?.failed ? "var(--reject)" : "var(--ink-faint)";
   // Nothing to search while the client is down (it may be downloading) or a download
-  // waits in Review; Review is where that one is settled.
+  // waits in Needs you, which is where that one is settled.
   const canSearch = !upcoming && item.state !== "unknown" && item.state !== "held_for_review";
   return (
     <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--panel-2)]" style={{ background: "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>

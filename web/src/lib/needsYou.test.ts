@@ -10,12 +10,12 @@ const base: Attention = {
   groups: [
     { kind: "health", level: "error", count: 1, title: "1 health problem", link: "/settings/status", link_key: "status" },
     { kind: "request", level: "warning", count: 2, title: "2 requests are waiting for approval", link: "/requests?tab=needs", link_key: "requestsWaiting", sample: ["Sam requested Dune (2021)"] },
-    { kind: "import", level: "warning", count: 3, title: "3 imports keep failing", link: "/downloads?show=problems", link_key: "downloadProblems" },
+    { kind: "import", level: "warning", count: 3, title: "3 imports keep failing", link: "/activity/queue?filter=problems", link_key: "downloadProblems" },
   ],
   items: [
     { key: "health:downloads.client.1", kind: "health", level: "error", title: "qBittorrent isn't answering", link: "/downloadclients", link_key: "downloadClients", since: 1 },
     { key: "request:1", kind: "request", level: "warning", title: "Sam requested Dune (2021)", since: 2 },
-    { key: "import:abc", kind: "import", level: "warning", title: "Importing X keeps failing (3 tries)", detail: "permission denied", link: "/downloads?show=problems", link_key: "downloadProblems", since: 3 },
+    { key: "import:abc", kind: "import", level: "warning", title: "Importing X keeps failing (3 tries)", detail: "permission denied", link: "/activity/queue?filter=problems", link_key: "downloadProblems", since: 3 },
   ],
 };
 

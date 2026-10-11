@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageHeader } from "../components/PageHeader";
 import { api, type BlocklistRow, type BlockType } from "../lib/api";
 import { invalidate, useQuery } from "../lib/query";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip, useConfirm, useToast } from "../ui";
@@ -36,9 +35,10 @@ function when(s: string): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-// Blocklist — every release Arrmada won't grab again, for every kind of title, including
-// the global entries that block a release for everything. Each can be unblocked.
-export function Blocklist() {
+// BlocklistPanel is Activity → Blocklist: every release Arrmada won't grab again, for every
+// kind of title, including the global entries that block a release for everything. Each
+// can be unblocked.
+export function BlocklistPanel() {
   const [type, setType] = useState<BlockType | "">("");
   const [input, setInput] = useState("");
   const [q, setQ] = useState("");
@@ -90,12 +90,11 @@ export function Blocklist() {
 
   return (
     <>
-      <PageHeader title="Blocklist" />
-      <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
+      <div className="max-w-[1100px]">
         <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
           Releases Arrmada won't grab again: ones you blocked or rejected, downloads that stalled, and fakes it caught.
           Most are blocked for one title. Global entries block a release for every title — usually junk rejected from
-          Review that wasn't tied to anything. Unblock an entry to make that release grabbable again on the next search.
+          Needs you that wasn't tied to anything. Unblock an entry to make that release grabbable again on the next search.
         </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">

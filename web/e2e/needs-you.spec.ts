@@ -14,15 +14,15 @@ test.describe("manager", () => {
     await expect(card.getByText("1 import needs review")).toBeVisible();
     await expect(card.getByText("The last backup is 3 days old")).toBeVisible();
     await expect(card.getByRole("link", { name: "Fix →" })).toHaveAttribute("href", "/settings/system#backups");
-    await expect(card.getByRole("link", { name: "Open Review →" })).toHaveAttribute("href", "/review");
+    await expect(card.getByRole("link", { name: "Decide →" })).toHaveAttribute("href", "/activity/needs-you");
     await expect(card.getByRole("link", { name: "Review them →" })).toHaveAttribute("href", "/requests?tab=needs");
 
     // The request pill sits on Requests now; Discover carries none.
     const sidebar = page.getByRole("complementary");
     await expect(sidebar.locator('a[href="/requests"]')).toContainText("2");
     await expect(sidebar.locator('a[href="/discover"]')).toHaveText("Discover");
-    await expect(sidebar.locator('a[href="/review"]')).toContainText("1");
-    await expect(sidebar.locator('a[href="/downloads"]')).toContainText("1");
+    // Activity holds Review as its Needs you tab: one pill for the held import and the stalled download.
+    await expect(sidebar.locator('a[href="/activity"]')).toContainText("2");
     await expect(sidebar.locator('a[href="/settings"]')).toContainText("1");
 
     // One poller for the whole shell, however many parts of the page show the answer.
@@ -46,11 +46,12 @@ test.describe("manager", () => {
     await expect(page.getByRole("button", { name: "Open menu — something needs you" })).toBeVisible();
   });
 
-  test("Downloads narrows to problems from the card's link", async ({ page }) => {
+  test("the Queue narrows to problems from the card's link, and the old address still lands there", async ({ page }) => {
     await page.goto("/downloads?show=problems");
+    await expect(page).toHaveURL(/\/activity\/queue\?filter=problems$/);
     await expect(page.getByRole("button", { name: "Problems only ✕" })).toBeVisible();
     await page.getByRole("button", { name: "Problems only ✕" }).click();
-    await expect(page).toHaveURL(/\/downloads$/);
+    await expect(page).toHaveURL(/\/activity\/queue$/);
   });
 });
 

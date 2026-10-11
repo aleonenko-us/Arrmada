@@ -1,5 +1,7 @@
 // Thin typed client for Arrmada's JSON API.
 
+import type { PipelineStage } from "./stages";
+
 export interface Module {
   id: string;
   name: string;
@@ -302,6 +304,9 @@ export interface ActivityDownload {
   seed_ratio?: number; // target ratio (0 = no ratio target)
   seed_hours?: number; // target seed time in hours (0 = no time target)
   imported?: boolean; // Arrmada has imported this download into the library
+  /** Where it has got to (lib/stages), and for staff why it is there ("Import failed 3× …"). */
+  stage?: PipelineStage;
+  why?: string;
   quality_profile: string;
   media_type?: string;
   held_by_guard?: boolean; // paused by the disk guard, which won't let it resume yet
@@ -821,7 +826,7 @@ export interface LibraryCounts {
   artists: number; albums: number;
 }
 export interface ActivityEvent {
-  kind: "movie" | "series" | "book";
+  kind: HistoryKind; // music is the artist
   id: number; title: string; event: string; detail: string; at_ms: number;
 }
 export interface DashboardData {
@@ -2395,7 +2400,15 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  history: () => req<{ imports: ImportRecord[] }>("/api/v1/history").then((r) => r.imports),
+  /** Activity → History: the event log across every title, newest first, paged by next_before. */
+  history: (f: HistoryFilter = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    const q = qs.toString();
+    return req<HistoryPage>(`/api/v1/history${q ? `?${q}` : ""}`);
+  },
+  /** The files imported most recently and where each went (History's "Files imported"). */
+  importedFiles: () => req<{ imports: ImportRecord[] }>("/api/v1/history?view=imports").then((r) => r.imports),
   // The blocklist across every media type, global entries included, newest first.
   blocklistAll: (opts: { type?: BlockType | ""; q?: string; limit?: number; offset?: number }) => {
     const p = new URLSearchParams();
@@ -3358,6 +3371,24 @@ export interface MovieLookup {
   poster_url: string;
   vote_average: number;
 }
+
+// The History feed (GET /api/v1/history). Music events belong to the artist.
+export type HistoryKind = "movie" | "series" | "book" | "music";
+export type HistoryCategory = "grabbed" | "imported" | "upgraded" | "failed" | "blocklisted" | "removed" | "seeded" | "deleted" | "renamed" | "review" | "other";
+export interface HistoryEvent {
+  kind: HistoryKind;
+  item_id: number;
+  title: string;
+  poster_url?: string;
+  event: string; // the raw event name ("file.deleted")
+  category: HistoryCategory;
+  detail: string;
+  at_ms: number;
+  id: number; // the row id within its kind
+}
+export interface HistoryPage { events: HistoryEvent[]; next_before: string }
+// kind and event take one value or a comma-separated list; event "all" includes "other".
+export interface HistoryFilter { kind?: string; event?: string; q?: string; before?: string; limit?: number }
 
 export interface ImportRecord {
   hash: string;

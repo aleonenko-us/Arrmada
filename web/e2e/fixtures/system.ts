@@ -31,17 +31,17 @@ export const attention: Attention = {
   groups: [
     { kind: "health", level: "warning", count: 1, title: "1 health problem", link: "/settings/status", link_key: "status" },
     { kind: "request", level: "warning", count: 2, title: "2 requests are waiting for approval", link: "/requests?tab=needs", link_key: "requestsWaiting", sample: ["deckhand requested Dune (2021)", "deckhand requested Severance (2022)"] },
-    { kind: "review", level: "warning", count: 1, title: "1 import needs review", link: "/review", link_key: "review", sample: ["Alien is held: it looks like a different title"] },
-    { kind: "stalled", level: "warning", count: 1, title: "1 download has stalled", link: "/downloads?show=problems", link_key: "downloadProblems", sample: ["Old.Film.1080p has stalled"] },
-    { kind: "search", level: "warning", count: 3, title: "3 titles still haven't found a release", link: "/downloads?tab=searching", link_key: "downloadsSearching" },
+    { kind: "review", level: "warning", count: 1, title: "1 import needs review", link: "/activity/needs-you", link_key: "review", sample: ["Alien is held: it looks like a different title"] },
+    { kind: "stalled", level: "warning", count: 1, title: "1 download has stalled", link: "/activity/queue?filter=problems", link_key: "downloadProblems", sample: ["Old.Film.1080p has stalled"] },
+    { kind: "search", level: "warning", count: 3, title: "3 titles still haven't found a release", link: "/activity/wanted", link_key: "downloadsSearching" },
   ],
   items: [
     { key: "health:backups.stale", kind: "health", level: "warning", title: "The last backup is 3 days old", link: "/settings/system#backups", link_key: "backups", link_label: "Backups", since: ago(600) },
     { key: "request:11", kind: "request", level: "warning", title: "deckhand requested Dune (2021)", detail: "Movie", link: "/requests?tab=needs", link_key: "requestsWaiting", since: ago(90) },
     { key: "request:12", kind: "request", level: "warning", title: "deckhand requested Severance (2022)", detail: "Series", link: "/requests?tab=needs", link_key: "requestsWaiting", since: ago(30) },
-    { key: "review:4", kind: "review", level: "warning", title: "Alien is held: it looks like a different title", link: "/review", link_key: "review", since: ago(240) },
-    { key: "stalled:abc123", kind: "stalled", level: "warning", title: "Old.Film.1080p has stalled", detail: "Nobody has sent it any data for 2h", link: "/downloads?show=problems", link_key: "downloadProblems", since: ago(120) },
-    { key: "search:stuck", kind: "search", level: "warning", title: "3 titles still haven't found a release", link: "/downloads?tab=searching", link_key: "downloadsSearching", since: ago(2000), count: 3 },
+    { key: "review:4", kind: "review", level: "warning", title: "Alien is held: it looks like a different title", link: "/activity/needs-you", link_key: "review", since: ago(240) },
+    { key: "stalled:abc123", kind: "stalled", level: "warning", title: "Old.Film.1080p has stalled", detail: "Nobody has sent it any data for 2h", link: "/activity/queue?filter=problems", link_key: "downloadProblems", since: ago(120) },
+    { key: "search:stuck", kind: "search", level: "warning", title: "3 titles still haven't found a release", link: "/activity/wanted", link_key: "downloadsSearching", since: ago(2000), count: 3 },
   ],
 };
 

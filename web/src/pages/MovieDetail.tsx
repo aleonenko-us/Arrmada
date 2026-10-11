@@ -317,7 +317,7 @@ function ClearedNotice({ movie, flash, onDismiss }: { movie: Movie; flash: (m: s
     try {
       const r = await api.searchMovie(movie.id);
       const note = queuedNote(r);
-      flash(note ? `${note} — it searches when its turn comes.` : `Searching — follow it in ${PAGE.downloads} → Searching.`);
+      flash(note ? `${note} — it searches when its turn comes.` : `Searching — follow it in ${PAGE.activity} → Wanted.`);
       onDismiss();
     } catch (e) {
       flash((e as Error).message, true);
@@ -878,7 +878,7 @@ function AcquisitionStatus({ movie, onChange, flash, searchInfo }: {
             onClick={() => run("search", async () => {
               await api.forgetMissingFile(movie.id, 0);
               const note = queuedNote(await api.searchMovie(movie.id));
-              flash(note ? `Cleared the missing file's record. ${note} — it searches when its turn comes.` : `Cleared the missing file's record — searching. Follow it in ${PAGE.downloads} → Searching.`);
+              flash(note ? `Cleared the missing file's record. ${note} — it searches when its turn comes.` : `Cleared the missing file's record — searching. Follow it in ${PAGE.activity} → Wanted.`);
               onChange();
             })}>Search</Button>
         )}
@@ -1070,7 +1070,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
     const r = await api.searchMovie(movie.id);
     if (r.job_id) setSearchJob(r.job_id);
     const note = queuedNote(r);
-    const what = note ? `${note} — it searches when its turn comes.` : `Searching — follow it in ${PAGE.downloads} → Searching.`;
+    const what = note ? `${note} — it searches when its turn comes.` : `Searching — follow it in ${PAGE.activity} → Wanted.`;
     flash(missing ? `Cleared the missing file's record. ${what}` : what);
     onChange();
   };

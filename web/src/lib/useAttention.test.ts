@@ -12,11 +12,12 @@ describe("badgeFor", () => {
     }
   });
 
-  it("counts requests, reviews, and downloads plus failing imports", () => {
+  it("counts requests, reviews, and on Activity reviews plus downloads and failing imports", () => {
     const c = { ...zero, requests: 2, reviews: 1, downloads: 2, imports: 1, total: 6 };
     expect(badgeFor("requests", c)).toMatchObject({ count: 2, tone: "accent" });
     expect(badgeFor("review", c)).toMatchObject({ count: 1, tone: "accent", label: "1 import needs review" });
-    expect(badgeFor("activity", c)).toMatchObject({ count: 3, tone: "accent" });
+    expect(badgeFor("activity", c)).toMatchObject({ count: 4, tone: "accent", label: "1 import needs review, 3 downloads need a look" });
+    expect(badgeFor("activity", { ...zero, reviews: 2 })).toMatchObject({ count: 2, label: "2 imports need review" });
   });
 
   it("shows health errors in red ahead of warnings in amber", () => {

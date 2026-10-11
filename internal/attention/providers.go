@@ -22,8 +22,8 @@ var groupLinks = map[string]*health.Fix{
 	KindReview:   health.FixReview,
 	KindDownload: health.FixDownloadProblems,
 	KindStalled:  health.FixDownloadProblems,
-	KindImport:   health.FixDownloadProblems,
-	KindWrongCat: health.FixDownloadProblems,
+	KindImport:   health.FixImportProblems,
+	KindWrongCat: health.FixImportProblems,
 	KindSearch:   health.FixDownloadsSearching,
 	KindHealth:   health.FixStatus,
 }
@@ -322,7 +322,7 @@ func (p importsProvider) Collect(ctx context.Context, f *Frame) ([]Item, error) 
 		if !fl.Since.IsZero() {
 			it.Since = fl.Since.UnixMilli()
 		}
-		linkTo(&it, health.FixDownloadProblems)
+		linkTo(&it, health.FixImportProblems)
 		out = append(out, it)
 	}
 	return out, nil
@@ -358,7 +358,7 @@ func (p wrongCatProvider) Collect(_ context.Context, f *Frame) ([]Item, error) {
 			Title: it.Name + " finished in " + cat,
 			Detail: "Arrmada only imports TV from “" + download.CategoryTV + "”: set the category in qBittorrent, " +
 				"or grab it again through Arrmada"}
-		linkTo(&x, health.FixDownloadProblems)
+		linkTo(&x, health.FixImportProblems)
 		out = append(out, x)
 	}
 	return out, nil

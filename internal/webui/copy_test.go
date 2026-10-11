@@ -52,7 +52,7 @@ var bannedCopy = []bannedPhrase{
 	phrase(`AI \+ embedded only`, "list the sources that work right now (Subtitles header pill)"),
 	phrase(`stripped from the video`, "Subtitles never edits the video; Convert drops languages under its own setting"),
 	// COPY-03: pages that don't exist.
-	phrase(`(appear|show)[a-z]* in Activity`, "there is no Activity page — name Downloads → Searching via PAGE.downloads"),
+	phrase(`(appear|show)[a-z]* in Downloads|Downloads → (Searching|Upcoming|Seeding)`, "Downloads, Review, History and Blocklist are tabs of Activity — say Activity → Queue / Wanted (PAGE.activity)"),
 	// (REQ-05 routed /requests, so "Requests page" is no longer a dead end.)
 	// COPY-09: what requesters actually get.
 	phrase(`Discover-only`, "requesters get Discover, Requests, Calendar, Books and Audiobooks — list the real pages (requesterNav)"),
@@ -217,8 +217,8 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`image subs + AI are coming`,
 		`AI + embedded only`,
 		`everything else is stripped from the video`,
-		`it'll appear in Activity once grabbed`,
-		`it'll show in Activity once grabbed`,
+		`it'll appear in Downloads once grabbed`,
+		`follow it in Downloads → Searching`,
 		`a Requester account (Discover-only)`,
 		`Requesters see only the Discover page.`,
 		`re-run ./update.sh`,
@@ -262,7 +262,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 	for _, ok := range []string{
 		`Coming soon — copy-ok: quoting the old text on purpose`,
 		`subtitles as soon as it imports`,
-		`Downloads → Searching`,
+		`Activity → Wanted`,
 		`Settings → System → API keys`,
 		`Settings → Downloads → Recycle bin`,
 		`/settings/system#api-keys`,

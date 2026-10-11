@@ -8,23 +8,46 @@ import (
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/pipeline"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
 
-// Request stages, in the order a request moves through them.
+// Request stages, in the order a request moves through them. The download stages are
+// the pipeline's (internal/pipeline), so a request card and the staff Activity queue call
+// the same download by the same name; the rest are a request's own.
 const (
-	StagePending     = "pending"     // waiting for someone to approve it
-	StageDeclined    = "declined"    // turned down
-	StageSearching   = "searching"   // approved; nothing grabbed yet (or not out yet)
-	StageQueued      = "queued"      // grabbed, the download hasn't started
-	StageDownloading = "downloading" // bytes are arriving
-	StagePaused      = "paused"      // its download is paused
-	StageFailed      = "failed"      // its download errored
-	StageImporting   = "importing"   // downloaded; being moved into the library
-	StagePartial     = "partial"     // a series with some episodes ready
-	StageAdding      = "adding"      // on disk; waiting for Plex to show it before saying it's ready
-	StageAvailable   = "available"   // ready to watch / read / listen
+	StagePending     = "pending"            // waiting for someone to approve it
+	StageDeclined    = "declined"           // turned down
+	StageSearching   = "searching"          // approved; nothing grabbed yet (or not out yet)
+	StageQueued      = pipeline.Queued      // grabbed, the download hasn't started
+	StageDownloading = pipeline.Downloading // bytes are arriving
+	StagePaused      = pipeline.Paused      // its download is paused
+	StageFailed      = pipeline.Failed      // its download errored
+	StageImporting   = pipeline.Importing   // downloaded; being moved into the library
+	StagePartial     = "partial"            // a series with some episodes ready
+	StageAdding      = "adding"             // on disk; waiting for Plex to show it before saying it's ready
+	StageAvailable   = "available"          // ready to watch / read / listen
 )
+
+// SetImportFailures gives Track the importers' retry records (every download whose
+// import has failed and will be tried again), so a request whose import is retrying says
+// it's being checked rather than looking stuck. Call before serving; nil = none known.
+func (s *Service) SetImportFailures(f func() []library.FailureInfo) { s.importFailures = f }
+
+// failingImports is the set of lowercased hashes whose import is retrying.
+func (s *Service) failingImports() map[string]bool {
+	if s.importFailures == nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, f := range s.importFailures() {
+		if f.Hash != "" {
+			out[strings.ToLower(f.Hash)] = true
+		}
+	}
+	return out
+}
 
 // addingToPlex reports whether a complete request is still waiting for Plex: approved, a
 // movie or show, nobody told yet, and either seen waiting (on_disk_at) or Plex is set up
@@ -96,12 +119,13 @@ func (s *Service) Track(ctx context.Context, reqs []Request, queue []download.It
 	}
 	now := time.Now()
 	gated := s.plex != nil && s.plex.Configured(ctx)
+	failing := s.failingImports()
 	for i := range reqs {
 		var mine []automation.Acquisition
 		if reqs[i].libID > 0 {
 			mine = acqs[reqs[i].MediaType][reqs[i].libID]
 		}
-		reqs[i].Tracking = track(&reqs[i], mine, byHash, queueKnown, now)
+		reqs[i].Tracking = track(&reqs[i], mine, byHash, failing, queueKnown, now)
 		if t := reqs[i].Tracking; t != nil && t.Stage == StageAvailable && addingToPlex(reqs[i], gated) {
 			t.Stage = StageAdding
 		}
@@ -215,7 +239,8 @@ func (s *Service) inFlightFor(ctx context.Context, reqs []Request) map[string]ma
 	return out
 }
 
-func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*download.Item, queueKnown bool, now time.Time) *Tracking {
+// failing is the hashes whose import is retrying (failingImports).
+func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*download.Item, failing map[string]bool, queueKnown bool, now time.Time) *Tracking {
 	t := &Tracking{}
 	if rq.MediaType == "series" {
 		t.Have, t.Total = rq.epHave, rq.epTotal
@@ -235,8 +260,10 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 		return t
 	}
 
-	// What's in flight for it.
-	var active, done, failed, paused int
+	// What's in flight for it. checking counts the finished ones a person or a retry is
+	// dealing with (held in Review, an import that failed): still "importing" to the
+	// requester, with a note that it's being checked — never why.
+	var active, done, failed, paused, checking int
 	var size, got, speed, eta int64
 	matched := 0
 	for _, a := range acqs {
@@ -250,6 +277,7 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 				// Finished and waiting in Review: it's here, being decided on.
 				matched++
 				done++
+				checking++
 			case !queueKnown && automation.AcqFinished(a):
 				// The queue can't be read; the record last saw it finished.
 				matched++
@@ -268,6 +296,9 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 		switch {
 		case it.Progress >= 1:
 			done++
+			if automation.AcqHeld(a) || failing[strings.ToLower(a.InfoHash)] {
+				checking++
+			}
 		case it.State == "error":
 			failed++
 		case it.State == "paused":
@@ -297,6 +328,9 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 		t.Stage = StagePaused
 	case done > 0:
 		t.Stage = StageImporting
+		if checking > 0 {
+			t.Note = pipeline.BeingChecked
+		}
 	case failed > 0:
 		t.Stage, t.Note = StageFailed, "The download failed — it will be retried"
 	case rq.Available:

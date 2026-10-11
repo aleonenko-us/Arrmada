@@ -7,6 +7,7 @@ import { RouteError } from "../components/RouteError";
 import { ModuleGate } from "../components/ModuleGate";
 import { lazyPage } from "./lazyPage";
 import { LINKS } from "./links";
+import { legacyActivityPath, type LegacyActivityPage } from "./activity";
 
 // The staff console's frame (sidebar, Needs-you polling, restart banner) is its own
 // chunk too: a requester's phone loads only the small requester shell with Discover.
@@ -21,10 +22,7 @@ const Quality = lazyPage(() => import("../pages/Quality"), "Quality");
 const Indexers = lazyPage(() => import("../pages/Indexers"), "Indexers");
 const DownloadClients = lazyPage(() => import("../pages/DownloadClients"), "DownloadClients");
 const Settings = lazyPage(() => import("../pages/Settings"), "Settings");
-const Downloads = lazyPage(() => import("../pages/Downloads"), "Downloads");
-const History = lazyPage(() => import("../pages/History"), "History");
-const Reviews = lazyPage(() => import("../pages/Reviews"), "Reviews");
-const Blocklist = lazyPage(() => import("../pages/Blocklist"), "Blocklist");
+const Activity = lazyPage(() => import("../pages/Activity"), "Activity");
 const Movies = lazyPage(() => import("../pages/Movies"), "Movies");
 const MovieDetail = lazyPage(() => import("../pages/MovieDetail"), "MovieDetail");
 const MoviesWanted = lazyPage(() => import("../pages/MoviesWanted"), "MoviesWanted");
@@ -93,6 +91,18 @@ function discover(element: ReactNode): RouteObject {
   };
 }
 
+// The pages the Activity page replaced (and the bare /activity) open the matching tab,
+// keeping their query: /downloads?tab=searching is /activity/wanted.
+function legacyActivity(path: string, from: LegacyActivityPage): RouteObject {
+  const handle: RouteHandle = { title: "Activity" };
+  return { path, element: <ActivityRedirect from={from} />, handle, errorElement: <RouteError /> };
+}
+
+function ActivityRedirect({ from }: { from: LegacyActivityPage }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={legacyActivityPath(from, search, hash)} replace />;
+}
+
 function TvRedirect() {
   const { tmdbId } = useParams();
   const { search } = useLocation();
@@ -123,11 +133,12 @@ function staffRoutes(admin: boolean): RouteObject[] {
   const music = (el: ReactNode) => <ModuleGate module="music" home={home}>{el}</ModuleGate>;
   return [
     { index: true, element: <Dashboard />, handle: { title: "Dashboard" } satisfies RouteHandle, errorElement: <RouteError /> },
-    page("/downloads", "Downloads", <Downloads />),
-    redirect("/activity", "/downloads"),
-    page("/history", "History", <History />),
-    page("/review", "Review", <Reviews />),
-    page("/blocklist", "Blocklist", <Blocklist />),
+    page("/activity/:tab", "Activity", <Activity />),
+    legacyActivity("/activity", "activity"),
+    legacyActivity("/downloads", "downloads"),
+    legacyActivity("/history", "history"),
+    legacyActivity("/review", "review"),
+    legacyActivity("/blocklist", "blocklist"),
     page("/movies", "Movies", <Movies />),
     page("/movies/wanted", "Wanted movies", <MoviesWanted />),
     page("/movies/:id", "Movie", <MovieDetail />),

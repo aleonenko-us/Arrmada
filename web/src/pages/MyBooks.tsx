@@ -6,6 +6,7 @@ import { formatCheckDay, notFoundYet } from "../lib/format";
 import { stillComingLine } from "../lib/bookFormats";
 import { Link } from "react-router-dom";
 import { playAudiobook } from "../lib/playerStub";
+import { STAGE } from "../lib/stages";
 
 // MyBooks is the requester's view of the book library: every book that has a file,
 // a download for each ebook, and their own requests still on the way. Deliberately
@@ -208,11 +209,12 @@ function requestBadge(r: MyRequest): { label: string; tone: string } {
   if (r.status === "pending") return { label: "Pending", tone: "var(--avoid)" };
   switch (r.stage) {
     case "searching": return r.note === "Not found yet" ? { label: "Not found yet", tone: "var(--avoid)" } : { label: "Searching", tone: "var(--accent)" };
-    case "queued": return { label: "Starting", tone: "var(--accent)" };
-    case "downloading": return { label: "Downloading", tone: "var(--accent)" };
-    case "paused": return { label: "Paused", tone: "var(--ink-dim)" };
-    case "importing": return { label: "Importing", tone: "var(--accent)" };
-    case "failed": return { label: "Retrying", tone: "var(--avoid)" };
+    // The download stages say what the staff queue says (lib/stages).
+    case "queued": return { label: STAGE.queued.label, tone: "var(--accent)" };
+    case "downloading": return { label: STAGE.downloading.label, tone: "var(--accent)" };
+    case "paused": return { label: STAGE.paused.label, tone: "var(--ink-dim)" };
+    case "importing": return { label: STAGE.importing.label, tone: "var(--accent)" };
+    case "failed": return { label: STAGE.failed.label, tone: "var(--avoid)" };
     case "available": return { label: "Ready", tone: "var(--good)" };
     case "partial": return { label: "Partly ready", tone: "var(--good)" }; // one of two formats here
     case undefined: return { label: "Approved", tone: "var(--accent)" };

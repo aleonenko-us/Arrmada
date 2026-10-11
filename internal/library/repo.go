@@ -160,7 +160,7 @@ func (r *importRepo) recent(ctx context.Context, limit int) ([]ImportRecord, err
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT download_hash, source_path, target_path, title, size_bytes, imported_at,
 		        release_name, year, attach_state, attach_error, attach_attempts
-		 FROM imports ORDER BY imported_at DESC, id DESC LIMIT ?`, limit)
+		 FROM imports WHERE target_path != '' ORDER BY imported_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}

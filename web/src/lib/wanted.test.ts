@@ -47,7 +47,7 @@ describe("wantedLine", () => {
   it("names what a row is waiting on instead of searching", () => {
     expect(wantedLine(row({ media_type: "series", state: "waiting_download", waiting_on: "Show.S03.1080p", stalled: true }), now))
       .toBe("Waiting on Show.S03.1080p (stalled — nobody is sending data) — not searched until it finishes or fails");
-    expect(wantedLine(row({ state: "held_for_review" }), now)).toMatch(/^Its download finished but is held in Review/);
+    expect(wantedLine(row({ state: "held_for_review" }), now)).toMatch(/^Its download finished but is held in Activity → Needs you/);
     expect(wantedLine(row({ state: "unknown" }), now)).toMatch(/download client isn't answering/);
   });
 

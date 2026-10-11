@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/library"
 )
 
 // Each stage a request can be in, worked out from its grabs and the download queue.
@@ -87,13 +88,15 @@ func TestTrackStopsImportingOnceTheReviewIsResolved(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue := []download.Item{{Hash: "bbb", Name: "Alien", State: "seeding", Progress: 1, SizeBytes: 500, DownloadedBytes: 500}}
-	stage := func() string {
+	track := func() *Tracking {
 		reqs := []Request{{Title: "alien", Status: StatusApproved, MediaType: "movie", libID: 2, released: true}}
 		s.Track(ctx, reqs, queue, true)
-		return reqs[0].Tracking.Stage
+		return reqs[0].Tracking
 	}
-	if got := stage(); got != StageImporting {
-		t.Fatalf("held: stage %q, want importing", got)
+	stage := func() string { return track().Stage }
+	// The same word the staff queue uses, with a note instead of the review's reason.
+	if got := track(); got.Stage != StageImporting || got.Note != "Being checked" {
+		t.Fatalf("held: %+v, want importing, being checked", got)
 	}
 	for _, closed := range []string{"failed", "dismissed", "imported"} {
 		if _, err := db.Exec(`UPDATE grabs SET status = ?`, closed); err != nil {
@@ -102,5 +105,37 @@ func TestTrackStopsImportingOnceTheReviewIsResolved(t *testing.T) {
 		if got := stage(); got == StageImporting {
 			t.Errorf("grab %s: requester still sees importing", closed)
 		}
+	}
+}
+
+// An import that failed and will be retried is "importing, being checked" to the
+// requester — the error itself is staff detail. A finished download that's simply
+// waiting for the import has no note.
+func TestTrackRetryingImportIsBeingChecked(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	at := time.Now().Add(-3 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	for _, g := range [][2]any{{1, "AAA"}, {2, "BBB"}} {
+		if _, err := s.repo.db.Exec(`INSERT INTO grabs (movie_id, title, status, media_type, info_hash, grabbed_at) VALUES (?, 'x', 'grabbed', 'movie', ?, ?)`, g[0], g[1], at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.SetImportFailures(func() []library.FailureInfo {
+		return []library.FailureInfo{{Hash: "bbb", Attempts: 3, LastErr: "permission denied"}}
+	})
+	queue := []download.Item{
+		{Hash: "aaa", State: "seeding", Progress: 1, SizeBytes: 500, DownloadedBytes: 500},
+		{Hash: "bbb", State: "seeding", Progress: 1, SizeBytes: 500, DownloadedBytes: 500},
+	}
+	reqs := []Request{
+		{Title: "waiting", Status: StatusApproved, MediaType: "movie", libID: 1, released: true},
+		{Title: "retrying", Status: StatusApproved, MediaType: "movie", libID: 2, released: true},
+	}
+	s.Track(ctx, reqs, queue, true)
+	if got := reqs[0].Tracking; got.Stage != StageImporting || got.Note != "" {
+		t.Errorf("waiting for the import: %+v", got)
+	}
+	if got := reqs[1].Tracking; got.Stage != StageImporting || got.Note != "Being checked" {
+		t.Errorf("retrying import: %+v, want importing, being checked", got)
 	}
 }

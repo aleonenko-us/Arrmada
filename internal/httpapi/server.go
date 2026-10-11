@@ -127,6 +127,10 @@ type Deps struct {
 	PlexScan *plexscan.Scanner
 	// PlexLinks finds titles in Plex for Watch on Plex links. nil = no links anywhere.
 	PlexLinks PlexLinker
+	// ImportFailures is every download whose import has failed and will be retried (the
+	// movie importer's and the series sweep's), for the queue's Finishing stages. nil =
+	// the movie importer's alone (Library.Failures).
+	ImportFailures func() []library.FailureInfo
 }
 
 type api struct {
