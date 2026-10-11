@@ -362,8 +362,8 @@ func (im *Importer) bookDirIn(root, author, title string) string {
 var reIllegal = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
 
 // Default movie naming. Tokens: {title} {year} {quality} {resolution} {source}
-// {edition} {plexedition} {codec} {group}. Folder has no extension; the file gets one
-// appended. {plexedition} is Plex's "{edition-Director's Cut}", or nothing at all.
+// {edition} {plexedition} {codec} {group} {tmdbid} {imdbid}. Folder has no extension; the
+// file gets one appended. {plexedition} is Plex's "{edition-Director's Cut}", or nothing.
 const (
 	DefaultMovieFolder = "{title} ({year})"
 	DefaultMovieFile   = "{title} ({year}) - {quality}"
@@ -372,7 +372,8 @@ const (
 // Default series naming. The series folder holds season folders, which hold episode
 // files. Tokens: {title} {year} {season} {season00} {episode} {episodetitle} {quality}
 // {resolution} {source} {codec} {group}. {episode} is the SxxExx tag (a range for a
-// double-episode file); {season00} is the zero-padded season for those who want it.
+// double-episode file); {season00} is the zero-padded season for those who want it. A
+// new series folder can also use {tmdbid} {tvdbid} {imdbid}.
 const (
 	DefaultSeriesFolder = "{title} ({year})"
 	DefaultSeasonFolder = "Season {season}"
@@ -420,6 +421,8 @@ type Importer struct {
 	// epTitleFn resolves an episode's metadata title for naming ("" when unknown or
 	// unset). Keyed by show name/year since the importer only knows the show by name.
 	epTitleFn func(seriesTitle string, year, season, episode int) string
+	// seriesIDsFn resolves a show's ids by name/year for a new series folder's id tokens.
+	seriesIDsFn func(seriesTitle string, year int) SeriesIDs
 }
 
 // RootFuncs resolve each library folder at the moment it's needed. They're read on every
@@ -435,6 +438,39 @@ type RootFuncs struct {
 // metadata title ("Chuck - S03E06 - Chuck Versus the Nacho Sampler - 1080p BluRay").
 func (im *Importer) SetEpisodeTitleFunc(f func(seriesTitle string, year, season, episode int) string) {
 	im.epTitleFn = f
+}
+
+// SetSeriesIDsFunc installs a lookup of a show's ids by name and year, so a new series
+// folder can be named "Show (2022) {tvdb-12345}". Unset (or no match) leaves the id tokens
+// empty, and an empty Plex group drops out of the name.
+func (im *Importer) SetSeriesIDsFunc(f func(seriesTitle string, year int) SeriesIDs) {
+	im.seriesIDsFn = f
+}
+
+func (im *Importer) seriesIDs(title string, year int) SeriesIDs {
+	if im.seriesIDsFn == nil {
+		return SeriesIDs{}
+	}
+	return im.seriesIDsFn(title, year)
+}
+
+// hasIDToken reports whether a template names one of the id tokens.
+func hasIDToken(format string) bool {
+	return strings.Contains(format, "{tmdbid}") || strings.Contains(format, "{tvdbid}") || strings.Contains(format, "{imdbid}")
+}
+
+// seriesFolderFormat fills a series template's id tokens. The Plex recommended
+// "{tvdb-{tvdbid}}" falls back to "{tmdb-{tmdbid}}" for a show TVDB doesn't know, so the
+// folder still carries an id Plex can match.
+func seriesFolderFormat(format string, ids SeriesIDs) string {
+	if ids.TVDB <= 0 && ids.TMDB > 0 {
+		format = strings.ReplaceAll(format, "{tvdb-{tvdbid}}", "{tmdb-{tmdbid}}")
+	}
+	return strings.NewReplacer(
+		"{tmdbid}", idToken(ids.TMDB),
+		"{tvdbid}", idToken(ids.TVDB),
+		"{imdbid}", clean(ids.IMDB),
+	).Replace(format)
 }
 
 // SetRootFuncs makes the importer resolve each library folder live (see RootFuncs). It
@@ -550,6 +586,11 @@ func (im *Importer) movieNaming() Naming {
 type MovieTrack struct {
 	Title string
 	Year  int
+	IDs   MovieIDs
+	// Folder, when set, is the library folder the movie already lives in: an import keeps
+	// the movie there instead of starting a second folder after a naming change. Only a
+	// rename moves a movie to the scheme's folder. "" derives the folder from the scheme.
+	Folder string
 	// Edition is the track's own edition ("Director's Cut"). It fills {edition} and
 	// {plexedition} in place of whatever the release says, and when the scheme has neither
 	// token it's added as Plex's {edition-…}, so a Director's Cut track never shares a file
@@ -561,6 +602,27 @@ type MovieTrack struct {
 	// Protected are the files the movie's other tracks own. None is ever a target, and none
 	// is ever recycled or overwritten to make room.
 	Protected []string
+}
+
+// MovieIDs are a movie's ids, for {tmdbid} and {imdbid} — what Plex matches a folder
+// named "Title (Year) {tmdb-12345}" by.
+type MovieIDs struct {
+	TMDB int
+	IMDB string
+}
+
+// SeriesIDs are a show's ids, for {tmdbid}, {tvdbid} and {imdbid} in a new series folder.
+type SeriesIDs struct {
+	TMDB, TVDB int
+	IMDB       string
+}
+
+// idToken renders a numeric id for a name, "" for none.
+func idToken(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	return strconv.Itoa(id)
 }
 
 // movieParts renders the folder and file base names for a movie track from the naming
@@ -585,6 +647,8 @@ func (im *Importer) movieParts(t MovieTrack, rel parser.Release) (folder, file s
 		"plexedition": plexEdition(edition),
 		"codec":       string(rel.Codec),
 		"group":       rel.Group,
+		"tmdbid":      idToken(t.IDs.TMDB),
+		"imdbid":      clean(t.IDs.IMDB),
 	}
 	n := im.movieNaming()
 	folder = renderName(n.Folder, tok)
@@ -1162,9 +1226,18 @@ func (im *Importer) episodeTargetIn(seriesFolder, title string, year, season, ep
 	if t == "" {
 		t = "Unknown"
 	}
+	// The show's ids, looked up only when a template asks for one.
+	var ids SeriesIDs
 	folder := clean(seriesFolder)
+	if (folder == "" && hasIDToken(sn.Folder)) || hasIDToken(sn.EpisodeFile) {
+		ids = im.seriesIDs(title, year)
+	}
 	if folder == "" {
-		folder = renderName(sn.Folder, map[string]string{"title": t, "year": yearToken(year)})
+		// A new series folder: the scheme, with the show's ids when the template asks for
+		// them. An existing folder (seriesFolder) is always reused as it is.
+		folder = renderName(seriesFolderFormat(sn.Folder, ids), map[string]string{
+			"title": t, "year": yearToken(year),
+		})
 		if folder == "" {
 			folder = t
 		}
@@ -1178,7 +1251,7 @@ func (im *Importer) episodeTargetIn(seriesFolder, title string, year, season, ep
 	if im.epTitleFn != nil {
 		epTitle = cleanTitleLoose(im.epTitleFn(title, year, season, episode))
 	}
-	file := renderName(sn.EpisodeFile, map[string]string{
+	file := renderName(seriesFolderFormat(sn.EpisodeFile, ids), map[string]string{
 		"title":        t,
 		"year":         yearToken(year),
 		"season":       strconv.Itoa(season),
@@ -1290,6 +1363,9 @@ func (im *Importer) MovieTarget(title string, year int, qualitySource, ext strin
 func (im *Importer) MovieTrackTarget(t MovieTrack, qualitySource, ext string) string {
 	folder, file := im.movieParts(t, parser.Parse(qualitySource))
 	dir := filepath.Join(im.movieDir(), folder)
+	if t.Folder != "" {
+		dir = t.Folder
+	}
 	target := filepath.Join(dir, file+ext)
 	if !OwnedByOther(target, t.Protected) {
 		return target

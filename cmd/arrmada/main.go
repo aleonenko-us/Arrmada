@@ -526,6 +526,12 @@ func main() {
 		return seriesSvc.EpisodeTitleByName(context.Background(), seriesTitle, year, season, episode)
 	})
 	bookImporter.SetSeriesNaming(prefs) // user-configurable series folder / season / episode formats
+	// A new series folder can carry the show's ids ("Show (2022) {tvdb-12345}", the Plex
+	// recommended scheme); existing folders are reused as they are.
+	bookImporter.SetSeriesIDsFunc(func(seriesTitle string, year int) library.SeriesIDs {
+		tmdb, tvdb, imdb, _ := seriesSvc.IDsByName(context.Background(), seriesTitle, year)
+		return library.SeriesIDs{TMDB: tmdb, TVDB: tvdb, IMDB: imdb}
+	})
 	coordinator.SetSeries(seriesSvc, bookImporter)
 	// Books share the importer set above; ebooks land in their own category.
 	coordinator.SetBooks(booksSvc)

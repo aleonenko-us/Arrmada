@@ -1943,9 +1943,30 @@ func (s *Service) EpisodeTitle(ctx context.Context, seriesID int64, season, epis
 // title (Doctor Who 1963 and 2005) the year picks the right one. Without a year to tell
 // them apart it names no episode rather than borrow the other show's episode title.
 func (s *Service) EpisodeTitleByName(ctx context.Context, seriesTitle string, year, season, episode int) string {
+	pick, ok := s.byName(ctx, seriesTitle, year)
+	if !ok {
+		return ""
+	}
+	return s.repo.EpisodeTitle(ctx, pick.ID, season, episode)
+}
+
+// IDsByName is a show's TMDB, TVDB and IMDb ids, found by its name and year the way
+// EpisodeTitleByName finds it — for the importer naming a new series folder. ok=false when
+// no one show answers to the name.
+func (s *Service) IDsByName(ctx context.Context, seriesTitle string, year int) (tmdb, tvdb int, imdb string, ok bool) {
+	pick, ok := s.byName(ctx, seriesTitle, year)
+	if !ok {
+		return 0, 0, "", false
+	}
+	return pick.TMDBID, pick.TVDBID, pick.IMDBID, true
+}
+
+// byName is the library show called seriesTitle: the only one with that name, or the one
+// of that year when several share it.
+func (s *Service) byName(ctx context.Context, seriesTitle string, year int) (Series, bool) {
 	all, err := s.repo.List(ctx)
 	if err != nil {
-		return ""
+		return Series{}, false
 	}
 	key := normKey(seriesTitle)
 	var same []Series
@@ -1967,9 +1988,9 @@ func (s *Service) EpisodeTitleByName(ctx context.Context, seriesTitle string, ye
 		}
 	}
 	if pick == nil {
-		return ""
+		return Series{}, false
 	}
-	return s.repo.EpisodeTitle(ctx, pick.ID, season, episode)
+	return *pick, true
 }
 
 // normKey is parser.TitleKey, the one title normalizer shared with automation and the

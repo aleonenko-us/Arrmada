@@ -1166,7 +1166,10 @@ func releaseEdition(sourceRelease, path string) string {
 // importer's MovieTrackTarget it's the one name builder for movie files — the import,
 // manual import and rename all go through TrackTarget.
 func (s *Service) TrackNaming(m Movie, versions []Version, v Version) library.MovieTrack {
-	t := library.MovieTrack{Title: m.Title, Year: m.Year, Edition: v.Edition, Label: v.Label}
+	t := library.MovieTrack{
+		Title: m.Title, Year: m.Year, Edition: v.Edition, Label: v.Label,
+		IDs: library.MovieIDs{TMDB: m.TMDBID, IMDB: m.IMDBID},
+	}
 	for _, o := range versions {
 		if o.ID != v.ID && o.FilePath != "" {
 			t.Protected = append(t.Protected, o.FilePath)
@@ -1215,7 +1218,32 @@ func (s *Service) ImportNaming(ctx context.Context, id, versionID int64, replace
 		}
 		target = s.routeVersionFor(ctx, versions, res, rel.Edition)
 	}
-	return library.MovieImportName{MovieID: id, VersionID: target.ID, Track: s.TrackNaming(m, versions, target)}, nil
+	t := s.TrackNaming(m, versions, target)
+	t.Folder = s.existingFolder(versions)
+	return library.MovieImportName{MovieID: id, VersionID: target.ID, Track: t}, nil
+}
+
+// existingFolder is the library folder a movie's files already live in, so an import
+// keeps the movie there after a naming change ("Existing folders only change when you
+// rename them"): the default track's file's folder, else any track's. "" when no track
+// has a file, or the folder isn't a movie folder inside the current Movies root.
+func (s *Service) existingFolder(versions []Version) string {
+	root := s.libRoot()
+	if root == "" {
+		return ""
+	}
+	for _, v := range versions {
+		if v.FilePath == "" {
+			continue
+		}
+		dir := filepath.Dir(v.FilePath)
+		rel, err := filepath.Rel(root, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue // the root itself, or somewhere else: let the scheme decide
+		}
+		return dir
+	}
+	return ""
 }
 
 // matchScore rates how well a profile wants a resolution: higher = more specific.
@@ -1504,7 +1532,7 @@ func (s *Service) movieFolder(m Movie) string {
 	if m.MovieFilePath != "" {
 		return filepath.Dir(m.MovieFilePath)
 	}
-	return filepath.Dir(s.imp.MovieTarget(m.Title, m.Year, "", ".mkv"))
+	return filepath.Dir(s.TrackTarget(m, nil, defaultVersionRow(m), "", ".mkv"))
 }
 
 // ImportCandidate is an unmatched video file available for manual import.
@@ -1589,6 +1617,16 @@ func (s *Service) ManualImportTo(ctx context.Context, id, versionID int64, srcPa
 	return s.MarkImportedTo(ctx, id, n.VersionID, res.TargetPath, filepath.Base(res.SourcePath), true)
 }
 
+// defaultTrackTarget is where the default track's file belongs under the naming scheme,
+// through the same per-track builder as imports (ids, never another track's file).
+func (s *Service) defaultTrackTarget(ctx context.Context, m Movie) string {
+	versions, err := s.VersionRows(ctx, m.ID)
+	if err != nil || len(versions) == 0 {
+		versions = []Version{defaultVersionRow(m)}
+	}
+	return s.TrackTarget(m, versions, versions[0], filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
+}
+
 // RenamePreview returns the canonical name a movie's file should have, and
 // whether it already matches.
 func (s *Service) RenamePreview(ctx context.Context, id int64) (current, proposed string, matches bool, err error) {
@@ -1599,7 +1637,7 @@ func (s *Service) RenamePreview(ctx context.Context, id int64) (current, propose
 	if m.MovieFilePath == "" {
 		return "", "", true, nil
 	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
+	target := s.defaultTrackTarget(ctx, m)
 	return filepath.Base(m.MovieFilePath), filepath.Base(target), target == m.MovieFilePath, nil
 }
 
@@ -1612,7 +1650,7 @@ func (s *Service) Rename(ctx context.Context, id int64) error {
 	if m.MovieFilePath == "" {
 		return fmt.Errorf("movie has no file to rename")
 	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
+	target := s.defaultTrackTarget(ctx, m)
 	if target == m.MovieFilePath {
 		return nil
 	}

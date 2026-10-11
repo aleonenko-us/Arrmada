@@ -174,6 +174,39 @@ func TestManualImportIntoTrack(t *testing.T) {
 	}
 }
 
+// PLEX-13: the import naming carries the movie's ids, and keeps a movie that already has
+// a folder in it (only a rename moves it); a movie with no file gets no folder pinned.
+func TestTitleResolverReturnsIDs(t *testing.T) {
+	svc, ctx, lib := trackService(t)
+	m, _ := svc.repo.Create(ctx, Movie{TMDBID: 949, IMDBID: "tt0113277", Title: "Heat", Year: 1995, Monitored: true})
+	n, err := svc.ImportNaming(ctx, m.ID, -1, "", "Heat.1995.1080p.BluRay.x264-GRP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Track.IDs.TMDB != 949 || n.Track.IDs.IMDB != "tt0113277" {
+		t.Fatalf("ids = %+v", n.Track.IDs)
+	}
+	if n.Track.Folder != "" {
+		t.Fatalf("a movie with no file got folder %q", n.Track.Folder)
+	}
+	old := touch(t, filepath.Join(lib, "Heat (1995)", "Heat (1995) - 720p.mkv"))
+	if err := svc.MarkImportedTo(ctx, m.ID, 0, old, "Heat.1995.720p.BluRay", false); err != nil {
+		t.Fatal(err)
+	}
+	n, _ = svc.ImportNaming(ctx, m.ID, -1, "", "Heat.1995.1080p.BluRay.x264-GRP")
+	if n.Track.Folder != filepath.Dir(old) {
+		t.Fatalf("folder = %q, want the existing %q", n.Track.Folder, filepath.Dir(old))
+	}
+	// A file outside the Movies folder pins nothing.
+	if f := svc.existingFolder([]Version{{FilePath: filepath.Join(t.TempDir(), "x", "y.mkv")}}); f != "" {
+		t.Fatalf("outside folder pinned: %q", f)
+	}
+	// Nor does one sitting in the root itself.
+	if f := svc.existingFolder([]Version{{FilePath: filepath.Join(lib, "loose.mkv")}}); f != "" {
+		t.Fatalf("root pinned: %q", f)
+	}
+}
+
 func mustGet(t *testing.T, svc *Service, id int64) Movie {
 	t.Helper()
 	m, err := svc.repo.Get(context.Background(), id)
