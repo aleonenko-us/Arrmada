@@ -64,9 +64,6 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	quota := requests.GlobalLimits(func(key string) string { return a.deps.Settings.Get(ctx, key, "") })
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"search_on_add":           a.deps.Settings.GetBool(ctx, keySearchOnAdd, true),
-		// Search indexers that name no categories of their own in the media type's usual
-		// ones (movies 2000, TV 5000, books 7000/7020, audiobooks 3030, music 3000).
-		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 		"series_monitor_default":  a.seriesMonitorDefault(ctx),
 		"naming_movie_folder":     a.deps.Settings.Get(ctx, keyNamingFolder, library.DefaultMovieFolder),
 		"naming_movie_file":       a.deps.Settings.Get(ctx, keyNamingFile, library.DefaultMovieFile),
@@ -103,6 +100,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// Request limits per person, per window of days (0 = unlimited; Settings → Users).
 		"request_quota_days": quota.Days, "request_quota_movies": quota.Movie,
 		"request_quota_seasons": quota.Season, "request_quota_books": quota.Book,
+		// Search indexers that name no categories of their own in the media type's usual
+		// ones (movies 2000, TV 5000, books 7000/7020, audiobooks 3030, music 3000).
+		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 	})
 }
 
@@ -113,7 +113,6 @@ const maxUpgradeBudget = 1000
 // settingsUpdate is a PUT /settings body: a nil field is left as it is.
 type settingsUpdate struct {
 	SearchOnAdd          *bool   `json:"search_on_add"`
-	DefaultCategories    *bool   `json:"indexer_default_categories"`
 	SeriesMonitorDefault *string `json:"series_monitor_default"`
 	NamingMovieFolder    *string `json:"naming_movie_folder"`
 	NamingMovieFile      *string `json:"naming_movie_file"`
@@ -141,6 +140,7 @@ type settingsUpdate struct {
 	QuotaMovies               *int    `json:"request_quota_movies"`
 	QuotaSeasons              *int    `json:"request_quota_seasons"`
 	QuotaBooks                *int    `json:"request_quota_books"`
+	DefaultCategories         *bool   `json:"indexer_default_categories"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
