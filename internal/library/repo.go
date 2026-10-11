@@ -151,6 +151,31 @@ func (r *importRepo) setAttachRetry(ctx context.Context, hash string, attempts i
 	return err
 }
 
+// pendingTargets lists the files imported for movieID's tracks other than versionID that
+// are still waiting to be attached: placed in the library, but on no track's record yet.
+func (r *importRepo) pendingTargets(ctx context.Context, movieID, versionID int64) ([]string, error) {
+	if movieID <= 0 {
+		return nil, nil
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT target_path FROM imports
+		 WHERE movie_id = ? AND version_id != ? AND attach_state = 'pending' AND removed = 0 AND target_path != ''`,
+		movieID, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // pendingAttach lists imports still waiting to be attached whose retry is due, oldest
 // first. A file the user deleted on purpose is left alone: there's nothing to attach.
 func (r *importRepo) pendingAttach(ctx context.Context, now int64, limit int) ([]ImportRecord, error) {

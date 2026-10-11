@@ -159,6 +159,34 @@ func (r trackResolver) ResolveMovieImport(context.Context, string, string) (Movi
 	return r.n, true
 }
 
+// A file imported for another track whose attach is still pending is on no track's
+// record yet; the next import for this track must keep clear of it all the same.
+func TestProcessProtectsPendingImportOfOtherTrack(t *testing.T) {
+	src, lib := t.TempDir(), t.TempDir()
+	m := newTestManager(t, lib, nil)
+	theirs := filepath.Join(lib, "Heat (1995)", "Heat (1995) - 1080p BluRay.mkv")
+	writeBytes(t, theirs, patterned(4096, 'a', 0, "THEIRS"))
+	if err := m.repo.record(context.Background(), ImportRecord{Hash: "h0", TargetPath: theirs, Title: "Heat", MovieID: 3, VersionID: 4}, AttachStatePending); err != nil {
+		t.Fatal(err)
+	}
+	m.SetTitleResolver(trackResolver{MovieImportName{MovieID: 3, VersionID: 9, Track: MovieTrack{Title: "Heat", Year: 1995, Label: "Mine"}}})
+	dl := filepath.Join(src, "Heat.1995.1080p.BluRay.x264-OTHER.mkv")
+	writeBytes(t, dl, patterned(4096, 'b', 0, "MINE"))
+	if n := m.Process(context.Background(), []Candidate{{Hash: "h1", Name: "Heat.1995.1080p.BluRay.x264-OTHER", ContentPath: dl}}); n != 1 {
+		t.Fatalf("imported %d, want 1", n)
+	}
+	if !bytes.Contains(readBytes(t, theirs), []byte("THEIRS")) {
+		t.Fatal("the pending file of the other track was replaced")
+	}
+	var target string
+	if err := m.repo.db.QueryRow(`SELECT target_path FROM imports WHERE download_hash = 'h1'`).Scan(&target); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(lib, "Heat (1995)", "Heat (1995) - 1080p BluRay - Mine.mkv"); target != want {
+		t.Fatalf("target %q, want %q", target, want)
+	}
+}
+
 func TestProcessRecordsDecidedTrack(t *testing.T) {
 	src, lib := t.TempDir(), t.TempDir()
 	m := newTestManager(t, lib, nil)

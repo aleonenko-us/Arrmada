@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -433,6 +434,14 @@ func (m *Manager) settle(ctx context.Context, rec ImportRecord, state, reason st
 func (m *Manager) importOne(ctx context.Context, c Candidate) (*Result, int64, int64, error) {
 	if m.resolver != nil {
 		if n, ok := m.resolver.ResolveMovieImport(ctx, c.Hash, c.Name); ok {
+			// A file imported for another track whose attach hasn't landed yet is on disk
+			// but on no track's record: protect it too, or a same-named import for this
+			// track would recycle it. Unreadable → don't import now (retried).
+			pending, err := m.repo.pendingTargets(ctx, n.MovieID, n.VersionID)
+			if err != nil {
+				return nil, 0, -1, fmt.Errorf("read pending imports: %w", err)
+			}
+			n.Track.Protected = append(n.Track.Protected, pending...)
 			res, err := m.imp.ImportAsNamed(n.Track, c.ContentPath)
 			return res, n.MovieID, n.VersionID, err
 		}

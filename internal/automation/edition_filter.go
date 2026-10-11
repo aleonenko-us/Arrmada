@@ -51,7 +51,7 @@ func editionDrop(name string, rel parser.Release, v movies.Version, siblings []m
 	}
 	key := normTitle(name)
 	for _, o := range siblings {
-		if o.ID != v.ID && o.SourceRelease != "" && normTitle(o.SourceRelease) == key {
+		if o.ID != v.ID && o.HasFile && o.SourceRelease != "" && normTitle(o.SourceRelease) == key {
 			return "sibling"
 		}
 	}

@@ -613,7 +613,9 @@ func (a *api) handleUpdateVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.QualityProfile == "" {
 		req.QualityProfile = cur.QualityProfile // not sent: keep the track's profile
-	} else if !a.deps.Automation.KnownProfile(r.Context(), req.QualityProfile) {
+	} else if req.QualityProfile != cur.QualityProfile && !a.deps.Automation.KnownProfile(r.Context(), req.QualityProfile) {
+		// Only a new profile is checked: a track whose profile was deleted since can still
+		// be renamed or (un)monitored, and runs under the default until it's changed.
 		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
 		return
 	}
