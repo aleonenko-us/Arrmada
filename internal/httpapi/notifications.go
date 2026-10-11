@@ -13,13 +13,25 @@ import (
 // Admin alert connections. A saved Apprise URL never comes back out: the list carries a
 // hint (scheme and, where it isn't secret, the host), an edit that leaves the URL out
 // keeps the stored one, and a saved connection is tested by id. Staff can see the list;
-// only admins change it or make it send.
+// only admins change it or make it send. Preset connections (Discord, Telegram, ntfy,
+// Pushover, email) are saved from form fields the server builds the URL from
+// (notify/presets.go); their secret fields are masked the same way.
 
-// notificationView is a connection as the API shows it: everything but the URL.
+// notificationView is a connection as the API shows it: everything but the URL and the
+// secrets it was built from.
 type notificationView struct {
 	notify.Connection
-	URLHint string `json:"url_hint"`
-	URLSet  bool   `json:"url_set"`
+	// Config shadows the connection's own: only a push connection's {"user_id"} goes out.
+	// A preset's config holds its fields, secrets included; those go out as Fields.
+	Config  json.RawMessage `json:"config"`
+	URLHint string          `json:"url_hint"`
+	URLSet  bool            `json:"url_set"`
+	// Preset is the form the connection is edited with: discord, telegram, ntfy,
+	// pushover, email, webpush, or custom (a raw Apprise URL — every connection made
+	// before presets). Fields are its form values, each secret blank with
+	// "<name>_set": true beside it.
+	Preset string         `json:"preset"`
+	Fields map[string]any `json:"fields,omitempty"`
 	// InvalidReason says why a URL saved before validation existed no longer passes it.
 	// The connection still sends; editing it needs a valid URL.
 	InvalidReason string `json:"invalid_reason,omitempty"`
@@ -28,7 +40,15 @@ type notificationView struct {
 }
 
 func viewOf(c notify.Connection) notificationView {
-	v := notificationView{Connection: c, URLHint: notify.URLHint(c.URL), URLSet: c.URL != ""}
+	v := notificationView{Connection: c, Config: json.RawMessage("{}"), URLHint: notify.URLHint(c.URL), URLSet: c.URL != "", Preset: notify.PresetCustom}
+	switch fields := notify.PresetFields(c); {
+	case c.Kind == notify.KindWebPush:
+		v.Preset = notify.KindWebPush
+		v.Config = notify.PushConfigFor(c.PushUserID())
+	case fields != nil:
+		v.Preset = c.Kind
+		v.Fields = notify.MaskedFields(c.Kind, fields)
+	}
 	if c.URL != "" && c.Kind != notify.KindWebPush {
 		if err := notify.ValidateAppriseURL(c.URL); err != nil {
 			v.InvalidReason = err.Error()
@@ -49,6 +69,30 @@ type notificationInput struct {
 	// Config is accepted so a client may echo a connection back, but never used: a push
 	// connection's target is always the signed-in user (pushTarget).
 	Config json.RawMessage `json:"config"`
+	// Fields are a preset's form values (kind discord, telegram, ntfy, pushover, email);
+	// the server builds the URL from them. A secret left blank keeps the stored one.
+	Fields map[string]string `json:"fields"`
+	// ID, on a Test of an unsaved edit, names the saved connection whose stored secrets
+	// fill the fields left blank.
+	ID int64 `json:"id"`
+}
+
+// presetURL builds a preset connection's URL from the form, filling blank secrets from
+// stored (the same kind's saved fields; nil for a new one). It returns the fields to keep.
+func presetURL(kind string, in, stored map[string]string) (string, map[string]string, error) {
+	fields := notify.MergeSecrets(kind, in, stored)
+	u, err := notify.BuildURL(kind, fields)
+	if err != nil {
+		return "", nil, err
+	}
+	return u, fields, nil
+}
+
+// usesFields says whether a request sets a connection up from a preset's fields rather
+// than a raw URL. A client that only sends a URL (an older page, an API script) keeps
+// working as before: the connection becomes a custom one.
+func (in notificationInput) usesFields() bool {
+	return in.Fields != nil && notify.IsFieldPreset(in.Kind)
 }
 
 func (in notificationInput) url() string {
@@ -81,6 +125,11 @@ func (a *api) checkEvents(w http.ResponseWriter, in notificationInput) bool {
 // for the Alerts page.
 func (a *api) handleNotificationCatalog(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"groups": notify.Groups(), "events": notify.Catalog()})
+}
+
+// handleNotificationPresets lists the "Where should alerts go?" tiles and each one's form.
+func (a *api) handleNotificationPresets(w http.ResponseWriter, r *http.Request) {
+	a.writeJSON(w, http.StatusOK, map[string]any{"presets": notify.Presets})
 }
 
 // handleListNotifications returns all notification connections, URLs redacted.
@@ -145,15 +194,29 @@ func (a *api) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusCreated, viewOf(created))
 		return
 	}
-	if c.Name == "" || c.URL == "" {
-		a.writeError(w, http.StatusBadRequest, "name and url are required")
-		return
-	}
-	// Checked on save, not at send time: a typo or an option-looking string would
-	// otherwise be stored and only fail when an alert is due.
-	if err := notify.ValidateAppriseURL(c.URL); err != nil {
-		a.writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if in.usesFields() {
+		if c.Name == "" {
+			a.writeError(w, http.StatusBadRequest, "name is required")
+			return
+		}
+		u, fields, err := presetURL(c.Kind, in.Fields, nil)
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		c.URL, c.Config = u, notify.PresetConfigFor(c.Kind, fields)
+	} else {
+		if c.Name == "" || c.URL == "" {
+			a.writeError(w, http.StatusBadRequest, "name and url are required")
+			return
+		}
+		// Checked on save, not at send time: a typo or an option-looking string would
+		// otherwise be stored and only fail when an alert is due.
+		if err := notify.ValidateAppriseURL(c.URL); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		c.Config = nil // a raw URL is a custom connection; nothing else is kept
 	}
 	created, err := a.deps.Notify.Create(r.Context(), c)
 	if err != nil {
@@ -209,14 +272,34 @@ func (a *api) handleUpdateNotification(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
 		return
 	}
-	// No URL (or a blank one) keeps the stored URL, so renaming or ticking events
-	// doesn't mean retyping a token. A new one must pass validation.
-	if u := in.url(); u != "" {
+	switch u := in.url(); {
+	case in.usesFields():
+		// A preset's form: a secret left blank keeps the stored one — but only from the
+		// same kind of preset, so switching Discord to Telegram can't carry a token over.
+		var kept map[string]string
+		if c.Kind == stored.Kind {
+			kept = notify.PresetFields(stored)
+		}
+		built, fields, err := presetURL(c.Kind, in.Fields, kept)
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		c.URL, c.Config = built, notify.PresetConfigFor(c.Kind, fields)
+	case u != "" && u != notify.URLHint(stored.URL):
+		// A new raw URL must pass validation; the connection is a custom one from now on.
 		if err := notify.ValidateAppriseURL(u); err != nil {
 			a.writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		c.URL = u
+		c.URL, c.Config = u, json.RawMessage("{}")
+	default:
+		// No URL, a blank one or the masked hint sent back keeps the stored URL, so
+		// renaming or ticking events doesn't mean retyping a token. A preset whose kind
+		// changed without new fields keeps its URL as a custom connection.
+		if c.Kind != stored.Kind {
+			c.Config = json.RawMessage("{}")
+		}
 	}
 	if err := a.deps.Notify.Update(r.Context(), id, c); err != nil {
 		if errors.Is(err, notify.ErrNotFound) {
@@ -262,6 +345,22 @@ func (a *api) handleTestNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		a.answerTest(w, r, c)
 		return
+	}
+	if in.usesFields() {
+		// An edit being tried before it's saved: blank secrets come from the saved
+		// connection of the same kind, server-side, so the browser never needs them.
+		var kept map[string]string
+		if in.ID > 0 {
+			if saved, err := a.deps.Notify.Get(r.Context(), in.ID); err == nil && saved.Kind == c.Kind {
+				kept = notify.PresetFields(saved)
+			}
+		}
+		u, _, err := presetURL(c.Kind, in.Fields, kept)
+		if err != nil {
+			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		c.URL = u
 	}
 	if err := notify.ValidateAppriseURL(c.URL); err != nil {
 		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})

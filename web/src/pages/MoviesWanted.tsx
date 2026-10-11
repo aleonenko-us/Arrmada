@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { api, type MoviesMissing, type MovieWantedRow, type WantedRow } from "../lib/api";
 import { useQuery, type QueryResult } from "../lib/query";
 import { useTabParam } from "../lib/useTabParam";
-import { useLive } from "../lib/useLive";
+import { useLiveRefresh } from "../lib/useLiveQuery";
 import { posterThumb } from "../lib/img";
 import { wantedChip, wantedLine } from "../lib/wanted";
 import { attemptLine, nextTryText } from "../lib/searchOutcome";
@@ -23,31 +23,20 @@ const TABS = ["missing", "cutoff"] as const;
 
 // The events after which the lists may have changed: a search finished or moved in the
 // queue, a grab, an import, a scan.
-const REFRESH_TOPICS = ["search.finished", "movie.search.started", "movie.search.done", "release.grabbed", "movie.downloaded", "movie.file_deleted", "library.scanned", "movie.deleted"];
+const REFRESH_TOPICS = ["search.finished", "movie.search.started", "movie.search.done", "release.grabbed", "download.imported", "file.removed", "library.scanned"];
 
 export function MoviesWanted() {
   const [tab, setTab] = useTabParam(TABS, "missing");
   const missing = useQuery("movies:wanted:missing", () => api.moviesMissing(), { staleMs: 0 });
   const cutoff = useQuery("movies:wanted:cutoff", () => api.moviesCutoff(), { staleMs: 0 });
-  const { last } = useLive();
-  const queue = useMovieSearchQueue(last);
+  const queue = useMovieSearchQueue();
   const queueText = queueLine(queue.running, queue.queued);
 
   // Refetch on anything that changes the lists, at most once a second: a Search all moves
   // dozens of rows through the queue.
-  const timer = useRef<number | undefined>(undefined);
   const { refetch: refetchMissing } = missing;
   const { refetch: refetchCutoff } = cutoff;
-  useEffect(() => {
-    if (!last || !REFRESH_TOPICS.includes(last.topic)) return;
-    if (timer.current !== undefined) return;
-    timer.current = window.setTimeout(() => {
-      timer.current = undefined;
-      void refetchMissing();
-      void refetchCutoff();
-    }, 1000);
-  }, [last, refetchMissing, refetchCutoff]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useLiveRefresh(() => Promise.all([refetchMissing(), refetchCutoff()]), { topics: REFRESH_TOPICS, debounceMs: 1000, fallbackMs: null });
 
   const missingCount = (missing.data?.searching.length ?? 0) + (missing.data?.upcoming.length ?? 0);
   const cutoffCount = cutoff.data?.rows.length ?? 0;

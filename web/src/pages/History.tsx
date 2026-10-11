@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { api, type ImportRecord } from "../lib/api";
-import { usePoll } from "../lib/usePoll";
+import { useLiveRefresh } from "../lib/useLiveQuery";
+
+const HISTORY_TOPICS = ["*.imported", "import.held", "file.removed"];
 
 function bytes(n: number): string {
   if (n <= 0) return "—";
@@ -15,11 +17,12 @@ export function History() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  usePoll(() =>
+  // Re-read when something is imported or held, with a slow backstop — not every 5 s.
+  useLiveRefresh(() =>
     api
       .history()
       .then((h) => { setItems(h); setError(null); setLoaded(true); })
-      .catch((e: Error) => { setError(e.message); setLoaded(true); }), 5000);
+      .catch((e: Error) => { setError(e.message); setLoaded(true); }), { topics: HISTORY_TOPICS, fallbackMs: 60_000, debounceMs: 1000, immediate: true });
 
   return (
     <>

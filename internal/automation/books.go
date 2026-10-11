@@ -1875,6 +1875,7 @@ func (c *Coordinator) recordBookGrab(ctx context.Context, bookID, versionID int6
 		return
 	}
 	c.noteHashless("book", title, infoHash)
+	c.grabbed(ctx, "book", bookID)
 }
 
 // markBookGrabImported flips the ONE grab this download came from to imported —

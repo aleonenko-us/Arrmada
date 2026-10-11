@@ -5,15 +5,15 @@ import { useTabParam } from "../lib/useTabParam";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
-import { usePoll } from "../lib/usePoll";
 import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
 import { useMe } from "../lib/me";
-import { useQuery } from "../lib/query";
-import { useLive } from "../lib/useLive";
+import { useLiveEvent } from "../lib/live";
+import { useLiveQuery, useLiveRefresh } from "../lib/useLiveQuery";
+import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "../lib/queueLive";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
-import { ErrorState, Menu, Skeleton } from "../ui";
+import { ErrorState, Menu, Skeleton, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
@@ -131,10 +131,14 @@ function ProfileChip({ profile }: { profile: string }) {
 }
 
 // How often the Wanted half refreshes on its own. It reads the search history, so it
-// isn't polled with the queue every three seconds; a finished search, a grab or an import
-// announced over the socket refreshes it sooner.
+// isn't refreshed with the queue; a finished search, a grab or an import announced over
+// the socket refreshes it sooner.
 const WANTED_POLL_MS = 30_000;
 const WANTED_TOPICS = ["search.finished", "release.grabbed", "download.imported", "series.imported", "series.searched"];
+// What changes the queue's rows (beyond the bars, which queue.progress moves in place),
+// and the backstop for an event the socket dropped.
+const QUEUE_TOPICS = [QUEUE_CHANGED, "release.grabbed", "download.imported", "import.held", "download.stalled"];
+const QUEUE_FALLBACK_MS = 10_000;
 
 export function Downloads() {
   const [downloads, setDownloads] = useState<ActivityDownload[]>([]);
@@ -143,8 +147,12 @@ export function Downloads() {
   const [diskPath, setDiskPath] = useState("");
   const [clients, setClients] = useState<DownloadClientsState | null>(null); // null = unknown
   const [guard, setGuard] = useState<DiskGuardHold | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 4500); };
+  // Short confirmations and failures go through the kit's toasts; a failed action (pause,
+  // resume, remove, reannounce) says why in the error tone rather than leaving the next
+  // refresh to show that nothing changed.
+  const toast = useToast();
+  const note = (m: string) => toast(m, { ms: 4500 });
+  const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
   const [reconnecting, setReconnecting] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
@@ -170,9 +178,12 @@ export function Downloads() {
     }).catch(() => {});
   }, []);
 
-  // Consecutive failed polls; one blip isn't worth a "reconnecting" banner.
+  // Consecutive failed reads; one blip isn't worth a "reconnecting" banner.
   const fails = useRef(0);
-  usePoll(() =>
+  // The queue refreshes when the server says its shape moved (a torrent arrived, left,
+  // finished or changed phase) and on a slow backstop; between those the bars move from
+  // queue.progress below. Both come from the server's one shared read of the client.
+  const refreshQueue = useLiveRefresh(() =>
     api.activity().then((a) => {
       fails.current = 0;
       setDownloads(a.downloads ?? []);
@@ -187,33 +198,37 @@ export function Downloads() {
       fails.current += 1;
       setLoaded(true);
       if (fails.current >= 2) setReconnecting(true);
-    }), 3000);
+    }), { topics: QUEUE_TOPICS, fallbackMs: QUEUE_FALLBACK_MS, immediate: true });
+  useLiveEvent(QUEUE_PROGRESS, (ev) => {
+    const live = progressByHash(ev);
+    if (!live) return;
+    // Paused or errored (or back) from elsewhere — the client's own UI, the disk guard:
+    // the row's buttons follow its state, so read it properly rather than patch the bar.
+    const halted = (s?: string) => s === "paused" || s === "error";
+    if (downloads.some((d) => { const p = live.get(d.hash.toLowerCase()); return !!p && halted(p.state) !== halted(d.phase || d.state); })) {
+      refreshQueue();
+      return;
+    }
+    setDownloads((ds) => patchProgress(ds, live, (d) => ({ hash: d.hash, progress: d.progress, phase: d.phase || d.state }),
+      (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state })));
+  });
 
-  // The Wanted view (Searching and Upcoming): its own, slower read.
-  const wanted = useQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000 });
-  const refetchWanted = wanted.refetch;
-  usePoll(refetchWanted, WANTED_POLL_MS, { immediate: false });
-  const live = useLive();
-  // A sweep finishes searches in bursts: one refresh for the lot, a moment after.
-  const wantedTimer = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!live.last || !WANTED_TOPICS.includes(live.last.topic) || wantedTimer.current !== undefined) return;
-    wantedTimer.current = window.setTimeout(() => { wantedTimer.current = undefined; void refetchWanted(); }, 1500);
-  }, [live.last, refetchWanted]);
-  useEffect(() => () => window.clearTimeout(wantedTimer.current), []);
+  // The Wanted view (Searching and Upcoming): its own, slower read. A sweep finishes
+  // searches in bursts: one refresh for the lot, a moment after.
+  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
   const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
   const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 
-  // The next poll reflects what happened; a refusal (e.g. the disk guard holding a
-  // torrent) is shown, since the poll alone can't say why nothing changed.
+  // The next refresh shows what happened; a failure (the client down, the disk guard
+  // holding a torrent) is an error toast, since a refresh alone can't say why nothing changed.
   const act = async (hash: string, fn: () => Promise<unknown>) => {
     setBusy((b) => ({ ...b, [hash]: true }));
-    try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
+    try { await fn(); refreshQueue(); } catch (e) { fail((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
   };
   const resumeAll = () => act("all", async () => {
     const r = await api.resumeDownload("all");
     const held = r.held_by_guard ?? 0;
-    flash(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
+    note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
 
   const activeDownloads = useMemo(() => downloads.filter((d) => d.progress < 1), [downloads]);
@@ -356,14 +371,14 @@ export function Downloads() {
           ) : tab === "downloads" ? (
             shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
               <div className="flex flex-col gap-2">
-                {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} onNote={flash} />)}
+                {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} />)}
               </div>
             )
           ) : tab === "seeding" ? (
             shownSeeding.length === 0 ? <Empty>Nothing seeding right now.</Empty> : (
               <div className="flex flex-col gap-2">
                 <SeedingSummary items={shownSeeding} />
-                {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} />)}
+                {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} />)}
               </div>
             )
           ) : !wanted.data ? (
@@ -371,19 +386,18 @@ export function Downloads() {
           ) : tab === "searching" ? (
             shownSearching.length === 0 ? <Empty>Nothing is being searched. Monitored, available titles that are missing a file show up here.</Empty> : (
               <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} flash={flash} />)}
+                {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} onError={fail} />)}
               </div>
             )
           ) : (
             shownUpcoming.length === 0 ? <Empty>Nothing upcoming. Unreleased films and albums, and unaired episodes you monitor, land here.</Empty> : (
               <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} flash={flash} />)}
+                {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} onError={fail} />)}
               </div>
             )
           )}
         </TabPanel>
       </div>
-      {toast && <div className="fixed bottom-5 left-1/2 max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
@@ -571,7 +585,7 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
 // WantedItem is one Searching/Upcoming row: a movie, show, book or album, linking to its
 // page, saying what is really happening to it (wantedChip) and why it isn't downloading
 // (wantedLine), with Search now. The button sits beside the link, not inside it.
-function WantedItem({ item, kind, onSearched, flash }: { item: WantedRow; kind: "searching" | "upcoming"; onSearched: () => void; flash: (m: string) => void }) {
+function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind: "searching" | "upcoming"; onSearched: () => void; onError: (m: string) => void }) {
   const [job, setJob] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [result, setResult] = useState<{ text: string; failed: boolean } | null>(null);
@@ -593,7 +607,7 @@ function WantedItem({ item, kind, onSearched, flash }: { item: WantedRow; kind: 
       if (r.job_id) setJob(r.job_id);
       else onSearched();
     } catch (e) {
-      flash((e as Error).message);
+      onError((e as Error).message);
     } finally {
       setStarting(false);
     }

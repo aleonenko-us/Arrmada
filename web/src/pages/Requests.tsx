@@ -5,9 +5,9 @@ import { RequestSheet } from "../components/RequestSheet";
 import { api, type MediaRequest, type RequestCounts, type RequestSection } from "../lib/api";
 import { isStaff, useMe } from "../lib/me";
 import { posterThumb } from "../lib/img";
-import { usePoll } from "../lib/usePoll";
+import { useRequestsFeed } from "../lib/useRequestsFeed";
 import { pickTab } from "../lib/useTabParam";
-import { formatSeasons, mediaLabel, MOVING_STAGES, requestAge, requestStage } from "../lib/requestStage";
+import { formatSeasons, mediaLabel, requestAge, requestStage } from "../lib/requestStage";
 import { BookFormatBadge } from "../components/BookFormats";
 import { DECLINE_REASON_MAX, ReRequestFlag, decisionLine } from "../components/DeclineReason";
 import { refreshAttention } from "../lib/useAttention";
@@ -102,10 +102,10 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
       setError((e as Error).message);
     }
   }, [tab, limit, type, q]);
-  // Something in flight moves on its own; otherwise a quarter-minute is fresh enough.
-  const moving = (items ?? []).some((rq) => MOVING_STAGES.has(rq.tracking?.stage ?? ""));
-  // The effect loads each new view at once; the poll only repeats (paused in a hidden tab).
-  usePoll(load, moving ? 8000 : 15000, { immediate: false });
+  // The effect loads each new view at once; the live feed refreshes it when a request it
+  // could show changes, with a backstop poll (quick only while something is moving on its
+  // own, never in a hidden tab).
+  useRequestsFeed(load, items);
   useEffect(() => { void load(); }, [load]);
 
   const pendingIDs = useMemo(() => (items ?? []).filter((rq) => rq.status === "pending").map((rq) => rq.id), [items]);

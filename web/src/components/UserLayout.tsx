@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Suspense, useEffect } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FleetMark } from "./FleetMark";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PageSkeleton } from "./PageSkeleton";
@@ -11,14 +11,15 @@ import { useMe } from "../lib/me";
 import { signOut } from "../lib/session";
 import { useDocumentTitle } from "../lib/title";
 import { requesterNav, sectionFor } from "../lib/requesterNav";
+import { Menu } from "../ui/Menu";
 
 // UserLayout is the requester-facing shell, and what installs as the PWA on phones. Wider
 // screens get a slim branded top bar with the places inline; a phone gets the mark, the
 // section's name and the bell on top, and the places as tabs along the bottom.
 export function UserLayout() {
   const { user, external, booksEnabled } = useMe();
-  const [menu, setMenu] = useState(false);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   useDocumentTitle();
   // Outside sessions get no Calendar (the /calendar route isn't mounted or allowlisted
   // for them), so no link that silently bounces. The shelf is the exception: its two
@@ -51,30 +52,21 @@ export function UserLayout() {
         </nav>
         <div className="flex flex-none items-center gap-2">
           <NotificationBell />
-          <div className="relative">
-            <button
-              onClick={() => setMenu((m) => !m)}
-              aria-label="Account menu"
-              aria-expanded={menu}
-              className="grid h-9 w-9 place-items-center rounded-full text-[12px] font-bold"
-              style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}
-            >
-              {(user?.username?.[0] ?? "?").toUpperCase()}
-            </button>
-            {menu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
-                <div className="absolute right-0 z-50 mt-2 w-[230px] rounded-xl p-2" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
-                  <div className="truncate px-2.5 py-1.5 text-[12px] text-ink-dim" title={user?.username}>{user?.username || "Guest"}</div>
-                  <div className="my-1 h-px" style={{ background: "var(--line)" }} />
-                  <MenuLink to="/me" onClick={() => setMenu(false)}>Me &amp; notifications</MenuLink>
-                  <MenuLink to="/me#account" onClick={() => setMenu(false)}>Password &amp; devices</MenuLink>
-                  <MenuLink to="/audiobooks?tab=apps" onClick={() => setMenu(false)}>Audiobook apps &amp; password</MenuLink>
-                  <button onClick={signOut} className="flex min-h-[44px] w-full items-center rounded-lg px-2.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)]" style={{ color: "var(--reject)" }}>Sign out</button>
-                </div>
-              </>
-            )}
-          </div>
+          {/* The kit's menu: arrow keys, Escape and focus back to the avatar. */}
+          <Menu
+            label="Account menu"
+            trigger={(user?.username?.[0] ?? "?").toUpperCase()}
+            header={<span title={user?.username}>{user?.username || "Guest"}</span>}
+            triggerClassName="grid h-9 w-9 place-items-center rounded-full text-[12px] font-bold"
+            triggerStyle={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}
+            itemClassName="min-h-[44px]"
+            items={[
+              { label: "Me & notifications", onSelect: () => navigate("/me") },
+              { label: "Password & devices", onSelect: () => navigate("/me#account") },
+              { label: "Audiobook apps & password", onSelect: () => navigate("/audiobooks?tab=apps") },
+              { label: "Sign out", tone: "danger", onSelect: signOut },
+            ]}
+          />
         </div>
       </header>
       {/* pb-chrome: the last row of a page scrolls clear of the phone tab bar. */}
@@ -92,13 +84,5 @@ export function UserLayout() {
       {/* "Get notified when it's ready?" once, right after a first request. */}
       <PushPromptHost />
     </div>
-  );
-}
-
-function MenuLink({ to, onClick, children }: { to: string; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <Link to={to} onClick={onClick} className="flex min-h-[44px] w-full items-center rounded-lg px-2.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)]" style={{ color: "var(--ink)" }}>
-      {children}
-    </Link>
   );
 }

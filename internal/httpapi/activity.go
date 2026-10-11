@@ -209,7 +209,7 @@ func movieDownload(m movies.Movie, acqs []automation.Acquisition, byHash map[str
 		return nil
 	}
 	if it, ok := inProgress(acqs, byHash, queue); ok {
-		return &movies.DownloadStatus{State: it.State, Progress: it.Progress}
+		return &movies.DownloadStatus{State: it.State, Progress: it.Progress, Hash: it.Hash}
 	}
 	return nil
 }
