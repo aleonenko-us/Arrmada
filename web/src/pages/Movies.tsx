@@ -17,7 +17,8 @@ import { useLiveConnected, useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
-import { Button, ErrorState, Modal, Skeleton, StaleBanner, StatusChip } from "../ui";
+import { OrganizeModal } from "../components/OrganizeModal";
+import { Button, ErrorState, Menu, Modal, Skeleton, StaleBanner, StatusChip } from "../ui";
 
 const NO_MOVIES: MovieSummary[] = [];
 
@@ -94,6 +95,8 @@ export function Movies() {
     onDone: (j) => { setScanJob(null); refresh(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
   });
   const [showScan, setShowScan] = useState(false);
+  // Organize: the whole library ({}), or the mass editor's selection ({ ids }).
+  const [organize, setOrganize] = useState<{ ids?: number[] } | null>(null);
   const scanLibrary = async (opts: { monitor: boolean; quality_profile?: string }) => {
     setShowScan(false);
     setScanning(true);
@@ -242,6 +245,13 @@ export function Movies() {
             >
               {multiSelect ? "Done" : "Select"}
             </button>
+            <Menu
+              label="More library actions"
+              trigger={<span aria-hidden>⋯</span>}
+              triggerClassName="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
+              triggerStyle={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              items={[{ label: "Organize library…", onSelect: () => setOrganize({}) }]}
+            />
             <button
               onClick={() => setShowAdd(true)}
               disabled={!metaOK}
@@ -353,6 +363,7 @@ export function Movies() {
         )}
       </div>
 
+      {organize && <OrganizeModal ids={organize.ids} onClose={() => setOrganize(null)} onDone={refresh} />}
       {showScan && <ScanDialog profiles={profiles} onScan={scanLibrary} onClose={() => setShowScan(false)} />}
       {showAdd && <AddMovieModal onClose={() => setShowAdd(false)} onAdded={refresh} />}
       {confirmDelete && <DeleteMovieDialog movie={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}

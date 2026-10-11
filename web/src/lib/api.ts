@@ -1292,6 +1292,21 @@ export interface MovieRenameReply {
   skipped: number;
   results: MovieRenameResult[];
 }
+// Organize's dry run (MOV-17): counts for every track, then a page of the ones that would
+// move and the conflicts; token names exactly this plan for the apply.
+export interface OrganizePreview {
+  counts: { rename: number; same: number; conflict: number; missing: number };
+  items: MovieRenameItem[];
+  total: number; // items to list (renames + conflicts) across every page
+  offset: number;
+  token: string;
+}
+// The organize job's result.
+export interface OrganizeSummary {
+  total: number;
+  renamed: number;
+  skipped: number;
+}
 // What deleting a movie with its files would move (each file still on disk), and where.
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
@@ -3168,6 +3183,12 @@ export const api = {
   // Applies the previewed items the person ticked; anything changed since is skipped.
   renameMovie: (id: number, items: MovieRenameItem[]) =>
     req<MovieRenameReply>(`/api/v1/movies/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
+  // Organize: a dry run over the library (no ids) or a selection; nothing moves.
+  organizePreview: (ids?: number[], offset = 0, limit = 200) =>
+    req<OrganizePreview>(`/api/v1/movies/organize?ids=${ids?.length ? ids.join(",") : "all"}&offset=${offset}&limit=${limit}`),
+  // Starts the previewed renames as a job; 409 when the plan changed since the preview.
+  organizeApply: (token: string, ids?: number[]) =>
+    req<{ status: string; total: number } & JobRef>("/api/v1/movies/organize", { method: "POST", body: JSON.stringify({ token, ids: ids ?? [] }) }),
   addVersion: (id: number, body: { label: string; quality_profile: string; edition?: string; monitored?: boolean }) =>
     req<MovieVersion>(`/api/v1/movies/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
   updateVersion: (id: number, vid: number, body: { label: string; quality_profile: string; edition?: string; monitored: boolean }) =>

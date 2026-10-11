@@ -431,6 +431,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/movies/downloads", a.requireRole(auth.RoleManager, a.handleMovieDownloads))
 	mux.HandleFunc("POST /api/v1/movies/search", a.requireRole(auth.RoleManager, a.handleBulkMovieSearch))
 	mux.HandleFunc("POST /api/v1/movies/import", a.requireRole(auth.RoleManager, a.handleMovieImportFolder))
+	// Organize: a library-wide (or selection-wide) rename preview, then a background apply.
+	mux.HandleFunc("GET /api/v1/movies/organize", a.requireRole(auth.RoleManager, a.handleOrganizePreview))
+	mux.HandleFunc("POST /api/v1/movies/organize", a.requireRole(auth.RoleManager, a.handleOrganizeApply))
 	mux.HandleFunc("GET /api/v1/movies/{id}", a.requireRole(auth.RoleManager, a.handleGetMovie))
 	// Who has played it on Plex: staff only, never a requester.
 	mux.HandleFunc("GET /api/v1/movies/{id}/watch-stats", a.requireRole(auth.RoleManager, a.handleMovieWatchStats))
