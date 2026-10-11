@@ -9,7 +9,6 @@ import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useQuery } from "../lib/query";
 import { useConfirm, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
-import { CardHoverActions } from "../features/library/LibraryCard";
 import { seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
@@ -95,7 +94,11 @@ export function Series() {
 
   const config = useMemo(() => seriesLibraryConfig({
     fits,
-    hoverActions: (s) => <CardHoverActions raised onRemove={() => setConfirmDelete(s)} onSearch={s.monitored && statsOf(s).missing > 0 ? () => search(s) : undefined} />,
+    actions: (s) => [
+      ...(s.monitored && statsOf(s).missing > 0 ? [{ label: "Search missing", onSelect: () => search(s) }] : []),
+      { label: "Search indexers…", onSelect: () => setSearchFor(s) },
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(s) },
+    ],
     rowAction: (s) => <button onClick={() => setSearchFor(s)} title="Search your indexers — whole show or one season" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
   // search reads only api and toast, both stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps

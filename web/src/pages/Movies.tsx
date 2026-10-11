@@ -16,7 +16,6 @@ import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { StatusChip, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
-import { CardHoverActions } from "../features/library/LibraryCard";
 import { FitLegend, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
@@ -129,7 +128,11 @@ export function Movies() {
   const config = useMemo(() => movieLibraryConfig({
     fits,
     queueKnown,
-    hoverActions: (m) => <CardHoverActions onRemove={() => setConfirmDelete(m)} onSearch={!m.has_file && !m.download ? () => search(m) : undefined} />,
+    actions: (m) => [
+      ...(!m.has_file && !m.download ? [{ label: "Search now", onSelect: () => search(m) }] : []),
+      { label: "Search indexers…", onSelect: () => setSearchFor(m) },
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(m) },
+    ],
     rowAction: (m) => <button onClick={() => setSearchFor(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
   // search reads only api and toast, both stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps

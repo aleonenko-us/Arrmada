@@ -27,9 +27,8 @@ test.describe("library pages", () => {
       await page.getByRole("button", { name: /^All \d+$/ }).click();
 
       // Remove asks first and calls DELETE only on confirm.
-      const card = page.getByRole("link", { name: lib.one }).first().locator("xpath=ancestor::div[contains(@class,'group')][1]");
-      await card.hover();
-      await card.getByTitle("Remove").click();
+      await page.getByRole("button", { name: `Actions for ${lib.one}` }).click();
+      await page.getByRole("menuitem", { name: "Remove…" }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toContainText(lib.one);
       await dialog.getByRole("button", { name: "Remove", exact: true }).click();

@@ -5,6 +5,7 @@ import { PHONE, useMediaQuery } from "../../lib/useMediaQuery";
 import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
+import { compareValues } from "./sort";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
 
 export type LibraryViewMode = "grid" | "table";
@@ -66,13 +67,18 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   const list = useMemo(() => items ?? [], [items]);
   const active = config.filters.find((f) => f.key === filter) ?? config.filters[0];
   const q = query.trim().toLowerCase();
-  const visible = useMemo(
-    () => list
+  // The grid's order is a remembered preference ("series.grid.sort"), like the view.
+  const sortKeys = useMemo(() => config.sorts.map((s) => s.key), [config.sorts]);
+  const [sortKey, setSortKey] = usePersisted<string>(`${config.storageKey}.grid.sort`, sortKeys[0] ?? "title", sortKeys);
+  const sort = config.sorts.find((s) => s.key === sortKey) ?? config.sorts[0];
+  const visible = useMemo(() => {
+    const by = sort?.value;
+    const dir = sort?.dir ?? "asc";
+    return list
       .filter((it) => !active?.match || active.match(it))
       .filter((it) => !q || config.searchText(it).toLowerCase().includes(q))
-      .sort(config.compare),
-    [list, active, q, config],
-  );
+      .sort((a, b) => (by ? compareValues(by(a), by(b), dir) : 0) || config.compare(a, b));
+  }, [list, active, q, config, sort]);
 
   const sel: LibrarySelection<T> = {
     active: multi,
@@ -92,6 +98,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
         count={items ? list.length : null}
         lead={p.lead}
         segments={view.canTable ? [{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }] : []}
+        sort={view.mode === "grid" && config.sorts.length > 1 ? { label: "Sort", value: sort?.key ?? "", options: config.sorts.map((s) => ({ value: s.key, label: s.label })), onChange: setSortKey } : undefined}
         select={{ active: multi, onToggle: () => (multi ? sel.exit() : setMulti(true)) }}
         tools={p.tools}
         primary={p.primary}

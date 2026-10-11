@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { MenuItem } from "../../ui";
 
 // The shared library page (LibraryGrid) is configured per media type. Movies and Series
 // used to be two hand-built copies of the same page; fixes kept landing on one and not the
@@ -21,6 +22,14 @@ export interface LibraryFilter<T> {
   /** Every filter but "all" decides per item; "all" may leave this out. */
   match?: (item: T) => boolean;
   title?: string;
+}
+
+export interface LibrarySort<T> {
+  key: string;
+  label: string;
+  /** Leave out to sort by the config's own order (the title). */
+  value?: (item: T) => SortValue;
+  dir?: "asc" | "desc";
 }
 
 export interface LibraryColumn<T> {
@@ -66,9 +75,13 @@ export interface LibraryConfig<T extends LibraryItem> {
     status: (item: T) => LibraryStatusWord;
     /** Over the poster's bottom edge: the episode bar, a download's progress. */
     overlay?: (item: T) => ReactNode;
-    /** Hover-revealed controls on the poster (not in select mode). */
-    hoverActions?: (item: T) => ReactNode;
+    /** Small badges over the poster's top-left corner (quality, the monitored dot). */
+    badges?: (item: T) => ReactNode;
   };
+  /** The card's ⋯ menu (Search, Remove…): reachable by touch, keyboard and mouse alike. */
+  actions?: (item: T) => MenuItem[];
+  /** The grid's sort choices, the default first; the table sorts by its columns. */
+  sorts: LibrarySort<T>[];
   /** The table row's own button (Search), right-aligned in the last column. */
   rowAction?: (item: T) => ReactNode;
 }

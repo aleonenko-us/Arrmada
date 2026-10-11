@@ -24,12 +24,14 @@ export interface MenuProps {
   triggerStyle?: CSSProperties;
   /** Extra classes on each item (e.g. a phone-sized tap target). */
   itemClassName?: string;
+  /** The list's minimum width; narrower for a menu opened from a small card. */
+  menuWidthClassName?: string;
 }
 
 // Menu is an accessible dropdown: a trigger with aria-haspopup/aria-expanded and a
 // role=menu list. Arrow keys and Home/End move between items, Escape and a click
 // outside close it, and focus returns to the trigger on close.
-export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle, itemClassName = "" }: MenuProps) {
+export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle, itemClassName = "", menuWidthClassName = "min-w-[200px]" }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -109,7 +111,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
           tabIndex={-1}
           aria-label={label}
           onKeyDown={onMenuKey}
-          className={`absolute z-drawer mt-2 min-w-[200px] rounded-xl p-2 ${align === "right" ? "right-0" : "left-0"}`}
+          className={`absolute z-drawer mt-2 ${menuWidthClassName} rounded-xl p-2 ${align === "right" ? "right-0" : "left-0"}`}
           style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}
         >
           {header && (

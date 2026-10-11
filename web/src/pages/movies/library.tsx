@@ -3,6 +3,7 @@ import type { FitItem, MovieDownload, MovieSummary, SummaryMedia } from "../../l
 import { FitBadge, FIT_COLOR, bitrateColor, fitRank, hasIssue } from "../../components/FitBadge";
 import { isMovieDownloaded, isMovieWanted, movieStatus } from "../../lib/movieStatus";
 import type { LibraryConfig } from "../../features/library/types";
+import type { MenuItem } from "../../ui";
 
 // The Movies library as LibraryGrid config: its filters, card slots and table columns.
 
@@ -62,11 +63,11 @@ export interface MovieConfigDeps {
   fits: Map<number, FitItem>;
   /** false while the download client can't be read: a wanted film may already be downloading. */
   queueKnown: boolean;
-  hoverActions: (m: MovieSummary) => ReactNode;
+  actions: (m: MovieSummary) => MenuItem[];
   rowAction: (m: MovieSummary) => ReactNode;
 }
 
-export function movieLibraryConfig({ fits, queueKnown, hoverActions, rowAction }: MovieConfigDeps): LibraryConfig<MovieSummary> {
+export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: MovieConfigDeps): LibraryConfig<MovieSummary> {
   const bad = (m: MovieSummary, kind: string) => (hasIssue(fits.get(m.id)?.fit, kind) ? { color: FIT_COLOR.over, fontWeight: 600 } : undefined);
   return {
     noun: { one: "movie", many: "movies" },
@@ -112,8 +113,9 @@ export function movieLibraryConfig({ fits, queueKnown, hoverActions, rowAction }
       meta: (m) => m.year || "—",
       status: (m) => movieStatus(m, undefined, queueKnown),
       overlay: (m) => m.download && <DownloadBar d={m.download} />,
-      hoverActions,
     },
+    sorts: [{ key: "title", label: "Title" }],
+    actions,
     rowAction,
   };
 }

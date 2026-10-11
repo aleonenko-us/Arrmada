@@ -3,6 +3,7 @@ import type { Series, SeriesFitSummary } from "../../lib/api";
 import { FIT_COLOR } from "../../components/FitBadge";
 import { isWanted, libraryStatus } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
+import type { MenuItem } from "../../ui";
 
 // The Series library as LibraryGrid config: its filters, card slots and table columns.
 
@@ -63,14 +64,40 @@ function EpisodeBar({ s }: { s: Series }) {
 }
 
 const STATUS_RANK: Record<string, number> = { Complete: 0, Partial: 1, Wanted: 2, Unmonitored: 3 };
+const ENDED = /end|cancel/i;
+
+// nextAiring says when a show's next episode airs, from its YYYY-MM-DD date: "Airs today",
+// "Airs tomorrow", "Next Thu" within the week, otherwise "Next Oct 20". "" for no date or
+// one already past.
+export function nextAiring(date: string | undefined, now = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
+  if (!m) return "";
+  const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return "";
+  if (days === 0) return "Airs today";
+  if (days === 1) return "Airs tomorrow";
+  if (days < 7) return `Next ${day.toLocaleDateString(undefined, { weekday: "short" })}`;
+  return `Next ${day.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
+// cardMeta is the caption under a series poster: "Network · Next Thu" for a show still
+// airing with an episode coming, otherwise "2019 · 3 sns".
+export function cardMeta(s: Series, now = new Date()): string {
+  const next = ENDED.test(s.status ?? "") ? "" : nextAiring(s.stats?.next_air_date, now);
+  if (next) return s.network ? `${s.network} · ${next}` : next;
+  const n = statsOf(s).seasons;
+  return `${s.year || "—"} · ${n} ${n === 1 ? "sn" : "sns"}`;
+}
 
 export interface SeriesConfigDeps {
   fits: Map<number, SeriesFitSummary>;
-  hoverActions: (s: Series) => ReactNode;
+  actions: (s: Series) => MenuItem[];
   rowAction: (s: Series) => ReactNode;
 }
 
-export function seriesLibraryConfig({ fits, hoverActions, rowAction }: SeriesConfigDeps): LibraryConfig<Series> {
+export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDeps): LibraryConfig<Series> {
   return {
     noun: { one: "series", many: "series" },
     storageKey: "series",
@@ -79,7 +106,7 @@ export function seriesLibraryConfig({ fits, hoverActions, rowAction }: SeriesCon
       { key: "all", label: "All" },
       { key: "monitored", label: "Monitored", match: (s) => s.monitored },
       { key: "continuing", label: "Continuing", match: (s) => /return|continu/i.test(s.status ?? "") },
-      { key: "ended", label: "Ended", match: (s) => /end|cancel/i.test(s.status ?? "") },
+      { key: "ended", label: "Ended", match: (s) => ENDED.test(s.status ?? "") },
       { key: "wanted", label: "Wanted", match: (s) => isWanted(statusInput(s)) },
     ],
     searchText: (s) => s.title,
@@ -99,12 +126,19 @@ export function seriesLibraryConfig({ fits, hoverActions, rowAction }: SeriesCon
       // Share of judged episodes that fit: ascending puts the worst shows first.
       { key: "fit", label: "Fit", title: "How the episode files fit this show's profile — sort ascending for the worst first; open a show for each episode's reasons", sort: (s) => { const f = fits.get(s.id); return f && f.checked > 0 ? f.fits / f.checked : undefined; }, cell: (s) => <SeriesFit f={fits.get(s.id)} /> },
     ],
+    sorts: [
+      { key: "title", label: "Title" },
+      { key: "added", label: "Recently added", dir: "desc", value: (s) => s.added_at || undefined },
+      { key: "next", label: "Next airing", value: (s) => (ENDED.test(s.status ?? "") ? undefined : s.stats?.next_air_date || undefined) },
+      { key: "size", label: "Size", dir: "desc", value: (s) => statsOf(s).size_bytes || undefined },
+      { key: "missing", label: "Missing episodes", dir: "desc", value: (s) => statsOf(s).missing || undefined },
+    ],
     card: {
-      meta: (s) => { const n = statsOf(s).seasons; return `${s.year || "—"} · ${n} ${n === 1 ? "sn" : "sns"}`; },
+      meta: (s) => cardMeta(s),
       status: seriesStatus,
       overlay: (s) => <EpisodeBar s={s} />,
-      hoverActions,
     },
+    actions,
     rowAction,
   };
 }
