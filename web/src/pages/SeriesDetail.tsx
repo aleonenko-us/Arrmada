@@ -9,10 +9,16 @@ import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress }
 import { searchFinishedFor } from "../lib/searchOutcome";
 import { refreshSearches } from "../components/LastSearch";
 import { Button, StatusChip, useToast } from "../ui";
+import { TabPanel, Tabs } from "../ui/Tabs";
 import { api, type CastMember, type FitItem, type Series as SeriesT, type Episode } from "../lib/api";
 import { Hero } from "./series/Hero";
 import { HeroActions } from "./series/HeroActions";
-import { AliasPanel, DuplicatesPanel, HistoryPanel, SceneMapPanel, SeriesBlocklistPanel } from "./series/panels";
+import { AliasPanel } from "./series/panels";
+import { FilesTab } from "./series/FilesTab";
+import { ActivityTab } from "./series/ActivityTab";
+import { NumberingTab, showNumberingTab } from "./series/NumberingTab";
+import { invalidate, useQuery } from "../lib/query";
+import { useTabParam } from "../lib/useTabParam";
 import { defaultSeason, sortSeasons } from "./series/util";
 import { SeasonPanel, SeasonRail } from "./series/SeasonRail";
 
@@ -54,6 +60,38 @@ export function SeriesDetail() {
   useEffect(() => {
     api.libraryFitEpisodes(sid).then((r) => setFits(new Map((r.items ?? []).map((it) => [`${it.season}:${it.episode}`, it])))).catch(() => {});
   }, [sid]);
+
+  // The Numbering tab shows for anime, or while a standard show has something to decide:
+  // a pending renumber or downloads held because their files couldn't be placed. The
+  // numbering query is the banner's own (same key), re-asked whenever the show was
+  // refreshed; the held downloads are re-asked when its history moves.
+  const numbering = useQuery(`series-numbering:${sid}`, () => api.seriesNumbering(sid), { staleMs: 0 });
+  const reviews = useQuery(`series-reviews:${sid}`, () => api.seriesReviews(sid), { staleMs: 30_000 });
+  const unplaced = reviews.data ?? [];
+  const numberingKey = s ? `${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}` : "";
+  const refetchReviews = reviews.refetch;
+  const lastEvent = s?.last_event_id;
+  const seenEvent = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (lastEvent === undefined) return;
+    if (seenEvent.current !== undefined && seenEvent.current !== lastEvent) void refetchReviews();
+    seenEvent.current = lastEvent;
+  }, [lastEvent, refetchReviews]);
+  const seenNumbering = useRef("");
+  useEffect(() => {
+    if (!numberingKey) return;
+    if (seenNumbering.current && seenNumbering.current !== numberingKey) invalidate(`series-numbering:${sid}`);
+    seenNumbering.current = numberingKey;
+  }, [numberingKey, sid]);
+  const settleNumbering = useCallback(() => { invalidate(`series-numbering:${sid}`); load(); }, [sid, load]);
+  const numberingTab = !!s && showNumberingTab(s, numbering.data?.pending, unplaced.length);
+  const tabs = useMemo(() => [
+    { key: "episodes" as const, label: "Episodes" },
+    { key: "files" as const, label: "Files" },
+    { key: "activity" as const, label: "Activity" },
+    ...(numberingTab ? [{ key: "numbering" as const, label: "Numbering", count: (numbering.data?.pending ? 1 : 0) + unplaced.length || undefined }] : []),
+  ], [numberingTab, numbering.data?.pending, unplaced.length]);
+  const [tab, setTab] = useTabParam(tabs.map((t) => t.key), "episodes");
 
   // While any episode is downloading its bar moves from queue.progress (by the torrent's
   // hash), and a queue.changed naming one of its torrents reads the light downloads
@@ -122,31 +160,41 @@ export function SeriesDetail() {
       </Hero>
 
       <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
-        <NumberingBanner seriesId={s.id} refreshKey={`${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}`} onApplied={load} />
-        {!s.monitored && (
-          <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-            Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
-          </div>
+        <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="series" label="Series sections" className="mb-4 mt-1 border-b" />
+
+        {tab === "episodes" && (
+          <TabPanel idPrefix="series" value="episodes">
+            <NumberingBanner seriesId={s.id} refreshKey={numberingKey} onApplied={settleNumbering} />
+            {!s.monitored && (
+              <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+                Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
+              </div>
+            )}
+            <div className="mt-4">
+              <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
+              {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={flash} />}
+            </div>
+            {/* Without a Numbering tab (a standard show with nothing to decide) the
+                alternate titles stay reachable here, collapsed. */}
+            {!numberingTab && <AliasPanel series={s} />}
+            <CastRow cast={ex?.cast} />
+          </TabPanel>
         )}
-        <div className="mt-4">
-          <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
-          {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={flash} />}
-        </div>
-
-        {/* The expert numbering panels sit under the episodes, collapsed: most shows never
-            need them. */}
-        <AliasPanel series={s} />
-        {s.series_type === "anime" && <SceneMapPanel series={s} />}
-
-        {/* A block isn't always a history event (a junk download is blocklisted as it
-            leaves the queue), so the panel also reloads when a download goes away. */}
-        <SeriesBlocklistPanel seriesId={s.id} refreshKey={`${s.last_event_id ?? 0}:${downloading}`} />
-
-        <CastRow cast={ex?.cast} />
-
-        <DuplicatesPanel seriesId={s.id} refreshKey={s.last_event_id} flash={flash} />
-
-        <HistoryPanel seriesId={s.id} refreshKey={s.last_event_id} />
+        {tab === "files" && (
+          <TabPanel idPrefix="series" value="files">
+            <FilesTab series={s} fits={fits} refreshKey={s.last_event_id} downloading={downloading} onChange={load} flash={flash} />
+          </TabPanel>
+        )}
+        {tab === "activity" && (
+          <TabPanel idPrefix="series" value="activity">
+            <ActivityTab seriesId={s.id} refreshKey={s.last_event_id} />
+          </TabPanel>
+        )}
+        {tab === "numbering" && (
+          <TabPanel idPrefix="series" value="numbering">
+            <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={flash} />
+          </TabPanel>
+        )}
       </div>
     </>
   );

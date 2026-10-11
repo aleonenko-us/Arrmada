@@ -2508,6 +2508,10 @@ export const api = {
   },
   unblockAny: (id: number) => req<void>(`/api/v1/blocklist/${id}`, { method: "DELETE" }),
   reviews: () => req<{ reviews: ImportReview[] }>("/api/v1/reviews").then((r) => r.reviews),
+  // One show's held downloads (the series page's files it couldn't place).
+  seriesReviews: (id: number) =>
+    req<{ reviews: ImportReview[] }>(`/api/v1/reviews?media_type=series&expected_id=${id}`)
+      .then((r) => (r.reviews ?? []).filter((rv) => rv.media_type === "series" && rv.expected_id === id)),
   // findAnother: once the release is blocklisted, search the title it was grabbed for again.
   rejectReview: (id: number, findAnother = false) =>
     req<{ status: string; searching?: boolean; search_error?: string } & Partial<JobRef>>(`/api/v1/reviews/${id}/reject`, findAnother

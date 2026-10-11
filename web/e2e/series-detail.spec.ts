@@ -138,6 +138,64 @@ test.describe("desktop seasons", () => {
   });
 });
 
+test.describe("desktop tabs", () => {
+  test.skip(({ isMobile }) => isMobile, "desktop project only");
+
+  test("each tab deep-links and survives a reload", async ({ page }) => {
+    await page.goto("/series/1?tab=activity");
+    await expect(page.getByRole("tab", { name: "Activity", selected: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "Activity", selected: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Files" }).click();
+    await expect(page).toHaveURL(/tab=files/);
+    await expect(page.getByRole("region", { name: "Files by season" })).toContainText("Season 2");
+    await expect(page.getByRole("region", { name: "Rename" })).toContainText("Every file already follows the naming scheme.");
+    await page.getByRole("tab", { name: "Episodes" }).click();
+    await expect(page).not.toHaveURL(/tab=/);
+    await expect(page.getByTestId("episode-card").first()).toBeVisible();
+  });
+
+  test("Activity shows grabs, imports and a search that found nothing, with its reasons", async ({ page }) => {
+    await page.goto("/series/1?tab=activity");
+    const list = page.getByTestId("activity-list");
+    await expect(list).toContainText("S03E01 — Harbour.Lights.S03E01");
+    await expect(list).toContainText("S03E02 — Harbour.Lights.S03E02");
+    await expect(list).toContainText("Found 34 releases — 20 for other titles, 14 over your bitrate ceiling");
+    await expect(list).toContainText("No releases found");
+    // The click's own 'searched' history line is the same search: it shows once.
+    await expect(list).not.toContainText("Season 2: Grabbed nothing");
+    await list.getByRole("button", { name: /Found 34 releases/ }).click();
+    await expect(list).toContainText("34 found · 0 fit · 0 grabbed");
+
+    await page.getByRole("button", { name: "Searched", exact: true }).click();
+    await expect(list.locator(":scope > li")).toHaveCount(2);
+    await page.getByRole("button", { name: "Imported", exact: true }).click();
+    await expect(list.locator(":scope > li")).toHaveCount(1);
+  });
+
+  test("Numbering is hidden on a clean standard show and shown with a pending change or held files", async ({ page }) => {
+    await page.goto("/series/4");
+    await expect(page.getByRole("tab", { name: "Activity" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Numbering/ })).toHaveCount(0);
+    // A deep link to a tab the show doesn't have opens Episodes.
+    await page.goto("/series/4?tab=numbering");
+    await expect(page.getByRole("tab", { name: "Episodes", selected: true })).toBeVisible();
+
+    await page.goto("/series/3?tab=numbering");
+    await expect(page.getByRole("tab", { name: /Numbering/, selected: true })).toBeVisible();
+    const change = page.getByRole("region", { name: "Numbering change" });
+    await expect(change).toContainText("S01E09 → S02E01");
+    await change.getByRole("button", { name: "Review" }).click();
+    await expect(page.getByRole("dialog", { name: "Numbering change" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Harbour Lights has a download held because its files couldn't be placed.
+    await page.goto("/series/1?tab=numbering");
+    await expect(page.getByRole("region", { name: "Files that couldn't be placed" })).toContainText("Fixture.Show.S01.1080p.WEB-DL-GRP");
+    await expect(page.getByRole("link", { name: "Activity → Needs you" })).toHaveAttribute("href", "/activity/needs-you");
+  });
+});
+
 test.describe("phone", () => {
   test.skip(({ isMobile }) => !isMobile, "phone project only");
 
@@ -177,6 +235,14 @@ test.describe("phone", () => {
     await page.getByRole("checkbox", { name: /^Select S02E07/ }).tap();
     await page.getByRole("region", { name: "Selected episodes" }).getByRole("button", { name: "Search", exact: true }).tap();
     await expect.poll(() => api.callsTo("POST", "/api/v1/series/1/search").map((c) => c.body)).toContainEqual({ episodes: [{ season: 2, episode: 6 }, { season: 2, episode: 7 }] });
+  });
+
+  test("the Files, Activity and Numbering tabs fit a 375px screen", async ({ page }) => {
+    for (const tab of ["files", "activity", "numbering"]) {
+      await page.goto(`/series/1?tab=${tab}`);
+      await expect(page.getByRole("tabpanel")).toBeVisible();
+      await fitsScreen(page);
+    }
   });
 
   test("episode cards: the overview opens on a tap and the menu works by touch", async ({ page }) => {

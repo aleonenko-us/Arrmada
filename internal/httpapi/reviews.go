@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
@@ -11,14 +12,34 @@ import (
 )
 
 // handleListReviews returns downloads held for admin review (content didn't match
-// what they were grabbed for).
+// what they were grabbed for). ?media_type= and ?expected_id= narrow it to one title's
+// held downloads (the series page's Numbering tab lists the files it couldn't place).
 func (a *api) handleListReviews(w http.ResponseWriter, r *http.Request) {
 	list, err := a.deps.Automation.ListReviews(r.Context())
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not list reviews")
 		return
 	}
-	if list == nil {
+	mediaType := r.URL.Query().Get("media_type")
+	var expectedID int64
+	if v := r.URL.Query().Get("expected_id"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			a.writeError(w, http.StatusBadRequest, "invalid expected_id")
+			return
+		}
+		expectedID = n
+	}
+	if mediaType != "" || expectedID > 0 {
+		kept := list[:0]
+		for _, rv := range list {
+			if (mediaType == "" || rv.MediaType == mediaType) && (expectedID == 0 || rv.ExpectedID == expectedID) {
+				kept = append(kept, rv)
+			}
+		}
+		list = kept
+	}
+	if len(list) == 0 {
 		list = []automation.Review{}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"reviews": list})

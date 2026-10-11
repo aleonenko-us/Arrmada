@@ -1,49 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type BlockEntry, type DuplicateEpisodeFile, type MovieEvent, type SceneOverride, type Series as SeriesT, type SeriesAlias } from "../../lib/api";
-
-const EVENT_TONES: Record<string, string> = {
-  added: "var(--ink-faint)",
-  grabbed: "var(--accent)",
-  searched: "var(--ink-dim)",
-  imported: "var(--good)",
-  upgraded: "var(--good)",
-  renamed: "var(--ink-dim)",
-  failed: "var(--avoid)",
-  refreshed: "var(--ink-faint)",
-};
-
-function fmtTime(s: string): string {
-  const d = new Date(s.includes("T") ? s : s.replace(" ", "T") + "Z");
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-export function HistoryPanel({ seriesId, refreshKey }: { seriesId: number; refreshKey: unknown }) {
-  const [events, setEvents] = useState<MovieEvent[] | null>(null);
-  useEffect(() => {
-    api.seriesHistory(seriesId).then(setEvents).catch(() => setEvents([]));
-  }, [seriesId, refreshKey]);
-  return (
-    <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">History</h2>
-      {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
-      ) : events.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
-      ) : (
-        <div className="flex flex-col">
-          {events.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 border-b py-2 text-[12px]" style={{ borderColor: "var(--line)" }}>
-              <span className="w-[74px] flex-none font-mono text-[10px] font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{e.event}</span>
-              <span className="min-w-0 flex-1 truncate text-ink-dim" title={e.detail}>{e.detail || "—"}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtTime(e.created_at)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+import { api, type BlockEntry, type DuplicateEpisodeFile, type SceneOverride, type Series as SeriesT, type SeriesAlias } from "../../lib/api";
 
 // SeriesBlocklistPanel mirrors the movie blocklist: releases rejected via Replace/stall-failover,
 // with a Remove action. Hidden when empty.
