@@ -19,7 +19,7 @@ export interface NeedsYouRow {
 }
 
 // Kinds listed item by item rather than as one counted line.
-const ITEMIZED = new Set<AttentionKind>(["health", "import", "wrongcat"]);
+const ITEMIZED = new Set<AttentionKind>(["health", "import", "wrongcat", "convert"]);
 
 const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   request: ["Review it", "Review them"],
@@ -30,6 +30,7 @@ const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   wrongcat: ["See it", "See them"],
   search: ["See what's searching", "See what's searching"],
   health: ["Fix", "Fix"],
+  convert: ["See it", "See them"],
 };
 
 export function needsYouRows(a: Attention | undefined): NeedsYouRow[] {

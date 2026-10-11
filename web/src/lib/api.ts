@@ -777,7 +777,7 @@ export interface SystemHealth {
 
 // The Needs-you feed (GET /api/v1/attention, staff only): what's waiting on a person.
 export type AttentionKind =
-  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health";
+  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert";
 export interface AttentionCounts {
   requests: number;
   reviews: number;
@@ -786,6 +786,7 @@ export interface AttentionCounts {
   searches: number; // titles whose searches keep coming up empty
   health: number;
   health_errors: number;
+  convert?: number; // reasons Convert is stuck waiting for disk space
   total: number;
 }
 export interface AttentionItem {

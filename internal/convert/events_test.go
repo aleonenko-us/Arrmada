@@ -159,3 +159,37 @@ func TestConvertEventsWithoutBus(t *testing.T) {
 	job = newEventJob(s, movieKey(7))
 	s.finishSkip(job, SkipNoScratch, "full")
 }
+
+// The Needs-you feed's view: one stall per space reason, recent ones only, and nothing
+// while Convert is off with nothing asked for.
+func TestStallsGroupsRecentSpaceSkips(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	s.skips.record(ctx, movieKey(1), SkipNoScratch, "needs ~91 GB of scratch")
+	s.skips.record(ctx, movieKey(2), SkipNoScratch, "needs ~40 GB of scratch")
+	s.skips.record(ctx, movieKey(3), SkipLibraryFull, "library disk full")
+	s.skips.record(ctx, movieKey(4), SkipHardlinked, "still seeding")
+	s.skips.record(ctx, movieKey(5), SkipNoScratch, "old")
+	if _, err := s.db.Exec(`UPDATE convert_skips SET updated_at = datetime('now', '-3 days') WHERE item_key = ?`, movieKey(5)); err != nil {
+		t.Fatal(err)
+	}
+
+	if st, err := s.Stalls(ctx); err != nil || len(st) != 0 {
+		t.Fatalf("Convert off: stalls = %+v, %v", st, err)
+	}
+	set(t, s, map[string]string{keyAuto: "true"})
+	st, err := s.Stalls(ctx)
+	if err != nil || len(st) != 2 {
+		t.Fatalf("stalls = %+v, %v", st, err)
+	}
+	by := map[string]Stall{}
+	for _, x := range st {
+		by[x.Reason] = x
+	}
+	if by[SkipNoScratch].Files != 2 || by[SkipLibraryFull].Files != 1 {
+		t.Errorf("files = %+v", by)
+	}
+	if by[SkipNoScratch].Title == "" || by[SkipNoScratch].Note == "" || by[SkipNoScratch].Since.IsZero() {
+		t.Errorf("no_scratch = %+v", by[SkipNoScratch])
+	}
+}

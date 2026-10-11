@@ -30,6 +30,8 @@ var (
 	FixImportProblems     = &Fix{Key: "importProblems", Path: "/activity/needs-you#import-failures", Label: "Needs you"}
 	FixWrongCategory      = &Fix{Key: "wrongCategory", Path: "/activity/needs-you#wrong-category", Label: "Needs you"}
 	FixDownloadsSearching = &Fix{Key: "downloadsSearching", Path: "/activity/wanted", Label: "What's searching"}
+	// Convert's Problems tab: files it gave up on, and files waiting for disk space.
+	FixConvertProblems = &Fix{Key: "convertProblems", Path: "/convert?tab=problems", Label: "Convert problems"}
 )
 
 // connectionsPath is Settings → Connections, where every integration has a card.
