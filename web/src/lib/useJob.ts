@@ -82,11 +82,14 @@ export interface JobView {
  */
 export function useJob(
   jobId?: number | null,
-  opts: { onDone?: (job: Job) => void } = {},
+  // giveUpMs: how long to keep following (five minutes by default) — a library scan of
+  // thousands of folders runs far longer than a search.
+  opts: { onDone?: (job: Job) => void; giveUpMs?: number } = {},
 ): JobView {
   const [job, setJob] = useState<Job | null>(null);
   const [following, setFollowing] = useState(false);
   const onDone = useRef(opts.onDone);
+  const giveUp = opts.giveUpMs ?? JOB_GIVE_UP_MS;
   const live = useLiveConnected();
   const connected = useRef(live);
   const wake = useRef<(() => void) | null>(null);
@@ -115,6 +118,7 @@ export function useJob(
       hidden: () => document.hidden,
       pollMs: () => (connected.current ? JOB_POLL_LIVE_MS : JOB_POLL_MS),
       stopped: () => stopped,
+      giveUpMs: giveUp,
       onUpdate: (j) => setJob(j),
     }).then((done) => {
       if (stopped) return;
@@ -132,13 +136,18 @@ export function useJob(
       window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut);
       wake.current?.();
     };
-  }, [jobId]);
+  }, [jobId, giveUp]);
 
   // A job.updated for this job (staff sockets get them) wakes the follower, which then
-  // reads the finished job — the event itself carries no result.
+  // reads the finished job — the event itself carries no result. While it runs, the event's
+  // progress and message are taken as they come, so a progress bar moves between checks.
   useLiveEvent("job.updated", (ev) => {
-    const d = ev.data as { id?: number; status?: JobStatus } | null;
-    if (d && jobId && d.id === jobId && jobDone(d.status)) wake.current?.();
+    const d = ev.data as { id?: number; status?: JobStatus; progress?: number; message?: string } | null;
+    if (!d || !jobId || d.id !== jobId) return;
+    if (jobDone(d.status)) { wake.current?.(); return; }
+    setJob((j) => (j && j.id === jobId && !jobDone(j.status)
+      ? { ...j, status: d.status ?? j.status, progress: typeof d.progress === "number" ? d.progress : j.progress, message: d.message ?? j.message }
+      : j));
   }, !!jobId);
 
   return {

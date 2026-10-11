@@ -72,8 +72,9 @@ type Service struct {
 	// that can't be probed isn't retried on every poll of the grid.
 	backfillTried sync.Map
 
-	muUnmatched   sync.Mutex
-	lastUnmatched []UnmatchedFolder // folders the last scan couldn't identify, for manual pick
+	// scanning is held for the whole of a library scan: two scans at once would race to
+	// create the same films and each replace the other's needs-review list.
+	scanning sync.Mutex
 }
 
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently
@@ -329,6 +330,39 @@ type ScanOptions struct {
 	Monitor bool `json:"monitor"`
 	// QualityProfile is the profile they get ("" = "n/a").
 	QualityProfile string `json:"quality_profile"`
+	// Progress, when set, is told how many of the root's folders the scan has looked at,
+	// after each one (and once with 0 before the first).
+	Progress func(done, total int) `json:"-"`
+}
+
+// ErrScanRunning is ScanLibrary's answer while another scan of the movies folder runs.
+var ErrScanRunning = errors.New("a library scan is already running")
+
+// ScanFolders lists the entries of root a scan would look at: everything but the recycle
+// bins and other hidden folders.
+func ScanFolders(root string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	out := entries[:0]
+	for _, e := range entries {
+		if !library.SkipScanDir(e.Name()) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// ScanBudget is how long a scan of n folders may take: two seconds a folder (each is a
+// metadata search, often a fetch, and a file read), and never less than 15 minutes. A
+// fixed 15 minutes cut big libraries off part-way.
+func ScanBudget(n int) time.Duration {
+	d := time.Duration(n) * 2 * time.Second
+	if d < 15*time.Minute {
+		d = 15 * time.Minute
+	}
+	return d
 }
 
 // ScanLibrary walks the library root and matches each movie folder/file to TMDB. A film
@@ -336,11 +370,18 @@ type ScanOptions struct {
 // profile — Arrmada just catalogs it). A film already in the library without a file gets
 // the file attached, so the sweeps stop looking for something the owner already has. A
 // film that already has a different file is reported as a duplicate and left alone.
+//
+// One scan runs at a time (ErrScanRunning). The folders it can't identify are saved as the
+// needs-review list, replacing the last scan's.
 func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts ScanOptions) (ScanResult, error) {
 	res := ScanResult{Duplicates: []ScanDuplicate{}, Unmatched: []UnmatchedFolder{}}
 	if !s.meta.Available() {
 		return res, fmt.Errorf("movie metadata isn't configured — add a TMDB key in Settings → Connections")
 	}
+	if !s.scanning.TryLock() {
+		return res, ErrScanRunning
+	}
+	defer s.scanning.Unlock()
 	root := rootOverride
 	if root == "" {
 		root = s.libRoot()
@@ -364,18 +405,25 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		}
 	}
 
-	entries, err := os.ReadDir(root)
+	entries, err := ScanFolders(root) // not the recycle bins or other hidden folders
 	if err != nil {
 		return res, err
 	}
+	progress := opts.Progress
+	if progress == nil {
+		progress = func(int, int) {}
+	}
+	total, done := len(entries), 0
+	progress(0, total)
 	for _, e := range entries {
 		if ctx.Err() != nil {
 			break
 		}
-		name := e.Name()
-		if library.SkipScanDir(name) {
-			continue // the recycle bins and other hidden folders
+		if done > 0 {
+			progress(done, total)
 		}
+		done++
+		name := e.Name()
 		full := filepath.Join(root, name)
 		video, _, verr := library.FindVideo(full)
 		if verr != nil || video == "" {
@@ -425,7 +473,14 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		owned[filepath.Clean(video)] = true
 		res.Imported++
 	}
-	s.setLastUnmatched(res.Unmatched)
+	if err := ctx.Err(); err != nil {
+		// Stopped part-way (a cancel, the time budget, shutdown): keep what it did find,
+		// and don't wipe the review rows of the folders it never reached.
+		s.recordUnmatched(ctx, root, res.Unmatched, false)
+		return res, fmt.Errorf("the scan stopped after %d of %d folders: %w", done, total, err)
+	}
+	progress(total, total)
+	s.recordUnmatched(ctx, root, res.Unmatched, true)
 	return res, nil
 }
 
@@ -522,7 +577,9 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	default:
 		return err
 	}
-	s.dropUnmatched(folder)
+	if err := s.repo.dropUnmatched(ctx, mediaMovie, folder); err != nil {
+		s.log.Warn("couldn't take the folder off the needs-review list", "folder", folder, "err", err)
+	}
 	return nil
 }
 
@@ -531,31 +588,6 @@ func topMovies(results []metadata.MovieResult, n int) []metadata.MovieResult {
 		return results[:n]
 	}
 	return results
-}
-
-func (s *Service) setLastUnmatched(u []UnmatchedFolder) {
-	s.muUnmatched.Lock()
-	s.lastUnmatched = u
-	s.muUnmatched.Unlock()
-}
-
-// LastUnmatched returns the folders the most recent scan couldn't identify.
-func (s *Service) LastUnmatched() []UnmatchedFolder {
-	s.muUnmatched.Lock()
-	defer s.muUnmatched.Unlock()
-	return append([]UnmatchedFolder(nil), s.lastUnmatched...)
-}
-
-func (s *Service) dropUnmatched(folder string) {
-	s.muUnmatched.Lock()
-	defer s.muUnmatched.Unlock()
-	out := s.lastUnmatched[:0]
-	for _, u := range s.lastUnmatched {
-		if u.Folder != folder {
-			out = append(out, u)
-		}
-	}
-	s.lastUnmatched = out
 }
 
 // bestMatch resolves a scanned folder to a search result, requiring a confident

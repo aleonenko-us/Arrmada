@@ -1651,6 +1651,16 @@ export interface UnmatchedFolder {
   candidates: MatchCandidate[];
 }
 
+// A finished movie library scan's job result (GET /api/v1/jobs/{id}.result): unmatched is
+// how many folders landed on the needs-review list.
+export interface MovieScanResult {
+  imported: number;
+  skipped: number;
+  unmatched: number;
+  attached: number;
+  duplicates: number;
+}
+
 export interface SeriesLookup {
   tmdb_id: number;
   title: string;
@@ -2592,7 +2602,8 @@ export const api = {
   deleteRecycleItem: (id: string) => req<{ status: string }>("/api/v1/recycle/delete", { method: "POST", body: JSON.stringify({ id }) }),
   // Catalog the movies folder: new films are added unmonitored on "n/a" unless monitor is
   // set (with a profile; "" = the default), and films already in the library without a
-  // file get the one found.
+  // file get the one found. One scan at a time: a second answers 409 naming the running
+  // job (ApiError body.job_id).
   scanLibrary: (opts?: { monitor: boolean; quality_profile?: string }) =>
     req<{ status: string } & JobRef>("/api/v1/movies/scan", { method: "POST", ...(opts ? { body: JSON.stringify(opts) } : {}) }),
   moviesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/movies/unmatched").then((r) => r.unmatched),

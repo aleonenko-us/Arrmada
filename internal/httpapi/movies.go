@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -319,8 +320,18 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	root := a.libMovies(r) // resolve the configured folder before we detach
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: 15 * time.Minute,
+	// The time budget grows with the library (one listing of the folder, which the scan
+	// reads first anyway); an unreadable folder gets the minimum and fails in the scan.
+	folders, _ := movies.ScanFolders(root)
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: movies.ScanBudget(len(folders)),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			// Progress rides the job: the runner records it and announces it as job.updated
+			// (at most once a second) on the one live socket the page already has.
+			opts.Progress = func(done, total int) {
+				if total > 0 {
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s folders", thousands(done), thousands(total)))
+				}
+			}
 			res, err := a.deps.Movies.ScanLibrary(ctx, root, opts)
 			if err != nil {
 				return nil, err
@@ -338,13 +349,35 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "scanning"})
+	if existing {
+		// One scan at a time; the page follows the one that's running (job_id).
+		a.alreadyRunning(w, jobID, "a library scan is already running")
+		return
+	}
+	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
 }
 
-// handleMovieUnmatched returns the folders the last scan couldn't identify, each
-// with candidate matches to choose from.
+// thousands writes n with thousands separators ("1,204"), for progress messages.
+func thousands(n int) string {
+	if n < 0 {
+		return "-" + thousands(-n)
+	}
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// handleMovieUnmatched returns the folders scans couldn't identify, each with candidate
+// matches to choose from. The list is kept in the database, so it survives a restart.
 func (a *api) handleMovieUnmatched(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": a.deps.Movies.LastUnmatched()})
+	list, err := a.deps.Movies.LastUnmatched(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the folders that need review")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": list})
 }
 
 // handleMovieImportFolder catalogs one library folder as an explicitly chosen
