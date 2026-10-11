@@ -134,14 +134,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/movies/downloads", media.movieDownloads),
     { method: "GET", path: "/api/v1/movies/wanted", respond: ({ url }) => (url.searchParams.get("tab") === "cutoff" ? media.moviesCutoff : media.moviesMissing) },
     { method: "POST", path: "/api/v1/movies/search", status: 202, respond: ({ body }) => ({ queued: ((body as { ids?: number[] })?.ids ?? []).length, duplicates: 0 }) },
-    // A film's page, its panels and its delete (MOV-18); the table's fit column.
+    // A film's page and its panels (MOV-18); its delete is answered below.
     { method: "GET", path: /^\/api\/v1\/movies\/(\d+)$/, respond: ({ params }) => media.movieDetail(Number(params[0])) },
     get(/^\/api\/v1\/movies\/\d+\/history$/, { events: [] }),
     get(/^\/api\/v1\/movies\/\d+\/blocklist$/, { blocklist: [] }),
-    get(/^\/api\/v1\/movies\/\d+\/delete-preview$/, media.movieDeletePreview),
-    { method: "DELETE", path: /^\/api\/v1\/movies\/\d+$/, status: 204 },
-    get("/api/v1/recycle/mode", media.movieDeletePreview.recycle),
-    get("/api/v1/library/fit", { items: [] }),
     // The mass editor (MOV-19): a profile change finds The Cartographer's file too big;
     // Driftwood's search can't be queued (a partial failure).
     { method: "PUT", path: "/api/v1/movies/bulk", respond: ({ body }) => media.bulkUpdate(body) },
@@ -151,6 +147,17 @@ export function routes(p: PersonaInfo): MockRoute[] {
       return { deleted: ids.length, failed: 0, results: ids.map((id) => ({ id, deleted: true })) };
     } },
     get("/api/v1/series/unmatched", { unmatched: [] }),
+    // The library pages: fit reports, removing a title, and the bulk bar's per-title calls.
+    { method: "GET", path: "/api/v1/library/fit", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesFit : media.movieFit) },
+    get("/api/v1/recycle/mode", media.recycleMode),
+    get(/^\/api\/v1\/movies\/\d+\/delete-preview$/, media.movieDeletePreview),
+    get(/^\/api\/v1\/series\/\d+\/delete-preview$/, media.seriesDeletePreview),
+    { method: "DELETE", path: /^\/api\/v1\/(movies|series)\/\d+$/, status: 204 },
+    { method: "PUT", path: /^\/api\/v1\/(movies|series)\/\d+\/profile$/, respond: ({ body }) => ({ quality_profile: (body as { quality_profile?: string })?.quality_profile ?? "", downgrade: false }) },
+    { method: "PUT", path: /^\/api\/v1\/(movies|series)\/\d+\/monitor$/, respond: ({ body }) => ({ monitored: !!(body as { monitored?: boolean })?.monitored, monitor_new_seasons: true }) },
+    { method: "POST", path: /^\/api\/v1\/movies\/\d+\/search$/, status: 202, body: { status: "queued", queued: true, position: 1 } },
+    { method: "POST", path: /^\/api\/v1\/series\/\d+\/search$/, status: 202, body: { status: "searching" } },
+    get(/^\/api\/v1\/movies\/\d+\/releases$/, media.movieReleases),
     get("/api/v1/books", media.books),
     get("/api/v1/books/upgrade", media.bookUpgrade),
     get("/api/v1/books/search-missing", media.bookSweep),

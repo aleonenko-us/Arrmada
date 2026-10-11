@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, type FileDetails } from "../lib/api";
+import { formatBytes } from "../lib/format";
+import { IconButton, Modal } from "../ui";
 
 // Everything known about one library file, in one place: what's on disk, what's inside
 // it, and — the part that had no answer anywhere in the app — which torrent it came from.
@@ -30,38 +32,25 @@ export function FileDetailsModal({
     api.fileInfo(path).then(setInfo).catch((e: Error) => setErr(e.message));
   }, [path]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const m = info?.media;
   const src = info?.source;
+  const titleId = useId();
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      style={{ background: "rgba(0,0,0,0.6)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[720px] rounded-2xl p-5"
-        style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} labelledBy={titleId} size="lg">
         <div className="mb-4 flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="m-0 text-[15px] font-bold">{title}</h2>
+            <h2 id={titleId} className="m-0 text-[15px] font-bold">{title}</h2>
             {subtitle && <div className="mt-0.5 text-[12px] text-ink-dim">{subtitle}</div>}
           </div>
-          <button
+          <IconButton
+            label="Close"
             onClick={onClose}
             className="shrink-0 rounded-lg px-2.5 py-1 text-[13px]"
             style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
           >
             ✕
-          </button>
+          </IconButton>
         </div>
 
         {err && (
@@ -78,7 +67,7 @@ export function FileDetailsModal({
               <Row k="Folder" v={info.dir} mono />
               {info.exists ? (
                 <>
-                  <Row k="Size" v={bytes(info.size_bytes)} />
+                  <Row k="Size" v={info.size_bytes > 0 ? formatBytes(info.size_bytes, 2) : "0 B"} />
                   <Row k="Modified" v={when(info.modified_ms)} />
                 </>
               ) : (
@@ -206,8 +195,7 @@ export function FileDetailsModal({
             </Section>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -243,12 +231,6 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="m-0 py-1 text-[11.5px] text-ink-dim">{children}</p>;
 }
 
-function bytes(n: number): string {
-  if (n <= 0) return "0 B";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1);
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 2)} ${u[i]}`;
-}
 
 function when(ms?: number): string {
   if (!ms) return "";

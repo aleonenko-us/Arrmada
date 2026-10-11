@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { releaseErrorMessage, type RankedRelease, type ReleaseList } from "../lib/api";
 import { formatReleaseAge } from "../lib/format";
+import { Button, IconButton, Modal, StatusChip } from "../ui";
 import { IndexerIssues, emptyReleasesMessage } from "./IndexerIssues";
 
 // --- release metadata parsing (resolution + notable features live in summary/title) ---
@@ -76,6 +77,7 @@ export function ReleaseSearchModal({
   const [sort, setSort] = useState<SortKey>("best");
   const [resFilter, setResFilter] = useState<Set<string>>(new Set());
   const [featFilter, setFeatFilter] = useState<Set<string>>(new Set());
+  const titleId = useId();
 
   // Decorate releases with parsed resolution + feature tags once, keeping ranked order as the index.
   const decorated = useMemo(
@@ -147,16 +149,15 @@ export function ReleaseSearchModal({
     : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[760px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} labelledBy={titleId} size="xl">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="m-0 truncate text-[15px] font-bold">{title}</h2>
+            <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{title}</h2>
             {subtitle && <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{subtitle}</p>}
           </div>
           <div className="flex flex-none items-center gap-2">
-            <button onClick={run} disabled={loading} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{loading ? "Searching…" : "Search again"}</button>
-            <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+            <Button size="sm" onClick={run} busy={loading} busyLabel="Searching…">Search again</Button>
+            <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
           </div>
         </div>
         {tabs && tabs.length > 1 && (
@@ -224,8 +225,7 @@ export function ReleaseSearchModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -265,8 +265,8 @@ function ReleaseRow({ rel, why, busy, grabbed, disabled, onGrab, onBlock }: { re
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            {highlight && <span className="rounded-full px-2 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Recommended</span>}
-            {blocked && <span className="rounded-full px-2 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>Blocklisted</span>}
+            {highlight && <StatusChip tone="accent" size="md">Recommended</StatusChip>}
+            {blocked && <StatusChip tone="reject" size="md">Blocklisted</StatusChip>}
             <span className="text-[13px] font-semibold">{rel.summary}</span>
             {/* An anime arc is numbered in its own universe: "S04E06" is the arc's
                 fourth cour, not the show's fourth season. Without saying what it
@@ -298,9 +298,9 @@ function ReleaseRow({ rel, why, busy, grabbed, disabled, onGrab, onBlock }: { re
           )}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
-          <button onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="rounded-lg px-3.5 py-2 text-[12px] font-semibold" style={{ background: grabbed ? "var(--panel-2)" : "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: grabbed ? "var(--ink-dim)" : "var(--accent-ink)", opacity: blocked || usenet ? 0.5 : 1 }}>
+          <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="px-3.5 text-[12px]" style={{ opacity: blocked || usenet ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>
             {grabbed ? "Grabbed ✓" : busy ? "…" : "Grab"}
-          </button>
+          </Button>
           {onBlock && !blocked && !grabbed && !usenet && rel.token && (
             <button onClick={onBlock} disabled={disabled} title="Blocklist and search for an alternate" className="rounded-lg px-2.5 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-faint)" }}>⊘ Block</button>
           )}

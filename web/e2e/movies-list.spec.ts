@@ -39,13 +39,13 @@ test.describe("manager", () => {
   test("the mass editor sets a profile in one request and offers smaller versions", async ({ page, api }) => {
     await page.goto("/movies");
     await page.getByRole("button", { name: "Select", exact: true }).click();
-    await page.getByRole("button", { name: "Select all (3)" }).click();
-    await page.getByRole("combobox", { name: "Set quality profile" }).selectOption({ label: "Ultra HD" });
+    await page.getByRole("button", { name: "Select all (5)" }).click();
+    await page.getByRole("combobox", { name: /quality profile/i }).selectOption({ label: "Ultra HD" });
     await expect.poll(() => api.callsTo("PUT", "/api/v1/movies/bulk").length).toBe(1);
     const sent = api.callsTo("PUT", "/api/v1/movies/bulk")[0].body as { ids: number[]; quality_profile: string; search: string };
-    expect([...sent.ids].sort()).toEqual([1, 2, 3]);
+    expect([...sent.ids].sort()).toEqual([1, 2, 3, 4, 5]);
     expect(sent).toMatchObject({ quality_profile: "uhd-2160p", search: "missing_and_upgrade" });
-    await expect(page.getByText("Quality profile set on 3 movies.")).toBeVisible();
+    await expect(page.getByText("Quality profile set on 5 movies.")).toBeVisible();
     const prompt = page.getByRole("dialog", { name: "1 file doesn't fit this profile" });
     await expect(prompt.getByText("The Cartographer")).toBeVisible();
     await prompt.getByRole("button", { name: "Download smaller versions" }).click();

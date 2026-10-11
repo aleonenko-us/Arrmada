@@ -1,7 +1,8 @@
 import { test, expect } from "./mockApi";
 
-// MOV-18: on a phone (no hover) a movie can be deleted from the grid, the table and its
-// own page — through a ⋯ menu that's always visible, never a hover-only control.
+// MOV-18: on a phone (no hover) a movie can be deleted from the grid and from its own
+// page — through a ⋯ menu that's always visible, never a hover-only control. (Below 640 px
+// the library shows the grid only; the table's row menu is pinned on desktop.)
 test.describe("manager on a phone", () => {
   test.use({ persona: "manager" });
 
@@ -16,20 +17,9 @@ test.describe("manager on a phone", () => {
     const trigger = page.getByRole("button", { name: "Actions for Anchor Point" });
     await expect(trigger).toBeVisible();
     await trigger.click();
-    await page.getByRole("menuitem", { name: "Delete…" }).click();
+    await page.getByRole("menuitem", { name: "Remove…" }).click();
     await removeFromDialog(page, "Anchor Point");
     await expect.poll(() => api.callsTo("DELETE", "/api/v1/movies/2").length).toBe(1);
-  });
-
-  test("Delete is reachable from the table", async ({ page, api }) => {
-    await page.goto("/movies");
-    await page.getByRole("button", { name: "table", exact: true }).click();
-    const trigger = page.getByRole("button", { name: "Actions for Driftwood" });
-    await expect(trigger).toBeInViewport();
-    await trigger.click();
-    await page.getByRole("menuitem", { name: "Delete…" }).click();
-    await removeFromDialog(page, "Driftwood");
-    await expect.poll(() => api.callsTo("DELETE", "/api/v1/movies/3").length).toBe(1);
   });
 
   test("Delete is reachable from the movie's page, which then goes back to Movies", async ({ page, api }) => {

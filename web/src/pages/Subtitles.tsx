@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { PageHeader } from "../components/PageHeader";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useTabParam } from "../lib/useTabParam";
+import { useSearchParamState } from "../lib/useSearchState";
 import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
@@ -307,9 +308,11 @@ function embeddedKinds(f: SubFileEntry): { txt: boolean; pgs: boolean; vob: bool
   return { txt, pgs, vob };
 }
 type Filter = "missing" | "pgs" | "text" | "external";
+// The library list is for movies or shows (?media=tv).
+const MEDIA_KINDS = ["movies", "tv"] as const;
 
 function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: () => void }) {
-  const [media, setMedia] = useState<"movies" | "tv">("movies");
+  const [media, setMedia] = useSearchParamState<"movies" | "tv">("media", "movies", { allowed: MEDIA_KINDS });
   const [items, setItems] = useState<SubFileEntry[] | null>(null);
   const [scanning, setScanning] = useState(false); // no pass has completed yet (just after startup)
   const [refreshKey, setRefreshKey] = useState(0);
@@ -468,7 +471,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
 function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: () => void }) {
   const [groups, setGroups] = useState<SubSeriesGroup[] | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [onlyGaps, setOnlyGaps] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
 
