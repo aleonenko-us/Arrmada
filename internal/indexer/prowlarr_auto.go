@@ -68,6 +68,8 @@ func ReadProwlarrLastSync(ctx context.Context, st ProwlarrSettings) (ProwlarrLas
 // status. A person's sync that fails (a mistyped key in the form, say) is recorded too:
 // the panel then says why, and the next scheduled run with the saved key replaces it.
 func (s *Service) RecordProwlarrSync(ctx context.Context, st ProwlarrSettings, trigger string, res SyncResult, err error) ProwlarrLastSync {
+	s.prowlarrMu.Lock()
+	defer s.prowlarrMu.Unlock()
 	prev, _ := ReadProwlarrLastSync(ctx, st)
 	ls := ProwlarrLastSync{
 		At: time.Now().UTC(), Trigger: trigger,

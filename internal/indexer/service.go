@@ -41,6 +41,10 @@ type Service struct {
 	usenetAvailable func() bool
 	// usenetSkipLogged remembers which usenet indexers have been logged as skipped.
 	usenetSkipLogged sync.Map
+	// prowlarrMu runs one Prowlarr sync at a time, and with it the saved outcome's
+	// read-and-write: the hourly sync and a Sync now landing together would otherwise
+	// both see a new upstream indexer as missing and add it twice.
+	prowlarrMu sync.Mutex
 }
 
 // SetUsenetAvailable wires whether a usenet download client exists. Arrmada has none
