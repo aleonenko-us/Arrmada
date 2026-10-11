@@ -67,6 +67,29 @@ func TestShapePublisher(t *testing.T) {
 	if pub.n(TopicQueueChanged) != 0 {
 		t.Fatal("a progress move published queue.changed")
 	}
+	// Nor is an unfinished download flapping to stalled and back, or a seed going through
+	// qBittorrent's seed queue: queue.progress carries those, and every list would refetch.
+	stalled := dl("b", 0.6)
+	stalled.RawState = "stalledDL"
+	queuedUP := seeding("a")
+	queuedUP.RawState = "queuedUP"
+	p.tick(full(queuedUP, stalled))
+	p.tick(full(seeding("a"), dl("b", 0.6)))
+	if pub.n(TopicQueueChanged) != 0 {
+		t.Fatal("a phase flap published queue.changed")
+	}
+	// A finished torrent paused by hand is a change the Seeding list must show.
+	paused := seeding("a")
+	paused.RawState = "pausedUP"
+	p.tick(full(paused, dl("b", 0.6)))
+	if pub.n(TopicQueueChanged) != 1 {
+		t.Fatalf("pausing a seed: %d publishes, want 1", pub.n(TopicQueueChanged))
+	}
+	p.tick(full(seeding("a"), dl("b", 0.6)))
+	if pub.n(TopicQueueChanged) != 2 {
+		t.Fatalf("resuming a seed: %d publishes, want 2", pub.n(TopicQueueChanged))
+	}
+	pub.got = nil
 	// A seeding torrent removed: queue.progress never saw it; this must.
 	p.tick(full(dl("b", 0.6)))
 	if pub.n(TopicQueueChanged) != 1 {
