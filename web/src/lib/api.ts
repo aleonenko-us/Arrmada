@@ -3061,7 +3061,8 @@ export const api = {
 
   // Insights (Plex)
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),
-  updateInsightsConfig: (body: { url: string; token?: string; enabled?: boolean; poll_seconds?: number }) =>
+  // Each field is optional; a missing url or token keeps the saved one.
+  updateInsightsConfig: (body: { url?: string; token?: string; enabled?: boolean; poll_seconds?: number }) =>
     req<PlexConfig>("/api/v1/insights/plex", { method: "PUT", body: JSON.stringify(body) }),
   testInsights: (body: { url?: string; token?: string }) =>
     req<PlexTestResult>("/api/v1/insights/plex/test", { method: "POST", body: JSON.stringify(body) }),

@@ -100,10 +100,13 @@ func (a *api) handleInsightsConfig(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, a.deps.Insights.Config(r.Context()))
 }
 
-// handleUpdateInsightsConfig persists the Plex connection settings.
+// handleUpdateInsightsConfig persists the Plex connection settings. Every field is
+// optional: Settings → Plex's monitoring switch and poll interval each save on their own
+// ({"enabled": false}), without sending the server address back; a missing url keeps the
+// saved one, like a missing token does.
 func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL         string  `json:"url"`
+		URL         *string `json:"url"`
 		Token       *string `json:"token"`
 		Enabled     *bool   `json:"enabled"`
 		PollSeconds *int    `json:"poll_seconds"`
@@ -111,7 +114,11 @@ func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request)
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	if err := a.deps.Insights.SetConfig(r.Context(), req.URL, req.Token, req.Enabled, req.PollSeconds); err != nil {
+	u := a.deps.Insights.Config(r.Context()).URL
+	if req.URL != nil {
+		u = *req.URL
+	}
+	if err := a.deps.Insights.SetConfig(r.Context(), u, req.Token, req.Enabled, req.PollSeconds); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not save Plex settings")
 		return
 	}
@@ -141,7 +148,8 @@ func (a *api) handleInsightsPlexAuthStart(w http.ResponseWriter, r *http.Request
 		a.writeError(w, http.StatusUnauthorized, "sign in first")
 		return
 	}
-	// ?mode=redirect comes back to Settings → Plex, which finishes the connection.
+	// ?mode=redirect comes back to the Plex card on Settings → Connections, which finishes
+	// the connection.
 	var forward func(int) string
 	if plexRedirectMode(r) {
 		if _, ok := plexReturnBase(r); !ok {
@@ -149,7 +157,7 @@ func (a *api) handleInsightsPlexAuthStart(w http.ResponseWriter, r *http.Request
 			return
 		}
 		forward = func(pin int) string {
-			u, _ := plexForwardURL(r, "/settings/plex?plexpin="+strconv.Itoa(pin))
+			u, _ := plexForwardURL(r, "/settings/connections?plexpin="+strconv.Itoa(pin))
 			return u
 		}
 	}

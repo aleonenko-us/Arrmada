@@ -101,7 +101,7 @@ describe("takePendingPlexPin", () => {
 
   it("keeps each kind apart and uses the caller's strip", () => {
     sessionStorage.setItem("arrmada.plexpin.connect", "42");
-    window.history.replaceState(null, "", "/settings/plex?plexpin=42");
+    window.history.replaceState(null, "", "/settings/connections?plexpin=42");
     expect(takePendingPlexPin("login", "plexpin", () => {})).toBeNull();
     sessionStorage.setItem("arrmada.plexpin.connect", "42");
     const strip = vi.fn();

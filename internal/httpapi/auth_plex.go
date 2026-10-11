@@ -30,7 +30,7 @@ func (a *api) plexClientID(ctx context.Context) string {
 }
 
 // plexServerID is the machine id of the server Plex sign-ins are checked against: the
-// connected server's own id when Settings → Plex has stored it, else the first server the
+// connected server's own id when the Plex connection has stored it, else the first server the
 // owner's token owns (an owner with two servers is then gated on the right one).
 func (a *api) plexServerID(ctx context.Context, clientID, adminToken string) (string, error) {
 	if id := a.deps.Settings.Get(ctx, insights.KeyMachineID, ""); id != "" {
@@ -113,7 +113,7 @@ func (a *api) handlePlexLoginPoll(w http.ResponseWriter, r *http.Request) {
 	// Authorization gate: the signing-in user must have access to THIS Plex server.
 	adminToken := a.deps.Settings.Get(ctx, "insights_plex_token", "")
 	if adminToken == "" {
-		a.writeError(w, http.StatusServiceUnavailable, "Plex sign-in isn't configured — connect your Plex server in Settings → Plex first")
+		a.writeError(w, http.StatusServiceUnavailable, "Plex sign-in isn't configured — connect your Plex server in Settings → Connections first")
 		return
 	}
 	serverID, err := a.plexServerID(ctx, clientID, adminToken)

@@ -134,7 +134,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </div>
         )}
         <Toggle save={pause} label="Pause while someone is watching Plex"
-          hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex monitoring turned on (<Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Plex settings</Link>) — until then this does nothing.</>} />
+          hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
       <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">

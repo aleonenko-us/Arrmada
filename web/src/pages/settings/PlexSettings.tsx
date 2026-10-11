@@ -1,169 +1,186 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { AutoToggle, SavedTick } from "../../components/settings/auto";
-import { Note, Section, inputStyle } from "../../components/settings/ui";
-import { api, type PlexConfig, type PlexTestResult } from "../../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { AutoNumber, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
+import { Note, Section } from "../../components/settings/ui";
+import { api, type Person, type PlexConfig, type PlexStatus } from "../../lib/api";
+import { LINKS } from "../../lib/links";
 import { isAdmin, useMe } from "../../lib/me";
-import { plexApi, type PlexConnectResult } from "../../lib/plexApi";
-import { usePlexPinSignIn, type PlexFlow } from "../../lib/plexSignIn";
+import { ago } from "../../lib/taskTime";
+import { useAutoSave } from "../../lib/useAutoSave";
 import { useSetting } from "../../lib/useSettings";
-import { useToast } from "../../ui";
+import { Button, useConfirm, useToast } from "../../ui";
 import { PlexLibraryUpdates } from "./PlexLibraryUpdates";
 import { requesterPages } from "./roles";
-import { AutoApproveChecks, typesFromCSV, typesToCSV } from "./People";
+import { AutoApproveChecks, ROLES, plexUnlinkConfirm, typesFromCSV, typesToCSV } from "./People";
 
-// Settings → Plex: everything about the Plex server in one place — the connection Insights
-// records from, the scans Arrmada sends after it changes a file, and (admins) who may sign
-// in with Plex. Insights' old Settings tab and the Plex card that used to sit under Users (now People & access)
-// both live here now.
+// Settings → Plex: everything about how Arrmada uses the Plex server, on one page — which
+// server it is, watch monitoring, the scans Arrmada sends after it changes a file, and
+// (admins) who may sign in with Plex, which accounts are linked to Plex and the Tautulli
+// import. The connection itself (Sign in with Plex, address and token, Test) is the Plex
+// card on Settings → Connections, next to every other integration; the Plex server card
+// here links to it, and a link there opens its editor.
 export function PlexSettings() {
   const { user } = useMe();
   const admin = isAdmin(user);
+  // plex.tv used to send a redirect-mode "Sign in with Plex" back here. One that was under
+  // way across an update still finishes: the connection editor picks the PIN up.
+  const [params] = useSearchParams();
+  const pin = params.get("plexpin");
+  if (pin) return <Navigate to={`/settings/connections?plexpin=${encodeURIComponent(pin)}`} replace />;
+  return <PlexPage admin={admin} />;
+}
+
+function PlexPage({ admin }: { admin: boolean }) {
+  // One read of the Plex settings for the server and monitoring cards; a monitoring save
+  // answers with the whole config, so the server card's status line follows it.
+  const [cfg, setCfg] = useState<PlexConfig | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.insightsConfig().then(setCfg).catch((e: Error) => setErr(e.message)); }, []);
   return (
     <div className="flex flex-col gap-6">
-      <PlexConnection />
+      <PlexServer cfg={cfg} err={err} />
+      {cfg && <PlexMonitoring cfg={cfg} setCfg={setCfg} />}
       {/* Path mapping and the last scan; its own load and Save. */}
       <PlexLibraryUpdates />
       {admin && <PlexSignIn />}
+      {admin && <PlexAccounts />}
+      {admin && <PlexTautulli />}
     </div>
   );
 }
 
-// PlexConnection points Arrmada at the Plex Media Server: Sign in with Plex (finds the
-// server itself), or a URL and token typed in. The token never comes back to the browser.
-function PlexConnection() {
-  const toast = useToast();
-  const [cfg, setCfg] = useState<PlexConfig | null>(null);
-  const [url, setUrl] = useState("");
-  const [token, setToken] = useState("");
-  const [poll, setPoll] = useState("5");
-  const [enabled, setEnabled] = useState(false);
-  const [busy, setBusy] = useState<"save" | "test" | null>(null);
-  const [test, setTest] = useState<PlexTestResult | null>(null);
-  const [, setParams] = useSearchParams();
+const STATUS_LINE: Record<PlexStatus, { text: string; color: string }> = {
+  unconfigured: { text: "Not connected", color: "var(--avoid)" },
+  off: { text: "Connected · watch monitoring is off", color: "var(--avoid)" },
+  recording: { text: "Connected · recording what's watched", color: "var(--good)" },
+  unreachable: { text: "Plex isn't answering", color: "var(--reject)" },
+};
 
-  const load = useCallback(() => api.insightsConfig().then(setCfg).catch(() => toast("Could not load Plex settings", { tone: "error" })), [toast]);
-  useEffect(() => { void load(); }, [load]);
-  const [choices, setChoices] = useState<NonNullable<PlexConnectResult["choices"]>>([]);
-  // The connected server's name: from the saved config, refreshed by a passing Test of it.
-  const [serverName, setServerName] = useState("");
-  useEffect(() => {
-    if (!cfg) return;
-    setUrl(cfg.url);
-    setServerName(cfg.server_name ?? "");
-    setPoll(String(cfg.poll_seconds || 5));
-    // Until someone chooses, monitoring starts ticked: connecting Plex is for recording.
-    setEnabled(cfg.enabled_set ? cfg.enabled : true);
-  }, [cfg]);
-
-  // Sign in with Plex: a popup on a computer, the whole page on a phone (plex.tv sends it
-  // back here with ?plexpin=). Once approved the server stores the token and finds the
-  // owner's server: one that answers is saved; several that answer are offered here.
-  const flow = useMemo<PlexFlow<PlexConnectResult>>(() => ({
-    kind: "connect",
-    start: plexApi.connectStart,
-    poll: async (id) => { const r = await plexApi.connectPoll(id); return r.authorized ? r : null; },
-  }), []);
-  const plex = usePlexPinSignIn({
-    flow,
-    onDone: (r) => {
-      setTest(null);
-      setChoices(r.choices ?? []);
-      void load();
-      if (r.server_name) toast(`Signed in with Plex — connected to ${r.server_name}`, { tone: "good" });
-      else if (r.choices?.length) toast("Signed in with Plex — pick your server below", { tone: "good" });
-      else toast("Signed in with Plex, but none of your servers answered — enter its URL below.", { tone: "error" });
-    },
-    onError: (m) => toast(m, { tone: "error" }),
-    resumeParam: "plexpin",
-    strip: () => setParams((p) => { p.delete("plexpin"); return p; }, { replace: true }),
-  });
-  const signingIn = plex.phase !== "idle";
-
-  const body = (u = url) => ({ url: u.trim(), token: token.trim() || undefined, enabled, poll_seconds: Number(poll) || 5 });
-  const save = async (u?: string) => {
-    setBusy("save");
-    try { setCfg(await api.updateInsightsConfig(body(u))); setToken(""); setChoices([]); toast("Plex settings saved", { tone: "good" }); }
-    catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
-  };
-  const runTest = async () => {
-    setBusy("test"); setTest(null);
-    // A passing test of the saved connection refreshes the server name shown above.
-    try { const t = await api.testInsights({ url: url.trim() || undefined, token: token.trim() || undefined }); setTest(t); if (t.ok && url.trim() === cfg?.url && !token.trim()) setServerName(t.server_name ?? ""); }
-    catch (e) { setTest({ ok: false, error: (e as Error).message }); } finally { setBusy(null); }
-  };
-
+// PlexServer says which server Arrmada is connected to and how it's doing, and sends you
+// to the Plex card on Connections to connect or change it.
+function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }) {
+  const connected = !!cfg && cfg.status !== "unconfigured";
+  const line = cfg ? STATUS_LINE[cfg.status] ?? STATUS_LINE.unconfigured : null;
   return (
-    <Section id="plex-connection" title="Plex connection" subtitle="Point Arrmada at your Plex Media Server. Insights records what's watched from it, and Plex sign-in checks people against it. Your token stays on this server and is never shown back in full.">
-      {serverName && cfg?.url && (
-        <div className="text-[12.5px]">Connected to <b className="font-semibold">{serverName}</b> <span className="font-mono text-[11px] text-ink-faint">{cfg.url}</span></div>
-      )}
-      {choices.length > 1 && (
-        <div role="group" aria-label="Choose your Plex server" className="flex flex-col gap-2 rounded-lg p-3" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
-          <div className="text-[12.5px] font-semibold">More than one of your servers answered. Which one should Arrmada use?</div>
-          {choices.map((c) => (
-            <button key={c.machine_id} onClick={() => { setUrl(c.url); void save(c.url); }} disabled={busy !== null} className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg px-3 py-2 text-left text-[12.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-              <span className="font-semibold">{c.name}</span>
-              <span className="font-mono text-[11px] text-ink-faint">{c.url}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-col gap-2">
-        <button onClick={() => { setTest(null); plex.begin(); }} disabled={signingIn} className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-semibold disabled:opacity-60" style={{ background: "#e5a00d", color: "#1f1200" }}>
-          {plex.phase === "finishing" ? "Finishing Plex sign-in…" : signingIn ? "Waiting for Plex…" : (cfg?.token_set ? "Re-sign in with Plex" : "Sign in with Plex")}
-        </button>
-        {(plex.phase === "waiting" || plex.phase === "slow") && (
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11.5px]">
-            {plex.phase === "slow" && <button onClick={plex.continueHere} className="font-semibold" style={{ color: "var(--accent)" }}>Plex window didn't open? Continue in this tab</button>}
-            <button onClick={plex.cancel} className="text-ink-faint underline">Cancel</button>
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 text-[10.5px] text-ink-faint">
-        <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or enter manually <span className="h-px flex-1" style={{ background: "var(--line)" }} />
-      </div>
-
-      <label className="block">
-        <span className="mb-1 block text-[12px] font-semibold">Server URL</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:32400" className="w-full rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[12px] font-semibold">X-Plex-Token</span>
-        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-        <span className="mt-1 block text-[10.5px] text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
-      </label>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="block">
-          <span className="mb-1 block text-[12px] font-semibold">Poll interval</span>
-          <span className="flex items-center gap-1.5"><input value={poll} onChange={(e) => setPoll(e.target.value)} type="number" min="2" max="60" className="w-[70px] rounded-lg px-2.5 py-1.5 text-[12px]" style={inputStyle} /><span className="text-[11px] text-ink-faint">seconds</span></span>
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 pt-4 text-[12px]">
-          <input type="checkbox" aria-label="Enable monitoring" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          <span><b className="font-semibold">Enable monitoring</b><span className="block text-[10.5px] text-ink-faint">{cfg && !cfg.enabled_set && cfg.token_set && cfg.url && enabled ? "not recording yet — Save to start" : "record activity in the background"}</span></span>
-        </label>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
-        <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
-      </div>
-
-      {test && (
-        <div className="rounded-lg p-3 text-[12px]" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good)" : "var(--reject)" }}>
-          {test.ok ? (
-            <div>
-              <div className="font-semibold">✓ Connected{test.version ? ` · Plex ${test.version}` : ""}</div>
-              {test.libraries && test.libraries.length > 0 && (
-                <div className="mt-1 text-ink-dim">Libraries: {test.libraries.map((l) => l.title).join(", ")}</div>
-              )}
+    <Section id="plex-server" title="Plex server" subtitle="Insights records what's watched from it, library updates go to it, and Plex sign-in checks people against it. The connection itself — Sign in with Plex, the address and token, Test — is the Plex card in Settings → Connections.">
+      {!cfg ? (
+        err ? <p role="alert" className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the Plex connection: {err}</p> : <p className="m-0 text-[12px] text-ink-dim">Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {connected && (
+            <div className="text-[12.5px]">
+              Connected to <b className="font-semibold">{cfg.server_name || "your Plex server"}</b>{" "}
+              <span className="break-all font-mono text-[11px] text-ink-faint">{cfg.url}</span>
             </div>
-          ) : (
-            <div className="font-semibold">✕ {test.error || "Connection failed"}</div>
           )}
+          {line && (
+            <div className="break-words text-[11.5px]" style={{ color: line.color }}>
+              {line.text}
+              {cfg.status === "unreachable" && cfg.last_error ? `: ${cfg.last_error}` : ""}
+              {cfg.status === "recording" && cfg.last_poll_at ? ` · last answer ${ago(cfg.last_poll_at)}` : ""}
+            </div>
+          )}
+          <div>
+            {connected ? (
+              <Link to={LINKS.plexConnection} className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Change the connection →</Link>
+            ) : (
+              <Link to={LINKS.plexConnection} className="inline-block rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>
+            )}
+          </div>
         </div>
       )}
+    </Section>
+  );
+}
+
+// PlexMonitoring is Insights' recorder: on or off, and how often it asks Plex what's
+// playing. Each saves itself and sends only its own field, so it can't put back an
+// address or token changed meanwhile on Connections.
+function PlexMonitoring({ cfg, setCfg }: { cfg: PlexConfig; setCfg: (c: PlexConfig) => void }) {
+  const connected = cfg.status !== "unconfigured";
+  // Until someone chooses, the server switches monitoring on when Plex is first connected,
+  // so an unconnected install shows it on; a connected one that never chose isn't recording.
+  const on = useAutoSave(cfg.enabled_set ? cfg.enabled : !connected, (v) => api.updateInsightsConfig({ enabled: v }).then(setCfg));
+  const poll = useAutoSave(String(cfg.poll_seconds || 5), (v) => api.updateInsightsConfig({ poll_seconds: Number(v) }).then(setCfg), {
+    validate: wholeNumber(2, 60, "The interval"),
+  });
+  return (
+    <Section id="plex-monitoring" title="Watch monitoring" subtitle="Insights' Activity, History, People and Graphs come from this: Arrmada asks Plex what's playing every few seconds and records each play. It switches on by itself when Plex is first connected.">
+      <AutoToggle
+        label="Record what's watched"
+        hint={connected ? "Off keeps everything already recorded and stops adding to it." : "Starts once your Plex server is connected."}
+        save={on}
+      />
+      <AutoNumber label="Ask Plex every (seconds)" save={poll} min={2} max={60} className="w-[90px] rounded-lg px-3 py-2 text-[12.5px]">
+        <span className="text-[11px] text-ink-faint">2 to 60. Shorter catches short plays and pauses more exactly; 5 is plenty for most homes.</span>
+      </AutoNumber>
+    </Section>
+  );
+}
+
+// PlexAccounts (admin): which Arrmada accounts are linked to which Plex account, with
+// Unlink. Blocking a Plex account and merging a duplicate Plex sign-in stay under More on
+// the person's row in People & access, where the rest of their access is.
+function PlexAccounts() {
+  const { user } = useMe();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [people, setPeople] = useState<Person[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const load = useCallback(() => api.people().then((ps) => { setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message)), []);
+  useEffect(() => { void load(); }, [load]);
+
+  const unlink = async (p: Person) => {
+    if (!(await confirm(plexUnlinkConfirm(p)))) return;
+    setBusy(p.id);
+    try {
+      await api.updateUser(p.id, { plex_unlink: true });
+      toast(`${p.username} is no longer linked to Plex.`, { tone: "good" });
+      await load();
+    } catch (e) { toast((e as Error).message, { tone: "error" }); }
+    finally { setBusy(null); }
+  };
+
+  const linked = (people ?? []).filter((p) => p.plex_linked);
+  return (
+    <Section id="plex-accounts" title="Linked Plex accounts" subtitle="Who signs in with which Plex account. A Plex sign-in opens the Arrmada account linked to it; Discover also uses that person's Plex watch history.">
+      {people === null ? (
+        err ? <p role="alert" className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the accounts: {err}</p> : <p className="m-0 text-[12px] text-ink-dim">Loading…</p>
+      ) : linked.length === 0 ? (
+        <p className="m-0 text-[12px] text-ink-dim">No account is linked to Plex yet. Someone's first Sign in with Plex links one, and anyone can link their own Plex account themselves.</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {linked.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }} data-testid="plex-account">
+              <span className="min-w-[8rem] flex-1 truncate text-[12.5px] font-semibold">
+                {p.username}{p.id === user?.id && <span className="font-normal text-ink-faint"> (you)</span>}
+              </span>
+              <span className="min-w-0 truncate text-[11.5px] text-ink-dim">Plex · {p.plex_username || "linked"}</span>
+              <span className="text-[11px] text-ink-faint">{ROLES.find((r) => r.value === p.role)?.label ?? p.role}</span>
+              {p.plex_blocked && <span className="rounded-full px-2 py-0.5 text-[10.5px]" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>blocked</span>}
+              {p.id !== user?.id && (
+                <Button size="sm" busy={busy === p.id} busyLabel="Unlinking…" disabled={busy !== null} onClick={() => void unlink(p)} aria-label={`Unlink ${p.username}'s Plex account`}>Unlink</Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="m-0 text-[11px] text-ink-faint">
+        To block a Plex account from signing in, or merge a duplicate Plex sign-in into the right account, use More on their row in <Link to={LINKS.users} style={{ color: "var(--accent)" }}>Settings → People &amp; access</Link>. Your own Plex link is in the sidebar.
+      </p>
+    </Section>
+  );
+}
+
+// PlexTautulli (admin) points at the Tautulli import, which lives with the other
+// migrations in Settings → Import & migrate.
+function PlexTautulli() {
+  return (
+    <Section id="plex-tautulli" title="Import from Tautulli" subtitle="Moving from Tautulli? Bring its watch history into Insights so the stats and graphs aren't empty on day one. The import, its past runs and Undo are in Settings → Import & migrate.">
+      <div>
+        <Link to={LINKS.tautulliImport} className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Open the Tautulli import →</Link>
+      </div>
     </Section>
   );
 }
@@ -177,7 +194,7 @@ function PlexSignIn() {
   const autoTypes = useSetting("plex_login_auto_approve_types", { keepOnError: false });
   return (
     <>
-      <Section id="plex-sign-in" title="Plex sign-in" subtitle={<>Let your Plex Home members and shared users sign in with Plex — no accounts to hand out. They get a Requester account ({requesterPages(booksEnabled)}), and only people with access to your Plex server get in. Needs the Plex connection above.</>}>
+      <Section id="plex-sign-in" title="Plex sign-in" subtitle={<>Let your Plex Home members and shared users sign in with Plex — no accounts to hand out. They get a Requester account ({requesterPages(booksEnabled)}), and only people with access to your Plex server get in. Needs the Plex server above to be connected.</>}>
         <AutoToggle label="Allow Sign in with Plex" hint="Adds a 'Sign in with Plex' button to the login page." save={allow} />
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold">Auto-approve new Plex sign-ins' requests <SavedTick save={autoTypes} /></div>

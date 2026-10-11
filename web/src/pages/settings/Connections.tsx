@@ -12,15 +12,18 @@ import { isAdmin, useMe } from "../../lib/me";
 import { useQuery } from "../../lib/query";
 import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
+import { PlexConnect } from "./PlexConnection";
 
 const NO_SECTIONS: ConnectionSectionData[] = [];
+// The Plex card's id (and anchor): LINKS.plexConnection lands on it.
+const PLEX_CARD = "plex";
 
 // What each section holds, under its title.
 const SUBTITLES: Record<ConnectionSectionId, string> = {
   search: "Where releases are found: Prowlarr, FlareSolverr for Cloudflare-protected trackers, and every indexer. Every module searches through these.",
   downloads: "Where grabbed releases are sent to download. qBittorrent for torrents.",
   metadata: "The API keys titles, ratings, books and subtitles come from. A key saved here works at once, no restart, and replaces one set at install; it's never shown back, only whether it's set.",
-  other: "Plex, where alerts go, and the server listening apps connect to. Each is edited on its own page.",
+  other: "Plex, where alerts go, and the server listening apps connect to. Plex is connected here; alerts and the audiobook server are set up on their own pages.",
 };
 
 // Each section's anchor. They differ from the API's section ids where those would clash
@@ -43,8 +46,8 @@ const SLOW_POLL_MS = 60_000;
 // so opening the page calls nothing outside Arrmada; Test asks the one connection. Indexers,
 // download clients and Prowlarr are added, edited, switched off and deleted here (the old
 // Indexers and Download clients pages redirect here); admins edit the metadata keys and the
-// FlareSolverr URL inside their cards. Plex, alerts and the audiobook server link to their
-// own pages.
+// FlareSolverr URL inside their cards. Plex is connected inside its card (how Arrmada uses
+// it is Settings → Plex); alerts and the audiobook server link to their own pages.
 export function ConnectionsSettings() {
   const { user } = useMe();
   const admin = isAdmin(user);
@@ -57,11 +60,13 @@ export function ConnectionsSettings() {
   const error = q.error?.message ?? null;
   const [tests, setTests] = useState<Record<string, CardTest>>({});
   const [notices, setNotices] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<string | null>(null);
+  const { hash, search } = useLocation();
+  // Back from plex.tv after a redirect-mode Sign in with Plex (?plexpin=): the Plex editor
+  // opens at once so it can finish that sign-in.
+  const [editing, setEditing] = useState<string | null>(() => (new URLSearchParams(search).has("plexpin") ? PLEX_CARD : null));
   const [adding, setAdding] = useState<"indexer" | "client" | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreErr, setRestoreErr] = useState<string | null>(null);
-  const { hash } = useLocation();
 
   const refetch = q.refetch;
   const refetchIx = ix.refetch;
@@ -75,11 +80,16 @@ export function ConnectionsSettings() {
   useLiveRefresh(refetch, { topics: ["integration.status", "health.changed"], debounceMs: 1000, fallbackMs: SLOW_POLL_MS });
 
   // A link to one card (a health warning's Fix) lands on it once the cards exist; the
-  // hub's own scroll ran before they loaded.
+  // hub's own scroll ran before they loaded. A link to the Plex card while Plex isn't
+  // connected yet ("Connect your Plex server" in Insights or Settings → Plex) is there to
+  // connect it, so its editor opens too.
   const scrolled = useRef("");
   useEffect(() => {
     if (!q.data || !hash || scrolled.current === hash) return;
     scrolled.current = hash;
+    if (hash === `#${PLEX_CARD}` && q.data.some((s) => s.items.some((x) => x.card === PLEX_CARD && !x.configured))) {
+      setEditing((e) => e ?? PLEX_CARD);
+    }
     document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
   }, [q.data, hash]);
 
@@ -205,6 +215,9 @@ export function ConnectionsSettings() {
         return admin ? <KeyEditor ids={keyRowsFor(it.ref)} ctl={keys} /> : undefined;
       case "flaresolverr":
         return admin ? <KeyEditor ids={["flaresolverr"]} ctl={keys} /> : undefined;
+      case "plex":
+        // The connection is a manager setting, like the Plex endpoints it calls.
+        return <PlexConnect onChanged={refresh} />;
     }
     return undefined;
   };
@@ -318,8 +331,8 @@ export function ConnectionsSettings() {
   );
 }
 
-// linkFor is where a card that isn't edited here goes: Plex, alerts and the audiobook
-// server have their own pages. A manager's key cards have none — keys are the admin's.
+// linkFor is where a card that isn't edited here goes: alerts and the audiobook server
+// have their own pages. A manager's key cards have none — keys are the admin's.
 function linkFor(it: ConnectionItem): CardFix | undefined {
   return it.fix_path ? { to: it.fix_path } : undefined;
 }

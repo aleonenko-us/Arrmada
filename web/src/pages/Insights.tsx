@@ -11,7 +11,7 @@ import { api, type PlexConfig, type PlexStatus, type InsightsActivity, type Insi
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
-// tabs here; they live in Settings → Plex and Settings → Alerts now.
+// tabs here; they live in Settings → Connections (the Plex card) and Settings → Alerts now.
 type Tab = "activity" | "history" | "people" | "graphs" | "reliability";
 const TABS: { key: Tab; label: string }[] = [
   { key: "activity", label: "Activity" },
@@ -69,7 +69,7 @@ export function Insights() {
   if (params.get("tab") === "notifications") return <Navigate to={LINKS.alerts} replace />;
   // Users was renamed People; old links keep working.
   if (params.get("tab") === "users") return <Navigate to="/insights?tab=people" replace />;
-  // The Plex connection moved from the old Settings tab to Settings → Plex.
+  // The Plex connection moved from the old Settings tab to its card on Settings → Connections.
   if (params.get("tab") === "settings") return <Navigate to={LINKS.plexConnection} replace />;
   return <InsightsPage />;
 }
@@ -85,7 +85,7 @@ function InsightsPage() {
   // setup state while its settings load.
   const [cfgDone, setCfgDone] = useState(false);
   // Re-read every 15 s for the monitoring status, so the badge turns "unreachable" (and
-  // back) on its own. The form that edits these settings lives in Settings → Plex now, so
+  // back) on its own. The form that edits these settings lives in Settings now, so
   // nothing here is being typed into for a poll to overwrite.
   usePoll(() => api.insightsConfig()
     .then(setCfg)
@@ -94,13 +94,13 @@ function InsightsPage() {
   const status = cfg?.status;
   const connected = !!status && status !== "unconfigured";
 
-  // Turn on is the banner's one-click fix; it saves only the switch (the URL goes back
-  // unchanged because the endpoint always writes it).
+  // Turn on is the banner's one-click fix; it saves only the switch (a missing URL keeps
+  // the saved one).
   const [turningOn, setTurningOn] = useState(false);
   const turnOn = async () => {
     if (!cfg) return;
     setTurningOn(true);
-    try { setCfg(await api.updateInsightsConfig({ url: cfg.url, enabled: true })); flash("Monitoring is on"); }
+    try { setCfg(await api.updateInsightsConfig({ enabled: true })); flash("Monitoring is on"); }
     catch (e) { flash((e as Error).message); } finally { setTurningOn(false); }
   };
 
@@ -110,9 +110,13 @@ function InsightsPage() {
       <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[64ch] text-[12.5px] text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
-            {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server in Settings → Plex</Link> to begin.</>}
+            {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
           </p>
-          {cfg && <MonitoringBadge c={cfg} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {cfg && <MonitoringBadge c={cfg} />}
+            {/* Monitoring, library updates, sign-in and linked accounts: one Plex page. */}
+            <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
+          </div>
         </div>
 
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="insights" label="Insights sections" />
