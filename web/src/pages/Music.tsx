@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Artist, type ArtistLookup } from "../lib/api";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
+import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
-import { TONE_HUE } from "../ui";
+import { FilterBar, LibraryToolbar, TONE_HUE } from "../ui";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -13,6 +14,7 @@ const FILTERS = [
   { key: "complete", label: "Complete" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
+const FILTER_KEYS = FILTERS.map((f) => f.key);
 
 function have(a: Artist): number {
   return a.stats?.have_tracks ?? 0;
@@ -43,8 +45,8 @@ function matches(a: Artist, f: FilterKey): boolean {
 export function Music() {
   const [artists, setArtists] = useState<Artist[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
@@ -121,69 +123,36 @@ export function Music() {
     <>
       <PageHeader title="Music" />
       <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const on = filter === f.key;
-            return (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className="rounded-full px-3 py-1 text-[12px] font-semibold"
-                style={{
-                  border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
-                  background: on ? "var(--accent-soft)" : "var(--panel)",
-                  color: on ? "var(--accent)" : "var(--ink-faint)",
-                }}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-          <div className="ml-auto flex items-center gap-2">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search artists…"
-              className="w-[200px] rounded-lg px-3 py-1.5 text-[12px]"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            />
-            <button
-              onClick={async () => {
-                try {
-                  const r = await api.scanMusic();
-                  if (r.job_id) setScanJob(r.job_id);
-                  // The scan runs in the background — one MusicBrainz lookup per unknown
-                  // artist at a request per second — so say so rather than implying it's done.
-                  flash("Scanning your music folder… this runs in the background.");
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-              disabled={scan.running}
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50"
-              style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
-            >
-              {scan.running ? "Scanning…" : "Scan library"}
-            </button>
-            <button
-              onClick={() => (multiSelect ? exitSelect() : setMultiSelect(true))}
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{
-                border: `1px solid ${multiSelect ? "var(--accent)" : "var(--line)"}`,
-                color: multiSelect ? "var(--accent)" : "var(--ink-dim)",
-              }}
-            >
-              {multiSelect ? "Done" : "Select"}
-            </button>
-            <button
-              onClick={() => setAdding(true)}
-              className="rounded-lg px-4 py-2 text-[12.5px] font-semibold"
-              style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}
-            >
-              Add artist
-            </button>
-          </div>
-        </div>
+        <LibraryToolbar
+          count={artists === null ? null : artists.length}
+          select={{ active: multiSelect, onToggle: () => (multiSelect ? exitSelect() : setMultiSelect(true)) }}
+          tools={[{
+            label: "Scan library",
+            busyLabel: "Scanning…",
+            busy: scan.running,
+            title: "Find artists already in your music folder and catalog them",
+            onClick: async () => {
+              try {
+                const r = await api.scanMusic();
+                if (r.job_id) setScanJob(r.job_id);
+                // The scan runs in the background — one MusicBrainz lookup per unknown
+                // artist at a request per second — so say so rather than implying it's done.
+                flash("Scanning your music folder… this runs in the background.");
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            },
+          }]}
+          primary={{ label: "+ Add artist", onClick: () => setAdding(true) }}
+        />
+        <FilterBar
+          filters={FILTERS.map((f) => ({ key: f.key, label: f.label, count: (artists ?? []).filter((a) => matches(a, f.key)).length }))}
+          active={filter}
+          onFilter={(k) => setFilter(k as FilterKey)}
+          query={query}
+          onQuery={setQuery}
+          noun="artists"
+        />
 
         {error && (
           <div className="mb-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MinAvailability, type MovieLookup } from "../../lib/api";
 import { Button, Modal } from "../../ui";
 
-// The staff "Add movie" flow (MOV-23): search TMDB, see which films are already in the
+// AddMovieModal is the library's "+ Add movie" (MOV-23): search TMDB, see which films are already in the
 // library (a link to them, not an add that can only fail), then confirm one film with its
 // quality profile, minimum availability and whether to search now. That last choice is for
 // this add only: the shared default (Series and Books read it too) changes only in
@@ -17,7 +17,7 @@ export const AVAILABILITY: { value: MinAvailability; label: string; hint: string
 
 const field = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
 
-export function AddMovieDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MovieLookup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,6 +26,7 @@ export function AddMovieDialog({ onClose, onAdded }: { onClose: () => void; onAd
   const [profile, setProfile] = useState("");
   const [defaultSearch, setDefaultSearch] = useState(true); // the shared search-on-add default
   const [picked, setPicked] = useState<MovieLookup | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.qualityProfiles("movie")
@@ -53,7 +54,7 @@ export function AddMovieDialog({ onClose, onAdded }: { onClose: () => void; onAd
   };
 
   return (
-    <Modal onClose={onClose} size="md" title={picked ? "Add this movie" : "Add a movie"}>
+    <Modal onClose={onClose} size="lg" title={picked ? "Add this movie" : "Add a movie"} initialFocus={inputRef}>
       {picked ? (
         <ConfirmAdd
           film={picked}
@@ -67,9 +68,8 @@ export function AddMovieDialog({ onClose, onAdded }: { onClose: () => void; onAd
       ) : (
         <>
           <form onSubmit={search} className="mb-3 flex gap-2">
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the dialog exists to type a title */}
-            <input autoFocus aria-label="Movie title" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={field} />
-            <Button type="submit" variant="primary" disabled={loading}>{loading ? "…" : "Search"}</Button>
+            <input ref={inputRef} aria-label="Search TMDB for a movie" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={field} />
+            <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
           </form>
           {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
           <div className="max-h-[52vh] overflow-y-auto">

@@ -1,661 +1,133 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { DeleteSeriesDialog } from "../components/DeleteSeriesDialog";
-import { api, type Series as SeriesT, type SeriesFitSummary, type SeriesLookup } from "../lib/api";
-import { FIT_COLOR } from "../components/FitBadge";
-import { posterThumb } from "../lib/img";
+import { api, type Series as SeriesT, type SeriesFitSummary } from "../lib/api";
 import { SeriesSearchModal } from "../components/SeriesSearchModal";
-import { usePersisted } from "../lib/persist";
-import { isWanted, libraryStatus } from "../lib/status";
 import { usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useQuery } from "../lib/query";
-import { ErrorState, Skeleton, StaleBanner } from "../ui";
-import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "./series/presets";
+import { useConfirm, useToast } from "../ui";
+import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
+import { seriesLibraryConfig, statsOf } from "./series/library";
+import { SeriesBulkActions } from "./series/SeriesBulkActions";
+import { AddSeriesModal } from "./series/AddSeriesModal";
 
-const NO_SERIES: SeriesT[] = [];
-
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "monitored", label: "Monitored" },
-  { key: "continuing", label: "Continuing" },
-  { key: "ended", label: "Ended" },
-  { key: "wanted", label: "Wanted" },
-] as const;
-
-type FilterKey = (typeof FILTERS)[number]["key"];
-
-function statsOf(s: SeriesT) {
-  const st = s.stats ?? { episodes: 0, have_files: 0, size_bytes: 0, seasons: 0 };
-  // An older server sends no missing count; the gap is the next best thing.
-  return { ...st, missing: st.missing ?? Math.max(0, st.episodes - st.have_files), unmonitored_missing: st.unmonitored_missing ?? 0 };
-}
-
-// The greyed remainder beside a have/total count: aired episodes nobody asked for.
-function NotMonitored({ n }: { n: number }) {
-  if (n <= 0) return null;
-  return (
-    <span className="text-ink-faint" title={`${n} aired episode${n === 1 ? "" : "s"} without a file that ${n === 1 ? "isn't" : "aren't"} monitored — not counted as missing`}>
-      {" "}+{n} not monitored
-    </span>
-  );
-}
-
-function matches(s: SeriesT, f: FilterKey): boolean {
-  switch (f) {
-    case "monitored": return s.monitored;
-    case "continuing": return /return|continu/i.test(s.status ?? "");
-    case "ended": return /end|cancel/i.test(s.status ?? "");
-    case "wanted": return isWanted(statusInput(s));
-    default: return true;
-  }
-}
+const NO_FITS = new Map<number, SeriesFitSummary>();
 
 export function Series() {
   // Cached across visits, so Back from a show renders at once, then revalidates.
   const seriesQ = useQuery("series", () => api.series(), { staleMs: 0 });
-  const list = seriesQ.data?.series ?? NO_SERIES;
+  const list = seriesQ.data?.series;
   const metaOK = seriesQ.data?.metadata_available ?? true;
-  const error = seriesQ.error?.message ?? null;
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [query, setQuery] = useState("");
+  const refresh = seriesQ.refetch;
+  const toast = useToast();
+  const confirm = useConfirm();
+  const view = useLibraryView("series");
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<SeriesT | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [view, setView] = usePersisted("series.view", "grid", ["grid", "table"] as const);
   const [searchFor, setSearchFor] = useState<SeriesT | null>(null); // the table's per-row "Search indexers"
-  const [multiSelect, setMultiSelect] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [refreshingAll, setRefreshingAll] = useState(false);
-
-  const [toastErr, setToastErr] = useState(false);
-  // err shows the toast in the error colour: a scan that failed says so plainly.
-  const flash = (msg: string, err = false) => { setToast(msg); setToastErr(err); window.setTimeout(() => setToast(null), 3500); };
-
-  const refresh = seriesQ.refetch;
-
   useEffect(() => {
     api.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
   }, []);
 
-  const q = query.trim().toLowerCase();
-  const filtered = useMemo(
-    () =>
-      list
-        .filter((s) => matches(s, filter))
-        .filter((s) => !q || s.title.toLowerCase().includes(q))
-        .sort((a, b) => a.title.localeCompare(b.title)),
-    [list, filter, q],
-  ); // default: alphabetical by title
-
-  const toggleSelect = (id: number) =>
-    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const clearSelect = () => setSelected(new Set());
-  const exitMultiSelect = () => { setMultiSelect(false); clearSelect(); };
-
-  const bulkMonitor = async (mon: boolean) => {
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selected].map((id) => api.setSeriesMonitored(id, mon)));
-      // The switch is a pause gate: season and episode choices are kept either way.
-      flash(`${selected.size} ${mon ? "resumed" : "paused"}.`);
-      clearSelect();
-      refresh();
-    } finally { setBulkBusy(false); }
-  };
-  const bulkPreset = async (preset: string) => {
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selected].map((id) => api.applySeriesMonitorPreset(id, preset)));
-      flash(`Monitoring set to "${MONITOR_PRESETS.find((p) => p.value === preset)?.label ?? preset}" on ${selected.size} series.`);
-      clearSelect();
-      refresh();
-    } catch (e) {
-      flash((e as Error).message, true);
-    } finally { setBulkBusy(false); }
-  };
-  const bulkProfile = async (profile: string) => {
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selected].map((id) => api.setSeriesProfile(id, profile)));
-      flash(`Quality profile set on ${selected.size} series.`);
-      clearSelect();
-      refresh();
-    } finally { setBulkBusy(false); }
-  };
+  // How each show's episode files fit its profile's ideal file — report only; only the
+  // table shows it.
+  const fitQ = useQuery("series.fit", () => api.libraryFitSeries(), { staleMs: 60_000, enabled: view.mode === "table" });
+  const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.series_id, it])) : NO_FITS), [fitQ.data]);
 
   // While a refresh-all works, poll so the user sees episode counts settle rather than
   // having to guess whether anything happened.
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const watchRefreshAll = usePollBurst(() => refresh(), 3000, 40, () => setRefreshingAll(false));
   // Refresh + rescan every series. This is the bulk form of the per-show "Refresh"
   // button: it reconciles episodes whose file is already on disk but whose row still
   // reads as missing, which is what makes the searcher re-grab things you already have.
   const refreshAll = async () => {
-    if (!window.confirm(`Refresh metadata and rescan files for all ${list.length} series? This runs in the background and can take a while.`)) return;
+    const ok = await confirm({
+      title: `Refresh all ${list?.length ?? 0} series?`,
+      body: "Arrmada re-pulls each show's metadata and rescans its files. This runs in the background and can take a while.",
+      confirmLabel: "Refresh all",
+    });
+    if (!ok) return;
     setRefreshingAll(true);
     try {
       const r = await api.refreshAllSeries();
-      flash(`Refreshing ${r.queued} series in the background — counts will update as it goes.`);
+      toast(`Refreshing ${r.queued} series in the background — counts will update as it goes.`);
       watchRefreshAll();
     } catch (e) {
-      flash((e as Error).message);
+      toast((e as Error).message, { tone: "error" });
       setRefreshingAll(false);
     }
   };
 
+  // The scan runs as a job; poll the grid while entries land, and when it ends the toast
+  // says what it added.
+  const [scanning, setScanning] = useState(false);
   const watchScan = usePollBurst(() => refresh(), 2500, 12, () => setScanning(false));
-  // The scan runs as a job; when it ends the toast says what it added.
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); refresh(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
+    onDone: (j) => { setScanJob(null); refresh(); toast(jobToast(j, "Scan finished."), { tone: jobFailed(j) ? "error" : "info" }); },
   });
   const scanLibrary = async () => {
     setScanning(true);
     try {
       const r = await api.scanSeries();
       if (r.job_id) setScanJob(r.job_id);
-      flash("Scanning your library — existing series will appear shortly.");
+      toast("Scanning your library — existing series will appear shortly.");
       watchScan();
     } catch (e) {
-      flash((e as Error).message);
+      toast((e as Error).message, { tone: "error" });
       setScanning(false);
     }
   };
 
-
   const search = async (s: SeriesT) => {
     try {
       await api.searchSeries(s.id);
-      flash(`Searching for “${s.title}” — follow packs and episodes in Activity → Queue once grabbed.`);
+      toast(`Searching for “${s.title}” — follow packs and episodes in Activity → Queue once grabbed.`);
     } catch (e) {
-      flash((e as Error).message);
+      toast((e as Error).message, { tone: "error" });
     }
   };
+
+  const config = useMemo(() => seriesLibraryConfig({
+    fits,
+    actions: (s) => [
+      ...(s.monitored && statsOf(s).missing > 0 ? [{ label: "Search missing", onSelect: () => search(s) }] : []),
+      { label: "Search indexers…", onSelect: () => setSearchFor(s) },
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(s) },
+    ],
+    rowAction: (s) => <button onClick={() => setSearchFor(s)} title="Search your indexers — whole show or one season" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
+  // search reads only api and toast, both stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [fits]);
 
   return (
     <>
       <PageHeader title="Series" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <span className="font-mono text-[11px] text-ink-faint">{seriesQ.data ? `${list.length} in library` : ""}</span>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-              {(["grid", "table"] as const).map((v) => (
-                <button key={v} onClick={() => setView(v)} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: view === v ? "var(--accent)" : "transparent", color: view === v ? "var(--accent-ink)" : "var(--ink-faint)" }}>{v}</button>
-              ))}
-            </div>
-            <button
-              onClick={scanLibrary}
-              disabled={scanning || scan.running}
-              title="Find series already in your library folder and catalog them"
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
-            >
-              {scanning || scan.running ? "Scanning…" : "Scan library"}
-            </button>
-            <button
-              onClick={refreshAll}
-              disabled={refreshingAll || list.length === 0}
-              title="Re-pull metadata and rescan files for every series — fixes episodes that are on disk but still show as missing"
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)", opacity: refreshingAll || list.length === 0 ? 0.5 : 1 }}
-            >
-              {refreshingAll ? "Refreshing…" : "Refresh all"}
-            </button>
-            <button
-              onClick={() => (multiSelect ? exitMultiSelect() : setMultiSelect(true))}
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{ border: `1px solid ${multiSelect ? "var(--accent)" : "var(--line)"}`, background: multiSelect ? "var(--accent-soft)" : "var(--panel-2)", color: multiSelect ? "var(--accent)" : "var(--ink)" }}
-            >
-              {multiSelect ? "Done" : "Select"}
-            </button>
-            <button
-              onClick={() => setAdding(true)}
-              disabled={!metaOK}
-              className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold"
-              style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: metaOK ? 1 : 0.5 }}
-            >
-              + Add series
-            </button>
-          </div>
-        </div>
-
-        {/* Filters + search */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const active = filter === f.key;
-            const count = f.key === "all" ? list.length : list.filter((s) => matches(s, f.key)).length;
-            return (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className="rounded-full px-3 py-1 text-[12px] font-semibold"
-                style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-faint)" }}
-              >
-                {f.label} <span className="font-mono text-[10.5px] opacity-70">{count}</span>
-              </button>
-            );
-          })}
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search series…"
-            className="ml-auto w-[220px] rounded-lg px-3 py-1.5 text-[12px]"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-          />
-        </div>
-
-        {multiSelect && (
-          <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-            <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
-            <button onClick={() => setSelected(new Set(filtered.map((s) => s.id)))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
-            <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Resume searching. Season and episode choices are kept; a show with nothing monitored gets every regular season.">Monitor</button>
-            <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }} title="Pause: nothing is searched. Season and episode choices are kept for when you resume.">Unmonitor</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <select
-              defaultValue=""
-              disabled={selected.size === 0 || bulkBusy}
-              onChange={(e) => e.target.value && (bulkProfile(e.target.value), (e.target.value = ""))}
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            >
-              <option value="">Set quality profile…</option>
-              {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-            </select>
-            <select
-              defaultValue=""
-              disabled={selected.size === 0 || bulkBusy}
-              onChange={(e) => e.target.value && (bulkPreset(e.target.value), (e.target.value = ""))}
-              aria-label="Apply a monitoring preset to the selected series"
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            >
-              <option value="">Monitoring preset…</option>
-              {MONITOR_PRESETS.map((p) => <option key={p.value} value={p.value} title={p.help}>{p.label}</option>)}
-            </select>
-          </div>
-        )}
-
-        {!metaOK && <MetadataMissing variant="banner" />}
-        {seriesQ.data && error && <StaleBanner message={error} onRetry={refresh} />}
-
-        {!seriesQ.data ? (
-          error ? <ErrorState what="your series" message={error} onRetry={refresh} busy={seriesQ.loading} /> : <Skeleton variant={view === "table" ? "table" : "grid"} />
-        ) : list.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            No series yet. Click <b>Add series</b>, search for a show, and Arrmada will monitor and grab it.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            {q ? <>No series match “<b>{query.trim()}</b>”.</> : <>No series match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}
-          </div>
-        ) : view === "table" ? (
-          <SeriesTable list={filtered} multiSelect={multiSelect} selected={selected} onToggleSelect={toggleSelect} onSearch={setSearchFor} />
-        ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-            {filtered.map((s) => (
-              <Card
-                key={s.id}
-                s={s}
-                onDelete={() => setConfirmDelete(s)}
-                onSearch={() => search(s)}
-                selectable={multiSelect}
-                selected={selected.has(s.id)}
-                onToggleSelect={() => toggleSelect(s.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        {searchFor && (
-          <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { flash(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
-        )}
-        {toast && (
-          <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>
-            {toast}
-          </div>
-        )}
-      </div>
+      <LibraryGrid
+        config={config}
+        items={list}
+        error={seriesQ.error?.message ?? null}
+        loading={seriesQ.loading}
+        onRetry={refresh}
+        view={view}
+        tools={[
+          { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find series already in your library folder and catalog them" },
+          { label: "Refresh all", busyLabel: "Refreshing…", busy: refreshingAll, disabled: !list?.length, onClick: refreshAll, title: "Re-pull metadata and rescan files for every series — fixes episodes that are on disk but still show as missing" },
+        ]}
+        primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
+        banners={!metaOK && <MetadataMissing variant="banner" />}
+        bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
+        emptyText={<>No series yet. Click <b>Add series</b>, search for a show, and Arrmada will monitor and grab it.</>}
+      />
+      {searchFor && (
+        <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
+      )}
       {adding && <AddSeriesModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
       {confirmDelete && <DeleteSeriesDialog series={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
-  );
-}
-
-// Counted episodes are the files plus the monitored aired ones still missing, so the
-// downloaded share is the count less the missing.
-function statusInput(s: SeriesT) {
-  const st = statsOf(s);
-  return { multi: true, hasFile: st.have_files > 0, monitored: s.monitored, have: st.episodes - st.missing, total: st.episodes };
-}
-
-function statusOf(s: SeriesT) {
-  return libraryStatus(statusInput(s));
-}
-
-function Poster({ url, title }: { url?: string; title: string }) {
-  if (url) return <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
-  return (
-    <div className="flex h-full w-full items-end p-2.5" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-      <span className="text-[13px] font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{title}</span>
-    </div>
-  );
-}
-
-function Card({ s, onDelete, onSearch, selectable, selected, onToggleSelect }: { s: SeriesT; onDelete: () => void; onSearch: () => void; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void }) {
-  const st = statsOf(s);
-  const status = statusOf(s);
-  const pct = st.episodes > 0 ? Math.round((st.have_files / st.episodes) * 100) : 0;
-  const complete = st.episodes > 0 && st.missing === 0;
-  const missing = st.missing > 0;
-  const [searching, setSearching] = useState(false);
-  const doSearch = async () => {
-    setSearching(true);
-    try { await onSearch(); } finally { window.setTimeout(() => setSearching(false), 1500); }
-  };
-  return (
-    <div className="group relative overflow-hidden rounded-xl" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`, background: "var(--panel)", boxShadow: selected ? "0 0 0 1px var(--accent)" : "none" }}>
-      <div className="relative" style={{ aspectRatio: "2/3" }}>
-        {selectable ? (
-          <button onClick={onToggleSelect} className="block h-full w-full text-left">
-            <Poster url={s.poster_url} title={s.title} />
-            {selected && <div className="absolute inset-0" style={{ background: "var(--accent-soft)" }} />}
-          </button>
-        ) : (
-          <Link to={`/series/${s.id}`} className="block h-full w-full">
-            <Poster url={s.poster_url} title={s.title} />
-          </Link>
-        )}
-        {selectable && (
-          <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background: selected ? "var(--accent)" : "rgba(20,12,7,.65)", border: `1.5px solid ${selected ? "var(--accent)" : "rgba(255,255,255,.6)"}` }}>
-            {selected && <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12l5 5L20 6" stroke="var(--accent-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-          </span>
-        )}
-        {!selectable && (
-          <button
-            onClick={onDelete}
-            title="Remove"
-            className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-full group-hover:grid"
-            style={{ background: "rgba(20,12,7,.75)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        )}
-        {!selectable && s.monitored && missing && (
-          <button
-            onClick={doSearch}
-            disabled={searching}
-            title="Search now"
-            className="absolute inset-x-1.5 bottom-6 hidden items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold group-hover:flex"
-            style={{ background: "rgba(20,12,7,.82)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {searching ? "Searching…" : "Search now"}
-          </button>
-        )}
-        {/* Episode progress overlay — series-specific, kept from before */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 px-2 py-1.5" style={{ background: "linear-gradient(to top, rgba(0,0,0,.78), transparent)" }}>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.25)" }}>
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: complete ? "var(--good)" : "var(--accent)" }} />
-          </div>
-          <span className="font-mono text-[9.5px] text-white" title={st.unmonitored_missing > 0 ? `+${st.unmonitored_missing} aired episodes not monitored` : undefined}>{st.have_files}/{st.episodes}</span>
-        </div>
-      </div>
-      {selectable ? (
-        <button onClick={onToggleSelect} className="block w-full p-2.5 text-left">
-          <div className="truncate text-[12.5px] font-semibold" title={s.title}>{s.title}</div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="font-mono text-[10.5px] text-ink-faint">{s.year || "—"} · {st.seasons} {st.seasons === 1 ? "sn" : "sns"}</span>
-            <span className="font-mono text-[9.5px] uppercase" style={{ color: status.color }}>{status.label}</span>
-          </div>
-        </button>
-      ) : (
-        <Link to={`/series/${s.id}`} className="block p-2.5">
-          <div className="truncate text-[12.5px] font-semibold" title={s.title}>{s.title}</div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="font-mono text-[10.5px] text-ink-faint">{s.year || "—"} · {st.seasons} {st.seasons === 1 ? "sn" : "sns"}</span>
-            <span className="font-mono text-[9.5px] uppercase" style={{ color: status.color }}>{status.label}</span>
-          </div>
-        </Link>
-      )}
-    </div>
-  );
-}
-
-function gb(bytes?: number): string {
-  if (!bytes) return "—";
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
-// SeriesFit summarises a show's episode files against its profile's ideal file: "✓ all 24",
-// or the counts that don't fit, worst first.
-function SeriesFit({ f }: { f?: SeriesFitSummary }) {
-  if (!f || f.checked === 0) return <span className="text-[11px] text-ink-faint" title="No episodes judged — the profile has no ideal file set up, or nothing's analysed yet">—</span>;
-  if (f.fits === f.checked) return <span className="font-mono text-[10.5px] font-bold" style={{ color: FIT_COLOR.fits }}>✓ all {f.checked}</span>;
-  const parts: [number, string, string][] = [[f.over, "over", FIT_COLOR.over], [f.under, "under", FIT_COLOR.under], [f.mismatch, "don't fit", FIT_COLOR.mismatch]];
-  return (
-    <span className="inline-flex flex-wrap gap-x-2 font-mono text-[10.5px] font-semibold" title={`${f.fits} of ${f.checked} episodes fit`}>
-      {parts.filter(([n]) => n > 0).map(([n, label, c]) => <span key={label} style={{ color: c }}>{n} {label}</span>)}
-    </span>
-  );
-}
-
-type SeriesSortKey = "title" | "status" | "network" | "seasons" | "episodes" | "size" | "monitored" | "fit";
-const SERIES_SORT_KEYS: SeriesSortKey[] = ["title", "status", "network", "seasons", "episodes", "size", "monitored", "fit"];
-// Counts read best biggest-first; everything else starts A→Z / best-first.
-const SERIES_DESC_FIRST = new Set<SeriesSortKey>(["seasons", "episodes", "size"]);
-
-// seriesSortValue is a comparable value per column (undefined = empty, always sorted last).
-function seriesSortValue(s: SeriesT, key: SeriesSortKey, fit?: SeriesFitSummary): number | string | undefined {
-  const st = statsOf(s);
-  switch (key) {
-    case "title": return s.title.toLowerCase();
-    case "status": return ({ Complete: 0, Partial: 1, Wanted: 2, Unmonitored: 3 } as Record<string, number>)[statusOf(s).label] ?? 4;
-    case "network": return s.network ? s.network.toLowerCase() : undefined;
-    case "seasons": return st.seasons;
-    // How complete the show is, then how big: 151/163 sorts below 8/8.
-    case "episodes": return st.episodes > 0 ? st.have_files / st.episodes + st.episodes / 1e6 : undefined;
-    case "size": return st.size_bytes || undefined;
-    case "monitored": return s.monitored ? 0 : 1;
-    // Share of judged episodes that fit: ascending puts the worst shows first.
-    case "fit": return fit && fit.checked > 0 ? fit.fits / fit.checked : undefined;
-  }
-}
-
-function SeriesTable({ list, multiSelect, selected, onToggleSelect, onSearch }: { list: SeriesT[]; multiSelect: boolean; selected: Set<number>; onToggleSelect: (id: number) => void; onSearch: (s: SeriesT) => void }) {
-  const th = "px-2.5 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-[0.06em] text-ink-faint";
-  const td = "px-2.5 py-2 align-middle";
-  // How each show's episode files fit its profile's ideal file — report only.
-  const [fits, setFits] = useState<Map<number, SeriesFitSummary>>(new Map());
-  useEffect(() => {
-    api.libraryFitSeries().then((r) => setFits(new Map((r.items ?? []).map((it) => [it.series_id, it])))).catch(() => {});
-  }, []);
-
-  // Sorting, remembered like the grid/table choice ("size:desc").
-  const [sortPref, setSortPref] = usePersisted<string>("series.table.sort", "title:asc");
-  const [rawKey, rawDir] = sortPref.split(":");
-  const sortKey: SeriesSortKey = (SERIES_SORT_KEYS as string[]).includes(rawKey) ? (rawKey as SeriesSortKey) : "title";
-  const sortDir = rawDir === "desc" ? "desc" : "asc";
-  const onSort = (k: SeriesSortKey) =>
-    setSortPref(k === sortKey ? `${k}:${sortDir === "asc" ? "desc" : "asc"}` : `${k}:${SERIES_DESC_FIRST.has(k) ? "desc" : "asc"}`);
-  const sorted = useMemo(() => {
-    const arr = [...list];
-    arr.sort((a, b) => {
-      const av = seriesSortValue(a, sortKey, fits.get(a.id)), bv = seriesSortValue(b, sortKey, fits.get(b.id));
-      if (av === undefined && bv === undefined) return a.title.localeCompare(b.title);
-      if (av === undefined) return 1; // empties always last
-      if (bv === undefined) return -1;
-      const r = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
-      if (r === 0) return a.title.localeCompare(b.title);
-      return sortDir === "asc" ? r : -r;
-    });
-    return arr;
-  }, [list, sortKey, sortDir, fits]);
-  const Th = ({ label, k, align, title }: { label: string; k: SeriesSortKey; align?: "right"; title?: string }) => {
-    const active = sortKey === k;
-    return (
-      <th className={`${th}${align === "right" ? " text-right" : ""}`} title={title} aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
-        <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-[var(--ink)] ${align === "right" ? "flex-row-reverse" : ""}`} style={{ color: active ? "var(--accent)" : undefined }}>
-          {label}
-          <span className="text-[8px]" style={{ opacity: active ? 1 : 0.3 }}>{active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}</span>
-        </button>
-      </th>
-    );
-  };
-  return (
-    <div className="thin-scroll overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-[12px]" style={{ minWidth: "820px" }}>
-        <thead>
-          <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
-            {multiSelect && <th className={th}></th>}
-            <Th label="Title" k="title" />
-            <Th label="Status" k="status" />
-            <Th label="Network" k="network" />
-            <Th label="Seasons" k="seasons" align="right" />
-            <Th label="Episodes" k="episodes" align="right" />
-            <Th label="Size" k="size" align="right" />
-            <Th label="Monitored" k="monitored" />
-            <Th label="Fit" k="fit" title="How the episode files fit this show's profile — sort ascending for the worst first; open a show for each episode's reasons" />
-            <th className={th}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((s) => {
-            const st = statsOf(s);
-            const status = statusOf(s);
-            return (
-              <tr key={s.id} className="transition-colors hover:bg-[var(--panel-2)]" style={{ background: selected.has(s.id) ? "var(--accent-soft)" : "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
-                {multiSelect && (
-                  <td className={td}><input type="checkbox" checked={selected.has(s.id)} onChange={() => onToggleSelect(s.id)} /></td>
-                )}
-                <td className={`${td} min-w-[220px]`}>
-                  {multiSelect ? (
-                    <button onClick={() => onToggleSelect(s.id)} className="text-left font-semibold">{s.title} <span className="font-normal text-ink-faint">{s.year || ""}</span></button>
-                  ) : (
-                    <Link to={`/series/${s.id}`} className="font-semibold hover:text-[var(--accent)]">{s.title} <span className="font-normal text-ink-faint">{s.year || ""}</span></Link>
-                  )}
-                </td>
-                <td className={td}><span className="font-mono text-[10px] uppercase" style={{ color: status.color }}>{status.label}</span></td>
-                <td className={td}>{s.network || "—"}</td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`}>{st.seasons}</td>
-                <td className={`${td} text-right font-mono text-[11px]`}><span style={{ color: st.missing === 0 && st.episodes > 0 ? "var(--good)" : "var(--ink-dim)" }}>{st.have_files}/{st.episodes}</span><NotMonitored n={st.unmonitored_missing} /></td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`}>{gb(st.size_bytes)}</td>
-                <td className={td}><span className="font-mono text-[10px] uppercase" style={{ color: s.monitored ? "var(--accent)" : "var(--ink-faint)" }}>{s.monitored ? "Yes" : "No"}</span></td>
-                <td className={td}><SeriesFit f={fits.get(s.id)} /></td>
-                <td className={`${td} text-right`}>
-                  <button onClick={() => onSearch(s)} title="Search your indexers — whole show or one season" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<SeriesLookup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState("");
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [searchOnAdd, setSearchOnAdd] = useState(true);
-  const [monitor, setMonitor] = useState<MonitorPreset>(DEFAULT_MONITOR_PRESET);
-  const [addingId, setAddingId] = useState<number | null>(null);
-
-  useEffect(() => {
-    api.qualityProfiles("series").then((r) => {
-      setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
-      const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
-      if (def) setProfile(def.key);
-    }).catch(() => {});
-    // The settings are this dialog's starting point; changing them here is for this add
-    // only (it used to rewrite the global "Search on add").
-    api.settings().then((s) => {
-      setSearchOnAdd(s.search_on_add);
-      if (isMonitorPreset(s.series_monitor_default)) setMonitor(s.series_monitor_default);
-    }).catch(() => {});
-  }, []);
-
-  const toggleSearchOnAdd = () => setSearchOnAdd((v) => !v);
-
-  const search = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!q.trim()) return;
-    setLoading(true); setError(null);
-    try { setResults(await api.lookupSeries(q.trim())); } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
-  };
-
-  const add = async (r: SeriesLookup) => {
-    setAddingId(r.tmdb_id); setError(null);
-    try { await api.addSeries({ tmdb_id: r.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchOnAdd, monitor }); onAdded(); }
-    catch (e) { setError((e as Error).message); setAddingId(null); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add a series</h2>
-          <div className="flex items-center gap-4">
-            <button type="button" onClick={toggleSearchOnAdd} title="On: search right away. Off: add it paused — nothing is searched until you resume it. For this add only." className="flex items-center gap-2">
-              <span className="relative inline-block h-[20px] w-[34px] rounded-full transition-colors" style={{ background: searchOnAdd ? "var(--accent)" : "var(--line)" }}>
-                <span className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-white transition-all" style={{ left: searchOnAdd ? "17px" : "3px" }} />
-              </span>
-              <span className="text-[11.5px] font-medium" style={{ color: searchOnAdd ? "var(--ink)" : "var(--ink-dim)" }}>{searchOnAdd ? "Search on add" : "Add paused"}</span>
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] uppercase text-ink-faint">Monitor</span>
-              <select
-                value={monitor}
-                onChange={(e) => setMonitor(e.target.value as MonitorPreset)}
-                title={MONITOR_PRESETS.find((p) => p.value === monitor)?.help}
-                aria-label="Which episodes to monitor"
-                className="rounded-lg px-2 py-1.5 text-[12px]"
-                style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-              >
-                {MONITOR_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] uppercase text-ink-faint">Quality</span>
-              <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-        <form onSubmit={search} className="mb-3 flex gap-2">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search TV series — e.g. Severance" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{loading ? "…" : "Search"}</button>
-        </form>
-        {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        <div className="max-h-[52vh] overflow-y-auto">
-          {results.map((r) => (
-            <button key={r.tmdb_id} onClick={() => add(r)} disabled={addingId !== null} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
-              <div className="h-[68px] w-[46px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
-                {r.poster_url && <img src={r.poster_url} alt="" className="h-full w-full object-cover" loading="lazy" />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
-                <div className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-dim">{r.overview || "No overview."}</div>
-              </div>
-              <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-                {addingId === r.tmdb_id ? "Adding…" : "Add"}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }

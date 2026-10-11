@@ -37,11 +37,12 @@ test.describe("manager", () => {
       { method: "GET", path: "/api/v1/jobs/77", body: runningScan },
     ]);
     await page.goto("/movies");
-    await page.getByRole("button", { name: "Scan library" }).click();
+    await page.getByRole("button", { name: "Library tools" }).click();
+    await page.getByRole("menuitem", { name: "Scan library" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Scan library" }).click();
     await expect(page.getByText("A library scan is already running — showing its progress.")).toBeVisible();
-    await expect(page.getByText("Scanning 612 / 1,224 folders")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Scanning…" })).toBeDisabled();
+    // The live progress is the chip beside the count (and the tools menu item).
+    await expect(page.getByText("Scanning 612 / 1,224 folders · 50%").first()).toBeVisible();
   });
 
   test("the add dialog marks films in the library and adds with an availability", async ({ page, api }) => {
@@ -55,7 +56,7 @@ test.describe("manager", () => {
     await page.goto("/movies");
     await page.getByRole("button", { name: "+ Add movie" }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Movie title").fill("harbour");
+    await dialog.getByLabel("Search TMDB for a movie").fill("harbour");
     await dialog.getByRole("button", { name: "Search" }).click();
     await expect(dialog.getByRole("link", { name: /Harbour Lights \(2019\).*In library/ })).toHaveAttribute("href", "/movies/1");
 

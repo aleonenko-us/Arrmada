@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { AddMovieDialog } from "./AddMovieDialog";
+import { AddMovieModal } from "./AddMovieModal";
 import { api, type AppSettings, type Movie } from "../../lib/api";
 
 // MOV-23: films already in the library link to themselves; any other opens a confirm step
@@ -23,13 +23,13 @@ afterEach(() => {
 });
 
 const open = async () => {
-  render(<MemoryRouter><AddMovieDialog onClose={() => {}} onAdded={() => {}} /></MemoryRouter>);
+  render(<MemoryRouter><AddMovieModal onClose={() => {}} onAdded={() => {}} /></MemoryRouter>);
   await act(async () => {});
-  fireEvent.change(screen.getByLabelText("Movie title"), { target: { value: "dune" } });
+  fireEvent.change(screen.getByLabelText("Search TMDB for a movie"), { target: { value: "dune" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Search" })); });
 };
 
-describe("AddMovieDialog", () => {
+describe("AddMovieModal", () => {
   it("links a film already in the library instead of adding it", async () => {
     const add = vi.spyOn(api, "addMovie");
     await open();

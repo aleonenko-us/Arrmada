@@ -5,12 +5,12 @@ import { LINKS } from "../../lib/links";
 import { useLiveEvent } from "../../lib/live";
 import { jobDone, jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { usePoll } from "../../lib/usePoll";
-import { Button, Modal } from "../../ui";
 
-// The Movies page's library scan: the dialog that starts one, a live progress bar while it
-// runs, and a summary when it ends that links to the folders needing review. The scan is a
-// job; its progress comes over the page's one live socket (job.updated), so there's no
-// timed polling of the grid any more.
+// The Movies page's library scan (MOV-20): live progress while it runs (the Library tools
+// chip, scanProgressLabel) and a summary when it ends that links to the folders needing
+// review. The scan is a job; its progress comes over the page's one live socket
+// (job.updated), so there's no timed polling of the grid for it any more. The dialog that
+// starts one is pages/movies/ScanDialog.
 
 export interface ScanOpts { monitor: boolean; quality_profile?: string }
 
@@ -86,24 +86,20 @@ export function useMovieScan(onChanged: () => void, flash: (msg: string, err?: b
 
 const n = (x: number) => x.toLocaleString();
 
-// ScanStatus is the progress bar while a scan runs, then its summary until dismissed.
+// scanProgressLabel is the running scan's progress for the toolbar chip ("Scanning 312 /
+// 1,204 folders · 26%"), or undefined when no scan runs.
+export function scanProgressLabel(scan: MovieScan): string | undefined {
+  if (!scan.running) return undefined;
+  const j = scan.job;
+  if (j?.status === "queued") return "Scan waiting for another library scan…";
+  if (!j?.message) return "Scanning…";
+  return `${j.message} · ${Math.round((j.progress ?? 0) * 100)}%`;
+}
+
+// ScanStatus is a finished scan's summary, until dismissed (a running scan shows as the
+// toolbar chip).
 export function ScanStatus({ scan }: { scan: MovieScan }) {
-  if (scan.running) {
-    const pct = Math.round((scan.job?.progress ?? 0) * 100);
-    const msg = scan.job?.status === "queued" ? "Waiting for another library scan to finish…" : scan.job?.message || "Starting the scan…";
-    return (
-      <div role="status" className="mb-4 rounded-xl px-3.5 py-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-        <div className="flex items-center justify-between gap-3 text-[12px]">
-          <span className="font-semibold">{msg}</span>
-          <span className="font-mono text-[11px] text-ink-faint">{pct}%</span>
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
-          <div className="h-full rounded-full transition-[width]" style={{ width: `${pct}%`, background: "var(--accent)" }} />
-        </div>
-      </div>
-    );
-  }
-  const s = scan.summary;
+  const s = scan.running ? null : scan.summary;
   if (!s) return null;
   const parts = [`${n(s.imported)} added`];
   if (s.attached) parts.push(`${n(s.attached)} attached`);
@@ -122,48 +118,3 @@ export function ScanStatus({ scan }: { scan: MovieScan }) {
   );
 }
 
-// ScanDialog asks how a library scan should catalog the films it finds. By default they're
-// added unmonitored, so Arrmada never searches for or upgrades them; monitoring them on a
-// profile lets the upgrade sweep replace their files. Films already in the library get the
-// file found either way.
-export function ScanDialog({ profiles, onScan, onClose }: {
-  profiles: { key: string; name: string }[];
-  onScan: (opts: ScanOpts) => void;
-  onClose: () => void;
-}) {
-  const [monitor, setMonitor] = useState(false);
-  const [profile, setProfile] = useState(""); // "" = the default profile
-  return (
-    <Modal
-      onClose={onClose}
-      size="sm"
-      title="Catalog existing films"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => onScan(monitor ? { monitor: true, quality_profile: profile } : { monitor: false })}>Scan library</Button>
-        </>
-      }
-    >
-      <p className="m-0 text-[12.5px] text-ink-dim">
-        Arrmada adds the films it finds in your movies folder, and gives films already in your library the file it finds for them.
-      </p>
-      <label className="mt-4 flex items-start gap-2.5 text-[12.5px]">
-        <input type="checkbox" className="mt-0.5" checked={monitor} onChange={(e) => setMonitor(e.target.checked)} />
-        <span>
-          Monitor them so they can be upgraded
-          <span className="mt-0.5 block text-[11.5px] text-ink-faint">Unmonitored films are never searched for or upgraded — Arrmada only catalogs them.</span>
-        </span>
-      </label>
-      {monitor && (
-        <label className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-          <span className="font-mono text-[10.5px] uppercase text-ink-faint">Profile</span>
-          <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-            <option value="">Default profile</option>
-            {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
-        </label>
-      )}
-    </Modal>
-  );
-}

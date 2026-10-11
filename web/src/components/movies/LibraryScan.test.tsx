@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { ScanStatus, type MovieScan } from "./LibraryScan";
+import { ScanStatus, scanProgressLabel, type MovieScan } from "./LibraryScan";
 import { LINKS } from "../../lib/links";
 import type { Job } from "../../lib/api";
 
@@ -20,16 +20,19 @@ const show = (s: MovieScan) => render(<MemoryRouter><ScanStatus scan={s} /></Mem
 
 afterEach(cleanup);
 
-describe("ScanStatus", () => {
-  it("shows the job's progress while the scan runs", () => {
-    show(scan({ running: true, job: job() }));
-    expect(screen.getByText("Scanning 312 / 1,204 folders")).toBeTruthy();
-    expect(screen.getByText("26%")).toBeTruthy();
+describe("scanProgressLabel", () => {
+  it("is the job's progress while the scan runs, and nothing otherwise", () => {
+    expect(scanProgressLabel(scan({ running: true, job: job() }))).toBe("Scanning 312 / 1,204 folders · 26%");
+    expect(scanProgressLabel(scan({ running: true, job: null }))).toBe("Scanning…");
+    expect(scanProgressLabel(scan({ running: true, job: job({ status: "queued", progress: 0, message: "" }) }))).toMatch(/waiting for another library scan/);
+    expect(scanProgressLabel(scan())).toBeUndefined();
   });
+});
 
-  it("says when the scan waits for another one", () => {
-    show(scan({ running: true, job: job({ status: "queued", progress: 0, message: "" }) }));
-    expect(screen.getByText(/Waiting for another library scan/)).toBeTruthy();
+describe("ScanStatus", () => {
+  it("shows nothing while the scan runs (the toolbar chip has it)", () => {
+    const { container } = show(scan({ running: true, job: job(), summary: { imported: 1, skipped: 0, unmatched: 0, attached: 0, duplicates: 0 } }));
+    expect(container.textContent).toBe("");
   });
 
   it("sums up a finished scan and links to the folders that need review", () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useTabParam } from "../lib/useTabParam";
+import { useSearchParamState } from "../lib/useSearchState";
 import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
@@ -428,10 +429,13 @@ function hdrLabel(c: ConvertCandidate): string {
   return h;
 }
 
+// The library list is for movies or shows (?media=tv).
+const MEDIA_KINDS = ["movies", "tv"] as const;
+
 function Library({ flash, onRequested, onRescan, onCompare, running, reload, originals }: {
   flash: (m: string) => void; onRequested: () => void; onRescan: () => Promise<boolean>; onCompare: (key: string) => void; running: ConvertJob[]; reload: number; originals: string;
 }) {
-  const [media, setMedia] = useState<"movies" | "tv">("movies");
+  const [media, setMedia] = useSearchParamState<"movies" | "tv">("media", "movies", { allowed: MEDIA_KINDS });
   const [shows, setShows] = useState<ConvertSeriesRollup[] | null>(null);
   const [show, setShow] = useState<ConvertSeriesRollup | null>(null);
   const [items, setItems] = useState<ConvertCandidate[] | null>(null);
@@ -441,7 +445,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   const [showSort, setShowSort] = useState<{ key: ShowSortKey; dir: "asc" | "desc" }>({ key: "save", dir: "desc" });
   const [codecF, setCodecF] = useState<Set<string>>(new Set());
   const [onlyConvertible, setOnlyConvertible] = useState(true);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [loadErr, setLoadErr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const runningKeys = useMemo(() => new Set(running.filter((j) => ACTIVE.has(j.state)).map((j) => j.key)), [running]);
