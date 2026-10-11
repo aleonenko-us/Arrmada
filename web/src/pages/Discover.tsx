@@ -10,6 +10,7 @@ import { api, type CollectionRow, type DiscoverRow, type WatchProvider, type Dis
 import { posterThumb } from "../lib/img";
 import { formatSeasons, MOVING_STAGES, requestStage, sortForRequester } from "../lib/requestStage";
 import { usePoll } from "../lib/usePoll";
+import { useRequestsFeed } from "../lib/useRequestsFeed";
 import { announceRequested } from "../lib/pushPrompt";
 import { IconButton, StatusChip, POSTER_CHIP_BG, TONE_HUE, useToast } from "../ui";
 import { badgeFor, CardSkeleton, discoverPlace, FOLLOWING, GRID, LoadError, MediaCard, PosterPlaceholder, useOpenOverlay, useOpenTitle, type ReqStatus, type RowCtx } from "./discover/shared";
@@ -575,10 +576,11 @@ function MyRequestsRow() {
     setWaiting(r.counts?.needs_approval ?? 0);
     setQueueKnown(r.client_health?.ok ?? true);
   }).catch(() => setItems([])), []);
-  // Every 8 s while something is downloading or importing, else once a minute; a hidden
-  // tab makes no calls (usePoll).
+  // At once when a request it shows changes (the live feed), else a backstop: every 10 s
+  // while something is downloading or importing, once a minute otherwise, never hidden.
   const moving = (items ?? []).filter((rq) => MOVING_STAGES.has(rq.tracking?.stage ?? "")).length;
-  usePoll(load, moving > 0 ? 8000 : 60000);
+  useEffect(() => { void load(); }, [load]);
+  useRequestsFeed(load, items);
 
   if (!items || items.length === 0) return null;
   // Staff keep the server's order: waiting (oldest first), then in progress.
@@ -600,7 +602,8 @@ function ReadyForYouRow() {
   const [items, setItems] = useState<MediaRequest[] | null>(null);
   const load = useCallback(() => api.requests({ section: "ready", ready_within_days: 30, mine: 1, limit: 20 })
     .then((r) => setItems(r.requests)).catch(() => setItems([])), []);
-  usePoll(load, 60000);
+  useEffect(() => { void load(); }, [load]);
+  useRequestsFeed(load, null); // what's ready doesn't move on its own: the slow backstop
   if (!items || items.length === 0) return null;
   return <RequestRail heading="Ready for you" seeAll="/requests?tab=ready" seeAllLabel="See all ready requests" items={items} staff={false} onChanged={load} />;
 }

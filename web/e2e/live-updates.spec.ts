@@ -104,3 +104,25 @@ test.describe("live updates", () => {
     expect(reads()).toBe(before);
   });
 });
+
+// REQ-17: a requester's request views follow their own request events (the server sends
+// a requester only user.<their id>.* topics) instead of polling.
+test.describe("live request feed", () => {
+  test.use({ persona: "requester" });
+
+  test("the Discover strip refreshes on the requester's request event, without polling", async ({ page, api }) => {
+    const live = await liveSocket(page);
+    await page.goto("/discover");
+    await expect.poll(() => live.opened()).toBe(1);
+    await api.quiet();
+    const lists = () => api.callsTo("GET", "/api/v1/requests").length;
+    const before = lists();
+    expect(before).toBeGreaterThan(0);
+    await page.waitForTimeout(4000);
+    expect(lists()).toBe(before);
+    live.send("user.3.request.updated", { id: 1, status: "approved", media_type: "movie" });
+    await expect.poll(lists, { timeout: 4000 }).toBeGreaterThan(before);
+    // One socket for the bell and every strip.
+    expect(live.opened()).toBe(1);
+  });
+});

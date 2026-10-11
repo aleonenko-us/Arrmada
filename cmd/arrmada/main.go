@@ -653,6 +653,8 @@ func main() {
 	requestsSvc.SetPushSender(pushSvc) // Web Push alongside inbox + Apprise
 	requestsSvc.SetRunner(grp)         // approval searches stop at shutdown
 	requestsSvc.SetJobs(jobRunner)     // and are jobs, single-flight with a Search click
+	// A grab moves an open request from Searching to Downloading: its views hear so at once.
+	coordinator.SetGrabbed(requestsSvc.NudgeItem)
 	// Staff's personal Apprise URLs keep the ordinary rules; everyone else's are held off
 	// internal hosts, re-checked before each send. A lookup failure counts as not staff.
 	requestsSvc.SetStaffLookup(func(ctx context.Context, uid int64) bool {
