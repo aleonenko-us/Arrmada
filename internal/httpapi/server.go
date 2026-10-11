@@ -487,6 +487,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/series/{id}/aliases/{alias}", a.requireRole(auth.RoleManager, a.handleDeleteAlias))
 	mux.HandleFunc("PUT /api/v1/series/{id}/seasons/{season}/monitor", a.requireRole(auth.RoleManager, a.handleSetSeasonMonitored))
 	mux.HandleFunc("PUT /api/v1/series/episodes/{eid}/monitor", a.requireRole(auth.RoleManager, a.handleSetEpisodeMonitored))
+	// Bulk monitor for the series page's select mode. Not .../{id}/episodes/monitor: that
+	// pattern would collide with the single-episode route above.
+	mux.HandleFunc("PUT /api/v1/series/{id}/monitor/episodes", a.requireRole(auth.RoleManager, a.handleSetEpisodesMonitored))
 	mux.HandleFunc("GET /api/v1/series/{id}/blocklist", a.requireRole(auth.RoleManager, a.handleSeriesBlocklist))
 	mux.HandleFunc("POST /api/v1/series/{id}/blocklist", a.requireRole(auth.RoleManager, a.handleSeriesBlock))
 	mux.HandleFunc("DELETE /api/v1/series/{id}/blocklist/{bid}", a.requireRole(auth.RoleManager, a.handleSeriesUnblock))

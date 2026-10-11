@@ -45,7 +45,18 @@ type Service struct {
 	// read-and-write: the hourly sync and a Sync now landing together would otherwise
 	// both see a new upstream indexer as missing and add it twice.
 	prowlarrMu sync.Mutex
+	// defaultCats reads the indexer_default_categories setting: whether an indexer with
+	// stored caps and no categories of its own is searched in the media type's usual
+	// categories. nil = on, the setting's default.
+	defaultCats func(ctx context.Context) bool
 }
+
+// KeyDefaultCategories is the setting that turns the default search categories off
+// ("false"); unset is on.
+const KeyDefaultCategories = "indexer_default_categories"
+
+// SetDefaultCategories wires the indexer_default_categories setting (see defaultCats).
+func (s *Service) SetDefaultCategories(fn func(ctx context.Context) bool) { s.defaultCats = fn }
 
 // SetUsenetAvailable wires whether a usenet download client exists. Arrmada has none
 // today; wire it from the download service if a usenet client kind is ever added.
@@ -673,6 +684,9 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, erro
 	// finds nothing until it's folded ("Pokemon Heroes"). Done here so every caller —
 	// movies, series, books — benefits.
 	q.Text = parser.FoldAccents(q.Text)
+	q.Author, q.BookTitle = parser.FoldAccents(q.Author), parser.FoldAccents(q.BookTitle)
+	q.Artist, q.Album = parser.FoldAccents(q.Artist), parser.FoldAccents(q.Album)
+	q.defaultCats = s.defaultCats == nil || s.defaultCats(ctx)
 
 	indexers, err := s.repo.ListEnabled(ctx)
 	if err != nil {
@@ -746,8 +760,14 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, erro
 					// "the indexer only had this much" from "the seeder floor discarded the
 					// rest" — and an old season pack with few seeders is exactly the sort of
 					// release that quietly vanishes here.
+					byID := 0
+					for _, rel := range releases {
+						if rel.MatchedByID {
+							byID++
+						}
+					}
 					s.log.Info("indexer search", "indexer", idx.Name, "query", q.Text,
-						"returned", returned, "kept", len(releases),
+						"returned", returned, "kept", len(releases), "by_id", byID,
 						"dropped_low_seeders", returned-len(releases), "min_seeders", idx.MinSeeders,
 						"limit", q.Limit)
 					mu.Lock()
@@ -818,6 +838,16 @@ func dedupeByInfoHash(releases []Release, priority map[string]int) []Release {
 			(r.Seeders == kept.Seeders && priority[r.Indexer] < priority[kept.Indexer]) {
 			out[i] = r
 		}
+		// It's the same torrent: what one indexer knew about it (its ids) holds for the
+		// copy that's kept.
+		out[i].IMDBID = firstNonEmpty(out[i].IMDBID, kept.IMDBID, r.IMDBID)
+		if out[i].TMDBID == 0 {
+			out[i].TMDBID = max(kept.TMDBID, r.TMDBID)
+		}
+		if out[i].TVDBID == 0 {
+			out[i].TVDBID = max(kept.TVDBID, r.TVDBID)
+		}
+		out[i].MatchedByID = kept.MatchedByID || r.MatchedByID
 	}
 	return out
 }

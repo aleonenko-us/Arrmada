@@ -1,0 +1,24 @@
+import { useEffect, useState } from "react";
+import { api, type Series as SeriesT } from "../../lib/api";
+
+export function ProfileSelector({ series, onChange }: { series: SeriesT; onChange: () => void }) {
+  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
+  const [fallbackName, setFallbackName] = useState<string | null>(null);
+  const cur = series.quality_profile;
+  useEffect(() => { api.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!cur || cur === "n/a" || profiles.some((p) => p.key === cur)) { setFallbackName(null); return; }
+    api.qualityProfile(cur).then((sp) => setFallbackName(sp.name || cur)).catch(() => setFallbackName(cur));
+  }, [cur, profiles]);
+  const change = async (p: string) => { if (p === cur) return; await api.setSeriesProfile(series.id, p); onChange(); };
+  const opts = [...profiles];
+  if (cur && !opts.some((o) => o.key === cur)) opts.unshift({ key: cur, name: cur === "n/a" ? "Not set" : (fallbackName ?? "…") });
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</span>
+      <select value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+        {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
+      </select>
+    </div>
+  );
+}

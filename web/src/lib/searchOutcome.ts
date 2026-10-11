@@ -85,8 +85,14 @@ function body(kind: SearchAttempt["outcome"], o: Outcomeish): string {
 // 12 over your bitrate ceiling · 2 indexers failed: X, Y". A search no indexer answered
 // says it didn't count against the title: the sweep's backoff only counts real misses.
 export function attemptLine(a: SearchAttempt, now = Date.now()): string {
+  return `Last search ${ago(a.started_at, now)} — ${attemptBody(a)}`;
+}
+
+// attemptBody is what one stored search came to, without when — for a timeline that
+// shows the time in its own column.
+export function attemptBody(a: SearchAttempt): string {
   const tail = a.outcome === "indexers_failed" ? " — not counted as a miss" : "";
-  return `Last search ${ago(a.started_at, now)} — ${body(a.outcome, a)}${tail}`;
+  return `${body(a.outcome, a)}${tail}`;
 }
 
 // searchFinishedFor reports whether a live event is a search of this title finishing

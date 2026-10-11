@@ -1,11 +1,16 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -109,11 +114,77 @@ func (a *api) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusCreated, s)
 }
 
-// handleSearchSeries triggers a search+grab for one series (manual "search now").
+// seriesSearchList is the optional body of POST /series/{id}/search: episodes picked on
+// the series page (SER-16). No body, or no episodes, is the whole-show search.
+type seriesSearchList struct {
+	Episodes []struct {
+		Season  int `json:"season"`
+		Episode int `json:"episode"`
+	} `json:"episodes"`
+}
+
+// episodeListScope turns a picked list into one scoped search: every episode in one season
+// (the page picks per season), each named once, at most automation.MaxScopeEpisodes. nil
+// with no error means there was no list.
+func episodeListScope(body seriesSearchList) (*automation.SeriesScope, error) {
+	if len(body.Episodes) == 0 {
+		return nil, nil
+	}
+	if len(body.Episodes) > automation.MaxScopeEpisodes {
+		return nil, fmt.Errorf("pick at most %d episodes at a time", automation.MaxScopeEpisodes)
+	}
+	season := body.Episodes[0].Season
+	seen := map[int]bool{}
+	var eps []int
+	for _, e := range body.Episodes {
+		if e.Season != season {
+			return nil, errors.New("pick episodes from one season at a time")
+		}
+		if !seen[e.Episode] {
+			seen[e.Episode] = true
+			eps = append(eps, e.Episode)
+		}
+	}
+	sort.Ints(eps)
+	sc := &automation.SeriesScope{Season: season, Episodes: eps, Trigger: "bulk"}
+	if err := sc.Validate(); err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+// handleSearchSeries triggers a search+grab for one series (manual "search now"). With a
+// body naming episodes it searches just those, as one scoped search (GrabForScope) whose
+// outcome lands in the show's history and on the bus like any other click.
 func (a *api) handleSearchSeries(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
 		return
+	}
+	// Read the body whatever Content-Length says: a chunked list must never be mistaken for
+	// "no body" and turn into a whole-show search.
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		var body seriesSearchList
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil {
+			a.writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		sc, err := episodeListScope(body)
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if sc != nil {
+			a.searchEpisodeList(w, r, id, *sc)
+			return
+		}
 	}
 	// The button's search holds back seasons the client is still downloading
 	// (SearchSeriesManual), as the sweep does.
@@ -123,6 +194,64 @@ func (a *api) handleSearchSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.accepted(w, jobID, existing, map[string]any{"status": "searching", "started_at_ms": started})
+}
+
+// searchEpisodeList runs one scoped search for the picked episodes as a job. The target
+// names the exact list, so a second pick in the same season isn't mistaken for this one
+// already running, while a double click on the same pick is.
+func (a *api) searchEpisodeList(w http.ResponseWriter, r *http.Request, id int64, sc automation.SeriesScope) {
+	h := fnv.New32a()
+	for _, e := range sc.Episodes {
+		_, _ = fmt.Fprintf(h, "%d,", e)
+	}
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{
+		Kind: "series.grab-scope", Target: fmt.Sprintf("series:%d:s%d:list-%08x", id, sc.Season, h.Sum32()),
+		Class: jobs.ClassIndexerSearch, Timeout: 5 * time.Minute,
+		Fn: interactive(errFn(func(ctx context.Context) error {
+			_, err := a.deps.Automation.GrabForScope(ctx, id, sc)
+			return err
+		}))})
+	if !ok {
+		return
+	}
+	a.accepted(w, jobID, existing, map[string]any{"status": "searching", "episodes": len(sc.Episodes)})
+}
+
+// maxBulkMonitor bounds one bulk monitor request; the page sends at most a season.
+const maxBulkMonitor = 2000
+
+// handleSetEpisodesMonitored monitors or unmonitors several of a show's episodes at once
+// (the series page's select mode). Ids from another show refuse the whole change.
+func (a *api) handleSetEpisodesMonitored(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		EpisodeIDs []int64 `json:"episode_ids"`
+		Monitored  bool    `json:"monitored"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.EpisodeIDs) == 0 {
+		a.writeError(w, http.StatusBadRequest, "no episodes picked")
+		return
+	}
+	if len(req.EpisodeIDs) > maxBulkMonitor {
+		a.writeError(w, http.StatusBadRequest, fmt.Sprintf("pick at most %d episodes at a time", maxBulkMonitor))
+		return
+	}
+	n, err := a.deps.Series.SetEpisodesMonitored(r.Context(), id, req.EpisodeIDs, req.Monitored)
+	if errors.Is(err, series.ErrForeignEpisodes) {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not update episodes")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"updated": n, "monitored": req.Monitored})
 }
 
 func (a *api) handleGetSeries(w http.ResponseWriter, r *http.Request) {

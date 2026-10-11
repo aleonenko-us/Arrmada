@@ -20,11 +20,28 @@ export function DownloadsSettings() {
           <Link to={LINKS.indexers} style={{ color: "var(--accent)" }}>Indexers →</Link>
         </div>
       </Section>
+      <Section id="search-categories" title="Search categories" subtitle="Which categories an indexer is searched in when it names none of its own (Prowlarr's synced indexers name none).">
+        <DefaultCategories />
+      </Section>
       <DiskGuardSection />
       <StallSection />
       <UpgradeBudgetSection />
       <RecycleBin />
     </div>
+  );
+}
+
+// DefaultCategories switches the usual search categories for indexers that name none of
+// their own (Prowlarr's synced indexers), so a book search stops coming back with films.
+// Off asks every category, as before.
+function DefaultCategories() {
+  const save = useSetting("indexer_default_categories");
+  return (
+    <AutoToggle
+      label="Search the usual categories"
+      hint="Indexers without categories of their own are asked only for the kind of release being searched for — movies, TV, books, audiobooks or music — when they list that category. Turn off if an indexer files releases in odd categories."
+      save={save}
+    />
   );
 }
 

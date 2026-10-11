@@ -429,6 +429,7 @@ PUT /api/v1/notifications/{id} admin -
 PUT /api/v1/quality/profiles/{id} staff -
 PUT /api/v1/series/episodes/{eid}/monitor staff -
 PUT /api/v1/series/{id}/monitor staff -
+PUT /api/v1/series/{id}/monitor/episodes staff -
 PUT /api/v1/series/{id}/profile staff -
 PUT /api/v1/series/{id}/scene-map staff -
 PUT /api/v1/series/{id}/seasons/{season}/monitor staff -

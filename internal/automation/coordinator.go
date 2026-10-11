@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,12 @@ type Coordinator struct {
 
 	// removeTorrent overrides downloads.Remove in tests; nil uses the real client.
 	removeTorrent func(ctx context.Context, hash string, deleteData bool) error
+
+	// guard caches the library's own title keys (movies.PrimaryKeys) for movieKeys, so a
+	// sweep over every movie reads them once rather than once per movie.
+	guardMu sync.Mutex
+	guard   movies.PrimaryKeys
+	guardAt time.Time
 	// importRetry drops the movie importer's back-off for a download (SetImportRetry);
 	// nil = nothing to drop.
 	importRetry func(hash string)
@@ -506,7 +513,7 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 		if !c.movies.IsAvailable(m) {
 			continue // not yet at its minimum-availability threshold
 		}
-		if untrackedMovie(untracked, m) {
+		if untrackedMovie(untracked, m, c.movieKeys(ctx, m)) {
 			continue // a torrent nobody grabbed through Arrmada is already fetching it
 		}
 		if c.MovieSearchBusy(m.ID) {
@@ -702,12 +709,9 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		}
 		profileRef = track.QualityProfile
 	}
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
 	ctx, notes := withSearchNotes(ctx)
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	keys := c.movieKeys(ctx, m)
+	result, err := c.searchMovie(ctx, m, keys)
 	if allIndexersFailed(err) {
 		// Nobody could answer: an empty list naming each failure, not an error that
 		// reads like the search itself broke.
@@ -724,7 +728,7 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 	// The recommendation is decided over exactly what auto-grab decides over (candidatesFrom:
 	// grabbable, deduped, not blocklisted), so Recommended is the release a search would
 	// take. Blocklisted and usenet releases are still listed, ranked on their own.
-	torrents, usenet := splitTransport(matchingMovieReleases(m, result.Releases))
+	torrents, usenet := splitTransport(matchingMovieReleases(m, keys, result.Releases))
 	byName := make(map[string]indexer.Release, len(torrents)+len(usenet))
 	var pool, side, offTrack []quality.Candidate
 	// offReason is why a release can't go to this track (its edition filter), by title.
@@ -867,7 +871,7 @@ func (c *Coordinator) SearchMovieManual(ctx context.Context, id int64) (SearchOu
 			name = acqs[0].Title
 		} else if queue, qerr := c.downloads.Queue(ctx); qerr == nil {
 			if untracked, uerr := c.untrackedQueue(ctx, queue); uerr == nil {
-				name = untrackedMovieItem(untracked, m)
+				name = untrackedMovieItem(untracked, m, c.movieKeys(ctx, m))
 			}
 		}
 		if name != "" {
@@ -917,7 +921,8 @@ func (c *Coordinator) searchAndGrab(ctx context.Context, m movies.Movie) (out Se
 		return SearchOutcome{Reason: ReasonNothingWanted}, nil
 	}
 	out = SearchOutcome{Searched: true}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: movieQuery(m), MediaType: indexer.MediaMovie, Limit: 100})
+	keys := c.movieKeys(ctx, m)
+	result, err := c.searchMovie(ctx, m, keys)
 	if err != nil {
 		out.noteSearchErr(err)
 		return out, err
@@ -932,7 +937,7 @@ func (c *Coordinator) searchAndGrab(ctx context.Context, m movies.Movie) (out Se
 	// Only consider releases that are actually for THIS movie — a title search for a
 	// short/common name (e.g. "Hope") returns unrelated films ("Romance at Hope
 	// Ranch"), and the scorer would otherwise happily grab the wrong one.
-	matching := matchingMovieReleases(m, result.Releases)
+	matching := matchingMovieReleases(m, keys, result.Releases)
 	notes.dropped(result.Releases, matching, DropWrongTitle)
 	out.Matching = len(matching)
 	byName, cands, err := c.candidatesFrom(ctx, m.ID, matching)
@@ -956,21 +961,98 @@ func (c *Coordinator) searchAndGrab(ctx context.Context, m movies.Movie) (out Se
 	return out, nil
 }
 
-// movieQuery is the indexer search text for a movie: its title, and its year when known.
-func movieQuery(m movies.Movie) string {
+// movieQuery is the indexer search for a movie: its title, and its year when known, plus
+// its IMDb and TMDB ids, which an indexer whose caps take them is asked by instead (see
+// indexer.TorznabSearcher.Search). Every movie search is built here.
+func movieQuery(m movies.Movie) indexer.SearchQuery {
+	text := m.Title
 	if m.Year > 0 {
-		return m.Title + " " + strconv.Itoa(m.Year)
+		text += " " + strconv.Itoa(m.Year)
 	}
-	return m.Title
+	return indexer.SearchQuery{Text: text, MediaType: indexer.MediaMovie, Limit: 100, IMDBID: m.IMDBID, TMDBID: m.TMDBID}
 }
 
-// matchingMovieReleases keeps only releases whose parsed title + year match the
-// movie — the guard that keeps auto-grab from picking a different film that merely
+// searchMovie is a movie's indexer search (movieQuery) and, when nothing it returned is for
+// the film, at most one more: a text search by the film's original title and year, when
+// that title differs from its own, is in the Latin alphabet and survived the collision
+// guard (movieKeys). A foreign film's releases are often named by its original title
+// only, which neither the title query nor an indexer without id search finds.
+func (c *Coordinator) searchMovie(ctx context.Context, m movies.Movie, keys []string) (indexer.SearchResult, error) {
+	res, err := c.search(ctx, movieQuery(m))
+	if err != nil {
+		return res, err
+	}
+	text := originalTitleQuery(m, keys)
+	if text == "" || len(matchingMovieReleases(m, keys, res.Releases)) > 0 {
+		return res, nil
+	}
+	// Text only: where an indexer takes ids, the id search already ran as the primary.
+	more, err := c.search(ctx, indexer.SearchQuery{Text: text, MediaType: indexer.MediaMovie, Limit: 100})
+	if err != nil {
+		// The primary search answered; this one only adds to it.
+		c.log.Info("automation: original-title search failed", "movie", m.Title, "query", text, "err", err)
+		return res, nil
+	}
+	c.log.Info("automation: searched by original title", "movie", m.Title, "query", text, "returned", len(more.Releases))
+	res.Releases = append(res.Releases, more.Releases...)
+	return res, nil
+}
+
+// originalTitleQuery is the text of the original-title search (searchMovie): the original
+// title and year, or "" when there's no original title worth asking for.
+func originalTitleQuery(m movies.Movie, keys []string) string {
+	if m.Extra == nil || m.Extra.OriginalTitle == "" {
+		return ""
+	}
+	k := titleKey(m.Extra.OriginalTitle)
+	if k == titleKey(m.Title) || !slices.Contains(keys, k) {
+		return "" // the same title, or one the keys left out (non-Latin, or another film's)
+	}
+	text := m.Extra.OriginalTitle
+	if m.Year > 0 {
+		text += " " + strconv.Itoa(m.Year)
+	}
+	return text
+}
+
+// movieKeys are the title keys a release for m may carry (movies.TitleKeys), guarded
+// against the library's other films. When the library's titles can't be read the guard
+// fails closed: the film's own title only.
+func (c *Coordinator) movieKeys(ctx context.Context, m movies.Movie) []string {
+	guard, err := c.titleGuard(ctx)
+	if err != nil {
+		c.log.Warn("automation: couldn't read the library's titles; matching by the movie's own title only", "movie", m.Title, "err", err)
+		return []string{titleKey(m.Title)}
+	}
+	return movies.TitleKeys(m, guard)
+}
+
+// titleGuardTTL is how long movieKeys reuses the library's title keys. Short: a film added
+// just now must start guarding its title against the others' alternatives promptly.
+const titleGuardTTL = 10 * time.Second
+
+// titleGuard is the library's own title keys, cached for titleGuardTTL.
+func (c *Coordinator) titleGuard(ctx context.Context) (movies.PrimaryKeys, error) {
+	c.guardMu.Lock()
+	defer c.guardMu.Unlock()
+	if c.guard != nil && time.Since(c.guardAt) < titleGuardTTL {
+		return c.guard, nil
+	}
+	g, err := c.movies.PrimaryKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.guard, c.guardAt = g, time.Now()
+	return g, nil
+}
+
+// matchingMovieReleases keeps only releases that are for the movie (movieReleaseMatches
+// under keys) — the guard that keeps auto-grab from picking a different film that merely
 // shares a word with the title.
-func matchingMovieReleases(m movies.Movie, releases []indexer.Release) []indexer.Release {
+func matchingMovieReleases(m movies.Movie, keys []string, releases []indexer.Release) []indexer.Release {
 	out := make([]indexer.Release, 0, len(releases))
 	for _, rel := range releases {
-		if releaseIsForMovie(rel.Title, m) {
+		if movieReleaseMatches(rel, m, keys) {
 			out = append(out, rel)
 		}
 	}
@@ -1210,7 +1292,7 @@ func (c *Coordinator) RSSSync(ctx context.Context) {
 		return
 	}
 	for _, m := range all {
-		if !c.movies.IsAvailable(m) || untrackedMovie(untracked, m) {
+		if !c.movies.IsAvailable(m) || untrackedMovie(untracked, m, c.movieKeys(ctx, m)) {
 			continue
 		}
 		want, _, err := c.wantedVersions(ctx, m.ID)
@@ -1221,12 +1303,7 @@ func (c *Coordinator) RSSSync(ctx context.Context) {
 		if len(want) == 0 {
 			continue
 		}
-		var matched []indexer.Release
-		for _, rel := range res.Releases {
-			if releaseIsForMovie(rel.Title, m) {
-				matched = append(matched, rel)
-			}
-		}
+		matched := matchingMovieReleases(m, c.movieKeys(ctx, m), res.Releases)
 		if len(matched) == 0 {
 			continue
 		}
@@ -1247,14 +1324,26 @@ func (c *Coordinator) RSSSync(ctx context.Context) {
 	}
 }
 
-// releaseIsForMovie reports whether a release title is for the given movie
-// (normalized title match + year within one).
-func releaseIsForMovie(relTitle string, m movies.Movie) bool {
-	r := parser.Parse(relTitle)
-	if titleKey(r.Title) != titleKey(m.Title) {
-		return false
+// movieReleaseMatches reports whether an indexer's release is for the movie: its title is
+// one of keys (movies.TitleKeys — its own, original or alternative title) with a year
+// within one, or the indexer tagged it with the movie's own IMDb id and its year fits — a
+// film listed under another title still carries its IMDb id. A release tagged with a
+// DIFFERENT IMDb id is another film whatever it's called (a remake, a namesake).
+//
+// Coming back from an id search (MatchedByID) is deliberately not enough: an indexer that
+// ignores the id answers with its newest uploads, which are anything.
+func movieReleaseMatches(rel indexer.Release, m movies.Movie, keys []string) bool {
+	tag := indexer.NormalizeIMDB(rel.IMDBID)
+	own := indexer.NormalizeIMDB(m.IMDBID)
+	if tag != "" && own != "" {
+		if tag != own {
+			return false
+		}
+		r := parser.Parse(rel.Title)
+		return r.Year == 0 || m.Year == 0 || abs(r.Year-m.Year) <= 1
 	}
-	return r.Year == 0 || m.Year == 0 || abs(r.Year-m.Year) <= 1
+	r := parser.Parse(rel.Title)
+	return movies.TitleMatches(keys, m, r.Title, r.Year)
 }
 
 // UpgradeMovies sweeps every monitored movie that already has a file and grabs a
@@ -1385,11 +1474,8 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		return nil
 	}
 
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	keys := c.movieKeys(ctx, m)
+	result, err := c.search(ctx, movieQuery(m))
 	if err != nil {
 		return err
 	}
@@ -1410,7 +1496,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !releaseIsForMovie(rel.Title, m) {
+		if !movieReleaseMatches(rel, m, keys) {
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
 		}
@@ -1507,11 +1593,8 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 	if err != nil {
 		return err
 	}
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	keys := c.movieKeys(ctx, m)
+	result, err := c.search(ctx, movieQuery(m))
 	if err != nil {
 		return err
 	}
@@ -1531,7 +1614,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !releaseIsForMovie(rel.Title, m) {
+		if !movieReleaseMatches(rel, m, keys) {
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
 		}
@@ -2290,17 +2373,18 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 }
 
 // untrackedMovie reports whether a torrent no grab knows (see untrackedQueue) is for the
-// movie, by its parsed title and year — the only way to tell for a torrent Arrmada didn't
-// grab. Arrmada's own downloads are found by hash, through the acquisition record.
-func untrackedMovie(untracked []download.Item, m movies.Movie) bool {
-	return untrackedMovieItem(untracked, m) != ""
+// movie, by its parsed title (any of keys, movieKeys) and year — the only way to tell for
+// a torrent Arrmada didn't grab. Arrmada's own downloads are found by hash, through the
+// acquisition record.
+func untrackedMovie(untracked []download.Item, m movies.Movie, keys []string) bool {
+	return untrackedMovieItem(untracked, m, keys) != ""
 }
 
 // untrackedMovieItem is the name of the untracked torrent untrackedMovie matched, "" for none.
-func untrackedMovieItem(untracked []download.Item, m movies.Movie) string {
+func untrackedMovieItem(untracked []download.Item, m movies.Movie, keys []string) string {
 	for _, it := range untracked {
 		r := parser.Parse(it.Name)
-		if titleKey(r.Title) == titleKey(m.Title) && (r.Year == 0 || m.Year == 0 || abs(r.Year-m.Year) <= 1) {
+		if movies.TitleMatches(keys, m, r.Title, r.Year) {
 			return it.Name
 		}
 	}

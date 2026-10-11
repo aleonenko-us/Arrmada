@@ -289,7 +289,7 @@ func (b *wantedBuild) movies() (searching, upcoming []wantedRow) {
 		b.schedule(&row, st.LastAt, st.Misses)
 		if held {
 			row.State, row.ReviewID = wantedHeld, b.reviews[fmt.Sprintf("movie:%d", m.ID)]
-		} else if name := automation.UntrackedMovieItem(b.untracked, m); name != "" {
+		} else if name := b.a.deps.Automation.UntrackedMovieItem(b.ctx, b.untracked, m); name != "" {
 			// The sweep leaves it alone while a torrent named for it is in the client.
 			row.State, row.WaitingOn = wantedWaiting, name
 		}

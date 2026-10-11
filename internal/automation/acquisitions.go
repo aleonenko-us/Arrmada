@@ -338,7 +338,7 @@ func (c *Coordinator) movieBusy(ctx context.Context, m movies.Movie, untracked [
 	if err != nil {
 		return false, err
 	}
-	return len(acqs) > 0 || untrackedMovie(untracked, m), nil
+	return len(acqs) > 0 || untrackedMovie(untracked, m, c.movieKeys(ctx, m)), nil
 }
 
 // acqPhase is the phase the record keeps for a torrent the client listed.

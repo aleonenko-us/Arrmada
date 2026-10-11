@@ -924,6 +924,12 @@ func (s *Service) SetEpisodeMonitored(ctx context.Context, episodeID int64, moni
 	return s.repo.SetEpisodeMonitored(ctx, episodeID, monitored)
 }
 
+// SetEpisodesMonitored sets several of a show's episodes at once (see
+// Repo.SetEpisodesMonitored); ErrForeignEpisodes when an id isn't one of its episodes.
+func (s *Service) SetEpisodesMonitored(ctx context.Context, seriesID int64, ids []int64, monitored bool) (int, error) {
+	return s.repo.SetEpisodesMonitored(ctx, seriesID, ids, monitored)
+}
+
 // SetQualityProfile changes a series' quality profile. A real change ends every episode's
 // upgrade hold.
 func (s *Service) SetQualityProfile(ctx context.Context, id int64, profile string) error {
