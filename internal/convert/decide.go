@@ -88,7 +88,9 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		keepSubs:       splitCSV(g.Get(ctx, keyKeepSubLangs, "")),
 		imageSubs:      g.Get(ctx, keyImageSubs, ""),
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
-		crop:           g.GetBool(ctx, keyCrop, true),
+		// Off unless you turned it on: a brief wider shot between the samples could still
+		// be trimmed (see crop.go), and it buys about 2%.
+		crop:           g.GetBool(ctx, keyCrop, false),
 		measured:       s.measured.all(ctx),
 	}
 	switch p.imageSubs {

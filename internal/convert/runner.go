@@ -30,6 +30,10 @@ func (s *Service) Run(ctx context.Context) {
 		s.log.Info("convert: closed ledger rows interrupted by the restart", "count", n)
 	}
 	s.log.Info("convert: runner started", "workers", s.workerCount(ctx))
+	if _, saved := s.settings.Lookup(keyCrop); !saved {
+		// It used to default to on; an install that never chose keeps no crop now.
+		s.log.Info("convert: black-bar crop is now off unless you turn it on in Convert's settings")
+	}
 	done := make(chan struct{})
 	go s.pauseLoop(ctx, done)
 	// Every possible worker exists; the ones above the configured count just wait. That
