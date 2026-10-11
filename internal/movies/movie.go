@@ -195,6 +195,13 @@ type MovieExtra struct {
 	CollectionName   string       `json:"collection_name,omitempty"`
 	VoteAverage      float64      `json:"vote_average,omitempty"`
 	Cast             []CastMember `json:"cast,omitempty"`
+	// OriginalTitle (Latin script only) and AltTitles are the other titles the film's
+	// releases may be named by; matching accepts them as well as Title (TitleKeys).
+	// TitlesRead says they were read from TMDB — false on records stored before they
+	// were kept, which the alt-titles backfill fills in.
+	OriginalTitle string   `json:"original_title,omitempty"`
+	AltTitles     []string `json:"alt_titles,omitempty"`
+	TitlesRead    bool     `json:"titles_read,omitempty"`
 }
 
 // CastMember is one billed actor.

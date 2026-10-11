@@ -1,33 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { disposalLine, useRecycleMode } from "../lib/disposal";
-import { DeleteSeriesDialog } from "../components/DeleteSeriesDialog";
-import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
-import { UploadTorrentModal } from "../components/UploadTorrentModal";
-import { FileDetailsModal } from "../components/FileDetailsModal";
-import { FitBadge } from "../components/FitBadge";
-import { PlexPill, WatchedBy } from "../components/PlexBits";
-import { RenameModal } from "./series/RenameModal";
 import { NumberingBanner } from "./series/NumberingReviewModal";
-import { MONITOR_PRESETS } from "./series/presets";
 import { usePoll } from "../lib/usePoll";
-import { libraryStatus } from "../lib/status";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress } from "./series/downloads";
-import { jobFailed, jobToast, useJob } from "../lib/useJob";
-import { attemptLine, outcomeTone, searchFinishedFor, searchJobLine } from "../lib/searchOutcome";
-import { LastSearches, refreshSearches, useSearchAttempts } from "../components/LastSearch";
-import { Button, StatusChip } from "../ui";
-import { api, importListNotice, type FitItem, type Series as SeriesT, type Season, type Episode, type SeriesImportCandidate, type MovieEvent, type BlockEntry, type SceneOverride, type SeriesAlias, type DuplicateEpisodeFile, type SearchAttempt } from "../lib/api";
+import { searchFinishedFor } from "../lib/searchOutcome";
+import { refreshSearches } from "../components/LastSearch";
+import { Button, StatusChip, useToast } from "../ui";
+import { TabPanel, Tabs } from "../ui/Tabs";
+import { api, type CastMember, type FitItem, type Series as SeriesT, type Episode } from "../lib/api";
+import { Hero } from "./series/Hero";
+import { HeroActions } from "./series/HeroActions";
+import { AliasPanel } from "./series/panels";
+import { FilesTab } from "./series/FilesTab";
+import { ActivityTab } from "./series/ActivityTab";
+import { NumberingTab, showNumberingTab } from "./series/NumberingTab";
+import { invalidate, useQuery } from "../lib/query";
+import { useTabParam } from "../lib/useTabParam";
+import { defaultSeason, sortSeasons } from "./series/util";
+import { SeasonPanel, SeasonRail } from "./series/SeasonRail";
 
-// Grab missing / Grab run as background jobs, and every search leaves a stored attempt
-// (search_attempts) under its scope: "S03" for a season, "S03E04" for an episode. The
-// buttons read the latest one back from the server — what was found and why nothing was
-// taken — rather than a "Requested" mark kept in this browser.
-const seasonScope = (n: number) => `S${String(n).padStart(2, "0")}`;
 // What the page listens for besides the queue (see SeriesDetail).
 const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
 // The download bars' backstop when queue.progress and queue.changed move them.
@@ -35,36 +29,22 @@ const DOWNLOAD_FALLBACK_MS = 30_000;
 // The old marks are dead weight in this browser now; drop them once.
 try { localStorage.removeItem("arrmada.grabRequested"); } catch { /* storage unavailable */ }
 
-// latestFor is the newest stored attempt under scope, if any.
-function latestFor(attempts: SearchAttempt[], scope: string): SearchAttempt | undefined {
-  let best: SearchAttempt | undefined;
-  for (const a of attempts) {
-    if (a.scope === scope && (!best || a.started_at > best.started_at || (a.started_at === best.started_at && a.id > best.id))) best = a;
-  }
-  return best;
-}
-
-const today = new Date().toISOString().slice(0, 10);
-const aired = (e: Episode) => !!e.air_date && e.air_date <= today;
-const sxe = (e: Episode) => `S${String(e.season_number).padStart(2, "0")}E${String(e.episode_number).padStart(2, "0")}`;
-
-function fmtSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return "—";
-  const gb = bytes / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-}
-
 export function SeriesDetail() {
   const { id } = useParams();
   const sid = Number(id);
+  const [params, setParams] = useSearchParams();
+  // The season lives in the address (?season=), replaced rather than pushed: Back leaves
+  // the show instead of stepping through every season looked at.
+  const pickSeason = useCallback((n: number) => {
+    setParams((p) => { const q = new URLSearchParams(p); q.set("season", String(n)); return q; }, { replace: true });
+  }, [setParams]);
   const [s, setS] = useState<SeriesT | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [toastErr, setToastErr] = useState(false);
+  const toast = useToast();
 
   // err shows the toast in the error colour: a search that failed says so plainly.
-  const flash = (msg: string, err = false) => { setToast(msg); setToastErr(err); window.setTimeout(() => setToast(null), 3500); };
+  const flash = useCallback((msg: string, err = false) => toast(msg, { tone: err ? "error" : "info", ms: 3500 }), [toast]);
 
   const load = useCallback(() => {
     return api.seriesDetail(sid).then(setS).catch((e: Error) => {
@@ -80,6 +60,38 @@ export function SeriesDetail() {
   useEffect(() => {
     api.libraryFitEpisodes(sid).then((r) => setFits(new Map((r.items ?? []).map((it) => [`${it.season}:${it.episode}`, it])))).catch(() => {});
   }, [sid]);
+
+  // The Numbering tab shows for anime, or while a standard show has something to decide:
+  // a pending renumber or downloads held because their files couldn't be placed. The
+  // numbering query is the banner's own (same key), re-asked whenever the show was
+  // refreshed; the held downloads are re-asked when its history moves.
+  const numbering = useQuery(`series-numbering:${sid}`, () => api.seriesNumbering(sid), { staleMs: 0 });
+  const reviews = useQuery(`series-reviews:${sid}`, () => api.seriesReviews(sid), { staleMs: 30_000 });
+  const unplaced = reviews.data ?? [];
+  const numberingKey = s ? `${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}` : "";
+  const refetchReviews = reviews.refetch;
+  const lastEvent = s?.last_event_id;
+  const seenEvent = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (lastEvent === undefined) return;
+    if (seenEvent.current !== undefined && seenEvent.current !== lastEvent) void refetchReviews();
+    seenEvent.current = lastEvent;
+  }, [lastEvent, refetchReviews]);
+  const seenNumbering = useRef("");
+  useEffect(() => {
+    if (!numberingKey) return;
+    if (seenNumbering.current && seenNumbering.current !== numberingKey) invalidate(`series-numbering:${sid}`);
+    seenNumbering.current = numberingKey;
+  }, [numberingKey, sid]);
+  const settleNumbering = useCallback(() => { invalidate(`series-numbering:${sid}`); load(); }, [sid, load]);
+  const numberingTab = !!s && showNumberingTab(s, numbering.data?.pending, unplaced.length);
+  const tabs = useMemo(() => [
+    { key: "episodes" as const, label: "Episodes" },
+    { key: "files" as const, label: "Files" },
+    { key: "activity" as const, label: "Activity" },
+    ...(numberingTab ? [{ key: "numbering" as const, label: "Numbering", count: (numbering.data?.pending ? 1 : 0) + unplaced.length || undefined }] : []),
+  ], [numberingTab, numbering.data?.pending, unplaced.length]);
+  const [tab, setTab] = useTabParam(tabs.map((t) => t.key), "episodes");
 
   // While any episode is downloading its bar moves from queue.progress (by the torrent's
   // hash), and a queue.changed naming one of its torrents reads the light downloads
@@ -130,130 +142,81 @@ export function SeriesDetail() {
   if (!s) return <Shell><p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const ex = s.extra;
-  // Ascending (Season 1 at the top), with Specials (season 0) pushed to the bottom.
-  const seasons = [...(s.seasons ?? [])].sort((a, b) => {
-    if (a.season_number === 0) return 1;
-    if (b.season_number === 0) return -1;
-    return a.season_number - b.season_number;
-  });
-  const continuing = /return|continu/i.test(s.status ?? "");
+  const seasons = sortSeasons(s.seasons);
   // Every regular episode, for the show-wide upgrade-hold chip.
   const allEps = seasons.filter((sn) => sn.season_number > 0).flatMap((sn) => sn.episodes ?? []);
-  // Overall progress from the server's roll-up — the same numbers as the list's card, so
-  // the two agree: only monitored episodes in monitored seasons count as missing.
-  const haveAll = s.stats?.have_files ?? 0;
-  const countedAll = s.stats?.episodes ?? 0;
-  const missingAll = s.stats?.missing ?? Math.max(0, countedAll - haveAll);
-  const notMonitoredAll = s.stats?.unmonitored_missing ?? 0;
-  const st = libraryStatus({ multi: true, hasFile: haveAll > 0, monitored: s.monitored, have: countedAll - missingAll, total: countedAll });
+  // The season shown: the one in the address (so a reload stays put), else where there's
+  // something to do (see defaultSeason).
+  const asked = Number(params.get("season"));
+  const current = seasons.find((sn) => params.has("season") && sn.season_number === asked) ?? seasons.find((sn) => sn.season_number === defaultSeason(seasons));
 
   return (
     <>
       <PageHeader title={s.title} />
 
-      {/* Hero band with backdrop — mirrors the Movie detail layout */}
-      <div className="relative">
-        {ex?.backdrop_url && (
-          <>
-            <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.18]" style={{ backgroundImage: `url(${ex.backdrop_url})` }} />
-            <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, transparent, var(--bg))" }} />
-          </>
-        )}
-        <div className="relative mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
-          <Link to="/series" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            All series
-          </Link>
-
-          <div className="flex flex-col gap-6 sm:flex-row">
-            <div className="w-[180px] flex-none self-start overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)", aspectRatio: "2/3" }}>
-              {s.poster_url ? (
-                <img src={s.poster_url} alt={s.title} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-end p-3" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-                  <span className="text-[15px] font-bold text-white">{s.title}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
-                <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: continuing ? "var(--good-soft)" : "var(--panel-2)", color: continuing ? "var(--good)" : "var(--ink-faint)" }}>{continuing ? "Continuing" : "Ended"}</span>
-                {countedAll > 0 && (
-                  <span className="font-mono text-[11px] text-ink-dim">
-                    {haveAll}/{countedAll}
-                    {notMonitoredAll > 0 && <span className="text-ink-faint" title="Aired episodes without a file that aren't monitored — not counted as missing"> · {notMonitoredAll} not monitored</span>}
-                  </span>
-                )}
-                {s.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{s.year}</span>}
-                {s.network && <span className="font-mono text-[11px] text-ink-faint">{s.network}</span>}
-                <span className="flex items-center gap-2">
-                  {s.imdb_id && <a href={`https://www.imdb.com/title/${s.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>}
-                  <a href={`https://www.themoviedb.org/tv/${s.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#01b4e4", color: "#fff" }}>TMDB</a>
-                  <PlexPill media="series" tmdbId={s.tmdb_id} />
-                </span>
-              </div>
-              <WatchedBy kind="series" id={s.id} />
-
-              <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">{s.overview || "No overview available."}</p>
-
-              {ex?.genres && ex.genres.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">{ex.genres.map((g) => <span key={g} className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{g}</span>)}</div>
-              )}
-
-              <div className="mt-4 flex flex-wrap items-center gap-4">
-                <ProfileSelector series={s} onChange={load} />
-              </div>
-              <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={flash} />
-
-              <Toolbar series={s} onChange={load} flash={flash} />
-              <NumberingBanner seriesId={s.id} refreshKey={`${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}`} onApplied={load} />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Hero series={s}>
+        <HeroActions series={s} onChange={load} flash={flash} />
+        <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={flash} />
+      </Hero>
 
       <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
-        {!s.monitored && (
-          <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-            Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
-          </div>
-        )}
-        <div className="mt-2 flex flex-col gap-3">
-          {seasons.map((sn) => <SeasonBlock key={sn.id} series={s} season={sn} onChange={load} flash={flash} defaultOpen={false} fits={fits} />)}
-        </div>
+        <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="series" label="Series sections" className="mb-4 mt-1 border-b" />
 
-        {/* A block isn't always a history event (a junk download is blocklisted as it
-            leaves the queue), so the panel also reloads when a download goes away. */}
-        <SeriesBlocklistPanel seriesId={s.id} refreshKey={`${s.last_event_id ?? 0}:${downloading}`} />
-
-        {ex?.cast && ex.cast.length > 0 && (
-          <div className="mt-8">
-            <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
-            <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
-              {ex.cast.map((c, i) => (
-                <div key={i} className="w-[92px] flex-none text-center">
-                  <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
-                    {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
-                  </div>
-                  <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
-                  {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
-                </div>
-              ))}
+        {tab === "episodes" && (
+          <TabPanel idPrefix="series" value="episodes">
+            <NumberingBanner seriesId={s.id} refreshKey={numberingKey} onApplied={settleNumbering} />
+            {!s.monitored && (
+              <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+                Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
+              </div>
+            )}
+            <div className="mt-4">
+              <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
+              {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={flash} />}
             </div>
-          </div>
+            {/* Without a Numbering tab (a standard show with nothing to decide) the
+                alternate titles stay reachable here, collapsed. */}
+            {!numberingTab && <AliasPanel series={s} />}
+            <CastRow cast={ex?.cast} />
+          </TabPanel>
         )}
-
-        <DuplicatesPanel seriesId={s.id} refreshKey={s.last_event_id} flash={flash} />
-
-        <HistoryPanel seriesId={s.id} refreshKey={s.last_event_id} />
+        {tab === "files" && (
+          <TabPanel idPrefix="series" value="files">
+            <FilesTab series={s} fits={fits} refreshKey={s.last_event_id} downloading={downloading} onChange={load} flash={flash} />
+          </TabPanel>
+        )}
+        {tab === "activity" && (
+          <TabPanel idPrefix="series" value="activity">
+            <ActivityTab seriesId={s.id} refreshKey={s.last_event_id} />
+          </TabPanel>
+        )}
+        {tab === "numbering" && (
+          <TabPanel idPrefix="series" value="numbering">
+            <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={flash} />
+          </TabPanel>
+        )}
       </div>
-
-      {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>{toast}</div>
-      )}
     </>
+  );
+}
+
+function CastRow({ cast }: { cast?: CastMember[] }) {
+  if (!cast || cast.length === 0) return null;
+  return (
+    <div className="mt-8">
+      <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
+      <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
+        {cast.map((c, i) => (
+          <div key={i} className="w-[92px] flex-none text-center">
+            <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
+              {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
+            </div>
+            <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
+            {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -285,929 +248,8 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
   );
 }
 
-function Toolbar({ series, onChange, flash }: { series: SeriesT; onChange: () => void; flash: (m: string, err?: boolean) => void }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  // The search and a whole-folder import run as jobs; when one ends the toast says what
-  // actually happened.
-  const [searchJob, setSearchJob] = useState<number | null>(null);
-  const [importJob, setImportJob] = useState<number | null>(null);
-  const [searchResult, setSearchResult] = useState<{ text: string; failed: boolean } | null>(null);
-  const search = useJob(searchJob, {
-    onDone: (j) => {
-      setSearchJob(null);
-      const text = searchJobLine(j);
-      setSearchResult({ text, failed: jobFailed(j) });
-      flash(text, jobFailed(j));
-      refreshSearches("series", series.id);
-      onChange();
-    },
-  });
-  useJob(importJob, {
-    onDone: (j) => { setImportJob(null); flash(jobToast(j, "Import finished."), jobFailed(j)); onChange(); },
-  });
-  const [showImport, setShowImport] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [showPaste, setShowPaste] = useState(false);
-
-  const run = async (key: string, fn: () => Promise<void>) => {
-    setBusy(key);
-    try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
-  };
-
-  const btn = "rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50";
-  const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
-
-  const [showRename, setShowRename] = useState(false);
-
-  return (
-    <>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          role="switch"
-          aria-checked={series.monitored}
-          disabled={busy !== null}
-          onClick={() => run("monitor", async () => { await api.setSeriesMonitored(series.id, !series.monitored); onChange(); flash(series.monitored ? "Paused — nothing is searched until you resume." : "Resumed."); })}
-          className="inline-flex items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50"
-          title={series.monitored ? "Monitored — click to pause. Season and episode choices are kept." : "Paused — nothing is searched. Click to resume."}
-        >
-          <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: series.monitored ? "var(--accent)" : "var(--line)" }}>
-            <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: series.monitored ? "19px" : "3px" }} />
-          </span>
-          <span style={{ color: series.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{series.monitored ? "Monitored" : "Monitor"}</span>
-        </button>
-        <label className="inline-flex items-center gap-1.5 text-[12px] text-ink-dim" title="When a refresh finds a season the show didn't have, monitor it.">
-          <input
-            type="checkbox"
-            checked={!!series.monitor_new_seasons}
-            disabled={busy !== null}
-            onChange={(e) => { const on = e.target.checked; void run("monitor-new", async () => { await api.setSeriesMonitorNewSeasons(series.id, on); onChange(); }); }}
-          />
-          Monitor new seasons
-        </label>
-        <select
-          value=""
-          disabled={busy !== null}
-          aria-label="Apply a monitoring preset"
-          title="Sets which episodes are monitored, in one go. The pause switch is left as it is."
-          onChange={(e) => {
-            const preset = e.target.value;
-            e.target.value = "";
-            if (!preset) return;
-            const label = MONITOR_PRESETS.find((p) => p.value === preset)?.label ?? preset;
-            void run("preset", async () => { await api.applySeriesMonitorPreset(series.id, preset); onChange(); flash(`Monitoring: ${label}.`); });
-          }}
-          className="rounded-lg px-2 py-1.5 text-[12px] disabled:opacity-50"
-          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-        >
-          <option value="">Apply monitoring…</option>
-          {MONITOR_PRESETS.map((p) => <option key={p.value} value={p.value} title={p.help}>{p.label}</option>)}
-        </select>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("refresh", async () => { await api.refreshSeries(series.id); onChange(); flash("Refreshed metadata and rescanned disk."); })}>
-          {busy === "refresh" ? "Refreshing…" : "Refresh & rescan"}
-        </button>
-        <button
-          className={btn}
-          style={series.series_type === "anime" ? { background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" } : ghost}
-          disabled={busy !== null}
-          title="Anime numbers episodes 1..N across the whole run. Turn on to match releases by absolute episode number (and per-cour files). Auto-detected for Japanese animation."
-          onClick={() => run("type", async () => {
-            const next = series.series_type === "anime" ? "standard" : "anime";
-            await api.setSeriesType(series.id, next);
-            onChange();
-            flash(next === "anime" ? "Anime numbering on — rescan to match absolute-numbered files." : "Standard numbering.");
-          })}
-        >
-          {busy === "type" ? "Saving…" : series.series_type === "anime" ? "Anime ✓" : "Anime"}
-        </button>
-        <button className={btn} style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }} disabled={busy !== null || search.running} onClick={() => run("search", async () => { setSearchResult(null); const r = await api.searchSeries(series.id); if (r.job_id) setSearchJob(r.job_id); flash("Searching — follow packs and episodes in Activity → Queue once grabbed."); })}>
-          {busy === "search" || search.running ? "Searching…" : "Auto-grab missing"}
-        </button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowPaste(true)}>Upload torrent</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowImport(true)}>Manual import</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowRename(true)}>Rename</button>
-        <DeleteButton series={series} />
-      </div>
-      {(search.running || searchResult) && (
-        <div className="mt-2 text-[12px]" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
-          {search.running ? "Searching…" : searchResult?.text}
-        </div>
-      )}
-      <LastSearches kind="series" id={series.id} />
-      <AliasPanel series={series} />
-      {series.series_type === "anime" && <SceneMapPanel series={series} />}
-      {showPaste && (
-        <UploadTorrentModal
-          what={series.title}
-          onPreview={(torrent) => api.previewTorrent(torrent)}
-          onGrab={async (torrent, filename, title) => { await api.grabSeriesTorrent(series.id, torrent, filename, title); onChange(); }}
-          onClose={() => setShowPaste(false)}
-        />
-      )}
-      {showRename && <RenameModal seriesId={series.id} title={series.title} onClose={() => setShowRename(false)} onRenamed={onChange} />}
-      {showImport && (
-        <ManualImportModal
-          series={series}
-          onClose={() => setShowImport(false)}
-          onImported={() => { onChange(); flash("Imported."); }}
-          onBackground={(jobId) => { onChange(); if (jobId) setImportJob(jobId); }}
-        />
-      )}
-      {showSearch && (
-        <ReleaseSearchModal
-          title={`Search indexers — ${series.title}`}
-          subtitle="Whole-series search. Pick any pack or episode to grab."
-          fetchReleases={() => api.seriesReleases(series.id)}
-          onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
-          onClose={() => setShowSearch(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function SeasonBlock({ series, season, onChange, flash, defaultOpen, fits }: { series: SeriesT; season: Season; onChange: () => void; flash: (m: string) => void; defaultOpen: boolean; fits: Map<string, FitItem> }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [searching, setSearching] = useState(false);
-  const [busy, setBusy] = useState(false);
-  // The season's Grab missing runs as a job; its stored attempt says how it went.
-  const [grabJob, setGrabJob] = useState<number | null>(null);
-  const grabbing = useJob(grabJob, {
-    onDone: (j) => { setGrabJob(null); if (jobFailed(j)) flash(jobToast(j)); refreshSearches("series", series.id); onChange(); },
-  });
-  const last = latestFor(useSearchAttempts("series", series.id), seasonScope(season.season_number));
-  const eps = season.episodes ?? [];
-  const have = eps.filter((e) => e.has_file).length;
-  const total = eps.length;
-  const airedCount = eps.filter(aired).length;
-  // The progress denominator counts what's wanted — aired episodes monitored in a monitored
-  // season — plus what's already here, so an in-progress season isn't behind on episodes
-  // that haven't come out yet, nor on ones nobody asked for (shown greyed instead).
-  const wanted = (e: Episode) => e.monitored && season.monitored && aired(e);
-  const counted = eps.filter((e) => e.has_file || wanted(e)).length;
-  const notMonitored = eps.filter((e) => !e.has_file && aired(e) && !wanted(e)).length;
-  const nextAir = eps.map((e) => e.air_date).filter(Boolean).sort()[0];
-  // The on-disk folder for this season = the directory of any episode file we have.
-  const seasonDir = (eps.find((e) => e.file_path)?.file_path ?? "").replace(/[\\/][^\\/]*$/, "");
-  const state: "unreleased" | "upcoming" | "normal" = total === 0 ? "unreleased" : airedCount === 0 ? "upcoming" : "normal";
-  const name = season.season_number === 0 ? "Specials" : `Season ${season.season_number}`;
-  const pct = counted ? Math.round((have / counted) * 100) : 0;
-  // Grab missing only fills gaps, so it's offered only while there is one: an aired,
-  // monitored episode with no file. On a full season it could only fetch a pack that the
-  // import gate then throws away. Never on Specials: they have no packs, so they're grabbed
-  // one special at a time from their own rows.
-  const anyMissing = season.season_number > 0 && eps.some((e) => !e.has_file && e.monitored && aired(e));
-  const held = eps.filter((e) => e.has_file && e.upgrade_hold).length;
-  const resumeSeason = async () => {
-    setBusy(true);
-    try {
-      await api.resumeSeriesUpgrades(series.id, season.season_number);
-      flash(`Upgrades resumed for ${name}.`);
-      onChange();
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  const grabSeason = async () => {
-    setBusy(true);
-    try {
-      const r = await api.autoGrabSeries(series.id, season.season_number, 0);
-      if (r.job_id) setGrabJob(r.job_id);
-      flash(`Searching for ${name}'s missing episodes…`);
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  const searchingNow = busy || grabbing.running;
-
-  return (
-    <div className="overflow-hidden rounded-xl" style={{ background: "var(--panel)", border: "1px solid var(--line)", opacity: state === "unreleased" ? 0.7 : 1 }}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => state !== "unreleased" && setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left" style={{ cursor: state === "unreleased" ? "default" : "pointer" }}>
-          <span className="font-mono text-[13px] text-ink-faint">{state === "unreleased" ? " " : open ? "▾" : "▸"}</span>
-          <span className="text-[13.5px] font-semibold">{name}</span>
-          {state === "unreleased" ? (
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Not yet released</span>
-          ) : state === "upcoming" ? (
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }} title={nextAir ? `First airs ${nextAir}` : undefined}>{nextAir ? `Airs ${nextAir}` : "Upcoming"}</span>
-          ) : (
-            <span className="flex-none font-mono text-[10.5px] text-ink-faint">
-              {have}/{counted}
-              {notMonitored > 0 && <span style={{ opacity: 0.7 }} title="Aired episodes without a file that aren't monitored — not counted as missing"> · {notMonitored} not monitored</span>}
-            </span>
-          )}
-          {seasonDir && <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-ink-faint" title={seasonDir}>{seasonDir}</span>}
-        </button>
-        {state !== "unreleased" && (
-          <div className="h-1.5 w-24 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: have >= counted && counted > 0 ? "var(--good)" : "var(--accent)" }} />
-          </div>
-        )}
-        {held > 0 && (
-          <>
-            <StatusChip tone="accent" title={`${held} episode${held === 1 ? "" : "s"} kept as they were when the profile changed`}>Upgrades paused</StatusChip>
-            <Button size="sm" variant="secondary" onClick={resumeSeason} disabled={busy} title={`Let upgrades replace ${name}'s kept episodes again`}>Resume</Button>
-          </>
-        )}
-        {state !== "unreleased" && (
-          <>
-            {anyMissing && <button
-              onClick={grabSeason}
-              disabled={searchingNow}
-              title={last ? `${attemptLine(last)}. Click to search again.` : `Grabs ${name}'s missing episodes — a season pack when most of the season is missing or no single episodes exist`}
-              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
-              style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
-            >
-              {searchingNow ? "Searching…" : last ? "Grab again" : "Grab missing"}
-            </button>}
-            <button onClick={() => setSearching(true)} title={`Search indexers for ${name}`} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-          </>
-        )}
-        <button onClick={async () => { await api.setSeasonMonitored(series.id, season.season_number, !season.monitored); onChange(); }} title={series.monitored ? "Monitor this whole season" : "Series paused — nothing is searched. This choice applies when you resume."} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}>
-          {season.monitored ? "Monitored" : "Monitor"}
-        </button>
-      </div>
-      {anyMissing && last && !searchingNow && (
-        <div className="px-4 pb-2 text-[11px]" style={{ color: outcomeTone(last.outcome) }}>{attemptLine(last)}</div>
-      )}
-      {open && total > 0 && (
-        <div style={{ borderTop: "1px solid var(--line)" }}>
-          {eps.map((e) => <EpisodeRow key={e.id} series={series} ep={e} onChange={onChange} flash={flash} fit={fits.get(`${e.season_number}:${e.episode_number}`)} />)}
-        </div>
-      )}
-      {searching && (
-        <ReleaseSearchModal
-          title={`${series.title} — ${name}`}
-          subtitle={season.season_number === 0 ? "Releases tagged S00 for this show." : "Season packs and episodes for this season."}
-          fetchReleases={() => api.seriesReleases(series.id, season.season_number)}
-          onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
-          onClose={() => setSearching(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function EpisodeRow({ series, ep, onChange, flash, fit }: { series: SeriesT; ep: Episode; onChange: () => void; flash: (m: string) => void; fit?: FitItem }) {
-  const [searching, setSearching] = useState(false);
-  const [showFile, setShowFile] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [grabJob, setGrabJob] = useState<number | null>(null);
-  const grabbing = useJob(grabJob, {
-    onDone: (j) => { setGrabJob(null); if (jobFailed(j)) flash(jobToast(j)); refreshSearches("series", series.id); onChange(); },
-  });
-  const last = latestFor(useSearchAttempts("series", series.id), sxe(ep));
-  const dl = !ep.has_file && ep.download ? ep.download : null;
-  const dlPct = dl ? Math.round(dl.progress * 100) : 0;
-  // A paused series searches nothing, so its episodes aren't Wanted either.
-  const status: { label: string; color: string } = ep.has_file || (!dl && aired(ep))
-    ? libraryStatus({ hasFile: ep.has_file, monitored: ep.monitored && series.monitored })
-    : dl
-      ? { label: `↓ ${dlPct}%`, color: "var(--accent-text)" }
-      : { label: "Unaired", color: "var(--ink-faint)" };
-
-  const grabEp = async () => {
-    setBusy(true);
-    try {
-      const r = await api.autoGrabSeries(series.id, ep.season_number, ep.episode_number);
-      if (r.job_id) setGrabJob(r.job_id);
-      flash(`Searching for ${sxe(ep)}…`);
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  const replaceEp = async () => {
-    // Replace blocklists a release and downloads another one in the background, so it asks
-    // first — and says how far it reaches: a pack it lands only overrides this episode.
-    if (!window.confirm(`Blocklist the current release of ${sxe(ep)} and download a different one? Only this episode's file is replaced.`)) return;
-    setBusy(true);
-    try { await api.regrabEpisode(series.id, ep.season_number, ep.episode_number); flash(`Replacing ${sxe(ep)} — blocklisted the current release, searching…`); }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  // Asks first, and says truthfully where the file goes. A bin refusal shows in the dialog.
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [delErr, setDelErr] = useState<string | null>(null);
-  const binMode = useRecycleMode();
-  const deleteEpFile = async () => {
-    setBusy(true); setDelErr(null);
-    try { await api.deleteEpisodeFile(series.id, ep.season_number, ep.episode_number); setConfirmDel(false); flash(`Deleted ${sxe(ep)} file`); onChange(); }
-    catch (e) { setDelErr((e as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="relative flex items-center gap-3 px-4 py-2.5" style={{ borderBottom: "1px solid var(--line-soft)", opacity: ep.monitored ? 1 : 0.55 }}>
-      <button onClick={async () => { await api.setEpisodeMonitored(ep.id, !ep.monitored); onChange(); }} title={!series.monitored ? "Series paused — nothing is searched. This choice applies when you resume." : ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"} className="flex-none text-[13px]" style={{ color: ep.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}>
-        {ep.monitored ? "◉" : "○"}
-      </button>
-      <span className="w-[64px] flex-none font-mono text-[11px] text-ink-faint">{sxe(ep)}</span>
-      {series.series_type === "anime" && ep.absolute_number ? (
-        <span className="flex-none rounded px-1 font-mono text-[10px]" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Absolute episode number">#{ep.absolute_number}</span>
-      ) : null}
-      {ep.has_file && ep.file_path ? (
-        <button
-          onClick={() => setShowFile(true)}
-          title="Show this file's details — media info and the release it came from"
-          className="min-w-0 flex-1 truncate text-left text-[12.5px] hover:underline"
-          style={{ color: "var(--ink)" }}
-        >
-          {ep.title || "TBA"}
-        </button>
-      ) : (
-        <span className="min-w-0 flex-1 truncate text-[12.5px]">{ep.title || "TBA"}</span>
-      )}
-      <span className="hidden w-[92px] flex-none font-mono text-[10.5px] text-ink-faint sm:block">{ep.air_date || "—"}</span>
-      <span className="w-[80px] flex-none text-right font-mono text-[10px] uppercase" style={{ color: status.color }}>{status.label}</span>
-      {ep.has_file && fit?.fit && (
-        <span className="hidden w-[76px] flex-none text-right sm:block">
-          <FitBadge item={fit} />
-          <span className="ml-1 font-mono text-[10px] text-ink-faint">{fit.facts.bitrate_mbps ? fit.facts.bitrate_mbps.toFixed(1) : ""}</span>
-        </span>
-      )}
-      <div className="flex flex-none items-center gap-1">
-        {ep.has_file ? (<>
-          <button onClick={replaceEp} disabled={busy} title="Blocklist this release and grab a different one" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy ? "…" : "Replace"}</button>
-          <button onClick={() => setConfirmDel(true)} disabled={busy} title="Delete this episode's file" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
-        </>) : !dl && aired(ep) && (
-          // The last search of this episode (stored server-side) says what it found, so a
-          // grab that turned up nothing isn't forgotten. Still clickable: asking again after a
-          // release shows up is the normal next move. Unaired episodes get none: there's
-          // nothing to grab yet, and Search still reaches them.
-          <button
-            onClick={grabEp}
-            disabled={busy || grabbing.running}
-            title={last ? `${attemptLine(last)}. Click to search again.` : "Auto-grab the best release for this episode"}
-            className="rounded-md px-2 py-1 text-[10.5px] font-semibold"
-            style={last
-              ? { border: "1px solid var(--line)", background: "var(--panel-2)", color: outcomeTone(last.outcome) }
-              : { border: "1px solid var(--accent-line)", color: "var(--accent)" }}
-          >
-            {busy || grabbing.running ? "…" : last ? "Grab again" : "Grab"}
-          </button>
-        )}
-        <button onClick={() => setSearching(true)} title="Search indexers for this episode" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-      </div>
-      {confirmDel && (
-        <ConfirmDialog
-          title={<>Delete the file for {sxe(ep)}?</>}
-          body={<>{disposalLine(ep.size_bytes ?? 0, binMode)}, with its subtitles. The episode becomes wanted again.</>}
-          confirmLabel="Delete file"
-          busyLabel="Deleting…"
-          busy={busy}
-          error={delErr}
-          onConfirm={deleteEpFile}
-          onCancel={() => { setConfirmDel(false); setDelErr(null); }}
-        />
-      )}
-      {dl && (
-        <div className="absolute inset-x-0 bottom-0 h-[2px]" style={{ background: "var(--panel-2)" }}>
-          <div className="h-full" style={{ width: `${dlPct}%`, background: "var(--accent)", transition: "width 1s linear" }} />
-        </div>
-      )}
-      {searching && (
-        <ReleaseSearchModal
-          title={`${series.title} — ${sxe(ep)}`}
-          subtitle={ep.title || undefined}
-          fetchReleases={() => api.seriesReleases(series.id, ep.season_number, ep.episode_number)}
-          onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
-          onClose={() => setSearching(false)}
-        />
-      )}
-      {showFile && ep.file_path && (
-        <FileDetailsModal
-          path={ep.file_path}
-          title={`${series.title} — ${sxe(ep)}`}
-          subtitle={ep.title || undefined}
-          onCleanTracks={async () => { await api.convertRequest(`episode:${series.id}:${ep.season_number}:${ep.episode_number}`); }}
-          onClose={() => setShowFile(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function ManualImportModal({ series, onClose, onImported, onBackground }: { series: SeriesT; onClose: () => void; onImported: () => void; onBackground: (jobId?: number) => void }) {
-  const [cands, setCands] = useState<SeriesImportCandidate[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [importing, setImporting] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.seriesManualImportList(series.id).then((r) => { setCands(r.candidates); setNotice(importListNotice(r)); }).catch((e: Error) => setError(e.message));
-  }, [series.id]);
-
-  // Whole-folder imports. A season pack is dozens of files and clicking each one is not a
-  // realistic way to import it — and importing the folder runs the full pipeline (quality
-  // inherited from the release name, the upgrade gate) rather than the single-file path.
-  const folders = useMemo(() => {
-    const byDir = new Map<string, number>();
-    for (const c of cands ?? []) {
-      const cut = c.path.lastIndexOf("/");
-      if (cut <= 0) continue;
-      const dir = c.path.slice(0, cut);
-      byDir.set(dir, (byDir.get(dir) ?? 0) + 1);
-    }
-    return [...byDir.entries()]
-      .filter(([, n]) => n > 1) // a lone file is already one click away below
-      .map(([path, count]) => ({ path, count, name: path.slice(path.lastIndexOf("/") + 1) }))
-      .sort((a, b) => b.count - a.count);
-  }, [cands]);
-
-  const [background, setBackground] = useState(false);
-
-  const doImport = async (path: string) => {
-    setImporting(path);
-    setError(null);
-    try {
-      const res = await api.seriesManualImport(series.id, path);
-      // A whole folder runs detached — a season pack can take many minutes, so the
-      // request returns immediately and the work continues. Say so, or the user sits on
-      // a spinner wondering whether navigating away cancels it.
-      if (res.background) {
-        setBackground(true);
-        onBackground(res.job_id);
-        return;
-      }
-      onImported();
-      // refresh the list so the imported file drops off
-      const r = await api.seriesManualImportList(series.id);
-      setCands(r.candidates);
-      setNotice(importListNotice(r));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setImporting(null);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[680px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Manual import</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
-        </div>
-        <p className="mb-3 text-[12px] text-ink-dim">Pick episode files already on disk to import as <b>{series.title}</b>. Season/episode is detected from each filename; files are renamed to the library scheme.</p>
-        {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        {background && (
-          <div className="mb-3 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
-            Importing in the background — this can take several minutes for a large pack.
-            You can close this and keep using the page; the episode list updates as it goes, and a note appears when it's done.
-          </div>
-        )}
-        {folders.length > 0 && (
-          <div className="mb-3">
-            <div className="mb-1.5 text-[11px] font-semibold text-ink-dim">Whole downloads</div>
-            {folders.map((f) => (
-              <button
-                key={f.path}
-                onClick={() => doImport(f.path)}
-                disabled={importing !== null}
-                className="mb-1.5 flex w-full items-center gap-3 rounded-lg p-2.5 text-left disabled:opacity-50"
-                style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-medium" title={f.path}>{f.name}</div>
-                  <div className="mt-0.5 font-mono text-[10.5px] text-ink-faint">
-                    {f.count} video files — imported together, keeping whichever copy of each episode is better
-                  </div>
-                </div>
-                <span className="flex-none text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
-                  {importing === f.path ? "Importing…" : "Import all"}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
-        <div className="thin-scroll max-h-[52vh] overflow-y-auto">
-          {cands === null ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
-          ) : cands.length === 0 ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">No importable video files found in the downloads folder.</div>
-          ) : (
-            cands.map((c) => {
-              const detected = c.season > 0 && c.episode > 0;
-              return (
-                <button key={c.path} onClick={() => detected && doImport(c.path)} disabled={importing !== null || !detected} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)] disabled:opacity-50">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
-                    <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
-                      {detected ? <span style={{ color: "var(--accent)" }}>S{String(c.season).padStart(2, "0")}E{String(c.episode).padStart(2, "0")}</span> : <span style={{ color: "var(--avoid)" }}>No S/E detected</span>}
-                      {c.quality && <span>{c.quality}</span>}
-                      <span>{fmtSize(c.size_bytes)}</span>
-                    </div>
-                  </div>
-                  <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProfileSelector({ series, onChange }: { series: SeriesT; onChange: () => void }) {
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [fallbackName, setFallbackName] = useState<string | null>(null);
-  const cur = series.quality_profile;
-  useEffect(() => { api.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
-  useEffect(() => {
-    if (!cur || cur === "n/a" || profiles.some((p) => p.key === cur)) { setFallbackName(null); return; }
-    api.qualityProfile(cur).then((sp) => setFallbackName(sp.name || cur)).catch(() => setFallbackName(cur));
-  }, [cur, profiles]);
-  const change = async (p: string) => { if (p === cur) return; await api.setSeriesProfile(series.id, p); onChange(); };
-  const opts = [...profiles];
-  if (cur && !opts.some((o) => o.key === cur)) opts.unshift({ key: cur, name: cur === "n/a" ? "Not set" : (fallbackName ?? "…") });
-  return (
-    <div className="flex items-center gap-2">
-      <span className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</span>
-      <select value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
-        {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function DeleteButton({ series }: { series: SeriesT }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button onClick={() => setOpen(true)} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
-      {open && <DeleteSeriesDialog series={series} onClose={() => setOpen(false)} onDeleted={() => { window.location.href = "/series"; }} />}
-    </>
-  );
-}
-
-const EVENT_TONES: Record<string, string> = {
-  added: "var(--ink-faint)",
-  grabbed: "var(--accent)",
-  searched: "var(--ink-dim)",
-  imported: "var(--good)",
-  upgraded: "var(--good)",
-  renamed: "var(--ink-dim)",
-  failed: "var(--avoid)",
-  refreshed: "var(--ink-faint)",
-};
-
-function fmtTime(s: string): string {
-  const d = new Date(s.includes("T") ? s : s.replace(" ", "T") + "Z");
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function HistoryPanel({ seriesId, refreshKey }: { seriesId: number; refreshKey: unknown }) {
-  const [events, setEvents] = useState<MovieEvent[] | null>(null);
-  useEffect(() => {
-    api.seriesHistory(seriesId).then(setEvents).catch(() => setEvents([]));
-  }, [seriesId, refreshKey]);
-  return (
-    <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">History</h2>
-      {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
-      ) : events.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
-      ) : (
-        <div className="flex flex-col">
-          {events.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 border-b py-2 text-[12px]" style={{ borderColor: "var(--line)" }}>
-              <span className="w-[74px] flex-none font-mono text-[10px] font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{e.event}</span>
-              <span className="min-w-0 flex-1 truncate text-ink-dim" title={e.detail}>{e.detail || "—"}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtTime(e.created_at)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <><PageHeader title="Series" /><div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">{children}</div></>;
 }
 
-// SeriesBlocklistPanel mirrors the movie blocklist: releases rejected via Replace/stall-failover,
-// with a Remove action. Hidden when empty.
-function SeriesBlocklistPanel({ seriesId, refreshKey }: { seriesId: number; refreshKey: unknown }) {
-  const [entries, setEntries] = useState<BlockEntry[] | null>(null);
-  const load = () => api.seriesBlocklist(seriesId).then(setEntries).catch(() => setEntries([]));
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seriesId, refreshKey]);
-  const unblock = async (bid: number) => { await api.unblockSeries(seriesId, bid); load(); };
-  if (!entries || entries.length === 0) return null;
-  return (
-    <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">Blocklist <span className="font-normal text-ink-faint">· {entries.length}</span></h2>
-      <div className="flex flex-col gap-2">
-        {entries.map((e) => (
-          <div key={e.id} className="flex items-center gap-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-[11.5px]" title={e.title}>{e.title}</div>
-              <div className="mt-0.5 text-[10.5px] text-ink-faint">{e.reason}{e.indexer ? ` · ${e.indexer}` : ""}</div>
-            </div>
-            <button onClick={() => unblock(e.id)} className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Remove</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// AliasPanel manages the other titles a show is released under. Every show has it,
-// collapsed: refresh seeds it from TMDB's alternative titles (the romaji name fansub groups
-// use, US/UK variant titles), so most shows never need it opened.
-//
-// An arc released as its own show ("BLEACH Thousand-Year Blood War" for Bleach) is a
-// title no amount of normalising will ever match, so those releases are discarded
-// before they're scored. Pinning the alias to a TMDB season also fixes the numbering:
-// the arc's own S01/S02 are cours inside that season, not the series' own seasons.
-function AliasPanel({ series }: { series: SeriesT }) {
-  const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<SeriesAlias[] | null>(null);
-  const [title, setTitle] = useState("");
-  const [season, setSeason] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(() => {
-    api.seriesAliases(series.id).then((r) => setRows(r ?? [])).catch(() => setRows([]));
-  }, [series.id]);
-  useEffect(load, [load]);
-
-  const add = async () => {
-    setErr(null);
-    setBusy(true);
-    try {
-      await api.addSeriesAlias(series.id, { title: title.trim(), tmdb_season: Number(season || 0) });
-      setTitle(""); setSeason("");
-      load();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const empty = rows !== null && rows.length === 0;
-  const count = rows?.length ?? 0;
-
-  return (
-    <div className="mt-3 rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 text-left"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="text-[12.5px] font-semibold">Alternate titles</span>
-        {count > 0 && <span className="font-mono text-[11px] text-ink-faint">{count}</span>}
-        <span className="ml-auto font-mono text-[11px] text-ink-faint">{open ? "Hide" : "Show"}</span>
-      </button>
-      {open && (<>
-      <p className="mb-2.5 mt-0.5 text-[11px] text-ink-faint">
-        Other names this show is released under. Titles from TMDB are added on refresh and only match
-        exactly. Add your own for an arc that ships as its own show, and set &ldquo;maps to season&rdquo; so
-        the alias&apos; <code className="mx-1 font-mono">S02E02</code> reads as &ldquo;second cour, episode 2&rdquo; of
-        that season — without it the title matches but the numbering is still wrong.
-      </p>
-
-      {rows && rows.length > 0 && (
-        <div className="mb-2.5 flex flex-col gap-1.5">
-          {rows.map((a) => (
-            <div key={a.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--panel-2)" }}>
-              <span className="min-w-0 truncate text-[12px]">{a.title}</span>
-              <span className="shrink-0 font-mono text-[11px] text-ink-faint">
-                {a.tmdb_season > 0 ? `→ season ${a.tmdb_season}` : "title only"}
-              </span>
-              <span
-                className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase"
-                style={{ background: "var(--panel)", color: "var(--ink-faint)", border: "1px solid var(--line)" }}
-              >
-                {a.source === "tmdb" ? "from TMDB" : "added by you"}
-              </span>
-              <button
-                className="ml-auto shrink-0 text-[11px] font-semibold"
-                style={{ color: "var(--reject)" }}
-                title={a.source === "tmdb" ? "Stops matching this title; a refresh won't add it back" : undefined}
-                onClick={async () => { await api.deleteSeriesAlias(series.id, a.id); load(); }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-[220px] flex-1 text-[10.5px] text-ink-faint">
-          <div>Release title</div>
-          <input
-            className="w-full rounded-lg px-2.5 py-1.5 text-[12.5px]"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="BLEACH Thousand-Year Blood War"
-          />
-        </label>
-        <label className="text-[10.5px] text-ink-faint">
-          <div>Maps to season</div>
-          <input
-            className="w-[104px] rounded-lg px-2 py-1.5 text-center text-[12.5px]"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            inputMode="numeric"
-            value={season}
-            onChange={(e) => setSeason(e.target.value.replace(/[^0-9]/g, ""))}
-            placeholder="optional"
-          />
-        </label>
-        <button
-          onClick={add}
-          disabled={busy || title.trim() === ""}
-          className="rounded-lg px-3.5 py-2 text-[12px] font-semibold disabled:opacity-50"
-          style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
-        >
-          {busy ? "Adding…" : "Add title"}
-        </button>
-      </div>
-      {err && <p className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}
-      {empty && !err && (
-        <p className="mb-0 mt-2 text-[11px] text-ink-faint">No alternate titles — most shows never need one.</p>
-      )}
-      </>)}
-    </div>
-  );
-}
-
-// SceneMapPanel lets you pin where a scene/broadcast season starts in TMDB numbering —
-// the manual escape hatch for anime whose cours don't line up. Anime-only: standard
-// series match SxxExx directly, so a mapping there could only misroute.
-//
-// Automatic resolution (per-cour positional → TheXEM → air-date gap) handles most shows;
-// this exists for the ones it can't, where the only alternative was importing every
-// episode by hand.
-function SceneMapPanel({ series }: { series: SeriesT }) {
-  const [rows, setRows] = useState<SceneOverride[] | null>(null);
-  const [sceneSeason, setSceneSeason] = useState("");
-  const [tmdbSeason, setTmdbSeason] = useState("");
-  const [tmdbEpisode, setTmdbEpisode] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(() => {
-    api.sceneOverrides(series.id).then((r) => setRows(r.overrides ?? [])).catch(() => setRows([]));
-  }, [series.id]);
-  useEffect(load, [load]);
-
-  const add = async () => {
-    setErr(null);
-    setBusy(true);
-    try {
-      await api.setSceneOverride(series.id, {
-        scene_season: Number(sceneSeason),
-        tmdb_season: Number(tmdbSeason),
-        tmdb_episode: Number(tmdbEpisode),
-      });
-      setSceneSeason(""); setTmdbSeason(""); setTmdbEpisode("");
-      load();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const num = "w-[64px] rounded-lg px-2 py-1.5 text-center text-[12.5px]";
-  const numStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
-  const ready = sceneSeason !== "" && tmdbSeason !== "" && tmdbEpisode !== "";
-
-  return (
-    <div className="mt-3 rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="text-[12.5px] font-semibold">Scene season mapping</div>
-      <p className="mb-2.5 mt-0.5 text-[11px] text-ink-faint">
-        Only needed when releases number seasons differently to TMDB — e.g. this show ships as
-        <code className="mx-1 font-mono">S02E01</code> but TMDB counts it as one long season. Pin where each
-        scene season starts and the rest of the cour follows automatically.
-      </p>
-
-      {rows && rows.length > 0 && (
-        <div className="mb-2.5 flex flex-col gap-1.5">
-          {rows.map((o) => (
-            <div key={o.scene_season} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--panel-2)" }}>
-              <span className="font-mono text-[11.5px]">
-                Scene S{String(o.scene_season).padStart(2, "0")} → S{String(o.tmdb_season).padStart(2, "0")}E{String(o.tmdb_episode).padStart(2, "0")}
-              </span>
-              <button
-                className="ml-auto text-[11px] font-semibold"
-                style={{ color: "var(--reject)" }}
-                onClick={async () => { await api.deleteSceneOverride(series.id, o.scene_season); load(); }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="text-[10.5px] text-ink-faint">
-          <div>Scene season</div>
-          <input className={num} style={numStyle} inputMode="numeric" value={sceneSeason} onChange={(e) => setSceneSeason(e.target.value)} placeholder="2" />
-        </label>
-        <span className="pb-1.5 text-[12px] text-ink-faint">starts at</span>
-        <label className="text-[10.5px] text-ink-faint">
-          <div>TMDB season</div>
-          <input className={num} style={numStyle} inputMode="numeric" value={tmdbSeason} onChange={(e) => setTmdbSeason(e.target.value)} placeholder="1" />
-        </label>
-        <label className="text-[10.5px] text-ink-faint">
-          <div>Episode</div>
-          <input className={num} style={numStyle} inputMode="numeric" value={tmdbEpisode} onChange={(e) => setTmdbEpisode(e.target.value)} placeholder="13" />
-        </label>
-        <button
-          disabled={!ready || busy}
-          onClick={add}
-          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold"
-          style={{ background: ready ? "var(--accent)" : "var(--panel-2)", color: ready ? "var(--accent-ink)" : "var(--ink-faint)" }}
-        >
-          {busy ? "Saving…" : "Add mapping"}
-        </button>
-      </div>
-      {err && <div className="mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</div>}
-    </div>
-  );
-}
-
-function fmtBytes(n: number): string {
-  if (!n || n <= 0) return "";
-  const gb = n / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(n / 1024 ** 2).toFixed(0)} MB`;
-}
-
-// DuplicatesPanel surfaces episodes with more than one file on disk. These pile up when a
-// re-import derives a different filename (a re-classified source tag, or the episode title
-// being added or dropped): the library tracks the newest copy and every earlier one is
-// orphaned — invisible, still eating disk, and a duplicate episode in Plex.
-function DuplicatesPanel({ seriesId, refreshKey, flash }: { seriesId: number; refreshKey: unknown; flash: (m: string) => void }) {
-  const [dupes, setDupes] = useState<DuplicateEpisodeFile[] | null>(null);
-  const [reclaim, setReclaim] = useState(0);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    api.seriesDuplicates(seriesId)
-      .then((r) => { setDupes(r.duplicates ?? []); setReclaim(r.reclaimable_bytes ?? 0); })
-      .catch(() => setDupes([]));
-  }, [seriesId]);
-  useEffect(() => { load(); }, [load, refreshKey]);
-
-  const remove = async (path: string) => {
-    setBusy(path); setError(null);
-    try { await api.deleteSeriesDuplicate(seriesId, path); flash("Duplicate deleted."); load(); }
-    catch (e) { setError((e as Error).message); }
-    finally { setBusy(null); }
-  };
-
-  // Nothing to say when the library is clean — don't add a permanently empty panel.
-  if (dupes === null || dupes.length === 0) return null;
-
-  const extras = dupes.reduce((n, d) => n + d.extras.length, 0);
-  return (
-    <div className="mt-8">
-      <h2 className="m-0 mb-1 text-[14px] font-bold" style={{ color: "var(--avoid)" }}>Duplicate files</h2>
-      <p className="mb-3 text-[11.5px] text-ink-dim">
-        {extras} extra file{extras === 1 ? "" : "s"} on disk across {dupes.length} episode{dupes.length === 1 ? "" : "s"}
-        {reclaim > 0 && <> · {fmtBytes(reclaim)} reclaimable</>}. These are older copies left behind when a re-import
-        wrote a different filename. Arrmada tracks the one marked <em>keeping</em>; the rest are unused.
-      </p>
-      {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
-      <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-        {dupes.map((d) => (
-          <div key={`${d.season}-${d.episode}`} className="border-b p-3 last:border-b-0" style={{ borderColor: "var(--line-soft)" }}>
-            <div className="mb-1.5 font-mono text-[11px] font-bold">{`S${String(d.season).padStart(2, "0")}E${String(d.episode).padStart(2, "0")}`}</div>
-            <div className="flex items-center gap-2 py-1 text-[12px]">
-              <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>keeping</span>
-              <span className="min-w-0 flex-1 truncate text-ink-dim" title={d.keeping.path}>{d.keeping.filename}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(d.keeping.size_bytes)}</span>
-            </div>
-            {d.extras.map((x) => (
-              <div key={x.path} className="flex items-center gap-2 py-1 text-[12px]">
-                <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)" }}>extra</span>
-                <span className="min-w-0 flex-1 truncate text-ink-dim" title={x.path}>{x.filename}</span>
-                <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(x.size_bytes)}</span>
-                <button disabled={busy !== null} onClick={() => remove(x.path)} className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
-                  {busy === x.path ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

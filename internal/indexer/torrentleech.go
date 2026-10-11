@@ -456,6 +456,7 @@ func (t *TorrentLeechSearcher) releasesFromJSON(idx Indexer, body []byte) ([]Rel
 			Peers:       it.Leechers,
 			Indexer:     idx.Name,
 			Transport:   TransportTorrent,
+			IMDBID:      NormalizeIMDB(it.ImdbID),
 		}
 		if it.CategoryID > 0 {
 			r.Categories = []int{it.CategoryID}

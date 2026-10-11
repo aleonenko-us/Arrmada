@@ -1,4 +1,7 @@
+import { useState } from "react";
+import { OrganizeModal } from "../../components/OrganizeModal";
 import { AutoText, AutoToggle } from "../../components/settings/auto";
+import { Button } from "../../ui";
 import { Preview, Section, TokenList } from "../../components/settings/ui";
 import { useSetting } from "../../lib/useSettings";
 
@@ -45,6 +48,19 @@ function renderWith(format: string, sample: Record<string, string>): string {
 const render = (format: string) => renderWith(format, SAMPLE);
 const renderSeries = (format: string) => renderWith(format, SERIES_SAMPLE);
 
+// OrganizeEntry: a new scheme only names new imports. This previews what it would do to
+// the movies already in the library, and applies it from the same dialog.
+function OrganizeEntry() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2.5 text-[11.5px] text-ink-faint">
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>Preview rename…</Button>
+      <span>Existing files keep their names until you rename them.</span>
+      {open && <OrganizeModal onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
 // A blank template would quietly fall back to the default, so say so instead of saving it.
 const notBlank = (v: string) => (v.trim() === "" ? "A name template can't be empty. Esc puts the saved one back." : null);
 
@@ -65,6 +81,7 @@ export function NamingSettings() {
         <AutoText label="Folder name" save={movieFolder}><Preview>{render(movieFolder.value)}</Preview></AutoText>
         <AutoText label="File name" save={movieFile}><Preview>{render(movieFile.value)}.mkv</Preview></AutoText>
         <TokenList tokens={TOKENS} />
+        <OrganizeEntry />
       </Section>
       <Section id="series-naming" title="Series naming" subtitle="How imported episodes are named: the show folder holds season folders, which hold episode files.">
         <AutoText label="Series folder" save={seriesFolder}><Preview>{renderSeries(seriesFolder.value)}</Preview></AutoText>

@@ -629,9 +629,12 @@ func bookQuery(b books.Book) string {
 // credited the illustrator first — or spelled unlike the tracker's, and a book
 // tracker matches every query word, so one bad word hides a release that is there.
 // The title check downstream still keeps only this book's releases.
+//
+// Author and title also travel as parts, for an indexer whose caps take t=book.
 func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition string) (indexer.SearchResult, error) {
 	res, err := c.search(ctx, indexer.SearchQuery{
-		Text: bookQuery(b), MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})
+		Text: bookQuery(b), Author: b.Author, BookTitle: b.Title,
+		MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})
 	// A search that couldn't run (every indexer down, none serving books) says nothing
 	// about the author: retrying with the title alone would only fail the same way.
 	if err != nil || b.Author == "" || len(res.Releases) > 0 {
@@ -639,7 +642,7 @@ func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition stri
 	}
 	c.log.Info("book: nothing for author + title — trying the title alone", "title", b.Title, "author", b.Author)
 	return c.search(ctx, indexer.SearchQuery{
-		Text: b.Title, MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})
+		Text: b.Title, BookTitle: b.Title, MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})
 }
 
 // pickBestBookForKind ranks releases of the given edition by the profile: format

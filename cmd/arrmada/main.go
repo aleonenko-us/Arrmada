@@ -239,6 +239,9 @@ func main() {
 		bus.Publish("integration.status", map[string]any{"kind": s.Kind, "ref": s.Ref, "state": s.Phase(time.Now())})
 	})
 	indexers.SetStatus(connStatus)
+	indexers.SetDefaultCategories(func(ctx context.Context) bool {
+		return settingsSvc.GetBool(ctx, indexer.KeyDefaultCategories, true)
+	})
 	// Rows synced from Prowlarr before rows remembered their Prowlarr id get it from their
 	// feed address, so they're treated as Prowlarr's (name and address owned by the sync)
 	// before the next sync runs.
@@ -721,6 +724,16 @@ func main() {
 	grp.Go("requests: book link backfill", func(ctx context.Context) {
 		if _, _, err := requestsSvc.BackfillBookIDs(ctx); err != nil {
 			log.Warn("requests: book link backfill failed", "err", err)
+		}
+	})
+	// Movies stored before original and alternative titles were kept read them from TMDB,
+	// one every two seconds, so searches and imports match them without a manual refresh.
+	grp.Go("movies: alt titles backfill", func(ctx context.Context) {
+		n, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
+		if err != nil && ctx.Err() == nil {
+			log.Warn("movies: alternative titles backfill failed", "filled", n, "err", err)
+		} else if n > 0 {
+			log.Info("movies: read alternative titles", "movies", n)
 		}
 	})
 	// Backstop for request-ready notifications: catches availability that arrived

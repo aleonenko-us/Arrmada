@@ -16,15 +16,6 @@ type AddOptions struct {
 	MinAvailability string
 }
 
-// ValidAvailability reports whether a is a minimum-availability value the sweeps know.
-func ValidAvailability(a string) bool {
-	switch a {
-	case "announced", "inCinemas", "released":
-		return true
-	}
-	return false
-}
-
 // AddWith pulls full metadata for a TMDB id and adds the movie to the library as o says.
 // ErrExists when it's already there.
 func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie, error) {

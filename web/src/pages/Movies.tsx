@@ -19,6 +19,7 @@ import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
 import { ScanStatus, scanProgressLabel, useMovieScan } from "../components/movies/LibraryScan";
+import { OrganizeModal } from "../components/OrganizeModal";
 
 const NO_MOVIES: MovieSummary[] = [];
 const NO_FITS = new Map<number, FitItem>();
@@ -61,6 +62,7 @@ export function Movies() {
   // is the Library tools chip while it runs, and a summary linking to the folders that
   // need review shows when it ends. A scan started elsewhere is picked up too.
   const [showScan, setShowScan] = useState(false);
+  const [showOrganize, setShowOrganize] = useState(false); // apply the naming scheme across the library
   const scan = useMovieScan(() => void refresh(), (msg, err) => toast(msg, { tone: err ? "error" : "info" }));
   const scanLibrary = (opts: { monitor: boolean; quality_profile?: string }) => {
     setShowScan(false);
@@ -139,7 +141,10 @@ export function Movies() {
           <MoviesSwitch active="library" />
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
         </>}
-        tools={[{ label: "Scan library", busyLabel: "Scanning…", busy: scan.running, progress: scanProgressLabel(scan), onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" }]}
+        tools={[
+          { label: "Scan library", busyLabel: "Scanning…", busy: scan.running, progress: scanProgressLabel(scan), onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" },
+          { label: "Organize library…", onClick: () => setShowOrganize(true), title: "Preview your naming scheme across the library, then rename in the background" },
+        ]}
         primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
         banners={<>
           {!metaOK && <MetadataMissing variant="banner" />}
@@ -159,6 +164,7 @@ export function Movies() {
           onClose={() => setSearchFor(null)}
         />
       )}
+      {showOrganize && <OrganizeModal onClose={() => setShowOrganize(false)} onDone={refresh} />}
       {showScan && <ScanDialog profiles={profiles} onScan={scanLibrary} onClose={() => setShowScan(false)} />}
       {showAdd && <AddMovieModal onClose={() => setShowAdd(false)} onAdded={refresh} />}
       {confirmDelete && <DeleteMovieDialog movie={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
+	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
 
@@ -212,7 +213,7 @@ func (t *TMDB) SearchMovie(ctx context.Context, query string) ([]MovieResult, er
 // studio, collection, and US certification (one round-trip via append_to_response).
 func (t *TMDB) GetMovie(ctx context.Context, tmdbID int) (*MovieDetails, error) {
 	q := url.Values{}
-	q.Set("append_to_response", "credits,release_dates")
+	q.Set("append_to_response", "credits,release_dates,alternative_titles")
 	body, err := t.get(ctx, "/movie/"+strconv.Itoa(tmdbID), q)
 	if err != nil {
 		return nil, err
@@ -494,6 +495,21 @@ type tmdbMovie struct {
 	Runtime      int     `json:"runtime"`
 	Status       string  `json:"status"`
 	OriginalLang string  `json:"original_language"`
+	// OriginalTitle, OriginCountry and ProductionCountries feed the titles a release may
+	// be named by (movieAltTitles).
+	OriginalTitle       string   `json:"original_title"`
+	OriginCountry       []string `json:"origin_country"`
+	ProductionCountries []struct {
+		Code string `json:"iso_3166_1"`
+	} `json:"production_countries"`
+	// For movies the append is {"titles": [...]} (TV uses "results").
+	AlternativeTitles struct {
+		Titles []struct {
+			Country string `json:"iso_3166_1"`
+			Title   string `json:"title"`
+			Type    string `json:"type"`
+		} `json:"titles"`
+	} `json:"alternative_titles"`
 
 	Genres              []tmdbNamed `json:"genres"`
 	ProductionCompanies []tmdbNamed `json:"production_companies"`
@@ -597,6 +613,7 @@ func parseTMDBMovie(body []byte) (*MovieDetails, error) {
 		d.CollectionName = m.BelongsToCollection.Name
 	}
 	d.Certification = usCertification(m.ReleaseDates.Results)
+	d.OriginalTitle, d.AltTitles = movieAltTitles(m)
 	for _, c := range m.Credits.Cast {
 		if len(d.Cast) >= maxCast {
 			break
@@ -608,6 +625,47 @@ func parseTMDBMovie(body []byte) (*MovieDetails, error) {
 		d.Cast = append(d.Cast, cm)
 	}
 	return d, nil
+}
+
+// maxMovieAltTitles caps how many alternative titles a film keeps: each is a key a release
+// may match, so a long tail of one-off translations only adds chances of a false match.
+const maxMovieAltTitles = 15
+
+// movieAltTitles picks the other titles a film's releases may be named by. The original
+// title is kept only in the Latin alphabet (releases are named in ASCII; 레옹 never appears
+// in one). Alternative titles come from the US, GB and the film's own countries — where
+// English-language and original-language releases are named — Latin script only, minus
+// any that key the same as the title, the original title or each other (parser.TitleKey),
+// at most maxMovieAltTitles.
+func movieAltTitles(m tmdbMovie) (original string, alts []string) {
+	seen := map[string]bool{parser.TitleKey(m.Title): true}
+	if o := strings.TrimSpace(m.OriginalTitle); o != "" && parser.IsLatin(o) {
+		original = o
+		seen[parser.TitleKey(o)] = true
+	}
+	countries := map[string]bool{"US": true, "GB": true}
+	for _, c := range m.OriginCountry {
+		countries[strings.ToUpper(c)] = true
+	}
+	if len(m.OriginCountry) == 0 {
+		// Older answers carry no origin_country; where it was made stands in.
+		for _, c := range m.ProductionCountries {
+			countries[strings.ToUpper(c.Code)] = true
+		}
+	}
+	for _, a := range m.AlternativeTitles.Titles {
+		title := strings.TrimSpace(a.Title)
+		k := parser.TitleKey(title)
+		if title == "" || k == "" || seen[k] || !countries[strings.ToUpper(a.Country)] || !parser.IsLatin(title) {
+			continue
+		}
+		seen[k] = true
+		alts = append(alts, title)
+		if len(alts) >= maxMovieAltTitles {
+			break
+		}
+	}
+	return original, alts
 }
 
 // usCertification returns the US content rating (e.g. "R"), if present.

@@ -703,6 +703,20 @@ func indexerQuery(title string) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
+// seriesQuery is a series search for text (the cleaned title): a tvsearch that also names
+// the show by its TVDB id, and its IMDb id, so an indexer whose caps take one is asked by
+// id instead (see indexer.TorznabSearcher.Search). Anime never is: its releases are numbered
+// absolute, per cour or by split season, and the layered numbering resolver relies on the
+// broad text search returning every convention. Alias, absolute-number and specials
+// queries stay text — they search for a name the show's id doesn't stand for.
+func seriesQuery(s series.Series, text string, limit int) indexer.SearchQuery {
+	q := indexer.SearchQuery{Text: text, MediaType: indexer.MediaSeries, Limit: limit}
+	if !s.IsAnime() {
+		q.TVDBID, q.IMDBID = s.TVDBID, s.IMDBID
+	}
+	return q
+}
+
 // maxTMDBAliasQueries caps how many automatic (TMDB) aliases a search also queries. A show
 // can carry five; each is a full indexer query, and the first — romaji first — are the
 // ones releases are actually named after.
@@ -758,9 +772,7 @@ func (c *Coordinator) searchSeriesReleasesExcept(ctx context.Context, s series.S
 
 	// The broad query first: it catches multi-season and complete-show packs, which no
 	// single season number would find.
-	res, err := c.search(ctx, indexer.SearchQuery{
-		Text: title, MediaType: indexer.MediaSeries, Limit: 100,
-	})
+	res, err := c.search(ctx, seriesQuery(s, title, 100))
 	if err != nil {
 		return nil, err
 	}
@@ -846,9 +858,9 @@ func (c *Coordinator) searchSeasons(ctx context.Context, s series.Series, title 
 			break
 		}
 		queried++
-		sr, err := c.search(ctx, indexer.SearchQuery{
-			Text: title, MediaType: indexer.MediaSeries, Season: season, Limit: 100,
-		})
+		q := seriesQuery(s, title, 100)
+		q.Season = season
+		sr, err := c.search(ctx, q)
 		if err != nil {
 			continue // one season failing shouldn't sink the rest
 		}

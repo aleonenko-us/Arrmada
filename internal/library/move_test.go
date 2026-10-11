@@ -130,3 +130,44 @@ func TestMoveCaseOnlyRename(t *testing.T) {
 		t.Error("the file must survive under its new name")
 	}
 }
+
+// The last step of a move can't clobber either: a target that appears after Move's own
+// check (another rename, an import landing) is refused by the hardlink, not replaced.
+func TestMoveNoClobberRefusesTargetThatAppeared(t *testing.T) {
+	_, root := moveTestImporter(t)
+	from := filepath.Join(root, "a.mkv")
+	to := filepath.Join(root, "b.mkv")
+	writeMoveFile(t, from, "file A")
+	writeMoveFile(t, to, "file B") // "arrived" between the check and the move
+	if err := moveNoClobber(from, to, false); !errors.Is(err, ErrTargetExists) {
+		t.Fatalf("moveNoClobber onto a file = %v, want ErrTargetExists", err)
+	}
+	if readMoveFile(t, from) != "file A" || readMoveFile(t, to) != "file B" {
+		t.Error("both files must survive untouched")
+	}
+}
+
+// A library file usually has a second name in the downloads folder (the seeding copy).
+// Moving the library name leaves that other name alone.
+func TestMoveLeavesSeedingHardlinkAlone(t *testing.T) {
+	im, root := moveTestImporter(t)
+	seed := filepath.Join(root, "downloads", "Film.2020.1080p.mkv")
+	from := filepath.Join(root, "Film (2020)", "film.mkv")
+	to := filepath.Join(root, "Film (2020) {edition-Final}", "Film (2020).mkv")
+	writeMoveFile(t, seed, "the film")
+	if err := os.MkdirAll(filepath.Dir(from), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(seed, from); err != nil {
+		t.Skipf("hardlinks unsupported here: %v", err)
+	}
+	if err := im.Move(from, to); err != nil {
+		t.Fatal(err)
+	}
+	if readMoveFile(t, seed) != "the film" || readMoveFile(t, to) != "the film" {
+		t.Error("the seeding copy and the moved file must both be intact")
+	}
+	if _, err := os.Stat(from); !os.IsNotExist(err) {
+		t.Error("the old library name should be gone")
+	}
+}

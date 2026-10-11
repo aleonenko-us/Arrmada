@@ -594,6 +594,9 @@ func extraFrom(d *metadata.MovieDetails) *MovieExtra {
 		CollectionID:     d.CollectionID,
 		CollectionName:   d.CollectionName,
 		VoteAverage:      d.VoteAverage,
+		OriginalTitle:    d.OriginalTitle,
+		AltTitles:        d.AltTitles,
+		TitlesRead:       true,
 	}
 	for _, c := range d.Cast {
 		ex.Cast = append(ex.Cast, CastMember{Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})
@@ -1464,60 +1467,6 @@ func (s *Service) ManualImport(ctx context.Context, id int64, srcPath string) er
 	return s.MarkImportedManual(ctx, id, res.TargetPath, filepath.Base(res.SourcePath))
 }
 
-// RenamePreview returns the canonical name a movie's file should have, and
-// whether it already matches.
-func (s *Service) RenamePreview(ctx context.Context, id int64) (current, proposed string, matches bool, err error) {
-	m, gerr := s.repo.Get(ctx, id)
-	if gerr != nil {
-		return "", "", false, gerr
-	}
-	if m.MovieFilePath == "" {
-		return "", "", true, nil
-	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
-	return filepath.Base(m.MovieFilePath), filepath.Base(target), target == m.MovieFilePath, nil
-}
-
-// Rename renames a movie's file to the canonical scheme in place.
-func (s *Service) Rename(ctx context.Context, id int64) error {
-	m, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if m.MovieFilePath == "" {
-		return fmt.Errorf("movie has no file to rename")
-	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
-	if target == m.MovieFilePath {
-		return nil
-	}
-	oldDir := filepath.Dir(m.MovieFilePath)
-	// Through the importer's Move, not os.Rename: a bare rename replaces whatever already
-	// sits at the target, and Move refuses to.
-	if err := s.imp.Move(m.MovieFilePath, target); err != nil {
-		return fmt.Errorf("rename: %w", err)
-	}
-	s.imp.MoveEpisodeSubs(m.MovieFilePath, target) // carry sidecar subtitles along
-	if newDir := filepath.Dir(target); newDir != oldDir {
-		s.imp.RemoveDirIfEmpty(oldDir) // the movie moved to a renamed folder; drop the empty old one
-	}
-	// The same file under a new name: its cached facts follow it unread.
-	media := mediaJSONOf(s.movedMedia(m.File, target))
-	err = s.repo.inTx(ctx, func(tx *sql.Tx, r *Repo) error {
-		if err := setDefaultFileIn(ctx, r, id, target, media); err != nil {
-			return err
-		}
-		_ = r.AddEvent(ctx, id, "renamed", filepath.Base(m.MovieFilePath)+" → "+filepath.Base(target))
-		return s.enqueue(ctx, tx, outbox.TopicMovieChanged,
-			outbox.MovieChanged{MovieID: id, Change: outbox.ChangeRenamed, OldPath: m.MovieFilePath, Path: target}, movieKey(id))
-	})
-	if err != nil {
-		return err
-	}
-	s.publish("movie.renamed", map[string]any{"id": id, "version_id": int64(0), "old_path": m.MovieFilePath, "new_path": target})
-	return nil
-}
-
 var videoFileExts = map[string]bool{
 	".mkv": true, ".mp4": true, ".avi": true, ".m4v": true, ".mov": true,
 	".wmv": true, ".ts": true, ".mpg": true, ".mpeg": true, ".webm": true, ".flv": true,
@@ -1533,25 +1482,46 @@ func (s *Service) MatchRelease(ctx context.Context, name string) (Movie, bool) {
 
 // Matcher indexes a library snapshot once and returns a title/year matcher, so a caller
 // resolving many releases in one pass (the downloads feed) does a single scan instead of
-// reloading and re-normalizing the whole movies table per release.
+// reloading and re-normalizing the whole movies table per release. It matches the way
+// Match does: own titles first, then original and alternative titles (TitleKeys, guarded
+// against the snapshot's own titles).
 func (s *Service) Matcher(all []Movie) func(title string, year int) (Movie, bool) {
-	byTitle := make(map[string][]Movie, len(all))
-	for _, m := range all {
-		k := normalizeTitle(m.Title)
-		byTitle[k] = append(byTitle[k], m)
-	}
+	own, alt := indexTitleKeys(all)
 	return func(title string, year int) (Movie, bool) {
-		for _, m := range byTitle[normalizeTitle(title)] {
-			if year == 0 || m.Year == 0 || abs(m.Year-year) <= 1 {
-				return m, true
+		k := normalizeTitle(title)
+		for _, byKey := range []map[string][]Movie{own, alt} {
+			for _, m := range byKey[k] {
+				if year == 0 || m.Year == 0 || abs(m.Year-year) <= 1 {
+					return m, true
+				}
 			}
 		}
 		return Movie{}, false
 	}
 }
 
-// Match finds the library movie a parsed release belongs to, comparing
-// normalized titles and (when the release has a year) the year within ±1.
+// indexTitleKeys maps each title key to the movies it names: own maps every movie's own
+// title, alt its original and alternative titles (TitleKeys under the snapshot's own
+// titles, so an alternative that is another film's own title is never indexed).
+func indexTitleKeys(all []Movie) (own, alt map[string][]Movie) {
+	taken := NewPrimaryKeys(all)
+	own = make(map[string][]Movie, len(all))
+	alt = map[string][]Movie{}
+	for _, m := range all {
+		keys := TitleKeys(m, taken)
+		own[keys[0]] = append(own[keys[0]], m)
+		for _, k := range keys[1:] {
+			alt[k] = append(alt[k], m)
+		}
+	}
+	return own, alt
+}
+
+// Match finds the library movie a parsed release belongs to, comparing normalized titles
+// and (when the release has a year) the year within ±1. A film's own title is tried
+// first; only when no film is called that are original and alternative titles tried
+// (TitleKeys — the same keys the search side accepted the release under, so a grab made
+// under an alternative title imports to the film it was grabbed for).
 //
 // A release with no parseable year only matches when exactly ONE library movie
 // shares the title key: with two Cinderellas in the library, a "Cinderella.1080p"
@@ -1561,36 +1531,43 @@ func (s *Service) Match(ctx context.Context, title string, year int) (Movie, boo
 	if err != nil {
 		return Movie{}, false
 	}
+	own, alt := indexTitleKeys(all)
 	want := normalizeTitle(title)
-	var candidates []Movie
-	for _, m := range all {
-		if normalizeTitle(m.Title) != want {
-			continue
+	for _, byKey := range []map[string][]Movie{own, alt} {
+		if m, ok, decided := s.pick(byKey[want], title, year); decided {
+			return m, ok
 		}
-		if year != 0 {
+	}
+	return Movie{}, false
+}
+
+// pick chooses among the movies sharing a title key: the first within a year of the
+// release's, or with no year the only one. decided is false when there were none, so
+// Match can go on to the alternative titles.
+func (s *Service) pick(candidates []Movie, title string, year int) (m Movie, ok, decided bool) {
+	if len(candidates) == 0 {
+		return Movie{}, false, false
+	}
+	if year != 0 {
+		for _, m := range candidates {
 			if m.Year == 0 || abs(m.Year-year) <= 1 {
-				return m, true
+				return m, true, true
 			}
-			continue
 		}
-		candidates = append(candidates, m)
+		return Movie{}, false, false
 	}
-	switch len(candidates) {
-	case 0:
-		return Movie{}, false
-	case 1:
-		return candidates[0], true
-	default:
-		if s.log != nil {
-			names := make([]string, 0, len(candidates))
-			for _, c := range candidates {
-				names = append(names, fmt.Sprintf("%s (%d)", c.Title, c.Year))
-			}
-			s.log.Debug("year-less release title is ambiguous — not matching",
-				"title", title, "candidates", strings.Join(names, ", "))
+	if len(candidates) == 1 {
+		return candidates[0], true, true
+	}
+	if s.log != nil {
+		names := make([]string, 0, len(candidates))
+		for _, c := range candidates {
+			names = append(names, fmt.Sprintf("%s (%d)", c.Title, c.Year))
 		}
-		return Movie{}, false
+		s.log.Debug("year-less release title is ambiguous — not matching",
+			"title", title, "candidates", strings.Join(names, ", "))
 	}
+	return Movie{}, false, true
 }
 
 // normalizeTitle keys a title for matching. It MUST agree with the search side

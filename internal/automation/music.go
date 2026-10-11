@@ -291,8 +291,10 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 	}
 	sp := c.musicProfile(ctx, a.QualityProfile)
 	query := a.Name + " " + al.Title
+	// Artist and album also travel as parts, for an indexer whose caps take t=music. The
+	// discography search below stays text: there's no album to name.
 	res, err := c.searchMusic(ctx, indexer.SearchQuery{
-		Text: query, MediaType: indexer.MediaMusic, Limit: 100,
+		Text: query, Artist: a.Name, Album: al.Title, MediaType: indexer.MediaMusic, Limit: 100,
 	})
 	if err != nil {
 		c.log.Warn("music: search failed", "album", al.Title, "err", err)
