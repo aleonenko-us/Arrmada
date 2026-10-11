@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FleetMark } from "./FleetMark";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -12,6 +12,7 @@ import { signOut } from "../lib/session";
 import { useDocumentTitle } from "../lib/title";
 import { requesterNav, sectionFor } from "../lib/requesterNav";
 import { Menu } from "../ui/Menu";
+import { useScrollMemory } from "../lib/useScrollMemory";
 
 // UserLayout is the requester-facing shell, and what installs as the PWA on phones. Wider
 // screens get a slim branded top bar with the places inline; a phone gets the mark, the
@@ -21,6 +22,9 @@ export function UserLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   useDocumentTitle();
+  // The page scrolls inside <main>: Back puts it back where it was, a link opens at the top.
+  const mainRef = useRef<HTMLElement>(null);
+  useScrollMemory(mainRef);
   // Outside sessions get no Calendar (the /calendar route isn't mounted or allowlisted
   // for them), so no link that silently bounces. The shelf is the exception: its two
   // endpoints are allowlisted, so a requester can pick up an ebook from anywhere.
@@ -70,7 +74,7 @@ export function UserLayout() {
         </div>
       </header>
       {/* pb-chrome: the last row of a page scrolls clear of the phone tab bar. */}
-      <main className="pb-chrome min-w-0 flex-1 overflow-y-auto">
+      <main ref={mainRef} className="pb-chrome min-w-0 flex-1 overflow-y-auto">
         {/* Keyed by path so navigating away from a broken page recovers. */}
         <ErrorBoundary resetKey={pathname}>
           <Suspense fallback={<PageSkeleton />}>

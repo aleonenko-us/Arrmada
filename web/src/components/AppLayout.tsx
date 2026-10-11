@@ -11,6 +11,7 @@ import { PlayerHost } from "../lib/playerStub";
 import { useDocumentTitle } from "../lib/title";
 import { prefetchStaffPages } from "../lib/prefetch";
 import { useAttention, useAttentionPoll } from "../lib/useAttention";
+import { useScrollMemory } from "../lib/useScrollMemory";
 
 // Tailwind's lg: the sidebar is a drawer below it and always open from it.
 const WIDE = "(min-width: 1024px)";
@@ -41,6 +42,9 @@ export function AppLayout() {
   const menuButton = useRef<HTMLButtonElement>(null);
   const { pathname } = useLocation();
   const wide = useWide();
+  // The page scrolls inside <main>: Back puts it back where it was, a link opens at the top.
+  const mainRef = useRef<HTMLElement>(null);
+  useScrollMemory(mainRef);
   useDocumentTitle();
   // Only staff get this layout, so this is the "staff signed in" moment.
   useEffect(() => prefetchStaffPages(), []);
@@ -88,7 +92,7 @@ export function AppLayout() {
         <PushPromptHost />
         {/* pb-chrome: the last row scrolls clear of the audiobook mini-player and the
             iPhone home indicator. */}
-        <main className="pb-chrome min-w-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} className="pb-chrome min-w-0 flex-1 overflow-y-auto">
           {/* Keyed by path: a broken page shows its error card inside the shell, and
               navigating elsewhere clears it. */}
           <ErrorBoundary resetKey={pathname}>

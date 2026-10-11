@@ -12,6 +12,7 @@ import { clearQueryCache } from "../lib/query";
 beforeEach(() => {
   clearQueryCache();
   vi.spyOn(api, "qualityProfiles").mockResolvedValue({ profiles: [], formats: [] });
+  vi.spyOn(api, "libraryFitMovies").mockResolvedValue({ items: [] });
 });
 afterEach(() => {
   cleanup();
