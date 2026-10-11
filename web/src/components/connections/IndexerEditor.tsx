@@ -126,9 +126,6 @@ export function AddIndexerForm({ onAdded }: { onAdded: () => void }) {
             <Labeled label="Password">
               <input type="password" className={field} style={fieldStyle} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
             </Labeled>
-            <Labeled label="RSS key (optional)" span2>
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="optional; FlareSolverr handles auth now" />
-            </Labeled>
           </>
         ) : is1337 ? (
           <Labeled label="Site URL (optional mirror)" span2>
@@ -160,7 +157,7 @@ export function AddIndexerForm({ onAdded }: { onAdded: () => void }) {
       )}
       {isTL && (
         <p className="mt-3 text-[11px] text-ink-faint">
-          Native — no Prowlarr/Jackett needed. Credentials stored on your server. Uses FlareSolverr for Cloudflare. 2FA not supported yet.
+          Native — no Prowlarr/Jackett needed. Credentials stored on your server. Uses FlareSolverr for Cloudflare. New uploads are checked every 15 minutes. 2FA not supported yet.
         </p>
       )}
       {isMAM && (
@@ -256,12 +253,12 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
     <form onSubmit={submit} aria-label={`Edit ${idx.name}`} className="mt-3 rounded-lg p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
       {managed && (
         <p className="mb-3 mt-0 text-[11.5px] text-ink-dim">
-          Synced from Prowlarr: its name, URL and key come from Prowlarr. Change them there and sync again; the settings below stay yours.
+          Managed by Prowlarr: its name, URL and key come from Prowlarr. Change them in Prowlarr; it syncs hourly. Scope, seeding, minimum seeders, tie-break and on/off below stay yours.
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Labeled label="Name">
-          <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} required readOnly={managed} />
+        <Labeled label="Name" hint={managed ? "Change this in Prowlarr; it syncs hourly" : undefined}>
+          <input className={field} style={{ ...fieldStyle, ...(managed ? { opacity: 0.6, cursor: "not-allowed" } : {}) }} value={name} onChange={(e) => setName(e.target.value)} required readOnly={managed} aria-readonly={managed} />
         </Labeled>
         <Labeled label="Tie-break priority (1–50)" hint={TIE_BREAK_HELP}>
           <input type="number" min={1} max={50} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
@@ -276,9 +273,6 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
             </Labeled>
             <Labeled label="Password (blank = keep)">
               <input type="password" className={field} style={fieldStyle} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            </Labeled>
-            <Labeled label="RSS key (blank = keep)" span2>
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="leave blank to keep current" />
             </Labeled>
           </>
         ) : is1337 ? (

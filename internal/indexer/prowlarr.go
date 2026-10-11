@@ -217,6 +217,8 @@ func mediaTypesFor(cats []prowlarrCategory) []string {
 // Nothing changes when Prowlarr can't be read, or says it has no indexers while rows
 // from it exist.
 func (s *Service) SyncProwlarr(ctx context.Context, o ProwlarrSync) (SyncResult, error) {
+	s.prowlarrMu.Lock()
+	defer s.prowlarrMu.Unlock()
 	base := strings.TrimRight(strings.TrimSpace(o.URL), "/")
 	if base == "" || o.APIKey == "" {
 		return SyncResult{}, fmt.Errorf("prowlarr: URL and API key are required")

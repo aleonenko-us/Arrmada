@@ -1,5 +1,5 @@
-// Times and Prowlarr sync results as the Connections cards word them.
-import type { ProwlarrSyncResult } from "./api";
+// Times, Prowlarr sync results and Prowlarr's own address, as the Connections cards word them.
+import type { ProwlarrInfo, ProwlarrLastSync, ProwlarrSyncResult } from "./api";
 import { toMs } from "./taskTime";
 
 // hhmm is a time as the server's messages word it: "14:02" (local, 24-hour).
@@ -8,6 +8,11 @@ export function hhmm(v?: string | null): string {
   if (ms === null) return "—";
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+export interface StatusLine {
+  text: string;
+  color: string;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -28,4 +33,26 @@ export function prowlarrSyncMessage(r: ProwlarrSyncResult): string {
   if (r.flaresolverr_ready) msg += " Prowlarr has a FlareSolverr proxy for Cloudflare trackers.";
   for (const n of r.notes ?? []) msg += ` ${n}`;
   return msg;
+}
+
+// prowlarrLastSyncLine is the Prowlarr panel's "Last synced 14:00: 2 added, 1 turned off"
+// or "Last sync failed at 14:00: invalid API key", for the hourly sync and Sync now alike.
+export function prowlarrLastSyncLine(ls: ProwlarrLastSync | undefined): StatusLine | null {
+  if (!ls) return null;
+  if (ls.error) return { text: `Last sync failed at ${hhmm(ls.at)}: ${ls.error}`, color: "var(--reject-text)" };
+  const parts: string[] = [];
+  if (ls.added) parts.push(`${ls.added} added`);
+  if (ls.updated) parts.push(`${ls.updated} updated`);
+  if (ls.reenabled) parts.push(`${ls.reenabled} back on`);
+  if (ls.disabled) parts.push(`${ls.disabled} turned off`);
+  return { text: `Last synced ${hhmm(ls.at)}: ${parts.length > 0 ? parts.join(", ") : "nothing changed"}`, color: "var(--ink-dim)" };
+}
+
+// prowlarrUILink is where "Open Prowlarr" goes: a saved address for a Prowlarr on another
+// machine, else this host on the port Prowlarr's UI is published on — which install.sh
+// may have moved to 9697 or 9698 when 9696 was taken. Only http(s) addresses are linked.
+export function prowlarrUILink(info: Pick<ProwlarrInfo, "ui_url" | "ui_port"> | undefined, loc: { protocol: string; hostname: string }): string {
+  const saved = info?.ui_url?.trim();
+  if (saved && /^https?:\/\//i.test(saved)) return saved;
+  return `${loc.protocol}//${loc.hostname}:${info?.ui_port || "9696"}`;
 }

@@ -25,10 +25,9 @@ import (
 // the alert delivery log) — loading the page never calls anything outside Arrmada. Only
 // Test does, for the one connection asked about.
 
-// Kinds the status tracker doesn't define itself; connstatus has indexer, download_client
-// and flaresolverr.
+// Kinds the status tracker doesn't define itself; connstatus has indexer, download_client,
+// flaresolverr and prowlarr.
 const (
-	connKindProwlarr      = "prowlarr"
 	connKindAPIKey        = "apikey"
 	connKindPlex          = "plex"
 	connKindNotifications = "notifications"
@@ -36,7 +35,7 @@ const (
 
 	// The one-of-a-kind connections all use this ref (and main records FlareSolverr's
 	// pings under it).
-	prowlarrRef     = "default"
+	prowlarrRef     = indexer.ProwlarrStatusRef
 	flareSolverrRef = "default"
 	singletonRef    = "default"
 )
@@ -224,17 +223,28 @@ func (a *api) prowlarrItem(ctx context.Context, now time.Time, managed int) conn
 		hasKey = a.deps.Settings.Get(ctx, keyProwlarrKey, "") != ""
 	}
 	it := connectionItem{
-		Kind: connKindProwlarr, Ref: prowlarrRef, Card: "prowlarr", Name: "Prowlarr",
+		Kind: connstatus.KindProwlarr, Ref: prowlarrRef, Card: "prowlarr", Name: "Prowlarr",
 		Subtitle: displayURL(base), Configured: base != "" && hasKey, Enabled: base != "" && hasKey,
 	}
 	it.Testable = it.Configured
-	st, _ := a.deps.ConnStatus.Get(connKindProwlarr, prowlarrRef)
+	st, _ := a.deps.ConnStatus.Get(connstatus.KindProwlarr, prowlarrRef)
 	it.withState(st, now)
 	switch {
 	case managed > 0:
-		it.Detail = fmt.Sprintf("Syncs %d indexer%s", managed, plural(managed))
+		it.Detail = fmt.Sprintf("Syncs %d indexer%s, hourly", managed, plural(managed))
 	case !it.Configured:
 		it.Detail = "Not synced yet. Sync once to pull its indexers in."
+	}
+	// The last sync, scheduled or clicked, is its latest word (its error is redacted).
+	if a.deps.Settings != nil {
+		if ls, ok := indexer.ReadProwlarrLastSync(ctx, a.deps.Settings); ok && !ls.At.IsZero() {
+			when := ls.At.Local().Format("2 Jan 15:04")
+			if ls.Error != "" {
+				it.Detail = joinDetail(it.Detail, "Last sync failed "+when+": "+ls.Error)
+			} else {
+				it.Detail = joinDetail(it.Detail, "Last synced "+when)
+			}
+		}
 	}
 	return it
 }
@@ -571,14 +581,14 @@ func (a *api) testConnection(ctx context.Context, kind, ref string) (detail stri
 		detail, err := testFlareSolverr(ctx, a.deps.FlareSolverr)
 		return detail, err, true
 
-	case connKindProwlarr:
+	case connstatus.KindProwlarr:
 		if ref != prowlarrRef || a.deps.Settings == nil {
 			return "", nil, false
 		}
 		base := a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL)
 		version, err := indexer.ProwlarrStatus(ctx, base, a.deps.Settings.Get(ctx, keyProwlarrKey, ""))
 		if !errors.Is(err, indexer.ErrProwlarrNoURL) && !errors.Is(err, indexer.ErrProwlarrNoKey) && ctx.Err() == nil {
-			a.deps.ConnStatus.Record(connKindProwlarr, prowlarrRef, connstatus.Outcome{Err: err, Name: "Prowlarr"})
+			a.deps.ConnStatus.Record(connstatus.KindProwlarr, prowlarrRef, connstatus.Outcome{Err: err, Name: "Prowlarr"})
 		}
 		if err != nil {
 			return "", err, true
@@ -645,6 +655,14 @@ func displayURL(raw string) string {
 		return ""
 	}
 	return strings.TrimRight(u.Scheme+"://"+u.Host+u.EscapedPath(), "/")
+}
+
+// joinDetail adds a sentence to a card's detail line.
+func joinDetail(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + " · " + b
 }
 
 // portOf is the port in a listen address (":13378" → "13378").

@@ -11,8 +11,8 @@ import (
 
 // A paused indexer among working ones is a warning naming it, its error and its next
 // try, linking to its card; one failing for over an hour (not paused) is a warning too,
-// one failing for less isn't; more than three collapse into one line; every enabled one
-// failing is a single error; nothing failing, or a read error, says nothing.
+// one failing for less isn't; more than three collapse into one line; nothing failing, or
+// a read error, says nothing. (Every indexer failing is IndexerOutageCheck's one error.)
 func TestIndexerStatusCheck(t *testing.T) {
 	now := time.Date(2026, 10, 9, 14, 0, 0, 0, time.Local)
 	until := now.Add(time.Hour)
@@ -41,11 +41,6 @@ func TestIndexerStatusCheck(t *testing.T) {
 	x.FailingSince = now.Add(-30 * time.Minute)
 	if got := check(3, []TroubledIndexer{x}, nil); len(got) != 0 {
 		t.Fatalf("failing for half an hour: %+v", got)
-	}
-
-	if got := check(1, []TroubledIndexer{tl}, nil); len(got) != 1 || got[0].Level != LevelError || got[0].Key != "indexers.all-failing" ||
-		!strings.Contains(got[0].Message, "No indexer is answering") || !strings.Contains(got[0].Message, "TorrentLeech") {
-		t.Fatalf("every indexer paused should be one error: %+v", got)
 	}
 
 	var many []TroubledIndexer

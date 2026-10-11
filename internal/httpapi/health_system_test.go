@@ -109,7 +109,7 @@ func TestHealthWarnsAboutFailingIntegrations(t *testing.T) {
 		w.Link != fmt.Sprintf("/settings/connections#indexer-%d", tl.ID) {
 		t.Errorf("paused tracker warning: %+v (all: %+v)", w, byKey)
 	}
-	w, ok = byKey["flaresolverr"]
+	w, ok = byKey["flaresolverr.down"]
 	if !ok || !strings.Contains(w.Message, "TorrentLeech can't get past Cloudflare") || w.Link != "/settings/connections#flaresolverr" {
 		t.Errorf("FlareSolverr warning: %+v (all: %+v)", w, byKey)
 	}

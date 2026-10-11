@@ -159,7 +159,7 @@ func TestConnectionsListShape(t *testing.T) {
 	if feed.State != "unknown" || feed.ManagedBy != "prowlarr" || feed.Subtitle != "http://127.0.0.1:1/api" {
 		t.Errorf("Prowlarr feed card: %+v", feed)
 	}
-	if p, _ := l.item("prowlarr", "default"); !p.Configured || p.Detail != "Syncs 1 indexer" || !p.Testable {
+	if p, _ := l.item("prowlarr", "default"); !p.Configured || p.Detail != "Syncs 1 indexer, hourly" || !p.Testable {
 		t.Errorf("Prowlarr card: %+v", p)
 	}
 	if f, _ := l.item("flaresolverr", "default"); !f.Configured || f.Source != "settings" || !strings.Contains(f.Detail, "TorrentLeech") {

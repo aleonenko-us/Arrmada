@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -62,50 +61,6 @@ func DownloadClientsCheck(states func(ctx context.Context) (configured int, st [
 				out = append(out, f)
 			}
 			return out
-		},
-	}
-}
-
-// FlareSolverrState is FlareSolverr as the check sees it (flaresolverr.Status, which reuses
-// an answer for a minute).
-type FlareSolverrState struct {
-	Configured bool
-	OK         bool
-	Err        string
-}
-
-// FlareSolverrCheck warns when an enabled indexer needs FlareSolverr to get past
-// Cloudflare (TorrentLeech, 1337x) and FlareSolverr isn't set up or isn't answering —
-// otherwise those trackers just fail with Cloudflare errors that don't say why.
-// dependents names the enabled indexers that need it; FlareSolverr is only asked when
-// there are some, so an install without them never pings it.
-func FlareSolverrCheck(dependents func(ctx context.Context) ([]string, error), state func(ctx context.Context) FlareSolverrState) Check {
-	return Check{
-		Key: "flaresolverr", Name: "FlareSolverr", Category: CategoryIndexers, Timeout: 15 * time.Second,
-		Run: func(ctx context.Context) []Finding {
-			names, err := dependents(ctx)
-			if err != nil || len(names) == 0 {
-				return nil
-			}
-			who := strings.Join(names, " and ")
-			if len(names) > 2 {
-				who = strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-			}
-			st := state(ctx)
-			switch {
-			case !st.Configured:
-				return []Finding{{
-					Key: "flaresolverr", Level: LevelWarning, Fix: ConnectionFix("flaresolverr", "Set up FlareSolverr"),
-					Message: fmt.Sprintf("FlareSolverr isn't set up, so %s can't get past Cloudflare.", who),
-				}}
-			case !st.OK && ctx.Err() == nil:
-				msg := fmt.Sprintf("FlareSolverr isn't answering, so %s can't get past Cloudflare", who)
-				if st.Err != "" {
-					msg += ": " + st.Err
-				}
-				return []Finding{{Key: "flaresolverr", Level: LevelWarning, Fix: ConnectionFix("flaresolverr", "Check FlareSolverr"), Message: msg}}
-			}
-			return nil
 		},
 	}
 }

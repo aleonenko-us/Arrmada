@@ -75,6 +75,11 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			if err != nil {
 				return 0, nil, err
 			}
+			now := time.Now()
+			// Rows the outage lines below already cover (every indexer failing, or
+			// Prowlarr's trackers failing together) aren't listed one by one as well.
+			states, _ := a.indexerStates(ctx)
+			outage := health.FindIndexerOutage(states, now)
 			enabled := 0
 			var failing []health.TroubledIndexer
 			for _, i := range ix {
@@ -83,21 +88,31 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 				}
 				enabled++
 				st, _, ok := a.deps.Indexers.Status(i.ID)
-				if ok && st.ConsecutiveFailures > 0 {
+				if ok && st.ConsecutiveFailures > 0 && !outage.Covers(i.ID) {
 					failing = append(failing, health.TroubledIndexer{ID: i.ID, Name: i.Name, Failures: st.ConsecutiveFailures,
 						FailingSince: st.FailingSince, Until: st.BackoffUntil, LastError: st.LastError})
 				}
 			}
 			return enabled, failing, nil
 		}))
-		// TorrentLeech and 1337x get past Cloudflare through FlareSolverr; a dead one
-		// otherwise only shows as those trackers failing. Status reuses its answer for a
-		// minute, so this asks FlareSolverr at most once a minute, and only while one of
-		// them is switched on.
-		reg.Register(health.FlareSolverrCheck(a.flareSolverrDependents, func(ctx context.Context) health.FlareSolverrState {
-			st := a.deps.FlareSolverr.Status(ctx)
-			return health.FlareSolverrState{Configured: st.Configured, OK: st.OK, Err: connstatus.Redact(st.Error)}
-		}))
+		// One error when every indexer is failing, and one line for Prowlarr being down
+		// (its trackers failing together, or its hourly sync failing) instead of twelve.
+		reg.Register(health.IndexerOutageCheck(a.indexerStates))
+		if a.deps.Settings != nil {
+			reg.Register(health.ProwlarrCheck(a.prowlarrState))
+		}
+		// FlareSolverr, only while a tracker that needs it is enabled. Pinging the local
+		// container is the one live call these checks make; it's capped at 3 seconds.
+		reg.Register(health.FlareSolverrCheck(a.flareSolverrDependents,
+			a.deps.FlareSolverr.Configured,
+			func(ctx context.Context) error {
+				// Its error goes into a staff-visible line; a URL saved as user:pass@host
+				// would otherwise come back in it.
+				if _, err := a.deps.FlareSolverr.Ping(ctx); err != nil {
+					return errors.New(connstatus.Redact(err.Error()))
+				}
+				return nil
+			}))
 	}
 
 	if a.deps.Downloads != nil {
@@ -178,10 +193,63 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 	}
 
 	if a.deps.Backups != nil {
-		reg.Register(health.BackupsCheck(func(ctx context.Context) string {
-			return a.deps.Backups.HealthWarning(ctx, time.Since(a.start))
+		reg.Register(health.BackupsCheck(func(ctx context.Context) health.BackupState {
+			return health.BackupState{Enabled: a.deps.Backups.Enabled(ctx), Uptime: time.Since(a.start), Newest: a.deps.Backups.LastNightly()}
 		}))
 	}
+}
+
+// indexerStates is every enabled, searched indexer with how it has been answering, for
+// the outage and Prowlarr checks. Read from the integration status tracker: no indexer is
+// asked anything.
+func (a *api) indexerStates(ctx context.Context) ([]health.IndexerState, error) {
+	ix, err := a.deps.Indexers.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	var out []health.IndexerState
+	for _, i := range ix {
+		if !a.deps.Indexers.Searched(i) {
+			continue
+		}
+		s := health.IndexerState{ID: i.ID, Name: i.Name, Kind: string(i.Kind), Prowlarr: i.ProwlarrID > 0}
+		if st, _, ok := a.deps.Indexers.Status(i.ID); ok {
+			s.Failures, s.FailingSince, s.LastError = st.ConsecutiveFailures, st.FailingSince, st.LastError
+			s.BackingOff = now.Before(st.BackoffUntil)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// prowlarrState is the Prowlarr connection for its health check: whether a sync has
+// saved a URL and key, how the latest sync went, and the indexers.
+func (a *api) prowlarrState(ctx context.Context) health.ProwlarrState {
+	st := health.ProwlarrState{
+		Synced: a.deps.Settings.Get(ctx, keyProwlarrURL, "") != "" && a.deps.Settings.Get(ctx, keyProwlarrKey, "") != "",
+	}
+	if ls, ok := indexer.ReadProwlarrLastSync(ctx, a.deps.Settings); ok {
+		st.LastSyncAt, st.LastSyncErr, st.FailedRuns = ls.At, ls.Error, ls.FailedRuns
+	}
+	st.Indexers, _ = a.indexerStates(ctx)
+	return st
+}
+
+// flareSolverrDependents names the enabled indexers that can't get past Cloudflare
+// without FlareSolverr: TorrentLeech and 1337x.
+func (a *api) flareSolverrDependents(ctx context.Context) ([]string, error) {
+	ix, err := a.deps.Indexers.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, i := range ix {
+		if i.Enabled && (i.Kind == indexer.KindTorrentLeech || i.Kind == indexer.KindX1337) {
+			names = append(names, i.Name)
+		}
+	}
+	return names, nil
 }
 
 // recheckHealth re-runs the named checks in the background after something they judge was
@@ -250,20 +318,4 @@ func heldInQueue(held map[string]bool, queue []download.Item) int {
 		}
 	}
 	return n
-}
-
-// flareSolverrDependents names the switched-on indexers that reach their site through
-// FlareSolverr (TorrentLeech and 1337x sit behind Cloudflare).
-func (a *api) flareSolverrDependents(ctx context.Context) ([]string, error) {
-	ix, err := a.deps.Indexers.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, i := range ix {
-		if a.deps.Indexers.Searched(i) && (i.Kind == indexer.KindTorrentLeech || i.Kind == indexer.KindX1337) {
-			names = append(names, i.Name)
-		}
-	}
-	return names, nil
 }

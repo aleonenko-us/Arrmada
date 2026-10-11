@@ -55,10 +55,10 @@ const indexerLinesMax = 3
 
 // IndexerStatusCheck names each enabled indexer that is paused after repeated failures, or
 // has been failing for over an hour, with its error and when it's next tried, and links to
-// its card. More than three collapse into one line; when no enabled indexer is answering at
-// all it's a single error, because then nothing is found. A single failure isn't reported.
-// states returns how many indexers are enabled and which of them are failing; an error
-// says nothing.
+// its card. More than three collapse into one line. A single failure isn't reported, and
+// neither is a row an outage line already covers (every indexer failing, Prowlarr down —
+// IndexerOutageCheck): the caller leaves those out. states returns how many indexers are
+// enabled and which of them are failing; an error says nothing.
 func IndexerStatusCheck(states func(ctx context.Context) (enabled int, failing []TroubledIndexer, err error)) Check {
 	return indexerStatusCheck(states, time.Now)
 }
@@ -67,7 +67,7 @@ func indexerStatusCheck(states func(ctx context.Context) (int, []TroubledIndexer
 	return Check{
 		Key: "indexers.status", Name: "Indexer status", Category: CategoryIndexers,
 		Run: func(ctx context.Context) []Finding {
-			enabled, failing, err := states(ctx)
+			_, failing, err := states(ctx)
 			if err != nil {
 				return nil
 			}
@@ -81,11 +81,6 @@ func indexerStatusCheck(states func(ctx context.Context) (int, []TroubledIndexer
 			switch {
 			case len(bad) == 0:
 				return nil
-			case len(bad) >= enabled:
-				return []Finding{{
-					Key: "indexers.all-failing", Level: LevelError, Fix: FixIndexerStatus,
-					Message: "No indexer is answering, so searches will find nothing: " + indexerNames(bad) + ".",
-				}}
 			case len(bad) > indexerLinesMax:
 				return []Finding{{
 					Key: "indexers.failing", Level: LevelWarning, Fix: FixIndexerStatus,
@@ -309,20 +304,6 @@ func AudiobookServerCheck(state func(ctx context.Context) (on, running bool, las
 				msg += " " + lastErr
 			}
 			return []Finding{{Key: "audiobooks.server", Level: LevelError, Message: msg, Fix: FixAudiobookServer}}
-		},
-	}
-}
-
-// BackupsCheck passes on the backup service's own warning when nightly backups have
-// stopped (usually a full disk on the data volume).
-func BackupsCheck(warning func(ctx context.Context) string) Check {
-	return Check{
-		Key: "backups", Name: "Database backups", Category: CategoryStorage,
-		Run: func(ctx context.Context) []Finding {
-			if msg := warning(ctx); msg != "" {
-				return []Finding{{Key: "backups.age", Level: LevelWarning, Message: msg, Fix: FixBackups}}
-			}
-			return nil
 		},
 	}
 }

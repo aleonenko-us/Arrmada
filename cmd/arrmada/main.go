@@ -551,6 +551,25 @@ func main() {
 	sched.Register("indexer-caps-refresh", 24*time.Hour, false, indexers.RefreshStaleCaps,
 		scheduler.Label("Read indexer capabilities"),
 		scheduler.Description("Asks each Torznab indexer which searches and categories it supports, when that's unknown or over a week old."))
+	// Prowlarr on autopilot: the same non-destructive sync as the Sync now button, every
+	// hour with the saved URL and key, so a tracker added, disabled or removed in Prowlarr
+	// reaches Arrmada without anyone remembering to click. It does nothing until one sync
+	// has worked (that's what saves the URL and key). The first run waits a minute after
+	// start so Prowlarr's own container has time to come up alongside this one.
+	sched.Register("prowlarr-sync", time.Hour, false, func(ctx context.Context) error {
+		return indexers.ScheduledProwlarrSync(ctx, settingsSvc, func(ctx context.Context) string { return keyStore.Value(ctx, "flaresolverr") })
+	}, scheduler.Label("Sync indexers from Prowlarr"),
+		scheduler.Description("Brings in indexers added in Prowlarr and turns off ones disabled or removed there."))
+	grp.Go("prowlarr: first sync", func(ctx context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+		}
+		if _, _, err := sched.RunNow("prowlarr-sync", scheduler.TriggerSchedule); err != nil && !errors.Is(err, scheduler.ErrBusy) {
+			log.Warn("couldn't start the first Prowlarr sync", "err", err)
+		}
+	})
 	sched.Register("rss-sync", 15*time.Minute, false, func(ctx context.Context) error {
 		coordinator.RSSSync(ctx)
 		return nil
@@ -1062,7 +1081,9 @@ func main() {
 	healthReg.Register(health.TasksFailingCheck(func() []health.TaskState {
 		var out []health.TaskState
 		for _, t := range sched.Snapshot() {
-			if t.Hidden {
+			// The Prowlarr sync has a health line of its own (the "prowlarr" check) that
+			// says more; a second "task failing" line for it would only repeat it.
+			if t.Hidden || t.Name == "prowlarr-sync" {
 				continue
 			}
 			out = append(out, health.TaskState{Name: t.Name, Label: t.Label, LastError: t.LastError, ConsecutiveFailures: int(t.ConsecutiveFailures)})
