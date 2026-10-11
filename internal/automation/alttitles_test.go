@@ -170,6 +170,27 @@ func TestOriginalTitleQueryOnlyWhenPrimaryFindsNothing(t *testing.T) {
 	})
 }
 
+// MOV-24: a download grabbed under the film's original title imports to it instead of
+// being held as "looks like another film"; one named for a different film still is.
+func TestHoldMovieImportAcceptsOriginalTitle(t *testing.T) {
+	h := newStallHarness(t)
+	m, err := movies.NewRepo(h.c.db).Create(h.ctx, movies.Movie{TMDBID: 194, Title: "Amélie", Year: 2001, Monitored: true,
+		Extra: &movies.MovieExtra{OriginalTitle: "Le Fabuleux Destin d'Amélie Poulain", TitlesRead: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const name = "Le.Fabuleux.Destin.d.Amelie.Poulain.2001.1080p.BluRay.x264-GRP"
+	addGrab(t, h.c, "movie", m.ID, name, hashFor(name))
+	if reason, hold := h.c.HoldMovieImport(h.ctx, hashFor(name), name, t.TempDir()); hold {
+		t.Errorf("held the film's own original-title download: %s", reason)
+	}
+	const other = "Amelie.Of.Montmartre.2001.1080p-GRP"
+	addGrab(t, h.c, "movie", m.ID, other, hashFor(other))
+	if _, hold := h.c.HoldMovieImport(h.ctx, hashFor(other), other, t.TempDir()); !hold {
+		t.Error("a download for another film must still be held")
+	}
+}
+
 func TestOriginalTitleQuery(t *testing.T) {
 	m := movies.Movie{Title: "Amélie", Year: 2001, Extra: &movies.MovieExtra{OriginalTitle: "Le Fabuleux Destin d'Amélie Poulain"}}
 	if got := originalTitleQuery(m, movies.TitleKeys(m, nil)); got != "Le Fabuleux Destin d'Amélie Poulain 2001" {
