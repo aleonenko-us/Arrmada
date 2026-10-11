@@ -6,7 +6,6 @@ import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { FileDetailsModal } from "../components/FileDetailsModal";
 import { FitBadge } from "../components/FitBadge";
-import { PlexPill, WatchedBy } from "../components/PlexBits";
 import { NumberingBanner } from "./series/NumberingReviewModal";
 import { usePoll } from "../lib/usePoll";
 import { libraryStatus } from "../lib/status";
@@ -16,12 +15,12 @@ import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress }
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { attemptLine, outcomeTone, searchFinishedFor } from "../lib/searchOutcome";
 import { refreshSearches, useSearchAttempts } from "../components/LastSearch";
-import { Button, StatusChip } from "../ui";
-import { api, type FitItem, type Series as SeriesT, type Season, type Episode } from "../lib/api";
-import { ProfileSelector } from "./series/ProfileSelector";
-import { Toolbar } from "./series/Toolbar";
-import { DuplicatesPanel, HistoryPanel, SeriesBlocklistPanel } from "./series/panels";
-import { aired, latestFor, seasonScope, sxe } from "./series/util";
+import { Button, StatusChip, useToast } from "../ui";
+import { api, type CastMember, type FitItem, type Series as SeriesT, type Season, type Episode } from "../lib/api";
+import { Hero } from "./series/Hero";
+import { HeroActions } from "./series/HeroActions";
+import { AliasPanel, DuplicatesPanel, HistoryPanel, SceneMapPanel, SeriesBlocklistPanel } from "./series/panels";
+import { aired, latestFor, seasonScope, sortSeasons, sxe } from "./series/util";
 
 // What the page listens for besides the queue (see SeriesDetail).
 const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
@@ -30,18 +29,16 @@ const DOWNLOAD_FALLBACK_MS = 30_000;
 // The old marks are dead weight in this browser now; drop them once.
 try { localStorage.removeItem("arrmada.grabRequested"); } catch { /* storage unavailable */ }
 
-
 export function SeriesDetail() {
   const { id } = useParams();
   const sid = Number(id);
   const [s, setS] = useState<SeriesT | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [toastErr, setToastErr] = useState(false);
+  const toast = useToast();
 
   // err shows the toast in the error colour: a search that failed says so plainly.
-  const flash = (msg: string, err = false) => { setToast(msg); setToastErr(err); window.setTimeout(() => setToast(null), 3500); };
+  const flash = useCallback((msg: string, err = false) => toast(msg, { tone: err ? "error" : "info", ms: 3500 }), [toast]);
 
   const load = useCallback(() => {
     return api.seriesDetail(sid).then(setS).catch((e: Error) => {
@@ -107,91 +104,21 @@ export function SeriesDetail() {
   if (!s) return <Shell><p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const ex = s.extra;
-  // Ascending (Season 1 at the top), with Specials (season 0) pushed to the bottom.
-  const seasons = [...(s.seasons ?? [])].sort((a, b) => {
-    if (a.season_number === 0) return 1;
-    if (b.season_number === 0) return -1;
-    return a.season_number - b.season_number;
-  });
-  const continuing = /return|continu/i.test(s.status ?? "");
+  const seasons = sortSeasons(s.seasons);
   // Every regular episode, for the show-wide upgrade-hold chip.
   const allEps = seasons.filter((sn) => sn.season_number > 0).flatMap((sn) => sn.episodes ?? []);
-  // Overall progress from the server's roll-up — the same numbers as the list's card, so
-  // the two agree: only monitored episodes in monitored seasons count as missing.
-  const haveAll = s.stats?.have_files ?? 0;
-  const countedAll = s.stats?.episodes ?? 0;
-  const missingAll = s.stats?.missing ?? Math.max(0, countedAll - haveAll);
-  const notMonitoredAll = s.stats?.unmonitored_missing ?? 0;
-  const st = libraryStatus({ multi: true, hasFile: haveAll > 0, monitored: s.monitored, have: countedAll - missingAll, total: countedAll });
 
   return (
     <>
       <PageHeader title={s.title} />
 
-      {/* Hero band with backdrop — mirrors the Movie detail layout */}
-      <div className="relative">
-        {ex?.backdrop_url && (
-          <>
-            <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.18]" style={{ backgroundImage: `url(${ex.backdrop_url})` }} />
-            <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, transparent, var(--bg))" }} />
-          </>
-        )}
-        <div className="relative mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
-          <Link to="/series" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            All series
-          </Link>
-
-          <div className="flex flex-col gap-6 sm:flex-row">
-            <div className="w-[180px] flex-none self-start overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)", aspectRatio: "2/3" }}>
-              {s.poster_url ? (
-                <img src={s.poster_url} alt={s.title} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-end p-3" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-                  <span className="text-[15px] font-bold text-white">{s.title}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
-                <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: continuing ? "var(--good-soft)" : "var(--panel-2)", color: continuing ? "var(--good)" : "var(--ink-faint)" }}>{continuing ? "Continuing" : "Ended"}</span>
-                {countedAll > 0 && (
-                  <span className="font-mono text-[11px] text-ink-dim">
-                    {haveAll}/{countedAll}
-                    {notMonitoredAll > 0 && <span className="text-ink-faint" title="Aired episodes without a file that aren't monitored — not counted as missing"> · {notMonitoredAll} not monitored</span>}
-                  </span>
-                )}
-                {s.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{s.year}</span>}
-                {s.network && <span className="font-mono text-[11px] text-ink-faint">{s.network}</span>}
-                <span className="flex items-center gap-2">
-                  {s.imdb_id && <a href={`https://www.imdb.com/title/${s.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>}
-                  <a href={`https://www.themoviedb.org/tv/${s.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#01b4e4", color: "#fff" }}>TMDB</a>
-                  <PlexPill media="series" tmdbId={s.tmdb_id} />
-                </span>
-              </div>
-              <WatchedBy kind="series" id={s.id} />
-
-              <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">{s.overview || "No overview available."}</p>
-
-              {ex?.genres && ex.genres.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">{ex.genres.map((g) => <span key={g} className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{g}</span>)}</div>
-              )}
-
-              <div className="mt-4 flex flex-wrap items-center gap-4">
-                <ProfileSelector series={s} onChange={load} />
-              </div>
-              <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={flash} />
-
-              <Toolbar series={s} onChange={load} flash={flash} />
-              <NumberingBanner seriesId={s.id} refreshKey={`${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}`} onApplied={load} />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Hero series={s}>
+        <HeroActions series={s} onChange={load} flash={flash} />
+        <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={flash} />
+      </Hero>
 
       <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
+        <NumberingBanner seriesId={s.id} refreshKey={`${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}`} onApplied={load} />
         {!s.monitored && (
           <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
             Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
@@ -201,36 +128,42 @@ export function SeriesDetail() {
           {seasons.map((sn) => <SeasonBlock key={sn.id} series={s} season={sn} onChange={load} flash={flash} defaultOpen={false} fits={fits} />)}
         </div>
 
+        {/* The expert numbering panels sit under the episodes, collapsed: most shows never
+            need them. */}
+        <AliasPanel series={s} />
+        {s.series_type === "anime" && <SceneMapPanel series={s} />}
+
         {/* A block isn't always a history event (a junk download is blocklisted as it
             leaves the queue), so the panel also reloads when a download goes away. */}
         <SeriesBlocklistPanel seriesId={s.id} refreshKey={`${s.last_event_id ?? 0}:${downloading}`} />
 
-        {ex?.cast && ex.cast.length > 0 && (
-          <div className="mt-8">
-            <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
-            <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
-              {ex.cast.map((c, i) => (
-                <div key={i} className="w-[92px] flex-none text-center">
-                  <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
-                    {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
-                  </div>
-                  <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
-                  {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <CastRow cast={ex?.cast} />
 
         <DuplicatesPanel seriesId={s.id} refreshKey={s.last_event_id} flash={flash} />
 
         <HistoryPanel seriesId={s.id} refreshKey={s.last_event_id} />
       </div>
-
-      {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>{toast}</div>
-      )}
     </>
+  );
+}
+
+function CastRow({ cast }: { cast?: CastMember[] }) {
+  if (!cast || cast.length === 0) return null;
+  return (
+    <div className="mt-8">
+      <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
+      <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
+        {cast.map((c, i) => (
+          <div key={i} className="w-[92px] flex-none text-center">
+            <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
+              {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
+            </div>
+            <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
+            {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -276,7 +209,7 @@ function SeasonBlock({ series, season, onChange, flash, defaultOpen, fits }: { s
   const eps = season.episodes ?? [];
   const have = eps.filter((e) => e.has_file).length;
   const total = eps.length;
-  const airedCount = eps.filter(aired).length;
+  const airedCount = eps.filter((e) => aired(e)).length;
   // The progress denominator counts what's wanted — aired episodes monitored in a monitored
   // season — plus what's already here, so an in-progress season isn't behind on episodes
   // that haven't come out yet, nor on ones nobody asked for (shown greyed instead).

@@ -82,8 +82,8 @@ export function SeriesBlocklistPanel({ seriesId, refreshKey }: { seriesId: numbe
 // title no amount of normalising will ever match, so those releases are discarded
 // before they're scored. Pinning the alias to a TMDB season also fixes the numbering:
 // the arc's own S01/S02 are cours inside that season, not the series' own seasons.
-export function AliasPanel({ series }: { series: SeriesT }) {
-  const [open, setOpen] = useState(false);
+export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [rows, setRows] = useState<SeriesAlias[] | null>(null);
   const [title, setTitle] = useState("");
   const [season, setSeason] = useState("");
@@ -206,7 +206,8 @@ export function AliasPanel({ series }: { series: SeriesT }) {
 // Automatic resolution (per-cour positional → TheXEM → air-date gap) handles most shows;
 // this exists for the ones it can't, where the only alternative was importing every
 // episode by hand.
-export function SceneMapPanel({ series }: { series: SeriesT }) {
+export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [rows, setRows] = useState<SceneOverride[] | null>(null);
   const [sceneSeason, setSceneSeason] = useState("");
   const [tmdbSeason, setTmdbSeason] = useState("");
@@ -243,7 +244,12 @@ export function SceneMapPanel({ series }: { series: SeriesT }) {
 
   return (
     <div className="mt-3 rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="text-[12.5px] font-semibold">Scene season mapping</div>
+      <button type="button" className="flex w-full items-center gap-2 text-left" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="text-[12.5px] font-semibold">Scene season mapping</span>
+        {(rows?.length ?? 0) > 0 && <span className="font-mono text-[11px] text-ink-faint">{rows?.length}</span>}
+        <span className="ml-auto font-mono text-[11px] text-ink-faint">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (<>
       <p className="mb-2.5 mt-0.5 text-[11px] text-ink-faint">
         Only needed when releases number seasons differently to TMDB — e.g. this show ships as
         <code className="mx-1 font-mono">S02E01</code> but TMDB counts it as one long season. Pin where each
@@ -293,6 +299,7 @@ export function SceneMapPanel({ series }: { series: SeriesT }) {
         </button>
       </div>
       {err && <div className="mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      </>)}
     </div>
   );
 }
