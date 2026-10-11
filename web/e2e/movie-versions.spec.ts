@@ -100,7 +100,7 @@ test.describe("manager", () => {
     await expect.poll(() => seen.filter((s) => s.path === "/api/v1/grab").length).toBe(1);
     expect(seen.find((s) => s.path.startsWith(`/api/v1/movies/${ID}/releases`))?.path).toBe(`/api/v1/movies/${ID}/releases?version=5`);
     expect(seen.find((s) => s.path === "/api/v1/grab")?.body).toEqual({ token: "tok-dc", movie_id: ID, version_id: 5 });
-    await page.getByRole("button", { name: "✕" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
 
     // Import from the DC version imports into it.
     await dc.getByRole("button", { name: "Import", exact: true }).click();
