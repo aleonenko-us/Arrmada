@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
 import { api, type BookSource, type BookUpgradeStatus, type BookSweepStatus, type Book, type BookLookup, type BookAuthor, type BookDiscoverCard } from "../lib/api";
 import { usePersisted } from "../lib/persist";
+import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { posterThumb } from "../lib/img";
@@ -23,6 +24,7 @@ const FILTERS = [
   { key: "no_ebook", label: "No ebook" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
+const FILTER_KEYS = FILTERS.map((f) => f.key);
 
 function matches(b: Book, f: FilterKey): boolean {
   switch (f) {
@@ -58,8 +60,8 @@ export function Books() {
   const list = booksQ.data?.books ?? NO_BOOKS;
   const metaOK = booksQ.data?.metadata_available ?? true;
   const error = booksQ.error?.message ?? null;
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [adding, setAdding] = useState(false);
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);

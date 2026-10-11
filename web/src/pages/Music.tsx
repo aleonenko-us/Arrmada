@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Artist, type ArtistLookup } from "../lib/api";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
+import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
 import { FilterBar, LibraryToolbar, TONE_HUE } from "../ui";
 
@@ -13,6 +14,7 @@ const FILTERS = [
   { key: "complete", label: "Complete" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
+const FILTER_KEYS = FILTERS.map((f) => f.key);
 
 function have(a: Artist): number {
   return a.stats?.have_tracks ?? 0;
@@ -43,8 +45,8 @@ function matches(a: Artist, f: FilterKey): boolean {
 export function Music() {
   const [artists, setArtists] = useState<Artist[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTabParam } from "../lib/useTabParam";
+import { useSearchParamState } from "../lib/useSearchState";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
 import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
@@ -16,6 +17,7 @@ import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activit
 import { ErrorState, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
+const MEDIA_FILTERS: readonly MediaFilter[] = ["all", "movie", "series", "book", "music"];
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "movie", label: "Movies" },
@@ -187,9 +189,9 @@ export function QueuePanel() {
   const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
   const [reconnecting, setReconnecting] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [sort, setSort] = useState<SortKey>("progress");
-  const [typeFilter, setTypeFilter] = useState<MediaFilter>("all");
+  const [typeFilter, setTypeFilter] = useSearchParamState<MediaFilter>("type", "all", { allowed: MEDIA_FILTERS });
   const { musicEnabled } = useMe();
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [clientId, setClientId] = useState<number | null>(null);
@@ -407,7 +409,7 @@ export function QueuePanel() {
 // WantedPanel is Activity → Wanted: the titles Arrmada is still looking for (Searching)
 // and the ones that aren't out yet (Upcoming), across movies, series, books and albums.
 export function WantedPanel() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [view, setView] = useTabParam(WANTED_VIEWS, "searching", "show");
   const toast = useToast();
   const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });

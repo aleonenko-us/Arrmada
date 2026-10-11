@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { usePersisted } from "../../lib/persist";
+import { useSearchParamState } from "../../lib/useSearchState";
 import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
@@ -49,8 +50,11 @@ export interface LibraryGridProps<T extends LibraryItem> {
 // the grid or table. Each page passes a LibraryConfig and its own slots.
 export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   const { config, items, error, view } = p;
-  const [filter, setFilter] = useState(config.filters[0]?.key ?? "all");
-  const [query, setQuery] = useState("");
+  // The filter and search live in the address (?filter=wanted&q=dune): Back from a title
+  // brings them back, and the view can be bookmarked or shared.
+  const filterKeys = useMemo(() => config.filters.map((f) => f.key), [config.filters]);
+  const [filter, setFilter] = useSearchParamState("filter", filterKeys[0] ?? "all", { allowed: filterKeys });
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [multi, setMulti] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
 
