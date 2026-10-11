@@ -2110,11 +2110,11 @@ export interface ConvertMediaInfo {
 export interface ConvertSkipped {
   key: string; kind: string; reason: string; permanent: boolean; updated_at: string;
   retry_after: number; attempts: number; // unix seconds (0 = no wait); same-kind repeats in a row
-  media_kind: string; movie_id?: number; series_id?: number; season: number; episode: number; title: string;
+  media_kind: string; movie_id?: number; version_id?: number; series_id?: number; season: number; episode: number; title: string;
 }
 
 export interface ConvertBlocked {
-  key: string; kind: string; movie_id?: number; series_id?: number; season: number; episode: number;
+  key: string; kind: string; movie_id?: number; version_id?: number; series_id?: number; season: number; episode: number;
   title: string; count: number; last_error: string; updated_at: string;
 }
 
@@ -2150,9 +2150,11 @@ export interface ConvertSeriesRollup {
 }
 
 export interface ConvertNeeds { video: boolean; subs: boolean; audio: boolean; why?: string; save: number; worth: boolean; measured?: boolean }
-export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string }
+// version_id/version_label: an extra version track of the movie (absent = its default file);
+// title stays the film's own.
+export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string; version_id?: number; version_label?: string }
 export interface ConvertJob {
-  id: number; key: string; kind?: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string;
+  id: number; key: string; kind?: string; movie_id?: number; version_id?: number; series_id?: number; season?: number; episode?: number; title: string;
   state: "preparing" | "testing" | "encoding" | "verifying" | "replacing" | "done" | "failed" | "skipped" | "cancelled";
   progress: number; fps: number; speed_x: number; duration_sec?: number; encoder: string; codec?: string;
   src_bytes: number; out_bytes: number; ssim?: number; note?: string; requested: boolean; paused?: string;
@@ -2165,7 +2167,7 @@ export interface ConvertTrackDecision {
 export type ConvertHistoryOutcome = "in_progress" | "done" | "failed" | "skipped" | "cancelled";
 // One row of the conversion ledger (GET /convert/history). src_info/out_info only on the single-row read.
 export interface ConvertHistoryEntry {
-  id: number; key: string; kind: "movie" | "episode"; movie_id?: number; series_id?: number; season: number; episode?: number; title: string;
+  id: number; key: string; kind: "movie" | "episode"; movie_id?: number; version_id?: number; series_id?: number; season: number; episode?: number; title: string;
   outcome: ConvertHistoryOutcome; outcome_kind?: string; note?: string; requested: boolean;
   src_path?: string; src_release?: string; src_size: number; src_spec?: string;
   out_path?: string; out_size: number; out_spec?: string; codec?: string; crf?: number; encoder?: string; crop?: string;
@@ -2174,7 +2176,7 @@ export interface ConvertHistoryEntry {
   started_at: number; finished_at?: number; encode_secs?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;
 }
-export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string }
+export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string; version_id?: number; version_label?: string }
 export interface ConvertRequest { key: string; title: string; requested_at: number }
 export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;

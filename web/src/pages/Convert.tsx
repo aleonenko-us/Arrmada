@@ -8,6 +8,7 @@ import { TabPanel, Tabs } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
 import { useMe, isAdmin } from "../lib/me";
+import { groupVersions, nestedVersions } from "../lib/convertVersions";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type RecycleStats,
@@ -414,6 +415,15 @@ function Pill({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
+// VersionChip names an extra version of a film (a 4K remux kept next to the 1080p copy).
+function VersionChip({ label }: { label?: string }) {
+  return (
+    <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }} title="An extra version of this film — converted on its own">
+      {label || "Version"}
+    </span>
+  );
+}
+
 function NeedTag({ children, title }: { children: ReactNode; title?: string }) {
   return (
     <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={title}>
@@ -484,7 +494,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
     try {
       await api.convertRequest(c.key);
       setRequested((s) => new Set(s).add(c.key));
-      flash(`“${c.title}” is queued ahead of the automatic picks — it starts when a conversion slot is free, even outside your hours`);
+      flash(`“${c.version_id ? `${c.title} · ${c.version_label || "version"}` : c.title}” is queued ahead of the automatic picks — it starts when a conversion slot is free, even outside your hours`);
       onRequested();
     } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
   };
@@ -524,11 +534,13 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
         case "save": return c.save_bytes ?? 0;
       }
     };
-    return list.sort((a, b) => {
+    // A film's extra versions sit under its default file, whatever the sort.
+    return groupVersions(list.sort((a, b) => {
       const va = val(a), vb = val(b);
       return typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) * dir : (va - vb) * dir;
-    });
+    }));
   }, [items, codecF, sort, q]);
+  const nested = useMemo(() => nestedVersions(view), [view]);
 
   const showView = useMemo(() => {
     const dir = showSort.dir === "asc" ? 1 : -1;
@@ -653,8 +665,15 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                   const cd = c.info?.video_codec?.toUpperCase() ?? "?";
                   const isRunning = runningKeys.has(c.key);
                   return (
-                    <tr key={c.key} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                      <td className="px-3 py-2 font-semibold">{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span></td>
+                    <tr key={c.key} style={{ borderTop: i === 0 ? "none" : nested.has(c) ? "1px dashed var(--line-soft)" : "1px solid var(--line-soft)" }}>
+                      <td className="px-3 py-2 font-semibold">
+                        {nested.has(c) ? (
+                          // Under its film's default file: the version's name says which file it is.
+                          <span className="flex items-center gap-1.5 pl-4 font-normal text-ink-dim"><span aria-hidden className="text-ink-faint">↳</span><VersionChip label={c.version_label} /></span>
+                        ) : (
+                          <>{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span>{c.version_id ? <> <VersionChip label={c.version_label} /></> : null}</>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">
                           <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: c.needs?.video ? "var(--avoid-soft)" : "var(--good-soft, rgba(127,176,105,.16))", color: c.needs?.video ? "var(--avoid)" : "var(--good)" }} title={c.needs?.why}>{cd}</span>
