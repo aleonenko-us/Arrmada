@@ -66,11 +66,34 @@ test.describe("manager", () => {
     ]);
     await expect(page.getByText("Held", { exact: true })).toBeVisible();
     await expect(page.getByText("Import failed", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Decide →" })).toHaveAttribute("href", "/activity/needs-you");
+    // Held and failing imports are settled on Needs you, which has an action for each.
+    await expect(page.getByRole("link", { name: "Decide →" })).toHaveCount(2);
+    await expect(page.getByRole("link", { name: "Decide →" }).first()).toHaveAttribute("href", "/activity/needs-you");
     // Seeding has only the imported one.
     await views.getByRole("button", { name: /^Seeding/ }).click();
     await expect(page.getByText("Alien.1979.1080p.BluRay-FIXTURE")).toHaveCount(0);
     await expect(page.getByText("Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE")).toBeVisible();
+  });
+
+  // ACQ-29: a transfer shows the title its grab was for — poster, linked name, scope and
+  // who asked — over the release name; on a wide screen its actions sit on the row.
+  test("transfers are poster-first cards linked to their title, with scope and requester chips", async ({ page }) => {
+    await page.goto("/activity/queue");
+    const card = page.getByTestId("transfer-card").filter({ hasText: "Driftwood.2025" });
+    await expect(card.getByRole("link", { name: "Driftwood" })).toHaveAttribute("href", "/movies/3");
+    await expect(card.getByTestId("transfer-release")).toHaveText("Driftwood.2025.2160p.WEB-DL.DV.HDR.H265-FIXTURE");
+    await expect(card.getByTestId("transfer-scope")).toHaveText("4K");
+    await expect(card.getByTestId("transfer-requester")).toHaveText("for Mum");
+    await expect(card.getByRole("button", { name: "Block" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Delete" })).toBeVisible();
+    // The search box finds a transfer by its title too.
+    await page.getByRole("textbox", { name: "Search this list" }).fill("driftw");
+    await expect(page.getByTestId("transfer-card")).toHaveCount(1);
+    await page.getByRole("textbox", { name: "Search this list" }).fill("");
+    await page.getByRole("group", { name: "Queue views" }).getByRole("button", { name: /^Finishing/ }).click();
+    const heat = page.getByTestId("transfer-card").filter({ hasText: "Heat.1995" });
+    await expect(heat.getByRole("link", { name: "Heat" })).toHaveAttribute("href", "/movies/2");
+    await expect(heat.getByText("Upgrade", { exact: true })).toBeVisible();
   });
 
   test("only the visible tab reads: leaving the Queue stops its queue reads", async ({ page, api }) => {

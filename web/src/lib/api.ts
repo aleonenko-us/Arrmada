@@ -313,6 +313,26 @@ export interface ActivityDownload {
   // How an in-flight grab stands against its stall window; absent for torrents Arrmada
   // didn't grab. idle_minutes stays 0 while the clock is held (paused, queued, checking).
   stall?: { idle_minutes: number; failover_in_minutes: number; off: boolean };
+  /** An Arrmada grab recorded this torrent (by info hash). */
+  managed?: boolean;
+  /** The title the grab was for (absent for a torrent no grab knows). */
+  item?: TransferItem;
+}
+
+/** The library title a transfer was grabbed for, from the acquisition record. */
+export interface TransferItem {
+  kind: "movie" | "series" | "book" | "music";
+  id: number;
+  title: string;
+  year?: number;
+  poster_url?: string;
+  byline?: string;
+  /** What part of the title the torrent covers: "S03", "S03E05", "Audiobook", a version's label. */
+  scope?: string;
+  /** The grab replaces a file the title already has. */
+  upgrade?: boolean;
+  /** Who is waiting on it (open requests' owners and followers). */
+  requested_by?: string[];
 }
 
 // What the disk guard is holding; present only while it holds something.

@@ -15,10 +15,10 @@ import (
 )
 
 // handleDownloadsFeed returns the live download queue, each torrent with the library
-// item it was grabbed for and its resolved quality profile. (Served at /downloads, not
-// /activity — the latter is blocked by common ad-blocker filter lists.) The titles still
-// being searched for are the Wanted view's (GET /api/v1/wanted): it reads the search
-// history too, which this three-second poll shouldn't.
+// title it was grabbed for (poster, scope, requesters) and its resolved quality profile.
+// (Served at /downloads, not /activity — the latter is blocked by common ad-blocker filter
+// lists.) The titles still being searched for are the Wanted view's (GET /api/v1/wanted):
+// it reads the search history too, which a queue read shouldn't.
 func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// One shared read of the clients. When it failed or missed a client, what's
@@ -77,6 +77,12 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	// it's still there instead of showing it as a healthy seed.
 	fin := a.finishingFacts(ctx)
 	now := time.Now()
+	// Who is waiting on each title, for the cards' "for Mum" chips; read only when
+	// something in the queue was grabbed for a title.
+	var reqs map[string][]string
+	if len(live) > 0 || len(legacy) > 0 {
+		reqs = a.requestersByLibrary(ctx, now)
+	}
 
 	downloads := make([]map[string]any, 0, len(queue))
 	var totalDown, totalUp int64
@@ -132,6 +138,15 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 			"quality_profile": profile,
 			"media_type":      mediaType,
 			"imported":        imported[it.Hash],
+		}
+		// The title it was grabbed for: poster, name and link, what part of it the torrent
+		// covers and who asked for it. By the grab alone — a torrent no grab knows keeps
+		// its release name, however much its name looks like a library title.
+		if managed {
+			entry["managed"] = true
+			if item := a.transferItemFor(ctx, acq, reqs, now); item != nil {
+				entry["item"] = item
+			}
 		}
 		h := strings.ToLower(it.Hash)
 		if st, ok := stallInfo[h]; ok && !it.Complete() {

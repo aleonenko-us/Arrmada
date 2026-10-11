@@ -138,6 +138,8 @@ type api struct {
 	start        time.Time
 	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
+	// transfers caches the downloads feed's title cards and requester names (transfers.go).
+	transfers transferCache
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
