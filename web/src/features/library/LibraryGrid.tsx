@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { usePersisted } from "../../lib/persist";
-import { ErrorState, Skeleton, StaleBanner } from "../../ui";
+import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
 
 export type LibraryViewMode = "grid" | "table";
+const VIEW_OPTIONS = [{ value: "grid", label: "grid" }, { value: "table", label: "table" }];
 export interface LibraryView {
   mode: LibraryViewMode;
   set: (v: LibraryViewMode) => void;
@@ -28,9 +29,9 @@ export interface LibraryGridProps<T extends LibraryItem> {
   view: LibraryView;
   /** Beside the count: the Movies Library | Wanted switch, a search-queue chip. */
   lead?: ReactNode;
-  /** The toolbar's buttons between the view toggle and Select (Scan library…). */
-  tools?: ReactNode;
-  primary: { label: string; onClick: () => void; disabled?: boolean };
+  /** The toolbar's "Library tools" menu (Scan library…). */
+  tools?: LibraryTool[];
+  primary: ToolbarAction;
   /** Notices above the list (metadata missing). */
   banners?: ReactNode;
   /** Above the table only (the fit legend). */
@@ -78,43 +79,22 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   const noun = config.noun;
   return (
     <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="flex flex-wrap items-center gap-2.5">
-          {p.lead}
-          <span className="font-mono text-[11px] text-ink-faint">{items ? `${list.length} in library` : ""}</span>
-        </span>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-            {(["grid", "table"] as const).map((v) => (
-              <button key={v} onClick={() => view.set(v)} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: view.mode === v ? "var(--accent)" : "transparent", color: view.mode === v ? "var(--accent-ink)" : "var(--ink-faint)" }}>{v}</button>
-            ))}
-          </div>
-          {p.tools}
-          <button
-            onClick={() => (multi ? sel.exit() : setMulti(true))}
-            className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-            style={{ border: `1px solid ${multi ? "var(--accent)" : "var(--line)"}`, background: multi ? "var(--accent-soft)" : "var(--panel-2)", color: multi ? "var(--accent)" : "var(--ink)" }}
-          >
-            {multi ? "Done" : "Select"}
-          </button>
-          <button onClick={p.primary.onClick} disabled={p.primary.disabled} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: p.primary.disabled ? 0.5 : 1 }}>
-            {p.primary.label}
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {config.filters.map((f) => {
-          const on = filter === f.key;
-          const count = f.match ? list.filter(f.match).length : list.length;
-          return (
-            <button key={f.key} onClick={() => setFilter(f.key)} title={f.title} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
-              {f.label} <span className="font-mono text-[10.5px] opacity-70">{count}</span>
-            </button>
-          );
-        })}
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${noun.many}…`} className="ml-auto w-[220px] rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-      </div>
+      <LibraryToolbar
+        count={items ? list.length : null}
+        lead={p.lead}
+        segments={[{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }]}
+        select={{ active: multi, onToggle: () => (multi ? sel.exit() : setMulti(true)) }}
+        tools={p.tools}
+        primary={p.primary}
+      />
+      <FilterBar
+        filters={config.filters.map((f) => ({ key: f.key, label: f.label, title: f.title, count: f.match ? list.filter(f.match).length : list.length }))}
+        active={filter}
+        onFilter={setFilter}
+        query={query}
+        onQuery={setQuery}
+        noun={noun.many}
+      />
 
       {multi && (
         <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>

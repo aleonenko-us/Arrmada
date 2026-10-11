@@ -5,6 +5,8 @@ export interface MenuItem {
   onSelect: () => void | Promise<unknown>;
   disabled?: boolean;
   tone?: "default" | "danger";
+  /** A tooltip: what the item does, when the label alone doesn't say. */
+  title?: string;
   /** Shown on the item while its onSelect promise is running; the menu stays open until it settles. */
   busyLabel?: ReactNode;
 }
@@ -125,6 +127,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
               tabIndex={-1}
               disabled={it.disabled}
               aria-disabled={it.disabled || undefined}
+              title={it.title}
               onClick={() => pick(i)}
               className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50 ${itemClassName}`}
               style={{ color: it.tone === "danger" ? "var(--reject)" : "var(--ink)" }}

@@ -12,7 +12,7 @@ import { LINKS } from "../lib/links";
 import { useMe, isAdmin } from "../lib/me";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { useQuery } from "../lib/query";
-import { ErrorState, Skeleton, StaleBanner } from "../ui";
+import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner } from "../ui";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -256,59 +256,44 @@ export function Books() {
     <>
       <PageHeader title="Books" />
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <span className="font-mono text-[11px] text-ink-faint">{booksQ.data ? `${list.length} in library` : ""}</span>
-          <div className="flex items-center gap-2">
-            {!multiSelect && (
-              <>
-                <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-                  {(["author", "book"] as const).map((m) => (
-                    <button key={m} onClick={() => setMode(m)} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: mode === m ? "var(--accent)" : "transparent", color: mode === m ? "var(--accent-ink)" : "var(--ink-faint)" }}>{m}</button>
-                  ))}
-                </div>
-                <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-                  {(["grid", "table"] as const).map((v) => (
-                    <button key={v} onClick={() => setView(v)} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: view === v ? "var(--accent)" : "transparent", color: view === v ? "var(--accent-ink)" : "var(--ink-faint)" }}>{v}</button>
-                  ))}
-                </div>
-              </>
-            )}
-            {source === "hardcover" && (upgradable > 0 || upgrade?.running) && (
-              <button onClick={startUpgrade} disabled={!!upgrade?.running} title={`${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
-                {upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : `Re-match ${upgradable} to Hardcover`}
-              </button>
-            )}
-            {(missingEditions > 0 || sweep?.running) && (
-              <button onClick={startSweep} disabled={!!sweep?.running} title={`Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
-                {sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : `Search missing (${missingEditions})`}
-              </button>
-            )}
-            <button onClick={backfillSeries} disabled={backfilling} title="One-off: look up which series your books belong to. Searches indexers to read the series off, and downloads nothing." className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{backfilling ? "Looking up…" : "Find series"}</button>
-            <button onClick={scanLibrary} disabled={scanning || scan.running} title="Find books already in your library folder and catalog them" className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{scanning || scan.running ? "Scanning…" : "Scan library"}</button>
-            <button onClick={() => (multiSelect ? exitMultiSelect() : enterSelect())} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: `1px solid ${multiSelect ? "var(--accent)" : "var(--line)"}`, background: multiSelect ? "var(--accent-soft)" : "var(--panel-2)", color: multiSelect ? "var(--accent)" : "var(--ink)" }}>{multiSelect ? "Done" : "Select"}</button>
-            <button onClick={() => setAddingAuthor(true)} disabled={!metaOK} title="Add an author's entire catalogue of official books" className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)", opacity: metaOK ? 1 : 0.5 }}>+ Add author</button>
-            <button onClick={() => setAdding(true)} disabled={!metaOK} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: metaOK ? 1 : 0.5 }}>+ Add book</button>
-          </div>
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const active = filter === f.key;
-            const count = f.key === "all" ? list.length : list.filter((b) => matches(b, f.key)).length;
-            return (
-              <button key={f.key} onClick={() => setFilter(f.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-faint)" }}>
-                {f.label} <span className="font-mono text-[10.5px] opacity-70">{count}</span>
-              </button>
-            );
-          })}
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search books or authors…"
-            className="ml-auto w-[240px] rounded-lg px-3 py-1.5 text-[12px]"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-          />
-        </div>
+        <LibraryToolbar
+          count={booksQ.data ? list.length : null}
+          segments={multiSelect ? [] : [
+            { label: "Group by", value: mode, options: [{ value: "author", label: "author" }, { value: "book", label: "book" }], onChange: (v) => setMode(v as "author" | "book") },
+            { label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v) => setView(v as "grid" | "table") },
+          ]}
+          select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
+          tools={[
+            { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
+            { label: "Find series", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "One-off: look up which series your books belong to. Searches indexers to read the series off, and downloads nothing." },
+            {
+              label: `Re-match ${upgradable} to Hardcover`,
+              hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
+              busy: !!upgrade?.running,
+              progress: upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : undefined,
+              onClick: startUpgrade,
+              title: `${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`,
+            },
+            {
+              label: `Search missing (${missingEditions})`,
+              hidden: !(missingEditions > 0 || sweep?.running),
+              busy: !!sweep?.running,
+              progress: sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : undefined,
+              onClick: startSweep,
+              title: `Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`,
+            },
+          ]}
+          secondary={{ label: "+ Add author", onClick: () => setAddingAuthor(true), disabled: !metaOK, title: "Add an author's entire catalogue of official books" }}
+          primary={{ label: "+ Add book", onClick: () => setAdding(true), disabled: !metaOK }}
+        />
+        <FilterBar
+          filters={FILTERS.map((f) => ({ key: f.key, label: f.label, count: f.key === "all" ? list.length : list.filter((b) => matches(b, f.key)).length }))}
+          active={filter}
+          onFilter={(k) => setFilter(k as FilterKey)}
+          query={query}
+          onQuery={setQuery}
+          noun="books"
+        />
 
         {multiSelect && (
           <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>

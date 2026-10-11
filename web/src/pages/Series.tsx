@@ -15,8 +15,6 @@ import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
 
 const NO_FITS = new Map<number, SeriesFitSummary>();
-const TOOL = "rounded-lg px-3 py-2 text-[12.5px] font-semibold";
-const TOOL_STYLE = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" };
 
 export function Series() {
   // Cached across visits, so Back from a show renders at once, then revalidates.
@@ -107,14 +105,10 @@ export function Series() {
         loading={seriesQ.loading}
         onRetry={refresh}
         view={view}
-        tools={<>
-          <button onClick={scanLibrary} disabled={scanning || scan.running} title="Find series already in your library folder and catalog them" className={TOOL} style={TOOL_STYLE}>
-            {scanning || scan.running ? "Scanning…" : "Scan library"}
-          </button>
-          <button onClick={refreshAll} disabled={refreshingAll || !list?.length} title="Re-pull metadata and rescan files for every series — fixes episodes that are on disk but still show as missing" className={TOOL} style={{ ...TOOL_STYLE, opacity: refreshingAll || !list?.length ? 0.5 : 1 }}>
-            {refreshingAll ? "Refreshing…" : "Refresh all"}
-          </button>
-        </>}
+        tools={[
+          { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find series already in your library folder and catalog them" },
+          { label: "Refresh all", busyLabel: "Refreshing…", busy: refreshingAll, disabled: !list?.length, onClick: refreshAll, title: "Re-pull metadata and rescan files for every series — fixes episodes that are on disk but still show as missing" },
+        ]}
         primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}

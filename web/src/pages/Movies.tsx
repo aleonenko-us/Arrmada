@@ -152,11 +152,7 @@ export function Movies() {
           <MoviesSwitch active="library" />
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
         </>}
-        tools={
-          <button onClick={() => setShowScan(true)} disabled={scanning || scan.running} title="Find movies already in your library folder and catalog them" className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>
-            {scanning || scan.running ? "Scanning…" : "Scan library"}
-          </button>
-        }
+        tools={[{ label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" }]}
         primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         tableNote={<FitLegend judged={judged} misfits={misfits} misfitsOnly={misfitsPref === "misfits"} onMisfitsOnly={(on) => setMisfitsPref(on ? "misfits" : "all")} />}
