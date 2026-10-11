@@ -8,7 +8,7 @@ import { searchSettings, sectionFromPath, settingsRedirect, visibleSections, typ
 import { LibrarySettings } from "./settings/LibrarySettings";
 import { NamingSettings } from "./settings/Naming";
 import { DownloadsSettings } from "./settings/DownloadsSettings";
-import { UsersSettings } from "./settings/UsersSettings";
+import { PeopleSettings } from "./settings/People";
 import { ImportSettings } from "./settings/ImportSettings";
 import { SystemSettings } from "./settings/SystemSettings";
 import { StatusSection } from "./settings/Status";
@@ -37,7 +37,7 @@ const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   alerts: AlertsSettings,
   plex: PlexSettings,
   "audiobook-server": AudiobookServerSettings,
-  users: UsersSettings,
+  users: PeopleSettings,
   import: ImportSettings,
   system: SystemSettings,
   status: StatusSection,

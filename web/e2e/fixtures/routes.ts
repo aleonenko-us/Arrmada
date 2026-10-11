@@ -154,7 +154,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
     get("/api/v1/users", sys.users),
-    { method: "PUT", path: /^\/api\/v1\/users\/(\d+)$/, respond: ({ params, body }) => ({ id: Number(params[0]), ...(body as object) }) },
+    get("/api/v1/people", sys.people),
+    // Answers like the server: the account as it now stands.
+    { method: "PUT", path: /^\/api\/v1\/users\/(\d+)$/, respond: ({ params, body }) => ({ disabled: false, ...sys.users.users.find((u) => u.id === Number(params[0])), id: Number(params[0]), ...(body as object) }) },
     get("/api/v1/system/library", sys.libraryPaths),
     { method: "GET", path: "/api/v1/system/library/check", respond: ({ url }) => sys.folderCheck(url.searchParams.get("path") ?? "") },
     get("/api/v1/logs", sys.logs),

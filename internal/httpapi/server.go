@@ -191,7 +191,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library", a.requireRole(auth.RoleManager, a.handleGetLibraryPaths))
 	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.handleSetLibraryPaths))
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
-	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
+	mux.HandleFunc("GET /api/v1/system/pending-restart",a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.
 	mux.HandleFunc("GET /api/v1/setup", a.requireRole(auth.RoleAdmin, a.handleSetupState))
@@ -277,6 +277,8 @@ func (a *api) registerRoutes(mux *router) {
 
 	// User management (admin only).
 	mux.HandleFunc("GET /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleListUsers))
+	// Settings → People & access: everyone once, with last seen and audiobook access (CFG-18).
+	mux.HandleFunc("GET /api/v1/people", a.requireRole(auth.RoleAdmin, a.handlePeople))
 	mux.HandleFunc("POST /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleCreateUser))
 	mux.HandleFunc("PUT /api/v1/users/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateUser))
 	mux.HandleFunc("GET /api/v1/users/{id}/impact", a.requireRole(auth.RoleAdmin, a.handleUserImpact))

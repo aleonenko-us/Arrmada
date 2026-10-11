@@ -2,7 +2,7 @@ import type { ShellIconName } from "../components/ShellIcons";
 
 // The requester shell's one list of places. It draws the top bar's links (sm and up), the
 // phone's bottom tabs and the section title a phone shows in its header, and it is what
-// Settings → Users tells admins a requester gets, so none of them can drift apart. Rename
+// Settings → People & access tells admins a requester gets, so none of them can drift apart. Rename
 // a tab here and nowhere else.
 
 export interface RequesterNavCtx {

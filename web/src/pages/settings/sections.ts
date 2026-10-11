@@ -12,7 +12,7 @@ export interface SettingsSection {
 }
 
 // Rail order. The names match the paths copy already uses ("Settings → Library",
-// "Settings → Downloads", "Settings → System → API keys", "Settings → Users").
+// "Settings → Downloads", "Settings → System → API keys", "Settings → People & access").
 export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
@@ -25,7 +25,8 @@ export const SECTIONS: readonly SettingsSection[] = [
   // same page are shown to admins only.
   { id: "plex", label: "Plex", adminOnly: false },
   { id: "audiobook-server", label: "Audiobook server", adminOnly: true },
-  { id: "users", label: "Users", adminOnly: true },
+  // The old Users section: one list of everyone with their access (CFG-18).
+  { id: "users", label: "People & access", adminOnly: true },
   { id: "import", label: "Import", adminOnly: true },
   { id: "system", label: "System", adminOnly: true },
   // Slot for System → Status (pages/settings/Status.tsx, built by the health work).
@@ -65,7 +66,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores", section: "tools", anchor: "convert" },
   { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
-  { label: "Users", keywords: "add user people accounts roles admin manager requester read-only password auto-approve block delete disable sign in", section: "users", anchor: "users" },
+  { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },
   { label: "Plex connection", keywords: "plex server url token connect sign in monitoring insights poll interval", section: "plex", anchor: "plex-connection" },
   { label: "Plex library updates", keywords: "plex scan partial refresh path mapping map folder update library after import rename delete convert", section: "plex", anchor: "plex-library-updates" },
   { label: "Plex sign-in", keywords: "plex login sign in with plex auto-approve home shared users staff admin owner policy", section: "plex", anchor: "plex-sign-in", adminOnly: true },

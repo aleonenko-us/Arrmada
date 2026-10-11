@@ -10,11 +10,11 @@ import { useSetting } from "../../lib/useSettings";
 import { useToast } from "../../ui";
 import { PlexLibraryUpdates } from "./PlexLibraryUpdates";
 import { requesterPages } from "./roles";
-import { AutoApproveChecks, typesFromCSV, typesToCSV } from "./UsersSettings";
+import { AutoApproveChecks, typesFromCSV, typesToCSV } from "./People";
 
 // Settings → Plex: everything about the Plex server in one place — the connection Insights
 // records from, the scans Arrmada sends after it changes a file, and (admins) who may sign
-// in with Plex. Insights' old Settings tab and the Plex card that used to sit under Users
+// in with Plex. Insights' old Settings tab and the Plex card that used to sit under Users (now People & access)
 // both live here now.
 export function PlexSettings() {
   const { user } = useMe();
@@ -187,7 +187,7 @@ function PlexSignIn() {
             books={booksEnabled}
             label="New Plex sign-ins auto-approve"
           />
-          <p className="m-0 text-[11px] text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → Users.</p>
+          <p className="m-0 text-[11px] text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → People & access.</p>
         </div>
         <AutoToggle
           label="Let staff sign in with Plex"

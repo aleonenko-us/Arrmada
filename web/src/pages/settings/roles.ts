@@ -2,8 +2,8 @@ import { NAV } from "../../lib/nav";
 import { requesterNav } from "../../lib/requesterNav";
 import { SECTIONS } from "./sections";
 
-// What each role gets, worded for Settings → Users, built from the same lists the app is
-// drawn from so the description moves when the pages do.
+// What each role gets, worded for Settings → People & access, built from the same lists
+// the app is drawn from so the description moves when the pages do.
 
 // "a, b and c"
 export function andList(xs: string[]): string {

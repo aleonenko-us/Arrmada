@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { LINKS } from "../lib/links";
 import { api, type AudioImportPreview, type AudioImportResult, type AudioListening, type AudioServerAdmin } from "../lib/api";
 import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, fmtHours, inputStyle, primary } from "./audiobooks/shared";
 
@@ -24,27 +26,19 @@ function useAdmin() {
 }
 
 function PeopleView() {
-  const { data, setData, error, load } = useAdmin();
+  const { data, error, load } = useAdmin();
   if (!data) return <Loading error={error} />;
+  const eligible = data.users.filter((u) => u.eligible).length;
+  const allowed = data.users.filter((u) => u.eligible && u.allowed).length;
+  const withPassword = data.users.filter((u) => u.eligible && u.has_password).length;
   return (
     <div className="flex flex-col gap-4">
-      <Card title="Who can connect" note="Each person also needs to set an audiobook password on their Audiobooks page.">
-        {data.users.map((u) => (
-          <div key={u.id} className="flex items-center justify-between gap-3 py-1.5 text-[12.5px]" style={{ borderTop: "1px solid var(--line-soft)" }}>
-            <span className="min-w-0 truncate"><b>{u.username}</b> <span className="text-ink-faint">· {u.role}</span></span>
-            {u.eligible ? (
-              <span className="flex flex-none items-center gap-3">
-                <span className="text-[11.5px]" style={{ color: u.has_password ? "var(--good)" : "var(--ink-faint)" }}>{u.has_password ? "Password set" : "No password yet"}</span>
-                <label className="flex items-center gap-2 text-[12px]">
-                  <input type="checkbox" checked={u.allowed} onChange={async (e) => setData(await api.setAudioUser(u.id, e.target.checked))} />
-                  Allowed
-                </label>
-              </span>
-            ) : (
-              <span className="text-[11.5px] text-ink-faint">{u.disabled ? "Disabled account" : "Read-only accounts can't connect"}</span>
-            )}
-          </div>
-        ))}
+      {/* Who may connect is managed with everything else about a person. */}
+      <Card title="Who can connect">
+        <p className="m-0 text-[12.5px] text-ink-dim">
+          {allowed} of {eligible} {eligible === 1 ? "person" : "people"} may connect a listening app; {withPassword} {withPassword === 1 ? "has" : "have"} set an audiobook password.{" "}
+          <Link to={LINKS.users} className="font-semibold" style={{ color: "var(--accent)" }}>Manage access in Settings → People &amp; access</Link>
+        </p>
       </Card>
       <Card title="Signed-in devices">
         {data.devices.length === 0 ? <div className="text-[12px] text-ink-faint">No devices yet.</div> : data.devices.map((d) => (

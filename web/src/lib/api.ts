@@ -1413,6 +1413,38 @@ export interface AuthUser {
   plex_only?: boolean;
 }
 
+/**
+ * One person on Settings → People & access (GET /people, admin). Times are unix ms, 0 =
+ * never. Listening is when, never what: there is no book in here.
+ */
+export interface Person {
+  id: number;
+  username: string;
+  role: UserRole;
+  disabled: boolean;
+  created_at?: string;
+  auto_approve_movie: boolean;
+  auto_approve_series: boolean;
+  auto_approve_book: boolean;
+  plex_linked: boolean;
+  plex_username?: string;
+  plex_only?: boolean;
+  plex_blocked?: boolean;
+  quota: UserQuota;
+  /** Browsers signed in (only they see which). */
+  sessions: number;
+  web_last: number;
+  audio_last: number;
+  listen_last: number;
+  /** The latest of web_last, audio_last and listen_last. */
+  last_seen: number;
+  /** An enabled account that may request: read-only accounts can't connect apps. */
+  audio_eligible: boolean;
+  audio_allowed: boolean;
+  audio_password_set: boolean;
+  audio_devices: number;
+}
+
 /** One kind of request limit: limit 0 is unlimited; resets_at is when the oldest use frees up. */
 export interface QuotaUse { limit: number; used: number; resets_at?: string }
 /** GET /me/quota: the caller's request limits per window of `days`. */
@@ -2151,12 +2183,13 @@ export const api = {
   setupAdmin: (username: string, password: string) =>
     req<{ user: AuthUser }>("/api/v1/auth/setup", { method: "POST", body: JSON.stringify({ username, password }) }),
   users: () => req<{ users: AuthUser[] }>("/api/v1/users").then((r) => r.users),
+  people: () => req<{ people: Person[] }>("/api/v1/people").then((r) => r.people),
   // auto_approve_<type> sets one type; the old auto_approve sets all three.
   createUser: (body: { email: string; password: string; role: string } & AutoApproveFlags) =>
     req<AuthUser>("/api/v1/users", { method: "POST", body: JSON.stringify(body) }),
   // disabled: true turns off their sign-in and signs them out everywhere; nothing is deleted.
   updateUser: (id: number, body: { role?: string; auto_approve?: boolean; password?: string; disabled?: boolean; quota?: UserQuota; plex_unlink?: boolean } & AutoApproveFlags) =>
-    req<{ id: number; role: string; auto_approve: boolean; disabled: boolean }>(`/api/v1/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    req<{ id: number; role: UserRole; auto_approve: boolean; disabled: boolean } & Required<AutoApproveFlags>>(`/api/v1/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   userImpact: (id: number) => req<UserImpact>(`/api/v1/users/${id}/impact`),
   // confirm is the username, required by the server when the user has listening data.
   // blockPlex also blocks their Plex account, so they can't come straight back via Plex.
