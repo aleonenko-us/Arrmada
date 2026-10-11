@@ -142,6 +142,22 @@ type SearchQuery struct {
 	// words, so that same appended word matches nothing and returns an empty result set.
 	// Each searcher now applies the edition the way its own API expects.
 	BookEdition string
+
+	// IMDBID ("tt0111161"), TMDBID and TVDBID name the title being searched for. A
+	// Torznab indexer whose stored caps list the matching parameter for this kind of
+	// search is asked by id instead of by text (see idParam), which finds the film or
+	// show whatever its releases are called; any other indexer, and one whose id search
+	// comes back empty, gets the text query as before. Zero values mean unknown.
+	IMDBID string
+	TMDBID int
+	TVDBID int
+}
+
+// withoutIDs is the same query as plain text: what an indexer is asked when its id
+// search found nothing.
+func (q SearchQuery) withoutIDs() SearchQuery {
+	q.IMDBID, q.TMDBID, q.TVDBID = "", 0, 0
+	return q
 }
 
 // Recenter is an optional capability: fetch the newest releases (an RSS-style

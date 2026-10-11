@@ -189,12 +189,35 @@ func (c Caps) Summary() string {
 
 // CapsSummary is Caps.Summary for what was last stored; "" when nothing has been read.
 func (i Indexer) CapsSummary() string {
-	if i.CapsJSON == "" {
-		return ""
-	}
-	var c Caps
-	if json.Unmarshal([]byte(i.CapsJSON), &c) != nil {
+	c, ok := i.StoredCaps()
+	if !ok {
 		return ""
 	}
 	return c.Summary()
+}
+
+// StoredCaps is what the indexer last said it supports; ok is false when nothing has been
+// read (or what was stored can't be). Searches then build exactly the URLs they always did.
+func (i Indexer) StoredCaps() (Caps, bool) {
+	if i.CapsJSON == "" {
+		return Caps{}, false
+	}
+	var c Caps
+	if json.Unmarshal([]byte(i.CapsJSON), &c) != nil {
+		return Caps{}, false
+	}
+	return c, true
+}
+
+// Takes reports whether this kind of search is available and understands param.
+func (m SearchMode) Takes(param string) bool {
+	if !m.Available {
+		return false
+	}
+	for _, p := range m.Params {
+		if p == param {
+			return true
+		}
+	}
+	return false
 }

@@ -657,12 +657,8 @@ func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *qual
 	if err != nil {
 		return ReleaseList{}, err
 	}
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
 	ctx, notes := withSearchNotes(ctx)
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	result, err := c.search(ctx, movieQuery(m))
 	if allIndexersFailed(err) {
 		// Nobody could answer: an empty list naming each failure, not an error that
 		// reads like the search itself broke.
@@ -861,7 +857,7 @@ func (c *Coordinator) searchAndGrab(ctx context.Context, m movies.Movie) (out Se
 		return SearchOutcome{Reason: ReasonNothingWanted}, nil
 	}
 	out = SearchOutcome{Searched: true}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: movieQuery(m), MediaType: indexer.MediaMovie, Limit: 100})
+	result, err := c.search(ctx, movieQuery(m))
 	if err != nil {
 		out.noteSearchErr(err)
 		return out, err
@@ -900,12 +896,15 @@ func (c *Coordinator) searchAndGrab(ctx context.Context, m movies.Movie) (out Se
 	return out, nil
 }
 
-// movieQuery is the indexer search text for a movie: its title, and its year when known.
-func movieQuery(m movies.Movie) string {
+// movieQuery is the indexer search for a movie: its title, and its year when known, plus
+// its IMDb and TMDB ids, which an indexer whose caps take them is asked by instead (see
+// indexer.TorznabSearcher.Search). Every movie search is built here.
+func movieQuery(m movies.Movie) indexer.SearchQuery {
+	text := m.Title
 	if m.Year > 0 {
-		return m.Title + " " + strconv.Itoa(m.Year)
+		text += " " + strconv.Itoa(m.Year)
 	}
-	return m.Title
+	return indexer.SearchQuery{Text: text, MediaType: indexer.MediaMovie, Limit: 100, IMDBID: m.IMDBID, TMDBID: m.TMDBID}
 }
 
 // matchingMovieReleases keeps only releases whose parsed title + year match the
@@ -914,7 +913,7 @@ func movieQuery(m movies.Movie) string {
 func matchingMovieReleases(m movies.Movie, releases []indexer.Release) []indexer.Release {
 	out := make([]indexer.Release, 0, len(releases))
 	for _, rel := range releases {
-		if releaseIsForMovie(rel.Title, m) {
+		if movieReleaseMatches(rel, m) {
 			out = append(out, rel)
 		}
 	}
@@ -1152,7 +1151,7 @@ func (c *Coordinator) RSSSync(ctx context.Context) {
 		}
 		var matched []indexer.Release
 		for _, rel := range res.Releases {
-			if releaseIsForMovie(rel.Title, m) {
+			if movieReleaseMatches(rel, m) {
 				matched = append(matched, rel)
 			}
 		}
@@ -1174,6 +1173,26 @@ func (c *Coordinator) RSSSync(ctx context.Context) {
 			c.recordAttempt(mctx, notes, AttemptMovie, m.ID, "", &out, nil)
 		}
 	}
+}
+
+// movieReleaseMatches reports whether an indexer's release is for the movie: its title is
+// (releaseIsForMovie), or the indexer tagged it with the movie's own IMDb id and its year
+// fits — a film listed under another title still carries its IMDb id. A release tagged
+// with a DIFFERENT IMDb id is another film whatever it's called (a remake, a namesake).
+//
+// Coming back from an id search (MatchedByID) is deliberately not enough: an indexer that
+// ignores the id answers with its newest uploads, which are anything.
+func movieReleaseMatches(rel indexer.Release, m movies.Movie) bool {
+	tag := indexer.NormalizeIMDB(rel.IMDBID)
+	own := indexer.NormalizeIMDB(m.IMDBID)
+	if tag != "" && own != "" {
+		if tag != own {
+			return false
+		}
+		r := parser.Parse(rel.Title)
+		return r.Year == 0 || m.Year == 0 || abs(r.Year-m.Year) <= 1
+	}
+	return releaseIsForMovie(rel.Title, m)
 }
 
 // releaseIsForMovie reports whether a release title is for the given movie
@@ -1314,11 +1333,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		return nil
 	}
 
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	result, err := c.search(ctx, movieQuery(m))
 	if err != nil {
 		return err
 	}
@@ -1339,7 +1354,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !releaseIsForMovie(rel.Title, m) {
+		if !movieReleaseMatches(rel, m) {
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
 		}
@@ -1435,11 +1450,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 	if err != nil {
 		return err
 	}
-	query := m.Title
-	if m.Year > 0 {
-		query += " " + strconv.Itoa(m.Year)
-	}
-	result, err := c.search(ctx, indexer.SearchQuery{Text: query, MediaType: indexer.MediaMovie, Limit: 100})
+	result, err := c.search(ctx, movieQuery(m))
 	if err != nil {
 		return err
 	}
@@ -1459,7 +1470,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !releaseIsForMovie(rel.Title, m) {
+		if !movieReleaseMatches(rel, m) {
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
 		}

@@ -109,6 +109,14 @@ func parseFeedPage(data []byte) ([]Release, int, error) {
 				if n := atoi(a.Value); n > 0 {
 					r.Categories = append(r.Categories, n)
 				}
+			case "imdb", "imdbid":
+				if id := NormalizeIMDB(a.Value); id != "" {
+					r.IMDBID = id
+				}
+			case "tmdbid":
+				r.TMDBID = atoi(a.Value)
+			case "tvdbid":
+				r.TVDBID = atoi(a.Value)
 			}
 		}
 		releases = append(releases, r)
@@ -201,19 +209,54 @@ func waitUntil(ctx context.Context, slot time.Time) error {
 	}
 }
 
-// Search runs a text search against a single indexer and returns its releases,
-// stamped with the indexer's name and transport.
 // maxSearchPages bounds pagination so a misbehaving indexer — one that ignores offset, or
 // reports a total it never delivers — can't spin forever.
 const maxSearchPages = 10
 
-// Search fetches results, following Torznab pagination until it has what was asked for.
+// Search runs a search against a single indexer and returns its releases, stamped with
+// the indexer's name and transport.
+//
+// It is id-first: when the query names the title by an id the indexer's stored caps say
+// it takes for this kind of search (idParam), the indexer is asked by that id, and its
+// releases are marked MatchedByID. An id search that finds nothing — a tracker with
+// incomplete id tagging — or that the indexer refuses with its own error document is
+// followed by today's text search, so asking by id can never find less than before.
+func (c *TorznabSearcher) Search(ctx context.Context, idx Indexer, q SearchQuery) ([]Release, error) {
+	if name, _ := idParam(idx, q); name != "" {
+		releases, err := c.searchPages(ctx, idx, q)
+		if err == nil && len(releases) > 0 {
+			for i := range releases {
+				releases[i].MatchedByID = true
+			}
+			return releases, nil
+		}
+		// A transport failure or an HTTP error says the indexer is struggling: asking it
+		// again by text would only add load. Its own <error> answer ("unsupported
+		// parameter") is a refusal of the id, not of the search.
+		var te *TorznabError
+		if err != nil && !errors.As(err, &te) {
+			return nil, err
+		}
+		if c.log != nil {
+			c.log.Info("torznab id search found nothing; searching by text", "indexer", idx.Name, "by", name, "err", err)
+		}
+		q = q.withoutIDs()
+		if q.Text == "" {
+			// Nothing to fall back to: an empty text search is the indexer's newest
+			// uploads, not an answer to this one.
+			return nil, err
+		}
+	}
+	return c.searchPages(ctx, idx, q)
+}
+
+// searchPages fetches results, following Torznab pagination until it has what was asked for.
 //
 // Indexers commonly cap a response at their own page size regardless of the requested
 // limit: asking TorrentLeech for 400 returns 35, and without paging the other 400+ matches
 // are simply invisible. A show's season packs can be entirely absent for this reason while
 // being plainly present on the tracker.
-func (c *TorznabSearcher) Search(ctx context.Context, idx Indexer, q SearchQuery) ([]Release, error) {
+func (c *TorznabSearcher) searchPages(ctx context.Context, idx Indexer, q SearchQuery) ([]Release, error) {
 	var all []Release
 	seen := map[string]bool{}
 
@@ -406,7 +449,12 @@ func buildURL(idx Indexer, t string, q SearchQuery) (string, error) {
 	if idx.APIKey != "" {
 		qs.Set("apikey", idx.APIKey)
 	}
-	if text := torznabText(q); text != "" {
+	// An id the indexer takes replaces the text: q alongside it would narrow the id match
+	// to releases that also carry the text, which is exactly what a foreign or re-titled
+	// release doesn't.
+	if name, value := idParam(idx, q); t == "search" && name != "" {
+		qs.Set(name, value)
+	} else if text := torznabText(q); text != "" {
 		qs.Set("q", text)
 	}
 	cats := q.Categories
@@ -541,6 +589,38 @@ func redactKey(raw string) string {
 	}
 	u.RawQuery = qs.Encode()
 	return u.String()
+}
+
+// idParam is the one id parameter a search sends instead of q, and its value: only for a
+// movie or TV search, only when the indexer's stored caps say that kind of search is
+// available and lists the parameter, and only one, best first — imdbid then tmdbid for a
+// movie, tvdbid then imdbid for a show. One id per request is what every indexer
+// understands; some read several as "all of these" and some as "any". No stored caps, or
+// no id the indexer takes, is "" and the search is by text exactly as it always was.
+func idParam(idx Indexer, q SearchQuery) (name, value string) {
+	caps, ok := idx.StoredCaps()
+	if !ok {
+		return "", ""
+	}
+	// Radarr's form: the digits without "tt", leading zeros kept.
+	imdb := strings.TrimPrefix(NormalizeIMDB(q.IMDBID), "tt")
+	switch searchType("search", q) {
+	case "movie":
+		switch {
+		case imdb != "" && caps.Movie.Takes("imdbid"):
+			return "imdbid", imdb
+		case q.TMDBID > 0 && caps.Movie.Takes("tmdbid"):
+			return "tmdbid", strconv.Itoa(q.TMDBID)
+		}
+	case "tvsearch":
+		switch {
+		case q.TVDBID > 0 && caps.TV.Takes("tvdbid"):
+			return "tvdbid", strconv.Itoa(q.TVDBID)
+		case imdb != "" && caps.TV.Takes("imdbid"):
+			return "imdbid", imdb
+		}
+	}
+	return "", ""
 }
 
 // searchType maps a query to the right Torznab endpoint. The generic "search" works

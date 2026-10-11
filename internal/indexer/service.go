@@ -746,8 +746,14 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, erro
 					// "the indexer only had this much" from "the seeder floor discarded the
 					// rest" — and an old season pack with few seeders is exactly the sort of
 					// release that quietly vanishes here.
+					byID := 0
+					for _, rel := range releases {
+						if rel.MatchedByID {
+							byID++
+						}
+					}
 					s.log.Info("indexer search", "indexer", idx.Name, "query", q.Text,
-						"returned", returned, "kept", len(releases),
+						"returned", returned, "kept", len(releases), "by_id", byID,
 						"dropped_low_seeders", returned-len(releases), "min_seeders", idx.MinSeeders,
 						"limit", q.Limit)
 					mu.Lock()
@@ -818,6 +824,16 @@ func dedupeByInfoHash(releases []Release, priority map[string]int) []Release {
 			(r.Seeders == kept.Seeders && priority[r.Indexer] < priority[kept.Indexer]) {
 			out[i] = r
 		}
+		// It's the same torrent: what one indexer knew about it (its ids) holds for the
+		// copy that's kept.
+		out[i].IMDBID = firstNonEmpty(out[i].IMDBID, kept.IMDBID, r.IMDBID)
+		if out[i].TMDBID == 0 {
+			out[i].TMDBID = max(kept.TMDBID, r.TMDBID)
+		}
+		if out[i].TVDBID == 0 {
+			out[i].TVDBID = max(kept.TVDBID, r.TVDBID)
+		}
+		out[i].MatchedByID = kept.MatchedByID || r.MatchedByID
 	}
 	return out
 }
