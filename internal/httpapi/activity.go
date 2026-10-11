@@ -4,11 +4,14 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
+	"github.com/tristenlammi/arrmada/internal/pipeline"
 )
 
 // handleDownloadsFeed returns the live download queue, each torrent with the library
@@ -69,6 +72,12 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	guardHeld, guardSt := a.guardHolding(ctx)
 	heldCount := 0
 
+	// Where each finished torrent stands on its way into the library — held for review,
+	// an import being retried, filed where nothing imports it — so the page can say why
+	// it's still there instead of showing it as a healthy seed.
+	fin := a.finishingFacts(ctx)
+	now := time.Now()
+
 	downloads := make([]map[string]any, 0, len(queue))
 	var totalDown, totalUp int64
 	active, stalled := 0, 0
@@ -124,12 +133,34 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 			"media_type":      mediaType,
 			"imported":        imported[it.Hash],
 		}
-		if st, ok := stallInfo[strings.ToLower(it.Hash)]; ok && !it.Complete() {
+		h := strings.ToLower(it.Hash)
+		if st, ok := stallInfo[h]; ok && !it.Complete() {
 			entry["stall"] = st
 		}
-		if it.State == "paused" && guardHeld[strings.ToLower(it.Hash)] {
+		if it.State == "paused" && guardHeld[h] {
 			entry["held_by_guard"] = true
 			heldCount++
+		}
+		// One stage model for staff and requesters (internal/pipeline): the stage decides
+		// which part of the queue a torrent sits in, and why says what's holding it.
+		in := pipeline.Input{
+			Phase: phase, Complete: it.Complete(), Linked: managed, Imported: imported[it.Hash] || imported[h],
+			OwnCategory: fin.own[it.Category], HeldByGuard: guardHeld[h], Category: it.Category, Now: now,
+		}
+		if managed {
+			in.GrabStatus = acq.Status
+		}
+		if rv, ok := fin.reviews[h]; ok {
+			in.Review = &rv
+		}
+		if f, ok := fin.failures[h]; ok {
+			in.Failure = &f
+		}
+		in.WrongCategory = fin.wrongCat[h]
+		stage, why := pipeline.Describe(in)
+		entry["stage"] = stage
+		if why != "" {
+			entry["why"] = why
 		}
 		// By info hash: the indexer's listing title is often a prettified rendering of the
 		// actual torrent, so matching on the name missed entire trackers and labelled
@@ -173,6 +204,56 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.writeJSON(w, http.StatusOK, out)
+}
+
+// finishing is what the feed needs to tell where a finished torrent stands, each keyed by
+// lowercased hash: pending reviews, imports being retried, misfiled TV downloads, and
+// Arrmada's own categories (which the import sweeps read without a grab).
+type finishing struct {
+	reviews  map[string]pipeline.Review
+	failures map[string]pipeline.Failure
+	wrongCat map[string]bool
+	own      map[string]bool
+}
+
+func (a *api) finishingFacts(ctx context.Context) finishing {
+	f := finishing{reviews: map[string]pipeline.Review{}, failures: map[string]pipeline.Failure{}, wrongCat: map[string]bool{}, own: map[string]bool{}}
+	cats := download.FixedCategories(a.deps.Config.DownloadCategory)
+	for _, c := range []string{cats.Movies, cats.TV, cats.Books, cats.Music} {
+		f.own[c] = true
+	}
+	for _, fl := range a.importFailures() {
+		if fl.Hash != "" {
+			f.failures[strings.ToLower(fl.Hash)] = pipeline.Failure{Attempts: fl.Attempts, NextRetry: fl.NextRetry, LastErr: fl.LastErr}
+		}
+	}
+	if a.deps.Automation == nil {
+		return f
+	}
+	// Unreadable reviews leave a held grab as "held for review" without the reason.
+	if rvs, err := a.deps.Automation.ListReviews(ctx); err == nil {
+		for _, rv := range rvs {
+			if rv.Hash != "" {
+				f.reviews[strings.ToLower(rv.Hash)] = pipeline.Review{Code: rv.ReasonCode, ExpectedTitle: rv.ExpectedTitle}
+			}
+		}
+	}
+	for _, it := range a.deps.Automation.WrongCategoryDownloads() {
+		f.wrongCat[strings.ToLower(it.Hash)] = true
+	}
+	return f
+}
+
+// importFailures is every download whose import has failed and will be retried: the
+// movie importer's and the series sweep's (Deps.ImportFailures), else the importer's own.
+func (a *api) importFailures() []library.FailureInfo {
+	if a.deps.ImportFailures != nil {
+		return a.deps.ImportFailures()
+	}
+	if a.deps.Library != nil {
+		return a.deps.Library.Failures()
+	}
+	return nil
 }
 
 // queueMediaType is what a queued torrent is by its download category — each kind is

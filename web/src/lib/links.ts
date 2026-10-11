@@ -13,6 +13,7 @@ export const LINKS = {
   activityQueue: "/activity/queue",
   downloadsSearching: "/activity/wanted",
   downloadProblems: "/activity/queue?filter=problems",
+  importProblems: "/activity/queue?show=finishing&filter=problems",
   history: "/activity/history",
   blocklist: "/activity/blocklist",
   downloadClients: "/downloadclients",

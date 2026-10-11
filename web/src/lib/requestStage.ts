@@ -1,11 +1,13 @@
 import type { MediaRequest } from "./api";
 import { formatAgo, formatEta } from "./format";
 import { searchingDetail } from "./requestSearch";
+import { STAGE } from "./stages";
 import type { Tone } from "../ui";
 
 // One vocabulary for where a request has got to, shared by the Discover strip, the
 // Requests page and the RequestSheet, so the three never word the same request
-// differently.
+// differently. The download stages take their words from lib/stages, which the staff
+// Activity queue uses too: a request and its download are called the same thing there.
 
 // Order for a requester's strip: what's moving first, then what's waiting, then what's
 // done. Staff use the server's order instead (waiting for approval first).
@@ -50,19 +52,20 @@ export function requestStage(rq: MediaRequest, queueKnown = true): RequestStage 
       if (tr.eta_seconds) parts.push(`${formatEta(tr.eta_seconds)} left`);
       else if (tr.note) parts.push(tr.note.toLowerCase());
       if (eps) parts.push(eps);
-      return { badge: "Downloading", tone: "accent", detail: parts.join(" · "), detailTone: "var(--accent-text)" };
+      return { badge: STAGE.downloading.label, tone: "accent", detail: parts.join(" · "), detailTone: "var(--accent-text)" };
     }
     case "importing":
-      return { badge: "Importing", tone: "accent", detail: "Adding to the library…", detailTone: "var(--accent-text)" };
+      // A held or retrying import says "Being checked" — never the staff reason.
+      return { badge: STAGE.importing.label, tone: "accent", detail: tr.note || "Adding to the library…", detailTone: "var(--accent-text)" };
     case "adding":
       // On disk; the 'ready' notice waits until Plex shows it (or half an hour passes).
       return { badge: "Almost ready", tone: "good", detail: "Adding to Plex…", detailTone: "var(--good-text)" };
     case "queued":
-      return { badge: "Starting", tone: "accent", detail: tr.note || "Starting the download" };
+      return { badge: STAGE.queued.label, tone: "accent", detail: tr.note || "Starting the download" };
     case "paused":
-      return { badge: "Paused", tone: "faint", detail: `Paused at ${pct}%` };
+      return { badge: STAGE.paused.label, tone: "faint", detail: `Paused at ${pct}%` };
     case "failed":
-      return { badge: "Retrying", tone: "avoid", detail: tr.note || "The download failed" };
+      return { badge: STAGE.failed.label, tone: "avoid", detail: tr.note || "The download failed" };
     case "searching":
       // When it was last checked and whether anything has turned up — times only.
       return { badge: "Searching", tone: "accent", detail: searchingDetail(tr, eps) };

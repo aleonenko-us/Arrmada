@@ -1,5 +1,7 @@
 // Thin typed client for Arrmada's JSON API.
 
+import type { PipelineStage } from "./stages";
+
 export interface Module {
   id: string;
   name: string;
@@ -279,6 +281,9 @@ export interface ActivityDownload {
   seed_ratio?: number; // target ratio (0 = no ratio target)
   seed_hours?: number; // target seed time in hours (0 = no time target)
   imported?: boolean; // Arrmada has imported this download into the library
+  /** Where it has got to (lib/stages), and for staff why it is there ("Import failed 3× …"). */
+  stage?: PipelineStage;
+  why?: string;
   quality_profile: string;
   media_type?: string;
   held_by_guard?: boolean; // paused by the disk guard, which won't let it resume yet

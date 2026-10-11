@@ -648,6 +648,13 @@ func main() {
 	// triggers a search through the existing acquisition pipeline. Created before
 	// sched.Start so its sweep is in the snapshot the scheduler launches.
 	requestsSvc := requests.NewService(st.DB(), movieSvc, seriesSvc, booksSvc, coordinator, qualitySvc, bus, notifySvc.AppriseBin(), log)
+	// Every download whose import keeps failing — the movie importer's retry records and
+	// the series sweep's — read by request cards ("being checked"), the Activity queue's
+	// Finishing stages and the Needs-you feed alike.
+	importFailures := func() []library.FailureInfo {
+		return append(imports.Failures(), coordinator.SeriesImportFailures()...)
+	}
+	requestsSvc.SetImportFailures(importFailures)
 	requestsSvc.SetPushSender(pushSvc) // Web Push alongside inbox + Apprise
 	requestsSvc.SetRunner(grp)         // approval searches stop at shutdown
 	requestsSvc.SetJobs(jobRunner)     // and are jobs, single-flight with a Search click
@@ -889,9 +896,7 @@ func main() {
 		attention.Requests(requestsSvc),
 		attention.Reviews(coordinator),
 		attention.Downloads(),
-		attention.Imports(func() []library.FailureInfo {
-			return append(imports.Failures(), coordinator.SeriesImportFailures()...)
-		}, coordinator),
+		attention.Imports(importFailures, coordinator),
 		attention.WrongCategory(coordinator.WrongCategoryDownloads),
 		attention.Health(healthReg),
 		attention.Searches(
@@ -1005,6 +1010,7 @@ func main() {
 			default:
 			}
 		},
+		ImportFailures: importFailures,
 		// Safety copies before destructive admin actions (user delete). Newest 3 of each
 		// kind are kept in <data>/backups; deleting an account with no listening data is a
 		// kind of its own, so it can't push out a copy that holds someone's places.

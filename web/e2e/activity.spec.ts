@@ -50,6 +50,28 @@ test.describe("manager", () => {
     await expect(page).toHaveURL(/\/activity\/queue$/);
   });
 
+  // ACQ-28: a finished download that isn't in the library sits under Finishing with the
+  // reason, never among the healthy seeds.
+  test("Finishing lists held and retrying downloads with readable reasons", async ({ page }) => {
+    await page.goto("/activity/queue");
+    const views = page.getByRole("group", { name: "Queue views" });
+    await expect(views.getByRole("button", { name: /^Finishing/ })).toContainText("2");
+    await views.getByRole("button", { name: /^Finishing/ }).click();
+    await expect(page).toHaveURL(/\/activity\/queue\?show=finishing$/);
+    const why = page.getByTestId("stage-why");
+    await expect(why).toHaveText([
+      "Held for review: it doesn't look like Aliens",
+      "Import failed 3× (permission denied) — next try in 8 min",
+    ]);
+    await expect(page.getByText("Held", { exact: true })).toBeVisible();
+    await expect(page.getByText("Import failed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Decide →" })).toHaveAttribute("href", "/activity/needs-you");
+    // Seeding has only the imported one.
+    await views.getByRole("button", { name: /^Seeding/ }).click();
+    await expect(page.getByText("Alien.1979.1080p.BluRay-FIXTURE")).toHaveCount(0);
+    await expect(page.getByText("Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE")).toBeVisible();
+  });
+
   test("only the visible tab polls: leaving the Queue stops its queue reads", async ({ page, api }) => {
     await page.goto("/activity/queue");
     await expect.poll(() => api.callsTo("GET", "/api/v1/downloads").length).toBeGreaterThan(0);

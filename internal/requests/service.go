@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/push"
@@ -61,6 +62,8 @@ type Service struct {
 	// no Plex, ready on import. plexWaiter runs the check that announces them.
 	plex       PlexLocator
 	plexWaiter plexWaiter
+	// importFailures is the importers' retry records (SetImportFailures); nil = none.
+	importFailures func() []library.FailureInfo
 }
 
 func (s *Service) clock() time.Time {

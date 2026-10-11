@@ -176,12 +176,23 @@ export const activity: ActivityFeed = {
     {
       hash: "e2e0000000000000000000000000000000000001", name: "Driftwood.2025.2160p.WEB-DL.DV.HDR.H265-FIXTURE", state: "downloading",
       progress: 0.42, size_bytes: 18_000_000_000, down_speed: 12_400_000, up_speed: 400_000, eta_seconds: 900, ratio: 0.1,
-      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12,
+      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12, stage: "downloading",
     },
     {
       hash: "e2e0000000000000000000000000000000000002", name: "Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 2_100_000_000, down_speed: 0, up_speed: 400_000, eta_seconds: 0, ratio: 1.3,
-      quality_profile: "hd-1080p", media_type: "series", imported: true,
+      quality_profile: "hd-1080p", media_type: "series", imported: true, stage: "seeding",
+    },
+    // Finished, not in the library: one held for review, one whose import keeps failing.
+    {
+      hash: "e2e0000000000000000000000000000000000003", name: "Alien.1979.1080p.BluRay-FIXTURE", state: "seeding",
+      progress: 1, size_bytes: 9_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.2,
+      quality_profile: "hd-1080p", media_type: "movie", stage: "needs_review", why: "Held for review: it doesn't look like Aliens",
+    },
+    {
+      hash: "e2e0000000000000000000000000000000000004", name: "Heat.1995.1080p.BluRay-FIXTURE", state: "seeding",
+      progress: 1, size_bytes: 11_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.1,
+      quality_profile: "hd-1080p", media_type: "movie", stage: "import_retrying", why: "Import failed 3× (permission denied) — next try in 8 min",
     },
   ],
   totals: { down_speed: 12_400_000, up_speed: 800_000, active: 2 },

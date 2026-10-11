@@ -11,7 +11,8 @@ import { useLive } from "../lib/useLive";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
-import { ErrorState, Menu, Skeleton, useToast } from "../ui";
+import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
+import { ErrorState, Menu, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
@@ -58,9 +59,11 @@ const STATE_TONE: Record<string, string> = {
   downloading: "var(--accent)", seeding: "var(--good)", paused: "var(--ink-faint)", error: "var(--avoid)", checking: "var(--avoid)",
   stalled: "var(--avoid)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid)", allocating: "var(--ink-faint)",
 };
+// The client's phases in the words of the shared stage model (lib/stages), so this chip
+// and a requester's card say the same thing; the client-only phases keep their own.
 const PHASE_TEXT: Record<string, string> = {
-  downloading: "Downloading", seeding: "Seeding", paused: "Paused", error: "Error", checking: "Checking",
-  stalled: "Stalled", metadata: "Fetching metadata", queued: "Queued", moving: "Moving", allocating: "Allocating",
+  downloading: STAGE.downloading.label, seeding: STAGE.seeding.label, paused: STAGE.paused.label, error: STAGE.failed.label, checking: "Checking",
+  stalled: STAGE.stalled.label, metadata: STAGE.fetching_metadata.label, queued: STAGE.queued.label, moving: "Moving", allocating: "Allocating",
 };
 
 // mins humanizes a span of minutes: "45m", "3h", "2d 4h".
@@ -113,17 +116,19 @@ export function stallLine(it: ActivityDownload): string | null {
 }
 
 // isProblem: a download that needs a look — errored, stalled, or stuck fetching its file
-// list. What ?filter=problems (the Needs-you card's link) narrows the lists to.
-export function isProblem(it: Pick<ActivityDownload, "phase" | "state">): boolean {
+// list, or finished and not importing (the import keeps failing, it's held, it's in a
+// category nothing imports from). What ?filter=problems (the Needs-you links) narrows to.
+export function isProblem(it: Pick<ActivityDownload, "phase" | "state" | "stage">): boolean {
+  if (it.stage === "import_retrying" || it.stage === "wrong_category" || it.stage === "needs_review") return true;
   const phase = it.phase || it.state;
   return phase === "error" || phase === "stalled" || phase === "metadata" || it.state === "error";
 }
 
 type SortKey = "name" | "progress" | "speed" | "size" | "ratio" | "seedtime";
 
-// The Queue tab's sub-views (?show=): what's still arriving, and what's finished and sharing.
-type QueueView = "downloading" | "seeding";
-const QUEUE_VIEWS: readonly QueueView[] = ["downloading", "seeding"];
+// The Queue tab's sub-views (?show=): what's still arriving, what's finished but not in the
+// library yet, and what's in the library and sharing — split on the shared stage model.
+const QUEUE_VIEWS: readonly QueueGroup[] = ["downloading", "finishing", "seeding"];
 // The Wanted tab's sub-views (?show=): what's being searched for, and what isn't out yet.
 type WantedView = "searching" | "upcoming";
 const WANTED_VIEWS: readonly WantedView[] = ["searching", "upcoming"];
@@ -226,8 +231,9 @@ export function QueuePanel() {
     flash(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
 
-  const activeDownloads = useMemo(() => downloads.filter((d) => d.progress < 1), [downloads]);
-  const seedingDownloads = useMemo(() => downloads.filter((d) => d.progress >= 1), [downloads]);
+  const activeDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "downloading"), [downloads]);
+  const finishingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "finishing"), [downloads]);
+  const seedingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "seeding"), [downloads]);
 
   const filterSort = (list: ActivityDownload[], sortKey: SortKey) => {
     const q = query.trim().toLowerCase();
@@ -248,8 +254,9 @@ export function QueuePanel() {
   };
   const shownDownloads = useMemo(() => filterSort(activeDownloads, sort), [activeDownloads, query, sort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownSeeding = useMemo(() => filterSort(seedingDownloads, seedSort), [seedingDownloads, query, seedSort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownFinishing = useMemo(() => filterSort(finishingDownloads, "name"), [finishingDownloads, query, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const base = view === "seeding" ? seedingDownloads : activeDownloads;
+  const base = view === "seeding" ? seedingDownloads : view === "finishing" ? finishingDownloads : activeDownloads;
   const typeCount = (k: MediaFilter) => (k === "all" ? base.length : base.filter((d) => (d.media_type ?? "movie") === k).length);
   // With the problems filter on, the counts are of problems, so the pills say where they are.
   const viewCount = (l: ActivityDownload[]) => (problemsOnly ? l.filter(isProblem).length : l.length);
@@ -306,7 +313,7 @@ export function QueuePanel() {
 
       {/* Sub-view + search + sort, then the type filter */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SubPills views={QUEUE_VIEWS} labels={{ downloading: "Downloading", seeding: "Seeding" }} counts={{ downloading: viewCount(activeDownloads), seeding: viewCount(seedingDownloads) }} value={view} onChange={setView} label="Queue views" />
+        <SubPills views={QUEUE_VIEWS} labels={{ downloading: "Downloading", finishing: "Finishing", seeding: "Seeding" }} counts={{ downloading: viewCount(activeDownloads), finishing: viewCount(finishingDownloads), seeding: viewCount(seedingDownloads) }} value={view} onChange={setView} label="Queue views" />
         <div className="ml-auto flex items-center gap-2">
           <SearchBox value={query} onChange={setQuery} />
           {view === "downloading" && (
@@ -351,8 +358,14 @@ export function QueuePanel() {
             {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} onNote={flash} />)}
           </div>
         )
+      ) : view === "finishing" ? (
+        shownFinishing.length === 0 ? <Empty>{problemsOnly ? "No finished download needs a look right now." : "Nothing waiting to import. Finished downloads pass through here on their way into the library."}</Empty> : (
+          <div className="flex flex-col gap-2">
+            {shownFinishing.map((it) => <FinishingCard key={it.hash} it={it} busy={!!busy[it.hash]} onRemoved={flash} />)}
+          </div>
+        )
       ) : (
-        shownSeeding.length === 0 ? <Empty>{problemsOnly ? "No finished download needs a look right now." : "Nothing seeding right now."}</Empty> : (
+        shownSeeding.length === 0 ? <Empty>{problemsOnly ? "No seeding download needs a look right now." : "Nothing seeding right now."}</Empty> : (
           <div className="flex flex-col gap-2">
             <SeedingSummary items={shownSeeding} />
             {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} />)}
@@ -528,6 +541,37 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
   );
 }
 
+// FinishingCard is a finished transfer that isn't in the library yet: importing, held for
+// review, an import being retried, or filed where nothing imports it. Its stage chip and
+// why line say which, so it never passes for a healthy seed.
+function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
+  const [removing, setRemoving] = useState(false);
+  const st = it.stage ? STAGE[it.stage] : STAGE.importing;
+  return (
+    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <StatusChip tone={st.tone}>{st.label}</StatusChip>
+            <TypeChip mediaType={it.media_type} />
+            <ProfileChip profile={it.quality_profile} />
+            <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
+          </div>
+          {it.why && <div className="mt-1 text-[11.5px] text-ink-dim" data-testid="stage-why">{it.why}</div>}
+        </div>
+        <div className="flex flex-none items-center gap-1">
+          {it.stage === "needs_review" && (
+            <Link to={LINKS.review} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link>
+          )}
+          <IconBtn label="Delete" tone="var(--reject)" title="Remove from the client — asks what to do with the files" disabled={busy} onClick={() => setRemoving(true)} />
+        </div>
+      </div>
+      {removing && <RemoveDownloadDialog it={it} onClose={() => setRemoving(false)} onDone={(r) => { setRemoving(false); onRemoved(removedMessage(r)); }} />}
+    </div>
+  );
+}
+
 // seedGoal computes the removal target for a seeding torrent and how far along it is.
 function seedGoal(it: ActivityDownload): { label: string; frac: number | null } {
   if (!it.seed_known) return { label: "Not managed by Arrmada — no seed rule", frac: null };
@@ -575,7 +619,10 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
         <div className="min-w-0 flex-1">
           <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? "paused" : "seeding"}</span>}
+            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : it.stage === "not_managed" ? (
+              // Nothing in Arrmada grabbed or imported it: a muted chip, no seed rule.
+              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
+            ) : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
             <TypeChip mediaType={it.media_type} />
             <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
             <span className="font-mono text-[10.5px]" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>

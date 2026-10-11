@@ -23,5 +23,6 @@ var (
 	FixRequests           = &Fix{Key: "requestsWaiting", Path: "/requests?tab=needs", Label: "Requests"}
 	FixReview             = &Fix{Key: "review", Path: "/activity/needs-you", Label: "Needs you"}
 	FixDownloadProblems   = &Fix{Key: "downloadProblems", Path: "/activity/queue?filter=problems", Label: "Queue"}
+	FixImportProblems     = &Fix{Key: "importProblems", Path: "/activity/queue?show=finishing&filter=problems", Label: "Finishing"}
 	FixDownloadsSearching = &Fix{Key: "downloadsSearching", Path: "/activity/wanted", Label: "What's searching"}
 )
