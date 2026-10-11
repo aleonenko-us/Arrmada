@@ -2180,6 +2180,15 @@ export interface ConvertUpNext {
   eta_sec?: number; nights?: number; // the time forecast: seconds, and nights of the encode hours
 }
 export interface ConvertRequest { key: string; title: string; requested_at: number }
+// GET /api/v1/convert/devices: what each Plex player did with HEVC, HEVC 10-bit and AV1 in
+// the last 90 days of recorded plays (Insights). "yes" = played as it was at least once,
+// "no" = only ever had its video transcoded, "unknown" = never played that format.
+export interface ConvertDeviceCodec { state: "yes" | "no" | "unknown"; direct: number; transcoded: number }
+export interface ConvertDevice {
+  product: string; platform: string; player: string; last_seen: number; plays: number;
+  hevc: ConvertDeviceCodec; hevc10: ConvertDeviceCodec; av1: ConvertDeviceCodec;
+}
+export interface ConvertDevices { monitoring: boolean; since: number; devices: ConvertDevice[] }
 export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;
   auto: boolean; window?: string; watching: boolean;
@@ -3122,6 +3131,7 @@ export const api = {
   // Convert
   convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string }>("/api/v1/convert/hardware"),
   convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
+  convertDevices: () => req<ConvertDevices>("/api/v1/convert/devices"),
   convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
   updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),
   convertReindex: () => req<{ started: boolean; reason?: string } & JobRef>("/api/v1/convert/reindex", { method: "POST" }),

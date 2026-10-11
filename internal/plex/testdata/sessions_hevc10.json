@@ -1,0 +1,30 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Metadata": [
+      {
+        "sessionKey": "51",
+        "ratingKey": "6001",
+        "type": "movie",
+        "title": "Dune",
+        "year": 2021,
+        "duration": 9360000,
+        "viewOffset": 60000,
+        "User": { "id": "1", "title": "Owner", "thumb": "" },
+        "Player": {
+          "address": "192.168.1.31", "device": "Roku Express", "platform": "Roku",
+          "product": "Plex for Roku", "title": "Bedroom Roku", "state": "playing", "local": true
+        },
+        "Session": { "bandwidth": 12000, "location": "lan" },
+        "TranscodeSession": { "videoDecision": "transcode", "audioDecision": "copy", "videoCodec": "h264", "audioCodec": "eac3", "width": 1920, "height": 1080 },
+        "Media": [ {
+          "videoResolution": "4k", "bitrate": "38000", "container": "mkv", "videoCodec": "hevc", "audioCodec": "eac3",
+          "Part": [ { "Stream": [
+            { "streamType": 2, "codec": "eac3", "bitDepth": "24" },
+            { "streamType": "1", "codec": "hevc", "bitDepth": "10", "profile": "main 10" }
+          ] } ]
+        } ]
+      }
+    ]
+  }
+}

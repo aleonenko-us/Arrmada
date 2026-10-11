@@ -569,6 +569,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/convert/skips", a.requireRole(auth.RoleManager, a.handleConvertSkips))
 	mux.HandleFunc("POST /api/v1/convert/skips/clear", a.requireRole(auth.RoleManager, a.handleConvertSkipsClear))
 	mux.HandleFunc("POST /api/v1/convert/blocklist/clear", a.requireRole(auth.RoleManager, a.handleConvertBlocklistClear))
+	mux.HandleFunc("GET /api/v1/convert/devices", a.requireRole(auth.RoleManager, a.handleConvertDevices))
 
 	// Insights (Tautulli replacement — Plex watch monitoring). I0: connection config + test.
 	mux.HandleFunc("GET /api/v1/insights/plex", a.requireRole(auth.RoleManager, a.handleInsightsConfig))

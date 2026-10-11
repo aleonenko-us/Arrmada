@@ -64,6 +64,19 @@ func TestFlattenHWFields(t *testing.T) {
 	}
 }
 
+// The source video's bit depth and profile come from the part's video stream (streamType
+// 1), whichever order the streams are listed in and however the numbers are encoded.
+func TestFlattenSourceBitDepth(t *testing.T) {
+	s := sessionsFrom(t, "sessions_hevc10.json")[0]
+	if s.SrcVideoBitDepth != 10 || s.SrcVideoProfile != "main 10" || s.SrcVideoCodec != "hevc" {
+		t.Errorf("source video = %d-bit %q %q", s.SrcVideoBitDepth, s.SrcVideoProfile, s.SrcVideoCodec)
+	}
+	// No streams listed: unknown, not 8-bit.
+	if d := sessionsFrom(t, "sessions_direct.json")[0]; d.SrcVideoBitDepth != 0 || d.SrcVideoProfile != "" {
+		t.Errorf("no streams: %d %q", d.SrcVideoBitDepth, d.SrcVideoProfile)
+	}
+}
+
 func TestFlexStr(t *testing.T) {
 	for in, want := range map[string]bool{
 		`"qsv"`: true, `"vaapi"`: true, `true`: true, `1`: true, `"1"`: true,

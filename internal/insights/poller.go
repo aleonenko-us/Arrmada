@@ -259,6 +259,7 @@ func (ls *liveSession) record(now time.Time) sessionRecord {
 		StartedAt: ls.started.Unix(), StoppedAt: now.Unix(), PausedMS: ls.pausedMS,
 		ViewOffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
 		VideoSrc: mediaLabel(p.SrcVideoCodec, p.SrcResolution), AudioSrc: strings.ToUpper(p.SrcAudioCodec),
+		VideoSrcBitDepth: p.SrcVideoBitDepth, VideoSrcProfile: p.SrcVideoProfile,
 		// hw_transcode records a hardware encode Plex actually used. Rows written before
 		// PLEX-09 stored "hardware was requested" instead; the History view says so.
 		ContainerSrc: strings.ToUpper(p.SrcContainer), HWTranscode: p.HWEncode, BufferCount: ls.bufCount,

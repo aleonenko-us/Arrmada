@@ -4,6 +4,8 @@ import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
 import { api, type ConvertSettings as Settings } from "../../lib/api";
 import { backlogLine } from "../../lib/convertForecast";
+import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices } from "../../components/convert/DevicesPanel";
+import { useConfirm } from "../../ui";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
@@ -65,7 +67,27 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     validate: (v) => ((v.hours_start === "") !== (v.hours_end === "") ? "Set both a start and an end time." : null),
   });
   const pause = useAutoSave(s.pause_watching, put("pause_watching"));
-  const av1 = useAutoSave(s.allow_av1, put("allow_av1"));
+  const av1Save = useAutoSave(s.allow_av1, put("allow_av1"));
+  const devices = useConvertDevices();
+  const confirm = useConfirm();
+  // Turning AV1 on asks first when a device seen lately had AV1 transcoded: the plays are
+  // the evidence, not the owner's memory of every TV in the house.
+  const av1: AutoSave<boolean> = {
+    ...av1Save,
+    commit: async (v) => {
+      const on = v ?? av1Save.value;
+      const risky = transcodingDevices(devices, "av1");
+      if (on && !s.allow_av1 && risky.length > 0) {
+        const ok = await confirm({
+          title: "Allow AV1?",
+          body: transcodedSentence(risky, "av1"),
+          confirmLabel: "Allow AV1 anyway",
+        });
+        if (!ok) return false;
+      }
+      return av1Save.commit(v);
+    },
+  };
   const gpu = useAutoSave(s.use_gpu, put("use_gpu"));
   const crop = useAutoSave(s.crop, put("crop"));
   const audioLangs = useAutoSave(s.keep_audio_langs, put("keep_audio_langs"));
@@ -146,7 +168,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
-      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
+      <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
         {s.has_gpu && (
@@ -156,6 +178,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <Toggle save={crop} label="Remove black bars"
           hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
         {!s.hdr10plus_tool && <p className="text-[11px]" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
+        <DevicesPanel data={devices} />
       </Section>
 
       <Section title="Audio & subtitles" desc="Tracks you don't keep are removed while converting — or on their own, which only copies the file (no re-encode). Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through untouched.">
