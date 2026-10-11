@@ -140,6 +140,8 @@ type api struct {
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
+	// wanted caches Activity → Wanted's answer (wantedcache.go).
+	wanted wantedCache
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA

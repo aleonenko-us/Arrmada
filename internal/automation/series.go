@@ -1317,6 +1317,7 @@ func aired(date string) bool {
 
 // recordSeriesGrab tracks a series grab for seed cleanup (media_type=series).
 func (c *Coordinator) recordSeriesGrab(ctx context.Context, seriesID int64, title, indexer, profile, infoHash string) {
+	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// The stall window comes from the profile the grab ran under, so a deleted profile
 	// must mean the default here too — not 0, which switches fail-over off.

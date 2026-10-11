@@ -141,8 +141,8 @@ function ProfileChip({ profile }: { profile: string }) {
 
 // How often the Wanted tab refreshes on its own. It reads the search history, so it
 // isn't refreshed with the queue; a finished search, a grab or an import announced over
-// the socket refreshes it sooner.
-const WANTED_POLL_MS = 30_000;
+// the socket refreshes it sooner, so this is only the backstop for a dropped event.
+const WANTED_POLL_MS = 120_000;
 const WANTED_TOPICS = ["search.finished", "release.grabbed", "download.imported", "series.imported", "series.searched"];
 // What changes the queue's rows (beyond the bars, which queue.progress moves in place) —
 // including a finished download moving from Finishing to Seeding once any importer has
@@ -414,7 +414,7 @@ export function WantedPanel() {
 
   // Its own, slower read, refreshed by events. A sweep finishes searches in bursts: one
   // refresh for the lot, a moment after.
-  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
+  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 3000 });
   const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
   const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 

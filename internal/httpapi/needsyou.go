@@ -141,12 +141,23 @@ func (a *api) handleSetCategory(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "moved", "category": req.Category})
 }
 
-// queueChanged tells open pages a torrent changed after an action here, without waiting
-// for the progress loop's next read (which only runs while a staff page is connected,
-// and only sees phase changes).
+// queueChanged tells open pages (every tab, not only the one that acted) that torrents
+// changed after an action, without waiting for the progress loop's next read, which sees
+// only phase changes. No hashes: something changed (Resume all), refetch the lists.
 func (a *api) queueChanged(hashes ...string) {
-	if a.deps.Bus == nil || len(hashes) == 0 {
+	if a.deps.Bus == nil {
 		return
 	}
+	if hashes == nil {
+		hashes = []string{}
+	}
 	a.deps.Bus.Publish(download.TopicQueueChanged, download.QueueDelta{Added: []string{}, Removed: []string{}, Changed: hashes})
+}
+
+// hashesOf is a pause or resume target as queue.changed hashes: none for "all".
+func hashesOf(hash string) []string {
+	if hash == "all" {
+		return nil
+	}
+	return []string{strings.ToLower(hash)}
 }

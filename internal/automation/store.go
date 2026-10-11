@@ -225,6 +225,7 @@ func (c *Coordinator) recordGrab(ctx context.Context, movieID, versionID int64, 
 // The stall check then waits for that track to hold a different file before calling the
 // grab imported, instead of taking the old file for the new one.
 func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionID int64, title, indexer, profile string, stallMinutes int, infoHash, replacesPath string) {
+	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	c.noteHashless("movie", title, infoHash)
 	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
@@ -284,6 +285,7 @@ func (c *Coordinator) markGrabManual(ctx context.Context, infoHash string) {
 // release and which part of the show it was chosen for. The import gate is skipped only for
 // episodes inside that scope.
 func (c *Coordinator) markGrab(ctx context.Context, infoHash string, manual bool, scope GrabScope) {
+	defer c.grabsChanged()
 	if infoHash == "" {
 		return
 	}
@@ -374,6 +376,7 @@ func (c *Coordinator) pendingSeriesGrabTitles(ctx context.Context, seriesID int6
 
 // setGrabStatus moves one grab to status (a grabStatus* word).
 func (c *Coordinator) setGrabStatus(ctx context.Context, id int64, status string) {
+	defer c.grabsChanged()
 	_, _ = c.db.ExecContext(ctx, `UPDATE grabs SET status = ? WHERE id = ?`, status, id)
 }
 
@@ -414,6 +417,7 @@ func scanGrab(row interface{ Scan(...any) error }) (grab, error) {
 // A grab already closed out is left alone: an imported grab mustn't be dragged back to
 // 'held', and a seeded one is history.
 func (c *Coordinator) setGrabStatusByHash(ctx context.Context, hash, name, mediaType, to string) []grab {
+	defer c.grabsChanged()
 	var moved []grab
 	if hash != "" {
 		hits, err := c.grabsWhere(ctx, inFlightWhere+` AND info_hash != '' AND lower(info_hash) = lower(?)`, hash)
@@ -465,6 +469,7 @@ func (c *Coordinator) setGrabStatusByHash(ctx context.Context, hash, name, media
 // fixed. A grab that matches no release name here is left pending; DetectStalled
 // flips it via movieHasFileFor once its own version gains a file.
 func (c *Coordinator) markGrabImportedForMovie(ctx context.Context, movieID int64, releaseName string) {
+	defer c.grabsChanged()
 	rows, err := c.db.QueryContext(ctx,
 		`SELECT id, title FROM grabs WHERE movie_id = ? AND media_type = 'movie' AND `+inFlightWhere, movieID)
 	if err != nil {
@@ -492,6 +497,7 @@ func (c *Coordinator) markGrabImportedForMovie(ctx context.Context, movieID int6
 // client. Reports whether a row matched; rows without a hash need the name fallback
 // (markGrabImportedForMovie), which misses prettified tracker titles.
 func (c *Coordinator) markMovieGrabImportedByHash(ctx context.Context, movieID int64, infoHash string) bool {
+	defer c.grabsChanged()
 	if infoHash == "" {
 		return false
 	}
@@ -535,6 +541,7 @@ func (c *Coordinator) markSeriesGrabImported(ctx context.Context, seriesID int64
 // setSeriesGrabStatus finds the grab a download came from — by info hash first, since a
 // name survives the round trip through the client only by luck — and sets its status.
 func (c *Coordinator) setSeriesGrabStatus(ctx context.Context, seriesID int64, infoHash, releaseName, status string) {
+	defer c.grabsChanged()
 	rows, err := c.db.QueryContext(ctx,
 		`SELECT id, title, info_hash FROM grabs WHERE movie_id = ? AND media_type = 'series' AND `+inFlightWhere, seriesID)
 	if err != nil {
@@ -626,6 +633,7 @@ func (c *Coordinator) blockedSetMusic(ctx context.Context, albumID int64) (map[s
 // removal decisions key on, and overwriting a good hash would point a rule at the wrong
 // torrent.
 func (c *Coordinator) setGrabInfoHash(ctx context.Context, id int64, hash string) error {
+	defer c.grabsChanged()
 	_, err := c.db.ExecContext(ctx,
 		`UPDATE grabs SET info_hash = ? WHERE id = ? AND (info_hash IS NULL OR info_hash = '')`,
 		hash, id)

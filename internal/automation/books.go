@@ -1855,6 +1855,7 @@ func dropPendingBook(releases []indexer.Release, pending map[string]bool) []inde
 
 // recordBookGrab tracks a book grab for seed cleanup (media_type=book, movie_id=bookID).
 func (c *Coordinator) recordBookGrab(ctx context.Context, bookID, versionID int64, title, indexer, profile, infoHash string) {
+	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// Recorded under the profile the book actually runs under, so a deleted one still
 	// gets the default's stall window.
@@ -1890,6 +1891,7 @@ func (c *Coordinator) recordBookGrab(ctx context.Context, bookID, versionID int6
 // series path fixed. A grab matching neither hash nor name stays pending;
 // detectStalledBook resolves it once its own edition lands.
 func (c *Coordinator) markBookGrabImported(ctx context.Context, bookID int64, infoHash, downloadName string) {
+	defer c.grabsChanged()
 	rows, err := c.db.QueryContext(ctx,
 		`SELECT id, title, info_hash FROM grabs WHERE movie_id = ? AND media_type = 'book' AND `+inFlightWhere, bookID)
 	if err != nil {

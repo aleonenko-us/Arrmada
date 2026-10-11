@@ -25,7 +25,7 @@ import { hwBadge } from "../lib/plexHw";
 // starting refreshes it at once; otherwise every 15 s keeps Plex's now-playing and the
 // transfer speeds honest (Plex has no event for a stream's progress).
 const REFRESH_MS = 15_000;
-const REFRESH_TOPICS = [QUEUE_CHANGED, "release.grabbed", "download.imported", "library.scanned", "plex.stream.started"];
+const REFRESH_TOPICS = [QUEUE_CHANGED, "release.grabbed", "*.imported", "library.scanned", "plex.stream.started"];
 
 export function Dashboard() {
   const [status, setStatus] = useState<Status | null>(null);

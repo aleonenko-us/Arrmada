@@ -59,8 +59,12 @@ func (a *api) readUnmanaged(ctx context.Context) (unmanagedState, error) {
 		return unmanagedState{}, err
 	}
 	imported := map[string]bool{}
-	if a.deps.Library != nil {
-		if imported, err = a.deps.Library.ImportedHashes(ctx); err != nil {
+	if a.deps.Library != nil && len(snap.Items) > 0 {
+		hashes := make([]string, 0, len(snap.Items))
+		for _, it := range snap.Items {
+			hashes = append(hashes, it.Hash)
+		}
+		if imported, err = a.deps.Library.ImportedAmong(ctx, hashes); err != nil {
 			return unmanagedState{}, err
 		}
 	}

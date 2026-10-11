@@ -63,6 +63,33 @@ type transferCache struct {
 	reqsLoaded bool
 	// ignoreMu makes reading and rewriting the ignored-downloads list one step (unmanaged.go).
 	ignoreMu sync.Mutex
+	// profiles is each quality-profile reference's name, as last looked up.
+	profiles map[string]profileEntry
+}
+
+type profileEntry struct {
+	name string
+	at   time.Time
+}
+
+// cachedProfileName is profileName for the downloads feed, reused for titleCardTTL: a
+// renamed profile shows its new name within a couple of minutes.
+func (a *api) cachedProfileName(ctx context.Context, ref string, now time.Time) string {
+	c := &a.transfers
+	c.mu.Lock()
+	p, ok := c.profiles[ref]
+	c.mu.Unlock()
+	if ok && now.Sub(p.at) < titleCardTTL {
+		return p.name
+	}
+	name := a.profileName(ctx, ref)
+	c.mu.Lock()
+	if c.profiles == nil {
+		c.profiles = map[string]profileEntry{}
+	}
+	c.profiles[ref] = profileEntry{name: name, at: now}
+	c.mu.Unlock()
+	return name
 }
 
 func titleKey(kind string, id int64) string { return kind + ":" + strconv.FormatInt(id, 10) }

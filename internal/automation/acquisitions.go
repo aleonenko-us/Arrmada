@@ -441,6 +441,7 @@ func (c *Coordinator) ReconcileAcquisitions(ctx context.Context) (int, error) {
 	if len(changed) == 0 {
 		return 0, nil
 	}
+	defer c.grabsChanged()
 	err = store.WithTx(ctx, c.db, func(tx *sql.Tx) error {
 		for _, r := range changed {
 			if _, err := tx.ExecContext(ctx, `UPDATE grabs SET phase = ?, progress = ?, progress_at = ?,
@@ -460,6 +461,7 @@ func (c *Coordinator) ReconcileAcquisitions(ctx context.Context) (int, error) {
 // noteImportError records why a download couldn't be imported on its grab, by hash, so
 // the record says it rather than only the log.
 func (c *Coordinator) noteImportError(ctx context.Context, hash, reason string) {
+	defer c.grabsChanged()
 	if hash == "" || c.db == nil {
 		return
 	}
@@ -516,6 +518,7 @@ func (c *Coordinator) holdStallClock(ctx context.Context, id int64, progress flo
 }
 
 func (c *Coordinator) setStallClock(ctx context.Context, id int64, progress float64, at time.Time) {
+	defer c.grabsChanged()
 	if c.db == nil {
 		return
 	}
@@ -527,6 +530,7 @@ func (c *Coordinator) setStallClock(ctx context.Context, id int64, progress floa
 
 // markStillWaiting records that grab id came up with no replacement just now.
 func (c *Coordinator) markStillWaiting(ctx context.Context, id int64) {
+	defer c.grabsChanged()
 	if c.db == nil {
 		return
 	}
@@ -617,6 +621,7 @@ func scopeSeason(scope string) (season int, whole bool) {
 // recordAcqScope stamps what a just-recorded grab was for onto its row (the newest one
 // for its hash, or the newest hashless row of that title).
 func (c *Coordinator) recordAcqScope(ctx context.Context, mediaType string, itemID int64, title, infoHash, scope string) {
+	defer c.grabsChanged()
 	if scope == "" || c.db == nil {
 		return
 	}

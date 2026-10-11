@@ -146,6 +146,8 @@ type Coordinator struct {
 	// importNotes is what the series import sweep found that the feed reports: packs
 	// whose files keep failing to place, and misfiled TV downloads (importattention.go).
 	importNotes importNotes
+	// feed caches what the Activity queue reads on every refresh (feedcache.go).
+	feed feedCache
 }
 
 // SetOutbox installs where series and book imports queue their side effects.
