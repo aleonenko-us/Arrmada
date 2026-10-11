@@ -29,10 +29,6 @@ import (
 // run it can wake the array, so keep it away from prime viewing hours.
 const defaultScanAt = "03:00"
 
-// encodeNice is the scheduling priority encodes run at. 19 is the lowest — encoding is bulk
-// background work that should yield instantly to Plex or anything else the user notices.
-const encodeNice = 19
-
 // maxJobHistory caps how many FINISHED jobs are kept for the activity list.
 const maxJobHistory = 200
 
@@ -92,6 +88,7 @@ type Job struct {
 
 	cancel    context.CancelFunc // set while running, so the encode can be stopped mid-flight
 	cancelled bool
+	lane      bool         // running on the request lane (runner_lane.go)
 	procs     map[int]bool // process groups currently running for this job (for pausing)
 	rec       *jobRecord   // what the ledger keeps about it (see history.go)
 }
@@ -112,6 +109,9 @@ type Service struct {
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
 	noNumaPools bool
+	// vmaf is set when this ffmpeg has libvmaf (detected at startup): VMAF is then measured
+	// alongside SSIM, advisory only.
+	vmaf bool
 
 	encoders []Encoder
 	failures *failureStore // repeated-failure tracking
@@ -134,6 +134,8 @@ type Service struct {
 	holdMu    sync.Mutex
 	// libraryChanged hears about the folder of each swapped-in file (Plex's scanner).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
+	// prefersDV asks whether a title's quality profile wants Dolby Vision (dvpolicy.go).
+	prefersDV atomic.Pointer[profilePrefersDV]
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool
@@ -149,7 +151,11 @@ type Service struct {
 	jobs    []*Job
 	nextID  int64
 	pending map[string]*Job // item key → its running job, so a file is never converted twice at once
-	wake    chan struct{}   // nudges idle workers (a request arrived, a setting changed)
+
+	// wake is closed (and replaced) by wakeUp to nudge EVERY idle worker at once — a request
+	// arrived, a setting changed. Guarded by wakeMu, which is never taken while holding mu.
+	wakeMu sync.Mutex
+	wake   chan struct{}
 
 	reclaimMu sync.Mutex // guards the reclaimed-bytes read-modify-write across workers
 
@@ -242,7 +248,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		index: &libraryIndex{db: db}, skips: &skipStore{db: db}, requests: &requestStore{db: db},
 		choices: &choiceStore{db: db}, measured: &measureStore{db: db}, history: &historyStore{db: db},
 		pending: map[string]*Job{},
-		wake:    make(chan struct{}, 1),
+		wake:    make(chan struct{}),
 	}
 	s.logBuf = s.logs.recent(context.Background(), maxLogLines) // restore the log after a restart
 	s.hdr10plusTool, _ = exec.LookPath("hdr10plus_tool")
@@ -256,7 +262,8 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 			working = append(working, e.Name)
 		}
 	}
-	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "")
+	s.vmaf = hasLibVMAF(context.Background(), ffmpeg)
+	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "libvmaf", s.vmaf)
 	return s
 }
 

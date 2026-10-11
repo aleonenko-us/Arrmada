@@ -137,7 +137,10 @@ func (a *api) handleConvertRequest(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, status, err.Error())
 		return
 	}
-	a.writeJSON(w, http.StatusAccepted, map[string]any{"requested": req.Key})
+	// Where it stands, so the page can say "starting now" or "#2 — after X" truthfully.
+	place := a.deps.Convert.RequestPlace(r.Context(), req.Key)
+	a.writeJSON(w, http.StatusAccepted, map[string]any{"requested": req.Key, "starting": place.Starting,
+		"position": place.Position, "ahead": place.Ahead, "reason": place.Reason})
 }
 
 // handleConvertRequestCancel — DELETE /api/v1/convert/requests?key= (or ?all=1)

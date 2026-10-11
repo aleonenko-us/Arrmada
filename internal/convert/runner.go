@@ -31,11 +31,17 @@ func (s *Service) Run(ctx context.Context) {
 		s.log.Info("convert: closed ledger rows interrupted by the restart", "count", n)
 	}
 	s.log.Info("convert: runner started", "workers", s.workerCount(ctx))
+	if _, saved := s.settings.Lookup(keyCrop); !saved {
+		// It used to default to on; an install that never chose keeps no crop now.
+		s.log.Info("convert: black-bar crop is now off unless you turn it on in Convert's settings")
+	}
 	done := make(chan struct{})
 	go s.pauseLoop(ctx, done)
 	// Every possible worker exists; the ones above the configured count just wait. That
 	// makes "conversions at once" take effect immediately instead of after a restart.
-	for i := 0; i < maxWorkers; i++ {
+	// One more is the request lane (runner_lane.go): a file you asked for never waits
+	// behind an automatic conversion frozen outside your hours.
+	for i := 0; i <= requestLane; i++ {
 		go s.worker(ctx, i)
 	}
 	<-ctx.Done()
@@ -52,29 +58,30 @@ func (s *Service) worker(ctx context.Context, idx int) {
 	}
 }
 
-// wakeUp nudges idle workers to look for work now (a request arrived, a setting changed).
-func (s *Service) wakeUp() {
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
-}
-
-// nextJob blocks until there's something to convert, returning nil when ctx ends.
+// nextJob blocks until there's something to convert, returning nil when ctx ends. The
+// request lane only ever takes requests, and only when the normal slots are held up.
 func (s *Service) nextJob(ctx context.Context, idx int) *Job {
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if idx < s.workerCount(ctx) {
-			if job := s.pickJob(ctx); job != nil {
-				return job
-			}
+		// Taken before looking, so a wake that lands between the look and the wait isn't
+		// missed.
+		wake := s.wakeCh()
+		var job *Job
+		switch {
+		case idx == requestLane:
+			job = s.pickRequest(ctx)
+		case idx < s.workerCount(ctx):
+			job = s.pickJob(ctx)
+		}
+		if job != nil {
+			return job
 		}
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-s.wake:
+		case <-wake:
 		case <-time.After(2 * time.Minute):
 		}
 	}
@@ -99,8 +106,9 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 			return job
 		}
 	}
-	// 2. The runner's own picks, inside the hours.
-	if !p.auto || !windowAllows(p.start, p.end) {
+	// 2. The runner's own picks, inside the hours — and not while a requested file runs on
+	// the request lane: it would only start to wait for it.
+	if !p.auto || !windowAllows(p.start, p.end) || s.laneBusy() {
 		return nil
 	}
 	waiting := s.skips.waitingKeys(ctx)
@@ -133,9 +141,15 @@ func (s *Service) claim(it item, title string, requested bool) *Job {
 
 // runJob wraps process() with per-job cancellation.
 func (s *Service) runJob(ctx context.Context, job *Job) {
-	jobCtx, cancel := context.WithCancel(ctx)
+	jobCtx, cancel := context.WithCancel(withJob(ctx, job)) // every tool below registers with the job
 	defer cancel()
 	s.update(job, func(j *Job) { j.cancel = cancel })
+	if job.lane {
+		// Freeze the automatic conversion it jumped ahead of now, not at the next tick —
+		// and let it carry on as soon as this one ends.
+		s.applyPauses(ctx)
+		defer s.applyPauses(ctx)
+	}
 	// A panic in one file's conversion fails that job (below, through finish, like any
 	// other failure) instead of killing the worker — or, before, the whole app mid-encode.
 	panicErr := safego.Call(s.log, "convert: "+job.Title, func() error { s.process(jobCtx, job); return nil })
@@ -181,6 +195,8 @@ type autoCand struct {
 
 	// needScratch is the scratch space this file will need, for the Settings indicator.
 	needScratch int64
+	// effects is what converting it loses, for the Switch-on summary (autopreview.go).
+	effects candEffects
 }
 
 // candScratch is the scratch space a candidate will need, worked out the way the job will
@@ -271,7 +287,7 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		c := autoCand{Key: ItemKey(mediaType, movieID, versionID, seriesID, season, episode),
 			Title: trackTitle(title, label, versionID), Kind: mediaType, VersionID: versionID, VersionLabel: label,
 			Video: n.Video, Size: size, Tracks: trackSummary(&mi, plan), Current: strings.ToUpper(mi.VideoCodec),
-			needScratch: candScratch(mi, plan, size)}
+			needScratch: candScratch(mi, plan, size), effects: effectsOf(&mi, plan, n, size, seriesID, season)}
 		if n.Video {
 			c.Codec = plan.VideoCodec
 		}
@@ -424,17 +440,26 @@ func (s *Service) Status(ctx context.Context) Status {
 	}
 	s.mu.Lock()
 	running := map[string]bool{}
-	active, paused := 0, ""
+	active, pausedN, paused := 0, 0, ""
 	for _, j := range s.jobs {
 		if activeState(j.State) {
 			running[j.Key] = true
 			active++
 			if j.Paused != "" {
+				pausedN++
 				paused = j.Paused
 			}
 		}
 	}
 	s.mu.Unlock()
+	// A request that's already converting is in Now, not waiting in Up next.
+	waitingReqs := st.Requests[:0:0]
+	for _, r := range st.Requests {
+		if !running[r.Key] {
+			waitingReqs = append(waitingReqs, r)
+		}
+	}
+	st.Requests = waitingReqs
 	st.UpNext = []autoCand{}
 	for _, c := range s.autoCandidates(ctx, p) {
 		if waiting[c.Key] || blocked[c.Key] || running[c.Key] || requested[c.Key] {
@@ -448,8 +473,13 @@ func (s *Service) Status(ctx context.Context) Status {
 	inHours := windowAllows(p.start, p.end)
 	watchBlock := p.pauseWatching && st.Watching
 	switch {
-	case active > 0 && paused != "":
+	case active > 0 && pausedN == active:
 		st.State, st.Message = "paused", "Paused — "+paused
+	case active > 0 && pausedN > 0:
+		// A requested file running while an automatic one waits (or is outside its hours)
+		// is still working: say both.
+		n := active - pausedN
+		st.State, st.Message = "working", fmt.Sprintf("Converting %d file%s · %d paused — %s", n, plural(n), pausedN, paused)
 	case active > 0:
 		st.State, st.Message = "working", fmt.Sprintf("Converting %d file%s", active, plural(active))
 	case watchBlock && (len(st.Requests) > 0 || (p.auto && inHours && st.Remaining > 0)):
@@ -474,10 +504,14 @@ func (s *Service) Status(ctx context.Context) Status {
 
 // --- pausing -----------------------------------------------------------------------------
 
-// pauseReason says why a job should be paused right now, or "" if it may run.
-func (s *Service) pauseReason(job *Job, p prefs, watching bool) string {
+// pauseReason says why a job should be paused right now, or "" if it may run. laneBusy says
+// a requested file is running on the request lane: an automatic job waits for it.
+func (s *Service) pauseReason(job *Job, p prefs, watching, laneBusy bool) string {
 	if watching {
 		return "someone is watching Plex"
+	}
+	if !job.Requested && laneBusy {
+		return laneWaitReason
 	}
 	if !job.Requested && !windowAllows(p.start, p.end) {
 		return fmt.Sprintf("outside your encode hours — resumes at %s", p.start)
@@ -532,11 +566,12 @@ func (s *Service) applyPauses(ctx context.Context) {
 	watching := p.pauseWatching && s.isWatching()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	laneBusy := s.laneBusyLocked()
 	for _, j := range s.jobs {
 		if !activeState(j.State) || j.cancelled {
 			continue
 		}
-		reason := s.pauseReason(j, p, watching)
+		reason := s.pauseReason(j, p, watching, laneBusy)
 		if reason == j.Paused {
 			continue
 		}
@@ -588,7 +623,7 @@ func (s *Service) untrackProc(job *Job, pid int) {
 func (s *Service) waitAllowed(ctx context.Context, job *Job) bool {
 	for {
 		p := s.prefs(ctx)
-		reason := s.pauseReason(job, p, p.pauseWatching && s.isWatching())
+		reason := s.pauseReason(job, p, p.pauseWatching && s.isWatching(), s.laneBusy())
 		if reason == "" {
 			s.update(job, func(j *Job) { j.Paused = "" })
 			return true

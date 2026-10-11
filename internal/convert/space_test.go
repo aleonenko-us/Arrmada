@@ -40,7 +40,22 @@ func newSpaceRig(t *testing.T) *spaceRig {
 	s.scratchDir, s.recycleDir = r.scratch, r.recycle
 	// Nothing on the PATH by these names: any step that shells out fails instead of running.
 	s.ffmpeg, s.ffprobe = filepath.Join(dir, "no-ffmpeg"), filepath.Join(dir, "no-ffprobe")
+	stubDecode(t, decodeResult{frames: filmFrames}, nil)
 	return r
+}
+
+// filmFrames is how many frames film()'s two hours at 23.976 fps hold.
+var filmFrames = func() int64 { secs, fps := 7200.0, 23.976; return int64(secs*fps + 0.5) }()
+
+// stubDecode makes the full-decode check report res and err without ffmpeg. The rigs' files
+// are all film()s, so by default the check finds exactly their frames, cleanly.
+func stubDecode(t *testing.T, res decodeResult, err error) {
+	t.Helper()
+	old := decodeFn
+	decodeFn = func(*Service, context.Context, *Job, string, *MediaInfo, string) (decodeResult, error) {
+		return res, err
+	}
+	t.Cleanup(func() { decodeFn = old })
 }
 
 // addMovie writes a small stand-in file to the library and records it as the movie's file.

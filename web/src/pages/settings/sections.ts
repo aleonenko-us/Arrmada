@@ -74,7 +74,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Upgrades per sweep", keywords: "upgrade limit budget sweep quality profile replace better release grabs at once", section: "downloads", anchor: "upgrade-limit" },
   { label: "Recycle bin", keywords: "trash deleted restore empty retention size cap purge undo", section: "downloads", anchor: "recycle-bin" },
   { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles", section: "tools", anchor: "subtitles" },
-  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores undo revert originals hold keep days budget", section: "tools", anchor: "convert" },
+  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores dolby vision dv hdr undo revert originals hold keep days budget", section: "tools", anchor: "convert" },
   { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
   { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },

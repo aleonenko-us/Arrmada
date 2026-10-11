@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // fileRef is everything a job needs to know about its file, resolved once up front: where
@@ -455,5 +456,5 @@ func (s *Service) ffmpegExtract(ctx context.Context, path string, picks []extrac
 	for _, p := range picks {
 		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", p.Path)
 	}
-	return exec.CommandContext(ctx, s.ffmpeg, args...).Run()
+	return toolrun.Command(ctx, toolrun.Background, s.ffmpeg, args...).Run()
 }

@@ -399,3 +399,26 @@ func TestConversionNeverLandsOnAnotherVersionsFile(t *testing.T) {
 		t.Fatalf("records changed: version %q, movie %q", vPath, mPath)
 	}
 }
+
+// The plan card opens the version it was asked for, not whichever of the film's files was
+// indexed last.
+func TestPlanViewForVersion(t *testing.T) {
+	ctx := context.Background()
+	r := newSpaceRig(t)
+	def := r.addMovie(t, 1, "Film", 1000)
+	ver := r.addVersion(t, 1, 2, "4K Remux", "Film - 4K Remux.mkv", 3000, "x")
+	r.cacheProbe(t, def, film("hevc", 1920, 1080, 6000, aud("eac3", "eng", 6)))
+	r.cacheProbe(t, ver, film("h264", 3840, 2160, 85000, aud("truehd", "eng", 8)))
+	if err := r.IndexMovie(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	for key, codec := range map[string]string{"movie:1": "HEVC", "movie:1:v:2": "H264"} {
+		v, err := r.PlanView(ctx, key)
+		if err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		if v.Key != key || v.Video.FromCodec != codec {
+			t.Errorf("%s: plan for %s from %s", key, v.Key, v.Video.FromCodec)
+		}
+	}
+}

@@ -552,6 +552,9 @@ type MediaStats struct {
 	HDR10Plus   int `json:"hdr10_plus"`
 	DolbyVision int `json:"dolby_vision"`
 	HLG         int `json:"hlg"`
+	// DolbyVisionFiles counts EVERY Dolby Vision file the Dolby Vision choice applies to,
+	// convertible or not (profile 5 never converts, so it isn't one of them).
+	DolbyVisionFiles int `json:"dolby_vision_files"`
 
 	H264  int `json:"h264"`
 	HEVC  int `json:"hevc"`
@@ -653,6 +656,10 @@ func (s *Service) computeLibraryStats(ctx context.Context) (*LibraryStats, error
 		per := &out.Movies
 		if mediaType == "episode" {
 			per = &out.TV
+		}
+		if probed && mi.HDR == "Dolby Vision" && !mi.DVUnconvertible() {
+			per.DolbyVisionFiles++
+			out.Total.DolbyVisionFiles++
 		}
 		per.add(codec, size, est, convertible && !permaSkipped)
 		out.Total.add(codec, size, est, convertible && !permaSkipped)

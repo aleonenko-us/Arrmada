@@ -6,6 +6,7 @@ import { api, type ConvertHoldCheck, type ConvertSettings as Settings } from "..
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
+import { SwitchOnDialog } from "../convert/ConfirmConvert";
 
 // Settings → Subtitles & Convert → Convert: when Convert runs, what it converts to, which
 // tracks it keeps, and where it works. It used to be the Convert page's Settings tab; that
@@ -59,6 +60,15 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   // One hook per control: each shows its own Saving… / Saved ✓ / error.
   const put = <K extends keyof Settings>(k: K) => (v: Settings[K]) => commit({ [k]: v } as Partial<Settings>);
   const auto = useAutoSave(s.auto, put("auto"));
+  // Switching on asks first, with what it will do across the library; off saves at once.
+  const [askSwitchOn, setAskSwitchOn] = useState(false);
+  const autoSwitch: AutoSave<boolean> = {
+    ...auto,
+    commit: async (on) => {
+      if (on === true && !auto.value) { setAskSwitchOn(true); return false; }
+      return auto.commit(on);
+    },
+  };
   const hours = useAutoSave<Hours>({ hours_start: s.hours_start, hours_end: s.hours_end }, (v) => commit(v), {
     equal: (a, b) => a.hours_start === b.hours_start && a.hours_end === b.hours_end,
     validate: (v) => ((v.hours_start === "") !== (v.hours_end === "") ? "Set both a start and an end time." : null),
@@ -67,6 +77,10 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   const av1 = useAutoSave(s.allow_av1, put("allow_av1"));
   const gpu = useAutoSave(s.use_gpu, put("use_gpu"));
   const crop = useAutoSave(s.crop, put("crop"));
+  const dolbyVision = useAutoSave(s.dolby_vision, put("dolby_vision"), { keepOnError: false });
+  // How many files the Dolby Vision choice applies to, from the library stats.
+  const [dvFiles, setDvFiles] = useState<number | null>(null);
+  useEffect(() => { api.convertStats().then((st) => setDvFiles(st.total.dolby_vision_files ?? 0)).catch(() => {}); }, []);
   const audioLangs = useAutoSave(s.keep_audio_langs, put("keep_audio_langs"));
   const origLang = useAutoSave(s.keep_original_lang, put("keep_original_lang"));
   const commentary = useAutoSave(s.drop_commentary, put("drop_commentary"));
@@ -122,8 +136,14 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   return (
     <div className="flex flex-col gap-4">
       <Section title="Automatic conversion">
-        <Toggle save={auto} label="Convert my library automatically"
-          hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library run straight away either way." />
+        {askSwitchOn && (
+          <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => {
+            if (!(await auto.commit(true))) throw new Error("Couldn't switch it on — try again in a moment.");
+            setAskSwitchOn(false);
+          }} />
+        )}
+        <Toggle save={autoSwitch} label="Convert my library automatically"
+          hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library start within seconds either way, after any other file you asked for — an automatic conversion in progress waits for them." />
         <Toggle
           save={scheduleSwitch}
           label="Only during set hours" hint={`A conversion still running when the hours end is paused and picks up again next time${s.can_pause ? "" : " (pausing needs the Linux container — elsewhere it finishes first)"}.`} />
@@ -143,7 +163,18 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
-      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
+      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. HDR10, HDR10+ and HLG are kept.">
+        <div role="radiogroup" aria-label="Dolby Vision files">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+            Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
+          </div>
+          <div className="mb-1.5 text-[10.5px] text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
+          {([["skip", "Leave them alone — for a Dolby Vision TV (their tracks are still tidied)"], ["drop", "Convert and drop the Dolby Vision layer (keeps HDR10)"]] as const).map(([v, label]) => (
+            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+              <input type="radio" name="dolby_vision" checked={dolbyVision.value === v} onChange={() => void dolbyVision.commit(v)} />{label}
+            </label>
+          ))}
+        </div>
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
         {s.has_gpu && (
@@ -151,7 +182,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
             hint={`Many times faster, but files come out somewhat bigger for the same quality. HDR always encodes on the CPU (the GPU can't carry its metadata).${s.gpu_does_av1 ? "" : " Your GPU has no AV1 encoder, so GPU mode converts to HEVC."}`} />
         )}
         <Toggle save={crop} label="Remove black bars"
-          hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
+          hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed, which is why this is off unless you turn it on. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
         {!s.hdr10plus_tool && <p className="text-[11px]" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
       </Section>
 

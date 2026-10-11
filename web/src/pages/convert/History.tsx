@@ -197,6 +197,7 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
           {windows.length > 0 && (
             <div><span className={lbl}>Quality</span> <span className="font-mono">
               SSIM {e.ssim_mean?.toFixed(4)} average, {e.ssim_min?.toFixed(4)} lowest · scenes {windows.map((w) => w.toFixed(3)).join(" ")}
+              {e.vmaf_mean ? ` · VMAF ${e.vmaf_mean.toFixed(1)} (for reference)` : ""}
             </span></div>
           )}
           {dropped.length > 0 && (

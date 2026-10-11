@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/parser"
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Seams over the disks and ffprobe, so tests can stage a full disk or a probed film without
@@ -227,8 +227,13 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			break // a copy can't lose quality
 		}
 		s.update(job, func(j *Job) { j.State = StateVerifying })
+		if !s.waitAllowed(ctx, job) {
+			return
+		}
 		s.event("info", fmt.Sprintf("Checking %s against the original…", job.Title))
-		sctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
+		// The 25 minutes count only while the check runs: frozen for a Plex stream, it
+		// mustn't time out and cost the encode.
+		sctx, cancel := s.pausableTimeout(ctx, job, 25*time.Minute)
 		res, err := s.computeSSIM(sctx, dst, src, plan.Crop.filter())
 		cancel()
 		rec.ssimMean, rec.ssimWindows = res.Mean, res.Scores
@@ -609,8 +614,7 @@ func (s *Service) encode(ctx context.Context, job *Job, src, dst string, mi *Med
 // job live, registering the process so it can be paused, and returning any error with a
 // tail of stderr for diagnosis.
 func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, durationSec float64) error {
-	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
-	lowPriority(cmd) // own process group: niced, paused and signalled together
+	cmd := s.tool(ctx, job, toolrun.Background, s.ffmpeg, args...) // niced, paused and killed as a group
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -627,10 +631,6 @@ func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	pid := cmd.Process.Pid
-	applyNice(pid, encodeNice)
-	s.trackProc(job, pid)
-	defer s.untrackProc(job, pid)
 	s.readProgress(job, stdout, durationSec)
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("%v: %s", err, tail.String())
@@ -723,6 +723,10 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		} else {
 			s.finish(job, StateFailed, reason+" — kept the original")
 		}
+		return
+	}
+	// Every frame of the exact file about to go in decodes cleanly, or the original stays.
+	if !s.checkBeforeSwap(ctx, job, src, dst, mi, outInfo, plan) {
 		return
 	}
 	pct := 0

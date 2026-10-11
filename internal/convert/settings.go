@@ -26,6 +26,7 @@ type Settings struct {
 	ImageSubs        string `json:"image_subs"`     // keep | when_text | remove
 	TidyTracks       bool   `json:"tidy_tracks"`    // rewrite files whose only gap is a few tracks
 	Crop             bool   `json:"crop"`           // remove black bars from re-encoded films
+	DolbyVision      string `json:"dolby_vision"`   // drop (keep the HDR10/HLG base) | skip (leave them alone)
 
 	// Undo: how long a converted original is kept in the originals hold (0 = no undo), and
 	// how much the hold may keep before conversions pause (GB; 0 = no limit).
@@ -62,7 +63,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		AllowAV1: p.allowAV1, UseGPU: p.useGPU, PauseWatching: p.pauseWatching,
 		KeepAudioLangs:   strings.Join(p.keepAudio, ", "),
 		KeepOriginalLang: p.keepOriginal, DropCommentary: p.dropCommentary,
-		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop,
+		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision,
 		HoldDays: s.holdDays(ctx), HoldMaxGB: s.holdMaxGB(ctx),
 		ScratchDir: g.Get(ctx, keyScratchDir, ""), VaapiDevice: g.Get(ctx, keyVaapiDevice, ""),
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),
@@ -87,6 +88,7 @@ type SettingsPatch struct {
 	ImageSubs        *string `json:"image_subs"`
 	TidyTracks       *bool   `json:"tidy_tracks"`
 	Crop             *bool   `json:"crop"`
+	DolbyVision      *string `json:"dolby_vision"`
 	HoldDays         *int    `json:"hold_days"`
 	HoldMaxGB        *int    `json:"hold_max_gb"`
 	ScratchDir       *string `json:"scratch_dir"`
@@ -118,6 +120,9 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 		default:
 			return Settings{}, fmt.Errorf("unknown image-subtitle choice %q", *p.ImageSubs)
 		}
+	}
+	if p.DolbyVision != nil && *p.DolbyVision != DVDrop && *p.DolbyVision != DVSkip {
+		return Settings{}, fmt.Errorf("unknown Dolby Vision choice %q", *p.DolbyVision)
 	}
 	if p.Workers != nil && (*p.Workers < 1 || *p.Workers > maxWorkers) {
 		return Settings{}, fmt.Errorf("conversions at once must be 1–%d", maxWorkers)
@@ -163,6 +168,7 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 	setS(keyImageSubs, p.ImageSubs, trim)
 	setB(keyTidyTracks, p.TidyTracks)
 	setB(keyCrop, p.Crop)
+	setS(keyDolbyVision, p.DolbyVision, trim)
 	setS(keyScratchDir, p.ScratchDir, trim)
 	setS(keyVaapiDevice, p.VaapiDevice, trim)
 	setS(keyScanAt, p.ScanAt, trim)
