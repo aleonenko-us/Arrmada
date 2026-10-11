@@ -1,6 +1,6 @@
 import type {
-  APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
-  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DeletePreview, DownloadClientList, FitCounts,
+  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
@@ -64,8 +64,65 @@ export const movies: { movies: MovieSummary[]; metadata_available: boolean; clie
       download: { state: "downloading", progress: 0.2, kind: "upgrade" } },
     { id: 2, title: "Anchor Point", sort_title: "anchor point", year: 2022, poster_url: poster(4), monitored: true, quality_profile: "hd-1080p", min_availability: "released", has_file: false, added_at: "2026-09-20T10:00:00Z" },
     { id: 3, title: "Driftwood", sort_title: "driftwood", year: 2025, poster_url: poster(5), monitored: true, quality_profile: "uhd-2160p", min_availability: "released", has_file: false, download: { state: "downloading", progress: 0.42, kind: "missing" } },
+    // A 4K Dolby Vision + Atmos file nobody monitors, and a file that's gone from disk.
+    { id: 4, title: "Lanterns Over the Northern Sea", sort_title: "lanterns over the northern sea", year: 2019, poster_url: poster(2), monitored: false, quality_profile: "uhd-2160p", min_availability: "released", has_file: true, added_at: "2026-06-01T10:00:00Z",
+      vote_average: 8.1, size_bytes: 52_000_000_000, media: { resolution: "2160p", codec: "HEVC", audio: ["TrueHD Atmos 7.1"], atmos: true, hdr: ["DV", "HDR10"], bitrate_mbps: 48.2, container: "mkv" } },
+    { id: 5, title: "Iron Tide", sort_title: "iron tide", year: 2020, poster_url: poster(6), monitored: true, quality_profile: "hd-1080p", min_availability: "released", has_file: true, file_missing: true, added_at: "2026-07-15T10:00:00Z",
+      vote_average: 6.4, size_bytes: 4_000_000_000, media: { resolution: "1080p", codec: "x265", audio: ["AAC"], bitrate_mbps: 3.2, container: "mp4" } },
   ],
 };
+
+
+// GET /api/v1/movies/{id}: a library film's detail page, from its summary. Anchor Point
+// (id 2) is monitored with no file, so its one primary action is Search.
+export function movieDetail(id: number): Movie | null {
+  const m = movies.movies.find((x) => x.id === id);
+  if (!m) return null;
+  return {
+    id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
+    quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
+    overview: "A fixture film.", download: m.download,
+    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
+    acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
+  };
+}
+
+// PUT /api/v1/movies/bulk: the mass editor's one update. A profile change finds The
+// Cartographer (id 1) too big for it; a search for Driftwood (id 3) can't be queued.
+export function bulkUpdate(body: unknown): MovieBulkUpdateReply {
+  const b = (body ?? {}) as { ids?: number[]; quality_profile?: string; search?: string };
+  const ids = b.ids ?? [];
+  const exceeds = b.quality_profile && ids.includes(1)
+    ? [{ id: 1, title: "The Cartographer", size_bytes: 9_000_000_000, reason: "Over your 20 Mbps ceiling (36.4 Mbps)", smaller: true }]
+    : [];
+  const errors = !b.quality_profile && b.search && b.search !== "none" && ids.includes(3) ? [{ id: 3, msg: "couldn't queue its search just now" }] : [];
+  const searchable = b.search && b.search !== "none" ? ids.filter((id) => id === 2).length : 0;
+  return { updated: b.quality_profile ? ids.length : 0, queued: searchable, duplicates: 0, not_monitored: 0, exceeds_profile: exceeds, errors };
+}
+
+// GET /api/v1/library/fit: the Cartographer's file is over its profile's ceiling.
+export const movieFit: { items: FitItem[] } = {
+  items: [
+    { movie_id: 1, season: 0, facts: {} as FitItem["facts"], profile: "HD 1080p", fit: { status: "over", issues: [{ kind: "bitrate", msg: "6.1 Mb/s is over the 5 Mb/s ceiling" }], window: { min: 2, max: 5 } } },
+    { movie_id: 5, season: 0, facts: {} as FitItem["facts"], profile: "HD 1080p", fit: { status: "fits", issues: [] } },
+  ],
+};
+export const seriesFit: { items: SeriesFitSummary[] } = { items: [{ series_id: 1, checked: 14, fits: 12, over: 2, under: 0, mismatch: 0 }] };
+
+// A release search with more rows than a short window shows: the modal scrolls inside.
+export const movieReleases: ReleaseList = {
+  profile: "HD 1080p",
+  why: ["1080p WEB-DL, inside the bitrate window"],
+  searched: 2,
+  releases: Array.from({ length: 12 }, (_, i) => ({
+    title: `Anchor.Point.2022.1080p.WEB-DL.H264-GRP${i}`, indexer: "Fixture Tracker", token: `tok-${i}`, size_gb: 4 + i / 2, bitrate_mbps: 5 + i / 4,
+    seeders: 40 - i, peers: 5, summary: `1080p WEB-DL · group ${i}`, eligible: true, recommended: i === 0,
+  })),
+};
+
+export const recycleMode: RecycleMode = { enabled: true, dirs: ["/media/movies/.arrmada-recycle"], retention_days: 30, max_gb: 0 };
+export const movieDeletePreview: MovieDeletePreview = { versions: [], sidecars: 0, bytes: 0, recycle: recycleMode, pending_downloads: [] };
+export const seriesDeletePreview: DeletePreview = { files: 14, sidecars: 0, bytes: 21_000_000_000, confirm_over_bytes: 500_000_000_000, recycle: recycleMode };
 
 // GET /api/v1/movies/downloads: what the grid polls while those two download.
 export const movieDownloads: { downloads: MovieDownloadRow[]; client_health: { ok: boolean } } = {
@@ -81,6 +138,11 @@ export const series: { series: Series[]; metadata_available: boolean } = {
   series: [
     { id: 1, tmdb_id: 2001, title: "Harbour Lights", year: 2024, poster_url: poster(1), network: "Fixture TV", monitored: true, monitor_new_seasons: true, quality_profile: "hd-1080p", added_at: "2026-08-01T10:00:00Z",
       stats: { episodes: 16, have_files: 14, size_bytes: 21_000_000_000, seasons: 2, missing: 2, unmonitored_missing: 3, next_air_date: "2026-10-20" } },
+    // Continuing with an episode two days out, and an ended show that's complete.
+    { id: 2, tmdb_id: 2002, title: "Saltwind", year: 2021, poster_url: poster(3), network: "Coastal", status: "Returning Series", monitored: true, monitor_new_seasons: true, quality_profile: "hd-1080p", added_at: "2026-09-25T10:00:00Z",
+      stats: { episodes: 20, have_files: 18, size_bytes: 30_000_000_000, seasons: 2, missing: 2, unmonitored_missing: 0, next_air_date: "2026-10-11" } },
+    { id: 3, tmdb_id: 2003, title: "The Lighthouse Keepers", year: 2015, poster_url: poster(4), network: "Fixture TV", status: "Ended", monitored: true, monitor_new_seasons: false, quality_profile: "hd-1080p", added_at: "2026-05-01T10:00:00Z",
+      stats: { episodes: 40, have_files: 40, size_bytes: 80_000_000_000, seasons: 4, missing: 0, unmonitored_missing: 0 } },
   ],
 };
 

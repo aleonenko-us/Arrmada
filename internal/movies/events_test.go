@@ -116,6 +116,23 @@ func TestDeletePublishesMovieDeleted(t *testing.T) {
 	}
 }
 
+// A movie whose only file is an extra track's still names a path when it's deleted, so a
+// Plex scan follows the folder it left.
+func TestDeleteNamesExtraTrackPath(t *testing.T) {
+	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	rec := recordChanges(t, f)
+	if err := f.svc.repo.ClearFile(context.Background(), f.id); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Delete(context.Background(), f.id, false); err != nil {
+		t.Fatal(err)
+	}
+	rec.drain(t)
+	if len(rec.changed) != 1 || rec.changed[0].Path != f.extra {
+		t.Fatalf("movie.changed = %+v, want the extra track's path %q", rec.changed, f.extra)
+	}
+}
+
 // Deleting a file — the default track's or an extra's — names the file that went, on the
 // bus and in the queued index update.
 func TestDeleteFilePublishesPath(t *testing.T) {

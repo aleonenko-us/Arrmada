@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OrganizeModal } from "../../components/OrganizeModal";
 import { AutoText, AutoToggle } from "../../components/settings/auto";
 import { Preview, Section, TokenList } from "../../components/settings/ui";
 import { Button, useConfirm, useToast } from "../../ui";
@@ -51,6 +52,19 @@ const PLEX_PRESET = {
 
 const render = (format: string) => renderNaming(format, SAMPLE);
 const renderSeries = (format: string) => renderNaming(seriesIdFormat(format, SERIES_SAMPLE), SERIES_SAMPLE);
+
+// OrganizeEntry: a new scheme only names new imports. This previews what it would do to
+// the movies already in the library, and applies it from the same dialog.
+function OrganizeEntry() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2.5 text-[11.5px] text-ink-faint">
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>Preview rename…</Button>
+      <span>Existing files keep their names until you rename them.</span>
+      {open && <OrganizeModal onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
 
 // A blank template would quietly fall back to the default, so say so instead of saving it.
 const notBlank = (v: string) => (v.trim() === "" ? "A name template can't be empty. Esc puts the saved one back." : null);
@@ -110,6 +124,7 @@ export function NamingSettings() {
         <p className="text-[11px] text-ink-faint">
           <code className="font-mono">{"{plexedition}"}</code> is Plex’s <code className="font-mono">{"{edition-Director's Cut}"}</code>, and nothing when there’s no edition. A version with an edition always gets it in its file name, so Plex shows each version as an edition of one movie. Write <code className="font-mono">{"{tmdb-{tmdbid}}"}</code> for Plex’s id tag; an empty tag drops out of the name. A movie that already has a folder keeps it until you rename it.
         </p>
+        <OrganizeEntry />
       </Section>
       <Section id="series-naming" title="Series naming" subtitle="How imported episodes are named: the show folder holds season folders, which hold episode files.">
         <AutoText label="Series folder" save={seriesFolder}><Preview>{renderSeries(seriesFolder.value)}</Preview></AutoText>

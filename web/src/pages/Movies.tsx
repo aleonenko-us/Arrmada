@@ -1,60 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { PAGE } from "../lib/links";
-import { api, type FitItem, type MovieDownload, type MovieLookup, type MovieSummary, type SummaryMedia } from "../lib/api";
-import { FitBadge, FIT_COLOR, bitrateColor, fitRank, hasIssue } from "../components/FitBadge";
-import { posterThumb } from "../lib/img";
+import { api, type FitItem, type MovieDownload, type MovieSummary } from "../lib/api";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
-import { usePersisted } from "../lib/persist";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useLiveQuery } from "../lib/useLiveQuery";
-import { isMovieDownloaded, isMovieWanted, movieStatus } from "../lib/movieStatus";
+import { useQuery } from "../lib/query";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
-import { Button, ErrorState, Modal, Skeleton, StaleBanner, StatusChip } from "../ui";
+import { StatusChip, useToast } from "../ui";
+import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
+import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
+import { MovieBulkActions } from "./movies/MovieBulkActions";
+import { AddMovieModal } from "./movies/AddMovieModal";
+import { ScanDialog } from "./movies/ScanDialog";
+import { OrganizeModal } from "../components/OrganizeModal";
 
 const NO_MOVIES: MovieSummary[] = [];
+const NO_FITS = new Map<number, FitItem>();
 
 // Events after which the library list may have changed.
 const LIST_TOPICS = ["release.grabbed", "download.imported", "file.removed", "movie.renamed", "search.finished", "library.scanned", "movie.refreshed"];
-
-
-type FilterKey = "all" | "monitored" | "unmonitored" | "wanted" | "nofile" | "downloaded";
-
-// Wanted is exactly what's badged Wanted (monitored, no file, nothing downloading) — the
-// same films as Wanted → Missing. A film with no file that isn't monitored is never
-// searched for; it has its own filter rather than hiding inside Wanted.
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "monitored", label: "Monitored" },
-  { key: "unmonitored", label: "Unmonitored" },
-  { key: "wanted", label: "Wanted" },
-  { key: "nofile", label: "No file (unmonitored)" },
-  { key: "downloaded", label: "Downloaded" },
-];
-
-function matchesFilter(m: MovieSummary, f: FilterKey, queueKnown = true): boolean {
-  switch (f) {
-    case "monitored":
-      return m.monitored;
-    case "unmonitored":
-      return !m.monitored;
-    case "nofile":
-      return !m.monitored && !m.has_file;
-    case "wanted":
-      return isMovieWanted(m, queueKnown);
-    case "downloaded":
-      return isMovieDownloaded(m, queueKnown);
-    default:
-      return true;
-  }
-}
 
 export function Movies() {
   // Cached across visits, so Back from a movie shows the grid at once; it always
@@ -67,94 +38,47 @@ export function Movies() {
   const metaOK = list.data?.metadata_available ?? true;
   // false while the download client can't be read: a wanted movie may already be downloading.
   const queueKnown = list.data?.client_health?.ok ?? true;
-  const error = list.error?.message ?? null;
+  const refresh = list.refetch;
+  const toast = useToast();
+  const view = useLibraryView("movies");
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<MovieSummary | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [toastErr, setToastErr] = useState(false);
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [query, setQuery] = useState("");
-  const [multiSelect, setMultiSelect] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [view, setView] = usePersisted("movies.view", "grid", ["grid", "table"] as const);
   const [searchFor, setSearchFor] = useState<MovieSummary | null>(null); // the table's per-row "Search indexers"
+  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
+  useEffect(() => {
+    api.qualityProfiles("movie").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
+  }, []);
   // Every movie search waits its turn in one throttled queue; the header says how many
   // are running and waiting, kept live by the queue's events.
   const searchQueue = useMovieSearchQueue();
   const queueText = queueLine(searchQueue.running, searchQueue.queued);
 
-  // The scan runs in the background; poll the grid for a while as entries land.
+  // How each file fits its profile's ideal file — report only, from the analysed library
+  // (a database read). The table's Fit column and the "Doesn't fit" filter read it.
+  const fitQ = useQuery("movies.fit", () => api.libraryFitMovies(), { staleMs: 60_000 });
+  const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.movie_id ?? 0, it])) : NO_FITS), [fitQ.data]);
+
+  // The scan runs as a job in the background; poll the grid for a while as entries land,
+  // and when it ends the toast says what it added.
+  const [scanning, setScanning] = useState(false);
+  const [showScan, setShowScan] = useState(false);
+  const [showOrganize, setShowOrganize] = useState(false); // apply the naming scheme across the library
   const watchScan = usePollBurst(() => refresh(), 2500, 12, () => setScanning(false));
-  // The scan runs as a job; when it ends the toast says what it added.
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); refresh(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
+    onDone: (j) => { setScanJob(null); refresh(); toast(jobToast(j, "Scan finished."), { tone: jobFailed(j) ? "error" : "info" }); },
   });
-  const [showScan, setShowScan] = useState(false);
   const scanLibrary = async (opts: { monitor: boolean; quality_profile?: string }) => {
     setShowScan(false);
     setScanning(true);
     try {
       const r = await api.scanLibrary(opts);
       if (r.job_id) setScanJob(r.job_id);
-      flash("Scanning your library — existing movies will appear shortly.");
+      toast("Scanning your library — existing movies will appear shortly.");
       watchScan();
     } catch (e) {
-      flash((e as Error).message);
+      toast((e as Error).message, { tone: "error" });
       setScanning(false);
-    }
-  };
-
-  // err shows the toast in the error colour: a scan that failed says so plainly.
-  const flash = (msg: string, err = false) => {
-    setToast(msg);
-    setToastErr(err);
-    window.setTimeout(() => setToast(null), 3500);
-  };
-
-  const refresh = list.refetch;
-
-  useEffect(() => {
-    api.qualityProfiles("movie").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
-  }, []);
-
-
-  const toggleSelect = (id: number) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  const clearSelect = () => setSelected(new Set());
-  const exitMultiSelect = () => {
-    setMultiSelect(false);
-    clearSelect();
-  };
-
-  const bulkMonitor = async (mon: boolean) => {
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selected].map((id) => api.setMonitored(id, mon)));
-      flash(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
-      clearSelect();
-      refresh();
-    } finally {
-      setBulkBusy(false);
-    }
-  };
-  const bulkProfile = async (profile: string) => {
-    setBulkBusy(true);
-    try {
-      const res = await Promise.all([...selected].map((id) => api.setQualityProfile(id, profile)));
-      const queued = res.filter((r) => r.queued).length;
-      flash(`Quality profile set on ${selected.size} movies.${queued ? ` ${queued} ${queued === 1 ? "search" : "searches"} queued — they run two at a time.` : ""}`);
-      clearSelect();
-      refresh();
-    } finally {
-      setBulkBusy(false);
     }
   };
 
@@ -165,10 +89,7 @@ export function Movies() {
   // hash to follow.
   const [downloads, setDownloads] = useState<Map<number, MovieDownload> | null>(null);
   useEffect(() => { setDownloads(null); }, [list.data]); // a fresh list carries its own progress
-  const shown = useMemo(
-    () => (downloads ? movies.map((m) => ({ ...m, download: downloads.get(m.id) })) : movies),
-    [movies, downloads],
-  );
+  const shown = useMemo(() => (downloads ? movies.map((m) => ({ ...m, download: downloads.get(m.id) })) : movies), [movies, downloads]);
   const anyDownloading = shown.some((m) => m.download);
   const allHashed = shown.every((m) => !m.download || !!m.download.hash);
   const connected = useLiveConnected();
@@ -194,622 +115,69 @@ export function Movies() {
   };
   usePoll(pollDownloads, anyDownloading ? (connected && allHashed ? 30_000 : 4000) : null, { immediate: false });
 
-  const q = query.trim().toLowerCase();
-  const filtered = shown
-    .filter((m) => matchesFilter(m, filter, queueKnown))
-    .filter((m) => !q || m.title.toLowerCase().includes(q))
-    .sort((a, b) => (a.sort_title || a.title).localeCompare(b.sort_title || b.title)); // default: alphabetical, "The" ignored
-
   const search = async (m: MovieSummary) => {
     try {
-      const r = await api.searchMovie(m.id);
-      const note = queuedNote(r);
-      flash(note ? `“${m.title}”: ${note}.` : `Searching for “${m.title}” — follow it in ${PAGE.activity} → Wanted.`);
+      const note = queuedNote(await api.searchMovie(m.id));
+      toast(note ? `“${m.title}”: ${note}.` : `Searching for “${m.title}” — follow it in ${PAGE.activity} → Wanted.`);
     } catch (e) {
-      flash((e as Error).message);
+      toast((e as Error).message, { tone: "error" });
     }
   };
+
+  const config = useMemo(() => movieLibraryConfig({
+    fits,
+    queueKnown,
+    actions: (m) => [
+      ...(!m.has_file && !m.download ? [{ label: "Search now", onSelect: () => search(m) }] : []),
+      { label: "Search indexers…", onSelect: () => setSearchFor(m) },
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(m) },
+    ],
+    rowAction: (m) => <button onClick={() => setSearchFor(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
+  // search reads only api and toast, both stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [fits, queueKnown]);
+
+  const judged = useMemo(() => movies.filter((m) => fits.get(m.id)?.fit).length, [movies, fits]);
+  const misfits = useMemo(() => movies.filter((m) => isMisfit(fits.get(m.id))).length, [movies, fits]);
 
   return (
     <>
       <PageHeader title="Movies" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <span className="flex flex-wrap items-center gap-2.5">
-            <MoviesSwitch active="library" />
-            <span className="font-mono text-[11px] text-ink-faint">{list.data ? `${movies.length} in library` : ""}</span>
-            {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-              {(["grid", "table"] as const).map((v) => (
-                <button key={v} onClick={() => setView(v)} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: view === v ? "var(--accent)" : "transparent", color: view === v ? "var(--accent-ink)" : "var(--ink-faint)" }}>{v}</button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowScan(true)}
-              disabled={scanning || scan.running}
-              title="Find movies already in your library folder and catalog them"
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
-            >
-              {scanning || scan.running ? "Scanning…" : "Scan library"}
-            </button>
-            <button
-              onClick={() => (multiSelect ? exitMultiSelect() : setMultiSelect(true))}
-              className="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-              style={{ border: `1px solid ${multiSelect ? "var(--accent)" : "var(--line)"}`, background: multiSelect ? "var(--accent-soft)" : "var(--panel-2)", color: multiSelect ? "var(--accent)" : "var(--ink)" }}
-            >
-              {multiSelect ? "Done" : "Select"}
-            </button>
-            <button
-              onClick={() => setShowAdd(true)}
-              disabled={!metaOK}
-              className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold"
-              style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: metaOK ? 1 : 0.5 }}
-            >
-              + Add movie
-            </button>
-          </div>
-        </div>
-
-        {/* Filters + search */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const active = filter === f.key;
-            const count = f.key === "all" ? shown.length : shown.filter((m) => matchesFilter(m, f.key, queueKnown)).length;
-            return (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className="rounded-full px-3 py-1 text-[12px] font-semibold"
-                style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-faint)" }}
-              >
-                {f.label} <span className="font-mono text-[10.5px] opacity-70">{count}</span>
-              </button>
-            );
-          })}
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search movies…"
-            className="ml-auto w-[220px] rounded-lg px-3 py-1.5 text-[12px]"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-          />
-        </div>
-
-        {/* Bulk actions */}
-        {multiSelect && (
-          <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-            <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
-            <button onClick={() => setSelected(new Set(filtered.map((m) => m.id)))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
-            <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Monitor</button>
-            <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <select
-              defaultValue=""
-              disabled={selected.size === 0 || bulkBusy}
-              onChange={(e) => e.target.value && (bulkProfile(e.target.value), (e.target.value = ""))}
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-            >
-              <option value="">Set quality profile…</option>
-              {profiles.map((p) => (
-                <option key={p.key} value={p.key}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {!metaOK && <MetadataMissing variant="banner" />}
-        {/* Honest states: a skeleton until the first answer, an error (not "No movies
-            yet") if it failed, and the last good grid with a notice if a refresh failed. */}
-        {list.data && error && <StaleBanner message={error} onRetry={refresh} />}
-
-        {!list.data ? (
-          error ? <ErrorState what="your movies" message={error} onRetry={refresh} busy={list.loading} /> : <Skeleton variant={view === "table" ? "table" : "grid"} />
-        ) : movies.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            No movies yet. Click <b>Add movie</b>, search for a film, and Arrmada will monitor and grab it.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            {q ? <>No movies match “<b>{query.trim()}</b>”.</> : <>No movies match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}
-          </div>
-        ) : view === "table" ? (
-          <MovieTable movies={filtered} multiSelect={multiSelect} selected={selected} onToggleSelect={toggleSelect} onSearch={setSearchFor} queueKnown={queueKnown} />
-        ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-            {filtered.map((m) => (
-              <MovieCard
-                key={m.id}
-                m={m}
-                queueKnown={queueKnown}
-                onDelete={() => setConfirmDelete(m)}
-                onSearch={() => search(m)}
-                selectable={multiSelect}
-                selected={selected.has(m.id)}
-                onToggleSelect={() => toggleSelect(m.id)}
-              />
-            ))}
-          </div>
-        )}
-        {searchFor && (
-          <ReleaseSearchModal
-            title={`Search indexers — ${searchFor.title}`}
-            subtitle="Pick a release to grab, or blocklist one to search for an alternate."
-            fetchReleases={() => api.movieReleases(searchFor.id)}
-            onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: searchFor.id }); flash(`Grabbed "${rel.summary}" for ${searchFor.title}.`); refresh(); }}
-            onBlock={async (rel) => { await api.blockRelease(searchFor.id, { token: rel.token ?? "", search_again: true }); flash(`Blocklisted "${rel.summary}" — searching for an alternate.`); refresh(); }}
-            onClose={() => setSearchFor(null)}
-          />
-        )}
-        {toast && (
-          <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>
-            {toast}
-          </div>
-        )}
-      </div>
-
+      <LibraryGrid
+        config={config}
+        items={list.data ? shown : undefined}
+        error={list.error?.message ?? null}
+        loading={list.loading}
+        onRetry={refresh}
+        view={view}
+        lead={<>
+          <MoviesSwitch active="library" />
+          {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
+        </>}
+        tools={[
+          { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" },
+          { label: "Organize library…", onClick: () => setShowOrganize(true), title: "Preview your naming scheme across the library, then rename in the background" },
+        ]}
+        primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
+        banners={!metaOK && <MetadataMissing variant="banner" />}
+        tableNote={<FitLegend judged={judged} misfits={misfits} />}
+        bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
+        emptyText={<>No movies yet. Click <b>Add movie</b>, search for a film, and Arrmada will monitor and grab it.</>}
+      />
+      {searchFor && (
+        <ReleaseSearchModal
+          title={`Search indexers — ${searchFor.title}`}
+          subtitle="Pick a release to grab, or blocklist one to search for an alternate."
+          fetchReleases={() => api.movieReleases(searchFor.id)}
+          onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: searchFor.id }); toast(`Grabbed "${rel.summary}" for ${searchFor.title}.`); refresh(); }}
+          onBlock={async (rel) => { await api.blockRelease(searchFor.id, { token: rel.token ?? "", search_again: true }); toast(`Blocklisted "${rel.summary}" — searching for an alternate.`); refresh(); }}
+          onClose={() => setSearchFor(null)}
+        />
+      )}
+      {showOrganize && <OrganizeModal onClose={() => setShowOrganize(false)} onDone={refresh} />}
       {showScan && <ScanDialog profiles={profiles} onScan={scanLibrary} onClose={() => setShowScan(false)} />}
       {showAdd && <AddMovieModal onClose={() => setShowAdd(false)} onAdded={refresh} />}
       {confirmDelete && <DeleteMovieDialog movie={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
-  );
-}
-
-// ScanDialog asks how a library scan should catalog the films it finds. By default they're
-// added unmonitored, so Arrmada never searches for or upgrades them; monitoring them on a
-// profile lets the upgrade sweep replace their files. Films already in the library get the
-// file found either way.
-function ScanDialog({ profiles, onScan, onClose }: {
-  profiles: { key: string; name: string }[];
-  onScan: (opts: { monitor: boolean; quality_profile?: string }) => void;
-  onClose: () => void;
-}) {
-  const [monitor, setMonitor] = useState(false);
-  const [profile, setProfile] = useState(""); // "" = the default profile
-  return (
-    <Modal
-      onClose={onClose}
-      size="sm"
-      title="Catalog existing films"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => onScan(monitor ? { monitor: true, quality_profile: profile } : { monitor: false })}>Scan library</Button>
-        </>
-      }
-    >
-      <p className="m-0 text-[12.5px] text-ink-dim">
-        Arrmada adds the films it finds in your movies folder, and gives films already in your library the file it finds for them.
-      </p>
-      <label className="mt-4 flex items-start gap-2.5 text-[12.5px]">
-        <input type="checkbox" className="mt-0.5" checked={monitor} onChange={(e) => setMonitor(e.target.checked)} />
-        <span>
-          Monitor them so they can be upgraded
-          <span className="mt-0.5 block text-[11.5px] text-ink-faint">Unmonitored films are never searched for or upgraded — Arrmada only catalogs them.</span>
-        </span>
-      </label>
-      {monitor && (
-        <label className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-          <span className="font-mono text-[10.5px] uppercase text-ink-faint">Profile</span>
-          <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-            <option value="">Default profile</option>
-            {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
-        </label>
-      )}
-    </Modal>
-  );
-}
-
-function Poster({ url, title }: { url?: string; title: string }) {
-  if (url) {
-    return <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
-  }
-  return (
-    <div className="flex h-full w-full items-end p-2.5" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-      <span className="text-[13px] font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{title}</span>
-    </div>
-  );
-}
-
-// downloadLabel names a download that isn't the film's own missing file: "Upgrade", or the
-// extra version's label.
-function downloadLabel(d?: MovieDownload): string {
-  if (d?.kind === "upgrade") return "Upgrade";
-  if (d?.kind === "version") return d.version_label || "Version";
-  return "";
-}
-
-function gb(bytes?: number): string {
-  if (!bytes) return "—";
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-function bitrateNum(f?: SummaryMedia): number | undefined {
-  return f?.bitrate_mbps || undefined;
-}
-function bitrateMbps(f?: SummaryMedia): string {
-  const n = bitrateNum(f);
-  return n === undefined ? "—" : `${n.toFixed(1)} Mbps`;
-}
-function resValue(f?: SummaryMedia): number | undefined {
-  const r = f?.resolution || (f?.quality ? f.quality.split(" ")[0] : "");
-  if (!r) return undefined;
-  const s = r.toLowerCase();
-  if (s.includes("4k") || s.includes("2160")) return 2160;
-  if (s.includes("1440")) return 1440;
-  if (s.includes("1080")) return 1080;
-  if (s.includes("720")) return 720;
-  if (s.includes("480") || s === "sd") return 480;
-  const n = parseInt(s.replace(/\D/g, ""), 10);
-  return isNaN(n) ? undefined : n;
-}
-function fileExt(f?: SummaryMedia): string {
-  return f?.container || "—";
-}
-function hasAtmos(f?: SummaryMedia): boolean {
-  return !!f?.atmos || !!f?.audio?.some((a) => /atmos/i.test(a));
-}
-
-// YesNo renders a clear yes/no so gaps (missing HDR/Atmos) are easy to scan for.
-function YesNo({ on, label }: { on: boolean; label?: string }) {
-  return on ? (
-    <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "var(--good-soft, rgba(90,140,90,.14))", color: "var(--good)" }}>{label ?? "Yes"}</span>
-  ) : (
-    <span className="text-[11px] text-ink-faint">—</span>
-  );
-}
-
-type SortKey = "title" | "status" | "resolution" | "codec" | "audio" | "atmos" | "hdr" | "type" | "size" | "bitrate" | "fit";
-const MOVIE_SORT_KEYS: SortKey[] = ["title", "status", "resolution", "codec", "audio", "atmos", "hdr", "type", "size", "bitrate", "fit"];
-
-// sortValue returns a comparable value per column (undefined = empty → sorted last regardless of dir).
-function sortValue(m: MovieSummary, key: SortKey, fit?: FitItem): number | string | undefined {
-  const f = m.media;
-  switch (key) {
-    case "title": return m.sort_title || m.title.toLowerCase();
-    case "status": return m.has_file ? 0 : m.monitored ? 1 : 2;
-    case "resolution": return resValue(f);
-    case "codec": return f?.codec || undefined;
-    case "audio": return f?.audio?.length ? f.audio.join(", ").toLowerCase() : undefined;
-    case "atmos": return hasAtmos(f) ? 1 : 0;
-    case "hdr": return f?.hdr?.length ? 1 : 0;
-    case "type": { const e = fileExt(f); return e === "—" ? undefined : e; }
-    case "size": return m.size_bytes || undefined;
-    case "bitrate": return bitrateNum(f);
-    case "fit": return fitRank(fit);
-  }
-}
-
-function MovieTable({ movies, multiSelect, selected, onToggleSelect, onSearch, queueKnown = true }: { movies: MovieSummary[]; multiSelect: boolean; selected: Set<number>; onToggleSelect: (id: number) => void; onSearch: (m: MovieSummary) => void; queueKnown?: boolean }) {
-  const th = "px-2.5 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-[0.06em] text-ink-faint";
-  const td = "px-2.5 py-2 align-middle";
-  // Remembered across visits, like the grid/table choice ("size:desc").
-  const [sortPref, setSortPref] = usePersisted<string>("movies.table.sort", "title:asc");
-  const sort = useMemo(() => {
-    const [k, d] = sortPref.split(":");
-    const key: SortKey = (MOVIE_SORT_KEYS as string[]).includes(k) ? (k as SortKey) : "title";
-    return { key, dir: d === "desc" ? ("desc" as const) : ("asc" as const) };
-  }, [sortPref]);
-  const onSort = (key: SortKey) => setSortPref(sort.key === key ? `${key}:${sort.dir === "asc" ? "desc" : "asc"}` : `${key}:asc`);
-  // How each file fits its profile's ideal file — report only, from the analysed library.
-  const [fits, setFits] = useState<Map<number, FitItem>>(new Map());
-  const [misfitsPref, setMisfitsPref] = usePersisted("movies.table.misfits", "all", ["all", "misfits"] as const);
-  const misfitsOnly = misfitsPref === "misfits";
-  const setMisfitsOnly = (on: boolean) => setMisfitsPref(on ? "misfits" : "all");
-  useEffect(() => {
-    api.libraryFitMovies().then((r) => setFits(new Map((r.items ?? []).map((it) => [it.movie_id ?? 0, it])))).catch(() => {});
-  }, []);
-  const judged = useMemo(() => movies.filter((m) => fits.get(m.id)?.fit).length, [movies, fits]);
-  const misfits = useMemo(() => movies.filter((m) => { const s = fits.get(m.id)?.fit?.status; return !!s && s !== "fits"; }).length, [movies, fits]);
-
-  const sorted = useMemo(() => {
-    const arr = misfitsOnly ? movies.filter((m) => { const s = fits.get(m.id)?.fit?.status; return !!s && s !== "fits"; }) : [...movies];
-    arr.sort((a, b) => {
-      const av = sortValue(a, sort.key, fits.get(a.id)), bv = sortValue(b, sort.key, fits.get(b.id));
-      const aE = av === undefined, bE = bv === undefined;
-      if (aE && bE) return 0;
-      if (aE) return 1; // empties always last
-      if (bE) return -1;
-      let r: number;
-      if (typeof av === "number" && typeof bv === "number") r = av - bv;
-      else r = String(av).localeCompare(String(bv));
-      return sort.dir === "asc" ? r : -r;
-    });
-    return arr;
-  }, [movies, sort, fits, misfitsOnly]);
-
-  const Th = ({ label, k, align }: { label: string; k: SortKey; align?: "right" }) => {
-    const active = sort.key === k;
-    return (
-      <th className={`${th}${align === "right" ? " text-right" : ""}`}>
-        <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-[var(--ink)] ${align === "right" ? "flex-row-reverse" : ""}`} style={{ color: active ? "var(--accent)" : undefined }}>
-          {label}
-          <span className="text-[8px]" style={{ opacity: active ? 1 : 0.3 }}>{active ? (sort.dir === "asc" ? "▲" : "▼") : "▲"}</span>
-        </button>
-      </th>
-    );
-  };
-
-  return (
-    <>
-    {judged > 0 && (
-      <div className="mb-2 flex flex-wrap items-center gap-3 text-[11.5px] text-ink-dim">
-        <label className="inline-flex cursor-pointer items-center gap-1.5">
-          <input type="checkbox" checked={misfitsOnly} onChange={(e) => setMisfitsOnly(e.target.checked)} />
-          Only files that don't fit their profile ({misfits} of {judged})
-        </label>
-        <span className="text-[10.5px] text-ink-faint">
-          <span style={{ color: FIT_COLOR.over }}>■</span> over the bitrate ceiling ·{" "}
-          <span style={{ color: FIT_COLOR.under }}>■</span> under the floor ·{" "}
-          <span style={{ color: FIT_COLOR.mismatch }}>■</span> bitrate fine, spec isn't ·{" "}
-          <span style={{ color: FIT_COLOR.fits }}>■</span> fits — hover for why
-        </span>
-      </div>
-    )}
-    <div className="overflow-x-auto thin-scroll rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-[12px]" style={{ minWidth: "900px" }}>
-        <thead>
-          <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
-            {multiSelect && <th className={th}></th>}
-            <Th label="Title" k="title" />
-            <Th label="Status" k="status" />
-            <Th label="Resolution" k="resolution" />
-            <Th label="Codec" k="codec" />
-            <Th label="Audio" k="audio" />
-            <Th label="Atmos" k="atmos" />
-            <Th label="HDR" k="hdr" />
-            <Th label="Type" k="type" />
-            <Th label="Size" k="size" align="right" />
-            <Th label="Bitrate" k="bitrate" align="right" />
-            <Th label="Fit" k="fit" />
-            <th className={th}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((m) => {
-            const f = m.media;
-            const st = movieStatus(m, undefined, queueKnown);
-            const fi = fits.get(m.id);
-            const bad = (kind: string) => (hasIssue(fi?.fit, kind) ? { color: FIT_COLOR.over, fontWeight: 600 } : undefined);
-            return (
-              <tr key={m.id} className="transition-colors hover:bg-[var(--panel-2)]" style={{ background: selected.has(m.id) ? "var(--accent-soft)" : "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
-                {multiSelect && (
-                  <td className={td}>
-                    <input type="checkbox" checked={selected.has(m.id)} onChange={() => onToggleSelect(m.id)} />
-                  </td>
-                )}
-                <td className={`${td} min-w-[220px]`}>
-                  {multiSelect ? (
-                    <button onClick={() => onToggleSelect(m.id)} className="text-left font-semibold">{m.title} <span className="font-normal text-ink-faint">{m.year || ""}</span></button>
-                  ) : (
-                    <Link to={`/movies/${m.id}`} className="font-semibold hover:text-[var(--accent)]">{m.title} <span className="font-normal text-ink-faint">{m.year || ""}</span></Link>
-                  )}
-                </td>
-                <td className={td}><span className="font-mono text-[10px] uppercase" style={{ color: st.color }}>{st.label}</span></td>
-                <td className={td}>{f?.resolution || (f?.quality ? f.quality.split(" ")[0] : "—")}</td>
-                <td className={td} style={bad("codec")}>{f?.codec || "—"}</td>
-                <td className={td} style={bad("lossless")}>{f?.audio?.length ? f.audio.join(", ") : "—"}</td>
-                <td className={td}>{hasIssue(fi?.fit, "atmos") ? <span className="text-[11px] font-semibold" style={{ color: FIT_COLOR.over }}>No</span> : <YesNo on={hasAtmos(f)} />}</td>
-                <td className={td}>{hasIssue(fi?.fit, "hdr")
-                  ? <span className="text-[11px] font-semibold" style={{ color: FIT_COLOR.over }}>{f?.hdr?.length ? f.hdr.join("/") : "SDR"}</span>
-                  : f?.hdr?.length ? <YesNo on label={f.hdr.join("/")} /> : <YesNo on={false} />}</td>
-                <td className={td}><span className="font-mono text-[11px] text-ink-dim">{fileExt(f)}</span></td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`}>{gb(m.size_bytes)}</td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`} style={bitrateColor(fi?.fit) ? { color: bitrateColor(fi?.fit), fontWeight: 600 } : undefined}
-                  title={fi?.fit?.window ? `Window ${fi.fit.window.min || 0}–${fi.fit.window.max || "∞"} Mb/s` : undefined}>{bitrateMbps(f)}</td>
-                <td className={td}><FitBadge item={fi} /></td>
-                <td className={`${td} text-right`}>
-                  <button onClick={() => onSearch(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-    </>
-  );
-}
-
-function MovieCard({ m, onDelete, onSearch, selectable, selected, onToggleSelect, queueKnown = true }: { m: MovieSummary; onDelete: () => void; onSearch: () => void; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void; queueKnown?: boolean }) {
-  const st = movieStatus(m, undefined, queueKnown);
-  const [searching, setSearching] = useState(false);
-  const doSearch = async () => {
-    setSearching(true);
-    try {
-      await onSearch();
-    } finally {
-      window.setTimeout(() => setSearching(false), 1500);
-    }
-  };
-  return (
-    <div className="group relative overflow-hidden rounded-xl" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`, background: "var(--panel)", boxShadow: selected ? "0 0 0 1px var(--accent)" : "none" }}>
-      <div className="relative" style={{ aspectRatio: "2/3" }}>
-        {selectable ? (
-          <button onClick={onToggleSelect} className="block h-full w-full text-left">
-            <Poster url={m.poster_url} title={m.title} />
-            {selected && <div className="absolute inset-0" style={{ background: "var(--accent-soft)" }} />}
-          </button>
-        ) : (
-          <Link to={`/movies/${m.id}`} className="block h-full w-full">
-            <Poster url={m.poster_url} title={m.title} />
-          </Link>
-        )}
-        {selectable && (
-          <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background: selected ? "var(--accent)" : "rgba(20,12,7,.65)", border: `1.5px solid ${selected ? "var(--accent)" : "rgba(255,255,255,.6)"}` }}>
-            {selected && <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12l5 5L20 6" stroke="var(--accent-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-          </span>
-        )}
-        {!selectable && (
-          <button
-            onClick={onDelete}
-            title="Remove"
-            className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-full group-hover:grid"
-            style={{ background: "rgba(20,12,7,.75)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        )}
-        {!selectable && !m.has_file && !m.download && (
-          <button
-            onClick={doSearch}
-            disabled={searching}
-            title="Search now"
-            className="absolute inset-x-1.5 bottom-1.5 hidden items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold group-hover:flex"
-            style={{ background: "rgba(20,12,7,.82)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {searching ? "Searching…" : "Search now"}
-          </button>
-        )}
-        {m.download && (
-          <div className="absolute inset-x-0 bottom-0 p-1.5">
-            <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1" style={{ background: "rgba(20,12,7,.82)" }} title={downloadLabel(m.download) ? `Downloading: ${downloadLabel(m.download)}` : "Downloading"}>
-              {downloadLabel(m.download) && <span className="max-w-[60px] truncate font-mono text-[8.5px] font-bold uppercase" style={{ color: "var(--accent)" }}>{downloadLabel(m.download)}</span>}
-              <div className="h-1 flex-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.25)" }}>
-                <div className="h-full rounded-full" style={{ width: `${Math.round(m.download.progress * 100)}%`, background: "var(--accent)" }} />
-              </div>
-              <span className="font-mono text-[9px] font-bold" style={{ color: "#fff" }}>{Math.round(m.download.progress * 100)}%</span>
-            </div>
-          </div>
-        )}
-      </div>
-      {selectable ? (
-        <button onClick={onToggleSelect} className="block w-full p-2.5 text-left">
-          <div className="truncate text-[12.5px] font-semibold" title={m.title}>{m.title}</div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="font-mono text-[10.5px] text-ink-faint">{m.year || "—"}</span>
-            <span className="font-mono text-[9.5px] uppercase" style={{ color: st.color }}>{st.label}</span>
-          </div>
-        </button>
-      ) : (
-      <Link to={`/movies/${m.id}`} className="block p-2.5">
-        <div className="truncate text-[12.5px] font-semibold" title={m.title}>{m.title}</div>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="font-mono text-[10.5px] text-ink-faint">{m.year || "—"}</span>
-          <span className="font-mono text-[9.5px] uppercase" style={{ color: st.color }}>{st.label}</span>
-        </div>
-      </Link>
-      )}
-    </div>
-  );
-}
-
-function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<MovieLookup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState("");
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [searchOnAdd, setSearchOnAdd] = useState(true);
-  const [addingId, setAddingId] = useState<number | null>(null);
-
-  useEffect(() => {
-    api
-      .qualityProfiles("movie")
-      .then((r) => {
-        setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
-        const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
-        if (def) setProfile(def.key);
-      })
-      .catch(() => {});
-    api.settings().then((s) => setSearchOnAdd(s.search_on_add)).catch(() => {});
-  }, []);
-
-  // Persist the preference so it sticks across sessions and devices.
-  const toggleSearchOnAdd = () => {
-    const next = !searchOnAdd;
-    setSearchOnAdd(next);
-    api.updateSettings({ search_on_add: next }).catch(() => {});
-  };
-
-  const search = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!q.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setResults(await api.lookupMovies(q.trim()));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const add = async (r: MovieLookup) => {
-    setAddingId(r.tmdb_id);
-    setError(null);
-    try {
-      await api.addMovie({ tmdb_id: r.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchOnAdd });
-      onAdded();
-      onClose();
-    } catch (err) {
-      setError((err as Error).message);
-      setAddingId(null);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add a movie</h2>
-          <div className="flex items-center gap-4">
-            <button type="button" onClick={toggleSearchOnAdd} title="On: monitor and search for a release right away. Off: add unmonitored — nothing is searched or grabbed until you monitor it." className="flex items-center gap-2">
-              <span className="relative inline-block h-[20px] w-[34px] rounded-full transition-colors" style={{ background: searchOnAdd ? "var(--accent)" : "var(--line)" }}>
-                <span className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-white transition-all" style={{ left: searchOnAdd ? "17px" : "3px" }} />
-              </span>
-              <span className="text-[11.5px] font-medium" style={{ color: searchOnAdd ? "var(--ink)" : "var(--ink-dim)" }}>{searchOnAdd ? "Search on add" : "Add unmonitored"}</span>
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] uppercase text-ink-faint">Quality</span>
-              <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                {profiles.map((p) => (
-                  <option key={p.key} value={p.key}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={search} className="mb-3 flex gap-2">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-            {loading ? "…" : "Search"}
-          </button>
-        </form>
-
-        {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-
-        <div className="max-h-[52vh] overflow-y-auto">
-          {results.map((r) => (
-            <button
-              key={r.tmdb_id}
-              onClick={() => add(r)}
-              disabled={addingId !== null}
-              className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]"
-            >
-              <div className="h-[68px] w-[46px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
-                {r.poster_url && <img src={r.poster_url} alt="" className="h-full w-full object-cover" loading="lazy" />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
-                <div className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-dim">{r.overview || "No overview."}</div>
-              </div>
-              <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-                {addingId === r.tmdb_id ? "Adding…" : "Add"}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }

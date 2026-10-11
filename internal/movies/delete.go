@@ -51,9 +51,22 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) error 
 			return err
 		}
 	}
+	// The path the change carries (Plex scans its folder): the default track's file, or —
+	// for a movie whose only files are extra tracks' — the first of those.
+	changed := m.MovieFilePath
+	if changed == "" {
+		if extras, err := s.repo.ListVersions(ctx, id); err == nil {
+			for _, v := range extras {
+				if v.FilePath != "" {
+					changed = v.FilePath
+					break
+				}
+			}
+		}
+	}
 	folder := ""
-	if m.MovieFilePath != "" {
-		folder = filepath.Dir(m.MovieFilePath)
+	if changed != "" {
+		folder = filepath.Dir(changed)
 	}
 	// The movie, its versions and its history go together, with the row that makes
 	// Convert and Subtitles forget it.
@@ -62,7 +75,7 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) error 
 			return err
 		}
 		return s.enqueue(ctx, tx, outbox.TopicMovieChanged,
-			outbox.MovieChanged{MovieID: id, Change: outbox.ChangeDeleted, Path: m.MovieFilePath}, movieKey(id))
+			outbox.MovieChanged{MovieID: id, Change: outbox.ChangeDeleted, Path: changed}, movieKey(id))
 	})
 	if err != nil {
 		return err

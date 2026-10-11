@@ -1119,6 +1119,36 @@ func (im *Importer) Move(from, to string) error {
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return err
 	}
+	return moveNoClobber(from, to, fromInfo.IsDir())
+}
+
+// moveNoClobber puts from at to, which was free a moment ago. The check above leaves a
+// window — something can land on the target between the stat and the rename, and a rename
+// would replace it — so a file moves as a hardlink plus removing the old name: creating a
+// link fails if the target exists, so it can never overwrite anything. Only where links
+// aren't possible (another disk, an Unraid user share across disks, a filesystem without
+// them) does it fall back to a rename, straight after a fresh existence check.
+func moveNoClobber(from, to string, isDir bool) error {
+	if !isDir {
+		err := os.Link(from, to)
+		if err == nil {
+			if rerr := os.Remove(from); rerr != nil {
+				// Two names for one file. Drop the new one so the move reads as not done,
+				// rather than leave the caller unsure where the file is.
+				_ = os.Remove(to)
+				return rerr
+			}
+			return nil
+		}
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrTargetExists, to)
+		}
+	}
+	if _, err := os.Lstat(to); err == nil {
+		return fmt.Errorf("%w: %s", ErrTargetExists, to)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	return os.Rename(from, to)
 }
 
