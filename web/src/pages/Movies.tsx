@@ -19,6 +19,7 @@ import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
+import { OrganizeModal } from "../components/OrganizeModal";
 
 const NO_MOVIES: MovieSummary[] = [];
 const NO_FITS = new Map<number, FitItem>();
@@ -61,6 +62,7 @@ export function Movies() {
   // and when it ends the toast says what it added.
   const [scanning, setScanning] = useState(false);
   const [showScan, setShowScan] = useState(false);
+  const [showOrganize, setShowOrganize] = useState(false); // apply the naming scheme across the library
   const watchScan = usePollBurst(() => refresh(), 2500, 12, () => setScanning(false));
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
@@ -152,7 +154,10 @@ export function Movies() {
           <MoviesSwitch active="library" />
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
         </>}
-        tools={[{ label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" }]}
+        tools={[
+          { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" },
+          { label: "Organize library…", onClick: () => setShowOrganize(true), title: "Preview your naming scheme across the library, then rename in the background" },
+        ]}
         primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         tableNote={<FitLegend judged={judged} misfits={misfits} />}
@@ -169,6 +174,7 @@ export function Movies() {
           onClose={() => setSearchFor(null)}
         />
       )}
+      {showOrganize && <OrganizeModal onClose={() => setShowOrganize(false)} onDone={refresh} />}
       {showScan && <ScanDialog profiles={profiles} onScan={scanLibrary} onClose={() => setShowScan(false)} />}
       {showAdd && <AddMovieModal onClose={() => setShowAdd(false)} onAdded={refresh} />}
       {confirmDelete && <DeleteMovieDialog movie={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}

@@ -1450,60 +1450,6 @@ func (s *Service) ManualImport(ctx context.Context, id int64, srcPath string) er
 	return s.MarkImportedManual(ctx, id, res.TargetPath, filepath.Base(res.SourcePath))
 }
 
-// RenamePreview returns the canonical name a movie's file should have, and
-// whether it already matches.
-func (s *Service) RenamePreview(ctx context.Context, id int64) (current, proposed string, matches bool, err error) {
-	m, gerr := s.repo.Get(ctx, id)
-	if gerr != nil {
-		return "", "", false, gerr
-	}
-	if m.MovieFilePath == "" {
-		return "", "", true, nil
-	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
-	return filepath.Base(m.MovieFilePath), filepath.Base(target), target == m.MovieFilePath, nil
-}
-
-// Rename renames a movie's file to the canonical scheme in place.
-func (s *Service) Rename(ctx context.Context, id int64) error {
-	m, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if m.MovieFilePath == "" {
-		return fmt.Errorf("movie has no file to rename")
-	}
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(m.MovieFilePath), filepath.Ext(m.MovieFilePath))
-	if target == m.MovieFilePath {
-		return nil
-	}
-	oldDir := filepath.Dir(m.MovieFilePath)
-	// Through the importer's Move, not os.Rename: a bare rename replaces whatever already
-	// sits at the target, and Move refuses to.
-	if err := s.imp.Move(m.MovieFilePath, target); err != nil {
-		return fmt.Errorf("rename: %w", err)
-	}
-	s.imp.MoveEpisodeSubs(m.MovieFilePath, target) // carry sidecar subtitles along
-	if newDir := filepath.Dir(target); newDir != oldDir {
-		s.imp.RemoveDirIfEmpty(oldDir) // the movie moved to a renamed folder; drop the empty old one
-	}
-	// The same file under a new name: its cached facts follow it unread.
-	media := mediaJSONOf(s.movedMedia(m.File, target))
-	err = s.repo.inTx(ctx, func(tx *sql.Tx, r *Repo) error {
-		if err := setDefaultFileIn(ctx, r, id, target, media); err != nil {
-			return err
-		}
-		_ = r.AddEvent(ctx, id, "renamed", filepath.Base(m.MovieFilePath)+" → "+filepath.Base(target))
-		return s.enqueue(ctx, tx, outbox.TopicMovieChanged,
-			outbox.MovieChanged{MovieID: id, Change: outbox.ChangeRenamed, OldPath: m.MovieFilePath, Path: target}, movieKey(id))
-	})
-	if err != nil {
-		return err
-	}
-	s.publish("movie.renamed", map[string]any{"id": id, "version_id": int64(0), "old_path": m.MovieFilePath, "new_path": target})
-	return nil
-}
-
 var videoFileExts = map[string]bool{
 	".mkv": true, ".mp4": true, ".avi": true, ".m4v": true, ".mov": true,
 	".wmv": true, ".ts": true, ".mpg": true, ".mpeg": true, ".webm": true, ".flv": true,

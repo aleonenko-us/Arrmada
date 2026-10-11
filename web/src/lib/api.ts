@@ -1262,6 +1262,74 @@ export interface DeletePreview {
   confirm_over_bytes: number; // above this, the title must be typed
   recycle: RecycleMode;
 }
+// One track's planned rename (MOV-16). status ok: it moves to proposed; same: already
+// named right; conflict: something else has that name (reason says what), so it stays put;
+// missing: the recorded file isn't on disk.
+export interface MovieRenameItem {
+  media: "movie";
+  movie_id: number;
+  version_id: number; // 0 = the default track
+  title: string;
+  year?: number;
+  label: string;
+  current: string;
+  proposed: string;
+  status: "ok" | "same" | "conflict" | "missing";
+  reason?: string;
+}
+// What applying one item did.
+export interface MovieRenameResult {
+  movie_id: number;
+  version_id: number;
+  label: string;
+  from: string;
+  to: string;
+  renamed: boolean;
+  reason?: string;
+}
+export interface MovieRenameReply {
+  renamed: number;
+  skipped: number;
+  results: MovieRenameResult[];
+}
+// Organize's dry run (MOV-17): counts for every track, then a page of the ones that would
+// move and the conflicts; token names exactly this plan for the apply.
+export interface OrganizePreview {
+  counts: { rename: number; same: number; conflict: number; missing: number };
+  items: MovieRenameItem[];
+  total: number; // items to list (renames + conflicts) across every page
+  offset: number;
+  token: string;
+}
+// The mass editor's one update (MOV-19): what changed and what it queued. exceeds_profile
+// lists films whose file the profile no longer accepts — left alone, with "Download smaller
+// versions" on offer (smaller: above a ceiling; otherwise a different kind of release).
+export interface MovieBulkUpdate {
+  ids: number[];
+  monitored?: boolean;
+  quality_profile?: string;
+  min_availability?: string;
+  search?: "none" | "missing" | "missing_and_upgrade";
+}
+export interface MovieBulkUpdateReply {
+  updated: number;
+  queued: number;
+  duplicates: number;
+  not_monitored: number;
+  exceeds_profile: { id: number; title: string; size_bytes?: number; reason?: string; smaller: boolean }[];
+  errors: { id: number; msg: string }[];
+}
+export interface MovieBulkDeleteReply {
+  deleted: number;
+  failed: number;
+  results: { id: number; deleted: boolean; error?: string; moved?: string[]; failed?: string[] }[];
+}
+// The organize job's result.
+export interface OrganizeSummary {
+  total: number;
+  renamed: number;
+  skipped: number;
+}
 // What deleting a movie with its files would move (each file still on disk), and where.
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
@@ -3132,9 +3200,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ path }),
     }),
+  // Every track's current file and the name the naming scheme gives it; nothing moves.
   renamePreview: (id: number) =>
-    req<{ current: string; proposed: string; matches: boolean }>(`/api/v1/movies/${id}/rename`),
-  renameMovie: (id: number) => req<{ status: string }>(`/api/v1/movies/${id}/rename`, { method: "POST" }),
+    req<{ items: MovieRenameItem[]; matches: boolean }>(`/api/v1/movies/${id}/rename`),
+  // Applies the previewed items the person ticked; anything changed since is skipped.
+  renameMovie: (id: number, items: MovieRenameItem[]) =>
+    req<MovieRenameReply>(`/api/v1/movies/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
+  // The mass editor: every field commits together or not at all (404 names films that are
+  // gone); searches join the throttled movie search queue.
+  bulkUpdateMovies: (body: MovieBulkUpdate) =>
+    req<MovieBulkUpdateReply>("/api/v1/movies/bulk", { method: "PUT", body: JSON.stringify(body) }),
+  bulkRegrabMovies: (ids: number[]) =>
+    req<{ queued: number; duplicates: number; errors: { id: number; msg: string }[] }>("/api/v1/movies/bulk/regrab", { method: "POST", body: JSON.stringify({ ids }) }),
+  // Per-film results; stops at the first film the recycle bin refuses.
+  bulkDeleteMovies: (ids: number[], deleteFiles: boolean, cancelDownloads: boolean) =>
+    req<MovieBulkDeleteReply>("/api/v1/movies/bulk", { method: "DELETE", body: JSON.stringify({ ids, delete_files: deleteFiles, cancel_downloads: cancelDownloads }) }),
+  // Organize: a dry run over the library (no ids) or a selection; nothing moves.
+  organizePreview: (ids?: number[], offset = 0, limit = 200) =>
+    req<OrganizePreview>(`/api/v1/movies/organize?ids=${ids?.length ? ids.join(",") : "all"}&offset=${offset}&limit=${limit}`),
+  // Starts the previewed renames as a job; 409 when the plan changed since the preview.
+  organizeApply: (token: string, ids?: number[]) =>
+    req<{ status: string; total: number } & JobRef>("/api/v1/movies/organize", { method: "POST", body: JSON.stringify({ token, ids: ids ?? [] }) }),
   addVersion: (id: number, body: { label: string; quality_profile: string; edition?: string; monitored?: boolean }) =>
     req<MovieVersion>(`/api/v1/movies/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
   updateVersion: (id: number, vid: number, body: { label: string; quality_profile: string; edition?: string; monitored: boolean }) =>

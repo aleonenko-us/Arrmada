@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DeletePreview, DownloadClientList, FitCounts,
-  FitItem, FormatInfo, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
@@ -71,6 +71,34 @@ export const movies: { movies: MovieSummary[]; metadata_available: boolean; clie
       vote_average: 6.4, size_bytes: 4_000_000_000, media: { resolution: "1080p", codec: "x265", audio: ["AAC"], bitrate_mbps: 3.2, container: "mp4" } },
   ],
 };
+
+
+// GET /api/v1/movies/{id}: a library film's detail page, from its summary. Anchor Point
+// (id 2) is monitored with no file, so its one primary action is Search.
+export function movieDetail(id: number): Movie | null {
+  const m = movies.movies.find((x) => x.id === id);
+  if (!m) return null;
+  return {
+    id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
+    quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
+    overview: "A fixture film.", download: m.download,
+    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
+    acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
+  };
+}
+
+// PUT /api/v1/movies/bulk: the mass editor's one update. A profile change finds The
+// Cartographer (id 1) too big for it; a search for Driftwood (id 3) can't be queued.
+export function bulkUpdate(body: unknown): MovieBulkUpdateReply {
+  const b = (body ?? {}) as { ids?: number[]; quality_profile?: string; search?: string };
+  const ids = b.ids ?? [];
+  const exceeds = b.quality_profile && ids.includes(1)
+    ? [{ id: 1, title: "The Cartographer", size_bytes: 9_000_000_000, reason: "Over your 20 Mbps ceiling (36.4 Mbps)", smaller: true }]
+    : [];
+  const errors = !b.quality_profile && b.search && b.search !== "none" && ids.includes(3) ? [{ id: 3, msg: "couldn't queue its search just now" }] : [];
+  const searchable = b.search && b.search !== "none" ? ids.filter((id) => id === 2).length : 0;
+  return { updated: b.quality_profile ? ids.length : 0, queued: searchable, duplicates: 0, not_monitored: 0, exceeds_profile: exceeds, errors };
+}
 
 // GET /api/v1/library/fit: the Cartographer's file is over its profile's ceiling.
 export const movieFit: { items: FitItem[] } = {

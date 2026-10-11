@@ -134,6 +134,18 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/movies/downloads", media.movieDownloads),
     { method: "GET", path: "/api/v1/movies/wanted", respond: ({ url }) => (url.searchParams.get("tab") === "cutoff" ? media.moviesCutoff : media.moviesMissing) },
     { method: "POST", path: "/api/v1/movies/search", status: 202, respond: ({ body }) => ({ queued: ((body as { ids?: number[] })?.ids ?? []).length, duplicates: 0 }) },
+    // A film's page and its panels (MOV-18); its delete is answered below.
+    { method: "GET", path: /^\/api\/v1\/movies\/(\d+)$/, respond: ({ params }) => media.movieDetail(Number(params[0])) },
+    get(/^\/api\/v1\/movies\/\d+\/history$/, { events: [] }),
+    get(/^\/api\/v1\/movies\/\d+\/blocklist$/, { blocklist: [] }),
+    // The mass editor (MOV-19): a profile change finds The Cartographer's file too big;
+    // Driftwood's search can't be queued (a partial failure).
+    { method: "PUT", path: "/api/v1/movies/bulk", respond: ({ body }) => media.bulkUpdate(body) },
+    { method: "POST", path: "/api/v1/movies/bulk/regrab", status: 202, respond: ({ body }) => ({ queued: ((body as { ids?: number[] })?.ids ?? []).length, duplicates: 0, errors: [] }) },
+    { method: "DELETE", path: "/api/v1/movies/bulk", respond: ({ body }) => {
+      const ids = (body as { ids?: number[] })?.ids ?? [];
+      return { deleted: ids.length, failed: 0, results: ids.map((id) => ({ id, deleted: true })) };
+    } },
     get("/api/v1/series/unmatched", { unmatched: [] }),
     // The library pages: fit reports, removing a title, and the bulk bar's per-title calls.
     { method: "GET", path: "/api/v1/library/fit", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesFit : media.movieFit) },

@@ -34,11 +34,17 @@ test.describe("library pages", () => {
       await dialog.getByRole("button", { name: "Remove", exact: true }).click();
       await expect.poll(() => api.callsTo("DELETE", `${lib.api}/`).length).toBe(1);
 
-      // Bulk: select two, set a profile — one PUT each.
+      // Bulk: select them all, set a profile — Movies in one PUT to the bulk endpoint
+      // (MOV-19), Series one PUT each.
       await page.getByRole("button", { name: "Select", exact: true }).click();
       await page.getByRole("button", { name: /^Select all \(\d+\)$/ }).click();
       await page.getByRole("combobox", { name: /quality profile/i }).selectOption("uhd-2160p");
-      await expect.poll(() => api.calls.filter((c) => c.method === "PUT" && c.path.endsWith("/profile")).length).toBeGreaterThan(1);
+      if (lib.path === "/movies") {
+        await expect.poll(() => api.callsTo("PUT", "/api/v1/movies/bulk").length).toBe(1);
+        expect(api.calls.filter((c) => c.method === "PUT" && c.path.endsWith("/profile"))).toHaveLength(0);
+      } else {
+        await expect.poll(() => api.calls.filter((c) => c.method === "PUT" && c.path.endsWith("/profile")).length).toBeGreaterThan(1);
+      }
       await expect(page.getByText(/Quality profile set on \d+/)).toBeVisible();
     });
   }
