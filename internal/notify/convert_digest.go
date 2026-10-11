@@ -125,10 +125,12 @@ func (c *ConvertAlerts) Handle(ctx context.Context, topic string, d map[string]a
 	case topicConvertStalled:
 		c.update(ctx, func(st *digestState) { st.addProblem(str(d, "key")) })
 	case topicConvertBlocked:
-		// Its failures were counted as they happened. The dedupe names the file and the
-		// moment it was blocked: "Try again" followed by three more failures is a new
-		// occurrence and is announced again; a replayed event is not.
+		// A problem for the summary too (once per file: a failure of it may already have
+		// counted — or not, when its tries were encodes that didn't pay off). The dedupe
+		// names the file and the moment it was blocked: "Try again" followed by three more
+		// failures is a new occurrence and is announced again; a replayed event is not.
 		key := str(d, "key")
+		c.update(ctx, func(st *digestState) { st.addProblem(key) })
 		dedupe := "convert.blocked:" + key + ":" + strconv.FormatInt(num(d, "at"), 10)
 		if _, err := c.emit.EmitOnce(ctx, EventConvertFailed, dedupe, d); err != nil && ctx.Err() == nil {
 			c.log.Warn("notify: couldn't queue the Convert gave-up alert", "item", key, "err", err)

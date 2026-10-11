@@ -879,7 +879,7 @@ func main() {
 	// monitoring is on, so its settings page says so when it isn't.
 	convertSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })
 	// convert.done / failed / blocked / stalled (staff-only topics): the live UI and the
-	// admin alerts hear them (internal/notify/convert.go).
+	// admin alerts hear them (internal/notify/convert_digest.go).
 	convertSvc.SetBus(bus)
 	// "Convert gave up on a file" at once, and one summary a morning (notify/convert_digest.go;
 	// its counts survive a restart in a setting). Stuck-for-space is a Needs-you item below.
