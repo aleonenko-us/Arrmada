@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // whisperGen wraps the bundled whisper.cpp CLI for local AI subtitle generation. It's inert when
@@ -220,7 +222,7 @@ func detectWhisper(modelsDir string) *whisperGen {
 		// Flags differ between whisper.cpp versions; an unknown one makes whisper-cli print
 		// usage and do nothing. Probe the help text once and pass only what it knows. Both
 		// builds come from the same whisper.cpp tag, so one probe covers them.
-		out, _ := exec.Command(bin, "--help").CombinedOutput()
+		out, _ := toolrun.Command(context.Background(), toolrun.Normal, bin, "--help").CombinedOutput()
 		w.noGPUFlag = strings.Contains(string(out), "--no-gpu")
 		w.noFallback = strings.Contains(string(out), "--no-fallback")
 		w.suppressNST = strings.Contains(string(out), "--suppress-nst")
@@ -330,7 +332,7 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 		extract = append(extract, "-map", fmt.Sprintf("0:a:%d", audioStream))
 	}
 	extract = append(extract, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav)
-	if out, err := exec.CommandContext(ctx, ffmpeg, extract...).CombinedOutput(); err != nil {
+	if out, err := toolrun.Command(ctx, toolrun.Background, ffmpeg, extract...).CombinedOutput(); err != nil {
 		return fmt.Errorf("extract audio: %w: %s", err, tailStr(out, 300))
 	}
 	if fi, err := os.Stat(wav); err != nil || fi.Size() < 4096 {
@@ -500,7 +502,7 @@ var progressRe = regexp.MustCompile(`progress\s*=\s*(\d{1,3})%`)
 // while it runs, and returns the full combined output for diagnostics afterwards. The old
 // CombinedOutput held everything until exit — fine for errors, useless for a bar.
 func runWhisper(ctx context.Context, bin string, args []string, progress func(int)) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := toolrun.Command(ctx, toolrun.Background, bin, args...)
 	pr, pw := io.Pipe()
 	cmd.Stdout = pw
 	cmd.Stderr = pw

@@ -152,7 +152,7 @@ func (s *Service) claim(it item, title string, requested bool) *Job {
 
 // runJob wraps process() with per-job cancellation.
 func (s *Service) runJob(ctx context.Context, job *Job) {
-	jobCtx, cancel := context.WithCancel(ctx)
+	jobCtx, cancel := context.WithCancel(withJob(ctx, job)) // every tool below registers with the job
 	defer cancel()
 	s.update(job, func(j *Job) { j.cancel = cancel })
 	// A panic in one file's conversion fails that job (below, through finish, like any

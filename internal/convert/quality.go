@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // This file holds the C4 quality gate: after a transcode, measure how close the output is to the
@@ -211,7 +212,7 @@ func (s *Service) ssimWindow(ctx context.Context, distorted, reference string, d
 	seek(distorted, dStart)
 	seek(reference, rStart)
 	args = append(args, "-lavfi", lavfi, "-an", "-sn", "-f", "null", "-")
-	out, _ := exec.CommandContext(ctx, s.ffmpeg, args...).CombinedOutput()
+	out, _ := s.tool(ctx, nil, toolrun.Idle, s.ffmpeg, args...).CombinedOutput()
 	return parseSSIM(string(out))
 }
 

@@ -5,13 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // The side-by-side test: encode the same few clips of a file as HEVC and as AV1, score each
@@ -189,7 +190,7 @@ func (s *Service) trial(ctx context.Context, job *Job, src string, mi *MediaInfo
 		// keyframe, so it may begin a moment before the encoded clip.
 		for i, c := range clips {
 			out := filepath.Join(dir, fmt.Sprintf("original-%d.mkv", i+1))
-			_ = exec.CommandContext(ctx, s.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+			_ = s.tool(ctx, job, toolrun.Background, s.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
 				"-ss", strconv.FormatFloat(c.start, 'f', 2, 64), "-t", strconv.FormatFloat(c.dur, 'f', 2, 64),
 				"-i", src, "-map", fmt.Sprintf("0:v:%d", mi.VideoIndex), "-map", "0:a:0?", "-c", "copy", out).Run()
 		}
@@ -213,18 +214,10 @@ func (s *Service) encodeClip(ctx context.Context, job *Job, src, out string, mi 
 		"-map", fmt.Sprintf("0:v:%d", mi.VideoIndex), "-an", "-sn")
 	args = append(args, videoArgs(enc, mi, plan, false, cores, s.noNumaPools)...)
 	args = append(args, out)
-	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
-	lowPriority(cmd)
+	cmd := s.tool(ctx, job, toolrun.Background, s.ffmpeg, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	pid := cmd.Process.Pid
-	applyNice(pid, encodeNice)
-	s.trackProc(job, pid)
-	defer s.untrackProc(job, pid)
-	if err := cmd.Wait(); err != nil {
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%v: %s", err, tailStr([]byte(stderr.String())))
 	}
 	return nil

@@ -7,9 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // MediaInfo is the probed spec of a single media file.
@@ -245,7 +246,7 @@ func subSummary(subs []SubStream, count int) string {
 
 // probe runs ffprobe and parses a file's spec.
 func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
-	cmd := exec.CommandContext(ctx, ffprobe,
+	cmd := toolrun.Command(ctx, toolrun.Normal, ffprobe,
 		"-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path)
 	out, err := cmd.Output()
 	if err != nil {
@@ -435,7 +436,7 @@ func detectVFR(r, avg float64, interlaced bool) bool {
 // and reports whether the frame carries a Dolby Vision RPU. Meta is nil when no static
 // metadata is present.
 func probeHDR10(ctx context.Context, ffprobe, path string, videoIndex int) (meta *HDR10Meta, hasDV bool) {
-	out, err := exec.CommandContext(ctx, ffprobe, "-v", "error",
+	out, err := toolrun.Command(ctx, toolrun.Normal, ffprobe, "-v", "error",
 		"-select_streams", fmt.Sprintf("v:%d", videoIndex),
 		"-read_intervals", "%+#1", "-show_frames", "-print_format", "json", path).Output()
 	if err != nil {

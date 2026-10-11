@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Encoder is an available (compiled-in) ffmpeg video encoder for a target codec.
@@ -59,7 +61,7 @@ var knownEncoders = []Encoder{
 // them). The CPU encoder for each codec is always available as the safe fallback.
 func detectEncoders(ctx context.Context, ffmpeg string) []Encoder {
 	compiled := map[string]bool{}
-	if out, err := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-encoders").Output(); err == nil {
+	if out, err := toolrun.Command(ctx, toolrun.Normal, ffmpeg, "-hide_banner", "-encoders").Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			f := strings.Fields(line)
 			if len(f) >= 2 {
@@ -130,7 +132,7 @@ func probeEncoder(ctx context.Context, ffmpeg string, e Encoder) error {
 		args = append(args, "-vf", "format=nv12,hwupload")
 	}
 	args = append(args, "-c:v", e.Name, "-f", "null", "-")
-	out, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput()
+	out, err := toolrun.Command(ctx, toolrun.Normal, ffmpeg, args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -279,7 +281,7 @@ func hasCmd(name string) bool {
 func numaPoolsBlocked(ctx context.Context, ffmpeg string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, _ := exec.CommandContext(ctx, ffmpeg,
+	out, _ := toolrun.Command(ctx, toolrun.Normal, ffmpeg,
 		"-hide_banner", "-loglevel", "warning",
 		"-f", "lavfi", "-i", "testsrc=d=0.1:s=64x64",
 		"-c:v", "libx265", "-preset", "ultrafast", "-f", "null", "-",

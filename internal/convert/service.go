@@ -31,10 +31,6 @@ import (
 // run it can wake the array, so keep it away from prime viewing hours.
 const defaultScanAt = "03:00"
 
-// encodeNice is the scheduling priority encodes run at. 19 is the lowest — encoding is bulk
-// background work that should yield instantly to Plex or anything else the user notices.
-const encodeNice = 19
-
 // maxJobHistory caps how many FINISHED jobs are kept for the activity list.
 const maxJobHistory = 200
 
