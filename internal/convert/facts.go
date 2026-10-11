@@ -16,6 +16,9 @@ import (
 type IndexedFile struct {
 	MediaType string
 	MovieID   int64
+	// VersionID is the movie track the file belongs to: 0 = the default file, else an
+	// extra version (which has its own profile, so a per-movie fit reads VersionID 0 only).
+	VersionID int64
 	SeriesID  int64
 	Season    int
 	Episode   int
@@ -32,7 +35,7 @@ func (s *Service) IndexedFiles(ctx context.Context, mediaType string, seriesID i
 	if s.index == nil {
 		return nil, nil
 	}
-	q := `SELECT media_type, movie_id, series_id, season, episode, path, info_json
+	q := `SELECT media_type, movie_id, version_id, series_id, season, episode, path, info_json
 	      FROM convert_library WHERE media_type = ? AND info_json <> '' AND info_ver = ?`
 	args := []any{mediaType, probeSchemaVersion}
 	if seriesID > 0 {
@@ -48,7 +51,7 @@ func (s *Service) IndexedFiles(ctx context.Context, mediaType string, seriesID i
 	for rows.Next() {
 		var f IndexedFile
 		var infoJSON string
-		if err := rows.Scan(&f.MediaType, &f.MovieID, &f.SeriesID, &f.Season, &f.Episode, &f.Path, &infoJSON); err != nil {
+		if err := rows.Scan(&f.MediaType, &f.MovieID, &f.VersionID, &f.SeriesID, &f.Season, &f.Episode, &f.Path, &infoJSON); err != nil {
 			return nil, err
 		}
 		if json.Unmarshal([]byte(infoJSON), &f.Info) == nil {

@@ -141,8 +141,9 @@ func (s *Service) stillTooBigForBin(ctx context.Context) func(autoCand) bool {
 // claim creates the job for an item, or returns nil when it's already being converted.
 func (s *Service) claim(it item, title string, requested bool) *Job {
 	job, fresh := s.claimPending(it.key(), func(id int64) *Job {
-		return &Job{ID: id, Kind: it.Kind, MovieID: it.MovieID, SeriesID: it.SeriesID, Season: it.Season,
-			Episode: it.Episode, Title: title, State: StatePreparing, Requested: requested, StartedAt: time.Now().Unix()}
+		j := it.job()
+		j.ID, j.Title, j.State, j.Requested, j.StartedAt = id, title, StatePreparing, requested, time.Now().Unix()
+		return j
 	})
 	if !fresh {
 		return nil
@@ -193,6 +194,10 @@ type autoCand struct {
 	Reason  string `json:"reason"`  // "video", "video + tracks", "tracks"
 	Codec   string `json:"codec"`   // likely target
 	Current string `json:"current"` // current video codec
+	// An extra version track of the movie (0 = its default file) and that track's name;
+	// Title already carries the name.
+	VersionID    int64  `json:"version_id,omitempty"`
+	VersionLabel string `json:"version_label,omitempty"`
 
 	// needScratch is the scratch space this file will need, for the Settings indicator.
 	needScratch int64
@@ -260,7 +265,7 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		return nil
 	}
 	rows, err := s.index.db.QueryContext(ctx,
-		`SELECT media_type, movie_id, series_id, season, episode, title, size_bytes, info_json, path, orig_lang
+		`SELECT media_type, movie_id, version_id, version_label, series_id, season, episode, title, size_bytes, info_json, path, orig_lang
 		   FROM convert_library WHERE info_json <> ''`)
 	if err != nil {
 		return nil
@@ -269,10 +274,10 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 	dirCache := map[string][]string{}
 	var out []autoCand
 	for rows.Next() {
-		var mediaType, title, infoJSON, path, orig string
-		var movieID, seriesID, size int64
+		var mediaType, label, title, infoJSON, path, orig string
+		var movieID, versionID, seriesID, size int64
 		var season, episode int
-		if rows.Scan(&mediaType, &movieID, &seriesID, &season, &episode, &title, &size, &infoJSON, &path, &orig) != nil {
+		if rows.Scan(&mediaType, &movieID, &versionID, &label, &seriesID, &season, &episode, &title, &size, &infoJSON, &path, &orig) != nil {
 			continue
 		}
 		var mi MediaInfo
@@ -283,7 +288,8 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		if !n.Worth {
 			continue
 		}
-		c := autoCand{Key: ItemKey(mediaType, movieID, seriesID, season, episode), Title: title, Kind: mediaType,
+		c := autoCand{Key: ItemKey(mediaType, movieID, versionID, seriesID, season, episode),
+			Title: trackTitle(title, label, versionID), Kind: mediaType, VersionID: versionID, VersionLabel: label,
 			Video: n.Video, Size: size, Tracks: trackSummary(&mi, plan), Current: strings.ToUpper(mi.VideoCodec),
 			needScratch: candScratch(mi, plan, size)}
 		if n.Video {
@@ -328,7 +334,7 @@ func (s *Service) Request(ctx context.Context, key string) error {
 	if running {
 		return ErrAlreadyQueued
 	}
-	_, title, _, ok := s.resolveSource(ctx, &Job{Kind: it.Kind, MovieID: it.MovieID, SeriesID: it.SeriesID, Season: it.Season, Episode: it.Episode})
+	_, title, _, ok := s.resolveSource(ctx, it.job())
 	if !ok {
 		return fmt.Errorf("this title has no file to convert")
 	}

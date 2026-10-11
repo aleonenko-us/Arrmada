@@ -59,13 +59,15 @@ func (r *requestStore) list(ctx context.Context) []Request {
 	return out
 }
 
-// item is a library file identified by its key ("movie:12", "episode:3:1:2").
+// item is a library file identified by its key ("movie:12", "movie:12:v:3",
+// "episode:3:1:2").
 type item struct {
-	Kind     string // "movie" | "episode"
-	MovieID  int64
-	SeriesID int64
-	Season   int
-	Episode  int
+	Kind      string // "movie" | "episode"
+	MovieID   int64
+	VersionID int64 // the movie's extra version track; 0 = its default file
+	SeriesID  int64
+	Season    int
+	Episode   int
 }
 
 // parseKey turns an item key back into its parts.
@@ -75,6 +77,12 @@ func parseKey(key string) (item, bool) {
 	case len(parts) == 2 && parts[0] == "movie":
 		id, err := strconv.ParseInt(parts[1], 10, 64)
 		return item{Kind: "movie", MovieID: id}, err == nil && id > 0
+	case len(parts) == 4 && parts[0] == "movie" && parts[2] == "v":
+		// An extra version track. The default file's key is 'movie:ID' alone — one file,
+		// one key — so 'movie:ID:v:0' isn't one.
+		id, e1 := strconv.ParseInt(parts[1], 10, 64)
+		vid, e2 := strconv.ParseInt(parts[3], 10, 64)
+		return item{Kind: "movie", MovieID: id, VersionID: vid}, e1 == nil && e2 == nil && id > 0 && vid > 0
 	case len(parts) == 4 && parts[0] == "episode":
 		sid, e1 := strconv.ParseInt(parts[1], 10, 64)
 		se, e2 := strconv.Atoi(parts[2])
@@ -89,15 +97,21 @@ func (it item) key() string {
 	if it.Kind == "episode" {
 		return episodeKey(it.SeriesID, it.Season, it.Episode)
 	}
-	return movieKey(it.MovieID)
+	return movieVersionKey(it.MovieID, it.VersionID)
 }
 
-// ItemKey builds the key for a movie (episode == nil) or an episode, for the HTTP layer.
-func ItemKey(kind string, movieID, seriesID int64, season, episode int) string {
+// job is a bare Job naming this item, for lookups that take one (resolveSource).
+func (it item) job() *Job {
+	return &Job{Kind: it.Kind, MovieID: it.MovieID, VersionID: it.VersionID,
+		SeriesID: it.SeriesID, Season: it.Season, Episode: it.Episode}
+}
+
+// ItemKey builds the key for a movie track (versionID 0 = the default file) or an episode.
+func ItemKey(kind string, movieID, versionID, seriesID int64, season, episode int) string {
 	if kind == "episode" {
 		return episodeKey(seriesID, season, episode)
 	}
-	return movieKey(movieID)
+	return movieVersionKey(movieID, versionID)
 }
 
 // ErrAlreadyQueued means this exact file is already waiting or converting.

@@ -120,6 +120,11 @@ func (a *api) libraryFitMovies(w http.ResponseWriter, ctx context.Context) {
 	items := make([]fitItem, 0, len(files))
 	for i := range files {
 		f := &files[i]
+		if f.VersionID != 0 {
+			// One badge per movie, for its default file: an extra version has its own
+			// profile, and the grid has one card per film.
+			continue
+		}
 		it := judge(ctx, ideals, refs[f.MovieID], &f.Info)
 		it.MovieID = f.MovieID
 		items = append(items, it)

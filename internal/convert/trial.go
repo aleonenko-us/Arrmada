@@ -288,7 +288,7 @@ func (s *Service) StartCompare(ctx context.Context, key string) error {
 	if !ok {
 		return fmt.Errorf("invalid item")
 	}
-	probeJob := &Job{Kind: it.Kind, MovieID: it.MovieID, SeriesID: it.SeriesID, Season: it.Season, Episode: it.Episode}
+	probeJob := it.job()
 	src, title, origLang, ok := s.resolveSource(ctx, probeJob)
 	if !ok {
 		return fmt.Errorf("this title has no file")

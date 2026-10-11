@@ -71,6 +71,7 @@ type Job struct {
 	Key         string   `json:"key"`
 	Kind        string   `json:"kind"` // "movie" | "episode"
 	MovieID     int64    `json:"movie_id,omitempty"`
+	VersionID   int64    `json:"version_id,omitempty"` // the movie's extra version track; 0 = its default file
 	SeriesID    int64    `json:"series_id,omitempty"`
 	Season      int      `json:"season"` // NOT omitempty: season 0 is specials
 	Episode     int      `json:"episode,omitempty"`
@@ -456,7 +457,7 @@ type Candidate struct {
 	SeriesID  int64      `json:"series_id,omitempty"`
 	Season    int        `json:"season"` // NOT omitempty — season 0 is specials
 	Episode   int        `json:"episode,omitempty"`
-	Title     string     `json:"title"`
+	Title     string     `json:"title"` // the film's or episode's title; a version's label is VersionLabel
 	Year      int        `json:"year,omitempty"`
 	PosterURL string     `json:"poster_url,omitempty"`
 	Path      string     `json:"path"`
@@ -467,6 +468,10 @@ type Candidate struct {
 	Needs     Needs      `json:"needs"`
 	EstBytes  int64      `json:"est_bytes"` // rough estimate of the converted size
 	Tracks    string     `json:"tracks,omitempty"`
+
+	// An extra version track of the movie (0 = its default file) and that track's name.
+	VersionID    int64  `json:"version_id,omitempty"`
+	VersionLabel string `json:"version_label,omitempty"`
 }
 
 // Library returns every movie with its spec and what it needs, from the index.
@@ -505,7 +510,7 @@ func (s *Service) Blocklist(ctx context.Context) ([]Blocked, error) {
 		if b.Count < maxFailures {
 			continue // still being retried — not blocked yet
 		}
-		b.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.SeriesID, b.Season, b.Episode, b.Key)
+		b.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.VersionID, b.SeriesID, b.Season, b.Episode, b.Key)
 		out = append(out, b)
 	}
 	return out, nil
@@ -518,7 +523,7 @@ func (s *Service) Skips(ctx context.Context) ([]Skipped, error) {
 		return nil, err
 	}
 	for i := range list {
-		list[i].Title = s.titleForKey(ctx, list[i].MediaKind, list[i].MovieID, list[i].SeriesID, list[i].Season, list[i].Episode, list[i].Key)
+		list[i].Title = s.titleForKey(ctx, list[i].MediaKind, list[i].MovieID, list[i].VersionID, list[i].SeriesID, list[i].Season, list[i].Episode, list[i].Key)
 	}
 	return list, nil
 }
@@ -556,13 +561,26 @@ func (s *Service) ClearBlocklist(ctx context.Context, key string) error {
 	return nil
 }
 
-// titleForKey resolves a display title for a movie or episode, falling back to the raw key.
-func (s *Service) titleForKey(ctx context.Context, kind string, movieID, seriesID int64, season, episode int, key string) string {
+// titleForKey resolves a display title for a movie track or episode, falling back to the
+// raw key.
+func (s *Service) titleForKey(ctx context.Context, kind string, movieID, versionID, seriesID int64, season, episode int, key string) string {
 	switch kind {
 	case "movie":
 		if s.movies != nil {
 			if m, err := s.movies.Get(ctx, movieID); err == nil {
-				return m.Title
+				if versionID == 0 {
+					return m.Title
+				}
+				// The track's own label; a track deleted since still names its film.
+				label := ""
+				if rows, err := s.movies.VersionRows(ctx, movieID); err == nil {
+					for _, v := range rows {
+						if !v.IsDefault && v.ID == versionID {
+							label = v.Label
+						}
+					}
+				}
+				return trackTitle(m.Title, label, versionID)
 			}
 		}
 	case "episode":
