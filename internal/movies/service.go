@@ -649,16 +649,28 @@ var ErrWorseQuality = fmt.Errorf("import is lower quality than the existing file
 // accumulate (multi-version is a separate, opt-in feature). A replacement whose
 // resolution is LOWER than the existing file's is refused with ErrWorseQuality.
 func (s *Service) MarkImported(ctx context.Context, id int64, path, sourceRelease string) error {
-	return s.markImported(ctx, id, path, sourceRelease, false)
+	return s.MarkImportedTo(ctx, id, -1, path, sourceRelease, false)
 }
 
 // MarkImportedManual is MarkImported for user-driven imports: the user picked
 // this file deliberately, so the worse-quality replacement gate does not apply.
 func (s *Service) MarkImportedManual(ctx context.Context, id int64, path, sourceRelease string) error {
-	return s.markImported(ctx, id, path, sourceRelease, true)
+	return s.MarkImportedTo(ctx, id, -1, path, sourceRelease, true)
 }
 
-func (s *Service) markImported(ctx context.Context, id int64, path, sourceRelease string, manual bool) error {
+// ErrPathOwnedByOtherTrack is an import onto the file another track of the movie holds.
+// Recording it would leave two tracks pointing at one file, and the next upgrade of
+// either would recycle the other's.
+var ErrPathOwnedByOtherTrack = errors.New("that file belongs to another version of this movie")
+
+// ErrVersionNotFound is a track id that isn't one of this movie's tracks.
+var ErrVersionNotFound = errors.New("that version isn't one of this movie's")
+
+// MarkImportedTo records path as the file of track versionID (0 = the default track):
+// the track the import was decided and named for. -1 routes it by the file's resolution
+// and edition as MarkImported always has, and so does a track that has been removed since.
+// manual skips the worse-quality gate (the user picked this file).
+func (s *Service) MarkImportedTo(ctx context.Context, id, versionID int64, path, sourceRelease string, manual bool) error {
 	// The database rows (with the default track's cached media info) are all routing
 	// and the quality gate need; probing every track's file here cost one ffprobe per
 	// track on every import.
@@ -670,7 +682,23 @@ func (s *Service) markImported(ctx context.Context, id int64, path, sourceReleas
 	// are what the track caches. Probed before any transaction opens — a probe can take
 	// seconds and every other writer waits on an open transaction.
 	info := s.probeTrack(path)
-	target := s.routeVersion(ctx, versions, trackResolution(info, path))
+	target, found := Version{}, false
+	if versionID >= 0 {
+		target, found = versionByID(versions, versionID)
+	}
+	if !found {
+		target = s.routeVersionFor(ctx, versions, trackResolution(info, path), releaseEdition(sourceRelease, path))
+	}
+	// Defence in depth behind the importer's per-track naming: never record a file another
+	// track holds. Its own file again (a retried attach) is fine.
+	for _, v := range versions {
+		if v.ID != target.ID && v.FilePath != "" && library.OwnedByOther(path, []string{v.FilePath}) {
+			s.log.Warn("import refused: the file belongs to another track", "movie_id", id,
+				"path", path, "track", target.Label, "owner", v.Label)
+			_ = s.repo.AddEvent(ctx, id, "failed", "Import refused: "+filepath.Base(path)+" belongs to "+v.Label)
+			return fmt.Errorf("%w (%s)", ErrPathOwnedByOtherTrack, v.Label)
+		}
+	}
 
 	// Upgrade is scoped to the target version: replacing the 1080p track's file
 	// never touches the 4K track's file.
@@ -1097,12 +1125,31 @@ func (s *Service) HasExtraVersions(ctx context.Context, id int64) bool {
 // (-1) while another track accepts it; if every track forbids it, it falls back
 // to the default track (whose file the MarkImported quality gate still protects).
 func (s *Service) routeVersion(ctx context.Context, versions []Version, res string) Version {
+	return s.routeVersionFor(ctx, versions, res, "")
+}
+
+// routeVersionFor is routeVersion that also respects editions: a file of a track's
+// edition goes to that track, and a track with an edition never takes a file without it
+// (a theatrical release must not fill the Director's Cut track because the resolutions
+// match). edition is the file's own edition, normalized or not ("" for none).
+func (s *Service) routeVersionFor(ctx context.Context, versions []Version, res, edition string) Version {
+	want := parser.NormalizeEdition(edition)
+	if want != "" {
+		for _, v := range versions[1:] {
+			if parser.NormalizeEdition(v.Edition) == want {
+				return v // the track for this edition, whatever the resolution
+			}
+		}
+	}
 	if res == "" {
 		return versions[0] // unknown resolution → default track
 	}
 	best := versions[0] // default
 	bestScore := s.matchScore(ctx, versions[0].QualityProfile, res)
 	for _, v := range versions[1:] {
+		if parser.NormalizeEdition(v.Edition) != "" {
+			continue // an edition track only takes its own edition (above)
+		}
 		if sc := s.matchScore(ctx, v.QualityProfile, res); sc > bestScore {
 			best, bestScore = v, sc
 		}
@@ -1111,6 +1158,111 @@ func (s *Service) routeVersion(ctx context.Context, versions []Version, res stri
 		return versions[0] // every track forbids it → default track
 	}
 	return best
+}
+
+// versionByID finds a track in a movie's rows (0 = the default track).
+func versionByID(versions []Version, id int64) (Version, bool) {
+	for _, v := range versions {
+		if v.ID == id {
+			return v, true
+		}
+	}
+	return Version{}, false
+}
+
+// releaseEdition is the edition a file states: its release name's, else its file name's.
+func releaseEdition(sourceRelease, path string) string {
+	if sourceRelease != "" {
+		if e := parser.Parse(sourceRelease).Edition; e != "" {
+			return e
+		}
+	}
+	return parser.Parse(filepath.Base(path)).Edition
+}
+
+// TrackNaming is how track v of movie m names its file: the movie's title and year, the
+// track's edition and label, and every other track's file as protected. With the
+// importer's MovieTrackTarget it's the one name builder for movie files — the import,
+// manual import and rename all go through TrackTarget.
+func (s *Service) TrackNaming(m Movie, versions []Version, v Version) library.MovieTrack {
+	t := library.MovieTrack{
+		Title: m.Title, Year: m.Year, Edition: v.Edition, Label: v.Label,
+		IDs: library.MovieIDs{TMDB: m.TMDBID, IMDB: m.IMDBID},
+	}
+	for _, o := range versions {
+		if o.ID != v.ID && o.FilePath != "" {
+			t.Protected = append(t.Protected, o.FilePath)
+		}
+	}
+	return t
+}
+
+// TrackTarget is the library path track v's file should have, named from qualitySource
+// (the release or file name) with extension ext. It's never another track's file.
+func (s *Service) TrackTarget(m Movie, versions []Version, v Version, qualitySource, ext string) string {
+	return s.imp.MovieTrackTarget(s.TrackNaming(m, versions, v), qualitySource, ext)
+}
+
+// ImportNaming decides the track a file for movie id goes to, before the file is placed,
+// and how that track names it. versionID >= 0 is that track (0 = the default track).
+// -1, or a track removed since, routes by releaseName's resolution and edition, as
+// imports always were routed — except a grab made to replace a file (replacesPath), which
+// goes to the track holding that file.
+func (s *Service) ImportNaming(ctx context.Context, id, versionID int64, replacesPath, releaseName string) (library.MovieImportName, error) {
+	m, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return library.MovieImportName{}, err
+	}
+	versions, err := s.VersionRows(ctx, id)
+	if err != nil {
+		return library.MovieImportName{}, err
+	}
+	target, found := Version{}, false
+	if versionID >= 0 {
+		target, found = versionByID(versions, versionID)
+	}
+	if !found && replacesPath != "" {
+		for _, v := range versions {
+			if v.FilePath != "" && v.FilePath == replacesPath {
+				target, found = v, true
+				break
+			}
+		}
+	}
+	if !found {
+		rel := parser.Parse(releaseName)
+		res := ""
+		if rel.Resolution != parser.ResUnknown {
+			res = string(rel.Resolution)
+		}
+		target = s.routeVersionFor(ctx, versions, res, rel.Edition)
+	}
+	t := s.TrackNaming(m, versions, target)
+	t.Folder = s.existingFolder(versions)
+	return library.MovieImportName{MovieID: id, VersionID: target.ID, Track: t}, nil
+}
+
+// existingFolder is the library folder a movie's files already live in, so an import
+// keeps the movie there after a naming change ("Existing folders only change when you
+// rename them"): the default track's file's folder, else any track's. "" when no track
+// has a file, or the folder isn't a movie folder inside the current Movies root.
+func (s *Service) existingFolder(versions []Version) string {
+	root := s.libRoot()
+	if root == "" {
+		return ""
+	}
+	for _, v := range versions {
+		if v.FilePath == "" {
+			continue
+		}
+		dir := filepath.Dir(v.FilePath)
+		rel, err := filepath.Rel(root, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue // the root itself, or somewhere else: let the scheme decide
+		}
+		return dir
+	}
+	return ""
 }
 
 // matchScore rates how well a profile wants a resolution: higher = more specific.
@@ -1140,6 +1292,9 @@ func (s *Service) AddVersion(ctx context.Context, movieID int64, label, profile,
 	if label == "" {
 		label = "Version"
 	}
+	// Stored as the parser names it ("directors cut" → "Director's Cut"), so the edition
+	// filter and the file name agree on one spelling.
+	edition = parser.CanonicalEdition(edition)
 	v, err := s.repo.CreateVersion(ctx, movieID, Version{Label: label, QualityProfile: profile, Edition: edition, Monitored: monitored})
 	if err != nil {
 		return Version{}, err
@@ -1150,7 +1305,7 @@ func (s *Service) AddVersion(ctx context.Context, movieID int64, label, profile,
 
 // UpdateVersion edits an extra version's mutable fields.
 func (s *Service) UpdateVersion(ctx context.Context, versionID int64, label, profile, edition string, monitored bool) error {
-	return s.repo.UpdateVersion(ctx, versionID, label, profile, edition, monitored)
+	return s.repo.UpdateVersion(ctx, versionID, label, profile, parser.CanonicalEdition(edition), monitored)
 }
 
 // setDefaultFile records the default file path AND caches its media info — the one read
@@ -1394,7 +1549,7 @@ func (s *Service) movieFolder(m Movie) string {
 	if m.MovieFilePath != "" {
 		return filepath.Dir(m.MovieFilePath)
 	}
-	return filepath.Dir(s.imp.MovieTarget(m.Title, m.Year, "", ".mkv"))
+	return filepath.Dir(s.TrackTarget(m, nil, defaultVersionRow(m), "", ".mkv"))
 }
 
 // ImportCandidate is an unmatched video file available for manual import.
@@ -1453,18 +1608,30 @@ func (s *Service) ManualImportCandidates(ctx context.Context, dir string, maxRes
 
 // ManualImport imports a specific on-disk file into a movie and marks it.
 func (s *Service) ManualImport(ctx context.Context, id int64, srcPath string) error {
-	m, err := s.repo.Get(ctx, id)
+	return s.ManualImportTo(ctx, id, -1, srcPath)
+}
+
+// ManualImportTo imports a file into track versionID of a movie (0 = the default track,
+// -1 = whichever track its name's resolution and edition route it to), named for that
+// track and never onto another track's file.
+func (s *Service) ManualImportTo(ctx context.Context, id, versionID int64, srcPath string) error {
+	if versionID > 0 {
+		if _, owner, err := s.repo.GetVersion(ctx, versionID); err != nil || owner != id {
+			return ErrVersionNotFound
+		}
+	}
+	n, err := s.ImportNaming(ctx, id, versionID, "", filepath.Base(srcPath))
 	if err != nil {
 		return err
 	}
-	res, err := s.imp.ImportAs(m.Title, m.Year, srcPath)
+	res, err := s.imp.ImportAsNamed(n.Track, srcPath)
 	if err != nil {
 		return err
 	}
 	// The source filename usually carries the quality tags (scene/p2p naming), so
 	// use it as the release name for upgrade scoring. Manual: the user picked this
 	// file on purpose, so the worse-quality gate must not refuse it.
-	return s.MarkImportedManual(ctx, id, res.TargetPath, filepath.Base(res.SourcePath))
+	return s.MarkImportedTo(ctx, id, n.VersionID, res.TargetPath, filepath.Base(res.SourcePath), true)
 }
 
 var videoFileExts = map[string]bool{

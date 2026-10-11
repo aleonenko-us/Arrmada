@@ -584,20 +584,29 @@ func (c *Coordinator) grabForHash(ctx context.Context, hash string) (grab, error
 		`SELECT `+grabCols+` FROM grabs WHERE info_hash != '' AND lower(info_hash) = lower(?) ORDER BY id DESC LIMIT 1`, hash))
 }
 
-// movieIDForGrabHash resolves which movie a download was grabbed for, by torrent
-// info hash — the one identity that survives the round trip through the download
-// client unchanged. Any grab status counts: by attach time the row may already be
-// imported/seeded.
-func (c *Coordinator) movieIDForGrabHash(ctx context.Context, hash string) (int64, bool) {
+// GrabRef is which movie and track a download was grabbed for.
+type GrabRef struct {
+	ID, MovieID int64
+	// VersionID is the track the grab was made for (0 = the default track).
+	VersionID int64
+	// ReplacesPath is the file the grab was meant to replace ("" when it fills a missing
+	// track): an upgrade, a re-grab, a manual grab over an existing file.
+	ReplacesPath string
+}
+
+// MovieGrabForHash resolves which movie and track a download was grabbed for, by torrent
+// info hash — the one identity that survives the round trip through the download client
+// unchanged. Any grab status counts: by import time the row may already be seeded.
+func (c *Coordinator) MovieGrabForHash(ctx context.Context, hash string) (GrabRef, bool) {
 	if hash == "" {
-		return 0, false
+		return GrabRef{}, false
 	}
-	var id int64
+	var g GrabRef
 	err := c.db.QueryRowContext(ctx,
-		`SELECT movie_id FROM grabs
+		`SELECT id, movie_id, version_id, replaces_path FROM grabs
 		 WHERE media_type = 'movie' AND info_hash != '' AND lower(info_hash) = lower(?)
-		 ORDER BY id DESC LIMIT 1`, hash).Scan(&id)
-	return id, err == nil
+		 ORDER BY id DESC LIMIT 1`, hash).Scan(&g.ID, &g.MovieID, &g.VersionID, &g.ReplacesPath)
+	return g, err == nil
 }
 
 // normTitle normalizes a release title for blocklist/matching comparisons. Accents

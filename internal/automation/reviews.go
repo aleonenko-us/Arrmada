@@ -717,8 +717,19 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 		// ManualImport goes through MarkImported, which queues the same durable side
 		// effects as an automatic import (Convert, Subtitles, the requester's "ready") and
 		// announces movie.downloaded.
-		if err := c.movies.ManualImport(ctx, dest, r.ContentPath); err != nil {
-			return err
+		// A download grabbed for one of this movie's extra tracks goes into that track;
+		// anything else is routed by its name, as a manual import is.
+		version := int64(-1)
+		if g, ok := c.MovieGrabForHash(ctx, r.Hash); ok && g.MovieID == dest && g.VersionID > 0 {
+			version = g.VersionID
+		}
+		if err := c.movies.ManualImportTo(ctx, dest, version, r.ContentPath); err != nil {
+			if errors.Is(err, movies.ErrVersionNotFound) && version > 0 {
+				err = c.movies.ManualImport(ctx, dest, r.ContentPath) // the track was removed since
+			}
+			if err != nil {
+				return err
+			}
 		}
 	case "music":
 		// Books shipped with reviews their own ImportReview couldn't handle, so every

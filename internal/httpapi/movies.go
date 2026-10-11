@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
+	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
 
@@ -623,9 +624,36 @@ func (a *api) handleAddVersion(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusCreated, v)
 }
 
-// handleUpdateVersion edits an extra version's fields.
-func (a *api) handleUpdateVersion(w http.ResponseWriter, r *http.Request) {
+// extraVersion reads the movie id and extra track vid from the path and loads that track,
+// answering 404 when vid isn't one of the movie's extra tracks — a track id from another
+// movie must not be edited or deleted through this one.
+func (a *api) extraVersion(w http.ResponseWriter, r *http.Request) (int64, movies.Version, bool) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return 0, movies.Version{}, false
+	}
 	vid, ok := a.pathValueID(w, r, "vid")
+	if !ok {
+		return 0, movies.Version{}, false
+	}
+	versions, err := a.deps.Movies.VersionRows(r.Context(), id)
+	if err != nil {
+		a.writeError(w, http.StatusNotFound, "movie not found")
+		return 0, movies.Version{}, false
+	}
+	for _, v := range versions {
+		if v.ID == vid && !v.IsDefault {
+			return id, v, true
+		}
+	}
+	a.writeError(w, http.StatusNotFound, "that version isn't one of this movie's")
+	return 0, movies.Version{}, false
+}
+
+// handleUpdateVersion edits an extra version's label, profile, edition and monitoring.
+// An unknown profile is refused; a new profile or edition queues a search under it.
+func (a *api) handleUpdateVersion(w http.ResponseWriter, r *http.Request) {
+	id, cur, ok := a.extraVersion(w, r)
 	if !ok {
 		return
 	}
@@ -633,23 +661,44 @@ func (a *api) handleUpdateVersion(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
+	if req.QualityProfile == "" {
+		req.QualityProfile = cur.QualityProfile // not sent: keep the track's profile
+	} else if req.QualityProfile != cur.QualityProfile && !a.deps.Automation.KnownProfile(r.Context(), req.QualityProfile) {
+		// Only a new profile is checked: a track whose profile was deleted since can still
+		// be renamed or (un)monitored, and runs under the default until it's changed.
+		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
+		return
+	}
+	if strings.TrimSpace(req.Label) == "" {
+		req.Label = cur.Label
+	}
 	monitored := true
 	if req.Monitored != nil {
 		monitored = *req.Monitored
 	}
-	if err := a.deps.Movies.UpdateVersion(r.Context(), vid, req.Label, req.QualityProfile, req.Edition, monitored); err != nil {
+	if err := a.deps.Movies.UpdateVersion(r.Context(), cur.ID, req.Label, req.QualityProfile, req.Edition, monitored); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not update version")
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
+	resp := map[string]any{"status": "updated"}
+	// What the track looks for changed: look again now, through the movie search queue, so
+	// a missing track finds its new edition (an upgrade sweep re-judges a file it has).
+	changed := req.QualityProfile != cur.QualityProfile || parser.NormalizeEdition(req.Edition) != parser.NormalizeEdition(cur.Edition)
+	if monitored && (changed || (!cur.Monitored && !cur.HasFile)) {
+		if q, err := a.enqueueMovie(r, id, a.movieSearchJob(id)); err == nil {
+			resp["queued"], resp["position"] = true, q.Position
+		}
+	}
+	a.writeJSON(w, http.StatusOK, resp)
 }
 
 // handleDeleteVersion removes an extra version track (and its file).
 func (a *api) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
-	vid, ok := a.pathValueID(w, r, "vid")
+	_, v, ok := a.extraVersion(w, r)
 	if !ok {
 		return
 	}
+	vid := v.ID
 	if err := a.deps.Movies.DeleteVersion(r.Context(), vid); err != nil {
 		if a.writeBinRefusal(w, err) {
 			return
@@ -672,6 +721,10 @@ func (a *api) handleDeleteVersionFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.deps.Movies.DeleteVersionFile(r.Context(), id, vid); err != nil {
 		if a.writeBinRefusal(w, err) {
+			return
+		}
+		if errors.Is(err, movies.ErrNotFound) {
+			a.writeError(w, http.StatusNotFound, "that version isn't one of this movie's")
 			return
 		}
 		a.writeError(w, http.StatusInternalServerError, "could not delete file")
@@ -815,9 +868,26 @@ func (a *api) handleMovieReleases(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// ?version=VID ranks for that track (0 = the default track): its profile, its edition.
+	// Without it the movie is ranked as a whole, as it always was.
+	versionID := int64(-1)
+	if v := r.URL.Query().Get("version"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			a.writeError(w, http.StatusBadRequest, "version must be a version id")
+			return
+		}
+		versionID = n
+	}
 	ctx, cancel := context.WithTimeout(indexer.WithInteractive(r.Context()), 90*time.Second)
 	defer cancel()
-	list, err := a.deps.Automation.RankReleases(ctx, id)
+	var list automation.ReleaseList
+	var err error
+	if versionID >= 0 {
+		list, err = a.deps.Automation.RankReleasesFor(ctx, id, versionID, nil)
+	} else {
+		list, err = a.deps.Automation.RankReleases(ctx, id)
+	}
 	if errors.Is(err, movies.ErrNotFound) {
 		a.writeError(w, http.StatusNotFound, "movie not found")
 		return
@@ -826,8 +896,19 @@ func (a *api) handleMovieReleases(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	a.tokenize(r, &list, automation.ReleaseRef{MediaKind: automation.ReleaseKindMovie, MediaID: id})
+	// The token carries the track, so the grab files the download under it.
+	scope := automation.ReleaseRef{MediaKind: automation.ReleaseKindMovie, MediaID: id}
+	if versionID > 0 {
+		scope.VersionID = versionID
+	}
+	a.tokenize(r, &list, scope)
 	a.writeJSON(w, http.StatusOK, list)
+}
+
+// handleMovieEditions lists the editions release names are recognised by, for the version
+// form's edition picker.
+func (a *api) handleMovieEditions(w http.ResponseWriter, r *http.Request) {
+	a.writeJSON(w, http.StatusOK, map[string]any{"editions": parser.Editions()})
 }
 
 // handleSetMonitored toggles a movie's monitoring from the detail page.
@@ -949,6 +1030,9 @@ func (a *api) handleManualImport(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Path string `json:"path"`
+		// VersionID is the track to import into (0 = the default track). Absent, the file
+		// goes to whichever track its name's resolution and edition route it to.
+		VersionID *int64 `json:"version_id"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -962,9 +1046,25 @@ func (a *api) handleManualImport(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := a.deps.Movies.ManualImport(r.Context(), id, src); err != nil {
+	version := int64(-1)
+	if req.VersionID != nil {
+		if *req.VersionID < 0 {
+			a.writeError(w, http.StatusBadRequest, "version_id must be a version id")
+			return
+		}
+		version = *req.VersionID
+	}
+	if err := a.deps.Movies.ManualImportTo(r.Context(), id, version, src); err != nil {
 		if errors.Is(err, movies.ErrNotFound) {
 			a.writeError(w, http.StatusNotFound, "movie not found")
+			return
+		}
+		if errors.Is(err, movies.ErrVersionNotFound) {
+			a.writeError(w, http.StatusNotFound, "that version isn't one of this movie's")
+			return
+		}
+		if errors.Is(err, movies.ErrPathOwnedByOtherTrack) || errors.Is(err, library.ErrProtectedTarget) {
+			a.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		a.writeError(w, http.StatusBadGateway, err.Error())

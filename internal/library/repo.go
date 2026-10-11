@@ -19,6 +19,10 @@ type ImportRecord struct {
 	// year its title was matched with.
 	ReleaseName string `json:"release_name,omitempty"`
 	Year        int    `json:"year,omitempty"`
+	// The movie and track the file was named and placed for (MovieID 0 and VersionID -1
+	// when the import didn't decide), so the attach puts it on that same track.
+	MovieID   int64 `json:"movie_id,omitempty"`
+	VersionID int64 `json:"version_id"`
 	// Where attaching it to its movie stands (see the Attach* states) — read-only here,
 	// so History can show an import that needs attention.
 	AttachState    string `json:"attach_state"`
@@ -122,9 +126,9 @@ func (r *importRepo) record(ctx context.Context, rec ImportRecord, state string)
 		state = AttachStateAttached
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO imports (download_hash, source_path, target_path, title, size_bytes, release_name, year, attach_state)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		rec.Hash, rec.SourcePath, rec.TargetPath, rec.Title, rec.SizeBytes, rec.ReleaseName, rec.Year, state)
+		`INSERT OR IGNORE INTO imports (download_hash, source_path, target_path, title, size_bytes, release_name, year, attach_state, movie_id, version_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.Hash, rec.SourcePath, rec.TargetPath, rec.Title, rec.SizeBytes, rec.ReleaseName, rec.Year, state, rec.MovieID, rec.VersionID)
 	return err
 }
 
@@ -147,12 +151,37 @@ func (r *importRepo) setAttachRetry(ctx context.Context, hash string, attempts i
 	return err
 }
 
+// pendingTargets lists the files imported for movieID's tracks other than versionID that
+// are still waiting to be attached: placed in the library, but on no track's record yet.
+func (r *importRepo) pendingTargets(ctx context.Context, movieID, versionID int64) ([]string, error) {
+	if movieID <= 0 {
+		return nil, nil
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT target_path FROM imports
+		 WHERE movie_id = ? AND version_id != ? AND attach_state = 'pending' AND removed = 0 AND target_path != ''`,
+		movieID, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // pendingAttach lists imports still waiting to be attached whose retry is due, oldest
 // first. A file the user deleted on purpose is left alone: there's nothing to attach.
 func (r *importRepo) pendingAttach(ctx context.Context, now int64, limit int) ([]ImportRecord, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT download_hash, source_path, target_path, title, size_bytes, imported_at,
-		        release_name, year, attach_state, attach_error, attach_attempts
+		        release_name, year, attach_state, attach_error, attach_attempts, movie_id, version_id
 		 FROM imports
 		 WHERE attach_state = 'pending' AND removed = 0 AND attach_next_at <= ?
 		 ORDER BY id LIMIT ?`, now, limit)
@@ -164,7 +193,8 @@ func (r *importRepo) pendingAttach(ctx context.Context, now int64, limit int) ([
 	for rows.Next() {
 		var rec ImportRecord
 		if err := rows.Scan(&rec.Hash, &rec.SourcePath, &rec.TargetPath, &rec.Title, &rec.SizeBytes, &rec.ImportedAt,
-			&rec.ReleaseName, &rec.Year, &rec.AttachState, &rec.AttachError, &rec.AttachAttempts); err != nil {
+			&rec.ReleaseName, &rec.Year, &rec.AttachState, &rec.AttachError, &rec.AttachAttempts,
+			&rec.MovieID, &rec.VersionID); err != nil {
 			return nil, err
 		}
 		out = append(out, rec)
@@ -191,7 +221,7 @@ func (r *importRepo) markRemovedByTarget(ctx context.Context, target string) err
 func (r *importRepo) recent(ctx context.Context, limit int) ([]ImportRecord, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT download_hash, source_path, target_path, title, size_bytes, imported_at,
-		        release_name, year, attach_state, attach_error, attach_attempts
+		        release_name, year, attach_state, attach_error, attach_attempts, movie_id, version_id
 		 FROM imports WHERE target_path != '' ORDER BY imported_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -202,7 +232,7 @@ func (r *importRepo) recent(ctx context.Context, limit int) ([]ImportRecord, err
 	for rows.Next() {
 		var r ImportRecord
 		if err := rows.Scan(&r.Hash, &r.SourcePath, &r.TargetPath, &r.Title, &r.SizeBytes, &r.ImportedAt,
-			&r.ReleaseName, &r.Year, &r.AttachState, &r.AttachError, &r.AttachAttempts); err != nil {
+			&r.ReleaseName, &r.Year, &r.AttachState, &r.AttachError, &r.AttachAttempts, &r.MovieID, &r.VersionID); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

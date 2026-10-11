@@ -13,11 +13,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/outbox"
-	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
 // A rename is planned for every track first and shown to the person; only then does
@@ -187,98 +185,25 @@ func (s *Service) judgeRename(it RenameItem, owned map[string]int64, claimed map
 }
 
 // trackTargets is where each track's file belongs under the naming scheme, keyed by
-// version id.
-//
-// MERGE NOTE (phase10/versions, MOV-12/PLEX-13): this is the editing lane's stand-in for
-// the per-track name builder. When the versions lane's exported builder lands, replace the
-// body of trackFileTarget with a call to it; planMovie and everything after it only need
-// "where does this track's file belong".
+// version id. Each name comes from the one per-track builder imports use (TrackTarget:
+// the scheme, the track's edition as Plex's {edition-…}, the movie's ids, and its label
+// only to keep clear of another track's file), so a rename lands every track exactly
+// where an import would have put it. Tracks are named in order, default first, and each
+// one's planned name is kept clear of by the tracks after it, as their files would be.
 func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
-	raw := map[int64]string{}
+	out := map[int64]string{}
+	var planned []string
 	for _, v := range versions {
-		if v.HasFile && v.FilePath != "" {
-			raw[v.ID] = s.trackFileTarget(m, v)
-		}
-	}
-	out := make(map[int64]string, len(raw))
-	for _, v := range versions {
-		t, ok := raw[v.ID]
-		if !ok {
+		if !v.HasFile || v.FilePath == "" {
 			continue
 		}
-		if !v.IsDefault && v.Edition == "" && collides(t, v.ID, versions, raw) {
-			// Two tracks at the same quality render the same name: the extra one is told
-			// apart by its label, as imports name it.
-			ext := filepath.Ext(t)
-			if label := safeNamePart(v.Label); label != "" {
-				t = strings.TrimSuffix(t, ext) + " - " + label + ext
-			}
-		}
-		out[v.ID] = t
+		t := s.TrackNaming(m, versions, v)
+		t.Protected = append(t.Protected, planned...)
+		target := s.imp.MovieTrackTarget(t, filepath.Base(v.FilePath), filepath.Ext(v.FilePath))
+		out[v.ID] = target
+		planned = append(planned, target)
 	}
 	return out
-}
-
-// collides reports whether target is another track's current file or another track's
-// planned name.
-func collides(target string, self int64, versions []Version, raw map[int64]string) bool {
-	for _, o := range versions {
-		if o.ID == self {
-			continue
-		}
-		if (o.HasFile && o.FilePath == target) || raw[o.ID] == target {
-			return true
-		}
-	}
-	return false
-}
-
-// trackFileTarget renders one track's library path from the naming scheme, reading the
-// quality tags from the file's current name. An extra track with an edition the name
-// doesn't already carry gets Plex's " {edition-…}" tag, so Plex lists it as an edition of
-// the same film.
-func (s *Service) trackFileTarget(m Movie, v Version) string {
-	ext := filepath.Ext(v.FilePath)
-	target := s.imp.MovieTarget(m.Title, m.Year, filepath.Base(v.FilePath), ext)
-	if v.IsDefault {
-		return target
-	}
-	ed := safeNamePart(v.Edition)
-	if ed == "" {
-		return target
-	}
-	stem := strings.TrimSuffix(target, ext)
-	if strings.Contains(squash(filepath.Base(stem)), squash(ed)) {
-		return target
-	}
-	return stem + " {edition-" + ed + "}" + ext
-}
-
-// safeNamePart makes a label or edition safe inside a file name: no path separators or
-// characters Windows/SMB shares refuse, no leading/trailing dots or spaces.
-func safeNamePart(s string) string {
-	s = strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '{', '}':
-			return -1
-		}
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, s)
-	return strings.Trim(strings.Join(strings.Fields(s), " "), " .")
-}
-
-// squash folds a name to its letters and digits, for "does the name already say this
-// edition" ("Directors.Cut" and "Director's Cut" both read "directorscut").
-func squash(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return r
-		}
-		return -1
-	}, parser.FoldTitle(s))
 }
 
 // PlanToken fingerprints the renames a plan would make, so applying it can tell whether

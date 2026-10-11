@@ -248,13 +248,18 @@ func TestApplyRenameLeavesFolderFilesWithAnotherVideo(t *testing.T) {
 func TestRenamePlanSameTargetIsConflict(t *testing.T) {
 	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
 	ctx := context.Background()
-	// An empty label leaves nothing to tell the extra track apart by.
+	// An empty label: the per-track name builder (MOV-12) still tells the extra track
+	// apart, by the generic "Version", exactly as an import would name it — never the
+	// default track's name.
 	if err := f.svc.repo.UpdateVersion(ctx, f.vid, "", "hd", "", false); err != nil {
 		t.Fatal(err)
 	}
 	plan := planByVersion(t, f)
-	if plan[0].Status != RenameOK || plan[f.vid].Status != RenameConflict {
-		t.Fatalf("statuses = %s / %s, want ok then conflict", plan[0].Status, plan[f.vid].Status)
+	if plan[0].Status != RenameOK || plan[f.vid].Status != RenameOK {
+		t.Fatalf("statuses = %s / %s, want ok / ok", plan[0].Status, plan[f.vid].Status)
+	}
+	if plan[0].Proposed == plan[f.vid].Proposed || !strings.HasSuffix(strings.TrimSuffix(plan[f.vid].Proposed, filepath.Ext(plan[f.vid].Proposed)), " - Version") {
+		t.Fatalf("proposed %q / %q; want distinct, the extra one labelled", plan[0].Proposed, plan[f.vid].Proposed)
 	}
 }
 

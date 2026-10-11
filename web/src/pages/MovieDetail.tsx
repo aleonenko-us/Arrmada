@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
@@ -29,9 +29,9 @@ import {
 import { useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { jobFailed, useJob } from "../lib/useJob";
-import { searchJobLine } from "../lib/searchOutcome";
+import { attemptLine, searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
-import { Button, Menu, StatusChip } from "../ui";
+import { Button, Menu, Modal, StatusChip } from "../ui";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 
 const AVAILABILITY_LABELS: Record<string, string> = {
@@ -287,7 +287,7 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
         <button onClick={() => setAdding(true)} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px dashed var(--line)", color: "var(--ink-dim)" }}>
           ＋ Keep another version <span className="text-ink-faint">(e.g. 1080p + 4K, or a Director's Cut)</span>
         </button>
-        {adding && <AddVersionModal movieId={movie.id} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); onChange(); flash("Version added — searching for it."); }} />}
+        {adding && <VersionFormModal movieId={movie.id} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChange(); flash("Version added — searching for it."); }} />}
       </>
     );
   }
@@ -301,10 +301,10 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
       </div>
       <div className="flex flex-col gap-2.5">
         {versions.map((v) => (
-          <VersionCard key={`${v.is_default ? "d" : v.id}`} movieId={movie.id} version={v} onChange={onChange} onCleared={onCleared} flash={flash} profileName={profileName} />
+          <VersionCard key={`${v.is_default ? "d" : v.id}`} movie={movie} version={v} onChange={onChange} onCleared={onCleared} flash={flash} profileName={profileName} />
         ))}
       </div>
-      {adding && <AddVersionModal movieId={movie.id} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); onChange(); flash("Version added — searching for it."); }} />}
+      {adding && <VersionFormModal movieId={movie.id} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChange(); flash("Version added — searching for it."); }} />}
     </div>
   );
 }
@@ -338,7 +338,25 @@ function ClearedNotice({ movie, flash, onDismiss }: { movie: Movie; flash: (m: s
   );
 }
 
-function VersionCard({ movieId, version, onChange, onCleared, flash, profileName }: { movieId: number; version: MovieVersion; onChange: () => void; onCleared: () => void; flash: (m: string) => void; profileName: (ref: string) => string }) {
+// trackLine is what a track is doing, in words: its own download, or why it's still
+// wanted (the movie's last search), or that it's left alone.
+function trackLine(movie: Movie, version: MovieVersion): string {
+  const dl = movie.download;
+  if (dl && (dl.version_id ?? 0) === version.id) return `Downloading — ${Math.round(dl.progress * 100)}%`;
+  if (version.has_file) return "";
+  if (!version.monitored) return "Not monitored — Arrmada won't look for it.";
+  // The movie's searches cover every track at once, so its last one speaks for this too.
+  const last = movie.last_search?.latest;
+  const why = last ? `${attemptLine(last)}.` : "Arrmada looks for it on its sweeps.";
+  const tail = version.edition ? ` Only releases named as the ${version.edition} count.` : "";
+  return `Wanted. ${why}${tail}`;
+}
+
+// VersionCard is one track: the same file panel the movie's only file gets (details,
+// subtitles, the missing state), its own status, and its own Search, Import, Edit and
+// confirmed deletes — searching or importing from a track lands the file in that track.
+function VersionCard({ movie, version, onChange, onCleared, flash, profileName }: { movie: Movie; version: MovieVersion; onChange: () => void; onCleared: () => void; flash: (m: string, err?: boolean) => void; profileName: (ref: string) => string }) {
+  const movieId = movie.id;
   const [busy, setBusy] = useState(false);
   const f = version.file;
 
@@ -348,6 +366,8 @@ function VersionCard({ movieId, version, onChange, onCleared, flash, profileName
       if (version.is_default) await api.setMonitored(movieId, !version.monitored);
       else await api.updateVersion(movieId, version.id, { label: version.label, quality_profile: version.quality_profile, edition: version.edition, monitored: !version.monitored });
       onChange();
+    } catch (e) {
+      flash((e as Error).message, true);
     } finally {
       setBusy(false);
     }
@@ -355,45 +375,49 @@ function VersionCard({ movieId, version, onChange, onCleared, flash, profileName
 
   // Both destructive buttons ask first, naming the file, its size and where it goes.
   const [confirm, setConfirm] = useState<"file" | "version" | null>(null);
+  const [panel, setPanel] = useState<"search" | "import" | "edit" | null>(null);
 
   const status = trackStatus(version);
   const missing = status.key === "missing";
-  const chips: string[] = [];
-  if (f?.codec) chips.push(f.codec);
-  if (f?.audio) chips.push(...f.audio);
-  if (f?.hdr) chips.push(...f.hdr);
+  const line = trackLine(movie, version);
+  const small = "rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50";
+  const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
   return (
-    <div className="rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13.5px] font-semibold">{version.label}</span>
-            {version.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Default</span>}
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{profileName(version.quality_profile)}</span>
-            {version.edition && <span className="rounded px-1.5 py-0.5 text-[10.5px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{version.edition}</span>}
-            <span className="font-mono text-[9.5px] uppercase" style={{ color: status.color }}>{status.label}</span>
-          </div>
-          {f ? (
-            <>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]">
-                {f.quality && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{f.quality}</span>}
-                {chips.map((c) => <span key={c} className="rounded px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>)}
-                <span className="font-mono text-ink-dim">{fmtSize(f.size_bytes)}</span>
-              </div>
-              <div className="mt-1 break-all font-mono text-[11px] text-ink-faint">{f.path}</div>
-              {missing && <div className="mt-1 text-[11.5px]" style={{ color: "var(--reject)" }}>Tracked but not on disk. Refresh & rescan to look again, or clear the record (nothing on disk is touched).</div>}
-            </>
-          ) : (
-            <div className="mt-1.5 text-[12px] text-ink-dim">{version.monitored ? "No file yet — Arrmada is searching for this track." : "Not monitored."}</div>
-          )}
-        </div>
-        <div className="flex flex-none flex-col items-end gap-1.5">
-          <button onClick={toggleMonitor} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{version.monitored ? "Monitored" : "Monitor"}</button>
-          {f && <button onClick={() => setConfirm("file")} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{missing ? "Clear record" : "Delete file"}</button>}
-          {!version.is_default && <button onClick={() => setConfirm("version")} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>Remove version</button>}
-        </div>
+    <div data-testid="version-card" className="rounded-xl p-3.5" style={{ border: `1px solid ${missing ? "var(--avoid)" : "var(--line)"}`, background: "var(--panel)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13.5px] font-semibold">{version.label}</span>
+        {version.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Default</span>}
+        <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{profileName(version.quality_profile)}</span>
+        {version.edition && <span className="rounded px-1.5 py-0.5 text-[10.5px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{version.edition}</span>}
+        <StatusChip tone={status.tone}>{status.label}</StatusChip>
       </div>
+      {line && <div className="mt-1.5 text-[12px] text-ink-dim" role="status">{line}</div>}
+      {f && <FileBody movieId={movieId} versionId={version.id} file={f} />}
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <button onClick={toggleMonitor} disabled={busy} className={small} style={ghost} aria-pressed={version.monitored}>{version.monitored ? "Monitored" : "Monitor"}</button>
+        <button onClick={() => setPanel("search")} disabled={busy} className={small} style={ghost}>Search</button>
+        <button onClick={() => setPanel("import")} disabled={busy} className={small} style={ghost}>Import</button>
+        {!version.is_default && <button onClick={() => setPanel("edit")} disabled={busy} className={small} style={ghost}>Edit</button>}
+        {f && <button onClick={() => setConfirm("file")} disabled={busy} className={small} style={missing ? ghost : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{missing ? "Clear record" : "Delete file"}</button>}
+        {!version.is_default && <button onClick={() => setConfirm("version")} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>Remove version</button>}
+      </div>
+      {panel === "search" && (
+        <ReleaseSearchModal
+          title={`Search indexers — ${movie.title} · ${version.label}`}
+          subtitle={`Ranked for this version's profile${version.edition ? ` and the ${version.edition} edition` : ""}. A grab lands in this version.`}
+          fetchReleases={() => api.movieReleases(movieId, version.id)}
+          onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: movieId, version_id: version.id }); onChange(); }}
+          onBlock={async (rel) => { await api.blockRelease(movieId, { token: rel.token ?? "", search_again: true }); flash(`Blocklisted "${rel.summary}" — searching for an alternate.`); onChange(); }}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "import" && (
+        <ManualImportModal movie={movie} versionId={version.id} onClose={() => setPanel(null)} onImported={() => { setPanel(null); onChange(); flash(`Imported into ${version.label}.`); }} />
+      )}
+      {panel === "edit" && (
+        <VersionFormModal movieId={movieId} version={version} onClose={() => setPanel(null)} onSaved={(queued) => { setPanel(null); onChange(); flash(queued ? `Saved "${version.label}" — searching under the new settings.` : "Version saved."); }} />
+      )}
       {confirm === "file" && f && missing && (
         <ClearRecordDialog
           movieId={movieId}
@@ -516,10 +540,54 @@ function ClearRecordDialog({ movieId, versionId, file, onDone, onCancel }: {
   );
 }
 
-function AddVersionModal({ movieId, onClose, onAdded }: { movieId: number; onClose: () => void; onAdded: () => void }) {
-  const [label, setLabel] = useState("");
-  const [profile, setProfile] = useState("");
-  const [edition, setEdition] = useState("");
+// EditionField picks a version's edition from the ones release names are recognised by,
+// or "Other…" for free text. An edition is a requirement: the version only grabs releases
+// that carry it, so the hint says so.
+function EditionField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [known, setKnown] = useState<string[]>([]);
+  const [other, setOther] = useState(false);
+  useEffect(() => {
+    api.movieEditions().then(setKnown).catch(() => {});
+  }, []);
+  const isKnown = value === "" || known.includes(value);
+  const showText = other || (!isKnown && known.length > 0);
+  const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
+  return (
+    <>
+      <label htmlFor="version-edition" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
+      <select
+        id="version-edition"
+        value={showText ? "__other" : value}
+        onChange={(e) => {
+          if (e.target.value === "__other") { setOther(true); onChange(""); }
+          else { setOther(false); onChange(e.target.value); }
+        }}
+        className="mb-2 w-full rounded-lg px-3 py-2 text-[12.5px]"
+        style={fieldStyle}
+      >
+        <option value="">Any — no particular edition</option>
+        {known.map((e) => <option key={e} value={e}>{e}</option>)}
+        <option value="__other">Other…</option>
+      </select>
+      {showText && (
+        <input aria-label="Edition name" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. Ultimate Cut" className="mb-2 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+      )}
+      <p className="mb-4 mt-0 text-[11px] text-ink-faint">
+        {value.trim() ? `Only releases whose names say “${value.trim()}” are grabbed for this version, and its file is named as a Plex edition.` : "Any release that fits the profile can fill this version."}
+      </p>
+    </>
+  );
+}
+
+// VersionFormModal adds a version, or edits one (version given): its label, quality profile
+// and edition. Saving a new profile or edition searches under it; onSaved says whether a
+// search was queued.
+function VersionFormModal({ movieId, version, onClose, onSaved }: { movieId: number; version?: MovieVersion; onClose: () => void; onSaved: (queued: boolean) => void }) {
+  const editing = !!version;
+  const labelRef = useRef<HTMLInputElement>(null);
+  const [label, setLabel] = useState(version?.label ?? "");
+  const [profile, setProfile] = useState(version?.quality_profile ?? "");
+  const [edition, setEdition] = useState(version?.edition ?? "");
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -527,12 +595,13 @@ function AddVersionModal({ movieId, onClose, onAdded }: { movieId: number; onClo
   useEffect(() => {
     api.qualityProfiles("movie").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
+      if (editing) return; // keep the version's own profile
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);
     }).catch(() => {});
-  }, []);
+  }, [editing]);
 
-  const add = async () => {
+  const save = async () => {
     if (!label.trim()) {
       setError("Give the version a label (e.g. 4K, Director's Cut).");
       return;
@@ -540,38 +609,51 @@ function AddVersionModal({ movieId, onClose, onAdded }: { movieId: number; onClo
     setSaving(true);
     setError(null);
     try {
-      await api.addVersion(movieId, { label: label.trim(), quality_profile: profile, edition: edition.trim(), monitored: true });
-      onAdded();
+      if (version) {
+        const r = await api.updateVersion(movieId, version.id, { label: label.trim(), quality_profile: profile, edition: edition.trim(), monitored: version.monitored });
+        onSaved(!!r.queued);
+      } else {
+        await api.addVersion(movieId, { label: label.trim(), quality_profile: profile, edition: edition.trim(), monitored: true });
+        onSaved(true);
+      }
     } catch (e) {
       setError((e as Error).message);
       setSaving(false);
     }
   };
 
+  const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
+  // A saved profile that's no longer in the list still shows, named by its key.
+  const listed = profile === "" || profiles.some((p) => p.key === profile);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-16 w-full max-w-[460px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="m-0 mb-1 text-[15px] font-bold">Add a version</h2>
-        <p className="mb-4 text-[12px] text-ink-dim">A separate track with its own quality target — kept alongside your existing file, not replacing it.</p>
+    <Modal
+      onClose={onClose}
+      title={editing ? `Edit “${version?.label}”` : "Add a version"}
+      size="sm"
+      dismissible={!saving}
+      initialFocus={labelRef}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={save} busy={saving} busyLabel={editing ? "Saving…" : "Adding…"}>{editing ? "Save" : "Add version"}</Button>
+        </>
+      }
+    >
+      <p className="mb-4 mt-0 text-[12px] text-ink-dim">
+        {editing ? "Changes apply to this version's next search; its file stays where it is." : "A separate track with its own quality target — kept alongside your existing file, not replacing it."}
+      </p>
+      <label htmlFor="version-label" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Label</label>
+      <input ref={labelRef} id="version-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="4K · Director's Cut · Remux" className="mb-3 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
 
-        <label className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Label</label>
-        <input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder="4K · Director's Cut · Remux" className="mb-3 w-full rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+      <label htmlFor="version-profile" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Quality profile</label>
+      <select id="version-profile" value={profile} onChange={(e) => setProfile(e.target.value)} className="mb-3 w-full rounded-lg px-3 py-2 text-[12.5px]" style={fieldStyle}>
+        {!listed && <option value={profile}>{profile}</option>}
+        {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+      </select>
 
-        <label className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Quality profile</label>
-        <select value={profile} onChange={(e) => setProfile(e.target.value)} className="mb-3 w-full rounded-lg px-3 py-2 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-          {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-        </select>
-
-        <label className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
-        <input value={edition} onChange={(e) => setEdition(e.target.value)} placeholder="e.g. Director's Cut" className="mb-4 w-full rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-
-        {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        <div className="flex gap-2.5">
-          <button onClick={add} disabled={saving} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{saving ? "Adding…" : "Add version"}</button>
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
-        </div>
-      </div>
-    </div>
+      <EditionField value={edition} onChange={setEdition} />
+      {error && <div className="mb-1 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+    </Modal>
   );
 }
 
@@ -1199,54 +1281,14 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
 
 function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; movieId: number; onChange: () => void; onCleared: () => void }) {
   const [confirming, setConfirming] = useState(false);
-  const [showFile, setShowFile] = useState(false);
-
   const tone = file.missing ? "var(--avoid)" : "var(--good)";
-  const chips: string[] = [];
-  if (file.codec) chips.push(file.codec);
-  if (file.audio) chips.push(...file.audio);
-  if (file.hdr) chips.push(...file.hdr);
 
   return (
     <div className="mt-6 rounded-xl p-4" style={{ border: `1px solid ${tone}`, background: "var(--panel)" }}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="font-mono text-[10.5px] uppercase" style={{ color: tone }}>{file.missing ? "File missing from disk" : "On disk"}</div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px]">
-            {file.quality && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.quality}</span>}
-            {chips.map((c) => (
-              <span key={c} className="rounded px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
-            ))}
-            <span className="font-mono text-ink-dim">{fmtSize(file.size_bytes)}</span>
-            {file.duration_min ? <span className="font-mono text-[11px] text-ink-faint">{file.duration_min}m</span> : null}
-            {file.group && <span className="font-mono text-[11px] text-ink-faint">{file.group}</span>}
-            {file.probed && <span title="Read from the actual file (ffprobe)" className="font-mono text-[10px]" style={{ color: "var(--good)" }}>✓ probed</span>}
-          </div>
-          <button
-            onClick={() => setShowFile(true)}
-            title="Show this file's details — media info and the release it came from"
-            className="mt-1.5 block break-all text-left font-mono text-[11.5px] text-ink-faint hover:underline"
-          >
-            {file.path}
-          </button>
-          {file.subtitles && file.subtitles.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
-              <span className="font-mono uppercase text-ink-faint">Subs</span>
-              {file.subtitles.map((s) => (
-                <span key={s} className="rounded px-1.5 py-0.5" style={{ background: "var(--panel-2)" }}>{s}</span>
-              ))}
-            </div>
-          )}
-          {/* Subtitles named for no video in the folder: Plex won't show them with this file. */}
-          {file.orphan_subtitles && file.orphan_subtitles.length > 0 && (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
-              <span className="font-mono uppercase">Not linked to this file</span>
-              {file.orphan_subtitles.map((s) => (
-                <span key={s} className="rounded px-1.5 py-0.5 opacity-60" style={{ border: "1px dashed var(--line)" }}>{s}</span>
-              ))}
-            </div>
-          )}
-          {file.missing && <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--reject)" }}>Tracked but not on disk. Refresh & rescan to look again, or clear the record (nothing on disk is touched) to search again.</div>}
+          <FileBody movieId={movieId} versionId={0} file={file} />
         </div>
         <div className="flex-none">
           <button onClick={() => setConfirming(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={file.missing ? { border: "1px solid var(--line)", color: "var(--ink)" } : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{file.missing ? "Clear record" : "Delete file"}</button>
@@ -1272,16 +1314,69 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
           onCancel={() => setConfirming(false)}
         />
       )}
+    </div>
+  );
+}
+
+// FileBody is what every track's file shows, whichever track it is: quality and media
+// chips, size and runtime, the path (opening the file's details), its subtitles, the ones
+// that pair with no video, and the missing-from-disk note.
+function FileBody({ movieId, versionId, file }: { movieId: number; versionId: number; file: MovieFile }) {
+  const [showFile, setShowFile] = useState(false);
+  const chips: string[] = [];
+  if (file.codec) chips.push(file.codec);
+  if (file.audio) chips.push(...file.audio);
+  if (file.hdr) chips.push(...file.hdr);
+
+  return (
+    <>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px]">
+        {file.quality && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.quality}</span>}
+        {chips.map((c) => (
+          <span key={c} className="rounded px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
+        ))}
+        <span className="font-mono text-ink-dim">{fmtSize(file.size_bytes)}</span>
+        {file.duration_min ? <span className="font-mono text-[11px] text-ink-faint">{file.duration_min}m</span> : null}
+        {file.group && <span className="font-mono text-[11px] text-ink-faint">{file.group}</span>}
+        {file.probed && <span title="Read from the actual file (ffprobe)" className="font-mono text-[10px]" style={{ color: "var(--good)" }}>✓ probed</span>}
+      </div>
+      <button
+        onClick={() => setShowFile(true)}
+        title="Show this file's details — media info and the release it came from"
+        className="mt-1.5 block break-all text-left font-mono text-[11.5px] text-ink-faint hover:underline"
+      >
+        {file.path}
+      </button>
+      {file.subtitles && file.subtitles.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
+          <span className="font-mono uppercase text-ink-faint">Subs</span>
+          {file.subtitles.map((s) => (
+            <span key={s} className="rounded px-1.5 py-0.5" style={{ background: "var(--panel-2)" }}>{s}</span>
+          ))}
+        </div>
+      )}
+      {/* Subtitles named for no video in the folder: Plex won't show them with this file. */}
+      {file.orphan_subtitles && file.orphan_subtitles.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
+          <span className="font-mono uppercase">Not linked to this file</span>
+          {file.orphan_subtitles.map((s) => (
+            <span key={s} className="rounded px-1.5 py-0.5 opacity-60" style={{ border: "1px dashed var(--line)" }}>{s}</span>
+          ))}
+        </div>
+      )}
+      {file.missing && <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--reject)" }}>Tracked but not on disk. Refresh & rescan to look again, or clear the record (nothing on disk is touched) to search again.</div>}
       {showFile && (
         <FileDetailsModal
           path={file.path}
           title={file.filename || "File details"}
           subtitle={file.quality || undefined}
-          onCleanTracks={async () => { await api.convertRequest(`movie:${movieId}`); }}
+          // Convert works on a movie's default file; an extra version's file isn't queued
+          // by it (yet), so only the default track offers the clean-up.
+          onCleanTracks={versionId === 0 ? async () => { await api.convertRequest(`movie:${movieId}`); } : undefined}
           onClose={() => setShowFile(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -1305,11 +1400,18 @@ function CastRow({ cast }: { cast?: { name: string; character?: string; profile_
   );
 }
 
-function ManualImportModal({ movie, onClose, onImported }: { movie: Movie; onClose: () => void; onImported: () => void }) {
+// ManualImportModal imports a file on disk into the movie. With extra versions it asks
+// which one ("Import into"): opened from a version card it starts on that version; from
+// the toolbar it starts on "whichever fits", which routes by the file name's resolution
+// and edition the way an automatic import does.
+function ManualImportModal({ movie, versionId, onClose, onImported }: { movie: Movie; versionId?: number; onClose: () => void; onImported: () => void }) {
   const [cands, setCands] = useState<ImportCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const tracks = movie.versions ?? [];
+  const [into, setInto] = useState<string>(versionId === undefined ? "auto" : String(versionId));
+  const target = into === "auto" ? undefined : Number(into);
 
   useEffect(() => {
     api
@@ -1322,7 +1424,7 @@ function ManualImportModal({ movie, onClose, onImported }: { movie: Movie; onClo
     setImporting(path);
     setError(null);
     try {
-      await api.manualImport(movie.id, path);
+      await api.manualImport(movie.id, path, target);
       onImported();
     } catch (e) {
       setError((e as Error).message);
@@ -1331,37 +1433,40 @@ function ManualImportModal({ movie, onClose, onImported }: { movie: Movie; onClo
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[680px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Manual import</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+    <Modal onClose={onClose} title="Manual import" size="lg" dismissible={importing === null}>
+      <p className="mb-3 mt-0 text-[12px] text-ink-dim">Pick a file already on disk to import as <b>{movie.title}</b>. It'll be renamed to the library scheme.</p>
+      {tracks.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]">
+          <label htmlFor="import-into" className="font-mono text-[10px] font-bold uppercase text-accent">Import into</label>
+          <select id="import-into" value={into} onChange={(e) => setInto(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+            <option value="auto">Whichever version fits its name</option>
+            {tracks.map((v) => <option key={v.is_default ? "d" : v.id} value={String(v.id)}>{v.label}{v.has_file ? " — replaces its file" : ""}</option>)}
+          </select>
         </div>
-        <p className="mb-3 text-[12px] text-ink-dim">Pick a file already on disk to import as <b>{movie.title}</b>. It'll be renamed to the library scheme.</p>
-        {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
-        <div className="thin-scroll max-h-[52vh] overflow-y-auto">
-          {cands === null ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
-          ) : cands.length === 0 ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">No importable video files found in the downloads folder.</div>
-          ) : (
-            cands.map((c) => (
-              <button key={c.path} onClick={() => doImport(c.path)} disabled={importing !== null} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
-                  <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
-                    {c.quality && <span>{c.quality}</span>}
-                    <span>{fmtSize(c.size_bytes)}</span>
-                  </div>
+      )}
+      {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
+      <div className="thin-scroll max-h-[52vh] overflow-y-auto">
+        {cands === null ? (
+          <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
+        ) : cands.length === 0 ? (
+          <div className="p-6 text-center text-[12.5px] text-ink-dim">No importable video files found in the downloads folder.</div>
+        ) : (
+          cands.map((c) => (
+            <button key={c.path} onClick={() => doImport(c.path)} disabled={importing !== null} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
+                <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
+                  {c.quality && <span>{c.quality}</span>}
+                  <span>{fmtSize(c.size_bytes)}</span>
                 </div>
-                <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
-              </button>
-            ))
-          )}
-        </div>
+              </div>
+              <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+            </button>
+          ))
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }
 

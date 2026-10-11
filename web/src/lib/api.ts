@@ -2561,8 +2561,9 @@ export const api = {
   queue: () => req<{ items: QueueItem[] }>("/api/v1/queue").then((r) => r.items),
 
   // A grab names the release by the token its search handed out; the download link
-  // itself never leaves the server. movie_id must be the movie the search was for.
-  grab: (body: { token: string; movie_id: number }) =>
+  // itself never leaves the server. movie_id must be the movie the search was for, and
+  // version_id (a movie track; 0/absent = the default track) the track it was for.
+  grab: (body: { token: string; movie_id: number; version_id?: number }) =>
     req<{ status: string; title: string }>("/api/v1/grab", {
       method: "POST",
       body: JSON.stringify(body),
@@ -2752,8 +2753,8 @@ export const api = {
     req<{ results: BulkAddResult[]; added: number; existing: number; failed: number }>("/api/v1/movies/bulk-add", { method: "POST", body: JSON.stringify(body) }),
   previewTorrent: (torrent: string) =>
     req<TorrentPreview>("/api/v1/grab/preview", { method: "POST", body: JSON.stringify({ torrent }) }),
-  grabMovieTorrent: (id: number, torrent: string, filename: string, title: string) =>
-    req<{ status: string }>(`/api/v1/movies/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title }) }),
+  grabMovieTorrent: (id: number, torrent: string, filename: string, title: string, versionId = 0) =>
+    req<{ status: string }>(`/api/v1/movies/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title, version_id: versionId }) }),
   grabSeriesTorrent: (id: number, torrent: string, filename: string, title: string) =>
     req<{ status: string }>(`/api/v1/series/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title }) }),
   bookSeries: (id: number) => req<BookSeries>(`/api/v1/books/${id}/series`),
@@ -3190,7 +3191,12 @@ export const api = {
     req<{ status: string }>(`/api/v1/series/${id}/duplicates`, { method: "DELETE", body: JSON.stringify({ path }) }),
   seriesHistory: (id: number) =>
     req<{ events: MovieEvent[] }>(`/api/v1/series/${id}/history`).then((r) => r.events),
-  movieReleases: (id: number) => req<ReleaseList>(`/api/v1/movies/${id}/releases`),
+  // versionId ranks for one track (0 = the default track): its profile and edition, with
+  // the releases it can't take marked ineligible. Without it the movie is ranked as a whole.
+  movieReleases: (id: number, versionId?: number) =>
+    req<ReleaseList>(`/api/v1/movies/${id}/releases${versionId === undefined ? "" : `?version=${versionId}`}`),
+  /** The editions release names are recognised by, for the version form's picker. */
+  movieEditions: () => req<{ editions: string[] }>("/api/v1/movies/editions").then((r) => r.editions),
   blocklist: (id: number) => req<{ blocklist: BlockEntry[] }>(`/api/v1/movies/${id}/blocklist`).then((r) => r.blocklist),
   // Block a search result by its token, or any release by title alone.
   blockRelease: (id: number, body: { token: string; search_again?: boolean } | { title: string; indexer?: string; search_again?: boolean }) =>
@@ -3224,10 +3230,12 @@ export const api = {
     req<ManualImportList<ImportCandidate>>(
       `/api/v1/movies/${id}/manualimport${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     ),
-  manualImport: (id: number, path: string) =>
+  // versionId imports into that track (0 = the default track); absent, the file goes to
+  // whichever track its name's resolution and edition route it to.
+  manualImport: (id: number, path: string, versionId?: number) =>
     req<{ status: string }>(`/api/v1/movies/${id}/manualimport`, {
       method: "POST",
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(versionId === undefined ? { path } : { path, version_id: versionId }),
     }),
   // Every track's current file and the name the naming scheme gives it; nothing moves.
   renamePreview: (id: number) =>
@@ -3253,7 +3261,7 @@ export const api = {
   addVersion: (id: number, body: { label: string; quality_profile: string; edition?: string; monitored?: boolean }) =>
     req<MovieVersion>(`/api/v1/movies/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
   updateVersion: (id: number, vid: number, body: { label: string; quality_profile: string; edition?: string; monitored: boolean }) =>
-    req<{ status: string }>(`/api/v1/movies/${id}/versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
+    req<{ status: string; queued?: boolean; position?: number }>(`/api/v1/movies/${id}/versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteVersion: (id: number, vid: number) =>
     req<void>(`/api/v1/movies/${id}/versions/${vid}`, { method: "DELETE" }),
   deleteVersionFile: (id: number, vid: number) =>

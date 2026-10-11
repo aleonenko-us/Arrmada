@@ -390,12 +390,13 @@ func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename,
 
 // GrabMovieTorrent adds an uploaded .torrent file for a movie (movie category) and
 // tracks it like an auto grab so seed cleanup / stall detection manage it too.
-func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID int64, file []byte, filename, title string) error {
+// versionID is the track it's for (0 = the default track).
+func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID int64, file []byte, filename, title string) error {
 	hash, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
 	if err != nil {
 		return err
 	}
-	c.RecordManualGrab(ctx, movieID, title, "manual", hash)
+	c.RecordManualGrab(ctx, movieID, versionID, title, "manual", hash)
 	c.markGrabManual(ctx, hash) // the user chose this file; don't gate it on score
 	if c.movies != nil {
 		c.movies.AddEvent(ctx, movieID, "grabbed", "Uploaded torrent — "+title)
@@ -457,21 +458,31 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 // RecordManualGrab tracks a release grabbed by hand (interactive search) exactly
 // like an automatic grab, so it's seed-managed and stall-detected too. movieID 0
 // (not tied to a tracked movie) is a no-op.
-func (c *Coordinator) RecordManualGrab(ctx context.Context, movieID int64, title, indexerName, infoHash string) {
+//
+// versionID is the track it was grabbed for (0 = the default track): the grab is
+// recorded with that track's profile and stall window, and its download imports into
+// that track. A track that isn't the movie's falls back to the default track.
+func (c *Coordinator) RecordManualGrab(ctx context.Context, movieID, versionID int64, title, indexerName, infoHash string) {
 	if movieID == 0 {
 		return
 	}
-	m, err := c.movies.Get(ctx, movieID)
-	if err != nil {
+	versions, err := c.movies.VersionRows(ctx, movieID)
+	if err != nil || len(versions) == 0 {
 		return
 	}
-	profile := c.effectiveProfile(ctx, m.QualityProfile, quality.MediaMovie)
-	// A manual grab lands on the default track; when that has a file, this grab replaces it.
-	replaces := ""
-	if m.HasFile {
-		replaces = m.MovieFilePath
+	v := versions[0]
+	for _, o := range versions {
+		if o.ID == versionID {
+			v = o
+		}
 	}
-	c.recordGrabReplacing(ctx, movieID, 0, title, indexerName, profile, c.quality.StallMinutes(ctx, profile), infoHash, replaces)
+	profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
+	// When the track has a file, this grab replaces it.
+	replaces := ""
+	if v.HasFile {
+		replaces = v.FilePath
+	}
+	c.recordGrabReplacing(ctx, movieID, v.ID, title, indexerName, profile, c.quality.StallMinutes(ctx, profile), infoHash, replaces)
 }
 
 // SearchMissing searches for and grabs any monitored version that has no file
@@ -660,9 +671,43 @@ func (c *Coordinator) RankReleases(ctx context.Context, id int64) (ReleaseList, 
 // RankReleasesWith ranks a movie's releases under spec instead of the movie's own profile
 // when spec is set — the quality builder's "test on a real title", run with unsaved edits.
 func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *quality.StoredProfile) (ReleaseList, error) {
+	return c.rankReleases(ctx, id, -1, spec)
+}
+
+// RankReleasesFor ranks a movie's releases for one of its tracks (0 = the default track):
+// under that track's profile, with the releases it can't take — another edition, or the
+// release another track's file came from — listed as not eligible, saying why. A track
+// that isn't the movie's is movies.ErrNotFound.
+func (c *Coordinator) RankReleasesFor(ctx context.Context, id, versionID int64, spec *quality.StoredProfile) (ReleaseList, error) {
+	if versionID < 0 {
+		return ReleaseList{}, movies.ErrNotFound
+	}
+	return c.rankReleases(ctx, id, versionID, spec)
+}
+
+// rankReleases is RankReleasesWith for track versionID, or for the movie as a whole (its
+// own profile, no track filter) when versionID is -1.
+func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spec *quality.StoredProfile) (ReleaseList, error) {
 	m, err := c.movies.Get(ctx, id)
 	if err != nil {
 		return ReleaseList{}, err
+	}
+	profileRef := m.QualityProfile
+	var track *movies.Version
+	var siblings []movies.Version
+	if versionID >= 0 {
+		if siblings, err = c.movies.VersionRows(ctx, id); err != nil {
+			return ReleaseList{}, err
+		}
+		for i := range siblings {
+			if siblings[i].ID == versionID {
+				track = &siblings[i]
+			}
+		}
+		if track == nil {
+			return ReleaseList{}, movies.ErrNotFound
+		}
+		profileRef = track.QualityProfile
 	}
 	ctx, notes := withSearchNotes(ctx)
 	keys := c.movieKeys(ctx, m)
@@ -670,7 +715,7 @@ func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *qual
 	if allIndexersFailed(err) {
 		// Nobody could answer: an empty list naming each failure, not an error that
 		// reads like the search itself broke.
-		return ReleaseList{Profile: c.effectiveProfile(ctx, m.QualityProfile, "movie")}.withIssues(notes), nil
+		return ReleaseList{Profile: c.effectiveProfile(ctx, profileRef, "movie")}.withIssues(notes), nil
 	}
 	if err != nil {
 		return ReleaseList{}, err
@@ -685,19 +730,26 @@ func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *qual
 	// take. Blocklisted and usenet releases are still listed, ranked on their own.
 	torrents, usenet := splitTransport(matchingMovieReleases(m, keys, result.Releases))
 	byName := make(map[string]indexer.Release, len(torrents)+len(usenet))
-	var pool, side []quality.Candidate
+	var pool, side, offTrack []quality.Candidate
+	// offReason is why a release can't go to this track (its edition filter), by title.
+	offReason := map[string]string{}
 	for _, rel := range append(torrents, usenet...) {
 		byName[rel.Title] = rel
 		cand := quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders)
-		if rel.Transport == indexer.TransportUsenet || blocked[normTitle(rel.Title)] {
+		switch {
+		case rel.Transport == indexer.TransportUsenet || blocked[normTitle(rel.Title)]:
 			side = append(side, cand)
-		} else {
+		case track != nil && len(editionFilter(nil, []quality.Candidate{cand}, *track, siblings)) == 0:
+			offReason[rel.Title] = offTrackReason(cand, *track, siblings)
+			offTrack = append(offTrack, cand)
+		default:
 			pool = append(pool, cand)
 		}
 	}
-	profile := c.effectiveProfile(ctx, m.QualityProfile, "movie")
+	profile := c.effectiveProfile(ctx, profileRef, "movie")
 	decision := c.decideWith(ctx, profile, spec, tagRuntime(pool, m.Runtime))
 	others := c.decideWith(ctx, profile, spec, tagRuntime(side, m.Runtime))
+	off := c.decideWith(ctx, profile, spec, tagRuntime(offTrack, m.Runtime))
 
 	winnerName := ""
 	if decision.Winner != nil {
@@ -706,7 +758,7 @@ func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *qual
 	out := make([]RankedRelease, 0, len(byName))
 	appendEval := func(ev quality.Evaluation) {
 		rel := byName[ev.Candidate.Name]
-		out = append(out, withIndexerFacts(RankedRelease{
+		rr := RankedRelease{
 			Title:        ev.Candidate.Name,
 			Indexer:      rel.Indexer,
 			DownloadURL:  rel.DownloadURL,
@@ -720,9 +772,13 @@ func (c *Coordinator) RankReleasesWith(ctx context.Context, id int64, spec *qual
 			RejectReason: ev.RejectReason,
 			Recommended:  ev.Candidate.Name == winnerName,
 			Blocklisted:  blocked[normTitle(ev.Candidate.Name)],
-		}, rel))
+		}
+		if why := offReason[ev.Candidate.Name]; why != "" {
+			rr.Eligible, rr.Recommended, rr.RejectReason = false, false, why
+		}
+		out = append(out, withIndexerFacts(rr, rel))
 	}
-	for _, evs := range [][]quality.Evaluation{decision.Eligible, others.Eligible, decision.Rejected, others.Rejected} {
+	for _, evs := range [][]quality.Evaluation{decision.Eligible, others.Eligible, off.Eligible, decision.Rejected, others.Rejected, off.Rejected} {
 		for _, ev := range evs {
 			appendEval(ev)
 		}
@@ -1121,6 +1177,15 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 		c.skipUnreadable(m.Title, err)
 		return nil
 	}
+	// Every track of the movie, for the edition filter: a track's edition is a requirement,
+	// and no track takes another's edition or the release another's file came from.
+	siblings := want
+	if c.movies != nil {
+		if siblings, err = c.movies.VersionRows(ctx, m.ID); err != nil {
+			c.skipUnreadable(m.Title, err)
+			return nil
+		}
+	}
 	// grabbedGB accumulates what this pass has already committed, so two version tracks
 	// can't jointly overcommit the same free-space reading (the series path has done this).
 	grabbedGB := 0.0
@@ -1131,7 +1196,13 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 		// Resolved once and used for the decision, the stall window and the grab record,
 		// so a deleted profile means the default here rather than the permissive fallback.
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
-		decision := c.quality.Decide(ctx, profile, tagRuntime(cands, m.Runtime))
+		mine := editionFilter(notesFrom(ctx), cands, v, siblings)
+		if len(mine) == 0 && len(cands) > 0 && v.Edition != "" {
+			c.log.Info("automation: no release carried the edition this version wants",
+				"movie", m.Title, "version", v.Label, "edition", v.Edition, "candidates", len(cands))
+			continue
+		}
+		decision := c.quality.Decide(ctx, profile, tagRuntime(mine, m.Runtime))
 		notesFrom(ctx).decided(decision)
 		if decision.Winner == nil {
 			// The profile rejected everything on offer. Silent before, which made a
@@ -1443,7 +1514,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		c.skipUnreadable(m.Title, err)
 		return err
 	}
-	picks := c.movieUpgradePicks(ctx, m, want, cands)
+	picks := c.movieUpgradePicks(ctx, m, want, versions, cands)
 	takeUpgrades(picks, b, func(u movieUpgrade) bool {
 		winner := byName[u.pick.Name]
 		if grabbed[winner.DownloadURL] {
@@ -1478,7 +1549,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 // movieUpgradePicks decides, for each version, the release that would upgrade its file —
 // the decision half of upgradeMovie, apart from the grabbing so it can be tested without
 // an indexer or a download client.
-func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, want []movies.Version, cands []quality.Candidate) []movieUpgrade {
+func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, want, siblings []movies.Version, cands []quality.Candidate) []movieUpgrade {
 	var picks []movieUpgrade
 	for _, v := range want {
 		// A held file ("keep existing files" when its profile changed) is left as it is.
@@ -1489,7 +1560,8 @@ func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, wan
 		}
 		cur := c.currentMovieFile(ctx, m, v)
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
-		if pick, ok := c.quality.UpgradeCandidate(ctx, profile, cur, cands); ok {
+		// Only releases this track may take: its edition, never another track's file.
+		if pick, ok := c.quality.UpgradeCandidate(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
 			picks = append(picks, movieUpgrade{v: v, profile: profile, from: cur.Release, pick: pick})
 		}
 	}
@@ -1556,7 +1628,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			continue
 		}
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
-		decision := c.quality.Decide(ctx, profile, tagRuntime(cands, m.Runtime))
+		decision := c.quality.Decide(ctx, profile, tagRuntime(editionFilter(notes, cands, v, versions), m.Runtime))
 		notesFrom(ctx).decided(decision)
 		if decision.Winner == nil {
 			continue
@@ -2249,8 +2321,21 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 	// Re-deriving it from a (differently normalized) title match orphaned imports for
 	// accented/&-titled movies and could attach a year-less release to the wrong
 	// same-titled film.
+	//
+	// The track: the one the importer decided and named the file for (kept on the import
+	// record), so the attach can't put it anywhere else. A record without one (from before
+	// tracks were decided at import, or a download no movie matched) routes as it always has.
 	m, matched := movies.Movie{}, false
-	if mid, ok := c.movieIDForGrabHash(ctx, rec.Hash); ok {
+	mid, versionID := rec.MovieID, int64(-1)
+	if mid > 0 {
+		versionID = rec.VersionID
+	} else if g, ok := c.MovieGrabForHash(ctx, rec.Hash); ok {
+		mid = g.MovieID
+		if g.VersionID > 0 {
+			versionID = g.VersionID // a grab for an extra track lands on it
+		}
+	}
+	if mid > 0 {
 		got, err := c.movies.Get(ctx, mid)
 		switch {
 		case err == nil:
@@ -2259,8 +2344,11 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 			return library.AttachRetry, fmt.Errorf("load movie %d: %w", mid, err)
 		}
 	}
-	if !matched && rec.Title != "" {
-		m, matched = c.movies.Match(ctx, rec.Title, rec.Year)
+	if !matched {
+		versionID = -1 // the decided movie is gone: whatever matches now routes afresh
+		if rec.Title != "" {
+			m, matched = c.movies.Match(ctx, rec.Title, rec.Year)
+		}
 	}
 	if !matched {
 		if ctx.Err() != nil {
@@ -2268,8 +2356,8 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 		}
 		return library.Unmatched, fmt.Errorf("no movie in the library matches %q", titleYear(rec.Title, rec.Year))
 	}
-	if err := c.movies.MarkImported(ctx, m.ID, rec.TargetPath, rec.ReleaseName); err != nil {
-		if errors.Is(err, movies.ErrWorseQuality) {
+	if err := c.movies.MarkImportedTo(ctx, m.ID, versionID, rec.TargetPath, rec.ReleaseName, false); err != nil {
+		if errors.Is(err, movies.ErrWorseQuality) || errors.Is(err, movies.ErrPathOwnedByOtherTrack) {
 			return library.Refused, err
 		}
 		return library.AttachRetry, fmt.Errorf("attach to %q: %w", m.Title, err)

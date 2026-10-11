@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -23,11 +24,22 @@ type Candidate struct {
 	Category    string
 }
 
-// TitleResolver maps a finished download to the library title it belongs to, so
-// imports are named from the metadata record (deterministic, matches the movie
-// Arrmada tracks) instead of the scene release. ok=false → name from the release.
+// TitleResolver maps a finished download to the movie and the track it belongs to, so
+// imports are named from the metadata record (deterministic, matches the movie Arrmada
+// tracks) instead of the scene release, and the track is settled before the file is
+// placed. ok=false → name from the release.
 type TitleResolver interface {
-	ResolveMovie(ctx context.Context, releaseName string) (title string, year int, ok bool)
+	ResolveMovieImport(ctx context.Context, hash, releaseName string) (MovieImportName, bool)
+}
+
+// MovieImportName is where a movie download goes: the movie, the track decided for it,
+// and how that track's file is named (with the other tracks' files to keep clear of).
+type MovieImportName struct {
+	MovieID int64
+	// VersionID is the track the file is for (0 = the default track). -1 means it wasn't
+	// decided, and attaching routes the file as it always has.
+	VersionID int64
+	Track     MovieTrack
 }
 
 // ImportGate can hold a finished download back from import for admin review — it
@@ -268,7 +280,7 @@ func (m *Manager) Process(ctx context.Context, cands []Candidate) int {
 			m.log.Info("re-importing: previously-imported file is missing", "hash", c.Hash, "was", target)
 		}
 
-		res, err := m.importOne(ctx, c)
+		res, movieID, versionID, err := m.importOne(ctx, c)
 		if err != nil {
 			attempts, warn := m.noteFailure(c.Hash, c.Name, err)
 			if warn {
@@ -288,6 +300,7 @@ func (m *Manager) Process(ctx context.Context, cands []Candidate) int {
 		rec := ImportRecord{
 			Hash: c.Hash, SourcePath: res.SourcePath, TargetPath: res.TargetPath,
 			Title: res.Title, SizeBytes: res.SizeBytes, ReleaseName: c.Name, Year: res.Year,
+			MovieID: movieID, VersionID: versionID,
 		}
 		state := AttachStateAttached
 		if m.attach != nil {
@@ -311,6 +324,9 @@ func (m *Manager) Process(ctx context.Context, cands []Candidate) int {
 				"target": res.TargetPath,
 				"name":   c.Name, // the release/torrent name — scored for upgrade decisions
 				"hash":   c.Hash, // the download hash — lets consumers tie the event to the torrent
+				// The movie and track the file was placed for (0 and -1 when undecided).
+				"movie_id":   movieID,
+				"version_id": versionID,
 			})
 		}
 		imported++
@@ -411,15 +427,27 @@ func (m *Manager) settle(ctx context.Context, rec ImportRecord, state, reason st
 	}
 }
 
-// importOne names by the matched library title when the resolver knows it (so the
-// folder matches the movie record), otherwise parses the release name.
-func (m *Manager) importOne(ctx context.Context, c Candidate) (*Result, error) {
+// importOne names by the matched library title and track when the resolver knows them
+// (so the folder matches the movie record and the file can't land on another track's),
+// otherwise parses the release name. It returns the movie and track it decided on (0, -1
+// when it didn't), which the import record keeps for the attach.
+func (m *Manager) importOne(ctx context.Context, c Candidate) (*Result, int64, int64, error) {
 	if m.resolver != nil {
-		if title, year, ok := m.resolver.ResolveMovie(ctx, c.Name); ok {
-			return m.imp.ImportAs(title, year, c.ContentPath)
+		if n, ok := m.resolver.ResolveMovieImport(ctx, c.Hash, c.Name); ok {
+			// A file imported for another track whose attach hasn't landed yet is on disk
+			// but on no track's record: protect it too, or a same-named import for this
+			// track would recycle it. Unreadable → don't import now (retried).
+			pending, err := m.repo.pendingTargets(ctx, n.MovieID, n.VersionID)
+			if err != nil {
+				return nil, 0, -1, fmt.Errorf("read pending imports: %w", err)
+			}
+			n.Track.Protected = append(n.Track.Protected, pending...)
+			res, err := m.imp.ImportAsNamed(n.Track, c.ContentPath)
+			return res, n.MovieID, n.VersionID, err
 		}
 	}
-	return m.imp.Import(c.Name, c.ContentPath)
+	res, err := m.imp.Import(c.Name, c.ContentPath)
+	return res, 0, -1, err
 }
 
 // SetNaming installs the user-configurable naming scheme on the import path.

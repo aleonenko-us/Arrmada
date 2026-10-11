@@ -919,13 +919,50 @@ var editions = []struct {
 	label   string
 	needles []string
 }{
-	{"Director's Cut", []string{"director s cut", "directors cut", "director cut"}},
+	{"Director's Cut", []string{"director s cut", "director's cut", "director’s cut", "directors cut", "director cut"}},
 	{"Extended", []string{"extended"}},
 	{"Theatrical", []string{"theatrical"}},
 	{"IMAX", []string{"imax"}},
 	{"Unrated", []string{"unrated"}},
 	{"Remastered", []string{"remastered", "remaster"}},
 	{"Final Cut", []string{"final cut"}},
+}
+
+// Editions lists the editions the parser recognises in a release name, by the label it
+// gives them ("Director's Cut", "Extended", …), in the order they're checked.
+func Editions() []string {
+	out := make([]string, len(editions))
+	for i, e := range editions {
+		out[i] = e.label
+	}
+	return out
+}
+
+// NormalizeEdition is the form two editions are compared in: a known edition however it's
+// written ("Directors.Cut", "director's cut", "Director’s Cut") becomes its label, and an
+// edition the parser doesn't know becomes its words, lowercased. "" stays "".
+func NormalizeEdition(s string) string {
+	lc := normalize(s)
+	if strings.TrimSpace(lc) == "" {
+		return ""
+	}
+	if e := detectEdition(lc); e != "" {
+		return e
+	}
+	return strings.Join(strings.Fields(lc), " ")
+}
+
+// CanonicalEdition is how an edition typed by hand is stored: a known edition gets its
+// label ("directors cut" → "Director's Cut"), anything else keeps its own words, trimmed.
+func CanonicalEdition(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if s == "" {
+		return ""
+	}
+	if e := detectEdition(normalize(s)); e != "" {
+		return e
+	}
+	return s
 }
 
 func detectEdition(lc string) string {
