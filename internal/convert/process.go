@@ -747,8 +747,8 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 	}
 	reclaimDeferred := fileLinks(src) > 1
 	rec.reclaimDeferred = reclaimDeferred
-	finalPath := strings.TrimSuffix(src, filepath.Ext(src)) + ".mkv"
-	part := finalPath + ".arrpart"
+	finalPath := finalPathFor(src)
+	part := partPathFor(src)
 	_ = os.Remove(part) // a leftover from an interrupted job
 	// A quick look at the bin before staging: from another filesystem staging is a full
 	// copy onto the library disk, wasted if the original then has nowhere to go. The check
@@ -757,8 +757,24 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		s.finishSkip(job, SkipBinFull, reason+" — the encode was discarded and the original kept")
 		return
 	}
+	// The .mkv name may already be taken. A file another library record points at is that
+	// record's, so it's never moved aside; this one waits instead (and the rename below
+	// would otherwise overwrite it).
+	if finalPath != src && exists(finalPath) {
+		if why := s.nameOwner(ctx, finalPath); why != "" {
+			s.finishSkip(job, SkipNameTaken, why+" — the encode was discarded and the original kept")
+			return
+		}
+	}
+	// Journal first, then stage: a crash mid-copy leaves a row that names the part, so the
+	// next startup removes it instead of leaving a multi-GB orphan beside the original.
+	if err := s.recordSwap(ctx, job, part, finalPath, src, swapStaging, rec.historyID); err != nil {
+		s.finish(job, StateFailed, "could not journal the swap ("+err.Error()+") — kept the original")
+		return
+	}
 	if err := moveFileFn(dst, part); err != nil {
 		_ = os.Remove(part)
+		s.clearSwap(part)
 		if errors.Is(err, syscall.ENOSPC) {
 			// The library disk filled up. Retrying straight away would re-run the whole encode
 			// only to fail the same way, so wait for space to be freed.
@@ -769,35 +785,50 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		s.finish(job, StateFailed, "could not stage the converted file: "+err.Error()+" — kept the original")
 		return
 	}
+	// discard abandons the swap before the original has moved: the part and its row go.
+	discard := func() {
+		_ = os.Remove(part)
+		s.clearSwap(part)
+	}
+	if err := s.setSwapState(ctx, part, swapStaged); err != nil {
+		discard()
+		s.finish(job, StateFailed, "could not journal the swap ("+err.Error()+") — kept the original")
+		return
+	}
 	// The bin may have filled during the encode. Ask again right before the original goes
 	// in, and hold the answer until it has: if it no longer fits, the encode is lost but
 	// nothing is destroyed.
 	s.binMu.Lock()
 	if ok, reason := s.binRoomFor(ctx, mi.SizeBytes); !ok {
 		s.binMu.Unlock()
-		_ = os.Remove(part)
+		discard()
 		s.finishSkip(job, SkipBinFull, reason+" — the encode was discarded and the original kept")
 		return
 	}
 	// A different file already at the .mkv name goes to the bin before the original does:
 	// the rename below would otherwise overwrite it, and if the bin refuses it the
 	// original must still be in place to keep.
+	// Only a file no library record owns gets here (checked above).
 	if finalPath != src {
 		if _, e := os.Stat(finalPath); e == nil {
 			if err := s.retire(finalPath); err != nil {
 				s.binMu.Unlock()
-				_ = os.Remove(part)
+				discard()
 				s.finish(job, StateFailed, "could not move the file already at "+filepath.Base(finalPath)+" to the recycle bin: "+err.Error()+" — kept the original")
 				return
 			}
 		}
 	}
-	s.recordSwap(job, part, finalPath, src)
+	if err := s.setSwapState(ctx, part, swapRetired); err != nil {
+		s.binMu.Unlock()
+		discard()
+		s.finish(job, StateFailed, "could not journal the swap ("+err.Error()+") — kept the original")
+		return
+	}
 	err = s.retire(src)
 	s.binMu.Unlock()
 	if err != nil {
-		_ = os.Remove(part)
-		s.clearSwap(part)
+		discard()
 		s.finish(job, StateFailed, "could not move the original to the recycle bin: "+err.Error()+" — kept the original")
 		return
 	}

@@ -22,6 +22,9 @@ const (
 	SkipLibraryFull = "library_full" // the library disk hasn't room for the converted file
 	SkipSourceGone  = "source_gone"  // the library file is missing
 	SkipTransient   = "transient"    // any other failure that should clear on its own
+	// The converted file's .mkv name is a file another library record points at (a second
+	// version, an episode filed under that name). Never moved aside; looked at again later.
+	SkipNameTaken = "name_taken"
 
 	// The original wouldn't fit in the recycle bin under its cap, so retiring it would make
 	// the bin purge it within the hour. Waits for the owner to raise the cap (saving the
@@ -32,7 +35,7 @@ const (
 // backoffSkip reports whether a skip kind waits longer each time it repeats.
 func backoffSkip(kind string) bool {
 	switch kind {
-	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient:
+	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient, SkipNameTaken:
 		return true
 	}
 	return false

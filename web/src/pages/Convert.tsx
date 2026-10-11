@@ -772,6 +772,7 @@ const SKIP_LABEL: Record<string, string> = {
   library_full: "The library disk hasn't room for the converted file next to the original. The originals were kept; each is tried again after an hour, then six, then once a day",
   source_gone: "The library file was missing when Convert went to read it — usually mid-import or mid-upgrade. Checked again later",
   transient: "These hit a problem that usually clears on its own (often a full disk). Each is tried again after an hour, then six, then once a day",
+  name_taken: "The converted file would take the name of a file another library record points at (a second version, say), so it was left alone and the originals kept. Each is tried again after an hour, then six, then once a day",
   bin_full: "Their originals are bigger than the room left in the recycle bin under its size cap. Keeping one there would make the bin delete it — and older deletions — within the hour, so these aren't converted until the cap is raised. Large 4K remuxes wait here; checked again daily, and straight away when the cap changes",
 };
 

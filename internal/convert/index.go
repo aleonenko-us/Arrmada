@@ -335,6 +335,10 @@ func (s *Service) IndexAll(ctx context.Context) {
 			}
 		}
 	}
+	// Staged copies a crash left behind before swaps were journalled first (swaps.go).
+	if n := s.sweepOrphanParts(ctx); n > 0 {
+		s.log.Info("convert: removed orphaned staged files", "count", n)
+	}
 	s.log.Info("convert: library index refreshed", "took", time.Since(started).Round(time.Second).String())
 }
 
