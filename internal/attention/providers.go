@@ -238,10 +238,11 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 	return out, nil
 }
 
-// grabbed reports whether an Arrmada grab recorded the torrent (lowercased hash h).
+// grabbed reports whether an Arrmada grab recorded the torrent (lowercased hash h) and
+// is still downloading it — what Needs you can try another release for.
 func (f *Frame) grabbed(h string) bool {
-	_, ok := f.Acq[h]
-	return ok
+	a, ok := f.Acq[h]
+	return ok && a.Downloading()
 }
 
 // displayName is the release the grab recorded for a torrent, else the client's name.

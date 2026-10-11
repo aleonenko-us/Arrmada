@@ -112,6 +112,10 @@ func derivedScope(a Acquisition) string {
 	return ""
 }
 
+// Downloading reports whether the grab is still in flight as a download (not held,
+// imported or closed out): the only kind another release can be tried for.
+func (a Acquisition) Downloading() bool { return a.Status == grabStatusGrabbed }
+
 // acquisitionsWhere reads the acquisitions matching a status set and more, oldest first.
 func (c *Coordinator) acquisitionsWhere(ctx context.Context, where string, args ...any) ([]Acquisition, error) {
 	rows, err := c.db.QueryContext(ctx, `SELECT `+acqCols+` FROM grabs WHERE `+where+` ORDER BY id`, args...)

@@ -68,7 +68,9 @@ func (c *Coordinator) FailOverNow(ctx context.Context, hash string) (FailOverRes
 	if item == nil {
 		return FailOverResult{}, ErrDownloadNotInClient
 	}
-	if item.Complete() {
+	// A finished download is the import's to settle — unless the client stopped it with an
+	// error (its files went missing, say), when replacing it is still the way out.
+	if item.Complete() && item.Phase() != "error" {
 		return FailOverResult{}, ErrDownloadFinished
 	}
 	t, ok := c.stallTargetFor(ctx, *g)
