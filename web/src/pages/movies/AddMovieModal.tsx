@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api, type MovieLookup } from "../../lib/api";
+import { Button, Modal } from "../../ui";
 
 // AddMovieModal is the library's "+ Add movie": search TMDB, pick a film, and add it on a
 // profile, searching for it at once or not.
@@ -12,6 +13,8 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [addingId, setAddingId] = useState<number | null>(null);
+  const titleId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
@@ -60,11 +63,10 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} labelledBy={titleId} size="lg" initialFocus={inputRef}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add a movie</h2>
-          <div className="flex items-center gap-4">
+          <h2 id={titleId} className="m-0 text-[15px] font-bold">Add a movie</h2>
+          <div className="flex flex-wrap items-center gap-4">
             <button type="button" onClick={toggleSearchOnAdd} title="On: monitor and search for a release right away. Off: add unmonitored — nothing is searched or grabbed until you monitor it." className="flex items-center gap-2">
               <span className="relative inline-block h-[20px] w-[34px] rounded-full transition-colors" style={{ background: searchOnAdd ? "var(--accent)" : "var(--line)" }}>
                 <span className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-white transition-all" style={{ left: searchOnAdd ? "17px" : "3px" }} />
@@ -83,10 +85,8 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
         </div>
 
         <form onSubmit={search} className="mb-3 flex gap-2">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-            {loading ? "…" : "Search"}
-          </button>
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" aria-label="Search TMDB for a movie" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
 
         {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
@@ -112,7 +112,6 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
             </button>
           ))}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

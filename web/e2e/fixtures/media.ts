@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DeletePreview, DownloadClientList, FitCounts,
-  FitItem, FormatInfo, MovieDeletePreview, RecycleMode, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FitItem, FormatInfo, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
@@ -80,6 +80,17 @@ export const movieFit: { items: FitItem[] } = {
   ],
 };
 export const seriesFit: { items: SeriesFitSummary[] } = { items: [{ series_id: 1, checked: 14, fits: 12, over: 2, under: 0, mismatch: 0 }] };
+
+// A release search with more rows than a short window shows: the modal scrolls inside.
+export const movieReleases: ReleaseList = {
+  profile: "HD 1080p",
+  why: ["1080p WEB-DL, inside the bitrate window"],
+  searched: 2,
+  releases: Array.from({ length: 12 }, (_, i) => ({
+    title: `Anchor.Point.2022.1080p.WEB-DL.H264-GRP${i}`, indexer: "Fixture Tracker", token: `tok-${i}`, size_gb: 4 + i / 2, bitrate_mbps: 5 + i / 4,
+    seeders: 40 - i, peers: 5, summary: `1080p WEB-DL · group ${i}`, eligible: true, recommended: i === 0,
+  })),
+};
 
 export const recycleMode: RecycleMode = { enabled: true, dirs: ["/media/movies/.arrmada-recycle"], retention_days: 30, max_gb: 0 };
 export const movieDeletePreview: MovieDeletePreview = { versions: [], sidecars: 0, bytes: 0, recycle: recycleMode, pending_downloads: [] };

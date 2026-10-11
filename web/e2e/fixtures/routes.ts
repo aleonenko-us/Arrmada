@@ -145,6 +145,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "PUT", path: /^\/api\/v1\/(movies|series)\/\d+\/monitor$/, respond: ({ body }) => ({ monitored: !!(body as { monitored?: boolean })?.monitored, monitor_new_seasons: true }) },
     { method: "POST", path: /^\/api\/v1\/movies\/\d+\/search$/, status: 202, body: { status: "queued", queued: true, position: 1 } },
     { method: "POST", path: /^\/api\/v1\/series\/\d+\/search$/, status: 202, body: { status: "searching" } },
+    get(/^\/api\/v1\/movies\/\d+\/releases$/, media.movieReleases),
     get("/api/v1/books", media.books),
     get("/api/v1/books/upgrade", media.bookUpgrade),
     get("/api/v1/books/search-missing", media.bookSweep),

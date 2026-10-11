@@ -7,7 +7,7 @@ import { SeriesSearchModal } from "../components/SeriesSearchModal";
 import { usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useQuery } from "../lib/query";
-import { useToast } from "../ui";
+import { useConfirm, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
 import { CardHoverActions } from "../features/library/LibraryCard";
 import { seriesLibraryConfig, statsOf } from "./series/library";
@@ -23,6 +23,7 @@ export function Series() {
   const metaOK = seriesQ.data?.metadata_available ?? true;
   const refresh = seriesQ.refetch;
   const toast = useToast();
+  const confirm = useConfirm();
   const view = useLibraryView("series");
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<SeriesT | null>(null);
@@ -45,7 +46,12 @@ export function Series() {
   // button: it reconciles episodes whose file is already on disk but whose row still
   // reads as missing, which is what makes the searcher re-grab things you already have.
   const refreshAll = async () => {
-    if (!window.confirm(`Refresh metadata and rescan files for all ${list?.length ?? 0} series? This runs in the background and can take a while.`)) return;
+    const ok = await confirm({
+      title: `Refresh all ${list?.length ?? 0} series?`,
+      body: "Arrmada re-pulls each show's metadata and rescans its files. This runs in the background and can take a while.",
+      confirmLabel: "Refresh all",
+    });
+    if (!ok) return;
     setRefreshingAll(true);
     try {
       const r = await api.refreshAllSeries();

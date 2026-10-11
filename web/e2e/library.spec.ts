@@ -43,4 +43,20 @@ test.describe("library pages", () => {
       await expect(page.getByText(/Quality profile set on \d+/)).toBeVisible();
     });
   }
+
+  // FE-11: the release search is a kit Modal — named, Escape closes it, and a long list
+  // scrolls inside it in a short window.
+  test("the table's release search opens as a dialog, scrolls inside, and closes on Escape", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.goto("/movies");
+    await page.getByRole("button", { name: "table", exact: true }).click();
+    await page.getByRole("row", { name: /Anchor Point/ }).getByRole("button", { name: "Search" }).click();
+    const dialog = page.getByRole("dialog", { name: "Search indexers — Anchor Point" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Grab" })).toHaveCount(12);
+    const box = await dialog.boundingBox();
+    expect(box?.height ?? 0).toBeLessThanOrEqual(700);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
 });
