@@ -6,6 +6,7 @@ import * as mod from "./modules";
 import * as sys from "./system";
 import * as alerts from "./alerts";
 import * as audio from "./audio";
+import * as seriesDetail from "./seriesDetail";
 import { NOW } from "./clock";
 
 export interface MockRoute {
@@ -129,6 +130,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),
     get("/api/v1/series", media.series),
+    // The series detail page (its own fixture file).
+    ...seriesDetail.routes(),
     get("/api/v1/movies/unmatched", { unmatched: [] }),
     get("/api/v1/movies/search-queue", { running: [], queued: [] }),
     get("/api/v1/movies/downloads", media.movieDownloads),

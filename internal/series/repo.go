@@ -1082,6 +1082,73 @@ func (r *Repo) SetEpisodeMonitored(ctx context.Context, episodeID int64, monitor
 	})
 }
 
+// ErrForeignEpisodes refuses a bulk change naming an episode of another show (or none).
+var ErrForeignEpisodes = errors.New("some of those episodes aren't in this series")
+
+// SetEpisodesMonitored sets several episodes of one show at once, in one transaction, and
+// re-derives the flag of every season it touched (monitoring an episode in an unmonitored
+// season monitors the season). An id that isn't one of this show's episodes refuses the
+// whole change. It returns how many episodes were set.
+func (r *Repo) SetEpisodesMonitored(ctx context.Context, seriesID int64, ids []int64, monitored bool) (int, error) {
+	uniq := make([]int64, 0, len(ids))
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			uniq = append(uniq, id)
+		}
+	}
+	if len(uniq) == 0 {
+		return 0, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(uniq)), ",")
+	args := make([]any, 0, len(uniq)+2)
+	args = append(args, seriesID)
+	for _, id := range uniq {
+		args = append(args, id)
+	}
+	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		var found int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE series_id = ? AND id IN (`+marks+`)`, args...).Scan(&found); err != nil {
+			return err
+		}
+		if found != len(uniq) {
+			return ErrForeignEpisodes
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT season_number FROM episodes WHERE series_id = ? AND id IN (`+marks+`)`, args...)
+		if err != nil {
+			return err
+		}
+		var seasons []int
+		for rows.Next() {
+			var sn int
+			if err := rows.Scan(&sn); err != nil {
+				rows.Close()
+				return err
+			}
+			seasons = append(seasons, sn)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		upd := append([]any{b2i(monitored)}, args...)
+		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE series_id = ? AND id IN (`+marks+`)`, upd...); err != nil {
+			return err
+		}
+		for _, sn := range seasons {
+			if err := syncSeasonsTx(ctx, tx, seriesID, sn, false); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(uniq), nil
+}
+
 // SetMonitoredFlag sets only the series gate, for a caller that has just applied a preset
 // and so has already decided every episode's flag.
 func (r *Repo) SetMonitoredFlag(ctx context.Context, id int64, monitored bool) error {

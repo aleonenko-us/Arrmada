@@ -2578,6 +2578,10 @@ export const api = {
   },
   unblockAny: (id: number) => req<void>(`/api/v1/blocklist/${id}`, { method: "DELETE" }),
   reviews: () => req<{ reviews: ImportReview[] }>("/api/v1/reviews").then((r) => r.reviews),
+  // One show's held downloads (the series page's files it couldn't place).
+  seriesReviews: (id: number) =>
+    req<{ reviews: ImportReview[] }>(`/api/v1/reviews?media_type=series&expected_id=${id}`)
+      .then((r) => (r.reviews ?? []).filter((rv) => rv.media_type === "series" && rv.expected_id === id)),
   // findAnother: once the release is blocklisted, search the title it was grabbed for again.
   rejectReview: (id: number, findAnother = false) =>
     req<{ status: string; searching?: boolean; search_error?: string } & Partial<JobRef>>(`/api/v1/reviews/${id}/reject`, findAnother
@@ -2775,6 +2779,12 @@ export const api = {
   seriesDownloads: (id: number) => req<SeriesEpisodeDownload[]>(`/api/v1/series/${id}/downloads`),
   searchSeries: (id: number) =>
     req<{ status: string; started_at_ms?: number } & JobRef>(`/api/v1/series/${id}/search`, { method: "POST" }),
+  // One scoped search of episodes picked in one season (at most 200).
+  searchSeriesEpisodes: (id: number, episodes: { season: number; episode: number }[]) =>
+    req<{ status: string; episodes: number } & JobRef>(`/api/v1/series/${id}/search`, { method: "POST", body: JSON.stringify({ episodes }) }),
+  // Monitors or unmonitors several of a show's episodes at once; their seasons follow.
+  setEpisodesMonitored: (id: number, episode_ids: number[], monitored: boolean) =>
+    req<{ updated: number; monitored: boolean }>(`/api/v1/series/${id}/monitor/episodes`, { method: "PUT", body: JSON.stringify({ episode_ids, monitored }) }),
   seriesReleases: (id: number, season?: number, episode?: number) => {
     const q = new URLSearchParams();
     // Season 0 is Specials, not "no season" — send it whenever it's given.

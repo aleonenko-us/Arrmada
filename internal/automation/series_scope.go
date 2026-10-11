@@ -19,9 +19,13 @@ import (
 var ErrSpecialsScope = errors.New("Specials have no packs — grab a single special")
 
 // SeriesScope is one user click on a show: Grab missing on a season, Grab on an episode,
-// or Replace on an episode that already has a file.
+// Replace on an episode that already has a file, or Search on a handful of episodes picked
+// in one season (Episodes).
 type SeriesScope struct {
 	Season, Episode int
+	// Episodes, when set, is a hand-picked list inside Season (Episode is then 0): one
+	// season search, and only these episodes are wanted.
+	Episodes []int
 	// Replace fetches the episode even though it has a file, and the user's say-so then
 	// lets that one episode's new file skip the import gate.
 	Replace bool
@@ -32,6 +36,9 @@ type SeriesScope struct {
 // Validate refuses a scope no button should send. Cheap, so the API can answer 400 before
 // it starts a background search.
 func (sc SeriesScope) Validate() error {
+	if len(sc.Episodes) > 0 {
+		return sc.validateList()
+	}
 	switch {
 	case sc.Season < 0 || sc.Episode < 0:
 		return errors.New("season and episode can't be negative")
@@ -43,7 +50,30 @@ func (sc SeriesScope) Validate() error {
 	return nil
 }
 
+// MaxScopeEpisodes caps a hand-picked list, so one click can't become hundreds of grabs.
+const MaxScopeEpisodes = 200
+
+func (sc SeriesScope) validateList() error {
+	switch {
+	case len(sc.Episodes) > MaxScopeEpisodes:
+		return fmt.Errorf("pick at most %d episodes at a time", MaxScopeEpisodes)
+	case sc.Season < 0:
+		return errors.New("season can't be negative")
+	case sc.Episode != 0 || sc.Replace:
+		return errors.New("a list of episodes can't be combined with one episode or Replace")
+	}
+	for _, e := range sc.Episodes {
+		if e <= 0 {
+			return errors.New("episode numbers start at 1")
+		}
+	}
+	return nil
+}
+
 func (sc SeriesScope) label() string {
+	if len(sc.Episodes) > 0 {
+		return fmt.Sprintf("Season %d (%d episode%s)", sc.Season, len(sc.Episodes), plural(len(sc.Episodes)))
+	}
 	if sc.Episode > 0 {
 		return fmt.Sprintf("S%02dE%02d", sc.Season, sc.Episode)
 	}
@@ -153,9 +183,14 @@ func (o GrabOutcome) Summary() string {
 // scopeWanted lists the episodes a click should fetch: aired and without a file. A season
 // click needs each episode monitored but waives the season's flag, since naming the season
 // is the say-so; an episode click waives monitoring entirely. Replace takes its episode
-// even though it has a file — replacing that file is the point.
+// even though it has a file — replacing that file is the point. A picked list counts as
+// that many episode clicks: each one aired and without a file, monitored or not.
 func scopeWanted(s series.Series, sc SeriesScope) []epKey {
 	var out []epKey
+	picked := make(map[int]bool, len(sc.Episodes))
+	for _, e := range sc.Episodes {
+		picked[e] = true
+	}
 	for _, sn := range s.Seasons {
 		if sn.SeasonNumber != sc.Season {
 			continue
@@ -163,6 +198,10 @@ func scopeWanted(s series.Series, sc SeriesScope) []epKey {
 		for _, e := range sn.Episodes {
 			k := epKey{sn.SeasonNumber, e.EpisodeNumber}
 			switch {
+			case len(picked) > 0:
+				if picked[e.EpisodeNumber] && !e.HasFile && aired(e.AirDate) {
+					out = append(out, k)
+				}
 			case sc.Episode > 0:
 				if e.EpisodeNumber == sc.Episode && (sc.Replace || (!e.HasFile && aired(e.AirDate))) {
 					out = append(out, k)
@@ -275,7 +314,11 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		out.reject(ev.RejectReason, ev.Candidate.Name)
 	}
 
-	episodeOnly := sc.Episode > 0
+	// A picked list may still take a season pack when it covers at least half the season
+	// (pass 2's worth-it rule), but never an oversized one as a last resort; Specials have
+	// no packs at all.
+	listed := len(sc.Episodes) > 0
+	episodeOnly := sc.Episode > 0 || (listed && sc.Season == 0)
 	_, seriesSeasons := wantedEpisodes(s)
 	cover := func(r parser.Release, needed map[epKey]bool) []epKey {
 		return c.coveredByFor(ctx, s, r, needed)
@@ -300,7 +343,7 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		opts: planOpts{
 			Scoped:            true,
 			EpisodesOnly:      episodeOnly,
-			AllowPackFallback: !episodeOnly && !sc.Replace,
+			AllowPackFallback: !episodeOnly && !sc.Replace && !listed,
 		},
 		cover: cover,
 		try:   func(name, label string) bool { return g.try(ctx, name, label) },
