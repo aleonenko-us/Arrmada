@@ -99,7 +99,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
         <MonitorMenu series={series} onChange={onChange} flash={flash} />
         <ProfileSelector series={series} onChange={onChange} />
       </div>
-      <div className="mt-2.5 flex flex-nowrap items-center gap-2">
+      <div role="group" aria-label="Show actions" className="mt-2.5 flex flex-nowrap items-center gap-2">
         <Button variant="primary" onClick={searchMissing} busy={searching} busyLabel="Searching…" title="Search every monitored season for what's missing and grab the best fit">
           Search missing
         </Button>

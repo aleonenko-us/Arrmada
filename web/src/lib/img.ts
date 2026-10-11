@@ -11,3 +11,11 @@ export function posterThumb(url?: string): string | undefined {
   // Open Library: covers.openlibrary.org/b/id/123-L.jpg → -M.jpg
   return url.replace(/-L\.(jpg|jpeg|png)$/i, "-M.$1");
 }
+
+// stillThumb is an episode still sized for a card: TMDB stills are stored at w1280, about
+// seven times what a 176px card shows; w300 stays sharp on a retina phone. Anything else
+// (TVDB, TVmaze) is returned unchanged.
+export function stillThumb(url?: string): string | undefined {
+  if (!url) return url;
+  return url.replace(/\/t\/p\/(?:w\d+|original)\//, "/t/p/w300/");
+}

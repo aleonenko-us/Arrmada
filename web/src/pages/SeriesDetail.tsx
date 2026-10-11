@@ -1,26 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { disposalLine, useRecycleMode } from "../lib/disposal";
-import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
-import { FileDetailsModal } from "../components/FileDetailsModal";
-import { FitBadge } from "../components/FitBadge";
 import { NumberingBanner } from "./series/NumberingReviewModal";
 import { usePoll } from "../lib/usePoll";
-import { libraryStatus } from "../lib/status";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress } from "./series/downloads";
-import { jobFailed, jobToast, useJob } from "../lib/useJob";
-import { attemptLine, outcomeTone, searchFinishedFor } from "../lib/searchOutcome";
-import { refreshSearches, useSearchAttempts } from "../components/LastSearch";
+import { searchFinishedFor } from "../lib/searchOutcome";
+import { refreshSearches } from "../components/LastSearch";
 import { Button, StatusChip, useToast } from "../ui";
-import { api, type CastMember, type FitItem, type Series as SeriesT, type Season, type Episode } from "../lib/api";
+import { api, type CastMember, type FitItem, type Series as SeriesT, type Episode } from "../lib/api";
 import { Hero } from "./series/Hero";
 import { HeroActions } from "./series/HeroActions";
 import { AliasPanel, DuplicatesPanel, HistoryPanel, SceneMapPanel, SeriesBlocklistPanel } from "./series/panels";
-import { aired, latestFor, seasonScope, sortSeasons, sxe } from "./series/util";
+import { defaultSeason, sortSeasons } from "./series/util";
+import { SeasonPanel, SeasonRail } from "./series/SeasonRail";
 
 // What the page listens for besides the queue (see SeriesDetail).
 const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
@@ -32,6 +26,12 @@ try { localStorage.removeItem("arrmada.grabRequested"); } catch { /* storage una
 export function SeriesDetail() {
   const { id } = useParams();
   const sid = Number(id);
+  const [params, setParams] = useSearchParams();
+  // The season lives in the address (?season=), replaced rather than pushed: Back leaves
+  // the show instead of stepping through every season looked at.
+  const pickSeason = useCallback((n: number) => {
+    setParams((p) => { const q = new URLSearchParams(p); q.set("season", String(n)); return q; }, { replace: true });
+  }, [setParams]);
   const [s, setS] = useState<SeriesT | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +107,10 @@ export function SeriesDetail() {
   const seasons = sortSeasons(s.seasons);
   // Every regular episode, for the show-wide upgrade-hold chip.
   const allEps = seasons.filter((sn) => sn.season_number > 0).flatMap((sn) => sn.episodes ?? []);
+  // The season shown: the one in the address (so a reload stays put), else where there's
+  // something to do (see defaultSeason).
+  const asked = Number(params.get("season"));
+  const current = seasons.find((sn) => params.has("season") && sn.season_number === asked) ?? seasons.find((sn) => sn.season_number === defaultSeason(seasons));
 
   return (
     <>
@@ -124,8 +128,9 @@ export function SeriesDetail() {
             Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
           </div>
         )}
-        <div className="mt-2 flex flex-col gap-3">
-          {seasons.map((sn) => <SeasonBlock key={sn.id} series={s} season={sn} onChange={load} flash={flash} defaultOpen={false} fits={fits} />)}
+        <div className="mt-4">
+          <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
+          {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={flash} />}
         </div>
 
         {/* The expert numbering panels sit under the episodes, collapsed: most shows never
@@ -191,269 +196,6 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
       <StatusChip tone="accent">Upgrades paused</StatusChip>
       <span>{held} episode{held === 1 ? "" : "s"} kept when the profile changed</span>
       <Button size="sm" variant="secondary" onClick={resume} busy={busy} busyLabel="Resuming…">Resume</Button>
-    </div>
-  );
-}
-
-
-function SeasonBlock({ series, season, onChange, flash, defaultOpen, fits }: { series: SeriesT; season: Season; onChange: () => void; flash: (m: string) => void; defaultOpen: boolean; fits: Map<string, FitItem> }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [searching, setSearching] = useState(false);
-  const [busy, setBusy] = useState(false);
-  // The season's Grab missing runs as a job; its stored attempt says how it went.
-  const [grabJob, setGrabJob] = useState<number | null>(null);
-  const grabbing = useJob(grabJob, {
-    onDone: (j) => { setGrabJob(null); if (jobFailed(j)) flash(jobToast(j)); refreshSearches("series", series.id); onChange(); },
-  });
-  const last = latestFor(useSearchAttempts("series", series.id), seasonScope(season.season_number));
-  const eps = season.episodes ?? [];
-  const have = eps.filter((e) => e.has_file).length;
-  const total = eps.length;
-  const airedCount = eps.filter((e) => aired(e)).length;
-  // The progress denominator counts what's wanted — aired episodes monitored in a monitored
-  // season — plus what's already here, so an in-progress season isn't behind on episodes
-  // that haven't come out yet, nor on ones nobody asked for (shown greyed instead).
-  const wanted = (e: Episode) => e.monitored && season.monitored && aired(e);
-  const counted = eps.filter((e) => e.has_file || wanted(e)).length;
-  const notMonitored = eps.filter((e) => !e.has_file && aired(e) && !wanted(e)).length;
-  const nextAir = eps.map((e) => e.air_date).filter(Boolean).sort()[0];
-  // The on-disk folder for this season = the directory of any episode file we have.
-  const seasonDir = (eps.find((e) => e.file_path)?.file_path ?? "").replace(/[\\/][^\\/]*$/, "");
-  const state: "unreleased" | "upcoming" | "normal" = total === 0 ? "unreleased" : airedCount === 0 ? "upcoming" : "normal";
-  const name = season.season_number === 0 ? "Specials" : `Season ${season.season_number}`;
-  const pct = counted ? Math.round((have / counted) * 100) : 0;
-  // Grab missing only fills gaps, so it's offered only while there is one: an aired,
-  // monitored episode with no file. On a full season it could only fetch a pack that the
-  // import gate then throws away. Never on Specials: they have no packs, so they're grabbed
-  // one special at a time from their own rows.
-  const anyMissing = season.season_number > 0 && eps.some((e) => !e.has_file && e.monitored && aired(e));
-  const held = eps.filter((e) => e.has_file && e.upgrade_hold).length;
-  const resumeSeason = async () => {
-    setBusy(true);
-    try {
-      await api.resumeSeriesUpgrades(series.id, season.season_number);
-      flash(`Upgrades resumed for ${name}.`);
-      onChange();
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  const grabSeason = async () => {
-    setBusy(true);
-    try {
-      const r = await api.autoGrabSeries(series.id, season.season_number, 0);
-      if (r.job_id) setGrabJob(r.job_id);
-      flash(`Searching for ${name}'s missing episodes…`);
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  const searchingNow = busy || grabbing.running;
-
-  return (
-    <div className="overflow-hidden rounded-xl" style={{ background: "var(--panel)", border: "1px solid var(--line)", opacity: state === "unreleased" ? 0.7 : 1 }}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => state !== "unreleased" && setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left" style={{ cursor: state === "unreleased" ? "default" : "pointer" }}>
-          <span className="font-mono text-[13px] text-ink-faint">{state === "unreleased" ? " " : open ? "▾" : "▸"}</span>
-          <span className="text-[13.5px] font-semibold">{name}</span>
-          {state === "unreleased" ? (
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Not yet released</span>
-          ) : state === "upcoming" ? (
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }} title={nextAir ? `First airs ${nextAir}` : undefined}>{nextAir ? `Airs ${nextAir}` : "Upcoming"}</span>
-          ) : (
-            <span className="flex-none font-mono text-[10.5px] text-ink-faint">
-              {have}/{counted}
-              {notMonitored > 0 && <span style={{ opacity: 0.7 }} title="Aired episodes without a file that aren't monitored — not counted as missing"> · {notMonitored} not monitored</span>}
-            </span>
-          )}
-          {seasonDir && <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-ink-faint" title={seasonDir}>{seasonDir}</span>}
-        </button>
-        {state !== "unreleased" && (
-          <div className="h-1.5 w-24 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: have >= counted && counted > 0 ? "var(--good)" : "var(--accent)" }} />
-          </div>
-        )}
-        {held > 0 && (
-          <>
-            <StatusChip tone="accent" title={`${held} episode${held === 1 ? "" : "s"} kept as they were when the profile changed`}>Upgrades paused</StatusChip>
-            <Button size="sm" variant="secondary" onClick={resumeSeason} disabled={busy} title={`Let upgrades replace ${name}'s kept episodes again`}>Resume</Button>
-          </>
-        )}
-        {state !== "unreleased" && (
-          <>
-            {anyMissing && <button
-              onClick={grabSeason}
-              disabled={searchingNow}
-              title={last ? `${attemptLine(last)}. Click to search again.` : `Grabs ${name}'s missing episodes — a season pack when most of the season is missing or no single episodes exist`}
-              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
-              style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
-            >
-              {searchingNow ? "Searching…" : last ? "Grab again" : "Grab missing"}
-            </button>}
-            <button onClick={() => setSearching(true)} title={`Search indexers for ${name}`} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-          </>
-        )}
-        <button onClick={async () => { await api.setSeasonMonitored(series.id, season.season_number, !season.monitored); onChange(); }} title={series.monitored ? "Monitor this whole season" : "Series paused — nothing is searched. This choice applies when you resume."} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}>
-          {season.monitored ? "Monitored" : "Monitor"}
-        </button>
-      </div>
-      {anyMissing && last && !searchingNow && (
-        <div className="px-4 pb-2 text-[11px]" style={{ color: outcomeTone(last.outcome) }}>{attemptLine(last)}</div>
-      )}
-      {open && total > 0 && (
-        <div style={{ borderTop: "1px solid var(--line)" }}>
-          {eps.map((e) => <EpisodeRow key={e.id} series={series} ep={e} onChange={onChange} flash={flash} fit={fits.get(`${e.season_number}:${e.episode_number}`)} />)}
-        </div>
-      )}
-      {searching && (
-        <ReleaseSearchModal
-          title={`${series.title} — ${name}`}
-          subtitle={season.season_number === 0 ? "Releases tagged S00 for this show." : "Season packs and episodes for this season."}
-          fetchReleases={() => api.seriesReleases(series.id, season.season_number)}
-          onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
-          onClose={() => setSearching(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function EpisodeRow({ series, ep, onChange, flash, fit }: { series: SeriesT; ep: Episode; onChange: () => void; flash: (m: string) => void; fit?: FitItem }) {
-  const [searching, setSearching] = useState(false);
-  const [showFile, setShowFile] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [grabJob, setGrabJob] = useState<number | null>(null);
-  const grabbing = useJob(grabJob, {
-    onDone: (j) => { setGrabJob(null); if (jobFailed(j)) flash(jobToast(j)); refreshSearches("series", series.id); onChange(); },
-  });
-  const last = latestFor(useSearchAttempts("series", series.id), sxe(ep));
-  const dl = !ep.has_file && ep.download ? ep.download : null;
-  const dlPct = dl ? Math.round(dl.progress * 100) : 0;
-  // A paused series searches nothing, so its episodes aren't Wanted either.
-  const status: { label: string; color: string } = ep.has_file || (!dl && aired(ep))
-    ? libraryStatus({ hasFile: ep.has_file, monitored: ep.monitored && series.monitored })
-    : dl
-      ? { label: `↓ ${dlPct}%`, color: "var(--accent-text)" }
-      : { label: "Unaired", color: "var(--ink-faint)" };
-
-  const grabEp = async () => {
-    setBusy(true);
-    try {
-      const r = await api.autoGrabSeries(series.id, ep.season_number, ep.episode_number);
-      if (r.job_id) setGrabJob(r.job_id);
-      flash(`Searching for ${sxe(ep)}…`);
-    }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  const replaceEp = async () => {
-    // Replace blocklists a release and downloads another one in the background, so it asks
-    // first — and says how far it reaches: a pack it lands only overrides this episode.
-    if (!window.confirm(`Blocklist the current release of ${sxe(ep)} and download a different one? Only this episode's file is replaced.`)) return;
-    setBusy(true);
-    try { await api.regrabEpisode(series.id, ep.season_number, ep.episode_number); flash(`Replacing ${sxe(ep)} — blocklisted the current release, searching…`); }
-    catch (e) { flash((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  // Asks first, and says truthfully where the file goes. A bin refusal shows in the dialog.
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [delErr, setDelErr] = useState<string | null>(null);
-  const binMode = useRecycleMode();
-  const deleteEpFile = async () => {
-    setBusy(true); setDelErr(null);
-    try { await api.deleteEpisodeFile(series.id, ep.season_number, ep.episode_number); setConfirmDel(false); flash(`Deleted ${sxe(ep)} file`); onChange(); }
-    catch (e) { setDelErr((e as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="relative flex items-center gap-3 px-4 py-2.5" style={{ borderBottom: "1px solid var(--line-soft)", opacity: ep.monitored ? 1 : 0.55 }}>
-      <button onClick={async () => { await api.setEpisodeMonitored(ep.id, !ep.monitored); onChange(); }} title={!series.monitored ? "Series paused — nothing is searched. This choice applies when you resume." : ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"} className="flex-none text-[13px]" style={{ color: ep.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}>
-        {ep.monitored ? "◉" : "○"}
-      </button>
-      <span className="w-[64px] flex-none font-mono text-[11px] text-ink-faint">{sxe(ep)}</span>
-      {series.series_type === "anime" && ep.absolute_number ? (
-        <span className="flex-none rounded px-1 font-mono text-[10px]" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Absolute episode number">#{ep.absolute_number}</span>
-      ) : null}
-      {ep.has_file && ep.file_path ? (
-        <button
-          onClick={() => setShowFile(true)}
-          title="Show this file's details — media info and the release it came from"
-          className="min-w-0 flex-1 truncate text-left text-[12.5px] hover:underline"
-          style={{ color: "var(--ink)" }}
-        >
-          {ep.title || "TBA"}
-        </button>
-      ) : (
-        <span className="min-w-0 flex-1 truncate text-[12.5px]">{ep.title || "TBA"}</span>
-      )}
-      <span className="hidden w-[92px] flex-none font-mono text-[10.5px] text-ink-faint sm:block">{ep.air_date || "—"}</span>
-      <span className="w-[80px] flex-none text-right font-mono text-[10px] uppercase" style={{ color: status.color }}>{status.label}</span>
-      {ep.has_file && fit?.fit && (
-        <span className="hidden w-[76px] flex-none text-right sm:block">
-          <FitBadge item={fit} />
-          <span className="ml-1 font-mono text-[10px] text-ink-faint">{fit.facts.bitrate_mbps ? fit.facts.bitrate_mbps.toFixed(1) : ""}</span>
-        </span>
-      )}
-      <div className="flex flex-none items-center gap-1">
-        {ep.has_file ? (<>
-          <button onClick={replaceEp} disabled={busy} title="Blocklist this release and grab a different one" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy ? "…" : "Replace"}</button>
-          <button onClick={() => setConfirmDel(true)} disabled={busy} title="Delete this episode's file" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
-        </>) : !dl && aired(ep) && (
-          // The last search of this episode (stored server-side) says what it found, so a
-          // grab that turned up nothing isn't forgotten. Still clickable: asking again after a
-          // release shows up is the normal next move. Unaired episodes get none: there's
-          // nothing to grab yet, and Search still reaches them.
-          <button
-            onClick={grabEp}
-            disabled={busy || grabbing.running}
-            title={last ? `${attemptLine(last)}. Click to search again.` : "Auto-grab the best release for this episode"}
-            className="rounded-md px-2 py-1 text-[10.5px] font-semibold"
-            style={last
-              ? { border: "1px solid var(--line)", background: "var(--panel-2)", color: outcomeTone(last.outcome) }
-              : { border: "1px solid var(--accent-line)", color: "var(--accent)" }}
-          >
-            {busy || grabbing.running ? "…" : last ? "Grab again" : "Grab"}
-          </button>
-        )}
-        <button onClick={() => setSearching(true)} title="Search indexers for this episode" className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
-      </div>
-      {confirmDel && (
-        <ConfirmDialog
-          title={<>Delete the file for {sxe(ep)}?</>}
-          body={<>{disposalLine(ep.size_bytes ?? 0, binMode)}, with its subtitles. The episode becomes wanted again.</>}
-          confirmLabel="Delete file"
-          busyLabel="Deleting…"
-          busy={busy}
-          error={delErr}
-          onConfirm={deleteEpFile}
-          onCancel={() => { setConfirmDel(false); setDelErr(null); }}
-        />
-      )}
-      {dl && (
-        <div className="absolute inset-x-0 bottom-0 h-[2px]" style={{ background: "var(--panel-2)" }}>
-          <div className="h-full" style={{ width: `${dlPct}%`, background: "var(--accent)", transition: "width 1s linear" }} />
-        </div>
-      )}
-      {searching && (
-        <ReleaseSearchModal
-          title={`${series.title} — ${sxe(ep)}`}
-          subtitle={ep.title || undefined}
-          fetchReleases={() => api.seriesReleases(series.id, ep.season_number, ep.episode_number)}
-          onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
-          onClose={() => setSearching(false)}
-        />
-      )}
-      {showFile && ep.file_path && (
-        <FileDetailsModal
-          path={ep.file_path}
-          title={`${series.title} — ${sxe(ep)}`}
-          subtitle={ep.title || undefined}
-          onCleanTracks={async () => { await api.convertRequest(`episode:${series.id}:${ep.season_number}:${ep.episode_number}`); }}
-          onClose={() => setShowFile(false)}
-        />
-      )}
     </div>
   );
 }
