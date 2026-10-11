@@ -21,12 +21,14 @@ var (
 	FixStatus          = &Fix{Key: "status", Path: "/settings/status", Label: "Status"}
 
 	// Where the Needs-you feed (internal/attention) sends each kind of item. Pending
-	// requests open the Requests page on what's waiting for approval; the rest open a tab
-	// of the Activity page (/activity/<tab>, sub-views in ?show=).
+	// requests open the Requests page on what's waiting for approval; stuck downloads open
+	// their section of Activity → Needs you (#stalled, #import-failures, #wrong-category),
+	// where each has the action that fits it.
 	FixRequests           = &Fix{Key: "requestsWaiting", Path: "/requests?tab=needs", Label: "Requests"}
 	FixReview             = &Fix{Key: "review", Path: "/activity/needs-you", Label: "Needs you"}
-	FixDownloadProblems   = &Fix{Key: "downloadProblems", Path: "/activity/queue?filter=problems", Label: "Queue"}
-	FixImportProblems     = &Fix{Key: "importProblems", Path: "/activity/queue?show=finishing&filter=problems", Label: "Finishing"}
+	FixDownloadProblems   = &Fix{Key: "downloadProblems", Path: "/activity/needs-you#stalled", Label: "Needs you"}
+	FixImportProblems     = &Fix{Key: "importProblems", Path: "/activity/needs-you#import-failures", Label: "Needs you"}
+	FixWrongCategory      = &Fix{Key: "wrongCategory", Path: "/activity/needs-you#wrong-category", Label: "Needs you"}
 	FixDownloadsSearching = &Fix{Key: "downloadsSearching", Path: "/activity/wanted", Label: "What's searching"}
 )
 

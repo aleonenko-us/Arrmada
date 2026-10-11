@@ -421,6 +421,7 @@ func (c *Coordinator) recordAttempt(ctx context.Context, n *searchNotes, mediaTy
 		return
 	}
 	out.AttemptID = attemptID
+	c.attemptsChanged()
 	if mediaType == AttemptMovie {
 		c.movieSearchedEvent(wctx, id, trigger, kind, *out, err, repeat)
 	}

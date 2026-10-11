@@ -21,8 +21,9 @@ test.describe("manager", () => {
     const sidebar = page.getByRole("complementary");
     await expect(sidebar.locator('a[href="/requests"]')).toContainText("2");
     await expect(sidebar.locator('a[href="/discover"]')).toHaveText("Discover");
-    // Activity holds Review as its Needs you tab: one pill for the held import and the stalled download.
-    await expect(sidebar.locator('a[href="/activity"]')).toContainText("2");
+    // Activity holds Review as its Needs you tab: one pill for the held import, the stalled
+    // download, the failing import and the misfiled one.
+    await expect(sidebar.locator('a[href="/activity"]')).toContainText("4");
     await expect(sidebar.locator('a[href="/settings"]')).toContainText("1");
 
     // One poller for the whole shell, however many parts of the page show the answer.

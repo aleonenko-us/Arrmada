@@ -12,6 +12,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/movies"
+	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
@@ -171,6 +172,9 @@ type stallTarget struct {
 	// was for, never one whose normalized title is in exclude. It returns what it
 	// grabbed ("" for nothing) and the search's error when the search couldn't run.
 	replace func(ctx context.Context, exclude map[string]bool) (string, error)
+	// why, when set, is what the history says happened instead of "Stalled for 6h" (a
+	// fail-over someone asked for from Needs you).
+	why string
 }
 
 // errSearchUnavailable marks a replacement search that couldn't run for a reason the
@@ -229,7 +233,10 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 //   - Still there, and a replacement was grabbed: blocklist and remove the stalled one.
 //   - Still there, nothing else found (or the indexers are down): leave it alone, write
 //     nothing to the blocklist, and try again a window later. Its seeder may come back.
-func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, found bool, window time.Duration, t stallTarget) {
+//
+// It returns what replaced the download ("" for nothing) and whether the search couldn't
+// reach the indexers.
+func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, found bool, window time.Duration, t stallTarget) (replacement string, outage bool) {
 	minutes := int(window / time.Minute)
 	// The stalled release is kept out of the replacement search by name rather than by
 	// the blocklist, which it only joins once replaced. normTitle, so the same release
@@ -246,7 +253,7 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 			// Without the blocklist row the search below could grab the same release
 			// straight back. Leave the grab for the next pass.
 			c.log.Warn("automation: stall blocklist failed — leaving the grab for the next check", "release", g.Title, "err", err)
-			return
+			return "", false
 		}
 		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
 		t.event(ctx, g.Title+" disappeared from the download client — searching for another")
@@ -256,15 +263,18 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 		}
 		payload["vanished"], payload["replaced"], payload["replacement"] = true, repl != "", repl
 		c.publishStall(payload)
-		return
+		return repl, indexer.IsOutage(err)
 	}
 
 	why, reason := "Stalled for "+stallSpan(minutes), fmt.Sprintf("stalled %d min", minutes)
 	if item.Phase() == "error" {
 		why, reason = "The download client reported an error", "client error"
 	}
+	if t.why != "" {
+		why, reason = t.why, "replaced by hand"
+	}
 	repl, err := c.replaceRecorded(ctx, t, exclude)
-	outage := indexer.IsOutage(err) || errors.Is(err, errSearchUnavailable)
+	outage = indexer.IsOutage(err) || errors.Is(err, errSearchUnavailable)
 	if err != nil && !outage {
 		c.log.Warn("automation: replacement search failed", "kind", t.kind, "title", t.name, "err", err)
 	}
@@ -282,7 +292,7 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 		t.event(ctx, fmt.Sprintf("%s — %s, still waiting on %s", why, what, g.Title))
 		payload["replaced"] = false
 		c.publishStall(payload)
-		return
+		return "", outage
 	}
 
 	c.log.Info("automation: stalled download replaced", "kind", t.kind, "title", t.name, "release", g.Title, "replacement", repl)
@@ -298,6 +308,7 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 	t.event(ctx, fmt.Sprintf("%s — replaced by %s", why, repl))
 	payload["replaced"], payload["replacement"] = true, repl
 	c.publishStall(payload)
+	return repl, false
 }
 
 // removeStalled deletes a replaced torrent and its data, through the test seam when set.
@@ -334,23 +345,27 @@ func (c *Coordinator) detectStalledMovie(ctx context.Context, g grab, queue []do
 		c.setGrabStatus(ctx, g.ID, grabStatusImported)
 		return
 	}
-	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) {
-		m, err := c.movies.Get(ctx, g.MovieID)
-		if err != nil {
-			return stallTarget{}, false
-		}
-		return stallTarget{
-			kind: "movie", id: m.ID, name: m.Title,
-			block: func(ctx context.Context, reason string) error {
-				return c.addBlock(ctx, m.ID, g.Title, g.Indexer, "", reason)
-			},
-			event: func(ctx context.Context, detail string) { c.movies.AddEvent(ctx, m.ID, "failed", detail) },
-			replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
-				titles, err := c.searchAndGrabExcluding(ctx, m, g, exclude)
-				return strings.Join(titles, ", "), err
-			},
-		}, true
-	})
+	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.movieStallTarget(ctx, g) })
+}
+
+// movieStallTarget is what a fail-over of movie grab g needs: the film, its blocklist,
+// its history and the replacement search for the version g was for.
+func (c *Coordinator) movieStallTarget(ctx context.Context, g grab) (stallTarget, bool) {
+	m, err := c.movies.Get(ctx, g.MovieID)
+	if err != nil {
+		return stallTarget{}, false
+	}
+	return stallTarget{
+		kind: "movie", id: m.ID, name: m.Title,
+		block: func(ctx context.Context, reason string) error {
+			return c.addBlock(ctx, m.ID, g.Title, g.Indexer, "", reason)
+		},
+		event: func(ctx context.Context, detail string) { c.movies.AddEvent(ctx, m.ID, "failed", detail) },
+		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
+			titles, err := c.searchAndGrabExcluding(ctx, m, g, exclude)
+			return strings.Join(titles, ", "), err
+		},
+	}, true
 }
 
 // searchAndGrabExcluding is the movie replacement search: the version the stalled grab g
@@ -389,23 +404,26 @@ func (c *Coordinator) detectStalledSeries(ctx context.Context, g grab, queue []d
 	if c.series == nil {
 		return
 	}
-	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) {
-		s, err := c.series.Get(ctx, g.MovieID) // series id lives in movie_id on the shared table
-		if err != nil {
-			return stallTarget{}, false
-		}
-		return stallTarget{
-			kind: "series", id: s.ID, name: s.Title,
-			block: func(ctx context.Context, reason string) error {
-				c.addBlockSeries(ctx, s.ID, g.Title, g.Indexer, reason)
-				return nil
-			},
-			event: func(ctx context.Context, detail string) { c.series.AddEvent(ctx, s.ID, "failed", detail) },
-			replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
-				return c.replaceSeriesGrab(ctx, s, g, exclude)
-			},
-		}, true
-	})
+	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.seriesStallTarget(ctx, g) })
+}
+
+// seriesStallTarget is what a fail-over of series grab g needs.
+func (c *Coordinator) seriesStallTarget(ctx context.Context, g grab) (stallTarget, bool) {
+	s, err := c.series.Get(ctx, g.MovieID) // series id lives in movie_id on the shared table
+	if err != nil {
+		return stallTarget{}, false
+	}
+	return stallTarget{
+		kind: "series", id: s.ID, name: s.Title,
+		block: func(ctx context.Context, reason string) error {
+			c.addBlockSeries(ctx, s.ID, g.Title, g.Indexer, reason)
+			return nil
+		},
+		event: func(ctx context.Context, detail string) { c.series.AddEvent(ctx, s.ID, "failed", detail) },
+		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
+			return c.replaceSeriesGrab(ctx, s, g, exclude)
+		},
+	}, true
 }
 
 // replaceSeriesGrab searches for what a stalled series release covered — its episode, its
@@ -462,19 +480,22 @@ func (c *Coordinator) detectStalledBook(ctx context.Context, g grab, queue []dow
 		c.setGrabStatus(ctx, g.ID, grabStatusImported)
 		return
 	}
-	c.judgeStall(ctx, g, queue, tick, func(context.Context) (stallTarget, bool) {
-		return stallTarget{
-			kind: "book", id: b.ID, name: b.Title,
-			block: func(ctx context.Context, reason string) error {
-				c.addBlockBook(ctx, b.ID, g.Title, g.Indexer, reason)
-				return nil
-			},
-			event: func(ctx context.Context, detail string) { c.books.AddEvent(ctx, b.ID, "failed", detail) },
-			replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
-				return c.replaceBookGrab(ctx, b, g, exclude)
-			},
-		}, true
-	})
+	c.judgeStall(ctx, g, queue, tick, func(context.Context) (stallTarget, bool) { return c.bookStallTarget(b, g), true })
+}
+
+// bookStallTarget is what a fail-over of book grab g needs.
+func (c *Coordinator) bookStallTarget(b books.Book, g grab) stallTarget {
+	return stallTarget{
+		kind: "book", id: b.ID, name: b.Title,
+		block: func(ctx context.Context, reason string) error {
+			c.addBlockBook(ctx, b.ID, g.Title, g.Indexer, reason)
+			return nil
+		},
+		event: func(ctx context.Context, detail string) { c.books.AddEvent(ctx, b.ID, "failed", detail) },
+		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
+			return c.replaceBookGrab(ctx, b, g, exclude)
+		},
+	}
 }
 
 // replaceBookGrab searches for the same edition the stalled grab was for: its audiobook
@@ -521,31 +542,34 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		c.setGrabStatus(ctx, g.ID, grabStatusImported)
 		return
 	}
-	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) {
-		a, err := c.music.GetArtist(ctx, al.ArtistID)
-		if err != nil {
-			return stallTarget{}, false
-		}
-		return stallTarget{
-			kind: "music", id: al.ID, name: a.Name + " — " + al.Title,
-			block: func(ctx context.Context, reason string) error {
-				c.addBlockMusic(ctx, al.ID, g.Title, g.Indexer, reason)
-				return nil
-			},
-			// Music history is kept per artist.
-			event: func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", detail) },
-			replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
-				out := c.grabAlbumExcluding(ctx, a, al, exclude)
-				switch out.Code {
-				case outcomeGrabbed:
-					return out.Release, nil
-				case outcomeIndexerError:
-					return "", fmt.Errorf("%w: %s", errSearchUnavailable, out.Detail)
-				case outcomeUnreadable:
-					return "", errors.New(out.Detail)
-				}
-				return "", nil
-			},
-		}, true
-	})
+	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.musicStallTarget(ctx, al, g) })
+}
+
+// musicStallTarget is what a fail-over of album grab g needs.
+func (c *Coordinator) musicStallTarget(ctx context.Context, al music.Album, g grab) (stallTarget, bool) {
+	a, err := c.music.GetArtist(ctx, al.ArtistID)
+	if err != nil {
+		return stallTarget{}, false
+	}
+	return stallTarget{
+		kind: "music", id: al.ID, name: a.Name + " — " + al.Title,
+		block: func(ctx context.Context, reason string) error {
+			c.addBlockMusic(ctx, al.ID, g.Title, g.Indexer, reason)
+			return nil
+		},
+		// Music history is kept per artist.
+		event: func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", detail) },
+		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
+			out := c.grabAlbumExcluding(ctx, a, al, exclude)
+			switch out.Code {
+			case outcomeGrabbed:
+				return out.Release, nil
+			case outcomeIndexerError:
+				return "", fmt.Errorf("%w: %s", errSearchUnavailable, out.Detail)
+			case outcomeUnreadable:
+				return "", errors.New(out.Detail)
+			}
+			return "", nil
+		},
+	}, true
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, type ImportReview, type ReviewFile, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
 import { formatAgo, formatBytes } from "../lib/format";
@@ -36,9 +36,10 @@ function heldAt(s: string): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-// ReviewsPanel is Activity → Needs you: finished downloads held back from import. Each
-// card says why, and offers only the actions that can work for that reason.
-export function ReviewsPanel() {
+// ReviewsPanel is the held imports: finished downloads held back from import. Each card
+// says why, and offers only the actions that can work for that reason. Activity → Needs
+// you shows it as its first section (compact: no introduction, a short empty state).
+export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
   const [list, setList] = useState<ImportReview[] | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -143,12 +144,12 @@ export function ReviewsPanel() {
   return (
     <>
       <div className="max-w-[960px]">
-        <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
+        {!compact && <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
           Finished downloads Arrmada held back instead of importing. Each says why: the content doesn't match what it was
           grabbed for, it isn't linked to anything in your library, its files' episode numbering couldn't be read, its import
           keeps failing (a folder Arrmada can't write to, a full disk), or there's nothing importable inside. Pick what to do —
           only the actions that can work for that reason are offered.
-        </p>
+        </p>}
 
         {list && list.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-ink-dim">
@@ -169,8 +170,8 @@ export function ReviewsPanel() {
         {list === null ? (
           <div className="p-10 text-center text-[12.5px] text-ink-dim">Loading…</div>
         ) : list.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            Nothing to review — every finished download went into the library. 🎉
+          <div className={`rounded-xl ${compact ? "p-5" : "p-12"} text-center text-[12.5px] text-ink-dim`} style={{ border: "1px solid var(--line)" }}>
+            {compact ? "Nothing held for review." : "Nothing to review — every finished download went into the library. 🎉"}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -394,28 +395,66 @@ function kindLabel(kind: ReviewKind): string {
 // filtering, so a book review lists books and an album review lists albums — never
 // movies, whose ids would land on an unrelated book or album.
 function ReassignModal({ review, onClose, onPicked }: { review: ImportReview; onClose: () => void; onPicked: (targetId: number, label: string) => void }) {
+  const label = kindLabel(review.media_type);
+  return (
+    <TargetPicker
+      title={review.expected_id > 0 ? `Import into a different ${label}…` : `Import into a ${label}…`}
+      name={review.name}
+      kind={review.media_type}
+      load={(q) => api.reviewTargets(review.id, q)}
+      loadKey={String(review.id)}
+      onClose={onClose}
+      onPicked={onPicked}
+    />
+  );
+}
+
+/**
+ * TargetPicker is the "which library item?" dialog behind a review's reassign and Needs
+ * you's Import into…: a filter box over the server's list of one kind of item. load is
+ * asked again when the filter, kind or loadKey changes; header sits above the filter
+ * (Import into… puts its kind switch there).
+ */
+export function TargetPicker({ title, name, kind, load, loadKey, header, initialQuery = "", onClose, onPicked }: {
+  title: string;
+  name: string;
+  kind: ReviewKind;
+  load: (q: string) => Promise<{ targets: ReviewTarget[]; truncated?: boolean }>;
+  loadKey: string;
+  header?: ReactNode;
+  initialQuery?: string;
+  onClose: () => void;
+  onPicked: (targetId: number, label: string) => void;
+}) {
   const [items, setItems] = useState<ReviewTarget[] | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const filterRef = useRef<HTMLInputElement>(null);
-  const label = kindLabel(review.media_type);
+  const label = kindLabel(kind);
+  // The latest load, so a parent's inline function doesn't refetch on every render.
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; });
 
+  // Another kind's list must never stay clickable under this one: an id is only an id
+  // within its own kind.
+  useEffect(() => { setItems(null); }, [loadKey, kind]);
   // Debounced so typing a title doesn't fire a request per keystroke.
   useEffect(() => {
     let live = true;
     const t = window.setTimeout(() => {
-      api.reviewTargets(review.id, q.trim())
+      loadRef.current(q.trim())
         .then((r) => { if (live) { setItems(r.targets); setTruncated(!!r.truncated); setError(null); } })
         .catch((e) => { if (live) { setItems([]); setTruncated(false); setError((e as Error).message); } });
     }, q ? 250 : 0);
     return () => { live = false; window.clearTimeout(t); };
-  }, [review.id, q]);
+  }, [loadKey, kind, q]);
 
   return (
-    <Modal onClose={onClose} title={review.expected_id > 0 ? `Import into a different ${label}…` : `Import into a ${label}…`} initialFocus={filterRef}>
-      <p className="mb-3 text-[11.5px] text-ink-dim">Pick the correct library {label} to import <span className="font-mono">{review.name}</span> into.</p>
-      <input ref={filterRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={review.media_type === "book" ? "Filter by title or author…" : review.media_type === "music" ? "Filter by album or artist…" : "Filter your library…"} className="mb-3 w-full rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+    <Modal onClose={onClose} title={title} initialFocus={filterRef}>
+      <p className="mb-3 text-[11.5px] text-ink-dim">Pick the library {label} to import <span className="break-all font-mono">{name}</span> into.</p>
+      {header}
+      <input ref={filterRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter your library" placeholder={kind === "book" ? "Filter by title or author…" : kind === "music" ? "Filter by album or artist…" : "Filter your library…"} className="mb-3 w-full rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
       <div className="thin-scroll max-h-[52vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {error ? (
           <div className="p-6 text-center text-[12px]" style={{ color: "var(--avoid)" }}>{error}</div>
@@ -437,4 +476,8 @@ function ReassignModal({ review, onClose, onPicked }: { review: ImportReview; on
       )}
     </Modal>
   );
+}
+
+export function kindLabelOf(kind: ReviewKind): string {
+  return kindLabel(kind);
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -311,6 +312,34 @@ func (q *QBittorrent) action(ctx context.Context, dc Client, hash, primary, lega
 		return err
 	}
 	return nil
+}
+
+// errCategoryMissing is qBittorrent's 409 on setCategory: the category doesn't exist yet.
+var errCategoryMissing = errors.New("qbittorrent: category does not exist")
+
+// SetCategory files torrents under another category (hashes joined with |). qBittorrent
+// only takes a category it already has, and Arrmada's are created by the first download
+// filed under each, so a missing one is created (with no save path of its own) and the
+// move tried once more.
+func (q *QBittorrent) SetCategory(ctx context.Context, dc Client, hash, category string) error {
+	form := url.Values{"hashes": {hash}, "category": {category}}
+	err := q.postFormStatus(ctx, dc, "/api/v2/torrents/setCategory", form)
+	if !errors.Is(err, errCategoryMissing) {
+		return err
+	}
+	if cerr := q.postForm(ctx, dc, "/api/v2/torrents/createCategory", url.Values{"category": {category}}); cerr != nil {
+		return cerr
+	}
+	return q.postForm(ctx, dc, "/api/v2/torrents/setCategory", form)
+}
+
+// postFormStatus is postForm that reports qBittorrent's 409 as errCategoryMissing.
+func (q *QBittorrent) postFormStatus(ctx context.Context, dc Client, path string, form url.Values) error {
+	err := q.postForm(ctx, dc, path, form)
+	if err != nil && strings.HasSuffix(err.Error(), "HTTP 409") {
+		return errCategoryMissing
+	}
+	return err
 }
 
 // postForm posts a urlencoded form to qBittorrent, transparently re-logging-in

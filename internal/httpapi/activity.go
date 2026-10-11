@@ -15,10 +15,10 @@ import (
 )
 
 // handleDownloadsFeed returns the live download queue, each torrent with the library
-// item it was grabbed for and its resolved quality profile. (Served at /downloads, not
-// /activity — the latter is blocked by common ad-blocker filter lists.) The titles still
-// being searched for are the Wanted view's (GET /api/v1/wanted): it reads the search
-// history too, which this three-second poll shouldn't.
+// title it was grabbed for (poster, scope, requesters) and its resolved quality profile.
+// (Served at /downloads, not /activity — the latter is blocked by common ad-blocker filter
+// lists.) The titles still being searched for are the Wanted view's (GET /api/v1/wanted):
+// it reads the search history too, which a queue read shouldn't.
 func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// One shared read of the clients. When it failed or missed a client, what's
@@ -27,44 +27,45 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	queue := snap.Items
 
 	// The acquisition record, joined to the queue by info hash: which library item each
-	// torrent was grabbed for and under which profile, whatever the torrent is called.
-	// Matching torrent names against titles mislabelled prettified names and called
-	// Arrmada's own downloads "Not managed by Arrmada".
-	var live map[string]automation.Acquisition
-	var legacy []automation.Acquisition
+	// torrent was grabbed for and under which profile, whatever the torrent is called,
+	// and the seed goal recorded at grab time (so the Seeding tab can show each torrent's
+	// target ratio / time and whether it's set to seed at all). Matching torrent names
+	// against titles mislabelled prettified names and called Arrmada's own downloads "Not
+	// managed by Arrmada". Cached in the coordinator until a grab is written, so a
+	// refresh on every queue event doesn't re-read the record.
+	var links automation.QueueLinks
+	// How each in-flight grab stands against its stall window, so the page can say how
+	// long a download has made no progress and when another release will be tried.
+	var stallInfo map[string]automation.StallState
 	if a.deps.Automation != nil {
-		live, legacy, _ = a.deps.Automation.LiveByHash(ctx)
+		links, _ = a.deps.Automation.QueueLinks(ctx)
+		stallInfo = a.deps.Automation.StallInfo(ctx)
 	}
-	// Resolve each quality-profile reference to a name at most once per request.
+	live, legacy, seedPolicies := links.ByHash, links.Legacy, links.Seed
+	// Resolve each quality-profile reference to a name at most once per request, and
+	// across requests for a couple of minutes.
 	profileCache := map[string]string{}
 	pname := func(ref string) string {
 		if v, ok := profileCache[ref]; ok {
 			return v
 		}
-		v := a.profileName(ctx, ref)
+		v := a.cachedProfileName(ctx, ref, time.Now())
 		profileCache[ref] = v
 		return v
 	}
 
 	// Imported hashes are flagged (not hidden) so the Seeding tab can show every seeding
 	// torrent — the user wants to see each one's seed rule and progress, not just the
-	// untracked ones.
+	// untracked ones. Only the queue's own hashes are looked up, not the whole history.
 	imported := map[string]bool{}
-	if a.deps.Library != nil {
-		if s, err := a.deps.Library.ImportedHashes(ctx); err == nil {
+	if a.deps.Library != nil && len(queue) > 0 {
+		hashes := make([]string, 0, len(queue))
+		for _, it := range queue {
+			hashes = append(hashes, it.Hash)
+		}
+		if s, err := a.deps.Library.ImportedAmong(ctx, hashes); err == nil {
 			imported = s
 		}
-	}
-
-	// Seed goals recorded at grab time, so the Seeding tab can show each torrent's
-	// target ratio / time and whether it's set to seed at all.
-	var seedPolicies map[string]automation.SeedPolicy
-	// How each in-flight grab stands against its stall window, so the page can say how
-	// long a download has made no progress and when another release will be tried.
-	var stallInfo map[string]automation.StallState
-	if a.deps.Automation != nil {
-		seedPolicies = a.deps.Automation.SeedPolicies(ctx)
-		stallInfo = a.deps.Automation.StallInfo(ctx)
 	}
 
 	// What the disk guard is holding, so a guard pause reads differently from one the
@@ -77,6 +78,12 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	// it's still there instead of showing it as a healthy seed.
 	fin := a.finishingFacts(ctx)
 	now := time.Now()
+	// Who is waiting on each title, for the cards' "for Mum" chips; read only when
+	// something in the queue was grabbed for a title.
+	var reqs map[string][]string
+	if len(live) > 0 || len(legacy) > 0 {
+		reqs = a.requestersByLibrary(ctx, now)
+	}
 
 	downloads := make([]map[string]any, 0, len(queue))
 	var totalDown, totalUp int64
@@ -132,6 +139,15 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 			"quality_profile": profile,
 			"media_type":      mediaType,
 			"imported":        imported[it.Hash],
+		}
+		// The title it was grabbed for: poster, name and link, what part of it the torrent
+		// covers and who asked for it. By the grab alone — a torrent no grab knows keeps
+		// its release name, however much its name looks like a library title.
+		if managed {
+			entry["managed"] = true
+			if item := a.transferItemFor(ctx, acq, reqs, now); item != nil {
+				entry["item"] = item
+			}
 		}
 		h := strings.ToLower(it.Hash)
 		if st, ok := stallInfo[h]; ok && !it.Complete() {
@@ -230,8 +246,9 @@ func (a *api) finishingFacts(ctx context.Context) finishing {
 	if a.deps.Automation == nil {
 		return f
 	}
-	// Unreadable reviews leave a held grab as "held for review" without the reason.
-	if rvs, err := a.deps.Automation.ListReviews(ctx); err == nil {
+	// Unreadable reviews leave a held grab as "held for review" without the reason. Cached
+	// until a review is held or settled.
+	if rvs, err := a.deps.Automation.PendingReviews(ctx); err == nil {
 		for _, rv := range rvs {
 			if rv.Hash != "" {
 				f.reviews[strings.ToLower(rv.Hash)] = pipeline.Review{Code: rv.ReasonCode, ExpectedTitle: rv.ExpectedTitle}

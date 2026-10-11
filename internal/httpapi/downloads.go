@@ -48,6 +48,7 @@ func (a *api) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	a.queueChanged(hashesOf(hash)...)
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "paused"})
 }
 
@@ -75,6 +76,7 @@ func (a *api) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	a.queueChanged(strings.ToLower(hash))
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "resumed"})
 }
 
@@ -106,6 +108,7 @@ func (a *api) resumeAllDownloads(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	a.queueChanged()
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"status": "resumed", "resumed": len(resume), "held_by_guard": held,
 	})
@@ -178,6 +181,7 @@ func (a *api) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	a.queueChanged(strings.ToLower(hash))
 	a.writeJSON(w, http.StatusOK, res)
 }
 
@@ -284,7 +288,10 @@ func (a *api) resolveBlock(w http.ResponseWriter, r *http.Request, hash, name st
 func (a *api) blockJob(hash string, target automation.BlockTarget) jobs.Spec {
 	return jobs.Spec{Kind: "download.block", Target: "hash:" + hash, Class: jobs.ClassIndexerSearch, Timeout: 3 * time.Minute,
 		// A person clicked Block: the search for another release asks paused indexers too.
-		Fn: interactive(errFn(func(ctx context.Context) error { return a.deps.Automation.BlockResolved(ctx, hash, target) }))}
+		Fn: interactive(errFn(func(ctx context.Context) error {
+			defer a.queueChanged(strings.ToLower(hash))
+			return a.deps.Automation.BlockResolved(ctx, hash, target)
+		}))}
 }
 
 // diskGuardStatus is the guard's live view, plus the two facts that decide whether

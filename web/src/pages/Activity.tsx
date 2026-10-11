@@ -12,14 +12,14 @@ import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 // this one replaced, and can be rebuilt one at a time without touching the others.
 const QueuePanel = lazyPage(() => import("./Downloads"), "QueuePanel");
 const WantedPanel = lazyPage(() => import("./Downloads"), "WantedPanel");
-const ReviewsPanel = lazyPage(() => import("./Reviews"), "ReviewsPanel");
+const NeedsYouPanel = lazyPage(() => import("./NeedsYou"), "NeedsYouPanel");
 const HistoryPanel = lazyPage(() => import("./History"), "HistoryPanel");
 const BlocklistPanel = lazyPage(() => import("./Blocklist"), "BlocklistPanel");
 
 function panelFor(tab: ActivityTab) {
   switch (tab) {
     case "queue": return <QueuePanel />;
-    case "needs-you": return <ReviewsPanel />;
+    case "needs-you": return <NeedsYouPanel />;
     case "wanted": return <WantedPanel />;
     case "history": return <HistoryPanel />;
     case "blocklist": return <BlocklistPanel />;
@@ -32,8 +32,10 @@ function panelFor(tab: ActivityTab) {
 export function Activity() {
   const { tab } = useParams();
   const navigate = useNavigate();
-  // The shell already polls the Needs-you feed; its held-import count labels the tab.
-  const held = useAttention()?.counts.reviews ?? 0;
+  // The shell already polls the Needs-you feed; what it counts for this page (held
+  // imports, downloads that need a look) labels the tab, as it does the sidebar pill.
+  const c = useAttention()?.counts;
+  const held = c ? c.reviews + c.downloads + c.imports : 0;
   if (!isActivityTab(tab)) return <Navigate to="/activity/queue" replace />;
 
   const tabs: TabItem<ActivityTab>[] = ACTIVITY_TABS.map((key) => ({

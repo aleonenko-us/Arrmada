@@ -65,6 +65,11 @@ type Item struct {
 	Since int64 `json:"since"`
 	// Count is how many titles an aggregate item stands for (search:stuck); 0 otherwise.
 	Count int `json:"count,omitempty"`
+	// Hash is the torrent a download, stalled, import or wrongcat item is about, and
+	// Grabbed whether an Arrmada grab recorded it and is still downloading it — Needs you
+	// offers "Try another release" only for those.
+	Hash    string `json:"hash,omitempty"`
+	Grabbed bool   `json:"grabbed,omitempty"`
 }
 
 // Counts is how much needs attention, by what the sidebar badges show.

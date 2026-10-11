@@ -38,7 +38,7 @@ func TestImportsKeepFailing(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("items = %+v, want twice, stuck and fast", items)
 	}
-	if it := got["import:twice"]; it.Level != LevelWarning || it.Title != "Importing Twice.2020 keeps failing (2 tries)" || it.Detail != "permission denied" || it.Link != "/activity/queue?show=finishing&filter=problems" {
+	if it := got["import:twice"]; it.Level != LevelWarning || it.Title != "Importing Twice.2020 keeps failing (2 tries)" || it.Detail != "permission denied" || it.Link != "/activity/needs-you#import-failures" {
 		t.Errorf("twice = %+v", it)
 	}
 	if it := got["import:stuck"]; it.Level != LevelError {

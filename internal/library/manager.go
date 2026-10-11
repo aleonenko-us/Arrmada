@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -453,6 +454,22 @@ func (m *Manager) Recent(ctx context.Context, limit int) ([]ImportRecord, error)
 // ImportedHashes returns the download hashes already imported into the library.
 func (m *Manager) ImportedHashes(ctx context.Context) (map[string]bool, error) {
 	return m.repo.importedHashes(ctx)
+}
+
+// ImportedAmong is ImportedHashes for just these hashes (each looked up as given and
+// lowercased): what a queue read needs, without reading the whole import history.
+func (m *Manager) ImportedAmong(ctx context.Context, hashes []string) (map[string]bool, error) {
+	ask := make([]string, 0, len(hashes)*2)
+	for _, h := range hashes {
+		if h == "" {
+			continue
+		}
+		ask = append(ask, h)
+		if l := strings.ToLower(h); l != h {
+			ask = append(ask, l)
+		}
+	}
+	return m.repo.importedAmong(ctx, ask)
 }
 
 // MarkRemovedByTarget flags the import behind a library file deleted in the app, so the

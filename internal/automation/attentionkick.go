@@ -14,8 +14,10 @@ func (c *Coordinator) SetAttentionKick(fn func()) {
 	c.attentionKick.Store(&fn)
 }
 
-// reviewsChanged tells the Needs-you feed a review was added or settled.
+// reviewsChanged tells the Needs-you feed a review was added or settled, and retires the
+// Activity feed's cached list of them (feedcache.go).
 func (c *Coordinator) reviewsChanged() {
+	c.feed.reviewsVer.Add(1)
 	if fn := c.attentionKick.Load(); fn != nil {
 		(*fn)()
 	}
