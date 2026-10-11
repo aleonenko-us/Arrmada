@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useTabParam } from "../lib/useTabParam";
@@ -13,6 +13,7 @@ import {
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type RecycleStats,
   type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision,
 } from "../lib/api";
+import { PlanCard, PlanToggle, Poster } from "./convert/PlanCard";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
@@ -448,6 +449,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [loadErr, setLoadErr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [openPlan, setOpenPlan] = useState<string | null>(null); // the row whose plan card is open
   const runningKeys = useMemo(() => new Set(running.filter((j) => ACTIVE.has(j.state)).map((j) => j.key)), [running]);
 
   useEffect(() => {
@@ -599,7 +601,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                   const done = sh.convertible === 0;
                   return (
                     <tr key={sh.series_id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                      <td className="px-3 py-2 font-semibold"><button onClick={() => setShow(sh)} className="text-left hover:underline">{sh.title} <span className="font-normal text-ink-faint">{sh.year || ""}</span></button></td>
+                      <td className="px-3 py-2 font-semibold"><button onClick={() => setShow(sh)} className="flex items-center gap-2 text-left hover:underline"><Poster url={sh.poster_url} title={sh.title} /><span>{sh.title} <span className="font-normal text-ink-faint">{sh.year || ""}</span></span></button></td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{sh.files.toLocaleString()}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">
                         {done ? <span className="text-ink-faint">none</span> : <span style={{ color: "var(--avoid)" }}>{sh.convertible.toLocaleString()}</span>}
@@ -652,9 +654,16 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                 {view.map((c, i) => {
                   const cd = c.info?.video_codec?.toUpperCase() ?? "?";
                   const isRunning = runningKeys.has(c.key);
+                  const planOpen = openPlan === c.key;
                   return (
-                    <tr key={c.key} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                      <td className="px-3 py-2 font-semibold">{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span></td>
+                    <Fragment key={c.key}>
+                    <tr style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
+                      <td className="px-3 py-2 font-semibold">
+                        <PlanToggle open={planOpen} title={c.title} onToggle={() => setOpenPlan(planOpen ? null : c.key)}>
+                          <Poster url={c.poster_url} title={c.title} />
+                          <span>{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span></span>
+                        </PlanToggle>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">
                           <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: c.needs?.video ? "var(--avoid-soft)" : "var(--good-soft, rgba(127,176,105,.16))", color: c.needs?.video ? "var(--avoid)" : "var(--good)" }} title={c.needs?.why}>{cd}</span>
@@ -681,6 +690,8 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                         ) : <div className="text-right"><span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span></div>}
                       </td>
                     </tr>
+                    {planOpen && <tr><td colSpan={HEADERS.length} className="px-3 pb-3"><PlanCard itemKey={c.key} /></td></tr>}
+                    </Fragment>
                   );
                 })}
               </tbody>

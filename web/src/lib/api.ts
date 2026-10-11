@@ -2192,6 +2192,18 @@ export interface ConvertSettings {
 export interface ConvertTrialSide { codec: string; encoder: string; bytes: number; ssim: number; est_bytes: number }
 export interface ConvertTrialResult { key: string; title: string; src_bytes: number; clips: number; seconds: number; hevc: ConvertTrialSide; av1: ConvertTrialSide; pick: string; why: string; files?: string[] }
 export interface ConvertCompareStatus { running: boolean; key?: string; title?: string; started?: number; result?: ConvertTrialResult; error?: string }
+// One file's conversion plan (GET /convert/plan?key=): built from the index by the runner's own
+// decision code, so it is what a conversion would do. to_codec "" = the picture is copied.
+export interface ConvertPlanVideo {
+  from_codec: string; from_res: string; from_hdr: string; from_bits: number;
+  to_codec?: string; to_bits?: number; to_hdr?: string; crf?: number;
+  est_bytes: number; measured?: boolean; why?: string; codec_note?: string; crop_note?: string; hdr_note?: string;
+}
+export interface ConvertPlan {
+  key: string; kind: "movie" | "episode"; title: string; poster_url?: string; size_bytes: number; needs: ConvertNeeds;
+  video: ConvertPlanVideo; audio: ConvertTrackDecision[]; subs: ConvertTrackDecision[];
+  container: { from: string; to: string }; warnings: string[]; eta_sec: number | null;
+}
 
 // Insights (Plex watch monitoring).
 export interface PlexLibrary { key: string; title: string; type: string }
@@ -3156,6 +3168,7 @@ export const api = {
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,
+  convertPlan: (key: string) => req<ConvertPlan>(`/api/v1/convert/plan?key=${encodeURIComponent(key)}`),
 
   // Insights (Plex)
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),

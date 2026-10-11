@@ -68,7 +68,9 @@ type prefs struct {
 	keepSubs                              []string
 	imageSubs                             string
 	tidyTracks                            bool
-	crop                                  bool
+	// crop is off unless you turned it on: a brief wider shot between the samples could
+	// still be trimmed (see crop.go), for about 2% smaller files.
+	crop bool
 	// measured holds what test encodes measured (see measured.go), keyed by measureKey.
 	measured map[string]measurement
 }
@@ -88,8 +90,6 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		keepSubs:       splitCSV(g.Get(ctx, keyKeepSubLangs, "")),
 		imageSubs:      g.Get(ctx, keyImageSubs, ""),
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
-		// Off unless you turned it on: a brief wider shot between the samples could still
-		// be trimmed (see crop.go), and it buys about 2%.
 		crop:           g.GetBool(ctx, keyCrop, false),
 		measured:       s.measured.all(ctx),
 	}

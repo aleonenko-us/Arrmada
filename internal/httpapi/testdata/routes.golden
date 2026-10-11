@@ -82,6 +82,7 @@ GET /api/v1/convert/history/{id} staff -
 GET /api/v1/convert/jobs staff -
 GET /api/v1/convert/library staff -
 GET /api/v1/convert/logs staff -
+GET /api/v1/convert/plan staff -
 GET /api/v1/convert/reindex staff -
 GET /api/v1/convert/settings staff -
 GET /api/v1/convert/skips staff -
