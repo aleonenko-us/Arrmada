@@ -1,3 +1,4 @@
+import type { WebSocketRoute } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import { historyEvents } from "./fixtures/media";
 
@@ -72,16 +73,30 @@ test.describe("manager", () => {
     await expect(page.getByText("Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE")).toBeVisible();
   });
 
-  test("only the visible tab polls: leaving the Queue stops its queue reads", async ({ page, api }) => {
+  test("only the visible tab reads: leaving the Queue stops its queue reads", async ({ page, api }) => {
+    // Take over the shared socket so the spec can push queue events down it.
+    const sockets: WebSocketRoute[] = [];
+    await page.routeWebSocket("**/api/v1/ws", (ws) => { sockets.push(ws); });
+    const send = (topic: string) => { for (const ws of sockets) ws.send(JSON.stringify({ topic, data: {} })); };
     await page.goto("/activity/queue");
     await expect.poll(() => api.callsTo("GET", "/api/v1/downloads").length).toBeGreaterThan(0);
+    await expect.poll(() => sockets.length).toBe(1);
+    await api.quiet(1000);
+    // On the Queue, the server saying the queue moved is one read.
+    const before = api.callsTo("GET", "/api/v1/downloads").length;
+    send("queue.changed");
+    await expect.poll(() => api.callsTo("GET", "/api/v1/downloads").length, { timeout: 4000 }).toBe(before + 1);
+
     await page.getByRole("tablist", { name: "Activity" }).getByRole("tab", { name: /^Blocklist/ }).click();
     await api.quiet();
     const after = api.callsTo("GET", "/api/v1/downloads").length;
-    // The queue polls every 3 s; a hidden Queue would have asked again by now.
-    await page.waitForTimeout(3_500);
+    // Unmounted, the Queue neither hears the event nor runs its backstop.
+    send("queue.changed");
+    await page.waitForTimeout(2_000);
     expect(api.callsTo("GET", "/api/v1/downloads")).toHaveLength(after);
     expect(api.callsTo("GET", "/api/v1/wanted")).toHaveLength(0);
+    // Still the one socket for the whole tab.
+    expect(sockets).toHaveLength(1);
   });
 });
 

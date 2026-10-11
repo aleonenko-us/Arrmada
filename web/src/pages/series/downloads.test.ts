@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Series } from "../../lib/api";
-import { downloadingCount, mergeDownloads } from "./downloads";
+import { downloadHashes, downloadingCount, mergeDownloads, patchSeriesProgress } from "./downloads";
 
 const show = (): Series =>
   ({
@@ -31,5 +31,21 @@ describe("mergeDownloads", () => {
   it("returns the same object when nothing moved", () => {
     const s = show();
     expect(mergeDownloads(s, [{ season: 1, episode: 1, state: "downloading", progress: 0.2 }])).toBe(s);
+  });
+});
+
+describe("patchSeriesProgress", () => {
+  it("moves the bar of the episode whose torrent the event names", () => {
+    const s = mergeDownloads(show(), [{ season: 1, episode: 1, state: "downloading", progress: 0.2, hash: "ABCD" }]);
+    expect(downloadHashes(s)).toEqual({ hashes: ["abcd"], complete: true });
+    const live = new Map([["abcd", { hash: "abcd", progress: 0.6, eta_seconds: 10, state: "downloading" }]]);
+    const next = patchSeriesProgress(s, live);
+    expect(next.seasons?.[0].episodes?.[0].download?.progress).toBe(0.6);
+    expect(patchSeriesProgress(next, live)).toBe(next);
+    expect(patchSeriesProgress(s, new Map())).toBe(s);
+  });
+
+  it("says when a download has no hash to follow", () => {
+    expect(downloadHashes(show()).complete).toBe(false);
   });
 });

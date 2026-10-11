@@ -1345,4 +1345,5 @@ func (c *Coordinator) recordSeriesGrab(ctx context.Context, seriesID int64, titl
 		}
 	}
 	c.recordAcqScope(ctx, "series", seriesID, title, infoHash, seriesAcqScope(title, s))
+	c.grabbed(ctx, "series", seriesID)
 }

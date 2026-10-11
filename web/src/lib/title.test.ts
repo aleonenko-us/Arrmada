@@ -9,4 +9,9 @@ describe("formatTitle", () => {
     expect(formatTitle("", "Movies")).toBe("Movies · Arrmada");
     expect(formatTitle("", "")).toBe("Arrmada");
   });
+  it("leads with what's waiting on staff, capped", () => {
+    expect(formatTitle("", "Movies", 3)).toBe("(3) Movies · Arrmada");
+    expect(formatTitle("", "Movies", 0)).toBe("Movies · Arrmada");
+    expect(formatTitle("", "", 120)).toBe("(99+) Arrmada");
+  });
 });

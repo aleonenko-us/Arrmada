@@ -25,8 +25,10 @@ import (
 // uses it to get past Cloudflare (the cf_clearance cookie + matching User-Agent),
 // then makes direct requests carrying that clearance.
 //
-// Config on the Indexer: Username/Password (required); APIKey = optional RSS key
-// for cookie-less download URLs; Categories = optional (defaults to Movies + TV).
+// Config on the Indexer: Username/Password (required); Categories = optional (defaults
+// to Movies + TV). There is no RSS key: TorrentLeech's cookie-free RSS download link
+// couldn't be confirmed, and it would carry the key in its path, so downloads and the
+// new-uploads feed (Recent) both go through the logged-in session.
 //
 // Logins are the risky part: a private tracker can flag an account that logs in over and
 // over. So one login per indexer runs at a time and every search that needs it waits for
@@ -384,6 +386,23 @@ func (t *TorrentLeechSearcher) Search(ctx context.Context, idx Indexer, q Search
 		releases, err = t.search(ctx, sess, idx, q)
 	}
 	return releases, err
+}
+
+// Recent lists TorrentLeech's newest uploads in the indexer's categories (Movies and TV
+// unless it's scoped otherwise) — the feed the RSS sweeps read every 15 minutes, so a
+// wanted title uploaded between two scheduled searches is grabbed within one cycle. It's
+// the browse API's "new" filter, through the same session, login pause and request
+// spacing as a search; the indexer service shares one pull across the RSS sweeps and
+// skips it while the indexer is backing off.
+func (t *TorrentLeechSearcher) Recent(ctx context.Context, idx Indexer, limit int) ([]Release, error) {
+	releases, err := t.Search(ctx, idx, SearchQuery{})
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(releases) > limit {
+		releases = releases[:limit]
+	}
+	return releases, nil
 }
 
 func (t *TorrentLeechSearcher) search(ctx context.Context, sess *tlSession, idx Indexer, q SearchQuery) ([]Release, error) {

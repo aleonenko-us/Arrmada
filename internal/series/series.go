@@ -169,4 +169,7 @@ type Episode struct {
 type EpisodeDownload struct {
 	State    string  `json:"state"`
 	Progress float64 `json:"progress"` // 0..1
+	// Hash is the torrent's info hash, so an open page can move this bar from a
+	// queue.progress event instead of asking again.
+	Hash string `json:"hash,omitempty"`
 }

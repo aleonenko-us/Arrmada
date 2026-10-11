@@ -28,7 +28,8 @@ func TestMovieDownloadsJoinByHash(t *testing.T) {
 	}
 
 	upgrade := []automation.Acquisition{{InfoHash: "aaaa", Title: "Film 2020 2160p UHD", Status: "grabbed", Replaces: true}}
-	if d := movieDownloadOf(upgrade, qi, label); d == nil || d.Kind != movies.DownloadUpgrade || d.Progress != 0.4 {
+	// It carries the torrent's hash, so an open page can move the bar from queue.progress.
+	if d := movieDownloadOf(upgrade, qi, label); d == nil || d.Kind != movies.DownloadUpgrade || d.Progress != 0.4 || d.Hash != "AAAA" {
 		t.Fatalf("upgrade = %+v, want kind upgrade at 40%%", d)
 	}
 	version := []automation.Acquisition{{InfoHash: "bbbb", VersionID: 7, Status: "grabbed"}}

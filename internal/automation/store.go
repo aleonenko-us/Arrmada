@@ -234,7 +234,9 @@ func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionI
 		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath)
 	if err != nil {
 		c.log.Warn("automation: record grab failed", "err", err)
+		return
 	}
+	c.grabbed(ctx, "movie", movieID)
 }
 
 // seedRules returns the seed policy of the named indexer.

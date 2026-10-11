@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IndexerStatus } from "./api";
-import { INDEXER_DOT, hhmm, indexerStatusLine, prowlarrSyncMessage } from "./indexerStatus";
+import { INDEXER_DOT, hhmm, indexerStatusLine, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "./indexerStatus";
 
 const now = Date.parse("2026-10-09T12:00:00Z");
 const at = (minutes: number) => new Date(now + minutes * 60_000).toISOString();
@@ -61,5 +61,32 @@ describe("hhmm", () => {
     const d = new Date(2026, 9, 9, 7, 5);
     expect(hhmm(d.toISOString())).toBe("07:05");
     expect(hhmm(undefined)).toBe("—");
+  });
+});
+
+describe("prowlarrLastSyncLine", () => {
+  it("says when the last sync ran and what it changed", () => {
+    const line = prowlarrLastSyncLine({ at: at(0), trigger: "schedule", added: 2, updated: 0, disabled: 1, reenabled: 0 });
+    expect(line?.text).toBe(`Last synced ${hhmm(at(0))}: 2 added, 1 turned off`);
+    expect(prowlarrLastSyncLine({ at: at(0), trigger: "manual", added: 0, updated: 0, disabled: 0, reenabled: 0 })?.text).toBe(`Last synced ${hhmm(at(0))}: nothing changed`);
+  });
+
+  it("shows a failed sync's error", () => {
+    const line = prowlarrLastSyncLine({ at: at(0), trigger: "schedule", added: 0, updated: 0, disabled: 0, reenabled: 0, error: "prowlarr: invalid API key", failed_runs: 2 });
+    expect(line?.text).toBe(`Last sync failed at ${hhmm(at(0))}: prowlarr: invalid API key`);
+    expect(line?.color).toBe("var(--reject-text)");
+    expect(prowlarrLastSyncLine(undefined)).toBeNull();
+  });
+});
+
+describe("prowlarrUILink", () => {
+  const loc = { protocol: "http:", hostname: "tower.local" };
+  it("uses the published port, 9696 by default", () => {
+    expect(prowlarrUILink({ ui_port: "9697" }, loc)).toBe("http://tower.local:9697");
+    expect(prowlarrUILink(undefined, loc)).toBe("http://tower.local:9696");
+  });
+  it("prefers a saved http(s) address and ignores anything else", () => {
+    expect(prowlarrUILink({ ui_port: "9697", ui_url: "https://prowlarr.example.test" }, loc)).toBe("https://prowlarr.example.test");
+    expect(prowlarrUILink({ ui_port: "9697", ui_url: "javascript:alert(1)" }, loc)).toBe("http://tower.local:9697");
   });
 });

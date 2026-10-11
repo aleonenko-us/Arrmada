@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { PAGE } from "../lib/links";
-import { api, type FitItem, type MovieDownload, type MovieDownloadRow, type MovieLookup, type MovieSummary, type SummaryMedia } from "../lib/api";
+import { api, type FitItem, type MovieDownload, type MovieLookup, type MovieSummary, type SummaryMedia } from "../lib/api";
 import { FitBadge, FIT_COLOR, bitrateColor, fitRank, hasIssue } from "../components/FitBadge";
 import { posterThumb } from "../lib/img";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
@@ -11,9 +11,10 @@ import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
 import { usePersisted } from "../lib/persist";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
-import { useQuery } from "../lib/query";
+import { useLiveQuery } from "../lib/useLiveQuery";
 import { isMovieDownloaded, isMovieWanted, movieStatus } from "../lib/movieStatus";
-import { useLive } from "../lib/useLive";
+import { useLiveConnected, useLiveEvent } from "../lib/live";
+import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner, StatusChip } from "../ui";
@@ -21,7 +22,7 @@ import { Button, ErrorState, Modal, Skeleton, StaleBanner, StatusChip } from "..
 const NO_MOVIES: MovieSummary[] = [];
 
 // Events after which the library list may have changed.
-const LIST_TOPICS = ["release.grabbed", "movie.downloaded", "movie.file_deleted", "movie.renamed", "movie.deleted", "search.finished", "library.scanned", "movie.refreshed"];
+const LIST_TOPICS = ["release.grabbed", "download.imported", "file.removed", "movie.renamed", "search.finished", "library.scanned", "movie.refreshed"];
 
 
 type FilterKey = "all" | "monitored" | "unmonitored" | "wanted" | "nofile" | "downloaded";
@@ -58,7 +59,10 @@ function matchesFilter(m: MovieSummary, f: FilterKey, queueKnown = true): boolea
 export function Movies() {
   // Cached across visits, so Back from a movie shows the grid at once; it always
   // revalidates on arrival (staleMs 0) because the detail page may have changed it.
-  const list = useQuery("movies", () => api.movies(), { staleMs: 0 });
+  // A grab, an import, a search or a scan can change it: those refetch it, at most once a
+  // second, so a grab started in the background (search on add, the queue) shows up
+  // without a reload. No blind poll of the whole library.
+  const list = useLiveQuery("movies", () => api.movies(), { staleMs: 0, topics: LIST_TOPICS, debounceMs: 1000, fallbackMs: null });
   const movies = list.data?.movies ?? NO_MOVIES;
   const metaOK = list.data?.metadata_available ?? true;
   // false while the download client can't be read: a wanted movie may already be downloading.
@@ -79,8 +83,7 @@ export function Movies() {
   const [searchFor, setSearchFor] = useState<MovieSummary | null>(null); // the table's per-row "Search indexers"
   // Every movie search waits its turn in one throttled queue; the header says how many
   // are running and waiting, kept live by the queue's events.
-  const { last } = useLive();
-  const searchQueue = useMovieSearchQueue(last);
+  const searchQueue = useMovieSearchQueue();
   const queueText = queueLine(searchQueue.running, searchQueue.queued);
 
   // The scan runs in the background; poll the grid for a while as entries land.
@@ -155,29 +158,28 @@ export function Movies() {
     }
   };
 
-  // A grab, an import, a search or a scan can change the list: refetch it, at most once a
-  // second, so a grab started in the background (search on add, the queue) shows up
-  // without a reload.
-  const liveTimer = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!last || !LIST_TOPICS.includes(last.topic)) return;
-    if (liveTimer.current !== undefined) return;
-    liveTimer.current = window.setTimeout(() => {
-      liveTimer.current = undefined;
-      void refresh();
-    }, 1000);
-  }, [last, refresh]);
-  useEffect(() => () => window.clearTimeout(liveTimer.current), []);
-
-  // While anything downloads, poll only the small downloads endpoint and merge its
-  // progress into the grid; a download that starts or ends refetches the list.
-  const [downloads, setDownloads] = useState<Map<number, MovieDownloadRow> | null>(null);
+  // While anything downloads, the bars move from queue.progress (by torrent hash) without
+  // asking the server; a queue.changed naming one of the grid's torrents (finished,
+  // removed, errored) refetches the list, since the film's own state moves too. The small
+  // downloads endpoint is the slow backstop, and stays quick only for an old grab with no
+  // hash to follow.
+  const [downloads, setDownloads] = useState<Map<number, MovieDownload> | null>(null);
   useEffect(() => { setDownloads(null); }, [list.data]); // a fresh list carries its own progress
   const shown = useMemo(
     () => (downloads ? movies.map((m) => ({ ...m, download: downloads.get(m.id) })) : movies),
     [movies, downloads],
   );
   const anyDownloading = shown.some((m) => m.download);
+  const allHashed = shown.every((m) => !m.download || !!m.download.hash);
+  const connected = useLiveConnected();
+  useLiveEvent([QUEUE_PROGRESS, QUEUE_CHANGED], (ev) => {
+    const hashes = shown.flatMap((m) => (m.download?.hash ? [m.download.hash] : []));
+    if (queueChangedFor(ev, hashes)) { void refresh(); return; }
+    const live = progressByHash(ev);
+    if (!live) return;
+    const next = patchProgress(shown, live, (m) => m.download, (m, p) => ({ ...m, download: m.download && { ...m.download, progress: p.progress } }));
+    if (next !== shown) setDownloads(new Map(next.flatMap((m) => (m.download ? [[m.id, m.download] as const] : []))));
+  }, anyDownloading);
   const pollDownloads = async () => {
     try {
       const r = await api.movieDownloads();
@@ -190,7 +192,7 @@ export function Movies() {
       /* the next tick tries again */
     }
   };
-  usePoll(pollDownloads, anyDownloading ? 4000 : null, { immediate: false });
+  usePoll(pollDownloads, anyDownloading ? (connected && allHashed ? 30_000 : 4000) : null, { immediate: false });
 
   const q = query.trim().toLowerCase();
   const filtered = shown

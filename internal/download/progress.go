@@ -86,14 +86,21 @@ func (p *progressPublisher) tick(items []Item) {
 	p.last, p.sent = cur, true
 }
 
-// RunProgress publishes queue.progress every two seconds while active() says someone is
-// listening (the websocket hub has a client) and the queue has moved. It reads the shared
-// snapshot, so it adds no client calls of its own while a page is polling anyway. A read
-// that fails publishes nothing: an outage isn't progress, and the page's own poll says so.
-// Returns when ctx is cancelled.
+// RunProgress publishes queue.progress and queue.changed every two seconds while active()
+// says someone is listening (a staff browser is connected) and the queue has moved. Both
+// come from one read of the shared snapshot, which caches for two seconds, so however
+// many tabs are open the clients are asked at most once per tick. A read that fails
+// publishes nothing: an outage isn't progress, and the page's own poll says so. Returns
+// when ctx is cancelled.
 func RunProgress(ctx context.Context, svc *Service, pub Publisher, active func() bool) {
+	runProgress(ctx, svc.Snapshot, pub, active, progressEvery)
+}
+
+// runProgress is RunProgress with the read and the tick injectable, for tests.
+func runProgress(ctx context.Context, read func(context.Context) (Snapshot, error), pub Publisher, active func() bool, every time.Duration) {
 	p := &progressPublisher{pub: pub}
-	t := time.NewTicker(progressEvery)
+	shape := &shapePublisher{pub: pub}
+	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		select {
@@ -105,12 +112,14 @@ func RunProgress(ctx context.Context, svc *Service, pub Publisher, active func()
 			// Nobody to tell. Forget what was said, so whoever connects next gets the
 			// current state on the first tick rather than only the next change.
 			p.last, p.sent = nil, false
+			shape.reset()
 			continue
 		}
-		snap, err := svc.Snapshot(ctx)
+		snap, err := read(ctx)
 		if err != nil {
 			continue
 		}
 		p.tick(snap.Items)
+		shape.tick(snap)
 	}
 }

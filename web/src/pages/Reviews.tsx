@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type ImportReview, type ReviewFile, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
 import { formatAgo, formatBytes } from "../lib/format";
-import { useLive } from "../lib/useLive";
-import { usePoll } from "../lib/usePoll";
+import { useLiveRefresh } from "../lib/useLiveQuery";
 import { refreshAttention } from "../lib/useAttention";
 import { ConfirmDialog, Modal, StatusChip, useConfirm, useToast, type Tone } from "../ui";
 import { MapFilesModal } from "./reviews/MapFilesModal";
@@ -51,11 +50,10 @@ export function ReviewsPanel() {
   const toast = useToast();
 
   const refresh = () => api.reviews().then(setList).catch(() => setList((xs) => xs ?? []));
-  // The page is left open while downloads finish: re-read it every 30 s while visible, and at
-  // once when the server announces a newly held import.
-  usePoll(refresh, 30_000);
-  const { last } = useLive();
-  useEffect(() => { if (last?.topic === "import.held") refresh(); }, [last]);
+  // The page is left open while downloads finish: re-read it at once when the server
+  // announces a newly held import or a finished one, and every 30 s while visible as a
+  // backstop.
+  useLiveRefresh(refresh, { topics: ["import.held", "download.imported"], fallbackMs: 30_000, immediate: true });
   // A review settled elsewhere (another tab, the download removed) leaves the selection.
   useEffect(() => {
     if (!list) return;

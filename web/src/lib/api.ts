@@ -79,6 +79,29 @@ export interface ProwlarrSyncResult {
   notes?: string[];
 }
 
+/** How the latest Prowlarr sync went, hourly or clicked. failed_runs counts scheduled runs in a row. */
+export interface ProwlarrLastSync {
+  at: string;
+  trigger: "schedule" | "manual";
+  added: number;
+  updated: number;
+  disabled: number;
+  reenabled: number;
+  error?: string;
+  failed_runs?: number;
+}
+
+/** The Prowlarr panel: the sync URL, whether a key is saved, the last sync, and where Prowlarr's web UI is. */
+export interface ProwlarrInfo {
+  url: string;
+  has_key: boolean;
+  /** The host port Prowlarr's UI is published on (install.sh may pick 9697 or 9698). */
+  ui_port?: string;
+  /** A saved address for a Prowlarr on another machine; wins over ui_port. */
+  ui_url?: string;
+  last_sync?: ProwlarrLastSync;
+}
+
 /**
  * IndexerStatus is one indexer's health from the integration status tracker. "failing"
  * failed last time but sweeps still ask it; "backing_off" is left alone by sweeps until
@@ -545,6 +568,10 @@ export interface NotificationConn {
   config?: { user_id?: number };
   url_hint?: string;
   url_set?: boolean;
+  /** The form it's edited with: a preset kind, "webpush", or "custom" (a raw Apprise URL). */
+  preset?: string;
+  /** A preset's saved form values: each secret is "" with `<name>_set: true` beside it. */
+  fields?: Record<string, string | boolean>;
   /** A URL saved before validation existed that no longer passes it (it still sends). */
   invalid_reason?: string;
   /** The latest delivery: "" never sent, "retrying" = the last try failed and another is due. */
@@ -557,7 +584,18 @@ export interface NotificationConn {
 export interface AlertDelivery { id: number; event_key: string; title: string; body: string; status: "queued" | "sending" | "sent" | "failed"; attempts: number; last_error: string; created_at: number; next_attempt_at: number; sent_at: number }
 
 // What create, update and test take. On update, a missing or blank url keeps the saved one.
-export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events" | "enabled"> & { url?: string };
+export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events" | "enabled"> & {
+  url?: string;
+  /** A preset's form values; the server builds the URL. A secret left "" keeps the saved one. */
+  fields?: Record<string, string>;
+  /** On a Test of an unsaved edit: the saved connection whose secrets fill the blanks. */
+  id?: number;
+};
+
+/** One input on an alert preset's form. options = a choice, the first being the default. */
+export interface AlertPresetField { name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[] }
+/** A "Where should alerts go?" tile. */
+export interface AlertPreset { kind: string; label: string; hint: string; fields: AlertPresetField[] }
 
 // The alert event catalog: what a connection can subscribe to, grouped for the page.
 export interface AlertEvent { key: string; group: string; label: string; hint: string; default_on: boolean; module?: "books" | "music" }
@@ -1584,7 +1622,7 @@ export interface Episode {
   size_bytes?: number;
   // Kept out of profile-driven upgrades ("keep existing files"); Resume lifts it.
   upgrade_hold?: boolean;
-  download?: { state: string; progress: number };
+  download?: { state: string; progress: number; hash?: string };
 }
 export interface Season {
   id: number;
@@ -1633,7 +1671,7 @@ export interface Series {
 
 // One episode's in-flight download, from the light poll the series page runs while
 // something downloads (GET /series/{id}/downloads).
-export interface SeriesEpisodeDownload { season: number; episode: number; state: string; progress: number }
+export interface SeriesEpisodeDownload { season: number; episode: number; state: string; progress: number; hash?: string }
 // --- Books ---
 export type BookSource = "openlibrary" | "hardcover";
 export interface BookUpgradeStatus {
@@ -2208,7 +2246,9 @@ export const api = {
   testIndexerSettings: (body: NewIndexer & { id?: number }) =>
     req<IndexerTestResult>("/api/v1/indexers/test", { method: "POST", body: JSON.stringify(body) }),
   flareSolverrStatus: () => req<FlareSolverrStatus>("/api/v1/flaresolverr/status"),
-  prowlarrInfo: () => req<{ url: string; has_key: boolean }>("/api/v1/indexers/prowlarr"),
+  prowlarrInfo: () => req<ProwlarrInfo>("/api/v1/indexers/prowlarr"),
+  saveProwlarrUIURL: (ui_url: string) =>
+    req<{ ui_url: string }>("/api/v1/indexers/prowlarr", { method: "PUT", body: JSON.stringify({ ui_url }) }),
   syncProwlarr: (body: { url: string; api_key: string; add_flaresolverr_proxy?: boolean }) =>
     req<ProwlarrSyncResult>("/api/v1/indexers/prowlarr/sync", { method: "POST", body: JSON.stringify(body) }),
 
@@ -2303,6 +2343,7 @@ export const api = {
   notifications: () =>
     req<{ notifications: NotificationConn[] }>("/api/v1/notifications").then((r) => r.notifications),
   alertCatalog: () => req<AlertCatalog>("/api/v1/notifications/catalog"),
+  alertPresets: () => req<{ presets: AlertPreset[] }>("/api/v1/notifications/presets").then((r) => r.presets),
   alertDeliveries: (id: number, limit = 20) =>
     req<{ deliveries: AlertDelivery[] }>(`/api/v1/notifications/${id}/deliveries?limit=${limit}`).then((r) => r.deliveries),
   createNotification: (body: NotificationInput) =>
@@ -3260,6 +3301,8 @@ export interface Movie {
 export interface MovieDownload {
   state: string;
   progress: number;
+  /** The torrent's info hash: a queue.progress event moves this bar by it. */
+  hash?: string;
   kind?: "missing" | "upgrade" | "version";
   version_id?: number;
   version_label?: string;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MovieQueuedRef, type MovieSearchQueueEvent } from "./api";
-import type { LiveEvent } from "./useLive";
+import { useLiveEvent, type LiveEvent } from "./live";
 
 // Every movie search runs through one throttled queue (two at a time). These helpers word
 // it: the toast after a click, and the "Searching 2 · 40 queued" line in the header.
@@ -34,8 +34,12 @@ export function queueCounts(ev: LiveEvent | null): { running: number; queued: nu
  * useMovieSearchQueue is the queue's running and waiting counts: read once on arrival,
  * then kept live by the movie.search.* events (each carries the counts after it).
  */
-export function useMovieSearchQueue(last: LiveEvent | null): { running: number; queued: number } {
+export function useMovieSearchQueue(): { running: number; queued: number } {
   const [counts, setCounts] = useState({ running: 0, queued: 0 });
+  useLiveEvent(QUEUE_TOPICS, (ev) => {
+    const c = queueCounts(ev);
+    if (c) setCounts(c);
+  });
   useEffect(() => {
     let cancelled = false;
     api
@@ -48,9 +52,5 @@ export function useMovieSearchQueue(last: LiveEvent | null): { running: number; 
       cancelled = true;
     };
   }, []);
-  useEffect(() => {
-    const c = queueCounts(last);
-    if (c) setCounts(c);
-  }, [last]);
   return counts;
 }

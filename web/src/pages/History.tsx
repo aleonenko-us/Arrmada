@@ -5,14 +5,14 @@ import { categoryChip, EVENT_CATEGORIES, eventHref, eventKey, groupByDay, HISTOR
 import { formatBytes } from "../lib/format";
 import { posterThumb } from "../lib/img";
 import { useMe } from "../lib/me";
-import { useLive } from "../lib/useLive";
+import { useLiveRefresh } from "../lib/useLiveQuery";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip } from "../ui";
 
 const PAGE_SIZE = 50;
 
 // What the page refetches on, besides coming back to the window: something was grabbed,
 // imported, held or removed. A burst (a sweep) makes one refetch.
-const HISTORY_TOPICS = new Set(["release.grabbed", "download.imported", "movie.imported", "series.imported", "book.imported", "music.imported", "import.held", "file.removed"]);
+const HISTORY_TOPICS = ["release.grabbed", "*.imported", "import.held", "file.removed"];
 
 // The filters live in the address (?kind=series&event=imported&q=dune), so a filtered
 // view can be linked, reloaded, and stepped back out of.
@@ -136,19 +136,14 @@ function EventLog({ kind, event, q }: { kind: string; event: string; q: string }
     void load(true);
   }, [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Coming back to the window, and news of a grab or an import, bring the newest in.
+  // Coming back to the window, and news of a grab or an import on the shared socket (a
+  // burst makes one request), bring the newest in. No poll: a reconnect catches up.
   useEffect(() => {
     const onFocus = () => { void load(false); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [load]);
-  const live = useLive();
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!live.last || !HISTORY_TOPICS.has(live.last.topic) || timer.current !== undefined) return;
-    timer.current = window.setTimeout(() => { timer.current = undefined; void load(false); }, 1500);
-  }, [live.last, load]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useLiveRefresh(() => load(false), { topics: HISTORY_TOPICS, fallbackMs: null, debounceMs: 1500 });
 
   const more = async () => {
     if (!next) return;

@@ -141,6 +141,8 @@ type Coordinator struct {
 
 	// attentionKick asks the Needs-you feed to refresh (attentionkick.go); nil = nothing.
 	attentionKick atomic.Pointer[func()]
+	// onGrabbed hears that a grab was recorded for a library item (grabhook.go); nil = nothing.
+	onGrabbed atomic.Pointer[func(ctx context.Context, mediaType string, itemID int64)]
 	// importNotes is what the series import sweep found that the feed reports: packs
 	// whose files keep failing to place, and misfiled TV downloads (importattention.go).
 	importNotes importNotes

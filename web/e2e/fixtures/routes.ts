@@ -108,7 +108,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/downloadclients", media.downloadClients),
     get(/^\/api\/v1\/downloadclients\/\d+\/status$/, { listen_port: 6881 }),
     get("/api/v1/indexers", media.indexers),
-    get("/api/v1/indexers/prowlarr", { url: "", has_key: false }),
+    get("/api/v1/indexers/prowlarr", { url: "", has_key: false, ui_port: "9696", ui_url: "" }),
     get("/api/v1/flaresolverr/status", { configured: true, ok: true, url: "http://arrmada-flaresolverr:8191", version: "3.3.21", checked_at: new Date(NOW).toISOString() }),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
@@ -163,6 +163,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Settings → Alerts
     get("/api/v1/notifications", alerts.connections),
     get("/api/v1/notifications/catalog", alerts.catalog),
+    get("/api/v1/notifications/presets", alerts.presets),
+    { method: "POST", path: "/api/v1/notifications", respond: ({ body }) => ({ id: 3, url_set: true, url_hint: "discord://••••", ...(body as object) }) },
     get(/^\/api\/v1\/notifications\/\d+\/deliveries$/, alerts.deliveries),
     { method: "POST", path: /^\/api\/v1\/notifications\/\d+\/test$/, body: { ok: true } },
   ];

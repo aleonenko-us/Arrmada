@@ -13,14 +13,25 @@ export interface RouteHandle {
 
 let routeTitle = "";
 let pageTitle = "";
+let count = 0;
 
-export function formatTitle(page: string, route: string): string {
+// count is what waits on the signed-in staff member (requests to approve, imports to
+// review), shown as "(3) " in front so a background tab says so.
+export function formatTitle(page: string, route: string, count = 0): string {
   const t = page || route;
-  return t ? `${t} · Arrmada` : "Arrmada";
+  const base = t ? `${t} · Arrmada` : "Arrmada";
+  return count > 0 ? `(${count > 99 ? "99+" : count}) ${base}` : base;
 }
 
 function apply() {
-  document.title = formatTitle(pageTitle, routeTitle);
+  document.title = formatTitle(pageTitle, routeTitle, count);
+}
+
+/** The staff shell's Needs-you count for the tab title (0 hides it). */
+export function setTitleCount(n: number): void {
+  if (n === count) return;
+  count = n;
+  apply();
 }
 
 // useDocumentTitle is called once per layout: it reads the deepest matched route's handle.
