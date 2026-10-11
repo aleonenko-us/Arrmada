@@ -43,6 +43,34 @@ test.describe("library pages", () => {
     });
   }
 
+  // MOV-22: quality badges and the monitored dot, the filter words and counts, a remembered
+  // sort, and a search that takes the year.
+  test("movies: badges, filters with counts, a remembered sort, title + year search", async ({ page }) => {
+    await page.goto("/movies");
+    const lanterns = page.locator("main .group").filter({ hasText: "Lanterns Over the Northern Sea" });
+    await expect(lanterns.getByText("4K", { exact: true })).toBeVisible();
+    await expect(lanterns.getByText("DV", { exact: true })).toBeVisible();
+    await expect(lanterns.getByText("Atmos", { exact: true })).toBeVisible();
+    await expect(lanterns.getByRole("img", { name: "Unmonitored" })).toBeVisible();
+    await expect(page.locator("main .group").filter({ hasText: "Anchor Point" }).getByRole("img", { name: "Monitored" })).toBeVisible();
+
+    // The Wanted count is the Wanted view's (Anchor Point); every pill counts.
+    for (const name of [/^All 5$/, /^Wanted 1$/, /^Downloading 2$/, /^No file \(unmonitored\) 0$/, /^File missing 1$/, /^Doesn't fit 1$/, /^Unmonitored 1$/]) {
+      await expect(page.getByRole("button", { name })).toBeVisible();
+    }
+
+    const titles = page.locator("main a[href^='/movies/'] .truncate.font-semibold");
+    await expect(titles.first()).toHaveText("Anchor Point"); // Title: "The Cartographer" files under C
+    await page.getByRole("combobox", { name: "Sort" }).selectOption("size");
+    await expect(titles.first()).toHaveText("Lanterns Over the Northern Sea");
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "Sort" })).toHaveValue("size");
+    await expect(titles.first()).toHaveText("Lanterns Over the Northern Sea");
+
+    await page.getByRole("searchbox", { name: "Search movies" }).fill("tide 2020");
+    await expect(titles).toHaveText(["Iron Tide"]);
+  });
+
   // FE-11: the release search is a kit Modal — named, Escape closes it, and a long list
   // scrolls inside it in a short window.
   test("the table's release search opens as a dialog, scrolls inside, and closes on Escape", async ({ page }) => {

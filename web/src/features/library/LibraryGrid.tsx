@@ -43,8 +43,6 @@ export interface LibraryGridProps<T extends LibraryItem> {
   banners?: ReactNode;
   /** Above the table only (the fit legend). */
   tableNote?: ReactNode;
-  /** Narrows the table only (Movies' "only files that don't fit"). */
-  tableFilter?: (item: T) => boolean;
   /** The bulk-action bar's own controls; the grid adds the count, Select all and Clear. */
   bulkActions?: (sel: LibrarySelection<T>) => ReactNode;
   /** "No movies yet…": the library is really empty. */
@@ -74,9 +72,11 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   const visible = useMemo(() => {
     const by = sort?.value;
     const dir = sort?.dir ?? "asc";
+    // Every word must appear somewhere ("dune 2021" finds Dune, 2021), in any order.
+    const words = q.split(/\s+/).filter(Boolean);
     return list
       .filter((it) => !active?.match || active.match(it))
-      .filter((it) => !q || config.searchText(it).toLowerCase().includes(q))
+      .filter((it) => { if (!words.length) return true; const text = config.searchText(it).toLowerCase(); return words.every((w) => text.includes(w)); })
       .sort((a, b) => (by ? compareValues(by(a), by(b), dir) : 0) || config.compare(a, b));
   }, [list, active, q, config, sort]);
 
@@ -138,7 +138,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       ) : view.mode === "table" ? (
         <>
           {p.tableNote}
-          <LibraryTable items={p.tableFilter ? visible.filter(p.tableFilter) : visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} />
+          <LibraryTable items={visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} />
         </>
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>

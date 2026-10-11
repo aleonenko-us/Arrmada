@@ -5,7 +5,6 @@ import { PAGE } from "../lib/links";
 import { api, type FitItem, type MovieDownload, type MovieSummary } from "../lib/api";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
-import { usePersisted } from "../lib/persist";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useLiveQuery } from "../lib/useLiveQuery";
@@ -16,7 +15,7 @@ import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { StatusChip, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
-import { FitLegend, movieLibraryConfig } from "./movies/library";
+import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
@@ -53,12 +52,10 @@ export function Movies() {
   const searchQueue = useMovieSearchQueue();
   const queueText = queueLine(searchQueue.running, searchQueue.queued);
 
-  // How each file fits its profile's ideal file — report only, from the analysed library;
-  // only the table shows it.
-  const fitQ = useQuery("movies.fit", () => api.libraryFitMovies(), { staleMs: 60_000, enabled: view.mode === "table" });
+  // How each file fits its profile's ideal file — report only, from the analysed library
+  // (a database read). The table's Fit column and the "Doesn't fit" filter read it.
+  const fitQ = useQuery("movies.fit", () => api.libraryFitMovies(), { staleMs: 60_000 });
   const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.movie_id ?? 0, it])) : NO_FITS), [fitQ.data]);
-  const [misfitsPref, setMisfitsPref] = usePersisted("movies.table.misfits", "all", ["all", "misfits"] as const);
-  const misfit = (m: MovieSummary) => { const s = fits.get(m.id)?.fit?.status; return !!s && s !== "fits"; };
 
   // The scan runs as a job in the background; poll the grid for a while as entries land,
   // and when it ends the toast says what it added.
@@ -139,7 +136,7 @@ export function Movies() {
   }), [fits, queueKnown]);
 
   const judged = useMemo(() => movies.filter((m) => fits.get(m.id)?.fit).length, [movies, fits]);
-  const misfits = useMemo(() => movies.filter(misfit).length, [movies, fits]); // eslint-disable-line react-hooks/exhaustive-deps
+  const misfits = useMemo(() => movies.filter((m) => isMisfit(fits.get(m.id))).length, [movies, fits]);
 
   return (
     <>
@@ -158,8 +155,7 @@ export function Movies() {
         tools={[{ label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" }]}
         primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
-        tableNote={<FitLegend judged={judged} misfits={misfits} misfitsOnly={misfitsPref === "misfits"} onMisfitsOnly={(on) => setMisfitsPref(on ? "misfits" : "all")} />}
-        tableFilter={misfitsPref === "misfits" && judged > 0 ? misfit : undefined}
+        tableNote={<FitLegend judged={judged} misfits={misfits} />}
         bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
         emptyText={<>No movies yet. Click <b>Add movie</b>, search for a film, and Arrmada will monitor and grab it.</>}
       />

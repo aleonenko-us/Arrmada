@@ -42,9 +42,11 @@ export function LibraryCard<T extends LibraryItem>({ item, config, selectable, s
   const caption = (
     <>
       <div className="truncate text-[12.5px] font-semibold" title={item.title}>{item.title}</div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-mono text-[10.5px] text-ink-faint">{config.card.meta(item)}</span>
-        <span className="flex-none font-mono text-[9.5px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
+      {/* A long caption ("Coastal · Next Thu") takes the line and pushes the status word
+          under it on a narrow card, rather than being cut short. */}
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2">
+        <span className="max-w-full truncate font-mono text-[10.5px] text-ink-faint">{config.card.meta(item)}</span>
+        <span className="ml-auto flex-none font-mono text-[9.5px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
       </div>
     </>
   );

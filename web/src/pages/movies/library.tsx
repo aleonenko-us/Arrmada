@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import type { FitItem, MovieDownload, MovieSummary, SummaryMedia } from "../../lib/api";
 import { FitBadge, FIT_COLOR, bitrateColor, fitRank, hasIssue } from "../../components/FitBadge";
-import { isMovieDownloaded, isMovieWanted, movieStatus } from "../../lib/movieStatus";
+import { isMovieWanted, movieStatus } from "../../lib/movieStatus";
+import { STATUS_LABEL } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
-import type { MenuItem } from "../../ui";
+import { POSTER_CHIP_BG, type MenuItem } from "../../ui";
 
 // The Movies library as LibraryGrid config: its filters, card slots and table columns.
 
@@ -59,6 +60,46 @@ function DownloadBar({ d }: { d: MovieDownload }) {
   );
 }
 
+// isMisfit: the file was judged against its profile's ideal file and doesn't fit.
+export function isMisfit(it?: FitItem): boolean {
+  const s = it?.fit?.status;
+  return !!s && s !== "fits";
+}
+
+// The poster's quality badges, from the file's media facts: "4K", "1080p"…; "DV" or "HDR".
+export function resBadge(f?: SummaryMedia): string {
+  const v = resValue(f);
+  if (!v) return "";
+  if (v >= 2160) return "4K";
+  if (v >= 720) return `${v}p`;
+  return "SD";
+}
+export function hdrBadge(f?: SummaryMedia): string {
+  const h = f?.hdr ?? [];
+  if (h.some((x) => /^dv$|dolby/i.test(x))) return "DV";
+  return h.length ? "HDR" : "";
+}
+
+function Badge({ children }: { children: ReactNode }) {
+  return <span className="rounded px-1 py-px font-mono text-[8.5px] font-bold leading-[1.4]" style={{ background: POSTER_CHIP_BG, color: "#fff" }}>{children}</span>;
+}
+
+// MovieBadges sit over a poster's top-left corner: the monitored dot (filled when
+// monitored, hollow when not), then the file's resolution, DV/HDR and Atmos.
+function MovieBadges({ m }: { m: MovieSummary }) {
+  const f = m.has_file ? m.media : undefined;
+  const res = resBadge(f), hdr = hdrBadge(f);
+  const mon = m.monitored ? "Monitored" : STATUS_LABEL.unmonitored;
+  return (
+    <>
+      <span role="img" aria-label={mon} title={mon} className="mr-0.5 mt-[3px] h-2.5 w-2.5 flex-none rounded-full" style={{ background: m.monitored ? "var(--accent)" : "rgba(14,10,7,.6)", border: `1.5px solid ${m.monitored ? "var(--accent)" : "rgba(255,255,255,.8)"}`, boxShadow: "0 0 0 1px rgba(14,10,7,.55)" }} />
+      {res && <Badge>{res}</Badge>}
+      {hdr && <Badge>{hdr}</Badge>}
+      {f && hasAtmos(f) && <Badge>Atmos</Badge>}
+    </>
+  );
+}
+
 export interface MovieConfigDeps {
   fits: Map<number, FitItem>;
   /** false while the download client can't be read: a wanted film may already be downloading. */
@@ -74,17 +115,28 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
     storageKey: "movies",
     detailPath: (m) => `/movies/${m.id}`,
     // Wanted is exactly what's badged Wanted (monitored, no file, nothing downloading) — the
-    // same films as Wanted → Missing. A film with no file that isn't monitored is never
-    // searched for; it has its own filter rather than hiding inside Wanted.
+    // same films as Wanted → Missing, so the counts agree. A film with no file that isn't
+    // monitored is never searched for; it has its own filter rather than hiding inside
+    // Wanted. Downloading is any download in flight (its own file, an upgrade, a version).
     filters: [
       { key: "all", label: "All" },
-      { key: "monitored", label: "Monitored", match: (m) => m.monitored },
-      { key: "unmonitored", label: "Unmonitored", match: (m) => !m.monitored },
-      { key: "wanted", label: "Wanted", match: (m) => isMovieWanted(m, queueKnown) },
-      { key: "nofile", label: "No file (unmonitored)", match: (m) => !m.monitored && !m.has_file },
-      { key: "downloaded", label: "Downloaded", match: (m) => isMovieDownloaded(m, queueKnown) },
+      { key: "wanted", label: STATUS_LABEL.wanted, match: (m) => isMovieWanted(m, queueKnown), title: "Monitored, no file yet: Arrmada is searching for these" },
+      { key: "downloading", label: "Downloading", match: (m) => !!m.download },
+      { key: "nofile", label: "No file (unmonitored)", match: (m) => !m.monitored && !m.has_file, title: "No file and not monitored: never searched for" },
+      { key: "filemissing", label: STATUS_LABEL.fileMissing, match: (m) => movieStatus(m, undefined, queueKnown).key === "missing", title: "A file was recorded but is gone from disk" },
+      { key: "misfit", label: "Doesn't fit", match: (m) => isMisfit(fits.get(m.id)), title: "The file doesn't fit its profile's ideal file (bitrate or spec) — the table says why" },
+      { key: "unmonitored", label: STATUS_LABEL.unmonitored, match: (m) => !m.monitored },
     ],
-    searchText: (m) => m.title,
+    // "dune 2021" finds Dune (2021); the sort title lets "matrix" find The Matrix.
+    // Original and alternative titles join this when the summary carries them (MOV-24).
+    searchText: (m) => `${m.title} ${m.sort_title ?? ""} ${m.year || ""}`,
+    sorts: [
+      { key: "title", label: "Title" },
+      { key: "added", label: "Added", dir: "desc", value: (m) => m.added_at || undefined },
+      { key: "year", label: "Year", dir: "desc", value: (m) => m.year || undefined },
+      { key: "rating", label: "Rating", dir: "desc", value: (m) => m.vote_average || undefined },
+      { key: "size", label: "Size", dir: "desc", value: (m) => m.size_bytes || undefined },
+    ],
     // Alphabetical, "The" ignored.
     compare: (a, b) => (a.sort_title || a.title).localeCompare(b.sort_title || b.title),
     tableMinWidth: 900,
@@ -113,22 +165,20 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
       meta: (m) => m.year || "—",
       status: (m) => movieStatus(m, undefined, queueKnown),
       overlay: (m) => m.download && <DownloadBar d={m.download} />,
+      badges: (m) => <MovieBadges m={m} />,
     },
-    sorts: [{ key: "title", label: "Title" }],
     actions,
     rowAction,
   };
 }
 
-// FitLegend sits above the table: the misfits switch and what the fit colours mean.
-export function FitLegend({ judged, misfits, misfitsOnly, onMisfitsOnly }: { judged: number; misfits: number; misfitsOnly: boolean; onMisfitsOnly: (on: boolean) => void }) {
+// FitLegend sits above the table: how many judged files don't fit their profile (the
+// "Doesn't fit" filter lists them) and what the fit colours mean.
+export function FitLegend({ judged, misfits }: { judged: number; misfits: number }) {
   if (judged === 0) return null;
   return (
     <div className="mb-2 flex flex-wrap items-center gap-3 text-[11.5px] text-ink-dim">
-      <label className="inline-flex cursor-pointer items-center gap-1.5">
-        <input type="checkbox" checked={misfitsOnly} onChange={(e) => onMisfitsOnly(e.target.checked)} />
-        Only files that don't fit their profile ({misfits} of {judged})
-      </label>
+      <span>{misfits} of {judged} judged files don't fit their profile</span>
       <span className="text-[10.5px] text-ink-faint">
         <span style={{ color: FIT_COLOR.over }}>■</span> over the bitrate ceiling ·{" "}
         <span style={{ color: FIT_COLOR.under }}>■</span> under the floor ·{" "}
