@@ -164,8 +164,10 @@ function ConvertPage() {
             Makes your library smaller at a quality checked against the original. Wasteful video is re-encoded to HEVC
             {settings?.allow_av1 ? " or AV1 (whichever is smaller at the same quality)" : ""} during your hours.
             Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link> are removed.
-            HDR10, HDR10+ and HLG are kept; Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer
-            {stats?.total?.dolby_vision ? ` (${stats.total.dolby_vision.toLocaleString()} in your library)` : ""}.
+            HDR10, HDR10+ and HLG are kept; {settings?.dolby_vision === "skip"
+              ? "Dolby Vision files are left alone, as you chose"
+              : "Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer"}
+            {stats?.total?.dolby_vision_files ? ` (${stats.total.dolby_vision_files.toLocaleString()} in your library)` : ""}.
           </p>
           <div className="flex items-center gap-2">
             <Link to={LINKS.convertSettings} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={ghostBtn}>Configure →</Link>
@@ -435,7 +437,8 @@ function NeedTag({ children, title }: { children: ReactNode; title?: string }) {
 function hdrLabel(c: ConvertCandidate): string {
   const h = c.info?.hdr;
   if (!h || h === "SDR") return "—";
-  if (h === "Dolby Vision") return c.info?.dv_base && c.info.dv_base !== "SDR" ? `DV → ${c.info.dv_base}` : "DV";
+  // "DV → HDR10" only for a file a conversion would actually take down to its base.
+  if (h === "Dolby Vision") return c.needs?.video && c.info?.dv_base && c.info.dv_base !== "SDR" ? `DV → ${c.info.dv_base}` : "DV";
   return h;
 }
 
@@ -676,7 +679,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                         </div>
                       </td>
                       <td className="px-3 py-2 font-mono text-ink-dim">{c.info?.resolution ?? "—"}</td>
-                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? "The Dolby Vision layer is removed when converted" : undefined}>{hdrLabel(c)}</td>
+                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? (c.needs?.video ? "The Dolby Vision layer is removed when converted" : c.needs?.why) : undefined}>{hdrLabel(c)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{c.info?.bitrate_kbps ? `${(c.info.bitrate_kbps / 1000).toFixed(1)} Mb/s` : "—"}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">{fmtSize(c.info?.size_bytes)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums" title={c.tracks || undefined}>

@@ -77,6 +77,10 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   const av1 = useAutoSave(s.allow_av1, put("allow_av1"));
   const gpu = useAutoSave(s.use_gpu, put("use_gpu"));
   const crop = useAutoSave(s.crop, put("crop"));
+  const dolbyVision = useAutoSave(s.dolby_vision, put("dolby_vision"), { keepOnError: false });
+  // How many files the Dolby Vision choice applies to, from the library stats.
+  const [dvFiles, setDvFiles] = useState<number | null>(null);
+  useEffect(() => { api.convertStats().then((st) => setDvFiles(st.total.dolby_vision_files ?? 0)).catch(() => {}); }, []);
   const audioLangs = useAutoSave(s.keep_audio_langs, put("keep_audio_langs"));
   const origLang = useAutoSave(s.keep_original_lang, put("keep_original_lang"));
   const commentary = useAutoSave(s.drop_commentary, put("drop_commentary"));
@@ -153,7 +157,18 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
-      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
+      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. HDR10, HDR10+ and HLG are kept.">
+        <div role="radiogroup" aria-label="Dolby Vision files">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+            Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
+          </div>
+          <div className="mb-1.5 text-[10.5px] text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
+          {([["skip", "Leave them alone — for a Dolby Vision TV (their tracks are still tidied)"], ["drop", "Convert and drop the Dolby Vision layer (keeps HDR10)"]] as const).map(([v, label]) => (
+            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+              <input type="radio" name="dolby_vision" checked={dolbyVision.value === v} onChange={() => void dolbyVision.commit(v)} />{label}
+            </label>
+          ))}
+        </div>
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
         {s.has_gpu && (

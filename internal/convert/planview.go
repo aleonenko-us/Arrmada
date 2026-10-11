@@ -145,6 +145,9 @@ func (s *Service) planView(ctx context.Context, p prefs, r indexRow, plan Plan, 
 		}
 	}
 	v.Warnings = append(v.Warnings, planViewWarnings(mi, plan, p, v.Video)...)
+	if w := s.dvProfileWarning(ctx, r, plan); w != "" {
+		v.Warnings = append(v.Warnings, w)
+	}
 	return v
 }
 

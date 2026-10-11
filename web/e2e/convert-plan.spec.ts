@@ -1,7 +1,7 @@
 import { test, expect, type MockedApi } from "./mockApi";
 import type { MockRoute } from "./fixtures/routes";
 import type { ConvertAutoPreview, ConvertCandidate, ConvertPlan } from "../src/lib/api";
-import { convertSettings } from "./fixtures/modules";
+import { convertSettings, convertStats } from "./fixtures/modules";
 
 // CONV-12/13: each Library file shows its conversion plan (tracks kept or removed, the
 // warnings) and its poster, and nothing converts without a confirmation that says what.
@@ -176,6 +176,25 @@ test.describe("confirm before converting", () => {
     expect(api.callsTo("GET", "/api/v1/convert/auto-preview?series=10&season=2")).toHaveLength(1);
     await dialog.getByRole("button", { name: "Convert 4 episodes" }).click();
     await expect.poll(() => api.callsTo("POST", "/api/v1/convert/series/10").map((c) => c.path)).toEqual(["/api/v1/convert/series/10?season=2"]);
+  });
+});
+
+// CONV-15: Dolby Vision is a stated, counted choice in Settings → Tools → Convert.
+test.describe("Dolby Vision choice", () => {
+  test.use({ persona: "admin" });
+
+  test("shows how many files it applies to and saves the choice", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/stats", body: { ...convertStats, total: { ...convertStats.total, dolby_vision_files: 47 } } },
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    const group = page.getByRole("radiogroup", { name: "Dolby Vision files" });
+    await expect(group.getByText("Dolby Vision files (47 in your library)")).toBeVisible();
+    await expect(group.getByRole("radio", { name: /Convert and drop the Dolby Vision layer/ })).toBeChecked();
+    await group.getByRole("radio", { name: /Leave them alone/ }).check();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ dolby_vision: "skip" }]);
+    await expect(group.getByRole("radio", { name: /Leave them alone/ })).toBeChecked();
   });
 });
 

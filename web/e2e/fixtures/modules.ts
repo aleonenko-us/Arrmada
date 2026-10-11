@@ -10,7 +10,7 @@ import type { PlexScanView } from "../../src/lib/plexLibraryApi";
 
 const zeroStats: ConvertMediaStats = {
   files: 0, convertible: 0, total_bytes: 0, est_bytes: 0, convertible_bytes: 0, reclaimable: 0, skipped: 0,
-  hdr10: 0, hdr10_plus: 0, dolby_vision: 0, hlg: 0, h264: 0, hevc: 0, av1: 0, other: 0,
+  hdr10: 0, hdr10_plus: 0, dolby_vision: 0, hlg: 0, h264: 0, hevc: 0, av1: 0, other: 0, dolby_vision_files: 0,
 };
 
 export const convertStats: ConvertLibraryStats = { movies: zeroStats, tv: zeroStats, total: zeroStats };
@@ -25,7 +25,7 @@ export const convertHardware = {
 export const convertSettings: ConvertSettings = {
   auto: false, hours_start: "01:00", hours_end: "07:00", allow_av1: false, use_gpu: false, pause_watching: true,
   keep_audio_langs: "en", keep_original_lang: true, drop_commentary: false, keep_sub_langs: "en",
-  image_subs: "keep", tidy_tracks: true, crop: false, scratch_dir: "/scratch", vaapi_device: "", cpu_cores: 8, workers: 1,
+  image_subs: "keep", tidy_tracks: true, crop: false, dolby_vision: "drop", scratch_dir: "/scratch", vaapi_device: "", cpu_cores: 8, workers: 1,
   scan_at: "03:00", server_time: "12:00", server_tz: "UTC", plex_watching_known: false, can_pause: false,
   has_gpu: false, gpu_does_av1: false, hdr10plus_tool: false,
 };

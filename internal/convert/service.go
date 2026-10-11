@@ -136,6 +136,8 @@ type Service struct {
 	binMu       sync.Mutex
 	// libraryChanged hears about the folder of each swapped-in file (Plex's scanner).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
+	// prefersDV asks whether a title's quality profile wants Dolby Vision (dvpolicy.go).
+	prefersDV atomic.Pointer[profilePrefersDV]
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool

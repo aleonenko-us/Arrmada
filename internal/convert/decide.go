@@ -28,6 +28,7 @@ const (
 	keyImageSubs       = "convert_image_subs"         // keep | when_text | remove
 	keyTidyTracks      = "convert_tidy_tracks"        // also rewrite files whose only gap is their tracks
 	keyCrop            = "convert_crop"               // remove black bars from re-encoded films
+	keyDolbyVision     = "convert_dolby_vision"       // drop | skip: what happens to Dolby Vision files
 	keyScratchDir      = "convert_scratch_dir"        // transcode working dir override
 	keyVaapiDevice     = "convert_vaapi_device"       // which /dev/dri/renderD* hardware encodes on
 	keyCPUCores        = "convert_cpu_cores"          // max cores a CPU encode may use (0 = half the box)
@@ -71,6 +72,8 @@ type prefs struct {
 	// crop is off unless you turned it on: a brief wider shot between the samples could
 	// still be trimmed (see crop.go), for about 2% smaller files.
 	crop bool
+	// dolbyVision is DVDrop or DVSkip (see dvpolicy.go).
+	dolbyVision string
 	// measured holds what test encodes measured (see measured.go), keyed by measureKey.
 	measured map[string]measurement
 }
@@ -92,6 +95,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
 		crop:           g.GetBool(ctx, keyCrop, false),
 		measured:       s.measured.all(ctx),
+		dolbyVision:    dvPolicy(g.Get(ctx, keyDolbyVision, "")),
 	}
 	switch p.imageSubs {
 	case ImageSubsKeep, ImageSubsWhenText, ImageSubsRemove:
@@ -107,8 +111,8 @@ func (s *Service) prefs(ctx context.Context) prefs {
 
 // cacheKey identifies the settings that change which files need work, for cached views.
 func (p prefs) cacheKey() string {
-	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
-		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks)
+	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v|%s", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
+		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks, p.dolbyVision)
 }
 
 // Needs is the gap between a file and the target.
@@ -240,6 +244,10 @@ func (p prefs) planFor(mi *MediaInfo, path, origLang string, dirCache map[string
 		plan.Audio.OriginalLang = origLang
 	}
 	n := needsOf(mi, plan)
+	if n.Video && mi.HDR == "Dolby Vision" && p.dolbyVision == DVSkip {
+		// You chose to keep Dolby Vision files as they are; their tracks may still be tidied.
+		n.Video, n.Why = false, dvLeftAloneWhy
+	}
 	if n.Video {
 		plan.VideoCodec = p.likelyCodec(mi)
 		plan.Quality = maxQualityCRF(plan.VideoCodec, mi)
