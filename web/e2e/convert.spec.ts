@@ -67,4 +67,27 @@ test.describe("manager", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Allow AV1 anyway" }).click();
     await expect(page.getByRole("checkbox", { name: /My devices can play AV1/ })).toBeChecked();
   });
+
+  // CONV-26: 10-bit output for 8-bit sources is a stated choice, with the devices' evidence.
+  test("the 8-bit sources choice says which applies, names the devices, and saves", async ({ page }) => {
+    const use = (state: "yes" | "no" | "unknown") => ({ state, direct: state === "yes" ? 1 : 0, transcoded: state === "no" ? 1 : 0 });
+    await page.route("**/api/v1/convert/devices", (route) => route.fulfill({
+      json: { monitoring: true, since: 0, devices: [{ product: "Plex Web", platform: "Chrome", player: "Chrome", last_seen: Math.floor(Date.now() / 1000), plays: 2,
+        hevc: use("yes"), hevc10: use("no"), av1: use("unknown") }] },
+    }));
+    const puts: unknown[] = [];
+    await page.route("**/api/v1/convert/settings", (route) => {
+      if (route.request().method() === "GET") return route.fallback();
+      const body = route.request().postDataJSON() as object;
+      puts.push(body);
+      return route.fulfill({ json: { ...convertSettings, ...body } });
+    });
+    await page.goto("/settings/tools#convert");
+    const group = page.getByRole("radiogroup", { name: "8-bit sources" });
+    await expect(group.getByText("Now: 8-bit sources stay 8-bit; 10-bit and HDR files are always 10-bit.")).toBeVisible();
+    await expect(group.getByText(/Plex transcoded HEVC 10-bit video for Chrome \(Plex Web\)/)).toBeVisible();
+    await group.getByRole("radio", { name: /Always 10-bit/ }).check();
+    await expect(group.getByText("Now: every re-encode is 10-bit (Main10).")).toBeVisible();
+    await expect.poll(() => puts).toEqual([{ ten_bit: "always" }]);
+  });
 });

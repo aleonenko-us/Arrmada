@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
-import { api, type ConvertSettings as Settings } from "../../lib/api";
+import { api, type ConvertDevice, type ConvertSettings as Settings } from "../../lib/api";
 import { backlogLine } from "../../lib/convertForecast";
 import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices } from "../../components/convert/DevicesPanel";
 import { useConfirm } from "../../ui";
@@ -90,6 +90,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   };
   const gpu = useAutoSave(s.use_gpu, put("use_gpu"));
   const crop = useAutoSave(s.crop, put("crop"));
+  const tenBit = useAutoSave(s.ten_bit ?? "always", put("ten_bit"), { keepOnError: false });
   const audioLangs = useAutoSave(s.keep_audio_langs, put("keep_audio_langs"));
   const origLang = useAutoSave(s.keep_original_lang, put("keep_original_lang"));
   const commentary = useAutoSave(s.drop_commentary, put("drop_commentary"));
@@ -171,6 +172,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
       <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
+        <TenBitChoice save={tenBit} transcoded={transcodingDevices(devices, "hevc10")} />
         {s.has_gpu && (
           <Toggle save={gpu} label="Use my GPU"
             hint={`Many times faster, but files come out somewhat bigger for the same quality. HDR always encodes on the CPU (the GPU can't carry its metadata).${s.gpu_does_av1 ? "" : " Your GPU has no AV1 encoder, so GPU mode converts to HEVC."}`} />
@@ -247,6 +249,32 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </Field>
         </div>
       </details>
+    </div>
+  );
+}
+
+// TenBitChoice: whether an 8-bit SDR source is written 10-bit (less banding) or kept 8-bit
+// (plays as it is on more players). The devices panel below is the evidence either way.
+function TenBitChoice({ save, transcoded }: { save: AutoSave<"always" | "match_source">; transcoded: ConvertDevice[] }) {
+  const options = [
+    ["always", "Always 10-bit", "Smoother skies, smoke and dark gradients — 8-bit sources show banding sooner after a re-encode. Players that can't decode 10-bit have the video transcoded."],
+    ["match_source", "Match the source", "An 8-bit file stays 8-bit, so a player that plays the original as it is plays the converted file too. Gradients band a little more."],
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label="8-bit sources">
+      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">8-bit sources (most H.264 films) <SavedTick save={save} /></div>
+      <div className="mb-1.5 text-[10.5px] text-ink-faint">
+        {save.value === "always"
+          ? "Now: every re-encode is 10-bit (Main10)."
+          : "Now: 8-bit sources stay 8-bit; 10-bit and HDR files are always 10-bit."}
+        {transcoded.length > 0 && ` ${transcodedSentence(transcoded, "hevc10")}`}
+      </div>
+      {options.map(([v, label, hint]) => (
+        <label key={v} className="flex cursor-pointer items-start gap-2 py-0.5 text-[12px]">
+          <input type="radio" name="ten_bit" className="mt-0.5" checked={save.value === v} onChange={() => void save.commit(v)} />
+          <span><b className="font-semibold">{label}</b><span className="block text-[11px] leading-snug text-ink-faint">{hint}</span></span>
+        </label>
+      ))}
     </div>
   );
 }

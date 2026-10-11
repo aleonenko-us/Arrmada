@@ -516,6 +516,7 @@ func (s *Service) recordOutcome(job *Job, state JobState, note string) {
 		StateSkipped: OutcomeSkipped, StateCancelled: OutcomeCancelled}[state]
 	r := s.historyRowFor(job, outcome, note)
 	rec.historyID = s.history.finish(context.Background(), rec.historyID, r)
+	s.recordPixFmt(context.Background(), rec)
 }
 
 // historyRowFor assembles a row from the job and its record as they stand.
