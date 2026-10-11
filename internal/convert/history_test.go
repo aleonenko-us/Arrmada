@@ -2,6 +2,7 @@ package convert
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,9 +108,9 @@ func TestLedgerClosesInterruptedRows(t *testing.T) {
 	}
 }
 
-// Only outcomes are recorded: a skip before any encode is a wait (Problems has it), a test
-// encode that keeps the original is an outcome, and a full disk isn't a failure of the file.
-func TestLedgerRecordsOutcomesNotWaits(t *testing.T) {
+// Every job's end is recorded — the waits before any encode included — and the same wait
+// again for the same file updates its row and counts the repeat instead of adding another.
+func TestLedgerRecordsEveryOutcome(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService(t)
 	claim := func(id int64) *Job {
@@ -121,6 +122,7 @@ func TestLedgerRecordsOutcomesNotWaits(t *testing.T) {
 	s.finish(claim(3), StateFailed, "encode failed: No space left on device")
 	s.finishSkip(claim(4), SkipQualityGate, "test encodes couldn't reach the quality bar")
 	s.finish(claim(5), StateFailed, "could not analyze file: bad header")
+	s.finishSkip(claim(1), SkipHardlinked, "still seeding (checked again)")
 
 	rows, _, err := s.History(ctx, HistoryFilter{})
 	if err != nil {
@@ -128,20 +130,57 @@ func TestLedgerRecordsOutcomesNotWaits(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, e := range rows {
-		got[e.Key] = e.Outcome + "/" + e.OutcomeKind
+		got[e.Key] = fmt.Sprintf("%s/%s×%d", e.Outcome, e.OutcomeKind, e.Repeats)
 	}
-	want := map[string]string{movieKey(4): "skipped/quality_gate", movieKey(5): "failed/"}
-	if len(got) != len(want) || got[movieKey(4)] != want[movieKey(4)] || got[movieKey(5)] != want[movieKey(5)] {
+	want := map[string]string{
+		movieKey(1): "skipped/hardlinked×2", movieKey(2): "skipped/already_target×1", movieKey(3): "failed/×1",
+		movieKey(4): "skipped/quality_gate×1", movieKey(5): "failed/×1",
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("recorded %v, want %v", got, want)
 	}
+	for _, e := range rows {
+		if e.Key == movieKey(1) && e.Note != "still seeding (checked again)" {
+			t.Fatalf("the repeat should carry its latest note: %q", e.Note)
+		}
+	}
 
-	// Once the encode has started, any end is recorded — a full disk included, so the
-	// in_progress row is never left open.
+	// A different end in between starts a new row.
+	s.finishSkip(claim(1), SkipNoScratch, "no room")
+	s.finishSkip(claim(1), SkipHardlinked, "still seeding")
+	if rows, _, _ = s.History(ctx, HistoryFilter{}); len(rows) != 7 {
+		t.Fatalf("rows %d, want 7", len(rows))
+	}
+
+	// Once the encode has started, any end is recorded on its own row — a full disk
+	// included, so the in_progress row is never left open.
 	job := claim(6)
 	s.beginHistory(job)
 	s.finish(job, StateFailed, "encode failed: No space left on device")
 	if e, err := s.history.get(ctx, s.record(job).historyID); err != nil || e.Outcome != OutcomeFailed {
 		t.Fatalf("encode-started failure: %+v, %v", e, err)
+	}
+}
+
+// Rows carry their title's poster from the library index.
+func TestLedgerPosters(t *testing.T) {
+	ctx := context.Background()
+	s := newTestService(t)
+	if err := s.index.upsert(ctx, indexRow{Path: "/m/a.mkv", MediaType: "movie", MovieID: 1, Title: "A", PosterURL: "/p/a.jpg"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.index.upsert(ctx, indexRow{Path: "/t/s1e1.mkv", MediaType: "episode", SeriesID: 2, Season: 1, Episode: 1, Title: "S", PosterURL: "/p/s.jpg"}); err != nil {
+		t.Fatal(err)
+	}
+	s.history.finish(ctx, 0, historyRow{key: movieKey(1), kind: "movie", movieID: 1, title: "A", outcome: OutcomeDone, finishedAt: 2})
+	s.history.finish(ctx, 0, historyRow{key: episodeKey(2, 1, 3), kind: "episode", seriesID: 2, season: 1, episode: 3, title: "S", outcome: OutcomeDone, finishedAt: 1})
+	s.history.finish(ctx, 0, historyRow{key: movieKey(9), kind: "movie", movieID: 9, title: "Gone", outcome: OutcomeDone, finishedAt: 0})
+	rows, _, err := s.History(ctx, HistoryFilter{})
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("%d rows, %v", len(rows), err)
+	}
+	if rows[0].PosterURL != "/p/a.jpg" || rows[1].PosterURL != "/p/s.jpg" || rows[2].PosterURL != "" {
+		t.Fatalf("posters %q %q %q", rows[0].PosterURL, rows[1].PosterURL, rows[2].PosterURL)
 	}
 }
 

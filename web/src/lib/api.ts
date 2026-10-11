@@ -2172,7 +2172,7 @@ export interface ConvertHistoryEntry {
   out_path?: string; out_size: number; out_spec?: string; codec?: string; crf?: number; encoder?: string; crop?: string;
   ssim_mean?: number; ssim_min?: number; ssim_windows?: number[];
   kept_tracks?: ConvertTrackDecision[]; dropped_tracks?: ConvertTrackDecision[]; warnings?: string[]; reclaim_deferred?: boolean;
-  started_at: number; finished_at?: number; encode_secs?: number;
+  started_at: number; finished_at?: number; encode_secs?: number; repeats?: number; poster_url?: string;
   // The originals hold: where the original waits and until when, and what became of it.
   hold_path?: string; hold_until?: number; hold_state?: ConvertHoldState; released_at?: number; reverted_at?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;

@@ -173,6 +173,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/convert/settings", mod.convertSettings),
     get("/api/v1/convert/status", mod.convertStatus),
     get("/api/v1/convert/jobs", mod.convertJobs),
+    get("/api/v1/convert/history", mod.convertHistory),
     get("/api/v1/recycle", sys.recycle),
     get("/api/v1/subtitles/coverage", mod.subtitleCoverage),
     get("/api/v1/subtitles/settings", mod.subtitleSettings),

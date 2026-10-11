@@ -10,17 +10,18 @@ import { RescanButton, ago } from "../components/RescanButton";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
-  type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision, type ConvertHoldStats,
+  type ConvertHoldStats,
 } from "../lib/api";
-import { HeldSummary, ReleaseButton, RevertButton, holdLine } from "./convert/hold";
+import { HeldSummary, RevertButton } from "./convert/hold";
+import { HistoryTab, RecentCard } from "./convert/History";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
 // while someone watches Plex. There's no queue to manage — the Overview shows what it's
 // doing, what's next and what it did; the Library lets you pick a file to do right now.
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
-type Tab = "overview" | "library" | "problems" | "activity";
-const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "activity"];
+type Tab = "overview" | "library" | "problems" | "history" | "activity";
+const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "history", "activity"];
 const ACTIVE = new Set(["preparing", "testing", "encoding", "verifying", "replacing"]);
 
 const card = "rounded-xl p-4";
@@ -42,10 +43,6 @@ function fmtSize(b?: number): string {
   return mb >= 1 ? `${mb.toFixed(0)} MB` : `${(b / 1024).toFixed(0)} KB`;
 }
 
-function savedPct(j: ConvertJob): number | null {
-  if (!j.src_bytes || j.src_bytes <= 0 || !j.out_bytes || j.out_bytes <= 0) return null;
-  return Math.round((1 - j.out_bytes / j.src_bytes) * 100);
-}
 
 function fmtEta(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "—";
@@ -101,6 +98,8 @@ function ConvertPage() {
   const originals = originalsCopy(settings ? settings.hold_days : null);
 
   const anyActive = jobs.some((j) => ACTIVE.has(j.state));
+  // Bumps as jobs finish, so the ledger views re-read what was just recorded.
+  const finished = jobs.filter((j) => !ACTIVE.has(j.state)).length;
   usePoll(() => Promise.all([
     api.convertJobs().then(setJobs).catch(() => {}),
     api.convertStatus().then(setStatus).catch(() => {}),
@@ -143,6 +142,7 @@ function ConvertPage() {
     { key: "overview", label: "Overview" },
     { key: "library", label: "Library" },
     { key: "problems", label: "Problems" },
+    { key: "history", label: "History" },
     { key: "activity", label: "Activity" },
   ];
 
@@ -171,15 +171,11 @@ function ConvertPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="convert" label="Convert sections" />
 
         <TabPanel idPrefix="convert" value={tab}>
-          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={flash} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} />}
+          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={flash} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} onShowHistory={() => setTab("history")} />}
           {tab === "library" && <Library flash={flash} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} />}
           {tab === "problems" && <Problems flash={flash} />}
-          {tab === "activity" && (
-            <div className="flex flex-col gap-3.5">
-              <HistoryLedger reload={jobs.filter((j) => !ACTIVE.has(j.state)).length} flash={flash} />
-              <LogsConsole />
-            </div>
-          )}
+          {tab === "history" && <HistoryTab reload={finished} flash={(m) => { flash(m); refresh(); }} />}
+          {tab === "activity" && <LogsConsole />}
         </TabPanel>
       </div>
       {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={flash} />}
@@ -194,13 +190,13 @@ const STATUS_TONE: Record<string, string> = {
   working: "var(--good)", starting: "var(--good)", paused: "var(--avoid)", waiting: "var(--ink-faint)", off: "var(--ink-faint)", done: "var(--good)",
 };
 
-function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onRescan, onShowProblems }: {
+function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onRescan, onShowProblems, onShowHistory }: {
   status: ConvertStatus | null; jobs: ConvertJob[]; stats: ConvertLibraryStats | null; hw: { using: string; reclaimed_bytes: number; hold?: ConvertHoldStats } | null; originals: string;
-  flash: (m: string) => void; onChanged: () => void; onRescan: () => Promise<boolean>; onShowProblems: () => void;
+  flash: (m: string) => void; onChanged: () => void; onRescan: () => Promise<boolean>; onShowProblems: () => void; onShowHistory: () => void;
 }) {
   const [rescanning, setRescanning] = useState(false);
   const running = jobs.filter((j) => ACTIVE.has(j.state));
-  const recent = jobs.filter((j) => !ACTIVE.has(j.state)).slice(0, 12);
+  const finished = jobs.length - running.length;
   const t = stats?.total;
   const n = t?.files ?? 0;
   const pct = (x: number) => (n ? Math.round((x / n) * 100) : 0);
@@ -310,31 +306,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
         </div>
       )}
 
-      {recent.length > 0 && (
-        <div className={card} style={cardStyle}>
-          <div className="text-[14px] font-bold">Recent</div>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {recent.map((j) => {
-              const p = savedPct(j);
-              const tone = j.state === "done" ? "var(--good)" : j.state === "failed" ? "var(--reject)" : "var(--ink-faint)";
-              return (
-                <div key={j.id} className="flex items-center gap-2.5 text-[12px]">
-                  <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: tone }}>{j.state}</span>
-                  <span className="min-w-0 flex-1 truncate font-semibold">{j.title}</span>
-                  {j.state === "done" && p !== null && j.codec ? (
-                    <span className="font-mono text-ink-dim">
-                      {fmtSize(j.src_bytes)} → {fmtSize(j.out_bytes)} <span style={{ color: "var(--good)" }}>−{p}%</span>
-                      <span className="ml-1.5 text-[10.5px] text-ink-faint">{j.codec.toUpperCase()}{j.ssim ? ` · SSIM ${j.ssim.toFixed(3)}` : ""}</span>
-                    </span>
-                  ) : (
-                    <span className="max-w-[55%] truncate text-[11.5px] text-ink-faint" title={j.note}>{j.note || j.state}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <RecentCard reload={finished} onSeeAll={onShowHistory} />
     </div>
   );
 }
@@ -874,143 +846,6 @@ function Problems({ flash }: { flash: (m: string) => void }) {
 }
 
 /* ============================= ACTIVITY ============================= */
-
-// The ledger: every conversion outcome, kept across restarts. Converted files stay listed
-// for good; kept-original, failed and cancelled rows for 90 days.
-const OUTCOME_LABEL: Record<ConvertHistoryOutcome, string> = {
-  done: "converted", skipped: "kept original", failed: "failed", cancelled: "cancelled", in_progress: "running",
-};
-const OUTCOME_TONE: Record<ConvertHistoryOutcome, string> = {
-  done: "var(--good)", skipped: "var(--avoid)", failed: "var(--reject)", cancelled: "var(--ink-faint)", in_progress: "var(--accent)",
-};
-const HISTORY_FILTERS: { key: ConvertHistoryOutcome | ""; label: string }[] = [
-  { key: "", label: "All" }, { key: "done", label: "Converted" }, { key: "skipped", label: "Kept original" },
-  { key: "failed", label: "Failed" }, { key: "cancelled", label: "Cancelled" },
-];
-
-function fmtWhen(unix?: number): string {
-  if (!unix) return "—";
-  return new Date(unix * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-// cropLabel turns the recorded ffmpeg crop ("crop=3840:1600:0:280") into "bars removed → 3840×1600".
-function cropLabel(crop?: string): string {
-  const m = /^crop=(\d+):(\d+):/.exec(crop ?? "");
-  return m ? `bars removed → ${m[1]}×${m[2]}` : "";
-}
-
-function HistoryLedger({ reload, flash }: { reload: number; flash: (m: string) => void }) {
-  const [outcome, setOutcome] = useState<ConvertHistoryOutcome | "">("");
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<ConvertHistoryEntry[] | null>(null);
-  const [next, setNext] = useState("");
-  const [open, setOpen] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const t = window.setTimeout(() => {
-      api.convertHistory({ outcome: outcome || undefined, q: q.trim() || undefined, limit: 30 })
-        .then((r) => { if (alive) { setItems(r.items); setNext(r.next); } })
-        .catch(() => { if (alive) { setItems([]); setNext(""); } });
-    }, q ? 250 : 0);
-    return () => { alive = false; window.clearTimeout(t); };
-  }, [outcome, q, reload]);
-  const more = async () => {
-    setBusy(true);
-    try {
-      const r = await api.convertHistory({ outcome: outcome || undefined, q: q.trim() || undefined, before: next, limit: 30 });
-      setItems((cur) => [...(cur ?? []), ...r.items]);
-      setNext(r.next);
-    } catch { /* the button stays for another try */ } finally { setBusy(false); }
-  };
-
-  return (
-    <div className={card} style={cardStyle}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[14px] font-bold">History</div>
-          <p className="mt-0.5 text-[11.5px] text-ink-faint">Every conversion and what came of it. Converted files stay listed; the rest for 90 days.</p>
-        </div>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles" aria-label="Search titles" className={`${inp} w-[180px]`} style={inpStyle} />
-      </div>
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {HISTORY_FILTERS.map((f) => <Pill key={f.key || "all"} active={outcome === f.key} onClick={() => setOutcome(f.key)}>{f.label}</Pill>)}
-      </div>
-      <div className="mt-3 flex flex-col">
-        {items === null ? <div className="text-[12px] text-ink-faint">Loading…</div>
-          : items.length === 0 ? <div className="text-[12px] text-ink-faint">Nothing recorded yet{outcome || q ? " that matches" : ""}.</div>
-          : items.map((e) => <HistoryRow key={e.id} e={e} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)}
-            flash={flash} onChanged={(next) => setItems((cur) => (cur ?? []).map((x) => (x.id === next.id ? { ...x, ...next } : x)))} />)}
-      </div>
-      {next && (
-        <button onClick={more} disabled={busy} className="mt-2.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={ghostBtn}>
-          {busy ? "…" : "Load more"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function HistoryRow({ e, open, onToggle, flash, onChanged }: {
-  e: ConvertHistoryEntry; open: boolean; onToggle: () => void; flash: (m: string) => void; onChanged: (e: ConvertHistoryEntry) => void;
-}) {
-  const pct = e.outcome === "done" && e.src_size > 0 && e.out_size > 0 ? Math.round((1 - e.out_size / e.src_size) * 100) : null;
-  const windows = e.ssim_windows ?? [];
-  const track = (d: ConvertTrackDecision) =>
-    [d.type === "audio" ? "Audio" : d.image ? "Image subtitle" : "Subtitle", d.lang || "und", d.title, d.codec, d.channels ? `${d.channels} ch` : "", d.forced ? "forced" : ""]
-      .filter(Boolean).join(" · ");
-  return (
-    <div className="border-t py-1.5 first:border-t-0" style={{ borderColor: "var(--line-soft)" }}>
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 text-left text-[12px]">
-        <span className="w-[86px] flex-none rounded px-1.5 py-0.5 text-center font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">{e.title}</span>
-        {pct !== null ? (
-          <span className="hidden font-mono text-ink-dim sm:inline">
-            {fmtSize(e.src_size)} → {fmtSize(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
-            {e.codec && <span className="ml-1.5 text-[10.5px] text-ink-faint">{e.codec.toUpperCase()}{e.ssim_mean ? ` · SSIM ${e.ssim_mean.toFixed(3)}` : ""}</span>}
-          </span>
-        ) : (
-          <span className="hidden max-w-[45%] truncate text-[11px] text-ink-faint sm:inline" title={e.note}>{e.note}</span>
-        )}
-        <span className="flex-none font-mono text-[10px] text-ink-faint">{fmtWhen(e.finished_at)}</span>
-      </button>
-      {open && (
-        <div className="mt-2 flex flex-col gap-1.5 rounded-lg p-3 text-[11.5px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          {e.note && <div>{e.note}</div>}
-          {e.src_spec && <div><span className={lbl}>Before</span> <span className="font-mono">{e.src_spec} · {fmtSize(e.src_size)}</span></div>}
-          {e.out_spec && <div><span className={lbl}>After</span> <span className="font-mono">{e.out_spec} · {fmtSize(e.out_size)}</span></div>}
-          {e.src_release && <div><span className={lbl}>Release</span> <span className="font-mono">{e.src_release}</span></div>}
-          {(e.codec || e.encoder) && (
-            <div><span className={lbl}>Encode</span> <span className="font-mono">
-              {[e.codec?.toUpperCase(), e.crf ? `CRF ${e.crf}` : "", e.encoder, cropLabel(e.crop),
-                e.encode_secs ? `${fmtEta(e.encode_secs)} encoding` : ""].filter(Boolean).join(" · ")}
-            </span></div>
-          )}
-          {windows.length > 0 && (
-            <div><span className={lbl}>Quality</span> <span className="font-mono">
-              SSIM {e.ssim_mean?.toFixed(4)} average, {e.ssim_min?.toFixed(4)} lowest · scenes {windows.map((w) => w.toFixed(3)).join(" ")}
-            </span></div>
-          )}
-          {(e.dropped_tracks ?? []).length > 0 && (
-            <div><span className={lbl}>Removed</span>
-              {e.dropped_tracks!.map((d) => <div key={`${d.type}-${d.index}`} className="ml-2">{track(d)} <span className="text-ink-faint">— {d.reason}</span></div>)}
-            </div>
-          )}
-          {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid)" }}>{w}</div>)}
-          {e.reclaim_deferred && <div className="text-ink-faint">Releasing the original won't free its space — the download client still holds a hardlinked copy of it.</div>}
-          {holdLine(e) && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span><span className={lbl}>Original</span> {holdLine(e)}</span>
-              <RevertButton e={e} flash={flash} onDone={onChanged} />
-              <ReleaseButton e={e} flash={flash} onDone={onChanged} />
-            </div>
-          )}
-          {e.out_path && <div className="truncate font-mono text-[10.5px] text-ink-faint" title={e.out_path}>{e.out_path}</div>}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function LogsConsole() {
   const [lines, setLines] = useState<{ at: number; level: string; msg: string }[]>([]);

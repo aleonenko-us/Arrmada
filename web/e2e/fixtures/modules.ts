@@ -1,5 +1,5 @@
 import type {
-  Artist, ConvertEncoder, ConvertJob, ConvertLibraryStats, ConvertMediaStats, ConvertSettings, ConvertStatus, ImportRun, InsightsStats, Job,
+  Artist, ConvertEncoder, ConvertHistoryEntry, ConvertJob, ConvertLibraryStats, ConvertMediaStats, ConvertSettings, ConvertStatus, ImportRun, InsightsStats, Job,
   PlexConfig, SubtitleCoverage, SubtitleJob, SubtitleSettings, TautulliConfig, WhisperStatus,
 } from "../../src/lib/api";
 import { NOW } from "./clock";
@@ -34,6 +34,7 @@ export const convertSettings: ConvertSettings = {
 
 export const convertStatus: ConvertStatus = { state: "off", message: "Converting is off", auto: false, watching: false, requests: [], up_next: [], remaining: 0 };
 export const convertJobs: { jobs: ConvertJob[] } = { jobs: [] };
+export const convertHistory: { items: ConvertHistoryEntry[]; next: string } = { items: [], next: "" };
 
 export const subtitleCoverage: SubtitleCoverage = {
   files: 0, covered: 0, missing: 0, movies: { files: 0, covered: 0, missing: 0 }, tv: { files: 0, covered: 0, missing: 0 },

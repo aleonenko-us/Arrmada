@@ -13,19 +13,14 @@ import (
 
 // The conversion ledger (convert_history). The job list on the Overview is in memory and
 // capped, and the activity log is free text, so neither can say afterwards exactly what a
-// conversion did to a file. Every outcome worth remembering gets one row here: what the file
-// was, what it became, how it scored, which tracks went and why. Converted rows are kept for
-// good; everything else is pruned after historyKeepDays.
+// conversion did to a file. Every job's outcome gets a row here: what the file was, what it
+// became, how it scored, which tracks went and why, and where its original is (hold.go).
+// Converted rows are kept for good; everything else is pruned after historyKeepDays.
 //
-// What is recorded:
-//   - a finished conversion;
-//   - a failure that isn't just a full disk (those back off and say so in Problems);
-//   - a file kept as it was because the encode (or its test encode) didn't save enough or
-//     couldn't reach the quality bar;
-//   - any other end to a job whose full encode had started, cancelled included.
-//
-// Skips before any encode (already the target, still seeding, no room yet) are not: they
-// are in Problems, and would only bury the real outcomes.
+// Ends before any encode (already the target, still seeding, no room yet, a full hold) are
+// recorded too, but the same one again for the same file updates its row and counts the
+// repeat (repeats) instead of adding another — a seeding file is looked at twice a day, and
+// a row each time would bury the real outcomes.
 
 // historyKeepDays is how long rows other than finished conversions are kept.
 const historyKeepDays = 90
@@ -182,6 +177,8 @@ type HistoryEntry struct {
 	StartedAt  int64   `json:"started_at"`
 	FinishedAt int64   `json:"finished_at,omitempty"`
 	EncodeSecs float64 `json:"encode_secs,omitempty"`
+	Repeats    int     `json:"repeats,omitempty"` // the same early end, this many times in a row
+	PosterURL  string  `json:"poster_url,omitempty"`
 
 	// The originals hold (hold.go): where the original waits, until when, and what became
 	// of it ("" | held | released | reverted | missing).
@@ -319,7 +316,7 @@ func (h *historyStore) prune(ctx context.Context) {
 const historyCols = `id, item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 	src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 	ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-	reclaim_deferred, started_at, finished_at, encode_secs, hold_path, hold_until, hold_state, released_at, reverted_at`
+	reclaim_deferred, started_at, finished_at, encode_secs, hold_path, hold_until, hold_state, released_at, reverted_at, repeats`
 
 // list returns one page of the ledger, newest first, and the cursor for the next page (""
 // when this was the last). Rows still in progress are left out unless asked for: the
@@ -409,7 +406,7 @@ func scanHistory(sc rowScanner, full bool) (HistoryEntry, error) {
 		&e.SrcPath, &e.SrcRelease, &e.SrcSize, &srcInfo, &e.OutPath, &e.OutSize, &outInfo, &e.Codec, &e.CRF, &e.Encoder,
 		&e.SSIMMean, &e.SSIMMin, &windows, &e.Crop, &kept, &dropped, &warns,
 		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs,
-		&e.HoldPath, &e.HoldUntil, &e.HoldState, &e.ReleasedAt, &e.RevertedAt); err != nil {
+		&e.HoldPath, &e.HoldUntil, &e.HoldState, &e.ReleasedAt, &e.RevertedAt, &e.Repeats); err != nil {
 		return e, err
 	}
 	e.Requested, e.ReclaimDeferred = requested == 1, deferred == 1
@@ -470,12 +467,16 @@ func jsonString(v any) string {
 
 // --- the Service side ---------------------------------------------------------------------
 
-// History returns one page of the conversion ledger.
+// History returns one page of the conversion ledger, with each title's poster.
 func (s *Service) History(ctx context.Context, f HistoryFilter) ([]HistoryEntry, string, error) {
 	if s.history == nil || s.history.db == nil {
 		return []HistoryEntry{}, "", nil
 	}
-	return s.history.list(ctx, f)
+	rows, next, err := s.history.list(ctx, f)
+	if err == nil {
+		s.history.withPosters(ctx, rows)
+	}
+	return rows, next, err
 }
 
 // HistoryEntry returns one ledger row in full.
@@ -483,7 +484,66 @@ func (s *Service) HistoryEntry(ctx context.Context, id int64) (HistoryEntry, err
 	if s.history == nil || s.history.db == nil {
 		return HistoryEntry{}, ErrNoHistory
 	}
-	return s.history.get(ctx, id)
+	e, err := s.history.get(ctx, id)
+	if err == nil {
+		one := []HistoryEntry{e}
+		s.history.withPosters(ctx, one)
+		e = one[0]
+	}
+	return e, err
+}
+
+// withPosters fills each row's poster from the library index (by movie, or by show for an
+// episode) — one query for the page.
+func (h *historyStore) withPosters(ctx context.Context, rows []HistoryEntry) {
+	var movieIDs, seriesIDs []any
+	for _, e := range rows {
+		if e.Kind == "episode" {
+			seriesIDs = append(seriesIDs, e.SeriesID)
+		} else {
+			movieIDs = append(movieIDs, e.MovieID)
+		}
+	}
+	if len(movieIDs)+len(seriesIDs) == 0 {
+		return
+	}
+	in := func(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
+	where := []string{}
+	var args []any
+	if len(movieIDs) > 0 {
+		where = append(where, "(media_type = 'movie' AND movie_id IN ("+in(len(movieIDs))+"))")
+		args = append(args, movieIDs...)
+	}
+	if len(seriesIDs) > 0 {
+		where = append(where, "(media_type = 'episode' AND series_id IN ("+in(len(seriesIDs))+"))")
+		args = append(args, seriesIDs...)
+	}
+	q, err := h.db.QueryContext(ctx, `SELECT media_type, movie_id, series_id, poster_url FROM convert_library
+		WHERE poster_url <> '' AND (`+strings.Join(where, " OR ")+`)`, args...)
+	if err != nil {
+		return
+	}
+	defer q.Close()
+	movie, show := map[int64]string{}, map[int64]string{}
+	for q.Next() {
+		var mt, poster string
+		var mid, sid int64
+		if q.Scan(&mt, &mid, &sid, &poster) != nil {
+			continue
+		}
+		if mt == "episode" {
+			show[sid] = poster
+		} else {
+			movie[mid] = poster
+		}
+	}
+	for i := range rows {
+		if rows[i].Kind == "episode" {
+			rows[i].PosterURL = show[rows[i].SeriesID]
+		} else {
+			rows[i].PosterURL = movie[rows[i].MovieID]
+		}
+	}
 }
 
 // beginHistory writes the in_progress row as a job's full encode starts.
@@ -494,34 +554,51 @@ func (s *Service) beginHistory(job *Job) {
 	rec.historyID = s.history.begin(context.Background(), r)
 }
 
-// ledgerWorthy decides whether a job's end belongs in the ledger (see the top of this file).
-func ledgerWorthy(state JobState, note string, rec *jobRecord) bool {
-	if !rec.encodeStart.IsZero() {
-		return true // the in_progress row must be closed, whatever ended the job
-	}
-	switch state {
-	case StateDone:
-		return true
-	case StateFailed:
-		return !transientFailure(note)
-	case StateSkipped:
-		// Kept as it was on a test encode's evidence: an outcome, not a wait.
-		return rec.skipKind == SkipNotSmaller || rec.skipKind == SkipQualityGate
-	}
-	return false
-}
-
-// recordOutcome writes a finished job's ledger row, when it has one. Called from finish,
-// outside s.mu.
+// recordOutcome writes a finished job's ledger row — every job gets one. An end before any
+// encode that repeats the file's last row (the same wait again) updates that row instead
+// of adding another. Called from finish, outside s.mu.
 func (s *Service) recordOutcome(job *Job, state JobState, note string) {
 	rec := s.record(job)
-	if !ledgerWorthy(state, note, rec) {
-		return
-	}
 	outcome := map[JobState]string{StateDone: OutcomeDone, StateFailed: OutcomeFailed,
 		StateSkipped: OutcomeSkipped, StateCancelled: OutcomeCancelled}[state]
+	if outcome == "" {
+		return
+	}
 	r := s.historyRowFor(job, outcome, note)
+	if rec.encodeStart.IsZero() && state != StateDone {
+		rec.historyID = s.history.repeat(context.Background(), rec.historyID, r)
+		return
+	}
 	rec.historyID = s.history.finish(context.Background(), rec.historyID, r)
+}
+
+// repeat records an end before any encode: when the file's newest row is the same early
+// end, that row is brought up to date and its repeat counted; otherwise a row is added.
+// A job that already has a row (id) closes it as usual.
+func (h *historyStore) repeat(ctx context.Context, id int64, r historyRow) int64 {
+	if h == nil || h.db == nil {
+		return 0
+	}
+	if id > 0 {
+		return h.finish(ctx, id, r)
+	}
+	var last int64
+	var outcome, kind, holdState string
+	var encodeSecs float64
+	err := h.db.QueryRowContext(ctx,
+		`SELECT id, outcome, outcome_kind, encode_secs, hold_state FROM convert_history WHERE item_key = ? ORDER BY id DESC LIMIT 1`,
+		r.key).Scan(&last, &outcome, &kind, &encodeSecs, &holdState)
+	if err == nil && outcome == r.outcome && kind == r.outcomeKind && encodeSecs == 0 && holdState == "" {
+		res, err := h.db.ExecContext(ctx,
+			`UPDATE convert_history SET title = ?, note = ?, requested = ?, started_at = ?, finished_at = ?, repeats = repeats + 1 WHERE id = ?`,
+			r.title, r.note, boolInt(r.requested), r.startedAt, r.finishedAt, last)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				return last
+			}
+		}
+	}
+	return h.insert(ctx, r)
 }
 
 // historyRowFor assembles a row from the job and its record as they stand.
