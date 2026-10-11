@@ -3133,10 +3133,12 @@ export const api = {
     req<ManualImportList<ImportCandidate>>(
       `/api/v1/movies/${id}/manualimport${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     ),
-  manualImport: (id: number, path: string) =>
+  // versionId imports into that track (0 = the default track); absent, the file goes to
+  // whichever track its name's resolution and edition route it to.
+  manualImport: (id: number, path: string, versionId?: number) =>
     req<{ status: string }>(`/api/v1/movies/${id}/manualimport`, {
       method: "POST",
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(versionId === undefined ? { path } : { path, version_id: versionId }),
     }),
   renamePreview: (id: number) =>
     req<{ current: string; proposed: string; matches: boolean }>(`/api/v1/movies/${id}/rename`),
@@ -3144,7 +3146,7 @@ export const api = {
   addVersion: (id: number, body: { label: string; quality_profile: string; edition?: string; monitored?: boolean }) =>
     req<MovieVersion>(`/api/v1/movies/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
   updateVersion: (id: number, vid: number, body: { label: string; quality_profile: string; edition?: string; monitored: boolean }) =>
-    req<{ status: string }>(`/api/v1/movies/${id}/versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
+    req<{ status: string; queued?: boolean; position?: number }>(`/api/v1/movies/${id}/versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteVersion: (id: number, vid: number) =>
     req<void>(`/api/v1/movies/${id}/versions/${vid}`, { method: "DELETE" }),
   deleteVersionFile: (id: number, vid: number) =>

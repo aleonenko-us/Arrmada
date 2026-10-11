@@ -266,9 +266,12 @@ func (s *Service) DeleteVersionFile(ctx context.Context, movieID, versionID int6
 	if versionID == 0 {
 		return s.DeleteFile(ctx, movieID)
 	}
-	v, _, err := s.repo.GetVersion(ctx, versionID)
+	v, owner, err := s.repo.GetVersion(ctx, versionID)
 	if err != nil {
 		return err
+	}
+	if owner != movieID {
+		return ErrNotFound // another movie's track: never delete through this one
 	}
 	if v.FilePath != "" {
 		versions, _ := s.VersionRows(ctx, movieID)
