@@ -9,6 +9,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/recyclebin"
@@ -63,6 +64,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	quota := requests.GlobalLimits(func(key string) string { return a.deps.Settings.Get(ctx, key, "") })
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"search_on_add":           a.deps.Settings.GetBool(ctx, keySearchOnAdd, true),
+		// Search indexers that name no categories of their own in the media type's usual
+		// ones (movies 2000, TV 5000, books 7000/7020, audiobooks 3030, music 3000).
+		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 		"series_monitor_default":  a.seriesMonitorDefault(ctx),
 		"naming_movie_folder":     a.deps.Settings.Get(ctx, keyNamingFolder, library.DefaultMovieFolder),
 		"naming_movie_file":       a.deps.Settings.Get(ctx, keyNamingFile, library.DefaultMovieFile),
@@ -109,6 +113,7 @@ const maxUpgradeBudget = 1000
 // settingsUpdate is a PUT /settings body: a nil field is left as it is.
 type settingsUpdate struct {
 	SearchOnAdd          *bool   `json:"search_on_add"`
+	DefaultCategories    *bool   `json:"indexer_default_categories"`
 	SeriesMonitorDefault *string `json:"series_monitor_default"`
 	NamingMovieFolder    *string `json:"naming_movie_folder"`
 	NamingMovieFile      *string `json:"naming_movie_file"`
@@ -272,6 +277,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SearchOnAdd != nil && !save(a.deps.Settings.SetBool(ctx, keySearchOnAdd, *req.SearchOnAdd)) {
+		return
+	}
+	if req.DefaultCategories != nil && !save(a.deps.Settings.SetBool(ctx, indexer.KeyDefaultCategories, *req.DefaultCategories)) {
 		return
 	}
 	for key, v := range map[string]*int{

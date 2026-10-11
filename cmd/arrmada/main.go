@@ -239,6 +239,9 @@ func main() {
 		bus.Publish("integration.status", map[string]any{"kind": s.Kind, "ref": s.Ref, "state": s.Phase(time.Now())})
 	})
 	indexers.SetStatus(connStatus)
+	indexers.SetDefaultCategories(func(ctx context.Context) bool {
+		return settingsSvc.GetBool(ctx, indexer.KeyDefaultCategories, true)
+	})
 	// Rows synced from Prowlarr before rows remembered their Prowlarr id get it from their
 	// feed address, so they're treated as Prowlarr's (name and address owned by the sync)
 	// before the next sync runs.

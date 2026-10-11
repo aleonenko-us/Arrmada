@@ -66,6 +66,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Other connections", keywords: "plex alerts apprise audiobook server listening apps status connected", section: "connections", anchor: "other-connections" },
   { label: "Plex connection", keywords: "plex server url token connect sign in with plex test", section: "connections", anchor: "plex" },
   { label: "Download clients and indexers", keywords: "qbittorrent prowlarr torrent client indexer", section: "downloads", anchor: "download-links" },
+  { label: "Search categories", keywords: "indexer categories category cat newznab torznab book audiobook music filter usual default", section: "downloads", anchor: "search-categories" },
   { label: "Download disk guard", keywords: "disk full space free pause resume threshold percent drive cache", section: "downloads", anchor: "disk-guard" },
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
   { label: "Upgrades per sweep", keywords: "upgrade limit budget sweep quality profile replace better release grabs at once", section: "downloads", anchor: "upgrade-limit" },

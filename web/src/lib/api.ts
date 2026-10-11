@@ -929,6 +929,8 @@ export interface SubSeriesGroup {
 
 export interface AppSettings {
   search_on_add: boolean;
+  /** Indexers with no categories of their own are searched in the media type's usual ones. */
+  indexer_default_categories: boolean;
   /** The monitoring preset a new series gets: "all" | "future" | "missing" | "existing" | "first_season" | "latest_season" | "none". */
   series_monitor_default: string;
   naming_movie_folder: string;

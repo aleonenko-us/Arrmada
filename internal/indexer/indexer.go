@@ -151,6 +151,20 @@ type SearchQuery struct {
 	IMDBID string
 	TMDBID int
 	TVDBID int
+
+	// Author and BookTitle (a book), Artist and Album (an album) are the same search in
+	// parts. An indexer whose caps say its book-search (music-search) takes them is asked
+	// t=book&author=…&title=… (t=music&artist=…&album=…) instead of a bare q; any other
+	// gets Text as before. Empty means not known.
+	Author    string
+	BookTitle string
+	Artist    string
+	Album     string
+
+	// defaultCats lets an indexer with stored caps and no categories of its own be asked
+	// for this media type's usual categories (defaultCategories). Service.Search sets it
+	// from the indexer_default_categories setting; it's unexported so nothing else can.
+	defaultCats bool
 }
 
 // withoutIDs is the same query as plain text: what an indexer is asked when its id

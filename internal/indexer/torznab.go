@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -222,6 +223,13 @@ const maxSearchPages = 10
 // incomplete id tagging — or that the indexer refuses with its own error document is
 // followed by today's text search, so asking by id can never find less than before.
 func (c *TorznabSearcher) Search(ctx context.Context, idx Indexer, q SearchQuery) ([]Release, error) {
+	// Said once per indexer search, so result counts with and without the default
+	// categories can be compared in the log before relying on them.
+	if c.log != nil && len(q.Categories) == 0 && len(idx.Categories) == 0 {
+		if cats := defaultCategories(idx, q); len(cats) > 0 {
+			c.log.Info("torznab: cat filter applied", "indexer", idx.Name, "media", q.MediaType, "cat", joinInts(cats))
+		}
+	}
 	if name, _ := idParam(idx, q); name != "" {
 		releases, err := c.searchPages(ctx, idx, q)
 		if err == nil && len(releases) > 0 {
@@ -445,21 +453,39 @@ func buildURL(idx Indexer, t string, q SearchQuery) (string, error) {
 		return "", fmt.Errorf("invalid indexer url %q: %w", idx.URL, err)
 	}
 	qs := u.Query()
-	qs.Set("t", searchType(t, q))
+	mode := searchMode(idx, t, q)
+	qs.Set("t", mode)
 	if idx.APIKey != "" {
 		qs.Set("apikey", idx.APIKey)
 	}
 	// An id the indexer takes replaces the text: q alongside it would narrow the id match
 	// to releases that also carry the text, which is exactly what a foreign or re-titled
-	// release doesn't.
-	if name, value := idParam(idx, q); t == "search" && name != "" {
-		qs.Set(name, value)
-	} else if text := torznabText(q); text != "" {
-		qs.Set("q", text)
-	}
+	// release doesn't. A book or music search says the same thing in its own fields.
 	cats := q.Categories
 	if len(cats) == 0 {
 		cats = idx.Categories
+	}
+	if len(cats) == 0 && t == "search" {
+		cats = defaultCategories(idx, q)
+	}
+	text := torznabText(q)
+	if slices.Contains(cats, catAudiobook) {
+		// The audiobook category already says it; the word would only drop the releases
+		// in it whose names don't happen to carry "audiobook".
+		text = q.Text
+	}
+	name, value := idParam(idx, q)
+	switch {
+	case t == "search" && name != "":
+		qs.Set(name, value)
+	case mode == "book":
+		setNonEmpty(qs, "author", q.Author)
+		setNonEmpty(qs, "title", q.BookTitle)
+	case mode == "music":
+		setNonEmpty(qs, "artist", q.Artist)
+		setNonEmpty(qs, "album", q.Album)
+	default:
+		setNonEmpty(qs, "q", text)
 	}
 	if len(cats) > 0 {
 		qs.Set("cat", joinInts(cats))
@@ -621,6 +647,109 @@ func idParam(idx Indexer, q SearchQuery) (name, value string) {
 		}
 	}
 	return "", ""
+}
+
+// setNonEmpty sets a URL parameter only when there's something to say.
+func setNonEmpty(qs url.Values, name, value string) {
+	if value != "" {
+		qs.Set(name, value)
+	}
+}
+
+// searchMode is the Torznab function a query uses on this indexer: searchType's, except
+// that a book or music search whose parts the indexer's stored caps say its book-search
+// (music-search) takes uses t=book (t=music). Every part the query has must be one the
+// mode lists — an author dropped because the indexer can't take it would widen the
+// search to every book of that title — so anything less stays today's t=search&q=….
+func searchMode(idx Indexer, base string, q SearchQuery) string {
+	t := searchType(base, q)
+	if base != "search" {
+		return t
+	}
+	caps, ok := idx.StoredCaps()
+	if !ok {
+		return t
+	}
+	takesAll := func(m SearchMode, parts map[string]string) bool {
+		some := false
+		for param, v := range parts {
+			if v == "" {
+				continue
+			}
+			if !m.Takes(param) {
+				return false
+			}
+			some = true
+		}
+		return some
+	}
+	switch q.MediaType {
+	case MediaBook:
+		if takesAll(caps.Book, map[string]string{"author": q.Author, "title": q.BookTitle}) {
+			return "book"
+		}
+	case MediaMusic:
+		parts := map[string]string{"artist": q.Artist, "album": q.Album}
+		// Older indexers call it audio-search; the function is t=music either way.
+		if takesAll(caps.Music, parts) || (!caps.Music.Available && takesAll(caps.Audio, parts)) {
+			return "music"
+		}
+	}
+	return t
+}
+
+// Default Newznab categories per kind of search (defaultCategories).
+const (
+	catMovies    = 2000
+	catAudio     = 3000
+	catAudiobook = 3030
+	catTV        = 5000
+	catBooks     = 7000
+	catEbook     = 7020
+)
+
+// defaultCategories are the categories a search asks an indexer for when neither the
+// query nor the indexer names any — a Prowlarr-synced row has none, so a book search went
+// to every category and could come back with films. Only for an indexer whose stored caps
+// list categories, only those it lists (a category it doesn't have would match nothing),
+// and only while the indexer_default_categories setting is on. Nothing in common, no caps,
+// or the setting off is no cat at all: today's URL.
+func defaultCategories(idx Indexer, q SearchQuery) []int {
+	if !q.defaultCats {
+		return nil
+	}
+	caps, ok := idx.StoredCaps()
+	if !ok || len(caps.Categories) == 0 {
+		return nil
+	}
+	var want []int
+	switch q.MediaType {
+	case MediaMovie:
+		want = []int{catMovies}
+	case MediaSeries:
+		want = []int{catTV}
+	case MediaMusic:
+		want = []int{catAudio}
+	case MediaBook:
+		switch q.BookEdition {
+		case "ebook":
+			want = []int{catBooks, catEbook}
+		case "audiobook":
+			want = []int{catAudiobook}
+		default:
+			want = []int{catBooks, catEbook, catAudiobook}
+		}
+	}
+	var out []int
+	for _, c := range want {
+		for _, have := range caps.Categories {
+			if have == c {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // searchType maps a query to the right Torznab endpoint. The generic "search" works

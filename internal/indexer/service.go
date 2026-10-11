@@ -45,7 +45,18 @@ type Service struct {
 	// read-and-write: the hourly sync and a Sync now landing together would otherwise
 	// both see a new upstream indexer as missing and add it twice.
 	prowlarrMu sync.Mutex
+	// defaultCats reads the indexer_default_categories setting: whether an indexer with
+	// stored caps and no categories of its own is searched in the media type's usual
+	// categories. nil = on, the setting's default.
+	defaultCats func(ctx context.Context) bool
 }
+
+// KeyDefaultCategories is the setting that turns the default search categories off
+// ("false"); unset is on.
+const KeyDefaultCategories = "indexer_default_categories"
+
+// SetDefaultCategories wires the indexer_default_categories setting (see defaultCats).
+func (s *Service) SetDefaultCategories(fn func(ctx context.Context) bool) { s.defaultCats = fn }
 
 // SetUsenetAvailable wires whether a usenet download client exists. Arrmada has none
 // today; wire it from the download service if a usenet client kind is ever added.
@@ -673,6 +684,9 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, erro
 	// finds nothing until it's folded ("Pokemon Heroes"). Done here so every caller —
 	// movies, series, books — benefits.
 	q.Text = parser.FoldAccents(q.Text)
+	q.Author, q.BookTitle = parser.FoldAccents(q.Author), parser.FoldAccents(q.BookTitle)
+	q.Artist, q.Album = parser.FoldAccents(q.Artist), parser.FoldAccents(q.Album)
+	q.defaultCats = s.defaultCats == nil || s.defaultCats(ctx)
 
 	indexers, err := s.repo.ListEnabled(ctx)
 	if err != nil {
