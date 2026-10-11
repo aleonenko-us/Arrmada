@@ -39,8 +39,10 @@ func webPhrase(pattern, reason string) bannedPhrase {
 
 var bannedCopy = []bannedPhrase{
 	// COPY-02: the TMDB key is entered in the UI and works at once.
-	webPhrase(`ARRMADA_TMDB_API_KEY`, "keys are entered in Settings → System → API keys and take effect without a restart — use <MetadataMissing/>"),
-	phrase(`Settings → API keys`, "API keys live under Settings → System → API keys (link LINKS.apiKeys)"),
+	webPhrase(`ARRMADA_TMDB_API_KEY`, "keys are entered in Settings → Connections and take effect without a restart — use <MetadataMissing/>"),
+	phrase(`Settings → API keys`, "API keys live under Settings → Connections (link LINKS.apiKeys)"),
+	// CFG-15: the API keys moved from System into Settings → Connections with every other integration.
+	phrase(`Settings → System → API keys`, "API keys live under Settings → Connections (link LINKS.apiKeys)"),
 	// COPY-03 / COPY-05 / COPY-08: no "soon" on shipped work, no roadmap promises.
 	phrase(`coming soon`, "say what the feature does today; Insights tabs are built — show a Connect Plex state instead"),
 	phrase(`\(soon\)`, "describe what ships; if it isn't built, leave the control out"),
@@ -208,6 +210,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 	samples := []string{
 		`set ARRMADA_TMDB_API_KEY and restart`,
 		`add one in Settings → API keys`,
+		`add its URL in Settings → System → API keys`,
 		`Coming soon`,
 		`or (soon) AI transcription`,
 		`stripped (once stripping ships)`,
@@ -263,7 +266,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`Coming soon — copy-ok: quoting the old text on purpose`,
 		`subtitles as soon as it imports`,
 		`Activity → Wanted`,
-		`Settings → System → API keys`,
+		`Settings → Connections`,
 		`Settings → Downloads → Recycle bin`,
 		`/settings/system#api-keys`,
 		"flash(`${selected.size} ${mon ? \"monitored\" : \"unmonitored\"}.`);",

@@ -24,7 +24,7 @@ func TestTorrentLeechFlareSolverrErrors(t *testing.T) {
 	}
 
 	msg := errNoFlareSolverr.Error()
-	if !strings.Contains(msg, "FlareSolverr isn't set up") || !strings.Contains(msg, "Settings → System → API keys") {
+	if !strings.Contains(msg, "FlareSolverr isn't set up") || !strings.Contains(msg, "Settings → Connections") {
 		t.Fatalf("not-configured text = %q", msg)
 	}
 	// A client with no URL is "not configured", just like none at all.

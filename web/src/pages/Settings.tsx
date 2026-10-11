@@ -14,11 +14,13 @@ import { SystemSettings } from "./settings/SystemSettings";
 import { StatusSection } from "./settings/Status";
 import { AlertsSettings } from "./settings/AlertsSettings";
 import { PlexSettings } from "./settings/PlexSettings";
+import { ConnectionsSettings } from "./settings/Connections";
 
 // What each section renders; sections.ts says who sees it and where its cards are.
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   library: LibrarySettings,
   media: NamingSettings,
+  connections: ConnectionsSettings,
   downloads: DownloadsSettings,
   alerts: AlertsSettings,
   plex: PlexSettings,

@@ -49,7 +49,7 @@ func DownloadClientsCheck(states func(ctx context.Context) (configured int, st [
 				if c.OK {
 					continue
 				}
-				f := Finding{Key: fmt.Sprintf("downloads.client.%d", c.ID), Fix: FixDownloadClients}
+				f := Finding{Key: fmt.Sprintf("downloads.client.%d", c.ID), Fix: ConnectionFix(fmt.Sprintf("download_client-%d", c.ID), "Check "+c.Name)}
 				if down == len(st) {
 					// Nothing else can take the downloads, so nothing downloads at all.
 					f.Level = LevelError

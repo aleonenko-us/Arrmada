@@ -1,7 +1,8 @@
 import type {
-  ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
+  APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
   FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
+import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
 
 const poster = (n: number) => `https://image.tmdb.org/t/p/w500/e2e-lib-${n}.jpg`;
@@ -274,4 +275,60 @@ export const blocklist: { items: BlocklistRow[]; total: number } = {
     { id: 1, type: "movie", item_id: 1, item_title: "Fixture Movie", title: "Fixture.Movie.2020.1080p.WEB-DL-GRP", indexer: "Fixture Indexer", reason: "manually blocklisted", created_at: "2026-09-30 08:00:00" },
   ],
   total: 2,
+};
+
+// A connection's Test: it answers, and its card comes back working.
+export function connectionTest(kind: string, ref: string) {
+  const item = connections.sections.flatMap((s) => s.items).find((i) => i.kind === kind && i.ref === ref);
+  if (!item) return { message: "no such connection" };
+  return {
+    ok: true, detail: "Connected",
+    item: { ...item, state: "ok", last_error: undefined, failing_since: undefined, last_ok_at: new Date(NOW).toISOString(), checked_at: new Date(NOW).toISOString() },
+  };
+}
+
+// The key statuses an admin's Connections page edits inside the metadata cards.
+export const apiKeys: { keys: APIKeyStatus[] } = {
+  keys: [
+    { id: "tmdb", label: "TMDB", purpose: "Movie and TV metadata, artwork, and discovery. Required.", help_url: "https://www.themoviedb.org/settings/api", steps: "Use the v3 key.", secret: true, testable: true, tests_candidate: true, configured: true, source: "settings", hint: "…9e14", env_set: false },
+    { id: "tvdb", label: "TheTVDB", purpose: "Anime episode numbering. Optional.", help_url: "https://www.thetvdb.com/dashboard/account/apikey", steps: "Generate a v4 API key.", secret: true, testable: true, tests_candidate: true, configured: false, source: "", env_set: false },
+    { id: "flaresolverr", label: "FlareSolverr URL", purpose: "Gets TorrentLeech, 1337x and TheXEM past Cloudflare.", help_url: "https://github.com/FlareSolverr/FlareSolverr", steps: "The bundled container answers at http://arrmada-flaresolverr:8191.", secret: false, testable: true, configured: true, source: "env", hint: "http://arrmada-flaresolverr:8191", env_set: true, env_hint: "http://arrmada-flaresolverr:8191" },
+  ],
+};
+
+// Settings → Connections: one of each card the page draws differently (working, failing,
+// not set up, edited on another page).
+export const connections: { sections: ConnectionSectionData[] } = {
+  sections: [
+    {
+      id: "search", title: "Search", items: [
+        { kind: "prowlarr", ref: "default", card: "prowlarr", name: "Prowlarr", subtitle: "http://arrmada-prowlarr:9696", configured: false, enabled: false, state: "unknown", testable: false, detail: "Not synced yet. Sync once to pull its indexers in." },
+        { kind: "flaresolverr", ref: "default", card: "flaresolverr", name: "FlareSolverr", subtitle: "http://arrmada-flaresolverr:8191", configured: true, enabled: true, state: "ok", source: "env", testable: true, last_ok_at: new Date(NOW - 5 * 60_000).toISOString(), detail: "No enabled indexer needs it right now" },
+        {
+          kind: "indexer", ref: "1", card: "indexer-1", name: "Fixture Indexer", type: "torznab", subtitle: "http://indexer.invalid", configured: true, enabled: true, state: "ok", testable: true,
+          last_ok_at: new Date(NOW - 3 * 60_000).toISOString(), counts: { queries_24h: 214, failures_24h: 3, grabs_24h: 2 },
+        },
+      ],
+    },
+    {
+      id: "downloads", title: "Downloads", items: [
+        {
+          kind: "download_client", ref: "1", card: "download_client-1", name: "qBittorrent", type: "qbittorrent", subtitle: "http://qbittorrent:8080", configured: true, enabled: true, state: "failing", testable: true,
+          last_error: "connection refused", last_error_at: new Date(NOW - 60_000).toISOString(), failing_since: new Date(NOW - 10 * 60_000).toISOString(), detail: "Comes with Arrmada",
+        },
+      ],
+    },
+    {
+      id: "metadata", title: "Metadata", items: [
+        { kind: "apikey", ref: "tmdb", card: "apikey-tmdb", name: "TMDB", subtitle: "Movie and TV metadata, artwork, and discovery. Required.", configured: true, enabled: true, state: "ok", source: "settings", testable: true, last_ok_at: new Date(NOW - 86_400_000).toISOString() },
+        { kind: "apikey", ref: "tvdb", card: "apikey-tvdb", name: "TheTVDB", subtitle: "Anime episode numbering. Optional.", configured: false, enabled: false, state: "unknown", testable: false },
+      ],
+    },
+    {
+      id: "other", title: "Plex, alerts and apps", items: [
+        { kind: "plex", ref: "default", card: "plex", name: "Plex", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/plex#plex-connection" },
+        { kind: "notifications", ref: "default", card: "notifications", name: "Alerts", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/alerts", detail: "No alert connections yet" },
+      ],
+    },
+  ],
 };

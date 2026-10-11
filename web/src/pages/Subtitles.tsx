@@ -797,8 +797,8 @@ function SettingsTab({ settings, onPatch, flash }: { settings: SubtitleSettings;
                   ? `Downloading enabled · ${settings.quota_remaining} downloads left today.`
                   : "Downloading enabled."
               : settings.provider_ready
-                ? "Searching works; add your OpenSubtitles username and password under Settings → System → API keys to download."
-                : "Add an OpenSubtitles API key (free) under Settings → System → API keys, plus your account username and password to download."}
+                ? "Searching works; add your OpenSubtitles username and password under Settings → Connections to download."
+                : "Add an OpenSubtitles API key (free) under Settings → Connections, plus your account username and password to download."}
           </span>
         </div>
       </div>

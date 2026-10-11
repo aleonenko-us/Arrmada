@@ -13,7 +13,7 @@ export function DownloadsSettings() {
   const { s, patch } = useLoadedSettings();
   return (
     <div className="flex flex-col gap-6">
-      <Section id="download-links" title="Download clients and indexers" subtitle="Each has its own page: where downloads are sent, and where releases are searched for.">
+      <Section id="download-links" title="Download clients and indexers" subtitle="Both live on Settings → Connections, with their live status: where downloads are sent, and where releases are searched for.">
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-semibold">
           <Link to={LINKS.downloadClients} style={{ color: "var(--accent)" }}>Download clients →</Link>
           <Link to={LINKS.indexers} style={{ color: "var(--accent)" }}>Indexers →</Link>

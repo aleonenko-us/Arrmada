@@ -390,16 +390,6 @@ export interface ResumeResult {
   held_by_guard?: number;
 }
 
-/** FlareSolverr as the Indexers page shows it; error is the exact failure. */
-export interface FlareSolverrStatus {
-  configured: boolean;
-  ok: boolean;
-  url?: string;
-  version?: string;
-  error?: string;
-  checked_at: string;
-}
-
 export interface APIKeyStatus {
   id: string;
   label: string;
@@ -2245,7 +2235,6 @@ export const api = {
   /** Tests settings without saving them; with id, a blank key or password means the saved one. */
   testIndexerSettings: (body: NewIndexer & { id?: number }) =>
     req<IndexerTestResult>("/api/v1/indexers/test", { method: "POST", body: JSON.stringify(body) }),
-  flareSolverrStatus: () => req<FlareSolverrStatus>("/api/v1/flaresolverr/status"),
   prowlarrInfo: () => req<ProwlarrInfo>("/api/v1/indexers/prowlarr"),
   saveProwlarrUIURL: (ui_url: string) =>
     req<{ ui_url: string }>("/api/v1/indexers/prowlarr", { method: "PUT", body: JSON.stringify({ ui_url }) }),

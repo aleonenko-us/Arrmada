@@ -3,6 +3,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/diskspace"
@@ -31,49 +32,94 @@ func IndexersCheck(enabled func(ctx context.Context) (int, error)) Check {
 	}
 }
 
-// PausedIndexer is an enabled indexer that background searches are leaving alone after
-// repeated failures (see internal/connstatus).
-type PausedIndexer struct {
-	ID        int64
-	Name      string
-	Failures  int
-	Until     time.Time
-	LastError string // already redacted
+// TroubledIndexer is an enabled indexer that isn't answering, from the integration status
+// tracker (see internal/connstatus). Until is set while background searches are leaving it
+// alone after repeated failures; FailingSince is when its current run of failures began.
+type TroubledIndexer struct {
+	ID           int64
+	Name         string
+	Failures     int
+	FailingSince time.Time
+	Until        time.Time // zero when it isn't paused
+	LastError    string    // already redacted
 }
 
-// IndexerStatusCheck names each enabled indexer that is backing off after repeated
-// failures, with its error and when it is next tried. One paused among working ones is a
-// warning; every enabled one paused is an error, because then nothing is searched
-// automatically at all. A single failure isn't reported: a public tracker that times out
-// now and then is still working. states returns how many indexers are enabled and which
-// of them are paused; an error says nothing.
-func IndexerStatusCheck(states func(ctx context.Context) (enabled int, paused []PausedIndexer, err error)) Check {
+// indexerFailingFor is how long an indexer must keep failing before it's worth a line when
+// it isn't paused: a public tracker that times out now and then is still working, and the
+// backoff ladder pauses a properly broken one well before an hour is up.
+const indexerFailingFor = time.Hour
+
+// indexerLinesMax is how many indexers get a line each. Past it they collapse into one, so
+// a Prowlarr outage (every synced row failing at once) isn't a wall of warnings.
+const indexerLinesMax = 3
+
+// IndexerStatusCheck names each enabled indexer that is paused after repeated failures, or
+// has been failing for over an hour, with its error and when it's next tried, and links to
+// its card. More than three collapse into one line. A single failure isn't reported, and
+// neither is a row an outage line already covers (every indexer failing, Prowlarr down —
+// IndexerOutageCheck): the caller leaves those out. states returns how many indexers are
+// enabled and which of them are failing; an error says nothing.
+func IndexerStatusCheck(states func(ctx context.Context) (enabled int, failing []TroubledIndexer, err error)) Check {
 	return indexerStatusCheck(states, time.Now)
 }
 
-func indexerStatusCheck(states func(ctx context.Context) (int, []PausedIndexer, error), now func() time.Time) Check {
+func indexerStatusCheck(states func(ctx context.Context) (int, []TroubledIndexer, error), now func() time.Time) Check {
 	return Check{
 		Key: "indexers.status", Name: "Indexer status", Category: CategoryIndexers,
 		Run: func(ctx context.Context) []Finding {
-			enabled, paused, err := states(ctx)
-			if err != nil || len(paused) == 0 {
+			_, failing, err := states(ctx)
+			if err != nil {
 				return nil
 			}
-			level, tail := LevelWarning, "automatic searches skip it until then"
-			if len(paused) >= enabled {
-				level, tail = LevelError, "every indexer is paused, so nothing is being searched automatically"
-			}
-			out := make([]Finding, 0, len(paused))
-			for _, p := range paused {
-				msg := fmt.Sprintf("%s has failed %d times in a row and is paused until %s — %s", p.Name, p.Failures, clock(p.Until, now()), tail)
-				if p.LastError != "" {
-					msg += ". Last error: " + p.LastError
+			at := now()
+			var bad []TroubledIndexer
+			for _, t := range failing {
+				if at.Before(t.Until) || (!t.FailingSince.IsZero() && at.Sub(t.FailingSince) >= indexerFailingFor) {
+					bad = append(bad, t)
 				}
-				out = append(out, Finding{Key: fmt.Sprintf("indexers.paused.%d", p.ID), Level: level, Fix: FixIndexerStatus, Message: msg})
+			}
+			switch {
+			case len(bad) == 0:
+				return nil
+			case len(bad) > indexerLinesMax:
+				return []Finding{{
+					Key: "indexers.failing", Level: LevelWarning, Fix: FixIndexerStatus,
+					Message: fmt.Sprintf("%d indexers are failing: %s. Automatic searches skip the paused ones until their next try.", len(bad), indexerNames(bad)),
+				}}
+			}
+			out := make([]Finding, 0, len(bad))
+			for _, t := range bad {
+				key := fmt.Sprintf("indexers.failing.%d", t.ID)
+				msg := fmt.Sprintf("%s has been failing since %s", t.Name, clock(t.FailingSince, at))
+				if at.Before(t.Until) {
+					key = fmt.Sprintf("indexers.paused.%d", t.ID)
+					msg = fmt.Sprintf("%s has failed %d times in a row and is paused until %s — automatic searches skip it until then", t.Name, t.Failures, clock(t.Until, at))
+				}
+				if t.LastError != "" {
+					msg += ". Last error: " + t.LastError
+				}
+				out = append(out, Finding{Key: key, Level: LevelWarning, Message: msg, Fix: ConnectionFix(fmt.Sprintf("indexer-%d", t.ID), "Check "+t.Name)})
 			}
 			return out
 		},
 	}
+}
+
+// indexerNames lists the first few names: "TorrentLeech, 1337x, EZTV and 2 more".
+func indexerNames(ts []TroubledIndexer) string {
+	const show = 3
+	names := make([]string, 0, show)
+	for i, t := range ts {
+		if i == show {
+			break
+		}
+		names = append(names, t.Name)
+	}
+	list := strings.Join(names, ", ")
+	if n := len(ts) - len(names); n > 0 {
+		list += fmt.Sprintf(" and %d more", n)
+	}
+	return list
 }
 
 // LibraryState is what the library-folders check judges: the folders in use (only the

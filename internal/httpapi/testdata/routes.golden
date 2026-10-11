@@ -71,6 +71,7 @@ GET /api/v1/books/{id}/manualimport staff -
 GET /api/v1/books/{id}/releases staff -
 GET /api/v1/books/{id}/series staff -
 GET /api/v1/calendar user -
+GET /api/v1/connections staff -
 GET /api/v1/convert/blocklist staff -
 GET /api/v1/convert/compare staff -
 GET /api/v1/convert/compare/files/{name} staff -
@@ -259,6 +260,8 @@ POST /api/v1/books/{id}/rematch staff -
 POST /api/v1/books/{id}/rename staff -
 POST /api/v1/books/{id}/search staff -
 POST /api/v1/books/{id}/series/add-missing staff -
+POST /api/v1/connections/apikey/{ref}/test admin -
+POST /api/v1/connections/{kind}/{ref}/test staff -
 POST /api/v1/convert/blocklist/clear staff -
 POST /api/v1/convert/compare staff -
 POST /api/v1/convert/jobs/{id}/cancel staff -

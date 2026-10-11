@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "connections" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -12,10 +12,13 @@ export interface SettingsSection {
 }
 
 // Rail order. The names match the paths copy already uses ("Settings → Library",
-// "Settings → Downloads", "Settings → System → API keys", "Settings → Users").
+// "Settings → Downloads", "Settings → Connections", "Settings → Users").
 export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
+  // Every integration with its live status. Managers run the indexers and download clients
+  // day to day; the metadata keys on it are read-only for them.
+  { id: "connections", label: "Connections", adminOnly: false },
   { id: "downloads", label: "Downloads", adminOnly: true },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
@@ -53,6 +56,9 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },
   { label: "Metadata", keywords: "nfo movie.nfo artwork poster fanart kodi plex jellyfin emby sidecar", section: "media", anchor: "metadata" },
+  { label: "Indexers and Prowlarr", keywords: "indexer indexers tracker trackers torznab prowlarr sync torrentleech 1337x myanonamouse flaresolverr cloudflare search status test", section: "connections", anchor: "search" },
+  { label: "Download clients", keywords: "qbittorrent torrent client clients download order bundled status test", section: "connections", anchor: "download-clients" },
+  { label: "Other connections", keywords: "plex alerts apprise audiobook server listening apps status connected", section: "connections", anchor: "other-connections" },
   { label: "Download clients and indexers", keywords: "qbittorrent prowlarr torrent client indexer", section: "downloads", anchor: "download-links" },
   { label: "Download disk guard", keywords: "disk full space free pause resume threshold percent drive cache", section: "downloads", anchor: "disk-guard" },
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
@@ -67,8 +73,8 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
-  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials", section: "system", anchor: "api-keys" },
-  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "system", anchor: "discovery-region" },
+  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
+  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
@@ -101,13 +107,15 @@ export function sectionFromPath(pathname: string): string {
 
 // settingsRedirect says where a /settings URL should go instead, or null when it already
 // names a section this viewer can open. A card anchor wins over ?tab= (it's the more
-// specific of the two); a section this viewer can't open falls back to the default, like
-// an unknown ?tab= used to. ?tab= is dropped; other query params and the #anchor are kept.
+// specific of the two), and over the section in the path when the card has moved to
+// another section (/settings/system#api-keys → /settings/connections#api-keys); a section
+// this viewer can't open falls back to the default, like an unknown ?tab= used to. ?tab=
+// is dropped; other query params and the #anchor are kept.
 export function settingsRedirect(pathname: string, search: string, hash: string, visible: readonly string[]): string | null {
   const current = sectionFromPath(pathname);
-  if (current && visible.includes(current)) return null;
-  const params = new URLSearchParams(search);
   const fromAnchor = ANCHOR_SECTION[hash.replace(/^#/, "")];
+  if (current && visible.includes(current) && (!fromAnchor || fromAnchor === current || !visible.includes(fromAnchor))) return null;
+  const params = new URLSearchParams(search);
   const fromTab = TAB_SECTION[params.get("tab") ?? ""];
   const target = [fromAnchor, fromTab].find((s) => s && visible.includes(s)) ?? DEFAULT_SECTION;
   params.delete("tab");

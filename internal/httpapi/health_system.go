@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
@@ -67,9 +68,9 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			}
 			return n, err
 		}))
-		// Indexers backing off after repeated failures, from the integration status
-		// tracker (the same state as the dots on the Indexers page).
-		reg.Register(health.IndexerStatusCheck(func(ctx context.Context) (int, []health.PausedIndexer, error) {
+		// Indexers that keep failing, from the integration status tracker (the same state
+		// as the dots on their cards). Nothing here asks a tracker anything.
+		reg.Register(health.IndexerStatusCheck(func(ctx context.Context) (int, []health.TroubledIndexer, error) {
 			ix, err := a.deps.Indexers.List(ctx)
 			if err != nil {
 				return 0, nil, err
@@ -80,18 +81,19 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			states, _ := a.indexerStates(ctx)
 			outage := health.FindIndexerOutage(states, now)
 			enabled := 0
-			var paused []health.PausedIndexer
+			var failing []health.TroubledIndexer
 			for _, i := range ix {
 				if !a.deps.Indexers.Searched(i) {
 					continue
 				}
 				enabled++
 				st, _, ok := a.deps.Indexers.Status(i.ID)
-				if ok && now.Before(st.BackoffUntil) && !outage.Covers(i.ID) {
-					paused = append(paused, health.PausedIndexer{ID: i.ID, Name: i.Name, Failures: st.ConsecutiveFailures, Until: st.BackoffUntil, LastError: st.LastError})
+				if ok && st.ConsecutiveFailures > 0 && !outage.Covers(i.ID) {
+					failing = append(failing, health.TroubledIndexer{ID: i.ID, Name: i.Name, Failures: st.ConsecutiveFailures,
+						FailingSince: st.FailingSince, Until: st.BackoffUntil, LastError: st.LastError})
 				}
 			}
-			return enabled, paused, nil
+			return enabled, failing, nil
 		}))
 		// One error when every indexer is failing, and one line for Prowlarr being down
 		// (its trackers failing together, or its hourly sync failing) instead of twelve.
@@ -103,7 +105,14 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 		// container is the one live call these checks make; it's capped at 3 seconds.
 		reg.Register(health.FlareSolverrCheck(a.flareSolverrDependents,
 			a.deps.FlareSolverr.Configured,
-			func(ctx context.Context) error { _, err := a.deps.FlareSolverr.Ping(ctx); return err }))
+			func(ctx context.Context) error {
+				// Its error goes into a staff-visible line; a URL saved as user:pass@host
+				// would otherwise come back in it.
+				if _, err := a.deps.FlareSolverr.Ping(ctx); err != nil {
+					return errors.New(connstatus.Redact(err.Error()))
+				}
+				return nil
+			}))
 	}
 
 	if a.deps.Downloads != nil {
@@ -136,7 +145,16 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 
 	if v, ok := a.deps.Discovery.(tmdbValidator); ok && a.deps.APIKeys != nil {
 		reg.Register(health.TMDBCheck(a.deps.APIKeys.Func("tmdb"), func(ctx context.Context) error {
-			return tmdbValidate(ctx, v)
+			err := tmdbValidate(ctx, v)
+			// Its answer is the TMDB card's last check on Settings → Connections too.
+			if ctx.Err() == nil && !errors.Is(err, health.ErrKeyMissing) {
+				rec := err
+				if errors.Is(err, health.ErrKeyRejected) {
+					rec = errors.New("TMDB rejected the key")
+				}
+				a.deps.ConnStatus.Record(connKindAPIKey, "tmdb", connstatus.Outcome{Err: rec, Name: "TMDB"})
+			}
+			return err
 		}))
 	}
 
