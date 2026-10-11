@@ -11,7 +11,7 @@ import { Button, ConfirmDialog, StatusChip } from "../../ui";
 import { scrollDelta } from "../../ui/Tabs";
 import { EpisodeCard, type EpisodeDialog } from "./EpisodeCard";
 import type { Flash } from "./HeroActions";
-import { latestFor, seasonCounts, seasonName, seasonScope, sxe } from "./util";
+import { aired, latestFor, seasonCounts, seasonName, seasonScope, sxe } from "./util";
 
 // Seasons this long render in pages, so a 1000-episode anime opens without lag.
 export const LONG_SEASON = 100;
@@ -248,7 +248,9 @@ function BulkBar({ series, season, picked, setPicked, onDone, onSearch, onChange
   const eps = (season.episodes ?? []).filter((e) => picked.has(e.id));
   const n = eps.length;
   const all = (season.episodes ?? []).length;
-  const tooMany = n > MAX_BULK_SEARCH;
+  // Only aired episodes without a file can be searched for; the rest of the pick is left out.
+  const searchable = eps.filter((e) => !e.has_file && aired(e));
+  const tooMany = searchable.length > MAX_BULK_SEARCH;
   const words = `${n} episode${n === 1 ? "" : "s"}`;
   const act = async (key: NonNullable<typeof busy>, fn: () => Promise<void>) => {
     setBusy(key);
@@ -261,9 +263,9 @@ function BulkBar({ series, season, picked, setPicked, onDone, onSearch, onChange
     onDone();
   });
   const searchPicked = () => act("search", async () => {
-    const r = await api.searchSeriesEpisodes(series.id, eps.map((e) => ({ season: e.season_number, episode: e.episode_number })));
+    const r = await api.searchSeriesEpisodes(series.id, searchable.map((e) => ({ season: e.season_number, episode: e.episode_number })));
     onSearch(r.job_id);
-    flash(`Searching for ${words}…`);
+    flash(`Searching for ${searchable.length} episode${searchable.length === 1 ? "" : "s"}…`);
     onDone();
   });
   return (
@@ -281,10 +283,10 @@ function BulkBar({ series, season, picked, setPicked, onDone, onSearch, onChange
         size="sm"
         variant="primary"
         onClick={searchPicked}
-        disabled={n === 0 || tooMany || busy !== null}
+        disabled={searchable.length === 0 || tooMany || busy !== null}
         busy={busy === "search"}
         busyLabel="Starting…"
-        title={tooMany ? `Pick at most ${MAX_BULK_SEARCH} episodes to search at once` : "One search for exactly these episodes; ones already here are skipped"}
+        title={tooMany ? `Pick at most ${MAX_BULK_SEARCH} episodes to search at once` : searchable.length === 0 ? "None of these is missing — there is nothing to search for" : "One search for exactly these episodes; ones already here are left out"}
       >
         Search
       </Button>
