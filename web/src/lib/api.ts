@@ -2481,8 +2481,9 @@ export const api = {
   queue: () => req<{ items: QueueItem[] }>("/api/v1/queue").then((r) => r.items),
 
   // A grab names the release by the token its search handed out; the download link
-  // itself never leaves the server. movie_id must be the movie the search was for.
-  grab: (body: { token: string; movie_id: number }) =>
+  // itself never leaves the server. movie_id must be the movie the search was for, and
+  // version_id (a movie track; 0/absent = the default track) the track it was for.
+  grab: (body: { token: string; movie_id: number; version_id?: number }) =>
     req<{ status: string; title: string }>("/api/v1/grab", {
       method: "POST",
       body: JSON.stringify(body),
@@ -2661,8 +2662,8 @@ export const api = {
     req<Movie>("/api/v1/movies", { method: "POST", body: JSON.stringify(body) }),
   previewTorrent: (torrent: string) =>
     req<TorrentPreview>("/api/v1/grab/preview", { method: "POST", body: JSON.stringify({ torrent }) }),
-  grabMovieTorrent: (id: number, torrent: string, filename: string, title: string) =>
-    req<{ status: string }>(`/api/v1/movies/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title }) }),
+  grabMovieTorrent: (id: number, torrent: string, filename: string, title: string, versionId = 0) =>
+    req<{ status: string }>(`/api/v1/movies/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title, version_id: versionId }) }),
   grabSeriesTorrent: (id: number, torrent: string, filename: string, title: string) =>
     req<{ status: string }>(`/api/v1/series/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title }) }),
   bookSeries: (id: number) => req<BookSeries>(`/api/v1/books/${id}/series`),

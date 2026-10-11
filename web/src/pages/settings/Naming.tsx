@@ -10,11 +10,12 @@ const SAMPLE = {
   resolution: "2160p",
   source: "BluRay",
   edition: "Director's Cut",
+  plexedition: "{edition-Director's Cut}",
   codec: "x265",
   group: "FraMeSToR",
 };
 
-const TOKENS = ["title", "year", "quality", "resolution", "source", "edition", "codec", "group"];
+const TOKENS = ["title", "year", "quality", "resolution", "source", "edition", "plexedition", "codec", "group"];
 
 // Sample series episode for the series naming preview.
 const SERIES_SAMPLE = {
@@ -32,11 +33,13 @@ const SERIES_SAMPLE = {
 };
 const SERIES_TOKENS = ["title", "year", "season", "season00", "episode", "episodetitle", "quality", "resolution", "source", "codec", "group"];
 
-// renderWith mirrors the backend renderName tidy-up: substitute tokens, drop empty
-// bracket pairs and stranded "- -" separators, strip illegal filename chars.
+// renderWith mirrors the backend renderName tidy-up: substitute tokens, drop empty Plex
+// groups ("{edition-}") and bracket pairs, stranded "- -" separators, and illegal
+// filename chars.
 function renderWith(format: string, sample: Record<string, string>): string {
   let out = format;
   for (const [k, v] of Object.entries(sample)) out = out.split(`{${k}}`).join(v);
+  out = out.replace(/\{(edition|tmdb|imdb|tvdb)-\s*\}/g, "");
   out = out.replace(/\(\)/g, "").replace(/\[\]/g, "").replace(/\s+/g, " ");
   while (out.includes("- -")) out = out.replace("- -", "-");
   out = out.replace(/^[\s-]+|[\s-]+$/g, "");
@@ -65,6 +68,9 @@ export function NamingSettings() {
         <AutoText label="Folder name" save={movieFolder}><Preview>{render(movieFolder.value)}</Preview></AutoText>
         <AutoText label="File name" save={movieFile}><Preview>{render(movieFile.value)}.mkv</Preview></AutoText>
         <TokenList tokens={TOKENS} />
+        <p className="text-[11px] text-ink-faint">
+          <code className="font-mono">{"{plexedition}"}</code> is Plex’s <code className="font-mono">{"{edition-Director's Cut}"}</code>, and nothing when there’s no edition. A version with an edition always gets it in its file name, so Plex shows each version as an edition of one movie.
+        </p>
       </Section>
       <Section id="series-naming" title="Series naming" subtitle="How imported episodes are named: the show folder holds season folders, which hold episode files.">
         <AutoText label="Series folder" save={seriesFolder}><Preview>{renderSeries(seriesFolder.value)}</Preview></AutoText>

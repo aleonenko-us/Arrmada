@@ -68,7 +68,7 @@ func TestMovieGrabsUseTheConfiguredCategory(t *testing.T) {
 	if _, err := c.Grab(ctx, "Fake", "magnet:?xt=urn:btih:"+fmt.Sprintf("%040d", 2), "Film.2021.1080p"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.GrabMovieTorrent(ctx, 0, []byte("d8:announce0:e"), "film.torrent", "Film.2022.1080p"); err != nil {
+	if err := c.GrabMovieTorrent(ctx, 0, 0, []byte("d8:announce0:e"), "film.torrent", "Film.2022.1080p"); err != nil {
 		t.Fatal(err)
 	}
 

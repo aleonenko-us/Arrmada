@@ -93,15 +93,44 @@ func (p libPrefs) DownloadArtwork() bool {
 
 // movieTitleResolver names movie imports from the matched library record (its
 // metadata title/year) instead of the scene release, so folders are deterministic
-// and match the movie Arrmada tracks.
-type movieTitleResolver struct{ svc *movies.Service }
+// and match the movie Arrmada tracks — and settles the track before the file is placed.
+// The download's grab row (by info hash) says which movie and track it was for; one
+// Arrmada didn't grab is matched by its release name and routed by its resolution and
+// edition.
+type movieTitleResolver struct {
+	svc   *movies.Service
+	grabs interface {
+		MovieGrabForHash(ctx context.Context, hash string) (automation.GrabRef, bool)
+	}
+}
 
-func (r movieTitleResolver) ResolveMovie(ctx context.Context, name string) (string, int, bool) {
+func (r movieTitleResolver) ResolveMovieImport(ctx context.Context, hash, name string) (library.MovieImportName, bool) {
+	movieID, versionID, replaces := int64(0), int64(-1), ""
+	if r.grabs != nil {
+		if g, ok := r.grabs.MovieGrabForHash(ctx, hash); ok {
+			movieID, replaces = g.MovieID, g.ReplacesPath
+			// A grab for an extra track lands on it. One for the default track routes by
+			// resolution and edition, as default-track grabs always have (MOV-12).
+			if g.VersionID > 0 {
+				versionID = g.VersionID
+			}
+		}
+	}
+	if movieID > 0 {
+		if n, err := r.svc.ImportNaming(ctx, movieID, versionID, replaces, name); err == nil {
+			return n, true
+		}
+		// The movie the grab was for is gone: match the release like any other.
+	}
 	m, ok := r.svc.MatchRelease(ctx, name)
 	if !ok {
-		return "", 0, false
+		return library.MovieImportName{}, false
 	}
-	return m.Title, m.Year, true
+	n, err := r.svc.ImportNaming(ctx, m.ID, -1, "", name)
+	if err != nil {
+		return library.MovieImportName{}, false
+	}
+	return n, true
 }
 
 func main() {
@@ -464,7 +493,7 @@ func main() {
 	imports.SetBin(bins)
 	// Name movie imports from the matched library record (metadata title), not the
 	// scene release — deterministic folders that match the movie Arrmada tracks.
-	imports.SetTitleResolver(movieTitleResolver{movieSvc})
+	imports.SetTitleResolver(movieTitleResolver{svc: movieSvc, grabs: coordinator})
 	// Hold a movie download for admin review when it doesn't match what it was
 	// grabbed for (e.g. a wrong film), instead of importing the wrong thing.
 	imports.SetGate(coordinator.HoldMovieImport)

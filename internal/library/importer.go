@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -361,7 +362,8 @@ func (im *Importer) bookDirIn(root, author, title string) string {
 var reIllegal = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
 
 // Default movie naming. Tokens: {title} {year} {quality} {resolution} {source}
-// {edition} {codec} {group}. Folder has no extension; the file gets one appended.
+// {edition} {plexedition} {codec} {group}. Folder has no extension; the file gets one
+// appended. {plexedition} is Plex's "{edition-Director's Cut}", or nothing at all.
 const (
 	DefaultMovieFolder = "{title} ({year})"
 	DefaultMovieFile   = "{title} ({year}) - {quality}"
@@ -542,34 +544,89 @@ func (im *Importer) movieNaming() Naming {
 	return Naming{Folder: DefaultMovieFolder, File: DefaultMovieFile}
 }
 
-// movieParts renders the folder and file base names for a movie from the naming
-// scheme. rel supplies quality/edition/codec/group tokens.
-func (im *Importer) movieParts(title string, year int, rel parser.Release) (folder, file string) {
-	t := cleanTitleLoose(title)
-	if t == "" {
-		t = "Unknown"
+// MovieTrack is what one movie track's file is named from. It is the one name builder
+// for movie files: the automatic import, a manual import and a rename all go through
+// MovieTrackTarget with it, so a track's file is named the same way wherever it's placed.
+type MovieTrack struct {
+	Title string
+	Year  int
+	// Edition is the track's own edition ("Director's Cut"). It fills {edition} and
+	// {plexedition} in place of whatever the release says, and when the scheme has neither
+	// token it's added as Plex's {edition-…}, so a Director's Cut track never shares a file
+	// name with the theatrical file next to it.
+	Edition string
+	// Label is the track's name. It only ever appears in a file name to tell this track's
+	// file apart from another track's that would otherwise have the same name.
+	Label string
+	// Protected are the files the movie's other tracks own. None is ever a target, and none
+	// is ever recycled or overwritten to make room.
+	Protected []string
+}
+
+// movieParts renders the folder and file base names for a movie track from the naming
+// scheme. rel supplies the quality/edition/codec/group tokens; the track's own edition
+// wins over the release's.
+func (im *Importer) movieParts(t MovieTrack, rel parser.Release) (folder, file string) {
+	title := cleanTitleLoose(t.Title)
+	if title == "" {
+		title = "Unknown"
+	}
+	edition := strings.TrimSpace(t.Edition)
+	if edition == "" {
+		edition = rel.Edition
 	}
 	tok := map[string]string{
-		"title":      t,
-		"year":       yearToken(year),
-		"quality":    qualityTag(rel),
-		"resolution": string(rel.StatedResolution()),
-		"source":     statedSource(rel),
-		"edition":    rel.Edition,
-		"codec":      string(rel.Codec),
-		"group":      rel.Group,
+		"title":       title,
+		"year":        yearToken(t.Year),
+		"quality":     qualityTag(rel),
+		"resolution":  string(rel.StatedResolution()),
+		"source":      statedSource(rel),
+		"edition":     edition,
+		"plexedition": plexEdition(edition),
+		"codec":       string(rel.Codec),
+		"group":       rel.Group,
 	}
 	n := im.movieNaming()
 	folder = renderName(n.Folder, tok)
 	if folder == "" {
-		folder = t
+		folder = title
 	}
-	file = renderName(n.File, tok)
+	file = renderName(withTrackEdition(n.File, t.Edition), tok)
 	if file == "" {
 		file = folder
 	}
 	return folder, file
 }
+
+// plexEdition renders an edition the way Plex reads one from a file name, "{edition-…}",
+// or nothing at all when there's no edition.
+func plexEdition(edition string) string {
+	if edition = clean(edition); edition == "" {
+		return ""
+	}
+	return "{edition-" + edition + "}"
+}
+
+// withTrackEdition makes sure a track with an edition gets it into its file name. A scheme
+// that names no edition ("{title} ({year}) - {quality}", the default) gets {plexedition}
+// right after the year, where Plex documents it, or at the end when there's no year. Only
+// a track with an edition is touched, so a movie with no extra tracks keeps the names it has.
+func withTrackEdition(format, trackEdition string) string {
+	if strings.TrimSpace(trackEdition) == "" ||
+		strings.Contains(format, "{edition}") || strings.Contains(format, "{plexedition}") {
+		return format
+	}
+	if i := strings.Index(format, "({year})"); i >= 0 {
+		at := i + len("({year})")
+		return format[:at] + " {plexedition}" + format[at:]
+	}
+	return format + " {plexedition}"
+}
+
+// reEmptyPlexGroup is a Plex tag left with nothing in it: "{edition-}" from a hand-written
+// "{edition-{edition}}" on a release with no edition, or "{tmdb-}" for a movie with no id.
+// Plex would read the stray braces as part of the title.
+var reEmptyPlexGroup = regexp.MustCompile(`\{(edition|tmdb|imdb|tvdb)-\s*\}`)
 
 // renderName substitutes {tokens} and tidies up separators left by empty ones — an
 // empty {episodetitle} in "{title} - {episode} - {episodetitle} - {quality}" must not
@@ -579,6 +636,7 @@ func renderName(format string, tok map[string]string) string {
 	for k, v := range tok {
 		out = strings.ReplaceAll(out, "{"+k+"}", v)
 	}
+	out = reEmptyPlexGroup.ReplaceAllString(out, "")
 	out = strings.ReplaceAll(out, "()", "") // empty {year} etc. left bare brackets
 	out = strings.ReplaceAll(out, "[]", "")
 	out = strings.Join(strings.Fields(out), " ") // collapse whitespace
@@ -1221,14 +1279,79 @@ func parseSeasonDir(name string) (int, bool) {
 // naming scheme. The quality tag is parsed from qualitySource (usually the
 // source/release filename).
 func (im *Importer) MovieTarget(title string, year int, qualitySource, ext string) string {
-	folder, file := im.movieParts(title, year, parser.Parse(qualitySource))
-	return filepath.Join(im.movieDir(), folder, file+ext)
+	return im.MovieTrackTarget(MovieTrack{Title: title, Year: year}, qualitySource, ext)
 }
 
-// ImportAs imports a file into the library under a known movie's title/year
-// (rather than parsing the title from the release name). Used by manual import.
+// MovieTrackTarget is the library path for a file on movie track t: the naming scheme,
+// then, only when that path is a file another track owns (t.Protected), the track's label
+// (" - Director's Cut"), then a counter. It never returns a protected path, so whatever
+// places a file there can't replace another track's file. The import, manual import and
+// rename all name a track's file with this.
+func (im *Importer) MovieTrackTarget(t MovieTrack, qualitySource, ext string) string {
+	folder, file := im.movieParts(t, parser.Parse(qualitySource))
+	dir := filepath.Join(im.movieDir(), folder)
+	target := filepath.Join(dir, file+ext)
+	if !OwnedByOther(target, t.Protected) {
+		return target
+	}
+	label := clean(t.Label)
+	if label == "" {
+		label = "Version"
+	}
+	base := file + " - " + label
+	for n := 1; n < 100; n++ {
+		name := base
+		if n > 1 {
+			name = fmt.Sprintf("%s (%d)", base, n)
+		}
+		if target = filepath.Join(dir, name+ext); !OwnedByOther(target, t.Protected) {
+			return target
+		}
+	}
+	return target // 99 tracks with one name: ImportAsNamed still refuses to place it
+}
+
+// OwnedByOther reports whether path is one of the protected files: the same path, or the
+// same file on disk under another name (a hardlink). Paths compare case-insensitively on
+// Windows, where the filesystem does.
+func OwnedByOther(path string, protected []string) bool {
+	if path == "" || len(protected) == 0 {
+		return false
+	}
+	want := filepath.Clean(path)
+	for _, p := range protected {
+		if p == "" {
+			continue
+		}
+		if pc := filepath.Clean(p); pc == want || (runtime.GOOS == "windows" && strings.EqualFold(pc, want)) {
+			return true
+		}
+	}
+	fi, err := os.Stat(want)
+	if err != nil {
+		return false // nothing at path, so no other name can be the same file
+	}
+	for _, p := range protected {
+		if p == "" {
+			continue
+		}
+		if pi, err := os.Stat(p); err == nil && os.SameFile(fi, pi) {
+			return true
+		}
+	}
+	return false
+}
+
+// ErrProtectedTarget is an import aimed at a file another track of the movie owns. It
+// can't come from MovieTrackTarget; it's the last guard before anything is placed.
+var ErrProtectedTarget = errors.New("that file belongs to another version of this movie")
+
+// ImportAsNamed imports a download into movie track t: named per track (MovieTrackTarget),
+// and never onto a file another track owns — that file is neither recycled nor
+// overwritten. A file already at the target that no other track owns (this track's own
+// older file under the same name) is replaced as before, through the recycle bin.
 // Archives are unpacked first, exactly like Import.
-func (im *Importer) ImportAs(title string, year int, contentPath string) (*Result, error) {
+func (im *Importer) ImportAsNamed(t MovieTrack, contentPath string) (*Result, error) {
 	searchPath := im.prepareContent(contentPath)
 	src, size, err := findMediaFile(searchPath)
 	if err != nil {
@@ -1240,7 +1363,10 @@ func (im *Importer) ImportAs(title string, year int, contentPath string) (*Resul
 	if err := im.checkRoot(im.movieDir()); err != nil {
 		return nil, err
 	}
-	target := im.MovieTarget(title, year, filepath.Base(src), filepath.Ext(src))
+	target := im.MovieTrackTarget(t, filepath.Base(src), filepath.Ext(src))
+	if OwnedByOther(target, t.Protected) {
+		return nil, fmt.Errorf("%w: %s", ErrProtectedTarget, target)
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return nil, fmt.Errorf("create library dir: %w", err)
 	}
@@ -1249,9 +1375,16 @@ func (im *Importer) ImportAs(title string, year int, contentPath string) (*Resul
 	if err != nil {
 		return nil, fmt.Errorf("import file: %w", err)
 	}
-	im.logImport(title, src, target, method)
+	im.logImport(t.Title, src, target, method)
 	im.importSidecarSubs(searchPath, src, target)
-	return &Result{SourcePath: src, TargetPath: target, Title: title, Year: year, SizeBytes: size}, nil
+	return &Result{SourcePath: src, TargetPath: target, Title: t.Title, Year: t.Year, SizeBytes: size}, nil
+}
+
+// ImportAs imports a file into the library under a known movie's title/year
+// (rather than parsing the title from the release name), with no other track to keep
+// clear of. Archives are unpacked first, exactly like Import.
+func (im *Importer) ImportAs(title string, year int, contentPath string) (*Result, error) {
+	return im.ImportAsNamed(MovieTrack{Title: title, Year: year}, contentPath)
 }
 
 // targetPath builds "<root>/<folder>/<file>.<ext>" from the parsed release.
@@ -1272,7 +1405,7 @@ func (im *Importer) targetPath(r parser.Release, ext string) string {
 	}
 
 	// Movie.
-	folder, file := im.movieParts(r.Title, r.Year, r)
+	folder, file := im.movieParts(MovieTrack{Title: r.Title, Year: r.Year}, r)
 	return filepath.Join(im.movieDir(), folder, file+ext)
 }
 

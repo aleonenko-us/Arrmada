@@ -383,12 +383,13 @@ func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename,
 
 // GrabMovieTorrent adds an uploaded .torrent file for a movie (movie category) and
 // tracks it like an auto grab so seed cleanup / stall detection manage it too.
-func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID int64, file []byte, filename, title string) error {
+// versionID is the track it's for (0 = the default track).
+func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID int64, file []byte, filename, title string) error {
 	hash, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
 	if err != nil {
 		return err
 	}
-	c.RecordManualGrab(ctx, movieID, title, "manual", hash)
+	c.RecordManualGrab(ctx, movieID, versionID, title, "manual", hash)
 	c.markGrabManual(ctx, hash) // the user chose this file; don't gate it on score
 	if c.movies != nil {
 		c.movies.AddEvent(ctx, movieID, "grabbed", "Uploaded torrent — "+title)
@@ -450,21 +451,31 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 // RecordManualGrab tracks a release grabbed by hand (interactive search) exactly
 // like an automatic grab, so it's seed-managed and stall-detected too. movieID 0
 // (not tied to a tracked movie) is a no-op.
-func (c *Coordinator) RecordManualGrab(ctx context.Context, movieID int64, title, indexerName, infoHash string) {
+//
+// versionID is the track it was grabbed for (0 = the default track): the grab is
+// recorded with that track's profile and stall window, and its download imports into
+// that track. A track that isn't the movie's falls back to the default track.
+func (c *Coordinator) RecordManualGrab(ctx context.Context, movieID, versionID int64, title, indexerName, infoHash string) {
 	if movieID == 0 {
 		return
 	}
-	m, err := c.movies.Get(ctx, movieID)
-	if err != nil {
+	versions, err := c.movies.VersionRows(ctx, movieID)
+	if err != nil || len(versions) == 0 {
 		return
 	}
-	profile := c.effectiveProfile(ctx, m.QualityProfile, quality.MediaMovie)
-	// A manual grab lands on the default track; when that has a file, this grab replaces it.
-	replaces := ""
-	if m.HasFile {
-		replaces = m.MovieFilePath
+	v := versions[0]
+	for _, o := range versions {
+		if o.ID == versionID {
+			v = o
+		}
 	}
-	c.recordGrabReplacing(ctx, movieID, 0, title, indexerName, profile, c.quality.StallMinutes(ctx, profile), infoHash, replaces)
+	profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
+	// When the track has a file, this grab replaces it.
+	replaces := ""
+	if v.HasFile {
+		replaces = v.FilePath
+	}
+	c.recordGrabReplacing(ctx, movieID, v.ID, title, indexerName, profile, c.quality.StallMinutes(ctx, profile), infoHash, replaces)
 }
 
 // SearchMissing searches for and grabs any monitored version that has no file
@@ -2166,8 +2177,21 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 	// Re-deriving it from a (differently normalized) title match orphaned imports for
 	// accented/&-titled movies and could attach a year-less release to the wrong
 	// same-titled film.
+	//
+	// The track: the one the importer decided and named the file for (kept on the import
+	// record), so the attach can't put it anywhere else. A record without one (from before
+	// tracks were decided at import, or a download no movie matched) routes as it always has.
 	m, matched := movies.Movie{}, false
-	if mid, ok := c.movieIDForGrabHash(ctx, rec.Hash); ok {
+	mid, versionID := rec.MovieID, int64(-1)
+	if mid > 0 {
+		versionID = rec.VersionID
+	} else if g, ok := c.MovieGrabForHash(ctx, rec.Hash); ok {
+		mid = g.MovieID
+		if g.VersionID > 0 {
+			versionID = g.VersionID // a grab for an extra track lands on it
+		}
+	}
+	if mid > 0 {
 		got, err := c.movies.Get(ctx, mid)
 		switch {
 		case err == nil:
@@ -2176,8 +2200,11 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 			return library.AttachRetry, fmt.Errorf("load movie %d: %w", mid, err)
 		}
 	}
-	if !matched && rec.Title != "" {
-		m, matched = c.movies.Match(ctx, rec.Title, rec.Year)
+	if !matched {
+		versionID = -1 // the decided movie is gone: whatever matches now routes afresh
+		if rec.Title != "" {
+			m, matched = c.movies.Match(ctx, rec.Title, rec.Year)
+		}
 	}
 	if !matched {
 		if ctx.Err() != nil {
@@ -2185,8 +2212,8 @@ func (c *Coordinator) AttachMovieImport(ctx context.Context, rec library.ImportR
 		}
 		return library.Unmatched, fmt.Errorf("no movie in the library matches %q", titleYear(rec.Title, rec.Year))
 	}
-	if err := c.movies.MarkImported(ctx, m.ID, rec.TargetPath, rec.ReleaseName); err != nil {
-		if errors.Is(err, movies.ErrWorseQuality) {
+	if err := c.movies.MarkImportedTo(ctx, m.ID, versionID, rec.TargetPath, rec.ReleaseName, false); err != nil {
+		if errors.Is(err, movies.ErrWorseQuality) || errors.Is(err, movies.ErrPathOwnedByOtherTrack) {
 			return library.Refused, err
 		}
 		return library.AttachRetry, fmt.Errorf("attach to %q: %w", m.Title, err)
