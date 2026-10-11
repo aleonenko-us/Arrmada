@@ -57,7 +57,7 @@ func TestHandlerServesCachedResults(t *testing.T) {
 		t.Fatalf("warnings: %v", got["warnings"])
 	}
 	w := ws[0].(map[string]any)
-	if w["key"] != "c.bad" || w["link"] != "/indexers" || w["link_label"] != "Add an indexer" || w["since"] == nil {
+	if w["key"] != "c.bad" || w["link"] != "/settings/connections#search" || w["link_label"] != "Add an indexer" || w["since"] == nil {
 		t.Errorf("warning fields: %v", w)
 	}
 	if cs, _ := got["checks"].([]any); len(cs) != 1 {

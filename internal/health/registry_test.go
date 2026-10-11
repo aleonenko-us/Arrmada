@@ -227,7 +227,7 @@ func TestRegistryResults(t *testing.T) {
 	if rep.Status != LevelError || len(rep.Warnings) != 2 || rep.Warnings[0].Key != "e" {
 		t.Fatalf("errors first: %+v", rep.Warnings)
 	}
-	if got := rep.Warnings[0]; got.Link != "/indexers" || got.LinkKey != "indexers" || got.LinkLabel != "Add an indexer" || got.Check != "err" {
+	if got := rep.Warnings[0]; got.Link != "/settings/connections#search" || got.LinkKey != "indexers" || got.LinkLabel != "Add an indexer" || got.Check != "err" {
 		t.Errorf("fix fields: %+v", got)
 	}
 	if rep.Checks[0].Key != "warn" || rep.Checks[0].Level != LevelWarning || rep.Checks[1].Level != LevelError {

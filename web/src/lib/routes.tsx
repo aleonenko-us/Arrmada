@@ -18,8 +18,6 @@ const staffShellLoading = <div className="grid h-full place-items-center text-[1
 const MyBooks = lazyPage(() => import("../pages/MyBooks"), "MyBooks");
 const Dashboard = lazyPage(() => import("../pages/Dashboard"), "Dashboard");
 const Quality = lazyPage(() => import("../pages/Quality"), "Quality");
-const Indexers = lazyPage(() => import("../pages/Indexers"), "Indexers");
-const DownloadClients = lazyPage(() => import("../pages/DownloadClients"), "DownloadClients");
 const Settings = lazyPage(() => import("../pages/Settings"), "Settings");
 const Downloads = lazyPage(() => import("../pages/Downloads"), "Downloads");
 const History = lazyPage(() => import("../pages/History"), "History");
@@ -147,8 +145,9 @@ function staffRoutes(admin: boolean): RouteObject[] {
     page("/insights", "Insights", <Insights />),
     page("/audiobooks", "Audiobooks", <Audiobooks />),
     page("/me", "Me", <Me chrome />),
-    page("/indexers", "Indexers", <Indexers />),
-    page("/downloadclients", "Download clients", <DownloadClients />),
+    // The old Indexers and Download clients pages are cards on Settings → Connections now.
+    redirect("/indexers", LINKS.indexers),
+    redirect("/downloadclients", LINKS.downloadClients),
     // Alerts moved out of Insights into Settings; both old addresses land there.
     redirect("/notifications", LINKS.alerts),
     redirect("/alerts", LINKS.alerts),

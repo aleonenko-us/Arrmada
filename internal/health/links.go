@@ -4,9 +4,9 @@ package health
 // (web/src/lib/links.ts), which the UI resolves first; the paths are the same addresses
 // for any other client. When a page moves, repoint it here and in links.ts together.
 var (
-	FixIndexers        = &Fix{Key: "indexers", Path: "/indexers", Label: "Add an indexer"}
-	FixIndexerStatus   = &Fix{Key: "indexers", Path: "/indexers", Label: "Check indexers"}
-	FixDownloadClients = &Fix{Key: "downloadClients", Path: "/downloadclients", Label: "Check download clients"}
+	FixIndexers        = &Fix{Key: "indexers", Path: "/settings/connections#search", Label: "Add an indexer"}
+	FixIndexerStatus   = &Fix{Key: "indexers", Path: "/settings/connections#search", Label: "Check indexers"}
+	FixDownloadClients = &Fix{Key: "downloadClients", Path: "/settings/connections#download-clients", Label: "Check download clients"}
 	FixLibraryFolders  = &Fix{Key: "libraryFolders", Path: "/settings/library#media-folders", Label: "Choose folders"}
 	FixDiskGuard       = &Fix{Key: "diskGuard", Path: "/settings/downloads#disk-guard", Label: "Disk guard settings"}
 	FixRecycleBin      = &Fix{Key: "recycleBin", Path: "/settings/downloads#recycle-bin", Label: "Recycle bin settings"}

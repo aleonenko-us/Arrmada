@@ -39,6 +39,8 @@ const metadata = (items: ConnectionItem[]) => vi.spyOn(connectionsApi, "list").m
 beforeEach(() => {
   clearQueryCache();
   Element.prototype.scrollIntoView = vi.fn();
+  vi.spyOn(api, "indexers").mockResolvedValue([]);
+  vi.spyOn(api, "downloadClientList").mockResolvedValue({ clients: [] });
   vi.spyOn(api, "settings").mockResolvedValue({ tmdb_region: "" } as AppSettings);
 });
 afterEach(() => {

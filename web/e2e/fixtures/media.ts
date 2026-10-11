@@ -230,6 +230,16 @@ export const blocklist: { items: BlocklistRow[]; total: number } = {
   total: 2,
 };
 
+// A connection's Test: it answers, and its card comes back working.
+export function connectionTest(kind: string, ref: string) {
+  const item = connections.sections.flatMap((s) => s.items).find((i) => i.kind === kind && i.ref === ref);
+  if (!item) return { message: "no such connection" };
+  return {
+    ok: true, detail: "Connected",
+    item: { ...item, state: "ok", last_error: undefined, failing_since: undefined, last_ok_at: new Date(NOW).toISOString(), checked_at: new Date(NOW).toISOString() },
+  };
+}
+
 // The key statuses an admin's Connections page edits inside the metadata cards.
 export const apiKeys: { keys: APIKeyStatus[] } = {
   keys: [
@@ -263,7 +273,7 @@ export const connections: { sections: ConnectionSectionData[] } = {
     },
     {
       id: "metadata", title: "Metadata", items: [
-        { kind: "apikey", ref: "tmdb", card: "apikey-tmdb", name: "TMDB", subtitle: "Movie and TV metadata, artwork, and discovery. Required.", configured: true, enabled: true, state: "ok", source: "settings", testable: true, last_ok_at: new Date(NOW - day).toISOString() },
+        { kind: "apikey", ref: "tmdb", card: "apikey-tmdb", name: "TMDB", subtitle: "Movie and TV metadata, artwork, and discovery. Required.", configured: true, enabled: true, state: "ok", source: "settings", testable: true, last_ok_at: new Date(NOW - 86_400_000).toISOString() },
         { kind: "apikey", ref: "tvdb", card: "apikey-tvdb", name: "TheTVDB", subtitle: "Anime episode numbering. Optional.", configured: false, enabled: false, state: "unknown", testable: false },
       ],
     },

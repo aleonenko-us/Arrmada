@@ -300,15 +300,15 @@ export function Downloads() {
 
         {clients && clients.configured > 0 && clients.enabled === 0 && (
           <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-            Every download client is switched off, so Arrmada can't grab anything. Enable one on the{" "}
-            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
+            Every download client is switched off, so Arrmada can't grab anything. Enable one in{" "}
+            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
           </div>
         )}
         {clientDown && clients && (
           <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
             {clients.name || "A download client"} unreachable{clients.since ? ` since ${sinceLabel(clients.since)}` : ""} — searches are paused until it's back
             {clients.error ? ` (${clients.error})` : ""}. Check it on the{" "}
-            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Download clients</Link> page.
+            <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
           </div>
         )}
 

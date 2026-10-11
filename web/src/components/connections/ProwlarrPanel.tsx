@@ -1,0 +1,104 @@
+import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
+import { prowlarrSyncMessage } from "../../lib/indexerStatus";
+
+// ProwlarrPanel opens inside the Prowlarr card: pull Prowlarr's indexers in as Torznab
+// feeds. Re-syncing keeps what was set here; indexers disabled or removed in Prowlarr are
+// turned off. A blank key reuses the saved one.
+
+// isBundledProwlarr: the Prowlarr that ships with Arrmada, by its compose service name.
+function isBundledProwlarr(u: string): boolean {
+  try {
+    return new URL(u).hostname.toLowerCase() === "arrmada-prowlarr";
+  } catch {
+    return false;
+  }
+}
+
+const field = "w-full rounded-lg px-3 py-2 text-[13px]";
+const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
+
+export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
+  const [url, setUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [hasKey, setHasKey] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [addProxy, setAddProxy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
+  // Prowlarr is someone's own setup and is only changed when this box is ticked.
+  const bundled = isBundledProwlarr(url);
+
+  useEffect(() => {
+    api.prowlarrInfo().then((i) => { setUrl(i.url); setHasKey(i.has_key); }).catch(() => {});
+  }, []);
+
+  const sync = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api.syncProwlarr({ url, api_key: apiKey, add_flaresolverr_proxy: !bundled && addProxy });
+      setResult({ ok: true, msg: prowlarrSyncMessage(r) });
+      setHasKey(true);
+      setApiKey("");
+      onSynced();
+    } catch (e) {
+      setResult({ ok: false, msg: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Prowlarr's own UI — reachable from the user's browser (same host, port 9696), not the
+  // internal service name Arrmada uses to talk to it.
+  const prowlarrUI = `${window.location.protocol}//${window.location.hostname}:9696`;
+
+  return (
+    <div className="mt-2 rounded-lg p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+      <p className="m-0 mb-3 text-[11.5px] text-ink-dim">
+        Pull your Prowlarr indexers in as Torznab feeds: API search, no scraping. Re-syncing keeps what you set here; indexers disabled or removed in Prowlarr are turned off. Add trackers in Prowlarr first.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Prowlarr URL</span>
+          <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://arrmada-prowlarr:9696" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">API key {hasKey && <span className="text-[8.5px] normal-case" style={{ color: "var(--good)" }}>· saved</span>}</span>
+          <input type="password" className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={hasKey ? "•••••••• (leave blank to reuse)" : "Prowlarr → Settings → General"} autoComplete="off" />
+        </label>
+      </div>
+      <p className="mt-2.5 text-[10.5px] text-ink-faint">
+        The URL must be reachable from the Arrmada server. With the bundled Prowlarr (<code className="font-mono">docker compose --profile prowlarr up -d</code>) the default above works.
+      </p>
+
+      <div className="mt-3 flex flex-col gap-1.5 rounded-lg p-3 text-[11.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+        <div className="break-words">
+          <span className="text-ink-faint">Open Prowlarr to add trackers:</span>{" "}
+          <a href={prowlarrUI} target="_blank" rel="noreferrer" className="font-mono font-semibold" style={{ color: "var(--accent)" }}>{prowlarrUI} ↗</a>
+        </div>
+        <div className="text-ink-dim">
+          For a Cloudflare-protected tracker, add the{" "}
+          <code className="rounded px-1 py-0.5 font-mono text-[10.5px]" style={{ background: "var(--panel-2)", color: "var(--accent)" }}>flaresolverr</code>{" "}
+          tag to that tracker in Prowlarr; syncing the bundled Prowlarr sets up the FlareSolverr proxy it uses. Public indexers don't need it.
+        </div>
+      </div>
+
+      {!bundled && (
+        <label className="mt-2.5 flex items-center gap-2 text-[12px] text-ink-dim">
+          <input type="checkbox" checked={addProxy} onChange={(e) => setAddProxy(e.target.checked)} />
+          Add Arrmada's FlareSolverr to this Prowlarr
+        </label>
+      )}
+
+      {result && (
+        <div role="status" className="mt-2.5 break-words text-[12px]" style={{ color: result.ok ? "var(--good)" : "var(--reject)" }}>
+          {result.ok ? "✓ " : "✕ "}{result.msg}
+        </div>
+      )}
+      <button onClick={sync} disabled={busy} className="mt-3 rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: busy ? 0.6 : 1 }}>
+        {busy ? "Syncing…" : "Sync now"}
+      </button>
+    </div>
+  );
+}

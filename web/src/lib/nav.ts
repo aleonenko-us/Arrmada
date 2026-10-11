@@ -79,8 +79,6 @@ export const NAV: NavGroup[] = [
     items: [
       // Every integration's status, Test and editing (Settings → Connections).
       { to: "/settings/connections", label: "Connections", icon: "connections" },
-      { to: "/indexers", label: "Indexers", icon: "indexers" },
-      { to: "/downloadclients", label: "Download clients", icon: "downloadClients" },
       { to: "/quality", label: "Quality profiles", icon: "quality" },
       { to: "/logs", label: "Logs", icon: "logs", adminOnly: true },
       // Health problems are listed on Settings → Status.

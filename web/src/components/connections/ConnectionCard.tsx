@@ -23,11 +23,13 @@ export interface CardFix {
 // day, and one main action — Test, or Fix while it's failing (Set up when it isn't). Its
 // id is the card's anchor, so a health warning's link lands on it; the targeted card is
 // outlined.
-export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu, targeted, children }: {
+export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu, notice, targeted, children }: {
   item: ConnectionItem;
   test?: CardTest;
   onTest?: () => void;
   fix?: CardFix;
+  /** A failed action on the card (a refused delete), shown until the next one. */
+  notice?: string;
   /** Opens (or closes) the editor inside the card. */
   onEdit?: () => void;
   editing?: boolean;
@@ -90,6 +92,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
       <div className="break-words text-[11.5px]" style={{ color: line.color }}>{line.text}</div>
       {counts && <div className="text-[11px] text-ink-faint">{counts}</div>}
       {item.detail && <div className="break-words text-[11.5px] text-ink-dim">{item.detail}</div>}
+      {notice && <div role="alert" className="break-words text-[12px]" style={{ color: "var(--reject)" }}>{notice}</div>}
       {test && !test.running && test.detail && (
         <div role="status" className="break-words font-mono text-[11px]" style={{ color: test.ok ? "var(--good)" : "var(--reject)" }}>
           {test.ok ? "✓ " : "✕ "}{test.detail}
