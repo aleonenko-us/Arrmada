@@ -36,11 +36,11 @@ type Forecast struct {
 
 // Encoder classes the model keeps apart: they run at very different speeds.
 const (
-	classCPUHEVC         = "cpu-hevc"
-	classCPUAV1          = "cpu-av1"
+	classCPUHEVC          = "cpu-hevc"
+	classCPUAV1           = "cpu-av1"
 	classCPUHEVCHDR10Plus = "cpu-hevc-hdr10plus"
-	classGPUHEVC         = "gpu-hevc"
-	classGPUAV1          = "gpu-av1"
+	classGPUHEVC          = "gpu-hevc"
+	classGPUAV1           = "gpu-av1"
 )
 
 // Resolution buckets.
@@ -59,11 +59,11 @@ const (
 )
 
 var classSpeed = map[string]float64{
-	classCPUHEVC:         1,
-	classCPUAV1:          1,   // SVT-AV1 preset 5 is about x265 slow's pace
+	classCPUHEVC:          1,
+	classCPUAV1:           1,   // SVT-AV1 preset 5 is about x265 slow's pace
 	classCPUHEVCHDR10Plus: 0.9, // the HDR10+ pipeline extracts and re-injects around the encode
-	classGPUHEVC:         8,   // hardware encoders aren't held back by the core budget
-	classGPUAV1:          8,
+	classGPUHEVC:          8,   // hardware encoders aren't held back by the core budget
+	classGPUAV1:           8,
 }
 
 // throughputSamples is how many recent conversions the median is taken over, and
