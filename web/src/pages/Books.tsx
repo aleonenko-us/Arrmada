@@ -5,6 +5,7 @@ import { DeleteBookDialog } from "../components/DeleteBookDialog";
 import { api, type BookSource, type BookUpgradeStatus, type BookSweepStatus, type Book, type BookLookup, type BookAuthor, type BookDiscoverCard } from "../lib/api";
 import { usePersisted } from "../lib/persist";
 import { useSearchParamState } from "../lib/useSearchState";
+import { PHONE, useMediaQuery } from "../lib/useMediaQuery";
 import { isWanted, libraryStatus } from "../lib/status";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { posterThumb } from "../lib/img";
@@ -66,7 +67,10 @@ export function Books() {
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [view, setView] = usePersisted("books.view", "grid", ["grid", "table"] as const);
+  const [savedView, setView] = usePersisted("books.view", "grid", ["grid", "table"] as const);
+  // A phone always gets the grid (the table doesn't fit); the saved choice is kept for the desktop.
+  const phone = useMediaQuery(PHONE);
+  const view = phone ? "grid" : savedView;
   const [mode, setMode] = usePersisted("books.mode", "author", ["author", "book"] as const);
   const [sweep, setSweep] = useState<BookSweepStatus | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -262,7 +266,7 @@ export function Books() {
           count={booksQ.data ? list.length : null}
           segments={multiSelect ? [] : [
             { label: "Group by", value: mode, options: [{ value: "author", label: "author" }, { value: "book", label: "book" }], onChange: (v) => setMode(v as "author" | "book") },
-            { label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v) => setView(v as "grid" | "table") },
+            ...(phone ? [] : [{ label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v: string) => setView(v as "grid" | "table") }]),
           ]}
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
           tools={[
@@ -323,7 +327,7 @@ export function Books() {
         {upgrade && !upgrade.running && !hideUpgrade && (upgrade.error || leftVisible.length > 0 || ((upgrade.left?.length ?? 0) === 0 && (upgrade.notes?.length ?? 0) > 0)) && (
           <div className="mb-4 rounded-lg px-3.5 py-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <b>Hardcover re-match:</b> {upgrade.upgraded} upgraded, {upgrade.flagged} flagged as possible duplicates, {upgrade.unmatched} left as they were{upgrade.error ? ` — stopped: ${upgrade.error}` : "."}
                 {leftVisible.length > 0 && <span className="ml-1 text-ink-faint">Ignore a book and the re-match leaves it alone for good.</span>}
               </div>

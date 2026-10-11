@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { usePersisted } from "../../lib/persist";
 import { useSearchParamState } from "../../lib/useSearchState";
+import { PHONE, useMediaQuery } from "../../lib/useMediaQuery";
 import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
@@ -11,13 +12,17 @@ const VIEW_OPTIONS = [{ value: "grid", label: "grid" }, { value: "table", label:
 export interface LibraryView {
   mode: LibraryViewMode;
   set: (v: LibraryViewMode) => void;
+  /** false on a phone: the table doesn't fit, so the toggle hides and the grid shows. */
+  canTable: boolean;
 }
 
 // useLibraryView is the remembered grid/table choice ("movies.view"). The page holds it
-// (rather than the grid) so it can load what only the table shows.
+// (rather than the grid) so it can load what only the table shows. A phone always gets the
+// grid, without touching the saved choice, so the desktop keeps its table.
 export function useLibraryView(storageKey: string): LibraryView {
-  const [mode, set] = usePersisted(`${storageKey}.view`, "grid", ["grid", "table"] as const);
-  return { mode, set };
+  const [saved, set] = usePersisted(`${storageKey}.view`, "grid", ["grid", "table"] as const);
+  const phone = useMediaQuery(PHONE);
+  return { mode: phone ? "grid" : saved, set, canTable: !phone };
 }
 
 export interface LibraryGridProps<T extends LibraryItem> {
@@ -86,7 +91,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       <LibraryToolbar
         count={items ? list.length : null}
         lead={p.lead}
-        segments={[{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }]}
+        segments={view.canTable ? [{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }] : []}
         select={{ active: multi, onToggle: () => (multi ? sel.exit() : setMulti(true)) }}
         tools={p.tools}
         primary={p.primary}
