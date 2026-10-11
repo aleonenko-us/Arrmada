@@ -362,6 +362,10 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/queue/{hash}/block", a.requireRole(auth.RoleManager, a.handleBlockDownload))
 	mux.HandleFunc("POST /api/v1/queue/{hash}/action", a.requireRole(auth.RoleManager, a.handleTorrentAction))
 	mux.HandleFunc("DELETE /api/v1/queue/{hash}", a.requireRole(auth.RoleManager, a.handleDeleteDownload))
+	// Activity → Needs you's actions on a stuck download (needsyou.go).
+	mux.HandleFunc("POST /api/v1/queue/{hash}/failover", a.requireRole(auth.RoleManager, a.handleFailOver))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/category", a.requireRole(auth.RoleManager, a.handleSetCategory))
+	mux.HandleFunc("POST /api/v1/imports/{hash}/retry", a.requireRole(auth.RoleManager, a.handleRetryImport))
 
 	// Grab: search result → download client (closes the acquisition loop).
 	mux.HandleFunc("POST /api/v1/grab", a.requireRole(auth.RoleManager, a.handleGrab))

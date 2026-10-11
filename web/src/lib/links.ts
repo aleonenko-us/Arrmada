@@ -12,8 +12,11 @@ export const LINKS = {
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",
   downloadsSearching: "/activity/wanted",
-  downloadProblems: "/activity/queue?filter=problems",
-  importProblems: "/activity/queue?show=finishing&filter=problems",
+  // Stuck downloads: their section of Activity → Needs you, each with its own action.
+  downloadProblems: "/activity/needs-you#stalled",
+  importProblems: "/activity/needs-you#import-failures",
+  wrongCategory: "/activity/needs-you#wrong-category",
+  unmanaged: "/activity/needs-you#unmanaged",
   history: "/activity/history",
   blocklist: "/activity/blocklist",
   downloadClients: "/downloadclients",

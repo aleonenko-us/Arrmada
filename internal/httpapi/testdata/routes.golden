@@ -271,6 +271,7 @@ POST /api/v1/downloadclients/restore-bundled staff -
 POST /api/v1/downloadclients/{id}/test staff -
 POST /api/v1/grab staff -
 POST /api/v1/grab/preview staff -
+POST /api/v1/imports/{hash}/retry staff -
 POST /api/v1/indexers staff -
 POST /api/v1/indexers/prowlarr/sync staff -
 POST /api/v1/indexers/test staff -
@@ -328,6 +329,8 @@ POST /api/v1/quality/profiles/{id}/hold-existing staff -
 POST /api/v1/quality/test staff -
 POST /api/v1/queue/{hash}/action staff -
 POST /api/v1/queue/{hash}/block staff -
+POST /api/v1/queue/{hash}/category staff -
+POST /api/v1/queue/{hash}/failover staff -
 POST /api/v1/queue/{hash}/pause staff -
 POST /api/v1/queue/{hash}/resume staff -
 POST /api/v1/recycle/delete admin -

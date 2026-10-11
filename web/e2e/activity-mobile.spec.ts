@@ -39,4 +39,19 @@ test.describe("manager on a phone", () => {
     await expect(iso.getByTestId("transfer-title")).toHaveText("Some.Linux.Distro.ISO-FIXTURE");
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
+
+  // ACQ-30 at 375 px: each stuck download keeps its main action on the row, the rest in ⋯.
+  test("Needs you's actions fit a phone", async ({ page, api }) => {
+    await page.goto("/activity/needs-you");
+    const stalled = page.locator("#stalled").getByTestId("needs-you-item");
+    await expect(stalled.getByRole("button", { name: "Try another release" })).toBeVisible();
+    await expect(stalled.getByRole("button", { name: "Reannounce" })).toHaveCount(0);
+    await stalled.getByRole("button", { name: /^More actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Reannounce" }).click();
+    await expect(page.getByText("Asked the trackers for peers again.")).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/queue/")).not.toHaveLength(0);
+    await expect(page.locator("#wrong-category").getByRole("button", { name: "Move to TV" })).toBeVisible();
+    await expect(page.locator("#import-failures").getByRole("button", { name: "Retry now" })).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
 });

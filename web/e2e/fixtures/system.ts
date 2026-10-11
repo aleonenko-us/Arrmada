@@ -21,18 +21,30 @@ export const health: Health = { status: "ok", version: "e2e", commit: "e2e0000",
 
 export const systemHealth: SystemHealth = { status: "ok", warnings: [], disk: { free_gb: "812.4", path: "/media" } };
 
-// The Needs-you feed: two requests waiting, a held import, a stalled download, stuck
-// searches and one health warning — enough for every badge and card row to render.
+// The Needs-you feed: two requests waiting, a held import, a stalled download, an import
+// that keeps failing, a TV download in the wrong category, stuck searches and one health
+// warning — enough for every badge, card row and Needs-you section to render.
 const ago = (min: number) => NOW - min * 60_000;
+export const STALLED_HASH = "abc1230000000000000000000000000000000001";
+export const FAILING_HASH = "abc1230000000000000000000000000000000002";
+export const MISFILED_HASH = "abc1230000000000000000000000000000000003";
+// Needs you's "Try another release" job, finished.
+export const failOverJob: Job = {
+  id: 901, kind: "download.failover", target: `torrent:${STALLED_HASH}`, trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Grabbed Old.Film.1080p.WEB-DL-NEW instead — the stuck download was removed and blocklisted.", error: "",
+  created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
+};
 export const attention: Attention = {
   at: new Date(NOW - 10_000).toISOString(),
   stale: false,
-  counts: { requests: 2, reviews: 1, downloads: 1, imports: 0, searches: 3, health: 1, health_errors: 0, total: 8 },
+  counts: { requests: 2, reviews: 1, downloads: 1, imports: 2, searches: 3, health: 1, health_errors: 0, total: 10 },
   groups: [
     { kind: "health", level: "warning", count: 1, title: "1 health problem", link: "/settings/status", link_key: "status" },
     { kind: "request", level: "warning", count: 2, title: "2 requests are waiting for approval", link: "/requests?tab=needs", link_key: "requestsWaiting", sample: ["deckhand requested Dune (2021)", "deckhand requested Severance (2022)"] },
     { kind: "review", level: "warning", count: 1, title: "1 import needs review", link: "/activity/needs-you", link_key: "review", sample: ["Alien is held: it looks like a different title"] },
-    { kind: "stalled", level: "warning", count: 1, title: "1 download has stalled", link: "/activity/queue?filter=problems", link_key: "downloadProblems", sample: ["Old.Film.1080p has stalled"] },
+    { kind: "stalled", level: "warning", count: 1, title: "1 download has stalled", link: "/activity/needs-you#stalled", link_key: "downloadProblems", sample: ["Old.Film.1080p has stalled"] },
+    { kind: "import", level: "warning", count: 1, title: "1 import keeps failing", link: "/activity/needs-you#import-failures", link_key: "importProblems", sample: ["Heat.1995.1080p"] },
+    { kind: "wrongcat", level: "warning", count: 1, title: "1 download is in the wrong category", link: "/activity/needs-you#wrong-category", link_key: "wrongCategory", sample: ["Harbour.Lights.S03E01.1080p"] },
     { kind: "search", level: "warning", count: 3, title: "3 titles still haven't found a release", link: "/activity/wanted", link_key: "downloadsSearching" },
   ],
   items: [
@@ -40,7 +52,9 @@ export const attention: Attention = {
     { key: "request:11", kind: "request", level: "warning", title: "deckhand requested Dune (2021)", detail: "Movie", link: "/requests?tab=needs", link_key: "requestsWaiting", since: ago(90) },
     { key: "request:12", kind: "request", level: "warning", title: "deckhand requested Severance (2022)", detail: "Series", link: "/requests?tab=needs", link_key: "requestsWaiting", since: ago(30) },
     { key: "review:4", kind: "review", level: "warning", title: "Alien is held: it looks like a different title", link: "/activity/needs-you", link_key: "review", since: ago(240) },
-    { key: "stalled:abc123", kind: "stalled", level: "warning", title: "Old.Film.1080p has stalled", detail: "Nobody has sent it any data for 2h", link: "/activity/queue?filter=problems", link_key: "downloadProblems", since: ago(120) },
+    { key: "stalled:abc123", kind: "stalled", level: "warning", title: "Old.Film.1080p has stalled", detail: "Nobody has sent it any data for 2h", link: "/activity/needs-you#stalled", link_key: "downloadProblems", since: ago(120), hash: STALLED_HASH, grabbed: true },
+    { key: `import:${FAILING_HASH}`, kind: "import", level: "warning", title: "Importing Heat.1995.1080p keeps failing (3 tries)", detail: "permission denied", link: "/activity/needs-you#import-failures", link_key: "importProblems", since: ago(45), hash: FAILING_HASH, grabbed: true },
+    { key: `wrongcat:${MISFILED_HASH}`, kind: "wrongcat", level: "warning", title: "Harbour.Lights.S03E01.1080p finished in “linux”", detail: "Arrmada only imports TV from “arrmada-tv”", link: "/activity/needs-you#wrong-category", link_key: "wrongCategory", since: ago(20), hash: MISFILED_HASH },
     { key: "search:stuck", kind: "search", level: "warning", title: "3 titles still haven't found a release", link: "/activity/wanted", link_key: "downloadsSearching", since: ago(2000), count: 3 },
   ],
 };

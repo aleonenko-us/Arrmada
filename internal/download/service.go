@@ -369,6 +369,28 @@ func (s *Service) Pause(ctx context.Context, hash string) error {
 	return s.onHash(ctx, func(impl Downloader, c Client) error { return impl.Pause(ctx, c, hash) })
 }
 
+// ErrNoCategories: no download client holding torrents can change one's category.
+var ErrNoCategories = errors.New("the download client can't change a torrent's category")
+
+// SetCategory files a torrent under another category on whichever client holds it. The
+// caller decides which categories are allowed (Arrmada's own); this only moves it.
+func (s *Service) SetCategory(ctx context.Context, hash, category string) error {
+	defer s.invalidateSnapshot()
+	tried := false
+	err := s.onHash(ctx, func(impl Downloader, c Client) error {
+		cs, ok := impl.(categorySetter)
+		if !ok {
+			return ErrNoCategories
+		}
+		tried = true
+		return cs.SetCategory(ctx, c, hash, category)
+	})
+	if err == nil && !tried {
+		return ErrNoCategories
+	}
+	return err
+}
+
 // Resume restarts a stopped torrent on whichever enabled client holds it.
 func (s *Service) Resume(ctx context.Context, hash string) error {
 	defer s.invalidateSnapshot()

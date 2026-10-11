@@ -1,6 +1,7 @@
 import type { WebSocketRoute } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import { historyEvents } from "./fixtures/media";
+import { FAILING_HASH, MISFILED_HASH, STALLED_HASH } from "./fixtures/system";
 
 // ACQ-26: one Activity page — Queue, Needs you, Wanted, History and Blocklist tabs — in
 // place of four pages. The old addresses open the matching tab, the tab is the address
@@ -94,6 +95,44 @@ test.describe("manager", () => {
     const heat = page.getByTestId("transfer-card").filter({ hasText: "Heat.1995" });
     await expect(heat.getByRole("link", { name: "Heat" })).toHaveAttribute("href", "/movies/2");
     await expect(heat.getByText("Upgrade", { exact: true })).toBeVisible();
+  });
+
+  // ACQ-30: Needs you is every stuck download, each in its section with the action that
+  // fits it, built on the shared Needs-you snapshot.
+  test("Needs you lists each stuck download with the action that fits it", async ({ page, api }) => {
+    await page.goto("/activity/needs-you");
+    for (const name of ["Held for review", "Imports failing", "Stalled or errored", "Wrong category"]) {
+      await expect(page.getByRole("heading", { level: 2, name: new RegExp(`^${name}`) })).toBeVisible();
+    }
+    // Held imports keep Review's cards and actions.
+    await expect(page.locator("#reviews").getByRole("button", { name: "Import anyway" })).toBeVisible();
+
+    await page.locator("#import-failures").getByRole("button", { name: "Retry now" }).click();
+    await expect(page.getByText("Retrying — the next import check tries it again.")).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/imports/${FAILING_HASH}/retry`)).toHaveLength(1);
+
+    await page.locator("#stalled").getByRole("button", { name: "Try another release" }).click();
+    await expect(page.getByText(/Grabbed Old\.Film\.1080p\.WEB-DL-NEW instead/)).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/queue/${STALLED_HASH}/failover`)).toHaveLength(1);
+
+    await page.locator("#wrong-category").getByRole("button", { name: "Move to TV" }).click();
+    await expect(page.getByText("Moved to TV — the next import check picks it up.")).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/queue/${MISFILED_HASH}/category`)[0].body).toEqual({ category: "arrmada-tv" });
+
+    // What waits elsewhere is one line each, linked.
+    const also = page.getByRole("region", { name: "Also waiting" });
+    await expect(also).toContainText("2 requests are waiting for approval");
+    await expect(also).toContainText("1 health problem");
+    // The tab counts what it holds, like the sidebar pill.
+    await expect(page.getByRole("tablist", { name: "Activity" }).getByRole("tab", { name: /^Needs you/ })).toContainText("4");
+  });
+
+  test("the Dashboard card's links open the right Needs you section", async ({ page }) => {
+    await page.goto("/");
+    const card = page.getByRole("region", { name: /Needs you/ });
+    await card.getByRole("link", { name: "See it →" }).first().click();
+    await expect(page).toHaveURL(/\/activity\/needs-you#(stalled|import-failures|wrong-category)$/);
+    await expect(page.getByRole("heading", { level: 2, name: /^Imports failing/ })).toBeVisible();
   });
 
   test("only the visible tab reads: leaving the Queue stops its queue reads", async ({ page, api }) => {

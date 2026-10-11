@@ -137,7 +137,7 @@ func TestRefreshAggregatesSeededSources(t *testing.T) {
 	if it := items["review:1"]; it.Link != "/activity/needs-you" || it.Title != "Dune is held: it looks like a different title" {
 		t.Errorf("review item = %+v", it)
 	}
-	if it := items["download:err1"]; it.Level != LevelError || it.Link != "/activity/queue?filter=problems" {
+	if it := items["download:err1"]; it.Level != LevelError || it.Link != "/activity/needs-you#stalled" {
 		t.Errorf("errored item = %+v", it)
 	}
 	if it := items["stalled:stall1"]; it.Title != "Dead Release has stalled" || it.Since != clk.now().Add(-2*time.Hour).UnixMilli() {

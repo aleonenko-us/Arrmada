@@ -23,7 +23,7 @@ var groupLinks = map[string]*health.Fix{
 	KindDownload: health.FixDownloadProblems,
 	KindStalled:  health.FixDownloadProblems,
 	KindImport:   health.FixImportProblems,
-	KindWrongCat: health.FixImportProblems,
+	KindWrongCat: health.FixWrongCategory,
 	KindSearch:   health.FixDownloadsSearching,
 	KindHealth:   health.FixStatus,
 }
@@ -197,7 +197,7 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 		switch phase := it.Phase(); {
 		case phase == "error":
 			x := Item{Key: KindDownload + ":" + h, Kind: KindDownload, Level: LevelError, Name: name,
-				Title: name + " errored in the download client", Detail: clientStateWords(it.RawState)}
+				Title: name + " errored in the download client", Detail: clientStateWords(it.RawState), Hash: h, Grabbed: f.grabbed(h)}
 			linkTo(&x, health.FixDownloadProblems)
 			out = append(out, x)
 		case (phase == "stalled" || phase == "metadata") && !it.Complete():
@@ -218,7 +218,7 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 				detail = "It has been waiting for its file list for " + roughDuration(f.Now.Sub(since))
 			}
 			x := Item{Key: KindStalled + ":" + h, Kind: KindStalled, Level: LevelWarning, Name: name,
-				Title: name + " has stalled", Detail: detail, Since: since.UnixMilli()}
+				Title: name + " has stalled", Detail: detail, Since: since.UnixMilli(), Hash: h, Grabbed: f.grabbed(h)}
 			linkTo(&x, health.FixDownloadProblems)
 			out = append(out, x)
 		}
@@ -236,6 +236,12 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 		delete(p.stalledSince, h)
 	}
 	return out, nil
+}
+
+// grabbed reports whether an Arrmada grab recorded the torrent (lowercased hash h).
+func (f *Frame) grabbed(h string) bool {
+	_, ok := f.Acq[h]
+	return ok
 }
 
 // displayName is the release the grab recorded for a torrent, else the client's name.
@@ -318,7 +324,7 @@ func (p importsProvider) Collect(ctx context.Context, f *Frame) ([]Item, error) 
 		}
 		it := Item{Key: KindImport + ":" + h, Kind: KindImport, Level: level, Name: name,
 			Title:  "Importing " + name + " keeps failing (" + strconv.Itoa(fl.Attempts) + " tries)",
-			Detail: clip(fl.LastErr, 200)}
+			Detail: clip(fl.LastErr, 200), Hash: h, Grabbed: f.grabbed(h)}
 		if !fl.Since.IsZero() {
 			it.Since = fl.Since.UnixMilli()
 		}
@@ -354,11 +360,11 @@ func (p wrongCatProvider) Collect(_ context.Context, f *Frame) ([]Item, error) {
 		} else {
 			cat = "“" + cat + "”"
 		}
-		x := Item{Key: KindWrongCat + ":" + h, Kind: KindWrongCat, Level: LevelWarning, Name: it.Name,
+		x := Item{Key: KindWrongCat + ":" + h, Kind: KindWrongCat, Level: LevelWarning, Name: it.Name, Hash: h, Grabbed: f.grabbed(h),
 			Title: it.Name + " finished in " + cat,
 			Detail: "Arrmada only imports TV from “" + download.CategoryTV + "”: set the category in qBittorrent, " +
 				"or grab it again through Arrmada"}
-		linkTo(&x, health.FixImportProblems)
+		linkTo(&x, health.FixWrongCategory)
 		out = append(out, x)
 	}
 	return out, nil

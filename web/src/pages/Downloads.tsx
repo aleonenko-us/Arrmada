@@ -566,8 +566,9 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
 function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
   const [removing, setRemoving] = useState(false);
   const st = it.stage ? STAGE[it.stage] : STAGE.importing;
-  // Anything that needs a decision is settled on Needs you, which has an action for each.
-  const decide = it.stage === "needs_review" || it.stage === "import_retrying" || it.stage === "wrong_category";
+  // Anything that needs a decision is settled on Needs you, in the section with the
+  // action for it.
+  const decide = it.stage === "needs_review" ? LINKS.review : it.stage === "import_retrying" ? LINKS.importProblems : it.stage === "wrong_category" ? LINKS.wrongCategory : null;
   return (
     <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
       <div className="flex items-start gap-3">
@@ -585,7 +586,7 @@ function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: bo
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
-          primary={decide ? <Link to={LINKS.review} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
+          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
           secondary={[{ label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) }]}
         />
       </div>

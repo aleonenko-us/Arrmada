@@ -36,9 +36,10 @@ function heldAt(s: string): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-// ReviewsPanel is Activity → Needs you: finished downloads held back from import. Each
-// card says why, and offers only the actions that can work for that reason.
-export function ReviewsPanel() {
+// ReviewsPanel is the held imports: finished downloads held back from import. Each card
+// says why, and offers only the actions that can work for that reason. Activity → Needs
+// you shows it as its first section (compact: no introduction, a short empty state).
+export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
   const [list, setList] = useState<ImportReview[] | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -143,12 +144,12 @@ export function ReviewsPanel() {
   return (
     <>
       <div className="max-w-[960px]">
-        <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
+        {!compact && <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
           Finished downloads Arrmada held back instead of importing. Each says why: the content doesn't match what it was
           grabbed for, it isn't linked to anything in your library, its files' episode numbering couldn't be read, its import
           keeps failing (a folder Arrmada can't write to, a full disk), or there's nothing importable inside. Pick what to do —
           only the actions that can work for that reason are offered.
-        </p>
+        </p>}
 
         {list && list.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-ink-dim">
@@ -169,8 +170,8 @@ export function ReviewsPanel() {
         {list === null ? (
           <div className="p-10 text-center text-[12.5px] text-ink-dim">Loading…</div>
         ) : list.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            Nothing to review — every finished download went into the library. 🎉
+          <div className={`rounded-xl ${compact ? "p-5" : "p-12"} text-center text-[12.5px] text-ink-dim`} style={{ border: "1px solid var(--line)" }}>
+            {compact ? "Nothing held for review." : "Nothing to review — every finished download went into the library. 🎉"}
           </div>
         ) : (
           <div className="flex flex-col gap-3">

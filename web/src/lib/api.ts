@@ -809,6 +809,10 @@ export interface AttentionItem {
   link_label?: string;
   since: number; // unix ms
   count?: number; // an aggregate's size (search:stuck)
+  /** The torrent a download, stalled, import or wrongcat item is about. */
+  hash?: string;
+  /** An Arrmada grab recorded that torrent (so another release can be tried). */
+  grabbed?: boolean;
 }
 export interface AttentionGroup {
   kind: AttentionKind;
@@ -2294,6 +2298,14 @@ export const api = {
     req<{ status: string; blocked_for: BlockTarget } & JobRef>(`/api/v1/queue/${hash}/block`, { method: "POST", body: JSON.stringify({ name }) }),
   torrentAction: (hash: string, action: "recheck" | "reannounce" | "prio_up" | "prio_down") =>
     req<{ status: string }>(`/api/v1/queue/${hash}/action`, { method: "POST", body: JSON.stringify({ action }) }),
+  // Activity → Needs you: try another release now (a job), move a misfiled TV download
+  // into the TV category, and retry a failing import now.
+  failOverDownload: (hash: string) =>
+    req<{ status: string } & JobRef>(`/api/v1/queue/${hash}/failover`, { method: "POST" }),
+  setDownloadCategory: (hash: string, category: string) =>
+    req<{ status: string; category: string }>(`/api/v1/queue/${hash}/category`, { method: "POST", body: JSON.stringify({ category }) }),
+  retryImport: (hash: string) =>
+    req<{ status: string }>(`/api/v1/imports/${hash}/retry`, { method: "POST" }),
   // External service credentials, settable in-app (settings-first, env-fallback). The
   // server never returns the secret itself — only whether it's set, from where, and a hint.
   apiKeys: () => req<{ keys: APIKeyStatus[] }>(`/api/v1/apikeys`).then((r) => r.keys),

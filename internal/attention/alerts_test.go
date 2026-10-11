@@ -343,7 +343,7 @@ func TestBatchingAboveFive(t *testing.T) {
 	e.diffs(a, 3, six...)
 	wantSent(t, em, "download.failed 6")
 	m, ok := mustDef(t, notify.EventDownloadFailed).Format(em.last().data)
-	if !ok || m.Body != "❌ 6 downloads failed: t0, t1, t2 and 3 more" || m.Link != "/activity/queue?filter=problems" {
+	if !ok || m.Body != "❌ 6 downloads failed: t0, t1, t2 and 3 more" || m.Link != "/activity/needs-you#stalled" {
 		t.Errorf("summary = %+v", m)
 	}
 	e.diffs(a, 10, six...)

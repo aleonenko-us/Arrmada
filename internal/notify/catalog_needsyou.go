@@ -25,7 +25,7 @@ const (
 // (the items' short names, in order) and the link of the page that lists them all.
 //
 //	{"count": 1, "title": "...", "detail": "...", "link": "/activity/needs-you", "level": "error"}
-//	{"count": 6, "names": ["A", "B", ...], "link": "/activity/queue?filter=problems"}
+//	{"count": 6, "names": ["A", "B", ...], "link": "/activity/needs-you#stalled"}
 func init() {
 	for _, d := range []EventDef{
 		needsYouEvent(EventImportHeld, "Held for review", true,
