@@ -14,21 +14,24 @@ import {
 import { LINKS } from "../lib/links";
 import { needsYouRows } from "../lib/needsYou";
 import { useAttention } from "../lib/useAttention";
-import { useLive } from "../lib/useLive";
-import { usePoll } from "../lib/usePoll";
+import { useLiveConnected } from "../lib/live";
+import { useLiveRefresh } from "../lib/useLiveQuery";
+import { QUEUE_CHANGED } from "../lib/queueLive";
 import { hwBadge } from "../lib/plexHw";
 
 // The dashboard fans out over Plex, the download client and the disks, so it isn't
-// free — but it's the page people leave open. Ten seconds keeps the streams and the
-// transfer speeds honest without hammering anything.
-const REFRESH_MS = 10_000;
+// free — but it's the page people leave open. A grab, an import, a scan or a stream
+// starting refreshes it at once; otherwise every 15 s keeps Plex's now-playing and the
+// transfer speeds honest (Plex has no event for a stream's progress).
+const REFRESH_MS = 15_000;
+const REFRESH_TOPICS = [QUEUE_CHANGED, "release.grabbed", "download.imported", "library.scanned", "plex.stream.started"];
 
 export function Dashboard() {
   const [status, setStatus] = useState<Status | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { connected } = useLive();
+  const connected = useLiveConnected();
 
   useEffect(() => {
     Promise.all([api.status(), api.health()])
@@ -45,7 +48,9 @@ export function Dashboard() {
   // refreshes at once.
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  usePoll(() => api.dashboard().then((d) => alive.current && setData(d)).catch(() => {}), REFRESH_MS);
+  useLiveRefresh(() => api.dashboard().then((d) => alive.current && setData(d)).catch(() => {}), {
+    topics: REFRESH_TOPICS, fallbackMs: REFRESH_MS, debounceMs: 1000, immediate: true,
+  });
 
   const dbOK = health?.checks?.database === "ok";
   const streams = data?.streams?.streams ?? [];

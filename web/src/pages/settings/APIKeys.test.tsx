@@ -18,7 +18,7 @@ vi.mock("../../lib/me", async (orig) => ({
   useMe: () => ({ user: { id: 1, username: "admin", role: "admin" }, setMetadataReady: () => {} }),
 }));
 vi.mock("../../lib/useSettings", () => ({ useLoadedSettings: () => ({ syncRegion: () => {} }) }));
-vi.mock("../../lib/useLive", () => ({ useLive: () => ({ connected: false, last: null }) }));
+vi.mock("../../lib/useLiveQuery", () => ({ useLiveRefresh: () => () => {} }));
 
 const key = (id: string, over: Partial<APIKeyStatus> = {}): APIKeyStatus => ({
   id, label: id.toUpperCase(), purpose: "", help_url: "", steps: "", secret: true,

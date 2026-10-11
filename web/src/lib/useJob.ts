@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, SIGNED_OUT_EVENT, type Job, type JobStatus } from "./api";
-import type { LiveEvent } from "./useLive";
+import { useLiveConnected, useLiveEvent } from "./live";
 
 // Following the background job a button started (a search, a scan, an import), so the
 // button can say what actually happened instead of "searching" and silence.
@@ -76,22 +76,23 @@ export interface JobView {
 
 /**
  * useJob follows job jobId until it finishes, then calls onDone once with it. It checks
- * every 1.5 s, or — when the page's live socket is connected — wakes on job.updated and
+ * every 1.5 s, or — while the tab's live socket is connected — wakes on job.updated and
  * keeps a slow backstop check. Hidden tabs don't poll; it gives up after five minutes.
  * Leaving the page stops watching, never the job.
  */
 export function useJob(
   jobId?: number | null,
-  opts: { live?: { connected: boolean; last: LiveEvent | null }; onDone?: (job: Job) => void } = {},
+  opts: { onDone?: (job: Job) => void } = {},
 ): JobView {
   const [job, setJob] = useState<Job | null>(null);
   const [following, setFollowing] = useState(false);
   const onDone = useRef(opts.onDone);
-  const connected = useRef(!!opts.live?.connected);
+  const live = useLiveConnected();
+  const connected = useRef(live);
   const wake = useRef<(() => void) | null>(null);
   useEffect(() => {
     onDone.current = opts.onDone;
-    connected.current = !!opts.live?.connected;
+    connected.current = live;
   });
 
   useEffect(() => {
@@ -135,12 +136,10 @@ export function useJob(
 
   // A job.updated for this job (staff sockets get them) wakes the follower, which then
   // reads the finished job — the event itself carries no result.
-  const last = opts.live?.last;
-  useEffect(() => {
-    if (!jobId || !last || last.topic !== "job.updated") return;
-    const d = last.data as { id?: number; status?: JobStatus } | null;
-    if (d?.id === jobId && jobDone(d.status)) wake.current?.();
-  }, [last, jobId]);
+  useLiveEvent("job.updated", (ev) => {
+    const d = ev.data as { id?: number; status?: JobStatus } | null;
+    if (d && jobId && d.id === jobId && jobDone(d.status)) wake.current?.();
+  }, !!jobId);
 
   return {
     job,

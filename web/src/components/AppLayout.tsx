@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { FleetMark } from "./FleetMark";
@@ -36,6 +36,9 @@ function useWide(): boolean {
 
 export function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
+  const closeNav = useCallback(() => setNavOpen(false), []);
+  // Where focus goes back to when the drawer is dismissed with Escape or the backdrop.
+  const menuButton = useRef<HTMLButtonElement>(null);
   const { pathname } = useLocation();
   const wide = useWide();
   useDocumentTitle();
@@ -49,7 +52,7 @@ export function AppLayout() {
   const urgent = (attention?.groups ?? []).some((g) => g.level === "error");
   return (
     <div className="flex h-full font-sans">
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} bell={wide} />
+      <Sidebar open={navOpen} onClose={closeNav} bell={wide} returnFocus={menuButton} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Compact top bar — only on narrow windows where the sidebar is a drawer. It
             clears the iPhone status bar and notch when installed as an app. */}
@@ -63,7 +66,7 @@ export function AppLayout() {
             paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
           }}
         >
-          <button onClick={() => setNavOpen(true)} aria-label={needsYou > 0 ? "Open menu — something needs you" : "Open menu"} className="relative grid h-9 w-9 place-items-center rounded-lg" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+          <button ref={menuButton} onClick={() => setNavOpen(true)} aria-expanded={navOpen} aria-label={needsYou > 0 ? "Open menu — something needs you" : "Open menu"} className="relative grid h-9 w-9 place-items-center rounded-lg" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
             {/* The sidebar is a drawer here, so its count pills are out of sight: a dot says
                 there's something in it worth opening for. */}

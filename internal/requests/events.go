@@ -52,6 +52,12 @@ func (s *Service) publishAutoApproved(req Request) {
 // request (the realtime policy delivers a user topic to that user alone).
 func (s *Service) publishUpdated(req Request, status string, users []int64) {
 	s.kickAttention()
+	s.publish(req, status, users)
+}
+
+// publish is publishUpdated without the Needs-you kick, for a request whose stage moved
+// but whose status didn't (NudgeItem): the pending count can't have changed.
+func (s *Service) publish(req Request, status string, users []int64) {
 	if s.bus == nil {
 		return
 	}

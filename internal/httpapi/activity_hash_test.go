@@ -101,7 +101,7 @@ func TestDownloadsFeedJoinsByHash(t *testing.T) {
 	}
 	queue, _ := dl.Queue(ctx)
 	m, _ := mv.Get(ctx, 1)
-	if d := movieDownload(m, acqs[1], queueByHash(queue), queue); d == nil || d.Progress != 0.4 {
+	if d := movieDownload(m, acqs[1], queueByHash(queue), queue); d == nil || d.Progress != 0.4 || d.Hash == "" {
 		t.Errorf("grid progress: %+v, want the grabbed torrent's 0.4", d)
 	}
 }

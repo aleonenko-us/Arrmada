@@ -11,7 +11,7 @@ import { ConnectionsSettings } from "./Connections";
 // INT-17 (with INT-04/05/10/11's fixes carried over): indexers and download clients are
 // added, edited, switched off and deleted from their cards on Settings → Connections.
 
-vi.mock("../../lib/useLive", () => ({ useLive: () => ({ connected: false, last: null }) }));
+vi.mock("../../lib/useLiveQuery", () => ({ useLiveRefresh: () => () => {} }));
 
 const idx = (over: Partial<Indexer> = {}): Indexer => ({ id: 1, name: "TorrentLeech", kind: "torrentleech", priority: 25, enabled: true, ...over });
 const client = (over: Partial<DownloadClient> = {}): DownloadClient => ({ id: 1, name: "qBittorrent", kind: "qbittorrent", url: "http://qb:8080", enabled: true, priority: 25, ...over });

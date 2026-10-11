@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type UserNotification } from "../lib/api";
 import { refToPath } from "../lib/refLink";
-import { usePoll } from "../lib/usePoll";
+import { useLiveRefresh } from "../lib/useLiveRefresh";
+import { REQUEST_TOPICS } from "../lib/useRequestsFeed";
 
 // Where the bell's Settings button goes: the Me page's "Get notified" card, the one place
 // push and Apprise are set up.
@@ -20,7 +21,7 @@ function searchTitleOf(n: UserNotification): string {
 // NotificationBell is everyone's inbox: a bell with an unread badge that opens a dropdown
 // of notifications (a request ready, approved or declined; staff also hear of new
 // requests), and a Settings button to the Me page, where push is set up. Every layout mounts exactly one, in its top bar
-// or, on a wide staff screen, the sidebar. Polls the unread count on an interval.
+// or, on a wide staff screen, the sidebar. Kept fresh by the request feed (below).
 //
 // placement "side": the bell sits in the sidebar, which scrolls and so would clip a
 // dropdown; the panel opens beside the sidebar instead, outside it.
@@ -36,7 +37,10 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
   const side = placement === "side";
 
   const load = () => api.myNotifications().then((r) => { setItems(r.notifications ?? []); setUnread(r.unread); }).catch(() => {});
-  usePoll(load, 30000);
+  // Most notices are about a request (approved, declined, ready; a new one, for staff), and
+  // each is written before the request's change is announced: the request feed's events
+  // bring the badge along within a second. Once a minute catches the rest.
+  useLiveRefresh(load, { topics: REQUEST_TOPICS, fallbackMs: 60_000, debounceMs: 1000, immediate: true });
 
   // Close on outside click (the side panel lives outside the bell's own box).
   useEffect(() => {

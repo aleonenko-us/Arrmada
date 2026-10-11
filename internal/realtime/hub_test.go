@@ -54,3 +54,22 @@ func TestRunForwardsBusEvents(t *testing.T) {
 		t.Fatal("timed out waiting for forwarded event")
 	}
 }
+
+// The queue publisher runs only while a staff client is connected: a requester's socket
+// can't receive queue topics, so it mustn't keep the download client busy.
+func TestStaffCount(t *testing.T) {
+	h := NewHub(nil)
+	req := h.Connect(Viewer{UserID: 7})
+	if h.StaffCount() != 0 || h.Count() != 1 {
+		t.Fatalf("requester only: staff %d, all %d", h.StaffCount(), h.Count())
+	}
+	staff := h.Connect(Viewer{UserID: 1, Staff: true})
+	if h.StaffCount() != 1 {
+		t.Fatalf("staff connected: %d", h.StaffCount())
+	}
+	h.Disconnect(staff)
+	h.Disconnect(req)
+	if h.StaffCount() != 0 {
+		t.Fatalf("after disconnect: %d", h.StaffCount())
+	}
+}

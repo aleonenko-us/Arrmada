@@ -78,7 +78,7 @@ func movieDownloadOf(acqs []automation.Acquisition, qi queueIndex, label func(ve
 		if !ok || it.Progress >= 1 {
 			continue
 		}
-		d := &movies.DownloadStatus{State: it.State, Progress: it.Progress, Kind: downloadKind(a)}
+		d := &movies.DownloadStatus{State: it.State, Progress: it.Progress, Hash: it.Hash, Kind: downloadKind(a)}
 		if a.VersionID > 0 {
 			d.VersionID = a.VersionID
 			if label != nil {

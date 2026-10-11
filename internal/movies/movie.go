@@ -86,6 +86,9 @@ type Acquisition struct {
 type DownloadStatus struct {
 	State    string  `json:"state"`
 	Progress float64 `json:"progress"` // 0..1
+	// Hash is the torrent's info hash, so the grid and the movie page can move this bar
+	// from a queue.progress event instead of refetching.
+	Hash string `json:"hash,omitempty"`
 	// Kind is what the download is for: "missing" (a track with no file — the film
 	// itself, unless VersionLabel says otherwise), "upgrade" (it replaces a file the track
 	// has) or "version" (an extra version's first file). "" reads as missing.

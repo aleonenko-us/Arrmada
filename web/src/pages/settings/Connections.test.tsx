@@ -11,7 +11,7 @@ import { ConnectionsSettings } from "./Connections";
 // INT-16: one page of cards, each with a dot and its last-OK or last-error line; Test
 // updates its card in place; a failing card offers Fix; a health link's card is outlined.
 
-vi.mock("../../lib/useLive", () => ({ useLive: () => ({ connected: false, last: null }) }));
+vi.mock("../../lib/useLiveQuery", () => ({ useLiveRefresh: () => () => {} }));
 
 const item = (over: Partial<ConnectionItem>): ConnectionItem => ({
   kind: "indexer", ref: "1", card: "indexer-1", name: "TorrentLeech", configured: true, enabled: true,

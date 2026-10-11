@@ -1607,7 +1607,7 @@ export interface Episode {
   size_bytes?: number;
   // Kept out of profile-driven upgrades ("keep existing files"); Resume lifts it.
   upgrade_hold?: boolean;
-  download?: { state: string; progress: number };
+  download?: { state: string; progress: number; hash?: string };
 }
 export interface Season {
   id: number;
@@ -1656,7 +1656,7 @@ export interface Series {
 
 // One episode's in-flight download, from the light poll the series page runs while
 // something downloads (GET /series/{id}/downloads).
-export interface SeriesEpisodeDownload { season: number; episode: number; state: string; progress: number }
+export interface SeriesEpisodeDownload { season: number; episode: number; state: string; progress: number; hash?: string }
 // --- Books ---
 export type BookSource = "openlibrary" | "hardcover";
 export interface BookUpgradeStatus {
@@ -3277,6 +3277,8 @@ export interface Movie {
 export interface MovieDownload {
   state: string;
   progress: number;
+  /** The torrent's info hash: a queue.progress event moves this bar by it. */
+  hash?: string;
   kind?: "missing" | "upgrade" | "version";
   version_id?: number;
   version_label?: string;

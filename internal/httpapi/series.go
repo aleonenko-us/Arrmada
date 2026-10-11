@@ -152,6 +152,7 @@ type seriesEpisodeDownload struct {
 	Episode  int     `json:"episode"`
 	State    string  `json:"state"`
 	Progress float64 `json:"progress"`
+	Hash     string  `json:"hash,omitempty"`
 }
 
 // handleSeriesDownloads is what the series page polls while something downloads: only the
@@ -178,7 +179,7 @@ func (a *api) handleSeriesDownloads(w http.ResponseWriter, r *http.Request) {
 		for _, e := range sn.Episodes {
 			if e.Download != nil {
 				out = append(out, seriesEpisodeDownload{Season: e.SeasonNumber, Episode: e.EpisodeNumber,
-					State: e.Download.State, Progress: e.Download.Progress})
+					State: e.Download.State, Progress: e.Download.Progress, Hash: e.Download.Hash})
 			}
 		}
 	}
@@ -247,7 +248,7 @@ func indexEpisodeDownloads(queue []download.Item, s series.Series, parse func(st
 		if !series.FitRelease(p, s).OK {
 			continue
 		}
-		d := &series.EpisodeDownload{State: it.State, Progress: it.Progress}
+		d := &series.EpisodeDownload{State: it.State, Progress: it.Progress, Hash: it.Hash}
 		if p.Complete {
 			if idx.whole == nil {
 				idx.whole = d

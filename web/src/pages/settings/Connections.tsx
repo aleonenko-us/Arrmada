@@ -10,8 +10,7 @@ import { api, type DownloadClient, type Indexer } from "../../lib/api";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery } from "../../lib/query";
-import { useLive } from "../../lib/useLive";
-import { usePoll } from "../../lib/usePoll";
+import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
 
 const NO_SECTIONS: ConnectionSectionData[] = [];
@@ -34,9 +33,9 @@ const SECTION_ANCHOR: Record<ConnectionSectionId, string> = {
   other: "other-connections",
 };
 
-// Live refresh: a status change is announced on the websocket; the list is read again a
-// second after the last one, so a burst (three sweeps at once) is one read. A slow poll
-// covers a dropped socket.
+// Live refresh: a status change is announced on the tab's shared websocket; the list is read
+// again a second after the first one, so a burst (three sweeps at once) is one read. A slow
+// poll covers a dropped socket.
 const SLOW_POLL_MS = 60_000;
 
 // Settings → Connections: every integration Arrmada talks to as a card with a status dot,
@@ -71,15 +70,9 @@ export function ConnectionsSettings() {
   const refreshAll = useCallback(async () => { await Promise.all([refetch(), refetchIx(), refetchDl()]); }, [refetch, refetchIx, refetchDl]);
   const keys = useAPIKeys(admin, refresh);
 
-  const { last } = useLive();
-  useEffect(() => {
-    if (last?.topic !== "integration.status" && last?.topic !== "health.changed") return;
-    const t = window.setTimeout(() => void refetch(), 1000);
-    return () => window.clearTimeout(t);
-    // Keyed on the event alone: refetch changes identity as the list loads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last]);
-  usePoll(() => refetch(), SLOW_POLL_MS, { immediate: false });
+  // The tab's one shared socket (lib/live): an integration's status changing, or the
+  // health checks' findings, re-read the list.
+  useLiveRefresh(refetch, { topics: ["integration.status", "health.changed"], debounceMs: 1000, fallbackMs: SLOW_POLL_MS });
 
   // A link to one card (a health warning's Fix) lands on it once the cards exist; the
   // hub's own scroll ran before they loaded.
