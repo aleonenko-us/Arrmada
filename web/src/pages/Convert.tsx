@@ -12,7 +12,7 @@ import {
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
   type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision, type ConvertHoldStats,
 } from "../lib/api";
-import { HeldSummary, ReleaseButton, holdLine } from "./convert/hold";
+import { HeldSummary, ReleaseButton, RevertButton, holdLine } from "./convert/hold";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
@@ -680,7 +680,12 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                             {requested.has(c.key) ? <span className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good)" }}>Next ✓</span>
                               : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{busy === c.key ? "…" : c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
                           </div>
-                        ) : <div className="text-right"><span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span></div>}
+                        ) : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span>
+                            {c.revert_history_id ? <RevertButton id={c.revert_history_id} flash={flash} onDone={() => { setRefreshKey((n) => n + 1); onRequested(); }} /> : null}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -774,6 +779,7 @@ const SKIP_LABEL: Record<string, string> = {
   library_full: "The library disk hasn't room for the converted file next to the original. The originals were kept; each is tried again after an hour, then six, then once a day",
   source_gone: "The library file was missing when Convert went to read it — usually mid-import or mid-upgrade. Checked again later",
   transient: "These hit a problem that usually clears on its own (often a full disk). Each is tried again after an hour, then six, then once a day",
+  reverted: "You reverted their conversions, so Convert leaves them alone. Converting one by hand from the Library still works",
   hold_full: "The originals hold is full: each converted file's original is kept for the undo window, and the hold has reached the size you set. Nothing is deleted to make room — these convert after the next original is released (its window ends, or you release some from History), or once you raise the hold's size in Convert's settings",
   name_taken: "The converted file would take the name of a file another library record points at (a second version, say), so it was left alone and the originals kept. Each is tried again after an hour, then six, then once a day",
   no_hold: "There's nowhere on the file's own disk to keep the original while the conversion can be undone — usually the file is outside your library folders, or a library folder isn't mounted. The originals were kept; each is tried again after an hour, then six, then once a day",
@@ -995,6 +1001,7 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
           {holdLine(e) && (
             <div className="flex flex-wrap items-center gap-2">
               <span><span className={lbl}>Original</span> {holdLine(e)}</span>
+              <RevertButton e={e} flash={flash} onDone={onChanged} />
               <ReleaseButton e={e} flash={flash} onDone={onChanged} />
             </div>
           )}

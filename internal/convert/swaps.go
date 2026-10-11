@@ -136,6 +136,10 @@ func (s *Service) recoverSwaps(ctx context.Context) {
 		return // table may predate the migration runner in tests; nothing to recover
 	}
 	for _, w := range swaps {
+		if w.op == opRevert {
+			s.recoverRevert(ctx, w) // revert.go
+			continue
+		}
 		switch w.state {
 		case swapStaging, swapStaged:
 			s.abandonSwap(w, "an interrupted conversion was rolled back — the original was never touched")

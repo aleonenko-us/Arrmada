@@ -2150,7 +2150,8 @@ export interface ConvertSeriesRollup {
 }
 
 export interface ConvertNeeds { video: boolean; subs: boolean; audio: boolean; why?: string; save: number; worth: boolean; measured?: boolean }
-export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string }
+export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string;
+  revert_history_id?: number /* its conversion can still be reverted (the original is in the hold) */ }
 export interface ConvertJob {
   id: number; key: string; kind?: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string;
   state: "preparing" | "testing" | "encoding" | "verifying" | "replacing" | "done" | "failed" | "skipped" | "cancelled";
@@ -3166,6 +3167,8 @@ export const api = {
   convertHistoryEntry: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}`),
   // Deletes a held original for good (its conversion can't be undone after).
   convertReleaseHold: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/release`, { method: "POST" }),
+  // Puts a conversion's original back from the hold in place of the converted file.
+  convertRevert: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/revert`, { method: "POST" }),
   convertReleaseHolds: (olderThanDays = 0) =>
     req<{ released: number; freed_bytes: number }>(`/api/v1/convert/history/release?older_than_days=${olderThanDays}`, { method: "POST" }),
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),

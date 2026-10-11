@@ -434,6 +434,9 @@ type Candidate struct {
 	Needs     Needs      `json:"needs"`
 	EstBytes  int64      `json:"est_bytes"` // rough estimate of the converted size
 	Tracks    string     `json:"tracks,omitempty"`
+	// The ledger row whose original is still in the hold, so this file's conversion can be
+	// reverted (0 = none). Filled by WithRevert.
+	RevertHistoryID int64 `json:"revert_history_id,omitempty"`
 }
 
 // Library returns every movie with its spec and what it needs, from the index.

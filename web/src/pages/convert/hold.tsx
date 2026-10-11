@@ -83,6 +83,45 @@ export function holdLine(e: ConvertHistoryEntry): string {
   }
 }
 
+// revertBody says exactly what a revert will do, from the ledger row.
+function revertBody(e: ConvertHistoryEntry): string {
+  const was = (e.src_spec ?? "").split(" · ")[0];
+  const now = (e.codec || (e.out_spec ?? "").split(" · ")[0]).toUpperCase();
+  const what = e.kind === "episode" ? "episode" : "film";
+  return `Puts back the original ${fmtBytes(e.src_size)}${was ? ` ${was}` : ""} file, removes the ${fmtBytes(e.out_size)}${now ? ` ${now}` : ""} file, ` +
+    `and stops Convert from picking this ${what} again (converting it by hand still works).`;
+}
+
+// RevertButton puts a conversion's original back from the hold, after a confirm that says
+// exactly what will happen. Give it the ledger row, or just its id (the Library) and it
+// reads the row first.
+export function RevertButton({ e, id, flash, onDone }: {
+  e?: ConvertHistoryEntry; id?: number; flash: (m: string) => void; onDone: (e: ConvertHistoryEntry) => void;
+}) {
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState(false);
+  if (e && (e.hold_state !== "held" || e.outcome !== "done")) return null;
+  const rowID = e?.id ?? id;
+  if (!rowID) return null;
+  const revert = async () => {
+    setBusy(true);
+    try {
+      const row = e ?? await api.convertHistoryEntry(rowID);
+      const ok = await confirm({ title: `Revert the conversion of ${row.title}?`, body: revertBody(row), confirmLabel: "Revert" });
+      if (!ok) return;
+      const next = await api.convertRevert(rowID);
+      flash(`Reverted ${row.title} — the original is back`);
+      onDone(next);
+    } catch (err) { flash((err as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <button onClick={revert} disabled={busy} title="Put the original back in place of the converted file"
+      className="rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+      {busy ? "…" : "Revert"}
+    </button>
+  );
+}
+
 // ReleaseButton deletes one row's held original now, after a confirm.
 export function ReleaseButton({ e, flash, onDone }: { e: ConvertHistoryEntry; flash: (m: string) => void; onDone: (e: ConvertHistoryEntry) => void }) {
   const confirm = useConfirm();

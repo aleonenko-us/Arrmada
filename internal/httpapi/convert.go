@@ -117,6 +117,7 @@ func (a *api) handleConvertLibrary(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []convert.Candidate{}
 	}
+	list = a.deps.Convert.WithRevert(ctx, list) // converted files that can still be undone
 	a.writeJSON(w, http.StatusOK, map[string]any{"items": list})
 }
 

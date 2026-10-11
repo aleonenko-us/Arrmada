@@ -557,6 +557,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/convert/history", a.requireRole(auth.RoleManager, a.handleConvertHistory))
 	mux.HandleFunc("GET /api/v1/convert/history/{id}", a.requireRole(auth.RoleManager, a.handleConvertHistoryEntry))
 	mux.HandleFunc("POST /api/v1/convert/history/{id}/release", a.requireRole(auth.RoleManager, a.handleConvertHoldRelease))
+	mux.HandleFunc("POST /api/v1/convert/history/{id}/revert", a.requireRole(auth.RoleManager, a.handleConvertRevert))
 	mux.HandleFunc("POST /api/v1/convert/history/release", a.requireRole(auth.RoleManager, a.handleConvertHoldReleaseOlder))
 	mux.HandleFunc("POST /api/v1/convert/reindex", a.requireRole(auth.RoleManager, a.handleConvertReindex))
 	mux.HandleFunc("GET /api/v1/convert/reindex", a.requireRole(auth.RoleManager, a.handleConvertReindexStatus))

@@ -78,7 +78,7 @@ func retryDelay(kind string, attempts int) time.Duration {
 // Overview keeps promising space that will never arrive.
 func permanentSkip(kind string) bool {
 	switch kind {
-	case SkipHDRUnsupported, SkipNotSmaller, SkipQualityGate:
+	case SkipHDRUnsupported, SkipNotSmaller, SkipQualityGate, SkipReverted:
 		return true
 	}
 	return false
