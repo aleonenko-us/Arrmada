@@ -54,6 +54,13 @@ func TestRequestLaneTakesRequestPastFrozenAutoJob(t *testing.T) {
 		t.Fatalf("lane job = %+v", j)
 	}
 
+	// A normal slot that frees meanwhile doesn't start an automatic file just to wait.
+	set(t, s, map[string]string{keyAuto: "true"})
+	indexMovie(t, s, 3, "Remux", film("h264", 1920, 1080, 35000, aud("truehd", "eng", 8)))
+	if j2 := s.pickJob(ctx); j2 != nil {
+		t.Errorf("an automatic pick started while the lane is busy: %s", j2.Title)
+	}
+
 	if r := s.pauseReason(auto, prefs{}, false, s.laneBusy()); r != laneWaitReason {
 		t.Errorf("the automatic job's pause = %q, want %q", r, laneWaitReason)
 	}

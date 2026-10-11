@@ -105,8 +105,9 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 			return job
 		}
 	}
-	// 2. The runner's own picks, inside the hours.
-	if !p.auto || !windowAllows(p.start, p.end) {
+	// 2. The runner's own picks, inside the hours — and not while a requested file runs on
+	// the request lane: it would only start to wait for it.
+	if !p.auto || !windowAllows(p.start, p.end) || s.laneBusy() {
 		return nil
 	}
 	waiting := s.skips.waitingKeys(ctx)
