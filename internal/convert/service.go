@@ -31,10 +31,6 @@ import (
 // run it can wake the array, so keep it away from prime viewing hours.
 const defaultScanAt = "03:00"
 
-// encodeNice is the scheduling priority encodes run at. 19 is the lowest — encoding is bulk
-// background work that should yield instantly to Plex or anything else the user notices.
-const encodeNice = 19
-
 // maxJobHistory caps how many FINISHED jobs are kept for the activity list.
 const maxJobHistory = 200
 
@@ -115,6 +111,9 @@ type Service struct {
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
 	noNumaPools bool
+	// vmaf is set when this ffmpeg has libvmaf (detected at startup): VMAF is then measured
+	// alongside SSIM, advisory only.
+	vmaf bool
 
 	encoders []Encoder
 	failures *failureStore // repeated-failure tracking
@@ -258,7 +257,8 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 			working = append(working, e.Name)
 		}
 	}
-	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "")
+	s.vmaf = hasLibVMAF(context.Background(), ffmpeg)
+	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "libvmaf", s.vmaf)
 	return s
 }
 

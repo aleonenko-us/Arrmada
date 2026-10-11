@@ -3,10 +3,11 @@ package convert
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Black bars. A 2.39:1 film on a 4K disc is 3840×2160 with ~276 rows of black above and
@@ -68,7 +69,7 @@ func (s *Service) detectCrop(ctx context.Context, src string, mi *MediaInfo) *Cr
 	samples := cropSampleCount(mi.DurationSec)
 	for i := 0; i < samples; i++ {
 		at := mi.DurationSec * (float64(i) + 0.5) / float64(samples)
-		out, _ := exec.CommandContext(ctx, s.ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "info",
+		out, _ := s.tool(ctx, nil, toolrun.Idle, s.ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "info",
 			"-skip_frame", "nokey", "-ss", strconv.FormatFloat(at, 'f', 2, 64), "-i", src,
 			"-map", fmt.Sprintf("0:v:%d", mi.VideoIndex), "-an", "-sn",
 			"-vf", "cropdetect=round=2:reset=1:skip=0", "-frames:v", "3", "-f", "null", "-").CombinedOutput()

@@ -52,6 +52,7 @@ type jobRecord struct {
 	skipKind            string
 	ssimMean            float64
 	ssimWindows         []float64
+	vmafMean            float64 // 0 = not measured (no libvmaf, or it couldn't be)
 	reclaimDeferred     bool
 	encodeStart         time.Time
 	encodeEnd           time.Time
@@ -174,6 +175,7 @@ type HistoryEntry struct {
 	SSIMMean    float64   `json:"ssim_mean,omitempty"`
 	SSIMMin     float64   `json:"ssim_min,omitempty"`
 	SSIMWindows []float64 `json:"ssim_windows,omitempty"`
+	VMAFMean    float64   `json:"vmaf_mean,omitempty"` // advisory; 0 = not measured
 
 	Kept            []TrackDecision `json:"kept_tracks,omitempty"`
 	Dropped         []TrackDecision `json:"dropped_tracks,omitempty"`
@@ -282,6 +284,15 @@ func (h *historyStore) insert(ctx context.Context, r historyRow) int64 {
 	return id
 }
 
+// setVMAF records the advisory VMAF score on a job's in-progress row. Kept out of the
+// begin/finish writes, which don't touch the column, so it survives the final update.
+func (h *historyStore) setVMAF(ctx context.Context, id int64, v float64) {
+	if h == nil || h.db == nil || id <= 0 {
+		return
+	}
+	_, _ = h.db.ExecContext(ctx, `UPDATE convert_history SET vmaf_mean = ? WHERE id = ?`, v, id)
+}
+
 // interrupted closes the rows a restart cut off. Runs at startup, before any worker, so
 // every in_progress row left is from a job that no longer exists.
 func (h *historyStore) interrupted(ctx context.Context) int64 {
@@ -313,7 +324,7 @@ func (h *historyStore) prune(ctx context.Context) {
 const historyCols = `id, item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 	src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 	ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-	reclaim_deferred, started_at, finished_at, encode_secs`
+	reclaim_deferred, started_at, finished_at, encode_secs, vmaf_mean`
 
 // list returns one page of the ledger, newest first, and the cursor for the next page (""
 // when this was the last). Rows still in progress are left out unless asked for: the
@@ -402,7 +413,7 @@ func scanHistory(sc rowScanner, full bool) (HistoryEntry, error) {
 		&e.Outcome, &e.OutcomeKind, &e.Note, &requested,
 		&e.SrcPath, &e.SrcRelease, &e.SrcSize, &srcInfo, &e.OutPath, &e.OutSize, &outInfo, &e.Codec, &e.CRF, &e.Encoder,
 		&e.SSIMMean, &e.SSIMMin, &windows, &e.Crop, &kept, &dropped, &warns,
-		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs); err != nil {
+		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs, &e.VMAFMean); err != nil {
 		return e, err
 	}
 	e.Requested, e.ReclaimDeferred = requested == 1, deferred == 1

@@ -2171,7 +2171,7 @@ export interface ConvertHistoryEntry {
   outcome: ConvertHistoryOutcome; outcome_kind?: string; note?: string; requested: boolean;
   src_path?: string; src_release?: string; src_size: number; src_spec?: string;
   out_path?: string; out_size: number; out_spec?: string; codec?: string; crf?: number; encoder?: string; crop?: string;
-  ssim_mean?: number; ssim_min?: number; ssim_windows?: number[];
+  ssim_mean?: number; ssim_min?: number; ssim_windows?: number[]; vmaf_mean?: number; // vmaf_mean: advisory, only with a libvmaf ffmpeg
   kept_tracks?: ConvertTrackDecision[]; dropped_tracks?: ConvertTrackDecision[]; warnings?: string[]; reclaim_deferred?: boolean;
   started_at: number; finished_at?: number; encode_secs?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;

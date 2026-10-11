@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Info is the subset of media properties Arrmada cares about.
@@ -39,7 +41,7 @@ func Probe(path string) (Info, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ffprobe",
+	cmd := toolrun.Command(ctx, toolrun.Normal, "ffprobe",
 		"-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path)
 	out, err := cmd.Output()
 	if err != nil {
