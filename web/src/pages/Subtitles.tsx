@@ -1,34 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PageHeader } from "../components/PageHeader";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useTabParam } from "../lib/useTabParam";
 import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
-import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type WhisperStatus } from "../lib/api";
+import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
+import { KeptTracksNote, card, cardStyle, langName } from "./subtitles/shared";
 
-type Tab = "overview" | "queue" | "library" | "logs" | "settings";
-const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs", "settings"];
+// The settings live in Settings → Subtitles & Convert; this page is the working view.
+type Tab = "overview" | "queue" | "library" | "logs";
+const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs"];
 const ACTIVE = new Set(["queued", "running"]);
 
-// Common subtitle languages offered as toggle chips (ISO 639-1). The backend accepts any.
-const LANGS: { code: string; name: string }[] = [
-  { code: "en", name: "English" }, { code: "es", name: "Spanish" }, { code: "fr", name: "French" },
-  { code: "de", name: "German" }, { code: "it", name: "Italian" }, { code: "pt", name: "Portuguese" },
-  { code: "nl", name: "Dutch" }, { code: "sv", name: "Swedish" }, { code: "pl", name: "Polish" },
-  { code: "ru", name: "Russian" }, { code: "tr", name: "Turkish" }, { code: "ar", name: "Arabic" },
-  { code: "hi", name: "Hindi" }, { code: "ja", name: "Japanese" }, { code: "ko", name: "Korean" },
-  { code: "zh", name: "Chinese" },
-];
-const langName = (code: string) => LANGS.find((l) => l.code === code)?.name ?? code.toUpperCase();
 const SOURCE_LABEL: Record<string, string> = { extract: "extract", ocr: "OCR", download: "download", ai: "AI" };
 
-const card = "rounded-xl p-4";
-const cardStyle = { border: "1px solid var(--line)", background: "var(--panel)" } as const;
 const lbl = "font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint";
 
 export function Subtitles() {
+  // The old Settings tab's address (bookmarks, earlier copy) opens the settings in the hub.
+  const [params] = useSearchParams();
+  if (params.get("tab") === "settings") return <Navigate to={LINKS.subtitlesSettings} replace />;
+  return <SubtitlesPage />;
+}
+
+function SubtitlesPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useTabParam(TAB_KEYS, "overview");
   const [settings, setSettings] = useState<SubtitleSettings | null>(null);
   const [jobs, setJobs] = useState<SubtitleJob[]>([]);
@@ -41,9 +39,6 @@ export function Subtitles() {
   const anyActive = jobs.some((j) => ACTIVE.has(j.state));
   usePoll(() => api.subtitleJobs().then(setJobs).catch(() => {}), anyActive ? 1500 : 4000);
 
-  const patchSettings = async (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) => {
-    try { setSettings(await api.updateSubtitleSettings(body)); } catch (e) { flash((e as Error).message); }
-  };
   const ensureAll = async () => {
     try {
       const [m, tv] = await Promise.all([api.subtitleSweep("movies"), api.subtitleSweep("tv")]);
@@ -68,7 +63,6 @@ export function Subtitles() {
     { key: "queue", label: "Queue", count: activeCount || undefined },
     { key: "library", label: "Library" },
     { key: "logs", label: "Logs" },
-    { key: "settings", label: "Settings" },
   ];
 
   return (
@@ -76,13 +70,13 @@ export function Subtitles() {
       <PageHeader title="Subtitles" />
       <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <p className="max-w-[64ch] text-[12.5px] text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <b>Settings</b>.</p>
+          <p className="max-w-[64ch] text-[12.5px] text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Settings</Link>.</p>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold" style={{ border: `1px solid ${providerOK ? "var(--good)" : "var(--line)"}`, background: providerOK ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)" }}>
               <span className="h-2 w-2 rounded-full" style={{ background: providerOK ? "var(--good)" : "var(--ink-faint)" }} />
               {provider}
             </span>
-            <button onClick={() => setTab("settings")} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Settings</button>
+            <Link to={LINKS.subtitlesSettings} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Configure →</Link>
             <button onClick={ensureAll} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Ensure all</button>
           </div>
         </div>
@@ -90,11 +84,10 @@ export function Subtitles() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="subtitles" label="Subtitles sections" />
 
         <TabPanel idPrefix="subtitles" value={tab}>
-          {tab === "overview" && <Overview jobs={jobs} settings={settings} flash={flash} onSettings={() => setTab("settings")} />}
+          {tab === "overview" && <Overview jobs={jobs} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)} />}
           {tab === "queue" && <Queue jobs={jobs} onChange={() => api.subtitleJobs().then(setJobs).catch(() => {})} flash={flash} />}
           {tab === "library" && <Library flash={flash} onQueued={() => api.subtitleJobs().then(setJobs)} />}
           {tab === "logs" && <LogsConsole />}
-          {tab === "settings" && settings && <SettingsTab settings={settings} onPatch={patchSettings} flash={flash} />}
         </TabPanel>
       </div>
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
@@ -168,8 +161,8 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
     </div>
   );
 }
-// Row2 is one source's real state. Something that needs setting up is a button to the
-// Settings tab; image-sub OCR isn't something Arrmada does, so it says so rather than "soon".
+// Row2 is one source's real state. Something that needs setting up is a button to its
+// settings; image-sub OCR isn't something Arrmada does, so it says so rather than "soon".
 const ROW_LABEL = { on: "on", setup: "set up", model: "needs a model", unsupported: "not supported" } as const;
 function Row2({ label, state, onClick }: { label: string; state: keyof typeof ROW_LABEL; onClick?: () => void }) {
   const on = state === "on";
@@ -182,14 +175,6 @@ function Row2({ label, state, onClick }: { label: string; state: keyof typeof RO
         ? <button onClick={onClick} className={chip} style={{ ...style, color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{ROW_LABEL[state]}</button>
         : <span className={chip} style={style}>{ROW_LABEL[state]}</span>}
     </div>
-  );
-}
-
-// KeptTracksNote says where embedded tracks stand. Subtitles never edits the video; dropping
-// the languages you don't keep happens in Convert, under its own setting, when it re-encodes.
-function KeptTracksNote() {
-  return (
-    <>Embedded subtitle tracks stay inside the video. Convert can remove the languages you don't keep when it re-encodes a file — set that in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert → Settings</Link>.</>
   );
 }
 
@@ -746,130 +731,6 @@ function LogsConsole() {
           <div key={i} className="flex gap-2"><span className="flex-none text-ink-faint">{clock(l.at)}</span><span style={{ color: tone(l.level) }}>{l.msg}</span></div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* ============================= SETTINGS ============================= */
-function SettingsTab({ settings, onPatch, flash }: { settings: SubtitleSettings; onPatch: (b: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) => void; flash: (m: string) => void }) {
-  const toggleLang = (code: string) => {
-    const has = settings.languages.includes(code);
-    const next = has ? settings.languages.filter((l) => l !== code) : [...settings.languages, code];
-    if (next.length === 0) { flash("Keep at least one language."); return; }
-    onPatch({ languages: next });
-  };
-  return (
-    <div className="flex flex-col gap-4">
-      <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">Kept languages</div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">Arrmada keeps an external <code>.srt</code> for each of these. Click to toggle. <KeptTracksNote /></div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {LANGS.map((l) => {
-            const on = settings.languages.includes(l.code);
-            return <button key={l.code} onClick={() => toggleLang(l.code)} className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel-2)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>{l.name}</button>;
-          })}
-        </div>
-      </div>
-
-      <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">Automatic</div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">When on, every new download gets its subtitles as soon as it imports, and a sweep every six hours catches anything still missing (including releases whose subtitles appeared later). Off = run it yourself from the Library.</div>
-        <div className="mt-3 flex flex-col gap-2.5">
-          <ToggleRow label="Auto-ensure movies" on={settings.movies_auto} onToggle={(v) => onPatch({ movies_auto: v })} />
-          <ToggleRow label="Auto-ensure series" on={settings.series_auto} onToggle={(v) => onPatch({ series_auto: v })} />
-        </div>
-      </div>
-
-      <LocalAI flash={flash} backend={settings.ai_backend} note={settings.ai_note} />
-
-      <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">OpenSubtitles (optional download source)</div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it.</div>
-        <div className="mt-3 flex items-center gap-2 text-[12px]">
-          <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: settings.can_download ? "var(--good-soft, rgba(127,176,105,.16))" : settings.provider_ready ? "var(--avoid-soft)" : "var(--panel-2)", color: settings.can_download ? "var(--good)" : settings.provider_ready ? "var(--avoid)" : "var(--ink-faint)" }}>
-            {settings.can_download ? "ready" : settings.provider_ready ? "search only" : "not configured"}
-          </span>
-          <span className="text-ink-dim">
-            {settings.can_download
-              ? settings.quota_reset_at > 0
-                ? `Daily download quota used up — resumes ${new Date(settings.quota_reset_at * 1000).toLocaleString()}.`
-                : settings.quota_remaining >= 0
-                  ? `Downloading enabled · ${settings.quota_remaining} downloads left today.`
-                  : "Downloading enabled."
-              : settings.provider_ready
-                ? "Searching works; add your OpenSubtitles username and password under Settings → System → API keys to download."
-                : "Add an OpenSubtitles API key (free) under Settings → System → API keys, plus your account username and password to download."}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-function LocalAI({ flash, backend, note }: { flash: (m: string) => void; backend?: string; note?: string }) {
-  const [status, setStatus] = useState<WhisperStatus | null>(null);
-  const load = useCallback(() => api.subtitleModels().then(setStatus).catch(() => setStatus(null)), []);
-  usePoll(load, 3000); // reflect download progress
-  const download = async (name: string) => {
-    try { await api.subtitleDownloadModel(name); flash("Downloading — watch the Logs tab for progress."); load(); }
-    catch (e) { flash((e as Error).message); }
-  };
-  const st = status;
-  return (
-    <div className={card} style={cardStyle}>
-      <div className="flex items-center justify-between">
-        <div className="text-[14px] font-bold">Local AI (whisper)</div>
-        <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: st?.ready ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: st?.ready ? "var(--good)" : "var(--ink-faint)" }}>
-          {st?.ready ? "ready" : st?.binary_ready ? "needs a model" : "not installed"}
-        </span>
-      </div>
-      <div className="mt-0.5 text-[11.5px] text-ink-faint">Generates subtitles from a file's audio when no better source exists — 100% local, no key. Download a model to enable it (large files, runs in the background).</div>
-      {/* Which compute backend the last run used. A Vulkan build with no visible device runs
-          on the CPU without complaint, so "ready" alone can hide a GPU that isn't being used. */}
-      {st?.ready && (
-        <div className="mt-1.5 text-[11.5px]" style={{ color: backend === "vulkan" || backend === "sycl" ? "var(--good)" : "var(--ink-dim)" }}>
-          {backend === "sycl"
-            ? "Running on the GPU (Intel oneAPI)."
-            : backend === "vulkan"
-            ? "Running on the GPU (Vulkan)."
-            : backend === "cpu"
-              ? "Running on the CPU. If this host has a GPU, check that /dev/dri is passed to the container and vulkaninfo inside it lists a device."
-              : "Backend not known yet — it's reported after the first subtitle is generated."}
-        </div>
-      )}
-      {/* The Intel oneAPI build is tried first; when it's set aside, say why rather than
-          quietly running slower. */}
-      {st?.ready && note && (
-        <div className="mt-1 text-[11.5px]" style={{ color: "var(--avoid)" }}>Intel oneAPI build not in use — {note}</div>
-      )}
-      {st && !st.binary_ready && <div className="mt-2 text-[11.5px]" style={{ color: "var(--avoid)" }}>whisper-cli isn't in this build yet — update to a build that bundles it.</div>}
-      <div className="mt-3 flex flex-col gap-2">
-        {(st?.models ?? []).map((m) => (
-          <div key={m.name} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold">{m.label}</div>
-              <div className="font-mono text-[10px] text-ink-faint">{m.name} · ~{m.size_mb >= 1000 ? `${(m.size_mb / 1000).toFixed(1)} GB` : `${m.size_mb} MB`}</div>
-            </div>
-            {m.present ? (
-              <span className="rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}>installed ✓</span>
-            ) : m.downloading ? (
-              <span className="rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>downloading…</span>
-            ) : (
-              <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint">Get <b>turbo</b> for English, plus <b>large-v3</b> to translate foreign audio to English.</div>
-    </div>
-  );
-}
-function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[12.5px] font-semibold">{label}</span>
-      <button role="switch" aria-checked={on} onClick={() => onToggle(!on)} className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}>
-        <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: on ? "translateX(22px)" : "translateX(3px)" }} />
-      </button>
     </div>
   );
 }

@@ -180,8 +180,8 @@ func (a *api) metadataReady() bool {
 // only an admin can enter the key, a manager can ask one, and a requester can't do anything
 // about it, so they get a plain sentence with no mention of Settings.
 const (
-	discoveryOffAdmin   = "metadata isn't configured — add a TMDB key in Settings → System → API keys"
-	discoveryOffManager = "metadata isn't configured — ask an admin to add a TMDB key (Settings → System → API keys)"
+	discoveryOffAdmin   = "metadata isn't configured — add a TMDB key in Settings → Connections"
+	discoveryOffManager = "metadata isn't configured — ask an admin to add a TMDB key (Settings → Connections)"
 	discoveryOffOthers  = "Movie and TV browsing isn't set up on this server yet."
 )
 

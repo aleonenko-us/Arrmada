@@ -22,7 +22,7 @@ func TestDownloadClientsCheck(t *testing.T) {
 		download.ClientState{ID: 1, Name: "qBittorrent (bundled)", OK: true},
 		download.ClientState{ID: 2, Name: "qBittorrent (seedbox)", Err: "connection refused"}))
 	if len(got) != 1 || got[0].Key != "downloads.client.2" || got[0].Level != LevelWarning ||
-		!strings.Contains(got[0].Message, "qBittorrent (seedbox) is unreachable") || got[0].Fix != FixDownloadClients {
+		!strings.Contains(got[0].Message, "qBittorrent (seedbox) is unreachable") || got[0].Fix.Path != "/settings/connections#download_client-2" {
 		t.Errorf("second client down: %+v", got)
 	}
 

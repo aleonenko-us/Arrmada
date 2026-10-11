@@ -369,8 +369,8 @@ export function Books() {
           <div className="mb-4 rounded-lg px-3.5 py-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
             Books are using <b>Open Library</b>, which needs no key. For the preferred catalogue — one entry per book, series and author pages, cleaner covers —{" "}
             {admin
-              ? <>add a free <b>Hardcover</b> API key in <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → System → API keys</Link>.</>
-              : <>ask an admin to add a free <b>Hardcover</b> API key (Settings → System → API keys).</>}
+              ? <>add a free <b>Hardcover</b> API key in <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</>
+              : <>ask an admin to add a free <b>Hardcover</b> API key (Settings → Connections).</>}
             {" "}Everything already here keeps working either way.
           </div>
         )}

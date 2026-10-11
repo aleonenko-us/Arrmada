@@ -210,6 +210,14 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// corrects that defensively at read time, but rejecting it here means the UI says
 	// so rather than silently storing a number it won't honour.
 	if req.DiskGuardPausePct != nil || req.DiskGuardResumePct != nil {
+		// A value that isn't a number would otherwise read as the default below and be
+		// stored as typed.
+		for _, p := range []*string{req.DiskGuardPausePct, req.DiskGuardResumePct} {
+			if p != nil && !wholeNumber(*p) {
+				a.writeError(w, http.StatusBadRequest, "disk guard percentages must be whole numbers")
+				return
+			}
+		}
 		pausePct := a.pctSetting(ctx, keyDiskGuardPause, download.DefaultDiskGuardPause, req.DiskGuardPausePct)
 		resumePct := a.pctSetting(ctx, keyDiskGuardResume, download.DefaultDiskGuardResum, req.DiskGuardResumePct)
 		if pausePct < 1 || pausePct > 99 {
@@ -229,6 +237,24 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.UpgradeBudget != nil && (*req.UpgradeBudget < 0 || *req.UpgradeBudget > maxUpgradeBudget) {
 		a.writeError(w, http.StatusBadRequest, "upgrades per sweep must be between 0 (no limit) and "+strconv.Itoa(maxUpgradeBudget))
 		return
+	}
+	// Blank isn't "unlimited": the bin reads anything unparseable as 0, so an emptied field
+	// would quietly lift the cap. 0 has to be said.
+	if req.RecycleMaxGB != nil && !wholeNumber(*req.RecycleMaxGB) {
+		a.writeError(w, http.StatusBadRequest, "the recycle bin size cap must be a whole number of GB (0 = unlimited)")
+		return
+	}
+	if req.RecycleRetentionDays != nil && !wholeNumber(*req.RecycleRetentionDays) {
+		a.writeError(w, http.StatusBadRequest, "the recycle bin's keep-for must be a whole number of days (0 = keep forever)")
+		return
+	}
+	// An empty template falls back to the default at import time, which isn't what
+	// clearing the field looks like it does; say so instead of storing it.
+	for _, p := range []*string{req.NamingMovieFolder, req.NamingMovieFile, req.NamingSeriesFolder, req.NamingSeriesSeason, req.NamingSeriesEpisode} {
+		if p != nil && strings.TrimSpace(*p) == "" {
+			a.writeError(w, http.StatusBadRequest, "a name template can't be empty")
+			return
+		}
 	}
 	if msg := validQuota(req.QuotaDays, req.QuotaMovies, req.QuotaSeasons, req.QuotaBooks); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
@@ -336,6 +362,12 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.handleGetSettings(w, r)
+}
+
+// wholeNumber reports whether v (spaces trimmed) is a non-negative whole number.
+func wholeNumber(v string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	return err == nil && n >= 0
 }
 
 // validHHMM reports whether v is a 24-hour "HH:MM" time.

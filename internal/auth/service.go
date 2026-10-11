@@ -354,7 +354,7 @@ func (s *Service) caseInsensitiveIDs(ctx context.Context, username string) ([]in
 }
 
 func (s *Service) warnAmbiguous(ids []int64) {
-	s.log.Warn("auth: sign-in refused — the name matches more than one account ignoring case; merge or delete one in Settings → Users",
+	s.log.Warn("auth: sign-in refused — the name matches more than one account ignoring case; merge or delete one in Settings → People & access",
 		"user_ids", ids)
 }
 
@@ -373,7 +373,7 @@ func (s *Service) ReportCaseDuplicates(ctx context.Context) {
 	for rows.Next() {
 		var ids, names string
 		if rows.Scan(&ids, &names) == nil {
-			s.log.Warn("auth: these accounts have the same name ignoring case; each still signs in with its exact spelling — merge or delete one in Settings → Users",
+			s.log.Warn("auth: these accounts have the same name ignoring case; each still signs in with its exact spelling — merge or delete one in Settings → People & access",
 				"user_ids", ids, "usernames", names)
 		}
 	}

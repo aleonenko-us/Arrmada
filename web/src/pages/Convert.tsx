@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useTabParam } from "../lib/useTabParam";
 import { usePoll } from "../lib/usePoll";
@@ -17,8 +17,9 @@ import {
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
 // while someone watches Plex. There's no queue to manage — the Overview shows what it's
 // doing, what's next and what it did; the Library lets you pick a file to do right now.
-type Tab = "overview" | "library" | "problems" | "activity" | "settings";
-const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "activity", "settings"];
+// The settings live in Settings → Subtitles & Convert; this page is the working view.
+type Tab = "overview" | "library" | "problems" | "activity";
+const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "activity"];
 const ACTIVE = new Set(["preparing", "testing", "encoding", "verifying", "replacing"]);
 
 const card = "rounded-xl p-4";
@@ -69,6 +70,13 @@ const STATE_LABEL: Record<string, string> = {
 };
 
 export function Convert() {
+  // The old Settings tab's address (bookmarks, earlier copy) opens the settings in the hub.
+  const [params] = useSearchParams();
+  if (params.get("tab") === "settings") return <Navigate to={LINKS.convertSettings} replace />;
+  return <ConvertPage />;
+}
+
+function ConvertPage() {
   const [tab, setTab] = useTabParam(TAB_KEYS, "overview");
   const [status, setStatus] = useState<ConvertStatus | null>(null);
   const [jobs, setJobs] = useState<ConvertJob[]>([]);
@@ -137,7 +145,6 @@ export function Convert() {
     { key: "library", label: "Library" },
     { key: "problems", label: "Problems" },
     { key: "activity", label: "Activity" },
-    { key: "settings", label: "Settings" },
   ];
 
   return (
@@ -148,15 +155,18 @@ export function Convert() {
           <p className="max-w-[66ch] text-[12.5px] text-ink-dim">
             Makes your library smaller at a quality checked against the original. Wasteful video is re-encoded to HEVC
             {settings?.allow_av1 ? " or AV1 (whichever is smaller at the same quality)" : ""} during your hours.
-            Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in Settings are removed.
+            Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link> are removed.
             HDR10, HDR10+ and HLG are kept; Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer
             {stats?.total?.dolby_vision ? ` (${stats.total.dolby_vision.toLocaleString()} in your library)` : ""}.
           </p>
-          {settings && (
-            <button onClick={toggleAuto} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={settings.auto ? ghostBtn : accentBtn}>
-              {settings.auto ? "Switch off" : "Switch on"}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <Link to={LINKS.convertSettings} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={ghostBtn}>Configure →</Link>
+            {settings && (
+              <button onClick={toggleAuto} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={settings.auto ? ghostBtn : accentBtn}>
+                {settings.auto ? "Switch off" : "Switch on"}
+              </button>
+            )}
+          </div>
         </div>
 
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="convert" label="Convert sections" />
@@ -171,7 +181,6 @@ export function Convert() {
               <LogsConsole />
             </div>
           )}
-          {tab === "settings" && <SettingsPanel flash={flash} onSaved={(s) => { setSettings(s); refresh(); loadHw(); }} />}
         </TabPanel>
       </div>
       {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={flash} />}
@@ -1007,163 +1016,6 @@ function LogsConsole() {
           : lines.map((l, i) => (
             <div key={`${l.at}-${i}`} className="flex gap-2"><span className="flex-none text-ink-faint">{new Date(l.at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span style={{ color: tone(l.level) }}>{l.msg}</span></div>
           ))}
-      </div>
-    </div>
-  );
-}
-
-/* ============================= SETTINGS ============================= */
-
-function minutesApart(a: string | undefined, b: string): number {
-  const mins = (t?: string) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t ?? ""); return m ? +m[1] * 60 + +m[2] : null; };
-  const x = mins(a), y = mins(b);
-  if (x === null || y === null) return 0;
-  const d = Math.abs(x - y);
-  return Math.min(d, 1440 - d);
-}
-
-function Toggle({ on, set, label, hint, disabled }: { on: boolean; set: (v: boolean) => void; label: string; hint: ReactNode; disabled?: boolean }) {
-  return (
-    <label className={`flex items-start gap-2.5 text-[12.5px] ${disabled ? "opacity-50" : "cursor-pointer"}`}>
-      <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => set(e.target.checked)} className="mt-0.5" />
-      <span><b className="font-semibold">{label}</b><span className="mt-0.5 block text-[11px] leading-snug text-ink-faint">{hint}</span></span>
-    </label>
-  );
-}
-
-function Section({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
-  return (
-    <div className="rounded-xl p-4" style={cardStyle}>
-      <div className="text-[13.5px] font-bold">{title}</div>
-      {desc && <div className="mt-0.5 text-[11.5px] text-ink-faint">{desc}</div>}
-      <div className="mt-3 flex flex-col gap-3.5">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-wrap items-center justify-between gap-3">
-      <span><span className="block text-[12px] font-semibold">{label}</span><span className="block text-[10.5px] text-ink-faint">{hint}</span></span>
-      {children}
-    </label>
-  );
-}
-
-const SETTING_KEYS: (keyof ConvertSettings)[] = ["auto", "hours_start", "hours_end", "allow_av1", "use_gpu", "pause_watching", "keep_audio_langs", "keep_original_lang",
-  "drop_commentary", "keep_sub_langs", "image_subs", "tidy_tracks", "crop", "scratch_dir", "vaapi_device", "cpu_cores", "workers"];
-
-function SettingsPanel({ flash, onSaved }: { flash: (m: string) => void; onSaved: (s: ConvertSettings) => void }) {
-  const [saved, setSaved] = useState<ConvertSettings | null>(null);
-  const [d, setD] = useState<ConvertSettings | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [hw, setHw] = useState<{ dir: string; free: number; need: number; needTitle: string; devices: { path: string; pci: string; vendor: string }[] } | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { api.convertSettings().then((v) => { setSaved(v); setD(v); }).catch(() => flash("Could not load settings")); }, []);
-  useEffect(() => { api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [] })).catch(() => {}); }, []);
-  const set = (patch: Partial<ConvertSettings>) => setD((cur) => (cur ? { ...cur, ...patch } : cur));
-  const dirty = useMemo(() => !!saved && !!d && SETTING_KEYS.some((k) => saved[k] !== d[k]), [saved, d]);
-  const onSave = async () => {
-    if (!d || !saved) return;
-    const patch: Partial<ConvertSettings> = {};
-    for (const k of SETTING_KEYS) if (saved[k] !== d[k]) (patch as Record<string, unknown>)[k] = d[k];
-    setBusy(true);
-    try { const v = await api.updateConvertSettings(patch); setSaved(v); setD(v); onSaved(v); flash("Saved"); }
-    catch (e) { flash((e as Error).message); } finally { setBusy(false); }
-  };
-  if (!d) return <div className="text-[12px] text-ink-faint">Loading settings…</div>;
-  const scheduled = !!(d.hours_start && d.hours_end);
-  const browserTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-  const clockSkewed = minutesApart(d.server_time, browserTime) > 5;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Section title="Automatic conversion">
-        <Toggle on={d.auto} set={(v) => set({ auto: v })} label="Convert my library automatically"
-          hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library run straight away either way." />
-        <Toggle on={scheduled} set={(v) => set(v ? { hours_start: "01:00", hours_end: "07:00" } : { hours_start: "", hours_end: "" })}
-          label="Only during set hours" hint={`A conversion still running when the hours end is paused and picks up again next time${d.can_pause ? "" : " (pausing needs the Linux container — elsewhere it finishes first)"}.`} />
-        {scheduled && (
-          <div className="ml-6 flex flex-col gap-1.5">
-            <span className="flex flex-wrap items-center gap-1.5 text-[12px]">
-              <input type="time" aria-label="Start" value={d.hours_start} onChange={(e) => set({ hours_start: e.target.value })} className={inp} style={inpStyle} />
-              <span className="text-ink-faint">to</span>
-              <input type="time" aria-label="End" value={d.hours_end} onChange={(e) => set({ hours_end: e.target.value })} className={inp} style={inpStyle} />
-            </span>
-            <span className={`text-[11px] ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
-              {clockSkewed ? "⚠ " : ""}Read on the server's clock: {d.server_time} {d.server_tz}{clockSkewed ? ` — yours says ${browserTime}. Set TZ in your .env and recreate the container (docker compose up -d).` : "."}
-            </span>
-          </div>
-        )}
-        <Toggle on={d.pause_watching} set={(v) => set({ pause_watching: v })} label="Pause while someone is watching Plex"
-          hint={d.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex monitoring turned on (<Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Plex settings</Link>) — until then this does nothing.</>} />
-      </Section>
-
-      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. Dolby Vision files are converted from their HDR10 or HLG base — the Dolby Vision layer is removed.">
-        <Toggle on={d.allow_av1} set={(v) => set({ allow_av1: v })} label="My devices can play AV1"
-          hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
-        {d.has_gpu && (
-          <Toggle on={d.use_gpu} set={(v) => set({ use_gpu: v })} label="Use my GPU"
-            hint={`Many times faster, but files come out somewhat bigger for the same quality. HDR always encodes on the CPU (the GPU can't carry its metadata).${d.gpu_does_av1 ? "" : " Your GPU has no AV1 encoder, so GPU mode converts to HEVC."}`} />
-        )}
-        <Toggle on={d.crop} set={(v) => set({ crop: v })} label="Remove black bars"
-          hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
-        {!d.hdr10plus_tool && <p className="text-[11px]" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
-      </Section>
-
-      <Section title="Audio & subtitles" desc="Tracks you don't keep are removed while converting — or on their own, which only copies the file (no re-encode). Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through untouched.">
-        <Field label="Keep audio in" hint="comma-separated, e.g. en, ja · blank = keep every language · the first one becomes the default track">
-          <input value={d.keep_audio_langs} onChange={(e) => set({ keep_audio_langs: e.target.value })} placeholder="all" className={`${inp} w-[190px]`} style={inpStyle} />
-        </Field>
-        <Toggle on={d.keep_original_lang} set={(v) => set({ keep_original_lang: v })} label="Also keep the original language"
-          hint="A Japanese film keeps its Japanese track even if you only listed English." />
-        <Toggle on={d.drop_commentary} set={(v) => set({ drop_commentary: v })} label="Remove commentary tracks" hint="Tracks flagged or titled as commentary." />
-        <Field label="Keep subtitles in" hint="comma-separated, e.g. en · blank = keep every language">
-          <input value={d.keep_sub_langs} onChange={(e) => set({ keep_sub_langs: e.target.value })} placeholder="all" className={`${inp} w-[190px]`} style={inpStyle} />
-        </Field>
-        <div>
-          <div className="text-[12px] font-semibold">Image subtitles (PGS, VobSub)</div>
-          <div className="mb-1.5 text-[10.5px] text-ink-faint">Plex has to burn these into the picture, which transcodes the video every time they're on.</div>
-          {([["keep", "Keep them"], ["when_text", "Remove them when a text version exists (embedded, or an .srt from Subtitles)"], ["remove", "Always remove them — Subtitles can fetch text ones"]] as const).map(([v, label]) => (
-            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
-              <input type="radio" name="image_subs" checked={d.image_subs === v} onChange={() => set({ image_subs: v })} />{label}
-            </label>
-          ))}
-        </div>
-        <Toggle on={d.tidy_tracks} set={(v) => set({ tidy_tracks: v })} label="Tidy tracks even when that's all a file needs"
-          hint="Off: a file whose picture is already fine is only rewritten when dropping tracks frees at least 10% (a big foreign-language audio track does). Its other track changes happen when it's re-encoded, or with Fix tracks. On: every file is tidied — which rewrites it end to end, often to shed a few small subtitle tracks." />
-        <p className="m-0 text-[11px] text-ink-faint">Untagged tracks are kept. A language filter that would remove every audio track or every subtitle removes none — the tags are wrong.</p>
-      </Section>
-
-      <details className="rounded-xl p-4" style={cardStyle}>
-        <summary className="cursor-pointer text-[13.5px] font-bold">Advanced</summary>
-        <div className="mt-3 flex flex-col gap-3.5">
-          <Field label="Transcode folder" hint="Fast storage (an SSD/NVMe pool), never the array. Blank = the default.">
-            <input type="text" value={d.scratch_dir} onChange={(e) => set({ scratch_dir: e.target.value })} placeholder="/transcode" className={`${inp} w-[240px]`} style={inpStyle} />
-          </Field>
-          {/* Green only when the biggest of the next files fits: one 4K remux can need ~90 GB,
-              so a fixed threshold said "fine" right before a file failed for space. */}
-          {hw && <div className="text-[11px] text-ink-faint">Using <span className="font-mono text-ink-dim">{hw.dir}</span> · <b style={{ color: hw.free >= hw.need ? "var(--good)" : "var(--avoid)" }}>{fmtSize(hw.free)}</b> free{hw.need > 0 && <> · largest of the next 20 files{hw.needTitle ? <> (“{hw.needTitle}”)</> : null} needs ~{fmtSize(hw.need)}</>}</div>}
-          {hw && hw.devices.length > 1 && (
-            <Field label="GPU device" hint="The discrete card is usually the higher renderD number">
-              <select value={d.vaapi_device || ""} onChange={(e) => set({ vaapi_device: e.target.value })} className={`${inp} w-[280px]`} style={inpStyle}>
-                <option value="">Default (renderD128)</option>
-                {hw.devices.map((dev) => <option key={dev.path} value={dev.path}>{dev.path.replace("/dev/dri/", "")} · {dev.vendor}{dev.pci ? ` · ${dev.pci}` : ""}</option>)}
-              </select>
-            </Field>
-          )}
-          <Field label="CPU cores" hint="How many cores a CPU conversion may use · 0 = half the machine">
-            <input type="number" min="0" max="256" value={d.cpu_cores} onChange={(e) => set({ cpu_cores: Number(e.target.value) || 0 })} className={`${inp} w-[80px]`} style={inpStyle} />
-          </Field>
-          <Field label="Conversions at once" hint="1 is right for CPU; 2 can help with a GPU">
-            <input type="number" min="1" max="4" value={d.workers} onChange={(e) => set({ workers: Math.min(4, Math.max(1, Number(e.target.value) || 1)) })} className={`${inp} w-[70px]`} style={inpStyle} />
-          </Field>
-        </div>
-      </details>
-
-      <div className="sticky bottom-3 flex items-center justify-end gap-3">
-        {dirty && <span className="text-[11.5px] text-ink-faint">Unsaved changes</span>}
-        <button onClick={onSave} disabled={!dirty || busy} className="rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={accentBtn}>{busy ? "Saving…" : "Save"}</button>
       </div>
     </div>
   );

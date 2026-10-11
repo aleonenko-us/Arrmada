@@ -39,8 +39,10 @@ func webPhrase(pattern, reason string) bannedPhrase {
 
 var bannedCopy = []bannedPhrase{
 	// COPY-02: the TMDB key is entered in the UI and works at once.
-	webPhrase(`ARRMADA_TMDB_API_KEY`, "keys are entered in Settings → System → API keys and take effect without a restart — use <MetadataMissing/>"),
-	phrase(`Settings → API keys`, "API keys live under Settings → System → API keys (link LINKS.apiKeys)"),
+	webPhrase(`ARRMADA_TMDB_API_KEY`, "keys are entered in Settings → Connections and take effect without a restart — use <MetadataMissing/>"),
+	phrase(`Settings → API keys`, "API keys live under Settings → Connections (link LINKS.apiKeys)"),
+	// CFG-15: the API keys moved from System into Settings → Connections with every other integration.
+	phrase(`Settings → System → API keys`, "API keys live under Settings → Connections (link LINKS.apiKeys)"),
 	// COPY-03 / COPY-05 / COPY-08: no "soon" on shipped work, no roadmap promises.
 	phrase(`coming soon`, "say what the feature does today; Insights tabs are built — show a Connect Plex state instead"),
 	phrase(`\(soon\)`, "describe what ships; if it isn't built, leave the control out"),
@@ -61,6 +63,11 @@ var bannedCopy = []bannedPhrase{
 	// CFG-13: Settings is a hub of sections with their own URLs.
 	phrase(`Settings → System → (Recycle bin|Disk guard|Download disk guard)`, "the recycle bin and disk guard live in Settings → Downloads (LINKS.recycleBin, LINKS.diskGuard)"),
 	webPhrase(`/settings\?tab=`, "each Settings section has its own URL — link through LINKS (/settings/<section>#card)"),
+	// CFG-17: module settings moved out of their pages' Settings tabs into the hub.
+	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles & Convert and Settings → Audiobook server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
+	webPhrase(`/(convert|subtitles)\?tab=settings|/audiobooks\?tab=server`, "the old Settings tabs only redirect now — link through LINKS"),
+	// CFG-18: Users became People & access.
+	phrase(`Settings → Users`, "the section is Settings → People & access (LINKS.users)"),
 	// COPY-08: the Insights intro only asks to connect while Plex isn't connected.
 	webPhrase(`Connect your server in`, "the intro's call to action is the 'Connect your Plex server in the Settings tab' button, shown only while not connected"),
 	// COPY-10: system strings that described an older build.
@@ -208,6 +215,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 	samples := []string{
 		`set ARRMADA_TMDB_API_KEY and restart`,
 		`add one in Settings → API keys`,
+		`add its URL in Settings → System → API keys`,
 		`Coming soon`,
 		`or (soon) AI transcription`,
 		`stripped (once stripping ships)`,
@@ -224,6 +232,9 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`re-run ./update.sh`,
 		`restorable from Settings → System → Recycle bin`,
 		`<Link to="/settings?tab=system#api-keys">`,
+		`set that in Convert → Settings`,
+		`<Link to="/subtitles?tab=settings">Settings</Link>`,
+		`change them in Settings → Users.`,
 		`Connect your server in <b>Settings</b> to begin.`,
 		`<Stat k="Auth" v={status?.auth_enabled ? "enabled" : "disabled"} />`,
 		`lines — kept in memory, up to 5000.`,
@@ -263,7 +274,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`Coming soon — copy-ok: quoting the old text on purpose`,
 		`subtitles as soon as it imports`,
 		`Activity → Wanted`,
-		`Settings → System → API keys`,
+		`Settings → Connections`,
 		`Settings → Downloads → Recycle bin`,
 		`/settings/system#api-keys`,
 		"flash(`${selected.size} ${mon ? \"monitored\" : \"unmonitored\"}.`);",

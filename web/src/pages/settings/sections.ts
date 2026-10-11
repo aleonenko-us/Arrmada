@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "downloads" | "alerts" | "plex" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "connections" | "downloads" | "tools" | "alerts" | "plex" | "audiobook-server" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -12,17 +12,24 @@ export interface SettingsSection {
 }
 
 // Rail order. The names match the paths copy already uses ("Settings → Library",
-// "Settings → Downloads", "Settings → System → API keys", "Settings → Users").
+// "Settings → Downloads", "Settings → Connections", "Settings → People & access").
 export const SECTIONS: readonly SettingsSection[] = [
   { id: "library", label: "Library", adminOnly: false },
   { id: "media", label: "Naming & metadata", adminOnly: false },
+  // Every integration with its live status. Managers run the indexers and download clients
+  // day to day; the metadata keys on it are read-only for them.
+  { id: "connections", label: "Connections", adminOnly: false },
   { id: "downloads", label: "Downloads", adminOnly: true },
+  // The Subtitles and Convert modules' settings (#subtitles, #convert); managers run both.
+  { id: "tools", label: "Subtitles & Convert", adminOnly: false },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
   // The Plex connection is a manager setting (Insights reads it); the sign-in cards on the
   // same page are shown to admins only.
   { id: "plex", label: "Plex", adminOnly: false },
-  { id: "users", label: "Users", adminOnly: true },
+  { id: "audiobook-server", label: "Audiobook server", adminOnly: true },
+  // The old Users section: one list of everyone with their access (CFG-18).
+  { id: "users", label: "People & access", adminOnly: true },
   { id: "import", label: "Import", adminOnly: true },
   { id: "system", label: "System", adminOnly: true },
   // Slot for System → Status (pages/settings/Status.tsx, built by the health work).
@@ -53,13 +60,19 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },
   { label: "Metadata", keywords: "nfo movie.nfo artwork poster fanart kodi plex jellyfin emby sidecar", section: "media", anchor: "metadata" },
+  { label: "Indexers and Prowlarr", keywords: "indexer indexers tracker trackers torznab prowlarr sync torrentleech 1337x myanonamouse flaresolverr cloudflare search status test", section: "connections", anchor: "search" },
+  { label: "Download clients", keywords: "qbittorrent torrent client clients download order bundled status test", section: "connections", anchor: "download-clients" },
+  { label: "Other connections", keywords: "plex alerts apprise audiobook server listening apps status connected", section: "connections", anchor: "other-connections" },
   { label: "Download clients and indexers", keywords: "qbittorrent prowlarr torrent client indexer", section: "downloads", anchor: "download-links" },
   { label: "Download disk guard", keywords: "disk full space free pause resume threshold percent drive cache", section: "downloads", anchor: "disk-guard" },
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
   { label: "Upgrades per sweep", keywords: "upgrade limit budget sweep quality profile replace better release grabs at once", section: "downloads", anchor: "upgrade-limit" },
   { label: "Recycle bin", keywords: "trash deleted restore empty retention size cap purge undo", section: "downloads", anchor: "recycle-bin" },
+  { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles", section: "tools", anchor: "subtitles" },
+  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores", section: "tools", anchor: "convert" },
+  { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
-  { label: "Users", keywords: "add user people accounts roles admin manager requester read-only password auto-approve block delete disable sign in", section: "users", anchor: "users" },
+  { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },
   { label: "Plex connection", keywords: "plex server url token connect sign in monitoring insights poll interval", section: "plex", anchor: "plex-connection" },
   { label: "Plex library updates", keywords: "plex scan partial refresh path mapping map folder update library after import rename delete convert", section: "plex", anchor: "plex-library-updates" },
   { label: "Plex sign-in", keywords: "plex login sign in with plex auto-approve home shared users staff admin owner policy", section: "plex", anchor: "plex-sign-in", adminOnly: true },
@@ -67,8 +80,8 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
-  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials", section: "system", anchor: "api-keys" },
-  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "system", anchor: "discovery-region" },
+  { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
+  { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
@@ -101,13 +114,15 @@ export function sectionFromPath(pathname: string): string {
 
 // settingsRedirect says where a /settings URL should go instead, or null when it already
 // names a section this viewer can open. A card anchor wins over ?tab= (it's the more
-// specific of the two); a section this viewer can't open falls back to the default, like
-// an unknown ?tab= used to. ?tab= is dropped; other query params and the #anchor are kept.
+// specific of the two), and over the section in the path when the card has moved to
+// another section (/settings/system#api-keys → /settings/connections#api-keys); a section
+// this viewer can't open falls back to the default, like an unknown ?tab= used to. ?tab=
+// is dropped; other query params and the #anchor are kept.
 export function settingsRedirect(pathname: string, search: string, hash: string, visible: readonly string[]): string | null {
   const current = sectionFromPath(pathname);
-  if (current && visible.includes(current)) return null;
-  const params = new URLSearchParams(search);
   const fromAnchor = ANCHOR_SECTION[hash.replace(/^#/, "")];
+  if (current && visible.includes(current) && (!fromAnchor || fromAnchor === current || !visible.includes(fromAnchor))) return null;
+  const params = new URLSearchParams(search);
   const fromTab = TAB_SECTION[params.get("tab") ?? ""];
   const target = [fromAnchor, fromTab].find((s) => s && visible.includes(s)) ?? DEFAULT_SECTION;
   params.delete("tab");

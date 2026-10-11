@@ -32,6 +32,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/health/system", sys.systemHealth),
     get("/api/v1/setup", sys.setup),
     get("/api/v1/system/pending-restart", sys.pendingRestart),
+    get("/api/v1/system/status", sys.systemStatus),
     get("/api/v1/me/audio", sys.myAudio(p)),
     get("/api/v1/me/audio/listening", sys.myListening),
     // The Listen tab (the player specs answer the rest of the listening API).
@@ -109,7 +110,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get(/^\/api\/v1\/downloadclients\/\d+\/status$/, { listen_port: 6881 }),
     get("/api/v1/indexers", media.indexers),
     get("/api/v1/indexers/prowlarr", { url: "", has_key: false, ui_port: "9696", ui_url: "" }),
-    get("/api/v1/flaresolverr/status", { configured: true, ok: true, url: "http://arrmada-flaresolverr:8191", version: "3.3.21", checked_at: new Date(NOW).toISOString() }),
+    get("/api/v1/connections", media.connections),
+    { method: "POST", path: /^\/api\/v1\/connections\/([a-z_]+)\/([^/]+)\/test$/, respond: ({ params }) => media.connectionTest(params[0], params[1]) },
+    get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
     // Activity → Needs you's actions.
@@ -147,6 +150,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/recycle", sys.recycle),
     get("/api/v1/subtitles/coverage", mod.subtitleCoverage),
     get("/api/v1/subtitles/settings", mod.subtitleSettings),
+    get("/api/v1/subtitles/models", mod.subtitleModels),
     get("/api/v1/subtitles/jobs", mod.subtitleJobs),
     get("/api/v1/insights/plex", mod.plexConfig),
     get("/api/v1/insights/plex/scan", mod.plexScan),
@@ -164,7 +168,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
     get("/api/v1/users", sys.users),
-    { method: "PUT", path: /^\/api\/v1\/users\/(\d+)$/, respond: ({ params, body }) => ({ id: Number(params[0]), ...(body as object) }) },
+    get("/api/v1/people", sys.people),
+    // Answers like the server: the account as it now stands.
+    { method: "PUT", path: /^\/api\/v1\/users\/(\d+)$/, respond: ({ params, body }) => ({ disabled: false, ...sys.users.users.find((u) => u.id === Number(params[0])), id: Number(params[0]), ...(body as object) }) },
     get("/api/v1/system/library", sys.libraryPaths),
     { method: "GET", path: "/api/v1/system/library/check", respond: ({ url }) => sys.folderCheck(url.searchParams.get("path") ?? "") },
     get("/api/v1/logs", sys.logs),

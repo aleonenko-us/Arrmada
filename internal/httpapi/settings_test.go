@@ -265,3 +265,106 @@ func TestQualityProfileStallValidation(t *testing.T) {
 		}
 	}
 }
+
+// Settings save one control at a time now, so every key PUT /settings accepts must save on
+// its own: 200, that key changed, nothing else touched. The keys come from settingsUpdate's
+// tags, so a new setting without a row here fails the test rather than going unchecked.
+func TestUpdateSettingsSingleKey(t *testing.T) {
+	values := map[string]string{
+		"series_monitor_default":          `"future"`,
+		"naming_movie_folder":             `"{title}"`,
+		"naming_movie_file":               `"{title} - {quality}"`,
+		"naming_series_folder":            `"{title} [{year}]"`,
+		"naming_series_season":            `"S{season00}"`,
+		"naming_series_episode":           `"{title} {episode}"`,
+		"tmdb_region":                     `"AU"`,
+		"plex_login_auto_approve":         `true`,
+		"plex_login_auto_approve_types":   `"movie,series"`,
+		"recycle_max_gb":                  `"7"`,
+		"recycle_retention_days":          `"9"`,
+		"downloads_disk_guard_pause_pct":  `"90"`,
+		"downloads_disk_guard_resume_pct": `"70"`,
+		"downloads_stall_minutes":         `30`,
+		"upgrade_max_grabs_per_sweep":     `25`,
+		"request_quota_days":              `14`,
+		"request_quota_movies":            `3`,
+		"request_quota_seasons":           `2`,
+		"request_quota_books":             `4`,
+	}
+	// The legacy all-types switch and the per-type list are two views of one setting.
+	linked := map[string]string{"plex_login_auto_approve": "plex_login_auto_approve_types", "plex_login_auto_approve_types": "plex_login_auto_approve"}
+
+	rt := reflect.TypeOf(settingsUpdate{})
+	for i := 0; i < rt.NumField(); i++ {
+		key := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]
+		t.Run(key, func(t *testing.T) {
+			a := settingsAPI(t)
+			_, before := getSettings(t, a)
+			val, ok := values[key]
+			if !ok {
+				b, isBool := before[key].(bool)
+				if !isBool {
+					t.Fatalf("no test value for %q: add one to the table", key)
+				}
+				val = strconv.FormatBool(!b)
+			}
+			if w := putSettings(t, a, `{"`+key+`":`+val+`}`); w.Code != http.StatusOK {
+				t.Fatalf("PUT {%s: %s}: HTTP %d %s", key, val, w.Code, w.Body.String())
+			}
+			_, after := getSettings(t, a)
+			var want any
+			_ = json.Unmarshal([]byte(val), &want)
+			if !reflect.DeepEqual(after[key], want) {
+				t.Errorf("%s = %v after saving %v", key, after[key], want)
+			}
+			for k, v := range before {
+				if k != key && k != linked[key] && !reflect.DeepEqual(after[k], v) {
+					t.Errorf("%s changed from %v to %v though only %s was sent", k, v, after[k], key)
+				}
+			}
+		})
+	}
+}
+
+// The disk guard's pause and resume points are checked as a pair whichever one is sent:
+// one alone is judged against the stored other, both together against each other.
+func TestDiskGuardPairValidatedTogether(t *testing.T) {
+	a := settingsAPI(t) // defaults: pause 85, resume 80
+	if w := putSettings(t, a, `{"downloads_disk_guard_pause_pct":"70"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("pause 70 below the stored resume 80: HTTP %d, want 400", w.Code)
+	}
+	if w := putSettings(t, a, `{"downloads_disk_guard_pause_pct":"70","downloads_disk_guard_resume_pct":"60"}`); w.Code != http.StatusOK {
+		t.Fatalf("70/60 together: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if w := putSettings(t, a, `{"downloads_disk_guard_resume_pct":"75"}`); w.Code != http.StatusBadRequest {
+		t.Errorf("resume 75 above the stored pause 70: HTTP %d, want 400", w.Code)
+	}
+	if w := putSettings(t, a, `{"downloads_disk_guard_resume_pct":"65"}`); w.Code != http.StatusOK {
+		t.Errorf("resume 65 under pause 70: HTTP %d %s", w.Code, w.Body.String())
+	}
+	for _, bad := range []string{`""`, `"abc"`, `"8 5"`, `"-5"`} {
+		if w := putSettings(t, a, `{"downloads_disk_guard_pause_pct":`+bad+`}`); w.Code != http.StatusBadRequest {
+			t.Errorf("pause %s: HTTP %d, want 400", bad, w.Code)
+		}
+	}
+	if _, got := getSettings(t, a); got["downloads_disk_guard_pause_pct"] != "70" || got["downloads_disk_guard_resume_pct"] != "65" {
+		t.Errorf("stored pair = %v/%v, want 70/65", got["downloads_disk_guard_pause_pct"], got["downloads_disk_guard_resume_pct"])
+	}
+}
+
+// A field emptied and left (auto-save sends it on blur) must not become a different
+// setting: a blank bin limit would read as unlimited, a blank template as the default.
+func TestSettingsRefuseBlankValues(t *testing.T) {
+	a := settingsAPI(t)
+	for _, body := range []string{
+		`{"recycle_max_gb":""}`, `{"recycle_retention_days":" "}`, `{"recycle_max_gb":"1.5"}`, `{"recycle_max_gb":"-1"}`,
+		`{"naming_movie_folder":""}`, `{"naming_series_episode":"   "}`,
+	} {
+		if w := putSettings(t, a, body); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: HTTP %d, want 400", body, w.Code)
+		}
+	}
+	if w := putSettings(t, a, `{"recycle_max_gb":"0","recycle_retention_days":"0"}`); w.Code != http.StatusOK {
+		t.Errorf("0 (unlimited / forever): HTTP %d %s", w.Code, w.Body.String())
+	}
+}

@@ -6,8 +6,8 @@ const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
 
 describe("visibleSections", () => {
-  it("gives a manager what the old Media and Library tabs showed, plus Alerts (read-only) and the Plex connection", () => {
-    expect(manager).toEqual(["library", "media", "alerts", "plex"]);
+  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles & Convert, Alerts (read-only) and the Plex connection", () => {
+    expect(manager).toEqual(["library", "media", "connections", "tools", "alerts", "plex"]);
   });
 
   it("gives an admin every section, Status included", () => {
@@ -18,7 +18,8 @@ describe("visibleSections", () => {
 
 describe("settingsRedirect", () => {
   it("leaves a section the viewer can open alone", () => {
-    expect(settingsRedirect("/settings/system", "", "#api-keys", admin)).toBeNull();
+    expect(settingsRedirect("/settings/system", "", "#backups", admin)).toBeNull();
+    expect(settingsRedirect("/settings/connections", "", "#indexer-12", manager)).toBeNull();
     expect(settingsRedirect("/settings/library", "", "", manager)).toBeNull();
   });
 
@@ -35,11 +36,18 @@ describe("settingsRedirect", () => {
   });
 
   it("follows an old card anchor to the section that now holds it", () => {
-    expect(settingsRedirect("/settings", "?tab=system", "#api-keys", admin)).toBe("/settings/system#api-keys");
+    expect(settingsRedirect("/settings", "?tab=system", "#api-keys", admin)).toBe("/settings/connections#api-keys");
     expect(settingsRedirect("/settings", "?tab=system", "#disk-guard", admin)).toBe("/settings/downloads#disk-guard");
     expect(settingsRedirect("/settings", "?tab=system", "#recycle-bin", admin)).toBe("/settings/downloads#recycle-bin");
     expect(settingsRedirect("/settings", "?tab=library", "#media-folders", admin)).toBe("/settings/library#media-folders");
     expect(settingsRedirect("/settings", "", "#users", admin)).toBe("/settings/users#users");
+  });
+
+  it("sends a moved card's old address to the section that holds it now", () => {
+    // CFG-15: the API keys and the Discovery region moved from System to Connections.
+    expect(settingsRedirect("/settings/system", "", "#api-keys", admin)).toBe("/settings/connections#api-keys");
+    expect(settingsRedirect("/settings/system", "", "#discovery-region", admin)).toBe("/settings/connections#discovery-region");
+    expect(settingsRedirect("/settings", "?tab=system", "#api-keys", manager)).toBe("/settings/connections#api-keys");
   });
 
   it("keeps other query params", () => {
@@ -48,14 +56,14 @@ describe("settingsRedirect", () => {
 
   it("falls back for a section the viewer can't open or that doesn't exist", () => {
     expect(settingsRedirect("/settings/system", "", "", manager)).toBe("/settings/library");
-    expect(settingsRedirect("/settings", "?tab=system", "#api-keys", manager)).toBe("/settings/library#api-keys");
+    expect(settingsRedirect("/settings/system", "", "#backups", manager)).toBe("/settings/library#backups");
     expect(settingsRedirect("/settings/nope", "", "", admin)).toBe("/settings/library");
   });
 });
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);
@@ -84,7 +92,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Metadata", "Plex connection", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {

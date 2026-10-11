@@ -3,26 +3,43 @@ import { Navigate, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { inputStyle } from "../components/settings/ui";
 import { useMe, isAdmin } from "../lib/me";
-import { SettingsProvider, useSettingsDraft } from "../lib/useSettings";
+import { SettingsProvider, useSettingsStore } from "../lib/useSettings";
 import { searchSettings, sectionFromPath, settingsRedirect, visibleSections, type SearchEntry, type SectionId } from "./settings/sections";
 import { LibrarySettings } from "./settings/LibrarySettings";
 import { NamingSettings } from "./settings/Naming";
 import { DownloadsSettings } from "./settings/DownloadsSettings";
-import { UsersSettings } from "./settings/UsersSettings";
+import { PeopleSettings } from "./settings/People";
 import { ImportSettings } from "./settings/ImportSettings";
 import { SystemSettings } from "./settings/SystemSettings";
 import { StatusSection } from "./settings/Status";
 import { AlertsSettings } from "./settings/AlertsSettings";
 import { PlexSettings } from "./settings/PlexSettings";
+import { ConnectionsSettings } from "./settings/Connections";
+import { SubtitlesSettings } from "./settings/SubtitlesSettings";
+import { ConvertSettings } from "./settings/ConvertSettings";
+import { AudiobookServerSettings } from "./settings/AudiobookServer";
+
+// Settings → Subtitles & Convert: both modules' settings, one after the other.
+function ToolsSettings() {
+  return (
+    <div className="flex flex-col gap-8">
+      <SubtitlesSettings />
+      <ConvertSettings />
+    </div>
+  );
+}
 
 // What each section renders; sections.ts says who sees it and where its cards are.
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   library: LibrarySettings,
   media: NamingSettings,
+  connections: ConnectionsSettings,
   downloads: DownloadsSettings,
+  tools: ToolsSettings,
   alerts: AlertsSettings,
   plex: PlexSettings,
-  users: UsersSettings,
+  "audiobook-server": AudiobookServerSettings,
+  users: PeopleSettings,
   import: ImportSettings,
   system: SystemSettings,
   status: StatusSection,
@@ -47,7 +64,7 @@ function SettingsHub() {
   const ids = sections.map((s) => s.id);
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
-  const { s, error } = useSettingsDraft();
+  const { s, error } = useSettingsStore();
   const [query, setQuery] = useState("");
 
   // Bare /settings, an old ?tab=system#api-keys link, or a section this viewer

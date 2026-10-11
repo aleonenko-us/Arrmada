@@ -20,6 +20,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/buildinfo"
 	"github.com/tristenlammi/arrmada/internal/config"
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/convert"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
@@ -84,6 +85,10 @@ type Deps struct {
 	Resolver notify.Resolver
 	// FlareSolverr, whose URL is the "flaresolverr" API key (read on every use).
 	FlareSolverr *flaresolverr.Client
+	// ConnStatus is the integration status tracker the indexers and download clients
+	// record into; Settings → Connections reads it, and records the Tests it runs for
+	// Prowlarr and the metadata keys. nil = nothing recorded, every card "unknown".
+	ConnStatus *connstatus.Tracker
 	// KeyVerifiers back the API key Test button, by key id: each makes one real request
 	// with candidate (a value typed and not yet saved) or, when that's empty, the saved
 	// key, and answers in words. Built in main; Hardcover is tested through Books.
@@ -199,7 +204,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library", a.requireRole(auth.RoleManager, a.handleGetLibraryPaths))
 	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.handleSetLibraryPaths))
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
-	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
+	// System → Status: build, database size, last backup and drive space (CFG-26).
+	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
+	mux.HandleFunc("GET /api/v1/system/pending-restart",a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.
 	mux.HandleFunc("GET /api/v1/setup", a.requireRole(auth.RoleAdmin, a.handleSetupState))
@@ -285,6 +292,8 @@ func (a *api) registerRoutes(mux *router) {
 
 	// User management (admin only).
 	mux.HandleFunc("GET /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleListUsers))
+	// Settings → People & access: everyone once, with last seen and audiobook access (CFG-18).
+	mux.HandleFunc("GET /api/v1/people", a.requireRole(auth.RoleAdmin, a.handlePeople))
 	mux.HandleFunc("POST /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleCreateUser))
 	mux.HandleFunc("PUT /api/v1/users/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateUser))
 	mux.HandleFunc("GET /api/v1/users/{id}/impact", a.requireRole(auth.RoleAdmin, a.handleUserImpact))
@@ -327,6 +336,12 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/indexers/{id}/test", a.requireRole(auth.RoleManager, a.handleTestIndexer))
 	mux.HandleFunc("POST /api/v1/indexers/test", a.requireRole(auth.RoleManager, a.handleTestIndexerSettings))
 	mux.HandleFunc("GET /api/v1/flaresolverr/status", a.requireRole(auth.RoleManager, a.handleFlareSolverrStatus))
+	// Settings → Connections: every integration's status in one list, and a Test for each.
+	// Managers run the indexers and clients day to day; the metadata keys are the admin's
+	// (like /apikeys), so their Test has its own admin-only route.
+	mux.HandleFunc("GET /api/v1/connections", a.requireRole(auth.RoleManager, a.handleConnections))
+	mux.HandleFunc("POST /api/v1/connections/{kind}/{ref}/test", a.requireRole(auth.RoleManager, a.handleTestConnection))
+	mux.HandleFunc("POST /api/v1/connections/apikey/{ref}/test", a.requireRole(auth.RoleAdmin, a.handleTestConnection))
 
 	// Download clients + queue
 	mux.HandleFunc("GET /api/v1/downloadclients", a.requireRole(auth.RoleManager, a.handleListDownloadClients))

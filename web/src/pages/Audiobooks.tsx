@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { LINKS } from "../lib/links";
 import { appsFor, devicePlatform, newDevice, type AudioApp, type DevicePlatform } from "../lib/audioApps";
 import { usePoll } from "../lib/usePoll";
 import { ApiError, api, type AudioListening, type AudioPlace, type AudioRemoved, type AudioShelf, type MyAudio } from "../lib/api";
@@ -22,15 +23,15 @@ const AudiobooksAdmin = lazyPage(() => import("./AudiobooksAdmin"), "AudiobooksA
 // Audiobooks is where people listen. Everyone gets Listen — their shelves, the whole
 // library and a sheet for each book, played right here in the mini-player — and Apps &
 // devices: how to connect a listening app (Lissen, or anything that speaks
-// Audiobookshelf), their audiobook password and their devices. Admins also get the server
-// switch, who may connect, everyone's listening (how much and when — never what) and the
-// Audiobookshelf import. Nobody sees anyone else's places.
+// Audiobookshelf), their audiobook password and their devices. Admins also get who may
+// connect, everyone's listening (how much and when — never what) and the Audiobookshelf
+// import; the server's own settings are in Settings → Audiobook server. Nobody sees anyone
+// else's places.
 
-type Tab = "listen" | "apps" | "server" | "people" | "listening" | "import";
+type Tab = "listen" | "apps" | "people" | "listening" | "import";
 const TABS: TabItem<Tab>[] = [
   { key: "listen", label: "Listen" },
   { key: "apps", label: "Apps & devices" },
-  { key: "server", label: "Server" },
   { key: "people", label: "People" },
   { key: "listening", label: "Listening" },
   { key: "import", label: "Import" },
@@ -41,6 +42,13 @@ const EVERYONE: readonly Tab[] = ["listen", "apps"];
 export function Audiobooks({ chrome = true }: { chrome?: boolean }) {
   const { user } = useMe();
   const admin = user?.role === "admin";
+  // The old Server tab's address (bookmarks, health links) opens Settings → Audiobook server.
+  const [params] = useSearchParams();
+  if (admin && params.get("tab") === "server") return <Navigate to={LINKS.audiobookServer} replace />;
+  return <AudiobooksPage chrome={chrome} admin={admin} />;
+}
+
+function AudiobooksPage({ chrome, admin }: { chrome: boolean; admin: boolean }) {
   // A link to an admin tab from anyone else lands on Listen.
   const allowed = admin ? ALL_TABS : EVERYONE;
   const [tab, setTab] = useTabParam(allowed, "listen");
@@ -50,9 +58,12 @@ export function Audiobooks({ chrome = true }: { chrome?: boolean }) {
       {chrome && <PageHeader title="Audiobooks" />}
       <div className="mx-auto w-full max-w-[980px] px-4 py-6 sm:px-6">
         {!chrome && <h1 className="m-0 mb-1 text-[18px] font-bold">Audiobooks</h1>}
-        <p className="m-0 mb-4 max-w-[70ch] text-[12.5px] text-ink-dim">
-          Listen right here, or in a listening app. Your place follows you between them.
-        </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <p className="m-0 max-w-[70ch] text-[12.5px] text-ink-dim">
+            Listen right here, or in a listening app. Your place follows you between them.
+          </p>
+          {admin && <Link to={LINKS.audiobookServer} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Configure →</Link>}
+        </div>
         <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="audiobooks" label="Audiobooks sections" />
         <TabPanel idPrefix="audiobooks" value={tab}>
           {tab === "listen" ? <ListenView /> : tab === "apps" ? <AppsView /> : (

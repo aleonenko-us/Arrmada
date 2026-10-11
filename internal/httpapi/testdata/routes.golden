@@ -71,6 +71,7 @@ GET /api/v1/books/{id}/manualimport staff -
 GET /api/v1/books/{id}/releases staff -
 GET /api/v1/books/{id}/series staff -
 GET /api/v1/calendar user -
+GET /api/v1/connections staff -
 GET /api/v1/convert/blocklist staff -
 GET /api/v1/convert/compare staff -
 GET /api/v1/convert/compare/files/{name} staff -
@@ -181,6 +182,7 @@ GET /api/v1/notifications/catalog staff -
 GET /api/v1/notifications/presets staff -
 GET /api/v1/notifications/{id}/deliveries staff -
 GET /api/v1/parse staff -
+GET /api/v1/people admin -
 GET /api/v1/plex/link user ext
 GET /api/v1/quality/preview staff -
 GET /api/v1/quality/profiles staff -
@@ -229,6 +231,7 @@ GET /api/v1/system/browse admin -
 GET /api/v1/system/library staff -
 GET /api/v1/system/library/check admin -
 GET /api/v1/system/pending-restart staff -
+GET /api/v1/system/status admin -
 GET /api/v1/system/tasks staff -
 GET /api/v1/users admin -
 GET /api/v1/users/plex-blocks admin -
@@ -261,6 +264,8 @@ POST /api/v1/books/{id}/rematch staff -
 POST /api/v1/books/{id}/rename staff -
 POST /api/v1/books/{id}/search staff -
 POST /api/v1/books/{id}/series/add-missing staff -
+POST /api/v1/connections/apikey/{ref}/test admin -
+POST /api/v1/connections/{kind}/{ref}/test staff -
 POST /api/v1/convert/blocklist/clear staff -
 POST /api/v1/convert/compare staff -
 POST /api/v1/convert/jobs/{id}/cancel staff -
