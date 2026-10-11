@@ -47,6 +47,12 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.finishSkip(job, SkipSourceGone, "the library file is missing from disk — checking again later")
 		return
 	}
+	// The result is swapped in as <name>.mkv, and a file already there is moved aside. When
+	// that file is another version of this film, nothing is encoded: the swap would take it.
+	if final := convertedPath(src); final != src && s.otherTrackOwns(ctx, job, final) {
+		s.finishSkip(job, SkipTransient, otherTrackNote(final))
+		return
+	}
 	mi, err := probeFn(ctx, s.ffprobe, src)
 	if err != nil {
 		s.finish(job, StateFailed, "could not analyze file: "+err.Error())
@@ -272,11 +278,8 @@ func (s *Service) sourceRelease(ctx context.Context, job *Job, src string) strin
 		}
 		return ""
 	}
-	if s.movies == nil {
-		return ""
-	}
-	if m, err := s.movies.Get(ctx, job.MovieID); err == nil && m.MovieFilePath == src {
-		return m.SourceRelease
+	if t, ok := s.lookupMovieTrack(ctx, job.MovieID, job.VersionID); ok && t.version.FilePath == src {
+		return t.version.SourceRelease
 	}
 	return ""
 }
@@ -361,14 +364,13 @@ func (s *Service) resolveSource(ctx context.Context, job *Job) (src, title, orig
 		}
 		return path, job.Title, origLang, true
 	}
-	if s.movies == nil {
+	// The job's own track — the default file, or the extra version it names — and never
+	// another track's file: a version job whose version is gone is gone, not the default.
+	t, ok := s.lookupMovieTrack(ctx, job.MovieID, job.VersionID)
+	if !ok {
 		return "", "", "", false
 	}
-	m, err := s.movies.Get(ctx, job.MovieID)
-	if err != nil || !m.HasFile || m.MovieFilePath == "" {
-		return "", "", "", false
-	}
-	return m.MovieFilePath, m.Title, movieOrigLang(m), true
+	return t.version.FilePath, t.title(), movieOrigLang(t.movie), true
 }
 
 // chooseCodec settles the format for one file:

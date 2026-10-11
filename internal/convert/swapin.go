@@ -47,9 +47,13 @@ func (s *Service) swapIn(ctx context.Context, job *Job, src, dst string, mi *Med
 		return
 	}
 	_ = os.Remove(part) // a leftover from a crash before swaps were journalled
-	// The .mkv name may already be taken. A file another library record points at is that
-	// record's, so it's never moved aside; this one waits instead (and the rename below
-	// would otherwise overwrite it).
+	// The .mkv name may already be taken. Another version of this film (versions.go) or a file
+	// another library record points at is that track's or record's, so it's never moved
+	// aside; this one waits instead (and the rename below would otherwise overwrite it).
+	if finalPath != src && s.otherTrackOwns(ctx, job, finalPath) {
+		s.finishSkip(job, SkipTransient, otherTrackNote(finalPath))
+		return
+	}
 	if finalPath != src && exists(finalPath) {
 		if why := s.nameOwner(ctx, finalPath); why != "" {
 			s.finishSkip(job, SkipNameTaken, why+" — the encode was discarded and the original kept")
@@ -139,7 +143,12 @@ func (s *Service) swapIn(ctx context.Context, job *Job, src, dst string, mi *Med
 	}
 	if finalPath != src && exists(finalPath) {
 		// A stray at the .mkv name (no record owns it, checked above) waits in the hold with
-		// the original rather than being overwritten.
+		// the original rather than being overwritten — unless another track of this film
+		// took that name meanwhile: then nothing of that track's is touched.
+		if s.otherTrackOwns(ctx, job, finalPath) {
+			putBack(otherTrackNote(finalPath))
+			return
+		}
 		if err := s.moveKept(finalPath, strayHeld); err != nil {
 			putBack("could not move the file already at " + filepath.Base(finalPath) + " out of the way: " + err.Error())
 			return

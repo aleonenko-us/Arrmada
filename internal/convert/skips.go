@@ -103,6 +103,7 @@ type Skipped struct {
 	// Resolved for display.
 	MediaKind string `json:"media_kind"`
 	MovieID   int64  `json:"movie_id,omitempty"`
+	VersionID int64  `json:"version_id,omitempty"`
 	SeriesID  int64  `json:"series_id,omitempty"`
 	Season    int    `json:"season"`
 	Episode   int    `json:"episode"`
@@ -241,7 +242,7 @@ func (st *skipStore) list(ctx context.Context) ([]Skipped, error) {
 		var b Blocked
 		b.Key = s.Key
 		parseItemKey(&b)
-		s.MediaKind, s.MovieID, s.SeriesID, s.Season, s.Episode = b.Kind, b.MovieID, b.SeriesID, b.Season, b.Episode
+		s.MediaKind, s.MovieID, s.VersionID, s.SeriesID, s.Season, s.Episode = b.Kind, b.MovieID, b.VersionID, b.SeriesID, b.Season, b.Episode
 		out = append(out, s)
 	}
 	return out, rows.Err()

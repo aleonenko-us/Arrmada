@@ -87,6 +87,9 @@ func (a *api) indexedForMedia(ctx context.Context, media string) (files []struct
 	}
 	for i := range list {
 		f := &list[i]
+		if f.VersionID != 0 {
+			continue // judged against the movie's profile, so its default file only
+		}
 		id := f.MovieID
 		if kind == "episode" {
 			id = f.SeriesID

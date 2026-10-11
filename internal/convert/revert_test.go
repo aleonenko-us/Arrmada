@@ -225,3 +225,58 @@ func TestRecoverInterruptedRevert(t *testing.T) {
 		}
 	})
 }
+
+// Reverting a movie version's conversion puts that version back — its file, its release,
+// no baseline — and leaves the film's default file and record exactly as they were.
+func TestRevertAVersionTouchesOnlyItsTrack(t *testing.T) {
+	ctx := context.Background()
+	r := newSpaceRig(t)
+	def := r.addMovie(t, 1, "Film", 1000)
+	if _, err := r.db.Exec(`UPDATE movies SET source_release = 'Film.2020.1080p.WEB.x265-GRP' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	src := r.addVersion(t, 1, 2, "4K Remux", "Film - 4K Remux.m2ts", 1000, "x")
+	mi := film("h264", 3840, 2160, 85000, aud("truehd", "eng", 8))
+	mi.SizeBytes = 1000
+	plan := Plan{VideoCodec: "hevc"}
+	stubProbe(t, &MediaInfo{VideoCodec: "hevc", DurationSec: mi.DurationSec,
+		AudioTracks: len(keptAudio(mi, plan)), SubTracks: len(keptSubs(mi, plan))})
+	stubDisks(t, r.scratch, 1<<50, 1<<50)
+	dst := filepath.Join(r.scratch, "convert-1.mkv")
+	writeFile(t, dst, 500, 'y')
+	it, _ := parseKey("movie:1:v:2")
+	job := r.claim(it, "Film · 4K Remux", true)
+	rec := r.record(job)
+	rec.srcPath, rec.srcInfo = src, mi
+	rec.srcRelease = r.sourceRelease(ctx, job, src)
+	r.update(job, func(j *Job) { j.SrcBytes = mi.SizeBytes })
+	r.beginHistory(job)
+	r.finalizeOutput(ctx, job, src, dst, mi, plan)
+	if job.State != StateDone {
+		t.Fatalf("conversion: %s (%s)", job.State, job.Note)
+	}
+	e := r.ledger(t, job)
+	if _, err := r.Revert(ctx, e.ID); err != nil {
+		t.Fatal(err)
+	}
+	var vPath, vRel, vFrom string
+	if err := r.db.QueryRow(`SELECT file_path, source_release, converted_from_release FROM movie_versions WHERE id = 2`).Scan(&vPath, &vRel, &vFrom); err != nil {
+		t.Fatal(err)
+	}
+	if vPath != src || vRel != "Film.2020.2160p.BluRay.REMUX.HEVC-GRP" || vFrom != "" || sizeOf(src) != 1000 || exists(finalPathFor(src)) {
+		t.Fatalf("version: %q / %q / baseline %q, original %d bytes", vPath, vRel, vFrom, sizeOf(src))
+	}
+	var mPath, mRel string
+	if err := r.db.QueryRow(`SELECT movie_file_path, source_release FROM movies WHERE id = 1`).Scan(&mPath, &mRel); err != nil {
+		t.Fatal(err)
+	}
+	if mPath != def || mRel != "Film.2020.1080p.WEB.x265-GRP" || sizeOf(def) != 1000 {
+		t.Fatalf("the default track changed: %q %q", mPath, mRel)
+	}
+	if kind, _, _ := r.skipOf(t, "movie:1:v:2"); kind != SkipReverted {
+		t.Fatalf("the version's skip: %q", kind)
+	}
+	if kind, _, _ := r.skipOf(t, movieKey(1)); kind != "" {
+		t.Fatalf("the default track got a skip: %q", kind)
+	}
+}

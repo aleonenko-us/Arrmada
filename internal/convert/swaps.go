@@ -369,7 +369,7 @@ func (s *Service) pendingParts(ctx context.Context) map[string]bool {
 		if !ok {
 			continue
 		}
-		if src, _, _, ok := s.resolveSource(ctx, &Job{Kind: it.Kind, MovieID: it.MovieID, SeriesID: it.SeriesID, Season: it.Season, Episode: it.Episode}); ok {
+		if src, _, _, ok := s.resolveSource(ctx, it.job()); ok {
 			out[partPathFor(src)] = true
 		}
 	}
@@ -403,8 +403,9 @@ func (s *Service) nameOwner(ctx context.Context, path string) string {
 	return ""
 }
 
-// finalPathFor is where a conversion of src lands: the same name as an .mkv.
-func finalPathFor(src string) string { return strings.TrimSuffix(src, filepath.Ext(src)) + ".mkv" }
+// finalPathFor is where a conversion of src lands: the same name as an .mkv (versions.go's
+// convertedPath — one rule for both).
+func finalPathFor(src string) string { return convertedPath(src) }
 
 // partPathFor is where a conversion of src is staged before the swap.
 func partPathFor(src string) string { return finalPathFor(src) + partSuffix }

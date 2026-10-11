@@ -125,20 +125,15 @@ func (s *Service) revertable(ctx context.Context, e HistoryEntry) error {
 	return nil
 }
 
-// recordAt reports whether the row's own movie or show records path as its file.
+// recordAt reports whether the row's own track — the episode, the movie's default file or
+// the extra version its key names — records path as its file now.
 func (s *Service) recordAt(ctx context.Context, e HistoryEntry, path string) (bool, error) {
-	if e.Kind == "episode" {
-		if s.series == nil {
-			return false, errors.New("the TV module isn't available")
-		}
-		sid, ok, err := s.series.EpisodeFileOwner(ctx, path)
-		return ok && sid == e.SeriesID, err
+	it, ok := parseKey(e.Key)
+	if !ok {
+		return false, fmt.Errorf("the conversion record names no library item (%q)", e.Key)
 	}
-	if s.movies == nil {
-		return false, errors.New("the movies module isn't available")
-	}
-	mid, _, ok, err := s.movies.FileOwner(ctx, path)
-	return ok && mid == e.MovieID, err
+	src, _, _, ok := s.resolveSource(ctx, it.job())
+	return ok && src == path, nil
 }
 
 // revertPartFor is where a revert puts the converted file: in the row's hold folder, under
@@ -261,6 +256,10 @@ func (s *Service) finishRevert(ctx context.Context, e HistoryEntry, w swapRow) e
 	}
 	_ = os.Remove(filepath.Dir(e.HoldPath)) // only if empty
 	job := &Job{Kind: e.Kind, MovieID: e.MovieID, SeriesID: e.SeriesID, Season: e.Season, Episode: e.Episode, Title: e.Title}
+	if it, ok := parseKey(e.Key); ok {
+		job = it.job() // the track itself (a movie version's key names it)
+		job.Title = e.Title
+	}
 	s.reindexConverted(ctx, job)
 	s.swapped(job, e.SrcPath) // Plex rescans the folder (movies also go through movie.changed)
 	s.event("info", fmt.Sprintf("Reverted %s — the original (%s) is back", e.Title, humanBytes(e.SrcSize)))

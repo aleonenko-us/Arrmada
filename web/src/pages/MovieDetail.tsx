@@ -1370,9 +1370,9 @@ function FileBody({ movieId, versionId, file }: { movieId: number; versionId: nu
           path={file.path}
           title={file.filename || "File details"}
           subtitle={file.quality || undefined}
-          // Convert works on a movie's default file; an extra version's file isn't queued
-          // by it (yet), so only the default track offers the clean-up.
-          onCleanTracks={versionId === 0 ? async () => { await api.convertRequest(`movie:${movieId}`); } : undefined}
+          // Convert works on every track: the default file is 'movie:ID', an extra
+          // version 'movie:ID:v:VID'.
+          onCleanTracks={async () => { await api.convertRequest(versionId === 0 ? `movie:${movieId}` : `movie:${movieId}:v:${versionId}`); }}
           onClose={() => setShowFile(false)}
         />
       )}

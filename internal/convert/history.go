@@ -144,6 +144,7 @@ type HistoryEntry struct {
 	Key         string `json:"key"`
 	Kind        string `json:"kind"` // "movie" | "episode"
 	MovieID     int64  `json:"movie_id,omitempty"`
+	VersionID   int64  `json:"version_id,omitempty"` // the movie's extra version track; 0 = its default file
 	SeriesID    int64  `json:"series_id,omitempty"`
 	Season      int    `json:"season"` // NOT omitempty: season 0 is specials
 	Episode     int    `json:"episode,omitempty"`
@@ -209,6 +210,7 @@ type historyStore struct{ db *sql.DB }
 type historyRow struct {
 	key, kind                        string
 	movieID, seriesID                int64
+	versionID                        int64 // the movie's extra version track; 0 = its default file
 	season, episode                  int
 	title, outcome, outcomeKind      string
 	note                             string
@@ -272,12 +274,12 @@ func (h *historyStore) insert(ctx context.Context, r historyRow) int64 {
 		  item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 		  src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 		  ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-		  reclaim_deferred, started_at, finished_at, encode_secs)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  reclaim_deferred, started_at, finished_at, encode_secs, version_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.key, r.kind, r.movieID, r.seriesID, r.season, r.episode, r.title, r.outcome, r.outcomeKind, r.note, boolInt(r.requested),
 		r.srcPath, r.srcRelease, r.srcSize, r.srcInfoJSON, r.outPath, r.outSize, r.outInfoJSON, r.codec, r.crf, r.encoder,
 		r.ssimMean, r.ssimMin, r.ssimWindowsJSON, r.crop, r.keptJSON, r.droppedJSON, r.warnJSON,
-		boolInt(r.reclaimDeferred), r.startedAt, r.finishedAt, r.encodeSecs)
+		boolInt(r.reclaimDeferred), r.startedAt, r.finishedAt, r.encodeSecs, r.versionID)
 	if err != nil {
 		return 0
 	}
@@ -410,6 +412,9 @@ func scanHistory(sc rowScanner, full bool) (HistoryEntry, error) {
 		return e, err
 	}
 	e.Requested, e.ReclaimDeferred = requested == 1, deferred == 1
+	if it, ok := parseKey(e.Key); ok {
+		e.VersionID = it.VersionID // the key names the track ('movie:ID:v:VID')
+	}
 	_ = unmarshalIf(windows, &e.SSIMWindows)
 	_ = unmarshalIf(kept, &e.Kept)
 	_ = unmarshalIf(dropped, &e.Dropped)
@@ -608,7 +613,7 @@ func (s *Service) historyRowFor(job *Job, outcome, note string) historyRow {
 	s.mu.Unlock()
 	rec := s.record(job)
 	r := historyRow{
-		key: j.Key, kind: j.Kind, movieID: j.MovieID, seriesID: j.SeriesID, season: j.Season, episode: j.Episode,
+		key: j.Key, kind: j.Kind, movieID: j.MovieID, versionID: j.VersionID, seriesID: j.SeriesID, season: j.Season, episode: j.Episode,
 		title: j.Title, outcome: outcome, note: note, requested: j.Requested, encoder: j.Encoder,
 		srcPath: rec.srcPath, srcRelease: rec.srcRelease, srcSize: j.SrcBytes,
 		outPath: rec.outPath, outSize: rec.outSize, reclaimDeferred: rec.reclaimDeferred,

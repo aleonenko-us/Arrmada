@@ -33,22 +33,28 @@ type indexRow struct {
 	SeriesID  int64
 	Season    int
 	Episode   int
-	Title     string
+	Title     string // the film's or episode's title (a version's label is VersionLabel)
 	Year      int
 	PosterURL string
 	SizeBytes int64
 	Codec     string
 	OrigLang  string // the title's original language (TMDB), for keep-original-language audio
 	Info      *MediaInfo
+
+	// The movie track the file belongs to: 0 = the default file, else an extra version.
+	VersionID    int64
+	VersionLabel string
 }
 
 // rowMeta is what the indexer needs to know about an indexed file to decide whether it's
 // up to date without touching the disk.
 type rowMeta struct {
-	size     int64
-	codec    string
-	ver      int
-	origLang string
+	size      int64
+	codec     string
+	ver       int
+	origLang  string
+	versionID int64 // the movie track the row was indexed as
+	label     string
 }
 
 // current reports whether an indexed row still describes the file: same size, a probe that
@@ -60,7 +66,7 @@ func (m rowMeta) current(size int64) bool {
 
 // metaFor returns path → rowMeta for a scope.
 func (ix *libraryIndex) metaFor(ctx context.Context, mediaType string, seriesID int64) map[string]rowMeta {
-	q := `SELECT path, size_bytes, video_codec, info_ver, orig_lang FROM convert_library WHERE media_type = ?`
+	q := `SELECT path, size_bytes, video_codec, info_ver, orig_lang, version_id, version_label FROM convert_library WHERE media_type = ?`
 	args := []any{mediaType}
 	if seriesID > 0 {
 		q += ` AND series_id = ?`
@@ -75,7 +81,7 @@ func (ix *libraryIndex) metaFor(ctx context.Context, mediaType string, seriesID 
 	for rows.Next() {
 		var p string
 		var m rowMeta
-		if rows.Scan(&p, &m.size, &m.codec, &m.ver, &m.origLang) == nil {
+		if rows.Scan(&p, &m.size, &m.codec, &m.ver, &m.origLang, &m.versionID, &m.label) == nil {
 			out[p] = m
 		}
 	}
@@ -124,17 +130,18 @@ func (ix *libraryIndex) upsert(ctx context.Context, r indexRow) error {
 	_, err := ix.db.ExecContext(ctx,
 		`INSERT INTO convert_library
 		   (path, media_type, movie_id, series_id, season, episode, title, year, poster_url,
-		    size_bytes, video_codec, info_json, orig_lang, info_ver, indexed_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		    size_bytes, video_codec, info_json, orig_lang, info_ver, version_id, version_label, indexed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		 ON CONFLICT(path) DO UPDATE SET
 		   media_type = excluded.media_type, movie_id = excluded.movie_id,
 		   series_id = excluded.series_id, season = excluded.season, episode = excluded.episode,
 		   title = excluded.title, year = excluded.year, poster_url = excluded.poster_url,
 		   size_bytes = excluded.size_bytes, video_codec = excluded.video_codec,
 		   info_json = excluded.info_json, orig_lang = excluded.orig_lang,
-		   info_ver = excluded.info_ver, indexed_at = datetime('now')`,
+		   info_ver = excluded.info_ver, version_id = excluded.version_id,
+		   version_label = excluded.version_label, indexed_at = datetime('now')`,
 		r.Path, r.MediaType, r.MovieID, r.SeriesID, r.Season, r.Episode, r.Title, r.Year,
-		r.PosterURL, r.SizeBytes, r.Codec, infoJSON, r.OrigLang, probeSchemaVersion)
+		r.PosterURL, r.SizeBytes, r.Codec, infoJSON, r.OrigLang, probeSchemaVersion, r.VersionID, r.VersionLabel)
 	if err == nil {
 		ix.gen.Add(1)
 	}
@@ -162,8 +169,9 @@ func (ix *libraryIndex) forget(ctx context.Context, job *Job) {
 			`DELETE FROM convert_library WHERE media_type = 'episode' AND series_id = ? AND season = ? AND episode = ?`,
 			job.SeriesID, job.Season, job.Episode)
 	} else {
+		// This track's row only: the film's other files are still there.
 		_, err = ix.db.ExecContext(ctx,
-			`DELETE FROM convert_library WHERE media_type = 'movie' AND movie_id = ?`, job.MovieID)
+			`DELETE FROM convert_library WHERE media_type = 'movie' AND movie_id = ? AND version_id = ?`, job.MovieID, job.VersionID)
 	}
 	if err == nil {
 		ix.gen.Add(1)
@@ -244,9 +252,10 @@ func (s *Service) IndexSeries(ctx context.Context, seriesID int64) error {
 	return nil
 }
 
-// IndexMovie reindexes one movie from its current record: the file it has now replaces
-// any row for a path it no longer has, and a movie with no file — or no longer in the
-// library — is forgotten. It's what every movie file change (import, rename, delete)
+// IndexMovie reindexes one movie from its current record: one row per track that holds a
+// file — the default file and every extra version — each replacing any row for a path the
+// movie no longer has. A movie with no files, or no longer in the library, is forgotten.
+// It's what every movie file change (import, rename, delete, a version added or removed)
 // runs, so it must be safe to run again for the same state.
 func (s *Service) IndexMovie(ctx context.Context, movieID int64) error {
 	if s.movies == nil || s.index == nil {
@@ -259,26 +268,47 @@ func (s *Service) IndexMovie(ctx context.Context, movieID int64) error {
 	if err != nil {
 		return err
 	}
-	if !m.HasFile || m.MovieFilePath == "" {
-		// Its file was deleted: a lingering row would keep listing it as convertible
+	tracks, err := s.movies.VersionRows(ctx, movieID)
+	if err != nil {
+		return err
+	}
+	keep := map[string]bool{}
+	for _, v := range tracks {
+		// Two tracks recording one path are one file: it's indexed once, as the first
+		// track (the default comes first), so it has one key and one job.
+		if !v.HasFile || v.FilePath == "" || keep[v.FilePath] {
+			continue
+		}
+		keep[v.FilePath] = true
+		row := indexRow{
+			Path: v.FilePath, MediaType: "movie", MovieID: m.ID,
+			Title: m.Title, Year: m.Year, PosterURL: m.PosterURL, OrigLang: movieOrigLang(m),
+		}
+		if !v.IsDefault {
+			row.VersionID, row.VersionLabel = v.ID, v.Label
+		}
+		if mi, err := s.probeCached(ctx, v.FilePath); err == nil {
+			row.Info, row.Codec, row.SizeBytes = mi, mi.VideoCodec, mi.SizeBytes
+		}
+		if err := s.index.upsert(ctx, row); err != nil {
+			return err
+		}
+	}
+	if len(keep) == 0 {
+		// Its files were deleted: a lingering row would keep listing it as convertible
 		// (and in the Cutoff view) until the nightly sweep.
 		return s.ForgetMovie(ctx, movieID)
 	}
-	row := indexRow{
-		Path: m.MovieFilePath, MediaType: "movie", MovieID: m.ID,
-		Title: m.Title, Year: m.Year, PosterURL: m.PosterURL, OrigLang: movieOrigLang(m),
+	// A convert can change the container (MP4 → MKV), and a version can be removed or
+	// re-imported under a new name, so drop every row still pointing at a path none of the
+	// movie's tracks holds — otherwise the old codec lingers and it stays "convertible".
+	q := `DELETE FROM convert_library WHERE media_type = 'movie' AND movie_id = ? AND path NOT IN (` +
+		strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + `)`
+	args := []any{m.ID}
+	for p := range keep {
+		args = append(args, p)
 	}
-	if mi, err := s.probeCached(ctx, m.MovieFilePath); err == nil {
-		row.Info, row.Codec, row.SizeBytes = mi, mi.VideoCodec, mi.SizeBytes
-	}
-	if err := s.index.upsert(ctx, row); err != nil {
-		return err
-	}
-	// A convert can change the container (MKV → MP4), so drop any row still pointing at this
-	// movie's previous path — otherwise the old codec lingers and it stays "convertible".
-	_, _ = s.index.db.ExecContext(ctx,
-		`DELETE FROM convert_library WHERE media_type = 'movie' AND movie_id = ? AND path <> ?`,
-		m.ID, m.MovieFilePath)
+	_, _ = s.index.db.ExecContext(ctx, q, args...)
 	s.index.gen.Add(1)
 	return nil
 }
@@ -293,26 +323,40 @@ func (s *Service) IndexAll(ctx context.Context) {
 	started := time.Now()
 
 	if s.movies != nil {
-		if list, err := s.movies.List(ctx); err == nil {
+		// Every track of every movie, from the database in two queries.
+		if tracks, list, err := s.movies.LibraryVersionRows(ctx); err == nil {
 			known := s.index.metaFor(ctx, "movie", 0)
 			keep := map[string]bool{}
 			for _, m := range list {
 				if ctx.Err() != nil {
 					return
 				}
-				if !m.HasFile || m.MovieFilePath == "" {
-					continue
-				}
-				keep[m.MovieFilePath] = true
-				// Re-probe when the recorded codec is empty (a previous probe failed), so a
-				// transient error doesn't hide the file from Convert permanently.
-				// Movie rows carry no size to compare against without a stat, so an indexed
-				// row with a successful, current probe is taken as up to date (a convert or
-				// re-import reindexes the movie directly).
-				if meta, ok := known[m.MovieFilePath]; ok && meta.codec != "" && meta.ver == probeSchemaVersion {
-					if meta.origLang != movieOrigLang(m) {
-						s.index.setOrigLang(ctx, m.MovieFilePath, movieOrigLang(m))
+				stale := false
+				for _, v := range tracks[m.ID] {
+					if !v.HasFile || v.FilePath == "" || keep[v.FilePath] {
+						continue
 					}
+					keep[v.FilePath] = true
+					// Re-probe when the recorded codec is empty (a previous probe failed), so a
+					// transient error doesn't hide the file from Convert permanently.
+					// Movie rows carry no size to compare against without a stat, so an indexed
+					// row with a successful, current probe is taken as up to date (a convert or
+					// re-import reindexes the movie directly). A row filed under another track,
+					// or under a label since renamed, is redone too.
+					vid, label := int64(0), ""
+					if !v.IsDefault {
+						vid, label = v.ID, v.Label
+					}
+					meta, ok := known[v.FilePath]
+					if !ok || meta.codec == "" || meta.ver != probeSchemaVersion || meta.versionID != vid || meta.label != label {
+						stale = true
+						continue
+					}
+					if meta.origLang != movieOrigLang(m) {
+						s.index.setOrigLang(ctx, v.FilePath, movieOrigLang(m))
+					}
+				}
+				if !stale {
 					continue
 				}
 				if err := s.IndexMovie(ctx, m.ID); err != nil {
@@ -577,7 +621,7 @@ func (s *Service) computeLibraryStats(ctx context.Context) (*LibraryStats, error
 	// convertible they look.
 	skipped := s.skips.permanentKeys(ctx)
 	rows, err := s.index.db.QueryContext(ctx,
-		`SELECT media_type, movie_id, series_id, season, episode, size_bytes, video_codec, info_json, path, orig_lang
+		`SELECT media_type, movie_id, version_id, series_id, season, episode, size_bytes, video_codec, info_json, path, orig_lang
 		   FROM convert_library`)
 	if err != nil {
 		return nil, err
@@ -586,15 +630,12 @@ func (s *Service) computeLibraryStats(ctx context.Context) (*LibraryStats, error
 	dirCache := map[string][]string{}
 	for rows.Next() {
 		var mediaType, codec, infoJSON, path, orig string
-		var movieID, seriesID, size int64
+		var movieID, versionID, seriesID, size int64
 		var season, episode int
-		if err := rows.Scan(&mediaType, &movieID, &seriesID, &season, &episode, &size, &codec, &infoJSON, &path, &orig); err != nil {
+		if err := rows.Scan(&mediaType, &movieID, &versionID, &seriesID, &season, &episode, &size, &codec, &infoJSON, &path, &orig); err != nil {
 			return nil, err
 		}
-		key := movieKey(movieID)
-		if mediaType == "episode" {
-			key = episodeKey(seriesID, season, episode)
-		}
+		key := ItemKey(mediaType, movieID, versionID, seriesID, season, episode)
 		var mi MediaInfo
 		probed := infoJSON != "" && json.Unmarshal([]byte(infoJSON), &mi) == nil
 		hdr := ""
@@ -633,14 +674,14 @@ func (s *Service) indexedCandidates(ctx context.Context, mediaType string, serie
 		return nil, nil
 	}
 	q := `SELECT path, media_type, movie_id, series_id, season, episode, title, year,
-	             poster_url, size_bytes, video_codec, info_json, orig_lang
+	             poster_url, size_bytes, video_codec, info_json, orig_lang, version_id, version_label
 	      FROM convert_library WHERE media_type = ?`
 	args := []any{mediaType}
 	if seriesID > 0 {
 		q += ` AND series_id = ?`
 		args = append(args, seriesID)
 	}
-	q += ` ORDER BY title, season, episode`
+	q += ` ORDER BY title, movie_id, version_id, season, episode`
 	rows, err := s.index.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -654,14 +695,15 @@ func (s *Service) indexedCandidates(ctx context.Context, mediaType string, serie
 		var r indexRow
 		var infoJSON string
 		if err := rows.Scan(&r.Path, &r.MediaType, &r.MovieID, &r.SeriesID, &r.Season, &r.Episode,
-			&r.Title, &r.Year, &r.PosterURL, &r.SizeBytes, &r.Codec, &infoJSON, &r.OrigLang); err != nil {
+			&r.Title, &r.Year, &r.PosterURL, &r.SizeBytes, &r.Codec, &infoJSON, &r.OrigLang, &r.VersionID, &r.VersionLabel); err != nil {
 			return nil, err
 		}
 		c := Candidate{
-			Kind: r.MediaType, Key: ItemKey(r.MediaType, r.MovieID, r.SeriesID, r.Season, r.Episode),
+			Kind: r.MediaType, Key: ItemKey(r.MediaType, r.MovieID, r.VersionID, r.SeriesID, r.Season, r.Episode),
 			MovieID: r.MovieID, SeriesID: r.SeriesID,
 			Season: r.Season, Episode: r.Episode, Title: r.Title, Year: r.Year,
 			PosterURL: r.PosterURL, Path: r.Path,
+			VersionID: r.VersionID, VersionLabel: r.VersionLabel,
 		}
 		if infoJSON != "" {
 			var mi MediaInfo
