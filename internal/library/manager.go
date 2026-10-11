@@ -444,7 +444,8 @@ func (m *Manager) SetRootFuncs(f RootFuncs) { m.imp.SetRootFuncs(f) }
 // SetBin routes replaced library files to bin during imports (see Importer.SetBin).
 func (m *Manager) SetBin(b Bin) { m.imp.SetBin(b) }
 
-// Recent returns the latest imports.
+// Recent returns the latest imports that placed a file. Rows recorded only so a download
+// isn't imported twice (a dismissed review, a series or book import) have no path.
 func (m *Manager) Recent(ctx context.Context, limit int) ([]ImportRecord, error) {
 	return m.repo.recent(ctx, limit)
 }

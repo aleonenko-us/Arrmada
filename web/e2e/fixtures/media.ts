@@ -1,6 +1,6 @@
 import type {
   ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
-  FormatInfo, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import { NOW, day } from "./clock";
 
@@ -203,7 +203,43 @@ export const indexers: { indexers: Indexer[] } = {
   }],
 };
 
-export const history: { imports: ImportRecord[] } = { imports: [] };
+export const importedFiles: { imports: ImportRecord[] } = {
+  imports: [{ hash: "e2e0000000000000000000000000000000000009", source_path: "/media/downloads/The.Cartographer.2024.2160p", target_path: "/media/movies/The Cartographer (2024)/The Cartographer (2024).mkv", title: "The Cartographer", size_bytes: 21_000_000_000, imported_at: "2026-10-09 11:00:00" }],
+};
+
+// The History feed: a few days of events across the four kinds, newest first, with one
+// bookkeeping event ("added") the default view leaves out.
+const H = 3_600_000;
+export const historyEvents: HistoryEvent[] = [
+  { kind: "movie", item_id: 1, title: "The Cartographer", poster_url: poster(1), event: "imported", category: "imported", detail: "Imported The.Cartographer.2024.2160p.mkv", at_ms: NOW - 1 * H, id: 12 },
+  { kind: "series", item_id: 1, title: "Harbour Lights", event: "grabbed", category: "grabbed", detail: "Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE", at_ms: NOW - 2 * H, id: 30 },
+  { kind: "music", item_id: 2, title: "Low Tide", event: "imported", category: "imported", detail: "Saltwater (2024)", at_ms: NOW - 3 * H, id: 4 },
+  { kind: "movie", item_id: 3, title: "Driftwood", event: "added", category: "other", detail: "Added to library", at_ms: NOW - 4 * H, id: 11 },
+  { kind: "book", item_id: 7, title: "The Long Quiet", event: "failed", category: "failed", detail: "Stalled for 6h — trying another release", at_ms: NOW - 26 * H, id: 9 },
+  { kind: "series", item_id: 1, title: "Harbour Lights", event: "imported", category: "imported", detail: "S02E03", at_ms: NOW - 50 * H, id: 29 },
+  { kind: "movie", item_id: 3, title: "Driftwood", event: "blocklisted", category: "blocklisted", detail: "Driftwood.2025.CAM-FAKE", at_ms: NOW - 52 * H, id: 10 },
+];
+
+// historyPage answers GET /api/v1/history like the server: kind, event (default: all but
+// "other"), q over title and detail, limit, and the before cursor (<at_ms>:<kind>:<id>).
+export function historyPage(url: URL): HistoryPage {
+  const kinds = (url.searchParams.get("kind") ?? "").split(",").filter(Boolean);
+  const event = url.searchParams.get("event") ?? "";
+  const q = (url.searchParams.get("q") ?? "").toLowerCase();
+  const limit = Number(url.searchParams.get("limit") ?? 50);
+  const before = url.searchParams.get("before");
+  let list = historyEvents.filter((e) =>
+    (kinds.length === 0 || kinds.includes(e.kind)) &&
+    (event === "all" || (event === "" ? e.category !== "other" : event.split(",").includes(e.category))) &&
+    (!q || e.title.toLowerCase().includes(q) || e.detail.toLowerCase().includes(q)));
+  if (before) {
+    const at = list.findIndex((e) => `${e.at_ms}:${e.kind}:${e.id}` === before);
+    list = list.slice(at + 1);
+  }
+  const events = list.slice(0, limit);
+  const last = events[events.length - 1];
+  return { events, next_before: events.length === limit && last ? `${last.at_ms}:${last.kind}:${last.id}` : "" };
+}
 // One of each kind of hold the Review page renders differently.
 export const reviews: { reviews: ImportReview[] } = {
   reviews: [

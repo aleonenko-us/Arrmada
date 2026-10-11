@@ -87,7 +87,7 @@ func TestDashboardMissingIgnoresPausedShows(t *testing.T) {
 	}
 }
 
-// The activity feed is a three-way UNION with joins; a typo in it would show as an
+// The activity feed is a four-way UNION with joins; a typo in it would show as an
 // empty panel rather than an error, so assert it actually returns rows.
 func TestRecentActivityUnionsEveryModule(t *testing.T) {
 	a := dashAPI(t)
@@ -101,6 +101,8 @@ func TestRecentActivityUnionsEveryModule(t *testing.T) {
 		`INSERT INTO series_events (series_id, event, detail) VALUES (1, 'imported', 'S02E04')`,
 		`INSERT INTO books (id, ol_key, title) VALUES (1, 'OL1W', 'Red Rising')`,
 		`INSERT INTO book_events (book_id, event, detail) VALUES (1, 'imported', 'M4B')`,
+		`INSERT INTO artists (id, mbid, name) VALUES (1, 'mb-1', 'Low')`,
+		`INSERT INTO artist_events (artist_id, event, detail) VALUES (1, 'grabbed', 'HEY WHAT')`,
 	}
 	for _, q := range seed {
 		if _, err := db.ExecContext(ctx, q); err != nil {
@@ -109,7 +111,7 @@ func TestRecentActivityUnionsEveryModule(t *testing.T) {
 	}
 
 	got := a.recentActivity(ctx)
-	if len(got) != 3 {
+	if len(got) != 4 {
 		t.Fatalf("got %d events, want one from each module: %+v", len(got), got)
 	}
 	kinds := map[string]string{}
@@ -119,7 +121,7 @@ func TestRecentActivityUnionsEveryModule(t *testing.T) {
 			t.Errorf("event %+v has no timestamp", e)
 		}
 	}
-	for kind, title := range map[string]string{"movie": "Dune", "series": "Silo", "book": "Red Rising"} {
+	for kind, title := range map[string]string{"movie": "Dune", "series": "Silo", "book": "Red Rising", "music": "Low"} {
 		if kinds[kind] != title {
 			t.Errorf("%s event resolved to %q, want %q — the join is wrong", kind, kinds[kind], title)
 		}

@@ -133,7 +133,7 @@ type libraryCounts struct {
 // event tables the detail pages already write. They were only ever readable one title
 // at a time; this is the same record, unified and newest-first.
 type activityEvent struct {
-	Kind   string `json:"kind"` // movie | series | book
+	Kind   string `json:"kind"` // movie | series | book | music (the artist)
 	ID     int64  `json:"id"`
 	Title  string `json:"title"`
 	Event  string `json:"event"`
@@ -323,32 +323,14 @@ func (a *api) recentActivity(ctx context.Context) []activityEvent {
 	if a.deps.Store == nil {
 		return out
 	}
-	const q = `
-SELECT kind, id, title, event, detail, created_at FROM (
-    SELECT 'movie'  AS kind, m.id AS id, m.title AS title, e.event, e.detail, e.created_at
-      FROM movie_events e JOIN movies m ON m.id = e.movie_id
-    UNION ALL
-    SELECT 'series' AS kind, s.id, s.title, e.event, e.detail, e.created_at
-      FROM series_events e JOIN series s ON s.id = e.series_id
-    UNION ALL
-    SELECT 'book'   AS kind, b.id, b.title, e.event, e.detail, e.created_at
-      FROM book_events e JOIN books b ON b.id = e.book_id
-)
-ORDER BY created_at DESC LIMIT ?`
-	rows, err := a.deps.Store.DB().QueryContext(ctx, q, activityLimit)
+	// The newest slice of History's feed (every event, music included).
+	events, err := eventsFeed(ctx, a.deps.Store.DB(), eventsFilter{Limit: activityLimit})
 	if err != nil {
 		a.deps.Log.Debug("dashboard: activity feed unavailable", "err", err)
 		return out
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var ev activityEvent
-		var at time.Time
-		if err := rows.Scan(&ev.Kind, &ev.ID, &ev.Title, &ev.Event, &ev.Detail, &at); err != nil {
-			continue
-		}
-		ev.AtMS = at.UnixMilli()
-		out = append(out, ev)
+	for _, e := range events {
+		out = append(out, activityEvent{Kind: e.Kind, ID: e.ItemID, Title: e.Title, Event: e.Event, Detail: e.Detail, AtMS: e.AtMS})
 	}
 	return out
 }

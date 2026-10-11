@@ -110,7 +110,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/indexers", media.indexers),
     get("/api/v1/indexers/prowlarr", { url: "", has_key: false }),
     get("/api/v1/flaresolverr/status", { configured: true, ok: true, url: "http://arrmada-flaresolverr:8191", version: "3.3.21", checked_at: new Date(NOW).toISOString() }),
-    get("/api/v1/history", media.history),
+    { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),
