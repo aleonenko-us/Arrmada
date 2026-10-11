@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
@@ -42,6 +43,7 @@ func TestRealConversions(t *testing.T) {
 	cfg := settings.NewService(db)
 	mv := movies.NewService(db, nil, nil, lib, recycle, eventbus.New(log), log)
 	s := NewService(db, mv, nil, cfg, "ffmpeg", "ffprobe", scratch, recycle, log)
+	s.SetHoldRoots(func() []libroots.Root { return []libroots.Root{{Name: "movies", Path: lib}} }, filepath.Join(dir, "db"))
 	var watching atomic.Bool
 	s.SetWatching(watching.Load, func() bool { return true })
 
@@ -178,11 +180,11 @@ func TestRealConversions(t *testing.T) {
 	if out.DurationSec < 19.5 || out.DurationSec > 20.5 {
 		t.Errorf("duration %.2f, want 20", out.DurationSec)
 	}
-	if entries, _ := os.ReadDir(recycle); len(entries) == 0 {
-		t.Error("the original should be in the recycle bin")
+	if entries, _ := os.ReadDir(recycle); len(entries) != 0 {
+		t.Error("the original went to the recycle bin instead of the originals hold")
 	}
-	if s.Reclaimed(ctx) <= 0 {
-		t.Error("space saved should be recorded")
+	if hs := s.HoldStats(ctx); hs.HeldCount == 0 || s.Reclaimed(ctx) != 0 {
+		t.Errorf("the original should wait in the hold, with no space counted yet: %+v, reclaimed %d", hs, s.Reclaimed(ctx))
 	}
 	t.Logf("bloated: %s → %s, %s", humanBytes(j.SrcBytes), humanBytes(j.OutBytes), j.Note)
 

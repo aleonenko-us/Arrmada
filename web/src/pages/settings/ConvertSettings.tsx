@@ -179,7 +179,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <p className="m-0 text-[11px] text-ink-faint">Untagged tracks are kept. A language filter that would remove every audio track or every subtitle removes none — the tags are wrong.</p>
       </Section>
 
-      <Section title="Undo" desc="A converted file's original isn't deleted straight away: it waits in a hidden folder on the same disk (.arrmada-hold in each library folder, which Plex ignores) so the conversion can be undone. It's never put in the recycle bin, and nothing in the hold is deleted except by the time you set here.">
+      <Section title="Undo" desc="A converted file's original isn't deleted straight away: it waits in a hidden folder on the same disk (.arrmada-hold in each library folder, which Plex ignores) so the conversion can be undone. It's never put in the recycle bin, and nothing in the hold is deleted until its time is up or you release it (Convert, History).">
         <Field label="Keep originals for" hint="days · 0 = delete each original once its conversion is verified · applies to conversions from now on" save={holdDays}>
           <span className="flex items-center gap-1.5 text-[12px]">
             <input aria-label="Keep originals for (days)" inputMode="numeric" className={`${inp} w-[70px]`} {...textProps(holdDays)} onChange={(e) => holdDays.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} />

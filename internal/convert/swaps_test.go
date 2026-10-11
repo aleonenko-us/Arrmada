@@ -162,9 +162,11 @@ func TestOrphanPartSweep(t *testing.T) {
 	running := mk("Running.mkv"+partSuffix, old)
 	recent := mk("Recent.mkv"+partSuffix, time.Now())
 	r.journal(t, swapRow{part: journalled, final: "x", src: "x", state: swapStaging})
+	r.addMovieFile(t, 77, "Running.mp4", 10) // the file a running job converts
 	it, _ := parseKey(movieKey(77))
-	job := r.claim(it, "Running", false)
-	r.record(job).srcPath = filepath.Join(r.lib, "Running.mp4")
+	if r.claim(it, "Running", false) == nil {
+		t.Fatal("couldn't claim")
+	}
 
 	if n := r.sweepOrphanParts(ctx); n != 1 {
 		t.Fatalf("removed %d, want 1", n)

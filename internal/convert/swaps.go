@@ -322,7 +322,7 @@ func (s *Service) sweepOrphanParts(ctx context.Context) int {
 	} else {
 		return 0 // can't tell what's owned: touch nothing
 	}
-	owned := s.pendingParts()
+	owned := s.pendingParts(ctx)
 	removed := 0
 	for dir := range dirs {
 		if ctx.Err() != nil {
@@ -354,14 +354,23 @@ func (s *Service) sweepOrphanParts(ctx context.Context) int {
 }
 
 // pendingParts is the .arrpart path every running job would stage, so the orphan sweep never
-// touches one that is being written.
-func (s *Service) pendingParts() map[string]bool {
+// touches one that is being written. Each item's file is looked up afresh (outside s.mu):
+// the job's own record belongs to its goroutine.
+func (s *Service) pendingParts(ctx context.Context) map[string]bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	keys := make([]string, 0, len(s.pending))
+	for k := range s.pending {
+		keys = append(keys, k)
+	}
+	s.mu.Unlock()
 	out := map[string]bool{}
-	for _, j := range s.pending {
-		if j.rec != nil && j.rec.srcPath != "" {
-			out[partPathFor(j.rec.srcPath)] = true
+	for _, k := range keys {
+		it, ok := parseKey(k)
+		if !ok {
+			continue
+		}
+		if src, _, _, ok := s.resolveSource(ctx, &Job{Kind: it.Kind, MovieID: it.MovieID, SeriesID: it.SeriesID, Season: it.Season, Episode: it.Episode}); ok {
+			out[partPathFor(src)] = true
 		}
 	}
 	return out
