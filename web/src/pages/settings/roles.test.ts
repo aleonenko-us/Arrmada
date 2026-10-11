@@ -10,8 +10,8 @@ describe("role legend", () => {
   it("names what a manager can't open", () => {
     const line = managerExceptions();
     expect(line).toContain("Logs");
-    expect(line).toContain("the audiobook server settings");
-    expect(line).toContain("Settings → Downloads, Users, Import, System, Status");
+    expect(line).toContain("Audiobooks' admin tabs");
+    expect(line).toContain("Settings → Downloads, Audiobook server, People & access, Import, System, Status");
     expect(line).not.toContain("Library,");
   });
 

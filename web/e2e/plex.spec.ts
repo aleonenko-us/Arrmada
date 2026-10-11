@@ -69,16 +69,18 @@ test.describe("admin", () => {
     expect(api.callsTo("GET", "/api/v1/users/1/plex/merge")[0].path).toBe("/api/v1/users/1/plex/merge?from=9");
   });
 
-  test("the staff sign-in policy carries a warning and saves with the page", async ({ page, api }) => {
+  test("the staff sign-in policy carries a warning and saves itself", async ({ page, api }) => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/settings", respond: ({ body }) => ({ ...settings, ...(body as object) }) },
     ]);
     await page.goto("/settings/plex");
     await page.getByRole("switch", { name: /Let staff sign in with Plex/ }).click();
     await expect(page.getByText(/Anyone who controls a linked Plex account gets that account/)).toBeVisible();
-    await page.getByRole("button", { name: "Save settings" }).click();
-    await expect.poll(() => api.callsTo("PUT", "/api/v1/settings").length).toBe(1);
-    expect(api.callsTo("PUT", "/api/v1/settings")[0].body).toMatchObject({ plex_signin_staff: true });
+    await expect(page.getByText("Saved ✓")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save settings" })).toHaveCount(0);
+    expect(api.callsTo("PUT", "/api/v1/settings").length).toBe(1);
+    // Only the key that changed is sent.
+    expect(api.callsTo("PUT", "/api/v1/settings")[0].body).toEqual({ plex_signin_staff: true });
   });
 });
 

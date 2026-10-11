@@ -100,6 +100,37 @@ func (s *Service) ListSessions(ctx context.Context, userID int64, currentRaw str
 	return out, rows.Err()
 }
 
+// SessionActivity is how many browsers someone is signed in on and when they last used
+// one — the admin's People list. No device, browser or address: those are the owner's.
+type SessionActivity struct {
+	Sessions int
+	LastSeen time.Time
+}
+
+// SessionActivityByUser is every user's live session count and last use, in one query.
+// Users with no live session are absent.
+func (s *Service) SessionActivityByUser(ctx context.Context) (map[int64]SessionActivity, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT user_id, COUNT(*), strftime('%Y-%m-%d %H:%M:%S', MAX(COALESCE(last_seen_at, created_at)))
+		FROM sessions WHERE expires_at > ? GROUP BY user_id`, sqlTime(s.now()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]SessionActivity{}
+	for rows.Next() {
+		var id int64
+		var a SessionActivity
+		var seen string
+		if err := rows.Scan(&id, &a.Sessions, &seen); err != nil {
+			return nil, err
+		}
+		a.LastSeen = parseSQLTime(seen)
+		out[id] = a
+	}
+	return out, rows.Err()
+}
+
 // RevokeSession ends one of userID's sessions by its listed id. Another user's session
 // never matches, whatever id is sent. It reports whether one ended.
 func (s *Service) RevokeSession(ctx context.Context, userID int64, id string) (bool, error) {

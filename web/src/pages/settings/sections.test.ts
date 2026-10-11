@@ -6,8 +6,8 @@ const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
 
 describe("visibleSections", () => {
-  it("gives a manager what the old Media and Library tabs showed, plus Connections, Alerts (read-only) and the Plex connection", () => {
-    expect(manager).toEqual(["library", "media", "connections", "alerts", "plex"]);
+  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles & Convert, Alerts (read-only) and the Plex connection", () => {
+    expect(manager).toEqual(["library", "media", "connections", "tools", "alerts", "plex"]);
   });
 
   it("gives an admin every section, Status included", () => {
@@ -63,7 +63,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);

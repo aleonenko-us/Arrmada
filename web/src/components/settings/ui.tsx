@@ -1,5 +1,19 @@
 // The building blocks every Settings section is made of, shared so the sections (one file
-// each under pages/settings/) look the same.
+// each under pages/settings/) look the same. The auto-saving controls (AutoToggle,
+// AutoText, AutoNumber, AutoSelect, SavedTick) are in ./auto.tsx, built on
+// lib/useAutoSave (any endpoint) and lib/useSettings useSetting (the /settings keys).
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+
+// useScrollWhenLoaded scrolls a card that fills in after its own fetch back into view when
+// the address names it (/settings/tools#convert): the hub's own scroll ran before the card,
+// or the ones above it, had their full height.
+export function useScrollWhenLoaded(id: string, loaded: boolean) {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (loaded && hash === `#${id}`) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [loaded, hash, id]);
+}
 
 export const input = "w-full rounded-lg px-3 py-2 font-mono text-[12.5px]";
 export const inputStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
@@ -51,7 +65,7 @@ export function Note({ tone, children }: { tone: "warn" | "info"; children: Reac
   );
 }
 
-export function Toggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, hint, checked, onChange, disabled }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
@@ -62,8 +76,9 @@ export function Toggle({ label, hint, checked, onChange }: { label: string; hint
         role="switch"
         aria-checked={checked}
         aria-label={label}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
-        className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors"
+        className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-60"
         style={{ background: checked ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}
       >
         <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: checked ? "translateX(22px)" : "translateX(3px)" }} />

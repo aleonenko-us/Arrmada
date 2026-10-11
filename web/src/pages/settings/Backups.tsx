@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { api, backupDownloadURL, uploadBackup, type BackupFile, type BackupKind, type BackupSchedule, type BackupsState } from "../../lib/api";
 import { restartAndWait, startedAt, waitForRestart } from "../../lib/restart";
+import { useAutoSave } from "../../lib/useAutoSave";
+import { AutoNumber, AutoSelect, AutoToggle, wholeNumber } from "../../components/settings/auto";
 
 // The Backups card (Settings → System, admin only): every database copy with why it was
 // taken, Back up now, Download, Restore (from the list or an uploaded file), Delete and the
@@ -23,7 +25,6 @@ const KIND: Record<BackupKind, { label: string; tone: string }> = {
 const btn = "rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50";
 const btnStyle = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 const rowBtn = "flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40";
-const inputStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
 function fmtBytes(b: number): string {
   if (!b || b <= 0) return "0 MB";
@@ -57,8 +58,6 @@ export function Backups() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [schedule, setSchedule] = useState<BackupSchedule | null>(null);
-  const [savingSchedule, setSavingSchedule] = useState(false);
   const [toDelete, setToDelete] = useState<BackupFile | null>(null);
   const [toRestore, setToRestore] = useState<BackupFile | null>(null);
   const [restarting, setRestarting] = useState<"waiting" | "timeout" | null>(null);
@@ -67,9 +66,11 @@ export function Backups() {
   const [uploaded, setUploaded] = useState<BackupFile | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
+  const scheduleChain = useRef<Promise<unknown>>(Promise.resolve());
+  const storedSchedule = useRef<BackupSchedule | null>(null);
 
   const load = () => api.backups()
-    .then((s) => { setState(s); setLoadErr(null); setSchedule((cur) => cur ?? s.settings); })
+    .then((s) => { storedSchedule.current = s.settings; setState(s); setLoadErr(null); })
     .catch((e: Error) => setLoadErr(e.message));
   useEffect(() => { load(); }, []);
 
@@ -94,18 +95,6 @@ export function Backups() {
       load();
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); }
-  };
-
-  const saveSchedule = async () => {
-    if (!schedule) return;
-    setSavingSchedule(true); setMsg(null);
-    try {
-      const s = await api.saveBackupSchedule(schedule);
-      setSchedule(s);
-      setMsg({ ok: true, text: "Schedule saved — it applies from the next hourly check." });
-      load();
-    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
-    finally { setSavingSchedule(false); }
   };
 
   const closeConfirm = () => { setToDelete(null); setToRestore(null); setConfirmErr(null); };
@@ -155,7 +144,21 @@ export function Backups() {
   const pending = state?.pending_restore ?? null;
   const pendingFile = pending ? state?.backups.find((b) => b.name === pending.name) : undefined;
 
-  const dirty = !!schedule && !!state && (schedule.enabled !== state.settings.enabled || schedule.hour !== state.settings.hour || schedule.keep_nightly !== state.settings.keep_nightly);
+  // Each part of the schedule saves itself; the endpoint takes the whole schedule, so the
+  // other two parts go along as they're stored. Saves queue up and each starts from the
+  // last stored schedule: leaving Keep by clicking the switch sends two saves at once, and
+  // the second mustn't undo the first.
+  const saveSchedule = (p: Partial<BackupSchedule>) => {
+    const run = scheduleChain.current.then(async () => {
+      const base = storedSchedule.current ?? state?.settings;
+      if (!base) return;
+      const next = await api.saveBackupSchedule({ ...base, ...p });
+      storedSchedule.current = next;
+      setState((cur) => (cur ? { ...cur, settings: next } : cur));
+    });
+    scheduleChain.current = run.catch(() => {});
+    return run;
+  };
 
   return (
     <div id="backups" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
@@ -251,48 +254,7 @@ export function Backups() {
           )}
         </div>
 
-        {schedule && (
-          <div className="flex flex-col gap-3 rounded-lg p-3" style={{ background: "var(--panel-2)" }}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[12.5px] font-semibold">Nightly backup</div>
-                <div className="text-[10.5px] text-ink-faint">
-                  {state?.last_nightly_at ? `Last one ${ago(state.last_nightly_at)}.` : "None taken yet."} Taken once a day after the hour below (server time), or at once after a long downtime.
-                </div>
-              </div>
-              <button
-                role="switch"
-                aria-checked={schedule.enabled}
-                aria-label="Nightly backup"
-                onClick={() => setSchedule({ ...schedule, enabled: !schedule.enabled })}
-                className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors"
-                style={{ background: schedule.enabled ? "var(--accent)" : "var(--panel)", border: "1px solid var(--line)" }}
-              >
-                <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: schedule.enabled ? "translateX(22px)" : "translateX(3px)" }} />
-              </button>
-            </div>
-            <div className="flex flex-wrap items-end gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">From</span>
-                <select value={schedule.hour} disabled={!schedule.enabled} onChange={(e) => setSchedule({ ...schedule, hour: Number(e.target.value) })} className="rounded-lg px-3 py-2 font-mono text-[12.5px] disabled:opacity-50" style={inputStyle}>
-                  {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Keep</span>
-                <input
-                  inputMode="numeric"
-                  value={schedule.keep_nightly || ""}
-                  onChange={(e) => setSchedule({ ...schedule, keep_nightly: Math.min(365, Number(e.target.value.replace(/[^0-9]/g, "")) || 0) })}
-                  className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]"
-                  style={inputStyle}
-                />
-              </label>
-              <button onClick={saveSchedule} disabled={!dirty || savingSchedule || schedule.keep_nightly < 1} className={btn} style={btnStyle}>{savingSchedule ? "Saving…" : "Save schedule"}</button>
-            </div>
-            <p className="m-0 text-[10.5px] text-ink-faint">Keeps the newest {schedule.keep_nightly || "…"} nightly backups; older ones are removed after the next nightly. Copies taken before updates (newest 5) and manual ones (newest 10) are kept separately.</p>
-          </div>
-        )}
+        {state && <NightlySchedule schedule={state.settings} lastNightly={state.last_nightly_at} save={saveSchedule} />}
 
         {state && <p className="m-0 truncate font-mono text-[10.5px] text-ink-faint" title={state.dir}>{state.dir}</p>}
         <p className="m-0 text-[10.5px] text-ink-faint">Backups sit on the same disk as the database, so they cover a bad update or a mistake — not a failed disk. That's what Download is for. Restore from file takes a .db or a downloaded .db.gz up to 4 GB; behind Cloudflare anything over 100 MB fails, so upload big ones from your home network.</p>
@@ -350,3 +312,28 @@ export function Backups() {
     </div>
   );
 }
+
+// NightlySchedule is the nightly backup's switch, hour and how many to keep. The switch and
+// hour save when changed, the count when its field is left; it applies from the next
+// hourly check.
+function NightlySchedule({ schedule, lastNightly, save }: { schedule: BackupSchedule; lastNightly?: string | null; save: (p: Partial<BackupSchedule>) => Promise<void> }) {
+  const enabled = useAutoSave(schedule.enabled, (v) => save({ enabled: v }));
+  const hour = useAutoSave(String(schedule.hour), (v) => save({ hour: Number(v) }), { keepOnError: false });
+  const keep = useAutoSave(String(schedule.keep_nightly), (v) => save({ keep_nightly: Number(v) }), { validate: wholeNumber(1, 365, "Keep") });
+  return (
+    <div className="flex flex-col gap-3 rounded-lg p-3" style={{ background: "var(--panel-2)" }}>
+      <AutoToggle
+        label="Nightly backup"
+        hint={`${lastNightly ? `Last one ${ago(lastNightly)}.` : "None taken yet."} Taken once a day after the hour below (server time), or at once after a long downtime.`}
+        save={enabled}
+      />
+      <div className="flex flex-wrap items-start gap-4">
+        <AutoSelect label="From" save={hour} options={HOURS} className="font-mono disabled:opacity-50" />
+        <AutoNumber label="Keep" save={keep} min={1} max={365} className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]" />
+      </div>
+      <p className="m-0 text-[10.5px] text-ink-faint">Keeps the newest {keep.value || "…"} nightly backups; older ones are removed after the next nightly. Copies taken before updates (newest 5) and manual ones (newest 10) are kept separately.</p>
+    </div>
+  );
+}
+
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }));

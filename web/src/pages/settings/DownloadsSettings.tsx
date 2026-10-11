@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Field, Note, Section, Toggle, input, inputStyle } from "../../components/settings/ui";
-import { api, type AppSettings, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
+import { AutoNumber, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
+import { Field, Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { api, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
 import { LINKS } from "../../lib/links";
-import { SaveBar, useLoadedSettings } from "../../lib/useSettings";
+import { useAutoSave } from "../../lib/useAutoSave";
+import { useLoadedSettings, useSetting, useSettingGroup } from "../../lib/useSettings";
 
-// Settings → Downloads (admin only): the download clients and indexers live on their own
-// pages; here are the guard rails around them — the disk guard, the stall timeout and the
-// recycle bin that deletes and replacements go through.
+// Settings → Downloads (admin only): the download clients and indexers live on Settings →
+// Connections; here are the guard rails around them — the disk guard, the stall timeout and the
+// recycle bin that deletes and replacements go through. Each field saves itself.
 export function DownloadsSettings() {
-  const { s, patch } = useLoadedSettings();
   return (
     <div className="flex flex-col gap-6">
       <Section id="download-links" title="Download clients and indexers" subtitle="Both live on Settings → Connections, with their live status: where downloads are sent, and where releases are searched for.">
@@ -19,11 +20,10 @@ export function DownloadsSettings() {
           <Link to={LINKS.indexers} style={{ color: "var(--accent)" }}>Indexers →</Link>
         </div>
       </Section>
-      <DiskGuardSection s={s} patch={patch} />
-      <StallSection s={s} patch={patch} />
-      <UpgradeBudgetSection s={s} patch={patch} />
-      <RecycleBin s={s} patch={patch} />
-      <SaveBar />
+      <DiskGuardSection />
+      <StallSection />
+      <UpgradeBudgetSection />
+      <RecycleBin />
     </div>
   );
 }
@@ -45,9 +45,12 @@ function ageOf(unix: number): string {
 }
 
 // RecycleBin shows what the bin is holding and lets an admin set the guard rails (max size /
-// retention) — saved with the page's Save button — and empty it on demand. Deleted & replaced
+// retention, each saved when its field is left) and empty it on demand. Deleted & replaced
 // files (movie/episode deletes, Convert originals) land here instead of being erased.
-function RecycleBin({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettings>) => void }) {
+function RecycleBin() {
+  // Blank isn't "unlimited" here (the server would read it as 0): 0 has to be typed.
+  const maxGB = useSetting("recycle_max_gb", { validate: wholeNumber(0, 100000, "The size cap") });
+  const keepDays = useSetting("recycle_retention_days", { validate: wholeNumber(0, 36500, "Keep for") });
   const [stats, setStats] = useState<RecycleStats | null>(null);
   const [items, setItems] = useState<RecycleItem[] | null>(null);
   const [showItems, setShowItems] = useState(false);
@@ -90,7 +93,6 @@ function RecycleBin({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettin
     finally { setRowBusy(null); }
   };
 
-  const digits = (v: string) => v.replace(/[^0-9]/g, "");
   const bins = stats?.bins ?? [];
   const emptying = confirm?.kind === "empty" ? confirm : null;
 
@@ -136,14 +138,12 @@ function RecycleBin({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettin
             <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>Your cap ({stats.max_gb} GB) is smaller than the largest file here ({fmtBytes(stats.largest_item_bytes)}).</p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Max size (GB)">
-              <input inputMode="numeric" value={s.recycle_max_gb} onChange={(e) => patch({ recycle_max_gb: digits(e.target.value) })} placeholder="0" className={input} style={inputStyle} />
+            <AutoNumber label="Max size (GB)" save={maxGB} min={0} max={100000} placeholder="0">
               <span className="text-[10.5px] text-ink-faint">0 = unlimited. Over this, the oldest files are purged first — never anything deleted in the last 3 days, or the newest file.</span>
-            </Field>
-            <Field label="Keep for (days)">
-              <input inputMode="numeric" value={s.recycle_retention_days} onChange={(e) => patch({ recycle_retention_days: digits(e.target.value) })} placeholder="0" className={input} style={inputStyle} />
+            </AutoNumber>
+            <AutoNumber label="Keep for (days)" save={keepDays} min={0} max={36500} placeholder="0">
               <span className="text-[10.5px] text-ink-faint">0 = keep forever. Older files are auto-deleted.</span>
-            </Field>
+            </AutoNumber>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={() => setShowItems((v) => !v)} disabled={(stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>{showItems ? "Hide contents" : `Manage contents${stats ? ` (${stats.files})` : ""}`}</button>
@@ -178,7 +178,7 @@ function RecycleBin({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettin
             </div>
           )}
 
-          <p className="text-[10.5px] text-ink-faint">Guard rails run automatically about once an hour. The size/retention values save with the button below. Restore moves a file back to where it was deleted from (when that location is free).</p>
+          <p className="text-[10.5px] text-ink-faint">Guard rails run automatically about once an hour. Restore moves a file back to where it was deleted from (when that location is free).</p>
         </>
       )}
       {emptying && (
@@ -214,13 +214,30 @@ function RecycleBin({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettin
 // A full downloads volume errors every torrent at once and, on a shared cache pool,
 // takes everything else on that pool down with it. This is on by default for that
 // reason — it isn't a preference anyone opts into deliberately after the fact.
-function DiskGuardSection({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettings>) => void }) {
-  const digits = (v: string) => v.replace(/[^0-9]/g, "").slice(0, 3);
-  const pause = Number(s.downloads_disk_guard_pause_pct);
-  const resume = Number(s.downloads_disk_guard_resume_pct);
+// The pause and resume points save together, whichever field is left: the server checks
+// them as a pair, and checking one against a half-edited other would refuse a good change.
+type GuardPair = { downloads_disk_guard_pause_pct: string; downloads_disk_guard_resume_pct: string };
+const GUARD_KEYS = ["downloads_disk_guard_pause_pct", "downloads_disk_guard_resume_pct"] as const;
+export function guardProblem(v: GuardPair): string | null {
+  const p = v.downloads_disk_guard_pause_pct.trim(), r = v.downloads_disk_guard_resume_pct.trim();
+  if (!/^\d+$/.test(p) || Number(p) < 1 || Number(p) > 99) return "Pause needs a percentage from 1 to 99.";
+  if (!/^\d+$/.test(r)) return "Resume needs a percentage below the pause point.";
   // Mirrors the server's rule. Equal or inverted thresholds would pause and resume on
-  // alternate passes forever, so the server rejects them — say so before saving.
-  const bad = !Number.isNaN(pause) && !Number.isNaN(resume) && resume >= pause;
+  // alternate passes forever, so the server rejects them — say so before sending.
+  if (Number(r) >= Number(p)) return `Resume (${r}%) must be below pause (${p}%) — otherwise downloads would pause and resume on alternate checks.`;
+  return null;
+}
+
+function DiskGuardSection() {
+  const on = useSetting("downloads_disk_guard");
+  const pair = useSettingGroup(GUARD_KEYS, { validate: guardProblem });
+  const digits = (v: string) => v.replace(/[^0-9]/g, "").slice(0, 3);
+  const edit = (p: Partial<GuardPair>) => pair.set({ ...pair.value, ...p });
+  const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); void pair.commit(); }
+    if (e.key === "Escape" && pair.dirty) { e.preventDefault(); pair.revert(); }
+  };
+  const fieldStyle = pair.status === "error" ? { ...inputStyle, border: "1px solid var(--reject)" } : inputStyle;
 
   // The guard measures the downloads folder (lib_downloads_dir, picked in Settings → Library;
   // ARRMADA_DOWNLOADS_DIR is only the fallback) and nothing else. Whether that path is
@@ -279,43 +296,44 @@ function DiskGuardSection({ s, patch }: { s: AppSettings; patch: (p: Partial<App
         </div>
       )}
 
-      <Toggle
+      <AutoToggle
         label="Pause downloads when the disk gets full"
         hint="Checked every minute. Only torrents Arrmada paused are resumed — anything you paused by hand stays paused."
-        checked={s.downloads_disk_guard}
-        onChange={(v) => patch({ downloads_disk_guard: v })}
+        save={on}
       />
-      {s.downloads_disk_guard && (
+      {on.value && (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Pause at (% full)">
               <input
                 inputMode="numeric"
-                value={s.downloads_disk_guard_pause_pct}
-                onChange={(e) => patch({ downloads_disk_guard_pause_pct: digits(e.target.value) })}
+                value={pair.value.downloads_disk_guard_pause_pct}
+                onChange={(e) => edit({ downloads_disk_guard_pause_pct: digits(e.target.value) })}
+                onBlur={() => void pair.commit()}
+                onKeyDown={keys}
+                aria-invalid={pair.status === "error" || undefined}
                 placeholder="85"
                 className={input}
-                style={inputStyle}
+                style={fieldStyle}
               />
               <span className="text-[10.5px] text-ink-faint">Active downloads are paused once the volume is this full.</span>
             </Field>
             <Field label="Resume at (% full)">
               <input
                 inputMode="numeric"
-                value={s.downloads_disk_guard_resume_pct}
-                onChange={(e) => patch({ downloads_disk_guard_resume_pct: digits(e.target.value) })}
+                value={pair.value.downloads_disk_guard_resume_pct}
+                onChange={(e) => edit({ downloads_disk_guard_resume_pct: digits(e.target.value) })}
+                onBlur={() => void pair.commit()}
+                onKeyDown={keys}
+                aria-invalid={pair.status === "error" || undefined}
                 placeholder="80"
                 className={input}
-                style={inputStyle}
+                style={fieldStyle}
               />
               <span className="text-[10.5px] text-ink-faint">They restart once it drops back to this. Must be below the pause point.</span>
             </Field>
           </div>
-          {bad && (
-            <p className="m-0 text-[11.5px]" style={{ color: "var(--reject)" }}>
-              Resume ({resume}%) must be below pause ({pause}%) — otherwise downloads would pause and resume on alternate checks.
-            </p>
-          )}
+          <SavedTick save={pair} />
         </>
       )}
     </Section>
@@ -325,60 +343,44 @@ function DiskGuardSection({ s, patch }: { s: AppSettings; patch: (p: Partial<App
 // The global stall timeout, shown in hours and stored in minutes. Profiles left on "Use
 // default" follow it. Safe to have on: a stalled download is only removed once another
 // release has been grabbed in its place.
-function StallSection({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettings>) => void }) {
-  const minutes = s.downloads_stall_minutes ?? 360;
-  const hours = Math.round((minutes / 60) * 10) / 10;
+const hoursText = (minutes: number) => String(Math.round((minutes / 60) * 10) / 10);
+export const stallHoursProblem = (v: string) => (/^\d+(\.\d*)?$/.test(v.trim()) && Number(v) <= 168 ? null : "Hours needs a number from 0 to 168.");
+function StallSection() {
+  const { s, commit } = useLoadedSettings();
+  const hours = useAutoSave(hoursText(s.downloads_stall_minutes ?? 360), (v) => commit({ downloads_stall_minutes: Math.round(Number(v) * 60) }), {
+    validate: stallHoursProblem,
+    // 6 and 6.0 are the same timeout.
+    equal: (a, b) => a.trim() !== "" && b.trim() !== "" && Number(a) === Number(b),
+  });
   return (
     <Section
       id="stalled-downloads"
       title="Stalled downloads"
       subtitle="When a download makes no progress for this long, Arrmada looks for another release. The stalled one is only removed once a replacement has been grabbed — with nothing else available it's left to keep trying. Time spent paused, queued by the client, rechecking or held by the disk guard doesn't count."
     >
-      <Field label="Give up on a download with no progress after (hours)">
-        <input
-          type="number"
-          min={0}
-          max={168}
-          step={0.5}
-          value={hours}
-          onChange={(e) => {
-            const h = Math.min(168, Math.max(0, Number(e.target.value) || 0));
-            patch({ downloads_stall_minutes: Math.round(h * 60) });
-          }}
-          className={input}
-          style={inputStyle}
-        />
+      <AutoText label="Give up on a download with no progress after (hours)" save={hours} mono={false} inputMode="decimal" filter={(v) => v.replace(/[^0-9.]/g, "").slice(0, 5)}>
         <span className="text-[10.5px] text-ink-faint">0 = never. Quality profiles can set their own time, or turn it off.</span>
-      </Field>
+      </AutoText>
     </Section>
   );
 }
 
 // How many upgrades one upgrade sweep (movies and TV each, every six hours) may grab. A
 // profile edit can make hundreds of files eligible at once; this spreads them out.
-function UpgradeBudgetSection({ s, patch }: { s: AppSettings; patch: (p: Partial<AppSettings>) => void }) {
+function UpgradeBudgetSection() {
+  const { s, commit } = useLoadedSettings();
+  const budget = useAutoSave(String(s.upgrade_max_grabs_per_sweep ?? 10), (v) => commit({ upgrade_max_grabs_per_sweep: Number(v) }), {
+    validate: wholeNumber(0, 1000, "Upgrades per sweep"),
+  });
   return (
     <Section
       id="upgrade-limit"
       title="Upgrades per sweep"
       subtitle="Each upgrade sweep — movies and TV separately — grabs at most this many better releases. The rest wait for the next sweep, so changing a quality profile can't start hundreds of downloads at once. Upgrading a single title by hand is never held back."
     >
-      <Field label="Upgrades per sweep">
-        <input
-          type="number"
-          min={0}
-          max={1000}
-          step={1}
-          value={s.upgrade_max_grabs_per_sweep ?? 10}
-          onChange={(e) => {
-            const n = Math.min(1000, Math.max(0, Math.round(Number(e.target.value) || 0)));
-            patch({ upgrade_max_grabs_per_sweep: n });
-          }}
-          className={input}
-          style={inputStyle}
-        />
+      <AutoNumber label="Upgrades per sweep" save={budget} min={0} max={1000}>
         <span className="text-[10.5px] text-ink-faint">0 = no limit. Each episode counts as one.</span>
-      </Field>
+      </AutoNumber>
     </Section>
   );
 }

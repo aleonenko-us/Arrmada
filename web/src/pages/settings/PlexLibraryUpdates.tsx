@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Note, Section, Toggle, input, inputStyle } from "../../components/settings/ui";
+import { AutoToggle } from "../../components/settings/auto";
+import { Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { useAutoSave } from "../../lib/useAutoSave";
 import { LINKS } from "../../lib/links";
 import { plexLibraryApi, type PlexPathMap, type PlexScanRoot, type PlexScanView } from "../../lib/plexLibraryApi";
 import { ago } from "../../lib/taskTime";
@@ -10,7 +12,8 @@ import { Button } from "../../ui";
 // converts a file it asks Plex to scan just that folder. Each library folder's line shows
 // where its scans go on Plex's side and how that was worked out, so a wrong guess is
 // visible. Self-contained (its own load and save); it sits in Settings → Plex, under the
-// connection.
+// connection. The on/off switch saves itself; path mappings are folder paths, so they keep
+// an explicit Save.
 
 export const PLEX_LIBRARY_UPDATES_ID = "plex-library-updates";
 
@@ -66,7 +69,6 @@ function RootLine({ r, busy, onTest }: { r: PlexScanRoot; busy: string; onTest: 
 export function PlexLibraryUpdates() {
   const [view, setView] = useState<PlexScanView | null>(null);
   const [loadErr, setLoadErr] = useState("");
-  const [enabled, setEnabled] = useState(true);
   const [maps, setMaps] = useState<PlexPathMap[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
@@ -74,13 +76,18 @@ export function PlexLibraryUpdates() {
 
   const apply = (v: PlexScanView) => {
     setView(v);
-    setEnabled(v.enabled);
     setMaps(v.path_map);
     setDirty(false);
   };
   useEffect(() => {
     plexLibraryApi.scanView().then(apply).catch((e: Error) => setLoadErr(e.message));
   }, []);
+  // The switch sends the saved mappings with it, and keeps any mapping edits in progress.
+  const enabled = useAutoSave(view?.enabled ?? true, async (on) => {
+    if (!view) return;
+    const v = await plexLibraryApi.saveScan({ enabled: on, path_map: view.path_map });
+    setView(v);
+  });
 
   if (loadErr) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><Note tone="warn">{loadErr}</Note></Section>;
   if (!view) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><div className="text-[12px] text-ink-faint">Loading…</div></Section>;
@@ -90,7 +97,7 @@ export function PlexLibraryUpdates() {
     setBusy("save");
     setMsg(null);
     try {
-      apply(await plexLibraryApi.saveScan({ enabled, path_map: maps.filter((m) => m.from.trim() || m.to.trim()) }));
+      apply(await plexLibraryApi.saveScan({ enabled: view.enabled, path_map: maps.filter((m) => m.from.trim() || m.to.trim()) }));
       setMsg({ tone: "ok", text: "Saved." });
     } catch (e) {
       setMsg({ tone: "err", text: (e as Error).message });
@@ -124,11 +131,10 @@ export function PlexLibraryUpdates() {
           Connect your Plex server first, in <Link to={LINKS.plexConnection} style={{ color: "var(--accent)" }}>Plex connection</Link> above. Until then nothing is sent.
         </Note>
       )}
-      <Toggle
+      <AutoToggle
         label="Tell Plex to scan after changes"
         hint="One quick scan of the changed folder, a few seconds after things settle. Off leaves it to Plex's own watcher and scheduled scans."
-        checked={enabled}
-        onChange={(v) => { setEnabled(v); setDirty(true); }}
+        save={enabled}
       />
       {view.configured && view.error && <Note tone="warn">Couldn't read Plex's libraries: {view.error}</Note>}
       {view.configured && !view.error && (
@@ -150,7 +156,7 @@ export function PlexLibraryUpdates() {
         ))}
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={() => edit([...maps, { from: "", to: "" }])}>Add mapping</Button>
-          <Button size="sm" variant="primary" disabled={!dirty} busy={busy === "save"} busyLabel="Saving…" onClick={save}>Save</Button>
+          <Button size="sm" variant="primary" disabled={!dirty} busy={busy === "save"} busyLabel="Saving…" onClick={save}>Save mappings</Button>
         </div>
       </div>
 

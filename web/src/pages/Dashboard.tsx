@@ -13,6 +13,9 @@ import {
 } from "../lib/api";
 import { LINKS } from "../lib/links";
 import { eventHref } from "../lib/events";
+import { isAdmin, useMe } from "../lib/me";
+import { useQuery } from "../lib/query";
+import { backupAge, versionLabel } from "../lib/systemStatus";
 import { needsYouRows } from "../lib/needsYou";
 import { useAttention } from "../lib/useAttention";
 import { useLiveConnected } from "../lib/live";
@@ -33,6 +36,11 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const connected = useLiveConnected();
+  // The last backup is on the admin-only System → Status; managers don't see the stat.
+  const { user } = useMe();
+  const admin = isAdmin(user);
+  const { data: sys } = useQuery("system:status", api.systemStatus, { enabled: admin, staleMs: 60_000 });
+  const backup = sys ? backupAge(sys.last_backup?.at) : null;
 
   useEffect(() => {
     Promise.all([api.status(), api.health()])
@@ -214,11 +222,12 @@ export function Dashboard() {
         <SectionLabel>System</SectionLabel>
         <Card>
           {/* No Auth stat: sign-in is always enforced, so it could only ever say "enabled". */}
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-[12px] text-ink-dim sm:grid-cols-4">
+          <dl className={`grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-[12px] text-ink-dim ${admin ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
             <Stat k="Version" v={status ? versionLabel(status.version, status.commit) : "—"} />
             <Stat k="Uptime" v={status ? uptime(status.uptime_seconds) : "—"} />
             <Stat k="Database" v={dbOK ? "ok" : "down"} tone={dbOK ? "good" : "bad"} />
             <Stat k="Realtime" v={connected ? "connected" : "offline"} tone={connected ? "good" : "bad"} />
+            {admin && <Stat k="Last backup" v={backup ? backup.text : "—"} tone={backup?.stale ? "avoid" : undefined} to={LINKS.backups} />}
           </dl>
         </Card>
       </div>
@@ -534,19 +543,13 @@ function SectionLabel({ children, right, link }: { children: React.ReactNode; ri
   );
 }
 
-// versionLabel adds the short commit when the build knows it, so two builds of the same
-// day can be told apart. Older images, and builds outside a git checkout, say "unknown".
-function versionLabel(version: string, commit: string): string {
-  return commit && commit !== "unknown" && !version.includes(commit) ? `${version} · ${commit}` : version;
-}
-
-function Stat({ k, v, tone }: { k: string; v: string; tone?: "good" | "bad" }) {
-  const color = tone === "good" ? "var(--good)" : tone === "bad" ? "var(--reject)" : "var(--ink)";
+function Stat({ k, v, tone, to }: { k: string; v: string; tone?: "good" | "bad" | "avoid"; to?: string }) {
+  const color = tone === "good" ? "var(--good)" : tone === "bad" ? "var(--reject)" : tone === "avoid" ? "var(--avoid)" : "var(--ink)";
   return (
     <div>
       <dt className="text-[9px] uppercase tracking-[0.1em] text-ink-faint">{k}</dt>
       <dd className="m-0 mt-0.5" style={{ color }}>
-        {v}
+        {to ? <Link to={to} style={{ color }}>{v}</Link> : v}
       </dd>
     </div>
   );

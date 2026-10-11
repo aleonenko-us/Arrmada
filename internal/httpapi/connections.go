@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/notify"
 )
@@ -495,7 +496,7 @@ func (a *api) audioServerItem(ctx context.Context) connectionItem {
 	running, lastErr := a.deps.AudioManager.Running()
 	it := connectionItem{
 		Kind: connKindAudioServer, Ref: singletonRef, Card: "audioserver", Name: "Audiobook server",
-		Subtitle: "For listening apps", Configured: on, Enabled: on, Testable: on, FixPath: "/audiobooks?tab=server",
+		Subtitle: "For listening apps", Configured: on, Enabled: on, Testable: on, FixPath: health.FixAudiobookServer.Path,
 	}
 	if port := portOf(a.deps.AudioManager.Addr()); port != "" {
 		it.Subtitle = "For listening apps · port " + port

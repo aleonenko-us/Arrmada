@@ -369,16 +369,15 @@ test.describe("account at 375px", () => {
   });
 });
 
-// SEC-15: an admin signs someone out everywhere from Edit user, after a confirm, and sees
-// a count — never their devices.
+// SEC-15: an admin signs someone out everywhere from People & access, after a confirm, and
+// sees a count — never their devices.
 test.describe("admin sign out everywhere", () => {
   test.use({ persona: "admin", viewport: { width: 1280, height: 900 } });
 
-  test("Edit user → Sign out everywhere", async ({ page, api }) => {
+  test("People & access → Sign out everywhere", async ({ page, api }) => {
     await override(page, api, [{ method: "POST", path: "/api/v1/users/5/sessions/revoke", body: { signed_out: 2 } }]);
     await page.goto("/settings/users");
-    await page.getByRole("button", { name: "Edit user" }).nth(1).click();
-    await page.getByRole("button", { name: "Sign out everywhere" }).click();
+    await page.getByTestId("person").filter({ hasText: "Grandad" }).getByRole("button", { name: "Sign out everywhere" }).click();
     const dialog = page.getByRole("dialog", { name: "Sign Grandad out everywhere?" });
     await dialog.getByRole("button", { name: "Sign out everywhere" }).click();
     await expect(page.getByText("Signed out of 2 browsers.")).toBeVisible();

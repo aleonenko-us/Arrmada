@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Note, Section, Toggle, inputStyle } from "../../components/settings/ui";
+import { AutoToggle, SavedTick } from "../../components/settings/auto";
+import { Note, Section, inputStyle } from "../../components/settings/ui";
 import { api, type PlexConfig, type PlexTestResult } from "../../lib/api";
 import { isAdmin, useMe } from "../../lib/me";
 import { plexApi, type PlexConnectResult } from "../../lib/plexApi";
 import { usePlexPinSignIn, type PlexFlow } from "../../lib/plexSignIn";
-import { SaveBar, useLoadedSettings } from "../../lib/useSettings";
+import { useSetting } from "../../lib/useSettings";
 import { useToast } from "../../ui";
 import { PlexLibraryUpdates } from "./PlexLibraryUpdates";
 import { requesterPages } from "./roles";
-import { AutoApproveChecks, typesFromCSV, typesToCSV } from "./UsersSettings";
+import { AutoApproveChecks, typesFromCSV, typesToCSV } from "./People";
 
 // Settings → Plex: everything about the Plex server in one place — the connection Insights
 // records from, the scans Arrmada sends after it changes a file, and (admins) who may sign
-// in with Plex. Insights' old Settings tab and the Plex card that used to sit under Users
+// in with Plex. Insights' old Settings tab and the Plex card that used to sit under Users (now People & access)
 // both live here now.
 export function PlexSettings() {
   const { user } = useMe();
@@ -168,35 +169,35 @@ function PlexConnection() {
 }
 
 // PlexSignIn (admin): whether family members may sign in with Plex, and what a new Plex
-// sign-in may request without asking. Saved with the page's Save settings button.
+// sign-in may request without asking. Each control saves itself.
 function PlexSignIn() {
   const { booksEnabled } = useMe();
-  const { s, patch } = useLoadedSettings();
+  const allow = useSetting("plex_login_enabled");
+  const staff = useSetting("plex_signin_staff");
+  const autoTypes = useSetting("plex_login_auto_approve_types", { keepOnError: false });
   return (
     <>
       <Section id="plex-sign-in" title="Plex sign-in" subtitle={<>Let your Plex Home members and shared users sign in with Plex — no accounts to hand out. They get a Requester account ({requesterPages(booksEnabled)}), and only people with access to your Plex server get in. Needs the Plex connection above.</>}>
-        <Toggle label="Allow Sign in with Plex" hint="Adds a 'Sign in with Plex' button to the login page." checked={s.plex_login_enabled} onChange={(v) => patch({ plex_login_enabled: v })} />
+        <AutoToggle label="Allow Sign in with Plex" hint="Adds a 'Sign in with Plex' button to the login page." save={allow} />
         <div className="flex flex-col gap-1.5">
-          <div className="text-[12.5px] font-semibold">Auto-approve new Plex sign-ins' requests</div>
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold">Auto-approve new Plex sign-ins' requests <SavedTick save={autoTypes} /></div>
           <AutoApproveChecks
-            value={typesFromCSV(s.plex_login_auto_approve_types ?? "movie")}
-            onChange={(v) => patch({ plex_login_auto_approve_types: typesToCSV(v) })}
+            value={typesFromCSV(autoTypes.value ?? "movie")}
+            onChange={(v) => void autoTypes.commit(typesToCSV(v))}
             books={booksEnabled}
             label="New Plex sign-ins auto-approve"
           />
-          <p className="m-0 text-[11px] text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → Users.</p>
+          <p className="m-0 text-[11px] text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → People & access.</p>
         </div>
-        <Toggle
+        <AutoToggle
           label="Let staff sign in with Plex"
           hint="Sign in with Plex may open an admin or manager account linked to that Plex account. Your own first Plex sign-in then links to your admin account, if it's the only one. Off: staff sign in with their password."
-          checked={!!s.plex_signin_staff}
-          onChange={(v) => patch({ plex_signin_staff: v })}
+          save={staff}
         />
-        {s.plex_signin_staff && (
+        {staff.value && (
           <Note tone="warn">Anyone who controls a linked Plex account gets that account — for an admin, everything in Arrmada. Keep the Plex account behind two-factor sign-in at plex.tv.</Note>
         )}
       </Section>
-      <SaveBar />
     </>
   );
 }

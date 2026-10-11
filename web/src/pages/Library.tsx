@@ -3,6 +3,8 @@ import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type Unmat
 import { useMe, isAdmin } from "../lib/me";
 import { fmtBytes } from "../lib/disposal";
 import { announceFoldersSaved } from "../lib/restart";
+import { useAutoSave } from "../lib/useAutoSave";
+import { SavedTick } from "../components/settings/auto";
 import { Modal, useToast } from "../ui";
 
 // LibraryFolders — points each library at a folder (with an in-app picker) and scans it.
@@ -20,11 +22,7 @@ const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<un
 
 export function LibraryFolders() {
   const [paths, setPaths] = useState<LibraryPaths | null>(null);
-  const [draft, setDraft] = useState<LibraryPaths | null>(null);
-  const [picking, setPicking] = useState<PathKey | null>(null);
-  const [busy, setBusy] = useState(false);
   const [reviewKey, setReviewKey] = useState(0); // bump to reload the unmatched lists
-  const [blocking, setBlocking] = useState<Partial<Record<PathKey, boolean>>>({});
   const toast = useToast();
   const say = (m: string) => toast(m, { ms: 4500 });
   const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
@@ -32,37 +30,15 @@ export function LibraryFolders() {
   // Moving a library or browsing the host's folders is the admin's call; a manager sees
   // where each library lives and can still scan it.
   const admin = isAdmin(user);
-  const onBlocking = useCallback((k: PathKey, b: boolean) => setBlocking((cur) => (cur[k] === b ? cur : { ...cur, [k]: b })), []);
 
-  useEffect(() => { api.libraryPaths().then((p) => { setPaths(p); setDraft(p); }).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
-  if (!draft) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
+  useEffect(() => { api.libraryPaths().then(setPaths).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
+  if (!paths) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
 
-  const changedKeys = paths ? (Object.keys(draft) as PathKey[]).filter((k) => draft[k] !== paths[k]) : [];
-  const dirty = changedKeys.length > 0;
-  const blocked = changedKeys.some((k) => blocking[k]);
-  const save = async () => {
-    setBusy(true);
-    // Only what changed is sent, so an untouched folder that's odd right now (a share
-    // that isn't mounted) can never block saving the others.
-    const changes = Object.fromEntries(changedKeys.map((k) => [k, draft[k]])) as Partial<LibraryPaths>;
-    try {
-      const p = await api.setLibraryPaths(changes);
-      setPaths(p); setDraft(p);
-      announceFoldersSaved();
-      // Folders apply live: say what that means for what's already there.
-      say("Saved. Changing a folder applies to new imports right away. What's already imported stays where it is.");
-    }
-    catch (e) { fail((e as Error).message); } finally { setBusy(false); }
-  };
-  // "Create it" saved that one folder; keep any other edits in progress.
-  const created = (k: PathKey) => (saved: LibraryPaths) => {
-    setPaths(saved);
-    setDraft((d) => (d ? { ...d, [k]: saved[k] } : saved));
-    announceFoldersSaved();
-  };
+  // A row's save answers with every folder; take them all so each row compares against
+  // what's really stored.
+  const saved = (p: LibraryPaths) => { setPaths(p); announceFoldersSaved(); };
   const scan = async (row: typeof ROWS[number]) => {
     if (!row.scan) return;
-    if (dirty) { say("Save your folders first, then scan."); return; }
     try {
       await row.scan();
       say(`Scanning ${row.label}… matches appear in the library; anything unsure lands in "needs review" below.`);
@@ -72,56 +48,93 @@ export function LibraryFolders() {
 
   return (
     <div>
-      <p className="mb-4 max-w-[64ch] text-[12.5px] text-ink-dim">Point each library at a folder inside your mounted media. Use <b>Browse</b> to pick from the folders Arrmada can see, then <b>Scan</b> to catalog what's there. Ebooks and audiobooks can share one folder.</p>
+      <p className="mb-4 max-w-[64ch] text-[12.5px] text-ink-dim">Point each library at a folder inside your mounted media. Use <b>Browse</b> to pick from the folders Arrmada can see — a picked folder is saved straight away — then <b>Scan</b> to catalog what's there. Ebooks and audiobooks can share one folder.</p>
 
       <div className="flex flex-col gap-2.5">
-        {ROWS.map((row) => {
-          // The folder can be set ahead of switching Music on, but a scan while it's off
-          // only hits the gated endpoint and flashes "module is turned off".
-          const canScan = row.scan && (row.key !== "music" || musicEnabled);
-          return (
-          <div key={row.key} className="rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[13px] font-semibold">{row.label}</div>
-                <div className="text-[10.5px] text-ink-faint">{row.hint}</div>
-              </div>
-              {canScan && <button onClick={() => scan(row)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Scan</button>}
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                value={draft[row.key]}
-                onChange={(e) => setDraft({ ...draft, [row.key]: e.target.value })}
-                readOnly={!admin}
-                placeholder={admin ? "/storage/media/…" : "Not set"}
-                className="flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]"
-                style={{ background: "var(--panel)", border: "1px solid var(--line)", color: admin ? "var(--ink)" : "var(--ink-dim)" }}
-              />
-              {admin && <button onClick={() => setPicking(row.key)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Browse…</button>}
-            </div>
-            <FolderChips kind={row.key} path={draft[row.key]} current={paths?.[row.key] ?? ""} downloads={draft.downloads} onBlocking={onBlocking} onCreated={created(row.key)} />
-          </div>
-          );
-        })}
+        {ROWS.map((row) => (
+          <FolderRow
+            key={row.key}
+            row={row}
+            paths={paths}
+            admin={admin}
+            // The folder can be set ahead of switching Music on, but a scan while it's off
+            // only hits the gated endpoint and flashes "module is turned off".
+            canScan={!!row.scan && (row.key !== "music" || musicEnabled)}
+            onScan={() => scan(row)}
+            onSaved={saved}
+          />
+        ))}
       </div>
 
-      {admin ? (
-        <div className="mt-4 flex items-center justify-end gap-3">
-          {dirty && <span className="text-[11.5px] text-ink-faint">{blocked ? "Fix the folders marked in red to save" : "Unsaved changes"}</span>}
-          <button onClick={save} disabled={!dirty || busy || blocked} className="rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy ? "Saving…" : "Save folders"}</button>
-        </div>
-      ) : (
-        <p className="mt-3 text-[11.5px] text-ink-faint">Only an admin can change these folders.</p>
-      )}
+      {!admin && <p className="mt-3 text-[11.5px] text-ink-faint">Only an admin can change these folders.</p>}
 
       <UnmatchedReview media="movie" reloadKey={reviewKey} />
       <UnmatchedReview media="series" reloadKey={reviewKey} />
 
+    </div>
+  );
+}
+
+// FolderRow is one library's folder. It saves on its own, and only on purpose: a folder
+// picked in Browse, or a typed path confirmed with "Use this folder" or Enter — never on
+// every keystroke or on blur, because a saved folder re-points imports at once. The
+// server's checks (exists, writable, never under /data) answer inline on this row.
+function FolderRow({ row, paths, admin, canScan, onScan, onSaved }: {
+  row: typeof ROWS[number];
+  paths: LibraryPaths;
+  admin: boolean;
+  canScan: boolean;
+  onScan: () => void;
+  onSaved: (p: LibraryPaths) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const onBlocking = useCallback((_: PathKey, b: boolean) => setBlocking(b), []);
+  const folder = useAutoSave<string>(paths[row.key], async (v) => {
+    // Only this row is sent, so another folder that's odd right now (a share that isn't
+    // mounted) can never block saving this one.
+    onSaved(await api.setLibraryPaths({ [row.key]: v.trim() }));
+  }, { equal: (a, b) => a.trim() === b.trim() });
+  const use = () => void folder.commit(folder.value.trim());
+
+  return (
+    <div className="rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-semibold">{row.label}</div>
+          <div className="text-[10.5px] text-ink-faint">{row.hint}</div>
+        </div>
+        {canScan && <button onClick={onScan} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Scan</button>}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <input
+          aria-label={`${row.label} folder`}
+          value={folder.value}
+          onChange={(e) => folder.set(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && folder.dirty && !blocking) { e.preventDefault(); use(); }
+            if (e.key === "Escape" && folder.dirty) { e.preventDefault(); folder.revert(); }
+          }}
+          readOnly={!admin}
+          placeholder={admin ? "/storage/media/…" : "Not set"}
+          className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]"
+          style={{ background: "var(--panel)", border: `1px solid ${folder.status === "error" ? "var(--reject)" : "var(--line)"}`, color: admin ? "var(--ink)" : "var(--ink-dim)" }}
+        />
+        {admin && folder.dirty && folder.status !== "saving" && (
+          <button onClick={use} disabled={blocking} title={blocking ? "Fix the folder marked in red first" : undefined} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Use this folder</button>
+        )}
+        {admin && <button onClick={() => setPicking(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Browse…</button>}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <SavedTick save={folder} />
+        {folder.status === "saved" && <span className="text-[10.5px] text-ink-faint">New imports go here from now on; what's already imported stays where it is.</span>}
+      </div>
+      <FolderChips kind={row.key} path={folder.value} current={paths[row.key]} downloads={row.key === "downloads" ? undefined : paths.downloads} onBlocking={onBlocking} onCreated={(p) => { onSaved(p); folder.revert(); }} />
       {picking && (
         <FolderPicker
-          initial={draft[picking] || undefined}
-          onClose={() => setPicking(null)}
-          onSelect={(p) => { setDraft({ ...draft, [picking]: p }); setPicking(null); }}
+          initial={folder.value || undefined}
+          onClose={() => setPicking(false)}
+          onSelect={(p) => { setPicking(false); void folder.commit(p); }}
         />
       )}
     </div>

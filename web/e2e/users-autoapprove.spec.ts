@@ -1,7 +1,8 @@
 import { test, expect } from "./mockApi";
 
-// REQ-09: auto-approve is per media type. The users list flags a Plex sign-in that still
-// approves whole shows; the editor and the Plex sign-in default save per-type choices.
+// REQ-09: auto-approve is per media type. The people list flags a Plex sign-in that still
+// approves whole shows; each type saves on its own from the row, and the Plex sign-in
+// default lives in Settings → Plex.
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
@@ -9,18 +10,19 @@ test.describe("admin", () => {
     await page.goto("/settings/users");
     await expect(page.getByText("Approves whole shows")).toBeVisible();
 
-    await page.getByRole("button", { name: "Edit user" }).nth(1).click();
-    const editor = page.getByRole("group", { name: "Auto-approve requests for" });
-    await expect(editor.getByRole("checkbox", { name: "Series" })).toBeChecked();
-    await editor.getByRole("checkbox", { name: "Series" }).uncheck();
-    await editor.getByRole("checkbox", { name: "Books" }).uncheck();
-    await page.getByRole("button", { name: "Save changes" }).click();
+    const checks = page.getByRole("group", { name: "Auto-approve Grandad's requests for" });
+    await expect(checks.getByRole("checkbox", { name: "Series" })).toBeChecked();
+    await checks.getByRole("checkbox", { name: "Series" }).uncheck();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/users/5").length).toBe(1);
-    expect(api.callsTo("PUT", "/api/v1/users/5")[0].body).toMatchObject({
-      auto_approve_movie: true, auto_approve_series: false, auto_approve_book: false,
-    });
+    await checks.getByRole("checkbox", { name: "Books" }).uncheck();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/users/5").length).toBe(2);
+    expect(api.callsTo("PUT", "/api/v1/users/5").map((c) => c.body)).toEqual([
+      { auto_approve_movie: true, auto_approve_series: false, auto_approve_book: true },
+      { auto_approve_movie: true, auto_approve_series: false, auto_approve_book: false },
+    ]);
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
 
-    // The Plex sign-in default (in Settings → Plex now) starts at movies only.
+    // The Plex sign-in default (in Settings → Plex) starts at movies only.
     await page.getByRole("link", { name: "Settings → Plex" }).click();
     await expect(page).toHaveURL(/\/settings\/plex#plex-sign-in$/);
     const plex = page.getByRole("group", { name: "New Plex sign-ins auto-approve" });
