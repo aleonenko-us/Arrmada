@@ -458,22 +458,22 @@ func buildURL(idx Indexer, t string, q SearchQuery) (string, error) {
 	if idx.APIKey != "" {
 		qs.Set("apikey", idx.APIKey)
 	}
-	// An id the indexer takes replaces the text: q alongside it would narrow the id match
-	// to releases that also carry the text, which is exactly what a foreign or re-titled
-	// release doesn't. A book or music search says the same thing in its own fields.
 	cats := q.Categories
 	if len(cats) == 0 {
 		cats = idx.Categories
 	}
+	text := torznabText(q)
 	if len(cats) == 0 && t == "search" {
 		cats = defaultCategories(idx, q)
+		if slices.Contains(cats, catAudiobook) {
+			// The default audiobook category already says it; the word would only drop
+			// the releases in it whose names don't happen to carry "audiobook".
+			text = q.Text
+		}
 	}
-	text := torznabText(q)
-	if slices.Contains(cats, catAudiobook) {
-		// The audiobook category already says it; the word would only drop the releases
-		// in it whose names don't happen to carry "audiobook".
-		text = q.Text
-	}
+	// An id the indexer takes replaces the text: q alongside it would narrow the id match
+	// to releases that also carry the text, which is exactly what a foreign or re-titled
+	// release doesn't. A book or music search says the same thing in its own fields.
 	name, value := idParam(idx, q)
 	switch {
 	case t == "search" && name != "":

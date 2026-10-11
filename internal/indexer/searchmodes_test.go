@@ -84,6 +84,13 @@ func TestBuildURLSearchModesAndDefaultCategories(t *testing.T) {
 			want:       map[string]string{"cat": "2045"},
 		},
 		{
+			name:       "the indexer's own audiobook category keeps today's query word",
+			caps:       &general,
+			categories: []int{3030},
+			q:          on(SearchQuery{Text: "Dune", MediaType: MediaBook, BookEdition: "audiobook"}),
+			want:       map[string]string{"cat": "3030", "q": "Dune audiobook"},
+		},
+		{
 			name: "the query's categories win",
 			caps: &general,
 			q:    on(SearchQuery{Text: "x", MediaType: MediaMovie, Categories: []int{2040}}),
