@@ -200,6 +200,8 @@ type autoCand struct {
 
 	// needScratch is the scratch space this file will need, for the Settings indicator.
 	needScratch int64
+	// effects is what converting it loses, for the Switch-on summary (autopreview.go).
+	effects candEffects
 }
 
 // candScratch is the scratch space a candidate will need, worked out the way the job will
@@ -289,7 +291,7 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		}
 		c := autoCand{Key: ItemKey(mediaType, movieID, seriesID, season, episode), Title: title, Kind: mediaType,
 			Video: n.Video, Size: size, Tracks: trackSummary(&mi, plan), Current: strings.ToUpper(mi.VideoCodec),
-			needScratch: candScratch(mi, plan, size)}
+			needScratch: candScratch(mi, plan, size), effects: effectsOf(&mi, plan, n, size, seriesID, season)}
 		if n.Video {
 			c.Codec = plan.VideoCodec
 		}

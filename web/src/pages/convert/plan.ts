@@ -1,4 +1,13 @@
-import type { ConvertPlan, ConvertTrackDecision } from "../../lib/api";
+import type { ConvertAutoPreview, ConvertPlan, ConvertRequestResult, ConvertTrackDecision } from "../../lib/api";
+
+// Asking is a Convert-now confirmation waiting for an answer.
+export interface Asking { key: string; title: string; tracksOnly: boolean }
+
+// requestedToast says what a Convert-now request led to.
+export function requestedToast(title: string, res: ConvertRequestResult): string {
+  void res;
+  return `“${title}” is queued ahead of the automatic picks — it starts when a conversion slot is free, even outside your hours`;
+}
 
 // Words for a conversion plan, shared by the Library's plan card and the Convert-now
 // confirmation, so both say the same thing about the same file.
@@ -65,5 +74,26 @@ export function planChanges(p: ConvertPlan): string[] {
     out.push(`Subtitles: ${subs.length} of ${p.subs.length} track${p.subs.length === 1 ? "" : "s"} removed — ${subs.map((d) => `${trackLabel(d)} (${d.reason ?? "removed"})`).join("; ")}`);
   }
   if (p.container.from && p.container.to && p.container.from !== p.container.to) out.push(`Container: ${p.container.from} → ${p.container.to}`);
+  return out;
+}
+
+const count = (x: number, one: string, many = `${one}s`) => `${x.toLocaleString()} ${x === 1 ? one : many}`;
+const verb = (x: number, v: string) => (x === 1 ? `${v}s` : v);
+
+// previewLines is a library-wide (or one show's) summary in counts: what converting those
+// files changes and what they lose. The counts come from cached candidates, so the size is
+// "about".
+export function previewLines(p: ConvertAutoPreview): string[] {
+  if (p.files === 0) return [];
+  const out: string[] = [];
+  const tidy = p.files - p.reencode;
+  const split = tidy > 0 ? ` (${p.reencode.toLocaleString()} re-encoded, ${tidy.toLocaleString()} only rewritten to tidy tracks)` : "";
+  out.push(`${count(p.files, "file")}${split}: about ${fmtSize(p.bytes)} → ~${fmtSize(p.est_bytes)}`);
+  if (p.dv_files) out.push(`${count(p.dv_files, "file")} ${verb(p.dv_files, "lose")} Dolby Vision (kept as HDR10 or HLG)`);
+  if (p.cc_files) out.push(`${count(p.cc_files, "file")} ${verb(p.cc_files, "lose")} embedded closed captions`);
+  if (p.image_sub_tracks) out.push(`${count(p.image_sub_tracks, "image-subtitle track")} removed`);
+  if (p.forced_tracks) out.push(`${count(p.forced_tracks, "forced subtitle track")} removed with nothing to replace ${p.forced_tracks === 1 ? "it" : "them"}`);
+  if (p.filtered_audio_tracks) out.push(`${count(p.filtered_audio_tracks, "audio track")} filtered out`);
+  if (p.container_changes) out.push(`${count(p.container_changes, "file")} ${verb(p.container_changes, "change")} container to MKV`);
   return out;
 }

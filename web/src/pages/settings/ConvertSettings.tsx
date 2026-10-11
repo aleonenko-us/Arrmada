@@ -6,6 +6,7 @@ import { api, type ConvertSettings as Settings } from "../../lib/api";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
+import { SwitchOnDialog } from "../convert/ConfirmConvert";
 
 // Settings → Subtitles & Convert → Convert: when Convert runs, what it converts to, which
 // tracks it keeps, and where it works. It used to be the Convert page's Settings tab; that
@@ -59,6 +60,15 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   // One hook per control: each shows its own Saving… / Saved ✓ / error.
   const put = <K extends keyof Settings>(k: K) => (v: Settings[K]) => commit({ [k]: v } as Partial<Settings>);
   const auto = useAutoSave(s.auto, put("auto"));
+  // Switching on asks first, with what it will do across the library; off saves at once.
+  const [askSwitchOn, setAskSwitchOn] = useState(false);
+  const autoSwitch: AutoSave<boolean> = {
+    ...auto,
+    commit: async (on) => {
+      if (on === true && !auto.value) { setAskSwitchOn(true); return false; }
+      return auto.commit(on);
+    },
+  };
   const hours = useAutoSave<Hours>({ hours_start: s.hours_start, hours_end: s.hours_end }, (v) => commit(v), {
     equal: (a, b) => a.hours_start === b.hours_start && a.hours_end === b.hours_end,
     validate: (v) => ((v.hours_start === "") !== (v.hours_end === "") ? "Set both a start and an end time." : null),
@@ -116,7 +126,13 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   return (
     <div className="flex flex-col gap-4">
       <Section title="Automatic conversion">
-        <Toggle save={auto} label="Convert my library automatically"
+        {askSwitchOn && (
+          <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => {
+            if (!(await auto.commit(true))) throw new Error("Couldn't switch it on — try again in a moment.");
+            setAskSwitchOn(false);
+          }} />
+        )}
+        <Toggle save={autoSwitch} label="Convert my library automatically"
           hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library run straight away either way." />
         <Toggle
           save={scheduleSwitch}

@@ -2204,6 +2204,15 @@ export interface ConvertPlan {
   video: ConvertPlanVideo; audio: ConvertTrackDecision[]; subs: ConvertTrackDecision[];
   container: { from: string; to: string }; warnings: string[]; eta_sec: number | null;
 }
+// What switching automatic conversion on would do (GET /convert/auto-preview), or converting
+// one show or season now (?series=&season=), counted from the runner's cached candidates.
+export interface ConvertAutoPreview {
+  files: number; reencode: number; bytes: number; est_bytes: number;
+  dv_files: number; cc_files: number; image_sub_tracks: number; filtered_audio_tracks: number;
+  container_changes: number; forced_tracks: number; as_of: number;
+}
+// The answer to a Convert-now request.
+export interface ConvertRequestResult { requested: string }
 
 // Insights (Plex watch monitoring).
 export interface PlexLibrary { key: string; title: string; type: string }
@@ -3140,7 +3149,7 @@ export const api = {
     return req<{ items: ConvertCandidate[] }>(`/api/v1/convert/library${qs ? `?${qs}` : ""}`).then((r) => r.items);
   },
   convertStats: () => req<ConvertLibraryStats>("/api/v1/convert/stats"),
-  convertRequest: (key: string) => req<{ requested: string }>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
+  convertRequest: (key: string) => req<ConvertRequestResult>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
   convertCancelRequest: (key?: string) => req<{ cancelled: number }>(`/api/v1/convert/requests?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "DELETE" }),
   convertCancel: (id: number) => req<{ cancelled: number }>(`/api/v1/convert/jobs/${id}/cancel`, { method: "POST" }),
   convertBlocklist: () => req<{ items: ConvertBlocked[] }>("/api/v1/convert/blocklist").then((r) => r.items),
@@ -3169,6 +3178,13 @@ export const api = {
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,
   convertPlan: (key: string) => req<ConvertPlan>(`/api/v1/convert/plan?key=${encodeURIComponent(key)}`),
+  convertAutoPreview: (seriesID?: number, season?: number) => {
+    const q = new URLSearchParams();
+    if (seriesID !== undefined) q.set("series", String(seriesID));
+    if (seriesID !== undefined && season !== undefined) q.set("season", String(season));
+    const qs = q.toString();
+    return req<ConvertAutoPreview>(`/api/v1/convert/auto-preview${qs ? `?${qs}` : ""}`);
+  },
 
   // Insights (Plex)
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),

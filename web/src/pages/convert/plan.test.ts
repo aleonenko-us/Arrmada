@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConvertPlan } from "../../lib/api";
-import { planChanges, trackLabel, videoLine } from "./plan";
+import { planChanges, previewLines, trackLabel, videoLine } from "./plan";
 
 const GB = 1024 ** 3;
 
@@ -40,6 +40,21 @@ describe("conversion plan words", () => {
     expect(lines).toContain("Audio: 1 of 2 tracks removed — ENG · AC-3 stereo · Commentary (commentary)");
     expect(lines).toContain("Subtitles: 1 of 2 tracks removed — ENG · PGS · image (image subtitle covered by text)");
     expect(lines).toContain("Container: MP4 → MKV");
+  });
+
+  it("sums a library in counts, leaving out what nothing loses", () => {
+    const lines = previewLines({
+      files: 120, reencode: 100, bytes: 20 * 1024 * GB, est_bytes: 11 * 1024 * GB, dv_files: 3, cc_files: 1, image_sub_tracks: 14,
+      filtered_audio_tracks: 2, container_changes: 0, forced_tracks: 0, as_of: 0,
+    });
+    expect(lines).toEqual([
+      "120 files (100 re-encoded, 20 only rewritten to tidy tracks): about 20.00 TB → ~11.00 TB",
+      "3 files lose Dolby Vision (kept as HDR10 or HLG)",
+      "1 file loses embedded closed captions",
+      "14 image-subtitle tracks removed",
+      "2 audio tracks filtered out",
+    ]);
+    expect(previewLines({ files: 0, reencode: 0, bytes: 0, est_bytes: 0, dv_files: 0, cc_files: 0, image_sub_tracks: 0, filtered_audio_tracks: 0, container_changes: 0, forced_tracks: 0, as_of: 0 })).toEqual([]);
   });
 
   it("says a tracks-only rewrite leaves the picture alone", () => {

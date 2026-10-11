@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/tristenlammi/arrmada/internal/convert"
 )
@@ -29,4 +30,30 @@ func (a *api) handleConvertPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSON(w, http.StatusOK, v)
+}
+
+// handleConvertAutoPreview — GET /api/v1/convert/auto-preview[?series=&season=]: what
+// switching automatic conversion on would do across the library (or what converting one
+// show or season now would do), in counts: files, size now and after, and how many lose
+// Dolby Vision, closed captions, image subtitles or audio tracks.
+func (a *api) handleConvertAutoPreview(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := convert.PreviewFilter{Season: -1}
+	if raw := q.Get("series"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			a.writeError(w, http.StatusBadRequest, "invalid series id")
+			return
+		}
+		f.SeriesID = id
+	}
+	if raw := q.Get("season"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || f.SeriesID == 0 {
+			a.writeError(w, http.StatusBadRequest, "invalid season")
+			return
+		}
+		f.Season = n
+	}
+	a.writeJSON(w, http.StatusOK, a.deps.Convert.AutoPreview(r.Context(), f))
 }

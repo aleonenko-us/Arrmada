@@ -1,6 +1,7 @@
 import { test, expect, type MockedApi } from "./mockApi";
 import type { MockRoute } from "./fixtures/routes";
-import type { ConvertCandidate, ConvertPlan } from "../src/lib/api";
+import type { ConvertAutoPreview, ConvertCandidate, ConvertPlan } from "../src/lib/api";
+import { convertSettings } from "./fixtures/modules";
 
 // CONV-12/13: each Library file shows its conversion plan (tracks kept or removed, the
 // warnings) and its poster, and nothing converts without a confirmation that says what.
@@ -78,6 +79,103 @@ for (const size of ["desktop", "phone"] as const) {
     });
   });
 }
+
+const preview = (over: Partial<ConvertAutoPreview> = {}): ConvertAutoPreview => ({
+  files: 120, reencode: 100, bytes: 20 * 1024 * GB, est_bytes: 11 * 1024 * GB, dv_files: 3, cc_files: 1, image_sub_tracks: 14,
+  filtered_audio_tracks: 2, container_changes: 0, forced_tracks: 0, as_of: 0, ...over,
+});
+
+const episode: ConvertCandidate = {
+  ...remux, kind: "episode", key: "episode:10:2:1", movie_id: undefined, series_id: 10, season: 2, episode: 1, title: "Show - S02E01", poster_url: undefined,
+};
+
+test.describe("confirm before converting", () => {
+  test.use({ persona: "admin" });
+
+  test("Convert now lists what will change, and only Confirm sends the request", async ({ page, api }) => {
+    await installExtra(page, api, [...libraryRoutes, { method: "POST", path: "/api/v1/convert/requests", status: 202, body: { requested: "movie:7" } }]);
+    await page.goto("/convert?tab=library");
+    await page.getByRole("button", { name: "Convert now" }).click();
+    const dialog = page.getByRole("dialog", { name: "Convert “Remux” now?" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("• Picture: HEVC 2160p Dolby Vision 10-bit → HEVC HDR10 10-bit · CRF 18")).toBeVisible();
+    await expect(dialog.getByText(/• Audio: 2 of 3 tracks removed — ENG · AC-3 stereo · Director's commentary \(commentary\)/)).toBeVisible();
+    await expect(dialog.getByText("• Container: MP4 → MKV")).toBeVisible();
+    await expect(dialog.getByText("⚠ Dolby Vision layer dropped — kept as HDR10")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(api.callsTo("POST", "/api/v1/convert/requests")).toHaveLength(0);
+
+    await page.getByRole("button", { name: "Convert now" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Convert now" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/convert/requests").map((c) => c.body)).toEqual([{ key: "movie:7" }]);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("Switch on shows library-wide counts and switches on only after Confirm", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/auto-preview", body: preview() },
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/convert");
+    await page.getByRole("button", { name: "Switch on" }).click();
+    const dialog = page.getByRole("dialog", { name: "Switch on automatic conversion?" });
+    await expect(dialog.getByText("• 120 files (100 re-encoded, 20 only rewritten to tidy tracks): about 20.00 TB → ~11.00 TB")).toBeVisible();
+    await expect(dialog.getByText("• 3 files lose Dolby Vision (kept as HDR10 or HLG)")).toBeVisible();
+    await expect(dialog.getByText("• 1 file loses embedded closed captions")).toBeVisible();
+    await expect(dialog.getByText("• 14 image-subtitle tracks removed")).toBeVisible();
+    await expect(dialog.getByText("• 2 audio tracks filtered out")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(api.callsTo("PUT", "/api/v1/convert/settings")).toHaveLength(0);
+
+    await page.getByRole("button", { name: "Switch on" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Switch on" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ auto: true }]);
+    await expect(page.getByRole("button", { name: "Switch off" })).toBeVisible();
+
+    // Switching off is one click.
+    await page.getByRole("button", { name: "Switch off" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ auto: true }, { auto: false }]);
+  });
+
+  test("the settings switch asks the same way", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/auto-preview", body: preview() },
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    await page.getByRole("checkbox", { name: /Convert my library automatically/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Switch on automatic conversion?" });
+    await expect(dialog.getByText("• 3 files lose Dolby Vision (kept as HDR10 or HLG)")).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("checkbox", { name: /Convert my library automatically/ })).not.toBeChecked();
+    expect(api.callsTo("PUT", "/api/v1/convert/settings")).toHaveLength(0);
+  });
+
+  test("a season convert shows that season's counts", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/library", respond: ({ url }) => url.searchParams.get("series")
+        ? { items: [episode] }
+        : { series: [{ series_id: 10, title: "Show", year: 2019, files: 20, convertible: 5, reencode: 5, tidy_only: 0, total_bytes: 100 * GB, est_bytes: 60 * GB, save_bytes: 40 * GB }] } },
+      { method: "GET", path: "/api/v1/convert/auto-preview", respond: ({ url }) => url.searchParams.get("season") === "2"
+        ? preview({ files: 4, reencode: 4, bytes: 40 * GB, est_bytes: 22 * GB, dv_files: 0, cc_files: 2, image_sub_tracks: 0, filtered_audio_tracks: 0 })
+        : preview() },
+      { method: "POST", path: /^\/api\/v1\/convert\/series\/10$/, status: 202, body: { requested: 4 } },
+    ]);
+    await page.goto("/convert?tab=library&media=tv");
+    await page.getByRole("button", { name: "Episodes" }).click();
+    await page.getByRole("button", { name: "Convert S2" }).click();
+    const dialog = page.getByRole("dialog", { name: "Convert Show season 2 now?" });
+    await expect(dialog.getByText("• 4 files: about 40.0 GB → ~22.0 GB")).toBeVisible();
+    await expect(dialog.getByText("• 2 files lose embedded closed captions")).toBeVisible();
+    expect(api.callsTo("GET", "/api/v1/convert/auto-preview?series=10&season=2")).toHaveLength(1);
+    await dialog.getByRole("button", { name: "Convert 4 episodes" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/convert/series/10").map((c) => c.path)).toEqual(["/api/v1/convert/series/10?season=2"]);
+  });
+});
 
 // installExtra puts fixtures in front of the defaults for one test.
 async function installExtra(page: import("@playwright/test").Page, api: MockedApi, extra: MockRoute[]) {
