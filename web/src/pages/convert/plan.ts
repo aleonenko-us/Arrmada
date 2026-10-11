@@ -3,10 +3,15 @@ import type { ConvertAutoPreview, ConvertPlan, ConvertRequestResult, ConvertTrac
 // Asking is a Convert-now confirmation waiting for an answer.
 export interface Asking { key: string; title: string; tracksOnly: boolean }
 
-// requestedToast says what a Convert-now request led to.
+// requestedToast says what a Convert-now request led to, as the server placed it.
 export function requestedToast(title: string, res: ConvertRequestResult): string {
-  void res;
-  return `“${title}” is queued ahead of the automatic picks — it starts when a conversion slot is free, even outside your hours`;
+  if (res.starting) return `“${title}” is starting now`;
+  if (res.reason) return `“${title}” waits — ${res.reason}`;
+  if (res.position) {
+    const place = res.position === 1 ? "next in line" : `#${res.position} in line`;
+    return `“${title}” is ${place}${res.ahead ? ` — after “${res.ahead}”` : ""}`;
+  }
+  return `“${title}” is queued ahead of the automatic picks`;
 }
 
 // Words for a conversion plan, shared by the Library's plan card and the Convert-now

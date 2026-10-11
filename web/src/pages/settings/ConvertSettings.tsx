@@ -133,7 +133,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           }} />
         )}
         <Toggle save={autoSwitch} label="Convert my library automatically"
-          hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library run straight away either way." />
+          hint="Works through everything that's worth converting, biggest savings first, one file at a time. Files you convert from the Library start within seconds either way, after any other file you asked for — an automatic conversion in progress waits for them." />
         <Toggle
           save={scheduleSwitch}
           label="Only during set hours" hint={`A conversion still running when the hours end is paused and picks up again next time${s.can_pause ? "" : " (pausing needs the Linux container — elsewhere it finishes first)"}.`} />

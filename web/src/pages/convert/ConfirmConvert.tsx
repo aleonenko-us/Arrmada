@@ -51,7 +51,7 @@ export function ConvertNowDialog({ itemKey, title, tracksOnly, originals, onCanc
           {!plan && !planError && <p className="m-0 mt-1">Reading the plan…</p>}
           {plan && <Lines lines={planChanges(plan)} warnings={plan.warnings} />}
           <p className="m-0 mt-2.5 text-[11.5px] text-ink-faint">
-            It goes ahead of the automatic picks and runs whatever your hours. The file is replaced only once the result is checked. {originals}.
+            It runs whatever your hours, ahead of the automatic picks — an automatic conversion in progress waits for it. The file is replaced only once the result is checked. {originals}.
           </p>
         </>
       }

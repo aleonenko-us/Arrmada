@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConvertPlan } from "../../lib/api";
-import { planChanges, previewLines, trackLabel, videoLine } from "./plan";
+import { planChanges, previewLines, requestedToast, trackLabel, videoLine } from "./plan";
 
 const GB = 1024 ** 3;
 
@@ -55,6 +55,14 @@ describe("conversion plan words", () => {
       "2 audio tracks filtered out",
     ]);
     expect(previewLines({ files: 0, reencode: 0, bytes: 0, est_bytes: 0, dv_files: 0, cc_files: 0, image_sub_tracks: 0, filtered_audio_tracks: 0, container_changes: 0, forced_tracks: 0, as_of: 0 })).toEqual([]);
+  });
+
+  it("says where a request stands, as the server placed it", () => {
+    expect(requestedToast("Ep 2", { requested: "k", starting: true })).toBe("“Ep 2” is starting now");
+    expect(requestedToast("Ep 2", { requested: "k", position: 1, ahead: "Film" })).toBe("“Ep 2” is next in line — after “Film”");
+    expect(requestedToast("Ep 3", { requested: "k", position: 2, ahead: "Ep 2" })).toBe("“Ep 3” is #2 in line — after “Ep 2”");
+    expect(requestedToast("Ep 2", { requested: "k", position: 1, reason: "someone is watching Plex — it starts when they stop" }))
+      .toBe("“Ep 2” waits — someone is watching Plex — it starts when they stop");
   });
 
   it("says a tracks-only rewrite leaves the picture alone", () => {

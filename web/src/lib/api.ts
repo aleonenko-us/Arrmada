@@ -2211,8 +2211,9 @@ export interface ConvertAutoPreview {
   dv_files: number; cc_files: number; image_sub_tracks: number; filtered_audio_tracks: number;
   container_changes: number; forced_tracks: number; as_of: number;
 }
-// The answer to a Convert-now request.
-export interface ConvertRequestResult { requested: string }
+// The answer to a Convert-now request: starting now, or its place among the waiting requests
+// (1 = next) and what it waits behind; reason when nothing can start (someone is watching).
+export interface ConvertRequestResult { requested: string; starting?: boolean; position?: number; ahead?: string; reason?: string }
 
 // Insights (Plex watch monitoring).
 export interface PlexLibrary { key: string; title: string; type: string }

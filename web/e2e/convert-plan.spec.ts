@@ -93,7 +93,7 @@ test.describe("confirm before converting", () => {
   test.use({ persona: "admin" });
 
   test("Convert now lists what will change, and only Confirm sends the request", async ({ page, api }) => {
-    await installExtra(page, api, [...libraryRoutes, { method: "POST", path: "/api/v1/convert/requests", status: 202, body: { requested: "movie:7" } }]);
+    await installExtra(page, api, [...libraryRoutes, { method: "POST", path: "/api/v1/convert/requests", status: 202, body: { requested: "movie:7", starting: false, position: 2, ahead: "Show - S01E01" } }]);
     await page.goto("/convert?tab=library");
     await page.getByRole("button", { name: "Convert now" }).click();
     const dialog = page.getByRole("dialog", { name: "Convert “Remux” now?" });
@@ -111,6 +111,8 @@ test.describe("confirm before converting", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Convert now" }).click();
     await expect.poll(() => api.callsTo("POST", "/api/v1/convert/requests").map((c) => c.body)).toEqual([{ key: "movie:7" }]);
     await expect(page.getByRole("dialog")).toHaveCount(0);
+    // The toast says what the server says happened: its place in line and who's ahead.
+    await expect(page.getByRole("status").filter({ hasText: "“Remux” is #2 in line — after “Show - S01E01”" })).toBeVisible();
   });
 
   test("Switch on shows library-wide counts and switches on only after Confirm", async ({ page, api }) => {
