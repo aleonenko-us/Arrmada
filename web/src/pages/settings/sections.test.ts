@@ -91,7 +91,7 @@ describe("searchSettings", () => {
     expect(labels("plex")).toContain("Plex sign-in");
     expect(labels("plex path mapping")).toEqual(["Plex library updates"]);
     // The section name counts too, so "naming" also lists the rest of Naming & metadata.
-    expect(labels("naming")).toEqual(["Movie naming", "Series naming", "Metadata"]);
+    expect(labels("naming")).toEqual(["Plex recommended naming", "Movie naming", "Series naming", "Metadata"]);
   });
 
   it("needs every word typed, in any case", () => {
@@ -103,7 +103,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Plex recommended naming", "Metadata", "Other connections", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {
