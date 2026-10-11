@@ -113,6 +113,16 @@ test.describe("desktop seasons", () => {
     await expect(page.getByText("100 of 130")).toBeVisible();
   });
 
+  test("a pick belongs to its season: switching season clears it", async ({ page }) => {
+    await page.goto("/series/1");
+    await page.getByRole("button", { name: "Select", exact: true }).click();
+    await page.getByRole("checkbox", { name: /^Select S02E06/ }).check();
+    await expect(page.getByRole("region", { name: "Selected episodes" })).toContainText("1 selected");
+    await page.getByRole("button", { name: /^Season 3/ }).click();
+    await expect(page.getByRole("region", { name: "Selected episodes" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Actions for S03E01" })).toBeVisible();
+  });
+
   test("each episode's menu holds its actions", async ({ page, api }) => {
     await page.goto("/series/1");
     await page.getByRole("button", { name: "Actions for S02E06" }).click();
@@ -148,6 +158,25 @@ test.describe("phone", () => {
     const mon = page.getByRole("menu", { name: "Monitoring" });
     await expect(mon.getByRole("menuitem", { name: /Monitor: All episodes/ })).toBeInViewport();
     await fitsScreen(page);
+  });
+
+  test("select mode: pick episodes, then monitor or search exactly those (SER-16)", async ({ page, api }) => {
+    await page.goto("/series/1");
+    await page.getByRole("button", { name: "Select", exact: true }).tap();
+    for (const ep of ["S02E06", "S02E07", "S02E08"]) await page.getByRole("checkbox", { name: new RegExp(`^Select ${ep}`) }).tap();
+    const bar = page.getByRole("region", { name: "Selected episodes" });
+    await expect(bar).toContainText("3 selected");
+    await expect(bar).toBeInViewport();
+    await fitsScreen(page);
+    await bar.getByRole("button", { name: "Monitor", exact: true }).tap();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/series/1/monitor/episodes").map((c) => c.body)).toContainEqual({ episode_ids: [2006, 2007, 2008], monitored: true });
+    await expect(bar).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Select", exact: true }).tap();
+    await page.getByRole("checkbox", { name: /^Select S02E06/ }).tap();
+    await page.getByRole("checkbox", { name: /^Select S02E07/ }).tap();
+    await page.getByRole("region", { name: "Selected episodes" }).getByRole("button", { name: "Search", exact: true }).tap();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/series/1/search").map((c) => c.body)).toContainEqual({ episodes: [{ season: 2, episode: 6 }, { season: 2, episode: 7 }] });
   });
 
   test("episode cards: the overview opens on a tap and the menu works by touch", async ({ page }) => {

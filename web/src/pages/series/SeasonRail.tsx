@@ -16,6 +16,8 @@ import { latestFor, seasonCounts, seasonName, seasonScope, sxe } from "./util";
 // Seasons this long render in pages, so a 1000-episode anime opens without lag.
 export const LONG_SEASON = 100;
 export const PAGE = 50;
+// The server's cap on one picked-episodes search.
+const MAX_BULK_SEARCH = 200;
 
 // SeasonRail is the row of season chips under the hero: poster, name and progress. It
 // scrolls sideways on a phone and keeps the chosen season in view.
@@ -83,6 +85,10 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
   const [choose, setChoose] = useState(false);
   const [dialog, setDialog] = useState<EpisodeDialog | null>(null);
   const [shown, setShown] = useState(eps.length > LONG_SEASON ? PAGE : Infinity);
+  // Select mode (SER-16): cards become checkboxes and a bar acts on the picked ones. The
+  // pick is per season — the panel is keyed by season, so switching season clears it.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
   const [grabJob, setGrabJob] = useState<number | null>(null);
   const grabbing = useJob(grabJob, {
     onDone: (j) => { setGrabJob(null); if (jobFailed(j)) flash(jobToast(j), true); refreshSearches("series", series.id); onChange(); },
@@ -116,6 +122,12 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
     onChange();
   });
   const searching = busy === "grab" || grabbing.running;
+  const toggle = (id: number) => setPicked((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); };
 
   return (
     <section aria-label={name} className="mt-3">
@@ -145,6 +157,11 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
             </Button>
           )}
           {c.total > 0 && <Button size="sm" onClick={() => setChoose(true)} title={`Search indexers for ${name}`}>Choose release…</Button>}
+          {c.total > 0 && (
+            <Button size="sm" onClick={() => (selecting ? stopSelecting() : setSelecting(true))} aria-pressed={selecting} title="Pick episodes to monitor, unmonitor or search together">
+              {selecting ? "Done" : "Select"}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={monitor}
@@ -174,9 +191,24 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
               onChange={onChange}
               flash={flash}
               open={setDialog}
+              selecting={selecting}
+              selected={picked.has(e.id)}
+              onToggleSelect={() => toggle(e.id)}
             />
           ))}
         </div>
+      )}
+      {selecting && (
+        <BulkBar
+          series={series}
+          season={season}
+          picked={picked}
+          setPicked={setPicked}
+          onDone={stopSelecting}
+          onSearch={(id) => { if (id) setGrabJob(id); }}
+          onChange={onChange}
+          flash={flash}
+        />
       )}
       {eps.length > shown && (
         <div className="mt-3 flex items-center justify-center gap-3">
@@ -196,6 +228,68 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
       )}
       <EpisodeDialogs series={series} dialog={dialog} onClose={() => setDialog(null)} onChange={onChange} flash={flash} />
     </section>
+  );
+}
+
+// BulkBar is select mode's action bar, held at the bottom of the screen while the season is
+// in view: how many are picked, Monitor, Unmonitor, Search (one scoped search of exactly
+// those episodes) and Clear.
+function BulkBar({ series, season, picked, setPicked, onDone, onSearch, onChange, flash }: {
+  series: SeriesT;
+  season: Season;
+  picked: Set<number>;
+  setPicked: (s: Set<number>) => void;
+  onDone: () => void;
+  onSearch: (jobId?: number) => void;
+  onChange: () => void;
+  flash: Flash;
+}) {
+  const [busy, setBusy] = useState<null | "on" | "off" | "search">(null);
+  const eps = (season.episodes ?? []).filter((e) => picked.has(e.id));
+  const n = eps.length;
+  const all = (season.episodes ?? []).length;
+  const tooMany = n > MAX_BULK_SEARCH;
+  const words = `${n} episode${n === 1 ? "" : "s"}`;
+  const act = async (key: NonNullable<typeof busy>, fn: () => Promise<void>) => {
+    setBusy(key);
+    try { await fn(); } catch (e) { flash((e as Error).message, true); } finally { setBusy(null); }
+  };
+  const setMonitored = (on: boolean) => act(on ? "on" : "off", async () => {
+    await api.setEpisodesMonitored(series.id, eps.map((e) => e.id), on);
+    flash(`${words} ${on ? "monitored" : "no longer monitored"}.`);
+    onChange();
+    onDone();
+  });
+  const searchPicked = () => act("search", async () => {
+    const r = await api.searchSeriesEpisodes(series.id, eps.map((e) => ({ season: e.season_number, episode: e.episode_number })));
+    onSearch(r.job_id);
+    flash(`Searching for ${words}…`);
+    onDone();
+  });
+  return (
+    <div
+      role="region"
+      aria-label="Selected episodes"
+      className="sticky z-20 mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5"
+      style={{ bottom: "calc(var(--bottom-chrome) + 12px)", background: "var(--panel)", border: "1px solid var(--accent-line)", boxShadow: "var(--shadow)" }}
+    >
+      <span className="mr-auto text-[12.5px] font-semibold" aria-live="polite">{n} selected</span>
+      {n < all && <Button size="sm" variant="ghost" onClick={() => setPicked(new Set((season.episodes ?? []).map((e) => e.id)))}>All</Button>}
+      <Button size="sm" onClick={() => setMonitored(true)} disabled={n === 0 || busy !== null} busy={busy === "on"} busyLabel="Saving…">Monitor</Button>
+      <Button size="sm" onClick={() => setMonitored(false)} disabled={n === 0 || busy !== null} busy={busy === "off"} busyLabel="Saving…">Unmonitor</Button>
+      <Button
+        size="sm"
+        variant="primary"
+        onClick={searchPicked}
+        disabled={n === 0 || tooMany || busy !== null}
+        busy={busy === "search"}
+        busyLabel="Starting…"
+        title={tooMany ? `Pick at most ${MAX_BULK_SEARCH} episodes to search at once` : "One search for exactly these episodes; ones already here are skipped"}
+      >
+        Search
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())} disabled={n === 0}>Clear</Button>
+    </div>
   );
 }
 

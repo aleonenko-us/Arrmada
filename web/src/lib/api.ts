@@ -2705,6 +2705,12 @@ export const api = {
   seriesDownloads: (id: number) => req<SeriesEpisodeDownload[]>(`/api/v1/series/${id}/downloads`),
   searchSeries: (id: number) =>
     req<{ status: string; started_at_ms?: number } & JobRef>(`/api/v1/series/${id}/search`, { method: "POST" }),
+  // One scoped search of episodes picked in one season (at most 200).
+  searchSeriesEpisodes: (id: number, episodes: { season: number; episode: number }[]) =>
+    req<{ status: string; episodes: number } & JobRef>(`/api/v1/series/${id}/search`, { method: "POST", body: JSON.stringify({ episodes }) }),
+  // Monitors or unmonitors several of a show's episodes at once; their seasons follow.
+  setEpisodesMonitored: (id: number, episode_ids: number[], monitored: boolean) =>
+    req<{ updated: number; monitored: boolean }>(`/api/v1/series/${id}/monitor/episodes`, { method: "PUT", body: JSON.stringify({ episode_ids, monitored }) }),
   seriesReleases: (id: number, season?: number, episode?: number) => {
     const q = new URLSearchParams();
     // Season 0 is Specials, not "no season" — send it whenever it's given.
