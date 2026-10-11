@@ -17,7 +17,12 @@ vi.mock("../../lib/me", async (orig) => ({
   ...(await orig<typeof import("../../lib/me")>()),
   useMe: () => ({ user: { id: 1, username: "admin", role: "admin" }, setMetadataReady: () => {} }),
 }));
-vi.mock("../../lib/useSettings", () => ({ useLoadedSettings: () => ({ syncRegion: () => {} }) }));
+// The Discovery region card saves through the shared settings store; these tests are about
+// the keys, so it gets a still store.
+vi.mock("../../lib/useSettings", () => ({
+  useLoadedSettings: () => ({ s: { tmdb_region: "" } }),
+  useSetting: () => ({ value: "", dirty: false, set: () => {}, commit: async () => true, revert: () => {}, retry: () => {}, status: "idle", error: null, canRetry: false }),
+}));
 vi.mock("../../lib/useLiveQuery", () => ({ useLiveRefresh: () => () => {} }));
 
 const key = (id: string, over: Partial<APIKeyStatus> = {}): APIKeyStatus => ({

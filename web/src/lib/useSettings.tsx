@@ -13,8 +13,6 @@ interface SettingsStore {
   error: string | null;
   /** Store some keys; resolves with the server's copy once the shared one is updated. */
   commit: (p: Partial<AppSettings>) => Promise<AppSettings>;
-  /** The Discovery region saves through its own card; keep the shared copy in step. */
-  syncRegion: (region: string) => void;
 }
 
 const SettingsContext = createContext<SettingsStore | null>(null);
@@ -44,11 +42,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [setBooksEnabled, setMusicEnabled]);
 
-  const syncRegion = useCallback((region: string) => {
-    setS((x) => (x ? { ...x, tmdb_region: region } : x));
-  }, []);
-
-  return <SettingsContext.Provider value={{ s, error, commit, syncRegion }}>{children}</SettingsContext.Provider>;
+  return <SettingsContext.Provider value={{ s, error, commit }}>{children}</SettingsContext.Provider>;
 }
 
 export function useSettingsStore(): SettingsStore {

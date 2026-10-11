@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { SavedTick } from "../settings/auto";
 import { api, type APIKeyStatus } from "../../lib/api";
 import { useMe } from "../../lib/me";
 import { ago } from "../../lib/taskTime";
-import { useLoadedSettings } from "../../lib/useSettings";
+import { useLoadedSettings, useSetting } from "../../lib/useSettings";
 import { useConfirm } from "../../ui";
 
 // The metadata keys and the FlareSolverr URL, edited inside their cards on Settings →
@@ -236,32 +237,15 @@ function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
   );
 }
 
-// DiscoveryRegion tunes what the TMDB key returns, so it sits with the metadata keys.
+// DiscoveryRegion tunes what the TMDB key returns, so it sits with the metadata keys. It
+// saves itself like every other setting (CFG-14): on blur or Enter, Esc puts the saved
+// value back.
 export function DiscoveryRegion() {
-  const { syncRegion } = useLoadedSettings();
-  const [region, setRegion] = useState("");
-  const [saved, setSaved] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    api.settings().then((s) => { setRegion(s.tmdb_region ?? ""); setSaved(s.tmdb_region ?? ""); }).catch(() => {});
-  }, []);
-
-  const save = async () => {
-    setBusy(true); setMsg(null);
-    try {
-      const next = await api.updateSettings({ tmdb_region: region.trim().toUpperCase() });
-      setRegion(next.tmdb_region);
-      setSaved(next.tmdb_region);
-      syncRegion(next.tmdb_region);
-      setMsg({ ok: true, text: region.trim() ? `Discover now favours ${region.trim().toUpperCase()} listings` : "Back to global listings" });
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { s } = useLoadedSettings();
+  const region = useSetting("tmdb_region", {
+    validate: (v) => (/^([A-Z]{2})?$/.test(v) ? null : "Use a two-letter country code, or leave it empty for global lists."),
+  });
+  const saved = s.tmdb_region ?? "";
 
   return (
     <div id="discovery-region" className="flex scroll-mt-20 flex-col gap-1.5 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
@@ -279,22 +263,20 @@ export function DiscoveryRegion() {
         <input
           type="text"
           aria-label="Discovery region"
-          value={region}
+          value={region.value}
           maxLength={2}
-          onChange={(e) => setRegion(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))}
+          onChange={(e) => region.set(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))}
+          onBlur={() => void region.commit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); void region.commit(); }
+            if (e.key === "Escape" && region.dirty) { e.preventDefault(); region.revert(); }
+          }}
           placeholder="AU"
+          aria-invalid={region.status === "error" || undefined}
           className="w-[80px] rounded-lg px-3 py-1.5 text-center font-mono text-[12px] uppercase"
-          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+          style={{ background: "var(--panel-2)", border: `1px solid ${region.status === "error" ? "var(--reject)" : "var(--line)"}`, color: "var(--ink)" }}
         />
-        <button
-          onClick={save}
-          disabled={busy || region === (saved ?? "")}
-          className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50"
-          style={{ border: "1px solid var(--accent-line, var(--line))", color: "var(--accent)" }}
-        >
-          {busy ? "Saving…" : "Save"}
-        </button>
-        {msg && <span className="text-[10.5px]" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</span>}
+        <SavedTick save={region} />
       </div>
     </div>
   );

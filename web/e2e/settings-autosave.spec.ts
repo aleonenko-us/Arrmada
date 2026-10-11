@@ -63,6 +63,19 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/settings").map((c) => c.body)).toEqual([{ books_enabled: false }]);
   });
 
+  test("the Discovery region on Connections saves on Enter, with no Save button", async ({ page, api }) => {
+    await installExtra(page, api, [putSettings]);
+    await page.goto("/settings/connections");
+    const card = page.locator("#discovery-region");
+    const region = card.getByRole("textbox", { name: "Discovery region" });
+    await expect(region).toHaveValue(settings.tmdb_region);
+    await region.fill("AU");
+    await region.press("Enter");
+    await expect(card.getByText("Saved ✓")).toBeVisible();
+    expect(api.callsTo("PUT", "/api/v1/settings").map((c) => c.body)).toEqual([{ tmdb_region: "AU" }]);
+    await expect(card.getByRole("button", { name: /^Save/ })).toHaveCount(0);
+  });
+
   test("a typed folder saves only that row, and only when confirmed", async ({ page, api }) => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/system/library", respond: ({ body }) => ({ movies: "/media/movies", tv: "/media/tv", ebooks: "/media/ebooks", audiobooks: "/media/audiobooks", music: "/media/music", downloads: "/media/downloads", ...(body as object) }) },
