@@ -3,6 +3,7 @@ package convert
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -201,10 +202,40 @@ func median(v []float64) float64 {
 	return (c[n/2-1] + c[n/2]) / 2
 }
 
-// estimateSeconds is the whole job: the encode, the rehearsal and the format test when they
-// run, the quality check, and copying the result into place. A tracks-only rewrite is the
-// copy alone.
+// estimator estimates any number of files under one set of settings, working out each
+// encoder class and frame-size bucket's rate once — the backlog sums thousands of files on
+// every Status read.
+type estimator struct {
+	s    *Service
+	ctx  context.Context
+	p    prefs
+	memo map[string]float64
+}
+
+func (s *Service) newEstimator(ctx context.Context, p prefs) *estimator {
+	return &estimator{s: s, ctx: ctx, p: p, memo: map[string]float64{}}
+}
+
+func (e *estimator) rate(f forecastFacts, w, h int) float64 {
+	k := fmt.Sprintf("%s|%v|%v|%s", f.codec, isHDR(f.encHDR), f.hdr10plus, pixelBucket(w, h))
+	if r, ok := e.memo[k]; ok {
+		return r
+	}
+	r := e.s.pixelRate(e.ctx, e.s.encoderClass(f.codec, f.encHDR, f.hdr10plus, e.p.useGPU), w, h)
+	e.memo[k] = r
+	return r
+}
+
+// estimateSeconds estimates one file (see estimator.seconds).
 func (s *Service) estimateSeconds(ctx context.Context, p prefs, f forecastFacts) int64 {
+	return s.newEstimator(ctx, p).seconds(f)
+}
+
+// seconds is the whole job: the encode, the rehearsal and the format test when they run,
+// the quality check, and copying the result into place. A tracks-only rewrite is the copy
+// alone.
+func (e *estimator) seconds(f forecastFacts) int64 {
+	p := e.p
 	if !f.video || f.codec == "" {
 		return int64(float64(f.size)/copyBytesPerSec) + 30
 	}
@@ -215,7 +246,7 @@ func (s *Service) estimateSeconds(ctx context.Context, p prefs, f forecastFacts)
 	if dur <= 0 {
 		dur = 2 * 3600
 	}
-	rate := s.pixelRate(ctx, s.encoderClass(f.codec, f.encHDR, f.hdr10plus, p.useGPU), w, h)
+	rate := e.rate(f, w, h)
 	px := float64(w * h)
 	content := dur
 	if dur >= preflightMinDuration {
@@ -295,14 +326,15 @@ func Nights(sec int64, start, end string) int {
 // backlog over every remaining file (from the cached candidates — never a re-probe), spread
 // over the conversions that run at once, and the encoding a restart would lose now.
 func (s *Service) forecastStatus(ctx context.Context, st *Status, p prefs, remaining []autoCand) {
+	est := s.newEstimator(ctx, p)
 	for i := range st.UpNext {
 		c := &st.UpNext[i]
-		c.ETASec = s.estimateSeconds(ctx, p, c.facts)
+		c.ETASec = est.seconds(c.facts)
 		c.Nights = Nights(c.ETASec, p.start, p.end)
 	}
 	var total int64
 	for _, c := range remaining {
-		total += s.estimateSeconds(ctx, p, c.facts)
+		total += est.seconds(c.facts)
 	}
 	if w := int64(s.workerCount(ctx)); w > 1 {
 		total = (total + w - 1) / w
