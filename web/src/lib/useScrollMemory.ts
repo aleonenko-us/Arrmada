@@ -22,13 +22,21 @@ export function remember(saved: Saved, key: string, top: number): Saved {
   return next;
 }
 
+// isOverlay: the entry is a sheet or overlay over the page that's still under it — a
+// useBackToClose sheet ({sheets}) or a Discover title/person/collection ({depth, cold}).
+// The page behind must not jump to the top when one opens.
+export function isOverlay(state: unknown): boolean {
+  if (!state || typeof state !== "object") return false;
+  return "sheets" in state || "depth" in state || "cold" in state;
+}
+
 // What a navigation does to the scroll position: Back/Forward restore where you were, a
-// new page starts at the top, and a change to the query alone (typing in a filter box,
-// which replaces the entry) leaves it where it is.
-export function scrollAction(type: "POP" | "PUSH" | "REPLACE", pathChanged: boolean): "restore" | "top" | "keep" {
+// new page starts at the top, and the same page with a new query (typing in a filter
+// box) or an overlay opening over it leaves it where it is.
+export function scrollAction(type: "POP" | "PUSH" | "REPLACE", pathChanged: boolean, overlay = false): "restore" | "top" | "keep" {
   if (type === "POP") return "restore";
-  if (type === "PUSH") return "top";
-  return pathChanged ? "top" : "keep";
+  if (overlay || !pathChanged) return "keep";
+  return "top";
 }
 
 // useScrollMemory gives the shell's scrolling <main> what the browser does for a window:
@@ -63,11 +71,13 @@ export function useScrollMemory(mainRef: RefObject<HTMLElement>): void {
     pending.current = null;
     try { sessionStorage.setItem(STORE, JSON.stringify(remember(load(), before.key, top.current))); } catch { /* storage blocked */ }
 
-    const action = scrollAction(navType, before.pathname !== location.pathname);
+    const action = scrollAction(navType, before.pathname !== location.pathname, isOverlay(location.state));
     if (action === "keep") return;
     if (action === "top") { el.scrollTop = 0; top.current = 0; return; }
 
-    const want = load()[location.key] ?? 0;
+    // An entry with nothing saved (from before this tab's session) is left where it is.
+    const want = load()[location.key];
+    if (want === undefined) return;
     el.scrollTop = want;
     top.current = el.scrollTop;
     if (Math.abs(el.scrollTop - want) <= 1) return;

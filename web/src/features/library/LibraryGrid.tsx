@@ -80,10 +80,13 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       .sort((a, b) => (by ? compareValues(by(a), by(b), dir) : 0) || config.compare(a, b));
   }, [list, active, q, config, sort]);
 
+  // Only titles still in the library count as selected: one removed meanwhile (here or
+  // elsewhere) drops out instead of failing the next bulk action.
+  const chosen = list.filter((it) => selected.has(it.id));
   const sel: LibrarySelection<T> = {
     active: multi,
-    ids: selected,
-    items: list.filter((it) => selected.has(it.id)),
+    ids: new Set(chosen.map((it) => it.id)),
+    items: chosen,
     visible,
     toggle: (id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
     set: (ids) => setSelected(new Set(ids)),
@@ -114,9 +117,9 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
 
       {multi && (
         <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-          <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
+          <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{sel.ids.size} selected</span>
           <button onClick={() => sel.set(visible.map((it) => it.id))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({visible.length})</button>
-          <button onClick={sel.clear} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
+          <button onClick={sel.clear} disabled={sel.ids.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
           {p.bulkActions && <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />}
           {p.bulkActions?.(sel)}
         </div>

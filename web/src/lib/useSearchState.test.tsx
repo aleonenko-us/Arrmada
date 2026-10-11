@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { useSearchParamState } from "./useSearchState";
-import { remember, scrollAction } from "./useScrollMemory";
+import { isOverlay, remember, scrollAction } from "./useScrollMemory";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -53,9 +53,18 @@ describe("useSearchParamState", () => {
 describe("scroll memory", () => {
   it("restores on Back/Forward, opens new pages at the top, and leaves a filter edit alone", () => {
     expect(scrollAction("POP", true)).toBe("restore");
-    expect(scrollAction("PUSH", false)).toBe("top");
+    expect(scrollAction("PUSH", true)).toBe("top");
     expect(scrollAction("REPLACE", true)).toBe("top");
     expect(scrollAction("REPLACE", false)).toBe("keep");
+    expect(scrollAction("PUSH", false)).toBe("keep"); // a sheet's entry, a tab in the query
+  });
+
+  it("leaves the page behind a sheet or a Discover overlay where it is", () => {
+    expect(isOverlay({ sheets: ["r1"] })).toBe(true);
+    expect(isOverlay({ depth: 1, cold: false })).toBe(true);
+    expect(isOverlay(null)).toBe(false);
+    expect(isOverlay({ from: "/x" })).toBe(false);
+    expect(scrollAction("PUSH", true, true)).toBe("keep");
   });
 
   it("keeps the newest hundred entries", () => {
