@@ -107,6 +107,7 @@ GET /api/v1/downloadclients/{id}/settings staff -
 GET /api/v1/downloadclients/{id}/status staff -
 GET /api/v1/downloads staff -
 GET /api/v1/downloads/disk-guard staff -
+GET /api/v1/downloads/unmanaged staff -
 GET /api/v1/files/info staff -
 GET /api/v1/flaresolverr/status staff -
 GET /api/v1/health/system staff -
@@ -185,6 +186,7 @@ GET /api/v1/quality/preview staff -
 GET /api/v1/quality/profiles staff -
 GET /api/v1/quality/profiles/{ref} staff -
 GET /api/v1/queue staff -
+GET /api/v1/queue/{hash}/targets staff -
 GET /api/v1/recycle staff -
 GET /api/v1/recycle/items staff -
 GET /api/v1/recycle/mode staff -
@@ -331,6 +333,8 @@ POST /api/v1/queue/{hash}/action staff -
 POST /api/v1/queue/{hash}/block staff -
 POST /api/v1/queue/{hash}/category staff -
 POST /api/v1/queue/{hash}/failover staff -
+POST /api/v1/queue/{hash}/ignore staff -
+POST /api/v1/queue/{hash}/import staff -
 POST /api/v1/queue/{hash}/pause staff -
 POST /api/v1/queue/{hash}/resume staff -
 POST /api/v1/recycle/delete admin -

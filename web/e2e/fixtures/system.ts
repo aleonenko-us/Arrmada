@@ -1,6 +1,6 @@
 import type {
   AppSettings, Attention, AuthUser, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, RecycleStats, SetupState, Status, SystemHealth,
-  TaskStatus,
+  ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
 import type { PersonaInfo } from "./users";
 import { NOW } from "./clock";
@@ -28,6 +28,23 @@ const ago = (min: number) => NOW - min * 60_000;
 export const STALLED_HASH = "abc1230000000000000000000000000000000001";
 export const FAILING_HASH = "abc1230000000000000000000000000000000002";
 export const MISFILED_HASH = "abc1230000000000000000000000000000000003";
+// Finished torrents Arrmada didn't grab, for Needs you's Not managed section.
+export const unmanaged: { unmanaged: UnmanagedDownload[]; ignored: number } = {
+  unmanaged: [
+    { hash: "e2e0000000000000000000000000000000000005", name: "Some.Linux.Distro.ISO-FIXTURE", size_bytes: 3_000_000_000, category: "linux", kind: "movie", title: "Some Linux Distro ISO" },
+    { hash: "e2e0000000000000000000000000000000000006", name: "Night.Train.1999.1080p.BluRay-HAND", size_bytes: 9_000_000_000, kind: "movie", title: "Night Train" },
+  ],
+  ignored: 1,
+};
+// The library items Import into… offers, of the kind asked for.
+export function unmanagedTargets(url: URL): { targets: ReviewTarget[]; truncated: boolean } {
+  const kind = url.searchParams.get("kind");
+  const targets: ReviewTarget[] = kind === "series"
+    ? [{ id: 1, kind: "series", title: "Harbour Lights", year: 2024 }]
+    : [{ id: 7, kind: "movie", title: "Night Train", year: 1999 }, { id: 8, kind: "movie", title: "Night Moves", year: 1975 }];
+  const q = (url.searchParams.get("q") ?? "").toLowerCase();
+  return { targets: targets.filter((t) => !q || t.title.toLowerCase().includes(q)), truncated: false };
+}
 // Needs you's "Try another release" job, finished.
 export const failOverJob: Job = {
   id: 901, kind: "download.failover", target: `torrent:${STALLED_HASH}`, trigger: "user:1", status: "succeeded", progress: 1,

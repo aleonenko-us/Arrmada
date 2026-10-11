@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api, type AttentionItem } from "../lib/api";
-import { formatAgo } from "../lib/format";
+import { api, type AttentionItem, type ReviewKind, type UnmanagedDownload } from "../lib/api";
+import { formatAgo, formatBytes } from "../lib/format";
 import { LINKS, fixLink } from "../lib/links";
 import { loadAttention, refreshAttention, useAttention } from "../lib/useAttention";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { Skeleton, useToast } from "../ui";
 import { CardActions, type CardAction } from "./activity/transfer";
-import { ReviewsPanel } from "./Reviews";
+import { ReviewsPanel, TargetPicker, kindLabelOf } from "./Reviews";
 
 // Activity → Needs you: every stuck download in one place, each with the action that fits
 // it — decide a held import, retry a failing one, try another release for a stalled or
@@ -54,6 +54,7 @@ export function NeedsYouPanel() {
       <Section id="wrong-category" title="Wrong category" count={wrong.length} hint="Finished TV downloads filed where the series import never looks. Move them to TV and the next import check takes them.">
         {wrong.length === 0 ? <Empty>Nothing is filed in the wrong place.</Empty> : wrong.map((it) => <WrongCategoryCard key={it.key} it={it} />)}
       </Section>
+      <UnmanagedSection />
       {elsewhere.length > 0 && (
         <section aria-label="Also waiting" className="mt-2 rounded-xl px-4 py-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Also waiting</div>
@@ -208,5 +209,113 @@ function WrongCategoryCard({ it }: { it: AttentionItem }) {
       primary={hash ? <PrimaryBtn label={busy ? "Moving…" : "Move to TV"} disabled={busy} title="File it under Arrmada's TV category, where the series import looks" onClick={() => void move()} /> : undefined}
       secondary={[show]}
     />
+  );
+}
+
+// UnmanagedSection is the finished torrents nothing in Arrmada grabbed or imported, outside
+// its categories — added by hand, or left from another tool. Collapsed by default: they
+// aren't problems, just things Arrmada could take in. Each can be imported into a title
+// the user picks, or ignored for as long as it stays in the client.
+function UnmanagedSection() {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<UnmanagedDownload[] | null>(null);
+  const [ignored, setIgnored] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => api.unmanagedDownloads()
+    .then((r) => { setList(r.unmanaged ?? []); setIgnored(r.ignored ?? 0); setError(null); })
+    .catch((e) => setError((e as Error).message));
+  // One read when the tab opens, for the count; the list changes only when someone adds
+  // a torrent by hand, so it isn't polled.
+  useEffect(() => { void load(); }, []);
+  const drop = (hash: string) => setList((xs) => (xs ?? []).filter((x) => x.hash !== hash));
+  const count = list?.length ?? 0;
+  return (
+    <section id="unmanaged" aria-labelledby="unmanaged-title" className="mb-7 scroll-mt-4">
+      <h2 id="unmanaged-title" className="m-0 flex items-center gap-2 text-[14px] font-bold">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="unmanaged-list" className="flex items-baseline gap-2 text-left">
+          <span aria-hidden className="inline-block w-3 text-[11px] text-ink-faint">{open ? "▾" : "▸"}</span>
+          Not managed by Arrmada <span className="font-mono text-[11px] font-normal text-ink-faint">{list ? count : "…"}</span>
+        </button>
+      </h2>
+      <p className="mb-3 mt-0.5 max-w-[72ch] text-[11.5px] text-ink-faint">
+        Finished downloads Arrmada didn't grab, outside its categories. Import one into a title in your library, or ignore it.
+        {ignored > 0 ? ` ${ignored} ignored.` : ""}
+      </p>
+      {open && (
+        <div id="unmanaged-list" className="flex flex-col gap-2">
+          {error ? <Empty>{error}</Empty> : !list ? <Skeleton variant="list" count={2} /> : list.length === 0 ? <Empty>Every finished download is Arrmada's.</Empty> : list.map((u) => (
+            <UnmanagedCard key={u.hash} u={u} onGone={() => drop(u.hash)} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const KINDS: { key: ReviewKind; label: string }[] = [
+  { key: "movie", label: "Movie" },
+  { key: "series", label: "Show" },
+  { key: "book", label: "Book" },
+  { key: "music", label: "Album" },
+];
+
+function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [kind, setKind] = useState<ReviewKind>(u.kind);
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      toast(done, { ms: 5000 });
+      onGone();
+    } catch (e) {
+      toast((e as Error).message, { tone: "error", ms: 7000 });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-xl p-3.5" data-testid="unmanaged-item" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[11.5px] [overflow-wrap:anywhere]">{u.name}</div>
+          <div className="mt-0.5 font-mono text-[10px] text-ink-faint">
+            {formatBytes(u.size_bytes)}{u.category ? ` · category “${u.category}”` : " · no category"}
+          </div>
+        </div>
+        <CardActions
+          name={u.name}
+          primary={<PrimaryBtn label="Import into…" disabled={busy} title="Pick the title in your library it belongs to" onClick={() => setPicking(true)} />}
+          secondary={[{ label: "Ignore", disabled: busy, title: "Stop listing it here; it stays in the download client", onSelect: () => run(() => api.ignoreDownload(u.hash), "Ignored — it stays in the download client.") }]}
+        />
+      </div>
+      {picking && (
+        <TargetPicker
+          title={`Import into a ${kindLabelOf(kind)}…`}
+          name={u.name}
+          kind={kind}
+          initialQuery={u.title ?? ""}
+          load={(q) => api.unmanagedTargets(u.hash, kind, q)}
+          loadKey={u.hash}
+          header={
+            <div role="group" aria-label="What it is" className="mb-3 flex flex-wrap gap-1.5">
+              {KINDS.map((k) => (
+                <button key={k.key} type="button" aria-pressed={k.key === kind} onClick={() => setKind(k.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${k.key === kind ? "var(--accent)" : "var(--line)"}`, background: k.key === kind ? "var(--accent-soft)" : "var(--panel)", color: k.key === kind ? "var(--accent)" : "var(--ink-faint)" }}>
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          }
+          onClose={() => setPicking(false)}
+          onPicked={(id, label) => {
+            const chosen = kind;
+            setPicking(false);
+            void run(() => api.importUnmanaged(u.hash, chosen, id), `Imported into ${label}.`);
+          }}
+        />
+      )}
+    </div>
   );
 }

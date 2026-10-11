@@ -366,6 +366,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/queue/{hash}/failover", a.requireRole(auth.RoleManager, a.handleFailOver))
 	mux.HandleFunc("POST /api/v1/queue/{hash}/category", a.requireRole(auth.RoleManager, a.handleSetCategory))
 	mux.HandleFunc("POST /api/v1/imports/{hash}/retry", a.requireRole(auth.RoleManager, a.handleRetryImport))
+	// Finished torrents Arrmada didn't grab: import into a picked title, or ignore (unmanaged.go).
+	mux.HandleFunc("GET /api/v1/downloads/unmanaged", a.requireRole(auth.RoleManager, a.handleUnmanaged))
+	mux.HandleFunc("GET /api/v1/queue/{hash}/targets", a.requireRole(auth.RoleManager, a.handleUnmanagedTargets))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/import", a.requireRole(auth.RoleManager, a.handleImportUnmanaged))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/ignore", a.requireRole(auth.RoleManager, a.handleIgnoreDownload))
 
 	// Grab: search result → download client (closes the acquisition loop).
 	mux.HandleFunc("POST /api/v1/grab", a.requireRole(auth.RoleManager, a.handleGrab))

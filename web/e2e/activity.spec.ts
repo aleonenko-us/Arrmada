@@ -127,6 +127,37 @@ test.describe("manager", () => {
     await expect(page.getByRole("tablist", { name: "Activity" }).getByRole("tab", { name: /^Needs you/ })).toContainText("4");
   });
 
+  // ACQ-31: finished torrents Arrmada didn't grab sit, collapsed, at the bottom of Needs
+  // you; each can be imported into a picked title or ignored.
+  test("unmanaged torrents can be imported into a picked title or ignored", async ({ page, api }) => {
+    await page.goto("/activity/needs-you");
+    const toggle = page.getByRole("button", { name: /Not managed by Arrmada/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toContainText("2");
+    await expect(page.getByTestId("unmanaged-item")).toHaveCount(0);
+    await toggle.click();
+    const items = page.getByTestId("unmanaged-item");
+    await expect(items).toHaveCount(2);
+
+    await items.filter({ hasText: "Some.Linux.Distro.ISO" }).getByRole("button", { name: "Ignore" }).click();
+    await expect(page.getByText("Ignored — it stays in the download client.")).toBeVisible();
+    await expect(items).toHaveCount(1);
+    expect(api.callsTo("POST", "/api/v1/queue/e2e0000000000000000000000000000000000005/ignore")).toHaveLength(1);
+
+    await items.getByRole("button", { name: "Import into…" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Import into a movie…");
+    // The search starts from the torrent's own name, and Show lists shows instead.
+    await expect(dialog.getByRole("textbox", { name: "Filter your library" })).toHaveValue("Night Train");
+    await dialog.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(dialog).toContainText("Import into a show…");
+    await dialog.getByRole("button", { name: "Movie", exact: true }).click();
+    await dialog.getByRole("button", { name: /^Night Train \(1999\)/ }).click();
+    await expect(page.getByText("Imported into Night Train.")).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/queue/e2e0000000000000000000000000000000000006/import")[0].body).toEqual({ kind: "movie", target_id: 7 });
+    await expect(items).toHaveCount(0);
+  });
+
   test("the Dashboard card's links open the right Needs you section", async ({ page }) => {
     await page.goto("/");
     const card = page.getByRole("region", { name: /Needs you/ });

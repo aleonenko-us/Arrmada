@@ -61,6 +61,8 @@ type transferCache struct {
 	reqs       map[string][]string
 	reqsAt     time.Time
 	reqsLoaded bool
+	// ignoreMu makes reading and rewriting the ignored-downloads list one step (unmanaged.go).
+	ignoreMu sync.Mutex
 }
 
 func titleKey(kind string, id int64) string { return kind + ":" + strconv.FormatInt(id, 10) }

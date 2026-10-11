@@ -2306,6 +2306,14 @@ export const api = {
     req<{ status: string; category: string }>(`/api/v1/queue/${hash}/category`, { method: "POST", body: JSON.stringify({ category }) }),
   retryImport: (hash: string) =>
     req<{ status: string }>(`/api/v1/imports/${hash}/retry`, { method: "POST" }),
+  // Finished torrents Arrmada didn't grab: list, import into a picked title, or ignore.
+  unmanagedDownloads: () => req<{ unmanaged: UnmanagedDownload[]; ignored: number }>("/api/v1/downloads/unmanaged"),
+  unmanagedTargets: (hash: string, kind: ReviewKind, q: string) =>
+    req<{ targets: ReviewTarget[]; truncated?: boolean }>(`/api/v1/queue/${hash}/targets?kind=${kind}&q=${encodeURIComponent(q)}`),
+  importUnmanaged: (hash: string, kind: ReviewKind, targetId: number) =>
+    req<{ status: string }>(`/api/v1/queue/${hash}/import`, { method: "POST", body: JSON.stringify({ kind, target_id: targetId }) }),
+  ignoreDownload: (hash: string) =>
+    req<{ status: string }>(`/api/v1/queue/${hash}/ignore`, { method: "POST" }),
   // External service credentials, settable in-app (settings-first, env-fallback). The
   // server never returns the secret itself — only whether it's set, from where, and a hint.
   apiKeys: () => req<{ keys: APIKeyStatus[] }>(`/api/v1/apikeys`).then((r) => r.keys),
@@ -3432,6 +3440,19 @@ export interface ImportRecord {
 }
 
 export type ReviewKind = "series" | "movie" | "book" | "music";
+
+/** A finished torrent nothing in Arrmada grabbed or imported, outside its categories. */
+export interface UnmanagedDownload {
+  hash: string;
+  name: string;
+  size_bytes: number;
+  category?: string;
+  added_on?: number;
+  /** A guess at what it is, for the picker's first kind. */
+  kind: ReviewKind;
+  /** The name parsed into a title, to start the picker's search with. */
+  title?: string;
+}
 
 // One library item a held download could be imported into (same kind as the review).
 export interface ReviewTarget {
