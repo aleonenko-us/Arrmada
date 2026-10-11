@@ -440,7 +440,7 @@ _In-library titles link straight to app.plex.tv on Discover, Requests, Movie and
   - **Risk:** Low. Title and year fallback can over-match same-titled remakes in the rare case the rating key is unknown, so the rating_key branch is preferred whenever the index knows it.
   - **Resolves:** movies-9
 <a id="plex-13"></a>
-- [ ] **PLEX-13 · Plex-native naming: {tmdbid}/{imdbid}/{tvdbid} tokens, drop empty {edition-…} groups, 'Plex recommended' preset** — `P2` · `M` · Phase 10
+- [x] **PLEX-13 · Plex-native naming: {tmdbid}/{imdbid}/{tvdbid} tokens, drop empty {edition-…} groups, 'Plex recommended' preset** — `P2` · `M` · Phase 10
   - **Problem:** There are no id tokens, so Plex's recommended `Title (Year) {tmdb-12345}` folders can't be produced, and those ids are what make Plex match the right item (and make PLEX-10 links reliable). A `{edition-{edition}}` template already renders Plex editions, but leaves a stray `{edition-}` when a release has no edition, because renderName (library/importer.go:519) only strips () and []. There is no preset.
   - **Approach:** 1. importer.go renderName: after token substitution, remove empty Plex groups with `regexp.MustCompile(`\{(edition|tmdb|imdb|tvdb)-\}`)` before the existing cleanup.
     2. Movies:

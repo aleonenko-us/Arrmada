@@ -669,7 +669,7 @@ _Remakes and US/UK variants stop cross-grabbing. Releases grabbed through an ali
 _The series page has a hero with the next episode, monitored progress and size, three primary actions plus an overflow menu, a season rail with episode stills and overviews, one menu per episode, and bulk select. The library grid gains sorting, next-airing info and touch-reachable actions._
 
 <a id="ser-14"></a>
-- [ ] **SER-14 · Series detail redesign, part 1: hero with next episode and stats, Monitor menu, three primary actions plus overflow** — `P1` · `M` · Phase 10
+- [x] **SER-14 · Series detail redesign, part 1: hero with next episode and stats, Monitor menu, three primary actions plus overflow** — `P1` · `M` · Phase 10
   - **Problem:** The hero has no next air date, size or episode summary, and the backdrop sits at 18% opacity (SeriesDetail.tsx:119). The toolbar is 9 equal buttons plus the profile select (lines 235-272): monitor, Refresh & rescan, Anime, Auto-grab missing, Search indexers, Upload torrent, Manual import, Rename and Delete. Two expert anime panels sit inline above the episodes. The owner wants a Plex or Overseerr-like page, not an admin console. SeriesDetail.tsx is 1026 lines, which makes every UI task conflict with every other.
   - **Approach:** 1. **Split the file.** Start `web/src/pages/series/`: move Toolbar, ManualImportModal, ProfileSelector, DeleteButton, HistoryPanel, SeriesBlocklistPanel, AliasPanel, SceneMapPanel and DuplicatesPanel into their own files, with no behaviour change. SeriesDetail.tsx becomes the page shell.
     2. **Hero (series/Hero.tsx).**
@@ -698,7 +698,7 @@ _The series page has a hero with the next episode, monitored progress and size, 
   - **Risk:** This overlaps with FE's component kit. Prefer the shared component if it lands first, and keep the local Menu API-compatible so swapping it later is mechanical. The file split should land as its own commit so later tasks rebase cleanly.
   - **Resolves:** series-12
 <a id="ser-15"></a>
-- [ ] **SER-15 · Series detail redesign, part 2: season rail and episode cards with stills, overviews and one menu per episode** — `P1` · `M` · Phase 10
+- [x] **SER-15 · Series detail redesign, part 2: season rail and episode cards with stills, overviews and one menu per episode** — `P1` · `M` · Phase 10
   - **Problem:** SeriesDetail never renders episode still_url, overview or runtime, or season posters and names, although the API returns all of them (series/series.go:90-127). Every season, the current one included, starts collapsed (defaultOpen={false}, line 170). Each episode row has up to four small controls: the monitor dot, Replace, Delete and Search (lines 447-494).
   - **Approach:** 1. **Season rail (series/SeasonRail.tsx).**
        - A horizontal scroller of season chips with posters (season.poster_url via posterThumb) and have/monitored progress.
@@ -732,7 +732,7 @@ _The series page has a hero with the next episode, monitored progress and size, 
   - **Risk:** Long anime seasons need paging, which is part of this task. Stills come from TMDB, so missing stills need a fallback that keeps the warm palette. Keep the season selection in the URL so a reload doesn't jump.
   - **Resolves:** series-12
 <a id="ser-16"></a>
-- [ ] **SER-16 · Multi-select on the episode cards: bulk monitor, unmonitor and search selected episodes** — `P2` · `S` · Phase 10
+- [x] **SER-16 · Multi-select on the episode cards: bulk monitor, unmonitor and search selected episodes** — `P2` · `S` · Phase 10
   - **Problem:** Monitoring or searching a handful of episodes means one click per episode, and each click on a long show is a separate indexer search. Nothing on the backend accepts a list of episodes.
   - **Approach:** 1. **Backend bulk monitor.** `PUT /api/v1/series/{id}/episodes/monitor {episode_ids:[...], monitored}` (manager only) calls the new `Repo.SetEpisodesMonitored(ctx, seriesID, ids, monitored)`.
        - One transaction.
@@ -754,7 +754,7 @@ _The series page has a hero with the next episode, monitored progress and size, 
   - **Risk:** Low. The 200-episode cap and a single planner run keep a bulk search from turning into hundreds of indexer queries.
   - **Resolves:** series-12
 <a id="ser-17"></a>
-- [ ] **SER-17 · Series library page: sort options in grid view, network and next airing on cards, touch-reachable actions** — `P2` · `S` · Phase 10
+- [x] **SER-17 · Series library page: sort options in grid view, network and next airing on cards, touch-reachable actions** — `P2` · `S` · Phase 10
   - **Problem:** The grid view is sorted by title only (Series.tsx:64-71). Cards show only year, season count and a status string (lines 368-384). Delete and Search now appear only on group-hover (lines 328-359), so they cannot be reached on touch screens or a TV browser.
   - **Approach:** 1. **Grid sort.** Add a persisted sort select (`usePersisted('series.grid.sort', 'title', [...])`): Title, Recently added (added_at), Next airing (stats.next_air_date, empties last), Size (stats.size_bytes) and Missing (stats.missing).
     2. **Card meta.** 'Network · Next Thu' for continuing shows with next_air_date (a weekday within 7 days, otherwise the short date). Otherwise 'year · N seasons'. Status uses [SER-10](#ser-10)'s monitored-only counts.
@@ -824,7 +824,7 @@ Other costs:
   - **Risk:** Low. It depends on OBS's storage shape; the design section fixes the contract ({scope: {started_at, finished_at, found, eligible, grabbed, reasons, example}}) so both sides can build to it.
   - **Resolves:** series-9
 <a id="ser-20"></a>
-- [ ] **SER-20 · Series detail redesign, part 3: Files, Activity and Numbering tabs** — `P2` · `M` · Phase 10
+- [x] **SER-20 · Series detail redesign, part 3: Files, Activity and Numbering tabs** — `P2` · `M` · Phase 10
   - **Problem:** Duplicates, blocklist, history and the anime numbering panels are stacked below the episodes with no structure. The alias and scene-map panels only existed for anime. Numbering problems (source, pending proposal, files that could not be placed) and search outcomes have no place in the UI.
   - **Approach:** 1. **Tabs under the hero:** Episodes ([SER-15](#ser-15)), Files, Activity and Numbering.
        - The selected tab lives in the URL (?tab=).

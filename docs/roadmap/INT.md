@@ -765,7 +765,7 @@ The per-host spacing was added on purpose to stop 429s and must stay.
 _Movies and non-anime TV search by IMDb, TMDB or TVDB id where the indexer supports it, falling back to text. Books and music use proper search modes and default categories. Alt-titled films match._
 
 <a id="int-22"></a>
-- [ ] **INT-22 · ID-based movie and TV searches from stored caps, with text fallback** — `P2` · `M` · Phase 10
+- [x] **INT-22 · ID-based movie and TV searches from stored caps, with text fallback** — `P2` · `M` · Phase 10
   - **Problem:** Searches never use the ids Arrmada already has:
 - Every movie search sends only Text: title + year to t=movie (coordinator.go:446-450, 546-550, 840, 948), and SearchQuery has no id field (indexer.go:96-122).
 - buildURL never sends imdbid, tmdbid or tvdbid (torznab.go:334-371), although movies store IMDBID/TMDBID (movies/movie.go:9-10) and series store TVDBID (series/series.go:11).
@@ -790,7 +790,7 @@ _Movies and non-anime TV search by IMDb, TMDB or TVDB id where the indexer suppo
   - **Risk:** Trackers with incomplete id tagging could hide releases; the fallback to text on empty results covers that. Some indexers ignore unsupported params, which is why ids are sent only when caps advertise them and foreign titles are accepted only on a matching imdb attr. Coordinate with SER (series-7/8 matching work) so the series query changes don't collide.
   - **Resolves:** movies-11, integrations-10
 <a id="int-23"></a>
-- [ ] **INT-23 · Default categories and book/music search modes from caps** — `P2` · `M` · Phase 10
+- [x] **INT-23 · Default categories and book/music search modes from caps** — `P2` · `M` · Phase 10
   - **Problem:** Book and music searches use the wrong search mode and no categories:
 - No automation code sets SearchQuery.Categories, and Prowlarr-synced rows have nil Categories, so they are searched across every category.
 - searchType maps books and music to plain t=search (torznab.go:465-476), never t=book or t=music, and author/title or artist/album params are never sent.
@@ -817,7 +817,7 @@ _Movies and non-anime TV search by IMDb, TMDB or TVDB id where the indexer suppo
   - **Risk:** Category filters can hide mis-categorised releases. Compare result counts on the owner's indexers (from the log line) before relying on the default, and keep the off switch. MAM and TorrentLeech keep their own category handling.
   - **Resolves:** integrations-10
 <a id="int-24"></a>
-- [ ] **INT-24 · Movie alternate titles for search and matching** — `P3` · `S` · Phase 10
+- [x] **INT-24 · Movie alternate titles for search and matching** — `P3` · `S` · Phase 10
   - **Problem:** releaseIsForMovie keeps a release only if titleKey(parsed title) equals titleKey(m.Title) (coordinator.go:765-771), and MovieExtra stores no original or alternative titles (movies/movie.go:48-59). Unlike series (series_reliability.go:302), the movie path never uses an original title. Per the verify note, titleKey already folds accents and punctuation, so the real impact is retitled or alt-titled films and some foreign and anime films.
   - **Approach:** 1. metadata/tmdb.go GetMovie: append alternative_titles to append_to_response (credits,release_dates,alternative_titles). MovieDetails gains OriginalTitle and AltTitles []string, keeping titles from the US, GB, the original-language country and type ''. Drop entries in non-Latin script, since releases are named in ASCII.
     2. movies.MovieExtra gains original_title and alt_titles, set where the extra is built (movies/service.go:331). No migration: it's a JSON blob.

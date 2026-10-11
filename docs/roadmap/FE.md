@@ -583,7 +583,7 @@ _Lint, vitest and a mocked-API Playwright suite run in CI. Every modal, toast, c
   - **Risk:** Fixtures can drift from the real API shapes; typing them against api.ts limits that. Keep it to chromium so CI time stays small.
   - **Resolves:** frontend-5, frontend-2
 <a id="fe-11"></a>
-- [ ] **FE-11 · Move Movies and Series pages and the shared release/file modals onto the kit** — `P2` · `M` · Phase 10
+- [x] **FE-11 · Move Movies and Series pages and the shared release/file modals onto the kit** — `P2` · `M` · Phase 10
   - **Problem:** The video library has the most hand-built overlays.
 - MovieDetail: 3 (369, 475, 849), none with an inner scroll.
 - Movies: 2 (612, and 700 with no inner scroll).
@@ -815,7 +815,7 @@ Any nav change silently desynchronises them.
   - **Risk:** This is a visual change the owner may have opinions on. Show before/after screenshots of Settings and Audiobooks first. The palette and type scale don't change.
   - **Resolves:** walk-9
 <a id="fe-19"></a>
-- [ ] **FE-19 · One library toolbar and filter bar for Movies, Series, Books and Music** — `P2` · `M` · Phase 10
+- [x] **FE-19 · One library toolbar and filter bar for Movies, Series, Books and Music** — `P2` · `M` · Phase 10
   - **Problem:** The four library headers are hand-built and drift apart.
 - Books (Books.tsx:236-265) packs up to 9 controls into a row that doesn't wrap: two segmented toggles, Re-match, Search missing, Find series, Scan library, Select, + Add author and + Add book, in mixed bordered, outline and gradient styles.
 - Music's filter pills have no counts (Music.tsx:110-126).
@@ -854,7 +854,7 @@ Any nav change silently desynchronises them.
   - **Risk:** BOOK and MUS edit the same headers. Land this first, or have them build on the new components.
   - **Resolves:** walk-8
 <a id="fe-20"></a>
-- [ ] **FE-20 · Library pages at phone width: no sideways scrolling, and the grid instead of a 900px table** — `P2` · `S` · Phase 10
+- [x] **FE-20 · Library pages at phone width: no sideways scrolling, and the grid instead of a 900px table** — `P2` · `S` · Phase 10
   - **Problem:** At 375px, the Movies header row (Movies.tsx:162, a justify-between row that doesn't wrap) squeezes '+ Add movie' into a narrow column, and its minimum width makes <main> scroll sideways. The table view has a 900px minimum width (Movies.tsx:454), which is unusable on a phone. Series and Books copy the same pattern.
   - **Approach:** 1) Through [FE-19](#fe-19)'s LibraryToolbar:
     - rows wrap;
@@ -996,7 +996,7 @@ The 404 route renders Placeholder, whose heading reads 'Not found isn't built ye
   - **Risk:** CFG turns the Settings tabs into routes in its hub. Keep redirects from ?tab=media|library|system|users there. APP's Discover detail-sheet routes (/discover/:media/:id) must keep the ?tab and ?q params when the sheet opens and closes.
   - **Resolves:** frontend-6, frontend-2
 <a id="fe-24"></a>
-- [ ] **FE-24 · Scroll reset and restore per page; library filters and search in the URL** — `P2` · `M` · Phase 10
+- [x] **FE-24 · Scroll reset and restore per page; library filters and search in the URL** — `P2` · `M` · Phase 10
   - **Problem:** The only scroll container is the persistent <main overflow-y-auto> (AppLayout.tsx:22, UserLayout.tsx:57), and nothing resets or restores it on navigation. React Router's ScrollRestoration only handles window scroll, so it can't help.
 - Pages that render tall content immediately (Discover's skeleton rows, Calendar) open part-way down.
 - Back loses both your scroll position and the Movies/Series filter and search, which live in plain useState (Movies.tsx:43-44, Series.tsx:38-39).
@@ -1253,7 +1253,7 @@ A sub-path install gets a blank page.
   - **Risk:** This is the one task that deliberately changes the type scale in a dense UI. Get explicit owner sign-off on the screenshots, and run it after the kit migrations so the codemod touches each file once.
   - **Resolves:** frontend-11, frontend-2
 <a id="fe-31"></a>
-- [ ] **FE-31 · One config-driven LibraryGrid for Movies and Series** — `P3` · `L` · Phase 10
+- [x] **FE-31 · One config-driven LibraryGrid for Movies and Series** — `P3` · `L` · Phase 10
   - **Problem:** Movies.tsx (755 lines) and Series.tsx (643 lines) still differ on only about 680 lines once the media noun is normalised. Fixes keep landing on one page and not the other: sort memory, table columns, filters, hover actions.
   - **Approach:** 1) web/src/features/library/LibraryGrid.tsx, generic over T, takes a LibraryConfig<T>:
     - noun;

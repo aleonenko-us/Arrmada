@@ -1036,6 +1036,8 @@ The Convert, Subtitles and Audiobook settings must move into the hub before thos
 
 ### Phase 10 — Series and Movies rebuilt
 
+> **Status: shipped 2026-10-11** — all 26 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget and Playwright e2e green; checked in a local instance, incl. the missing-file sweep refusing to mark anything on an unmounted movies folder and raising a health warning instead). Built as 6 lanes. Fixed in passing: deleting/editing a movie version now checks the version belongs to that movie. Owner to check: in real Plex, with a throwaway title, that two tracks show as editions of one movie. Requester first-load bundle is at 345.7/350 KB — the next requester-facing work must free space first.
+
 **Theme:** Plex-like series page, movie versions and editions, safe rename and organize, the mass editor, better import and matching  
 **Goal:** The two video modules the owner uses every day become complete and trustworthy:
 - a series page with a hero, a season rail and Files/Activity/Numbering tabs

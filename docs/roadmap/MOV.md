@@ -487,7 +487,7 @@ Separately, WatchImports marks movie grabs imported by normalized release name o
 _A grab imports into the track it was made for, under a distinct Plex {edition-…} name, and never overwrites another track's file. An Edition is a real requirement when grabbing. Every track has the full file panel plus Edit, Search and Import._
 
 <a id="mov-12"></a>
-- [ ] **MOV-12 · Versions: decide the track before placing the file, name it per track (Plex {edition-…}), and never overwrite another track's file** — `P1` · `M` · Phase 10
+- [x] **MOV-12 · Versions: decide the track before placing the file, name it per track (Plex {edition-…}), and never overwrite another track's file** — `P1` · `M` · Phase 10
   - **Problem:** WatchImports resolves only movie_id from the grab hash (store.go:480 movieIDForGrabHash) and calls MarkImported. markImported then re-routes by resolution through routeVersion, where the strict '>' (service.go:716) sends ties to the default track.
 
 The default file name is '{title} ({year}) - {quality}', and qualityTag is resolution+source only, so two tracks at the same resolution render the same path. Importer.linkOrCopy (importer.go:1433) recycles or overwrites the existing file.
@@ -527,7 +527,7 @@ Plex's {edition-…} can only be produced by hand-writing '{edition-{edition}}',
   - **Risk:** Medium. The TitleResolver interface change touches the import wiring in main.go. The naming change only affects tracks with an edition or a name collision. Ship routing and naming in one deploy. Test only in temp dirs and never rename real library files.
   - **Resolves:** movies-2, system-14
 <a id="mov-13"></a>
-- [ ] **MOV-13 · Versions: make Edition a real requirement when grabbing, and keep the default track off other tracks' editions** — `P1` · `M` · Phase 10
+- [x] **MOV-13 · Versions: make Edition a real requirement when grabbing, and keep the default track off other tracks' editions** — `P1` · `M` · Phase 10
   - **Problem:** grabMissing decides with v.QualityProfile alone (coordinator.go:667). Version.Edition is stored and displayed but never filters candidates. A Director's Cut track therefore grabs whatever release scores highest, usually the theatrical release already on disk. The importer skips it as already imported, the DC card keeps saying 'searching', and the same release is grabbed again once the 24 h pending window expires.
   - **Approach:** 1) internal/parser/parser.go: export Editions() and NormalizeEdition(s) over the existing editions table (parser.go:783): Director's Cut, Extended, Theatrical, IMAX, Unrated, Remastered, Final Cut. Add bounded needles such as 'extended cut', and 'dc' only as a bounded token.
     2) internal/automation, new editionFilter(cands, track, siblings):
@@ -550,7 +550,7 @@ Plex's {edition-…} can only be produced by hand-writing '{edition-{edition}}',
   - **Risk:** Low to medium. Scene naming of editions is inconsistent, so some real DC releases may be missed until the needles are extended. Only movies with extra tracks are affected.
   - **Resolves:** movies-2
 <a id="mov-14"></a>
-- [ ] **MOV-14 · Versions UI parity: full file panel, Edit, per-track Search and Import, and confirmed deletes for every track** — `P2` · `M` · Phase 10
+- [x] **MOV-14 · Versions UI parity: full file panel, Edit, per-track Search and Import, and confirmed deletes for every track** — `P2` · `M` · Phase 10
   - **Problem:** As soon as any extra track exists, VersionsArea (MovieDetail.tsx:218) replaces the full FilePanel (FileDetailsModal, subtitles, missing state, fit badge and 'Bring to target') with a sparse VersionCard. VersionCard's deleteFile and removeVersion fire with no confirmation (MovieDetail.tsx:274-294, 327-329), unlike FilePanel.
 
 There is no UI to edit a track's label, profile or edition, although PUT /movies/{id}/versions/{vid} exists, and handleUpdateVersion doesn't validate the profile. Interactive search and Manual import always target the default track.
@@ -602,7 +602,7 @@ After a rename, the Convert index keeps the old path until the nightly sweep. Af
   - **Risk:** Low. The events are additive, but check the frontend's useLive topic lists still match.
   - **Resolves:** movies-9
 <a id="mov-16"></a>
-- [ ] **MOV-16 · Rename with a preview for every track, applied without ever overwriting a file** — `P1` · `M` · Phase 10
+- [x] **MOV-16 · Rename with a preview for every track, applied without ever overwriting a file** — `P1` · `M` · Phase 10
   - **Problem:** The Rename button fetches the preview but only uses it to say 'Already named correctly', then renames immediately (MovieDetail.tsx:659-668). The user never sees the proposed name.
 
 Service.Rename (service.go:1201) handles only the default file and ignores version files. It uses a bare os.Rename, which silently replaces an existing target on Linux; with same-name tracks that can overwrite another track's file. It moves the video and subtitles but leaves movie.nfo and the artwork behind, so the old folder is never removed.
@@ -631,7 +631,7 @@ Service.Rename (service.go:1201) handles only the default file and ignores versi
   - **Risk:** Medium. This moves real files: exercise it only in temp dirs and on a throwaway test title. Hardlinks on Unraid user shares can fail across disks, which is why the fallback path exists.
   - **Resolves:** movies-14
 <a id="mov-17"></a>
-- [ ] **MOV-17 · Organize library: a library-wide rename preview and background apply after a naming change** — `P2` · `M` · Phase 10
+- [x] **MOV-17 · Organize library: a library-wide rename preview and background apply after a naming change** — `P2` · `M` · Phase 10
   - **Problem:** A naming change affects only new imports. The only rename tools work per title (movies/{id}/rename), so a new scheme, for example Plex {edition-…} tags, can't be applied to the existing library. After changing the scheme, the owner has to open every movie and rename it blind.
   - **Approach:** 1) Backend, reusing [MOV-16](#mov-16)'s RenamePlan and ApplyRename:
        - GET /api/v1/movies/organize?ids=…|all returns {counts: {rename, same, conflict, missing}, items (changed and conflict only, paged), token}. token is a hash of the (id, version, current, proposed) set.
@@ -653,7 +653,7 @@ Service.Rename (service.go:1201) handles only the default file and ignores versi
   - **Risk:** Mass renames make Plex re-scan and can briefly duplicate items. Test only on scratch libraries; the owner runs the first real organize on a small selection.
   - **Resolves:** movies-14, system-14
 <a id="mov-18"></a>
-- [ ] **MOV-18 · Movie detail page: one contextual primary action, an overflow menu with Delete, and card menus that work on touch** — `P1` · `M` · Phase 10
+- [x] **MOV-18 · Movie detail page: one contextual primary action, an overflow menu with Delete, and card menus that work on touch** — `P1` · `M` · Phase 10
   - **Problem:** The grid's remove (X) and 'Search now' buttons are 'hidden … group-hover:grid' (Movies.tsx:546-567), so they only appear on mouse hover, and table rows only offer Search. The detail Toolbar (MovieDetail.tsx:639-724) has Monitor, Refresh, Auto-grab, Search indexers, Upload torrent, Manual import and Rename, but no Delete. On a phone or tablet there is no way to remove a movie at all, and the toolbar is a flat row of equally weighted buttons.
   - **Approach:** 1) MovieDetail Toolbar:
        - The primary button depends on state. It is 'Search' when the movie is monitored and missing (queue kind missing), and 'Search for upgrade' when it has a file that doesn't fit and upgrades are allowed (from [MOV-05](#mov-05)'s acquisition block). Otherwise there is no primary button.
@@ -675,7 +675,7 @@ Service.Rename (service.go:1201) handles only the default file and ignores versi
   - **Risk:** Low. Keep the existing visual style.
   - **Resolves:** movies-7, movies-14
 <a id="mov-19"></a>
-- [ ] **MOV-19 · Mass editor backed by one bulk endpoint: monitor, profile, availability, search, rename and delete** — `P1` · `M` · Phase 10
+- [x] **MOV-19 · Mass editor backed by one bulk endpoint: monitor, profile, availability, search, rename and delete** — `P1` · `M` · Phase 10
   - **Problem:** bulkMonitor and bulkProfile (Movies.tsx:110-133) run Promise.all over per-movie calls inside try/finally with no catch. One failure gives no toast and no refresh, and the selection stays. bulkProfile ignores each movie's 'downgrade' answer, so films whose file is better than the new profile are silently left alone. The only bulk actions are monitor and profile: there is no availability, search, rename or delete.
   - **Approach:** 1) Backend: PUT /api/v1/movies/bulk {ids[], monitored?, quality_profile?, min_availability?, search: none|missing|missing_and_upgrade}.
        - Validate the profile once with KnownProfile and the availability value once.
@@ -706,7 +706,7 @@ Service.Rename (service.go:1201) handles only the default file and ignores versi
 _Large scans show progress and a summary, and the needs-review list survives a restart. Vanished files are flagged across the library, with a guard against an unmounted array. The grid has real sorting, badges and consistent filters. The add flow marks films already in the library and takes an availability choice. Releases named with original or alternative titles match._
 
 <a id="mov-20"></a>
-- [ ] **MOV-20 · Library scan: live progress, an end-of-scan summary, and a needs-review list that survives restarts** — `P2` · `M` · Phase 10
+- [x] **MOV-20 · Library scan: live progress, an end-of-scan summary, and a needs-review list that survives restarts** — `P2` · `M` · Phase 10
   - **Problem:** The Movies page polls 12 × 2.5 s and then stops (Movies.tsx:53-71), with no summary and no link to 'needs review'. The library.scanned bus event (httpapi/movies.go:215) has no frontend consumer. lastUnmatched is an in-memory field (service.go:57, 295-306), so it's lost on restart. Settings → Library reloads the review list 5 s after the scan starts. Two scans can run at once, and a fixed 15-minute timeout cuts off large libraries.
   - **Approach:** 1) ScanLibrary(ctx, root, opts, progress func(done, total int)).
        - The handler publishes library.scan.progress {media:'movie', done, total} every ~25 folders, and library.scanned {media, imported, attached, skipped, duplicates, unmatched} at the end.
@@ -729,7 +729,7 @@ _Large scans show progress and a summary, and the needs-review list survives a r
   - **Risk:** Low. Keep the table media-agnostic so SER can adopt it.
   - **Resolves:** movies-13
 <a id="mov-21"></a>
-- [ ] **MOV-21 · Notice movie files that vanish from disk (guarded daily missing-file sweep)** — `P2` · `M` · Phase 10
+- [x] **MOV-21 · Notice movie files that vanish from disk (guarded daily missing-file sweep)** — `P2` · `M` · Phase 10
   - **Problem:** Only the per-movie Refresh & rescan (service.go:1104-1125) notices that a tracked file is gone. Until someone opens the movie, it stays 'Downloaded' in the grid and table views, has_file stays true, and it is never searched again. walk-7 is how the owner found one by accident.
   - **Approach:** 1) New migration (e.g. NNNN_movies_file_missing.sql): ALTER TABLE movies ADD COLUMN file_missing_since TEXT. NULL means present. Extra tracks use their File.Missing from [MOV-02](#mov-02)'s live stat on the detail page and are not swept in this task.
     2) movies.Service.CheckMissingFiles(ctx):
@@ -751,7 +751,7 @@ _Large scans show progress and a summary, and the needs-review list survives a r
   - **Risk:** An unmounted Unraid array or a spun-down network share could mass-flag files; the root check and threshold guard mitigate this. This is the one periodic job allowed to stat library files: it stats sequentially, once a day, and never probes. Series episodes have the same gap, which belongs to SER.
   - **Resolves:** walk-7
 <a id="mov-22"></a>
-- [ ] **MOV-22 · Library grid: sort options, quality badges, monitored dot, better search and consistent filters** — `P2` · `M` · Phase 10
+- [x] **MOV-22 · Library grid: sort options, quality badges, monitored dot, better search and consistent filters** — `P2` · `M` · Phase 10
   - **Problem:** The grid sorts only by plain title localeCompare (Movies.tsx:93-97), so 'The …' titles clump under T, and search matches the title only. Cards show no quality badge, monitored state or added date. Filter names and meanings disagree with the Wanted view. At 375 px the toolbar wraps '+ Add movie' into a narrow column.
   - **Approach:** 1) Add a sort menu, persisted with usePersisted: Title (sort_title from [MOV-10](#mov-10)), Added (newest), Year, Rating, Size. The table keeps its column sorts.
     2) Search matches the title, original title and alternative titles ([MOV-24](#mov-24), when present) plus the year, e.g. 'dune 2021'.
@@ -770,7 +770,7 @@ _Large scans show progress and a summary, and the needs-review list survives a r
   - **Risk:** Low. Keep the current card visual style; the badges reuse existing tokens.
   - **Resolves:** movies-14
 <a id="mov-23"></a>
-- [ ] **MOV-23 · Add-movie flow: in-library flags, availability choice, no hidden global toggle, and a one-call collection add** — `P2` · `M` · Phase 10
+- [x] **MOV-23 · Add-movie flow: in-library flags, availability choice, no hidden global toggle, and a one-call collection add** — `P2` · `M` · Phase 10
   - **Problem:** Problems with the add flow:
 - The Add modal (Movies.tsx:643) adds on a single row click.
 - It doesn't flag films already in the library, because MovieLookup (api.ts:1865) has no in_library field, so the user gets a 409.
@@ -792,7 +792,7 @@ The monitor choice itself already exists.
   - **Risk:** Low. Series and Books keep reading the shared global default.
   - **Resolves:** movies-14
 <a id="mov-24"></a>
-- [ ] **MOV-24 · Match movie releases against the original and alternative titles** — `P2` · `M` · Phase 10
+- [x] **MOV-24 · Match movie releases against the original and alternative titles** — `P2` · `M` · Phase 10
   - **Problem:** releaseIsForMovie (coordinator.go:765), inQueue, movies.Match and Matcher (service.go:1247-1300) only accept a release when titleKey(parsed title) equals titleKey(m.Title). MovieExtra stores no original or alternative titles, and unlike series, the movie path never uses an original title. Re-titled and alt-titled films, some anime and some foreign films come back from indexers and are thrown away as 'wrong title', so they sit in Wanted forever. titleKey already folds accents and punctuation, so the gap is narrower than the audit's Léon example (verify note).
   - **Approach:** 1) internal/metadata/tmdb.go GetMovie: add 'alternative_titles' to append_to_response. MovieDetails gains OriginalTitle and AltTitles []string: deduped, Latin-script only, from US/GB/the original country, capped at 15, and cached through the existing metadata cache.
     2) movies.MovieExtra gains OriginalTitle and AltTitles. They live in the extra_json blob, so no migration is needed. extraFrom fills them. Existing movies backfill on Refresh and through a one-time, low-rate background job (one movie every 2 s) that sets a settings flag when it finishes.
