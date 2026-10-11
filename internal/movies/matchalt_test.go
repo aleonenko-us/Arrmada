@@ -24,7 +24,7 @@ func TestMatchAltTitles(t *testing.T) {
 		{"Leon.1994.Extended.Cut.1080p.BluRay.x264-GRP", leon.ID},
 		{"The.Professional.1994.720p.BluRay-GRP", leon.ID},
 		{"The.Professional.1981.1080p.BluRay-GRP", 0}, // another film by that name
-		{"Leon.2026.1080p.WEB-DL-GRP", 0},              // a remake
+		{"Leon.2026.1080p.WEB-DL-GRP", 0},             // a remake
 	}
 	for _, c := range cases {
 		m, ok := s.MatchRelease(ctx, c.name)
