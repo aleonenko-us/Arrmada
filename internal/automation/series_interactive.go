@@ -221,7 +221,7 @@ const maxSpecialQueries = 5
 // Duplicates are dropped.
 func seriesScopeQueries(s series.Series, season, episode, abs int, aliasTerms []string) []indexer.SearchQuery {
 	title := indexerQuery(s.Title)
-	main := indexer.SearchQuery{Text: title, MediaType: indexer.MediaSeries, Limit: 400}
+	main := seriesQuery(s, title, 400)
 	if !s.IsAnime() && season > 0 {
 		main.Season, main.Episode = season, episode
 	}

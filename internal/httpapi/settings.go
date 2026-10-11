@@ -9,6 +9,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/recyclebin"
@@ -99,6 +100,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// Request limits per person, per window of days (0 = unlimited; Settings → Users).
 		"request_quota_days": quota.Days, "request_quota_movies": quota.Movie,
 		"request_quota_seasons": quota.Season, "request_quota_books": quota.Book,
+		// Search indexers that name no categories of their own in the media type's usual
+		// ones (movies 2000, TV 5000, books 7000/7020, audiobooks 3030, music 3000).
+		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 	})
 }
 
@@ -136,6 +140,7 @@ type settingsUpdate struct {
 	QuotaMovies               *int    `json:"request_quota_movies"`
 	QuotaSeasons              *int    `json:"request_quota_seasons"`
 	QuotaBooks                *int    `json:"request_quota_books"`
+	DefaultCategories         *bool   `json:"indexer_default_categories"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -272,6 +277,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SearchOnAdd != nil && !save(a.deps.Settings.SetBool(ctx, keySearchOnAdd, *req.SearchOnAdd)) {
+		return
+	}
+	if req.DefaultCategories != nil && !save(a.deps.Settings.SetBool(ctx, indexer.KeyDefaultCategories, *req.DefaultCategories)) {
 		return
 	}
 	for key, v := range map[string]*int{

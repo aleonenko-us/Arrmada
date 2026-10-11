@@ -1,0 +1,170 @@
+package movies
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/tristenlammi/arrmada/internal/metadata"
+	"github.com/tristenlammi/arrmada/internal/parser"
+)
+
+// minAltKeyLen is the shortest alternative-title key matching uses. A one- or two-letter
+// alternative ("M", "Up") matches far too many release names to stand in for a film on its
+// own; the film's own title is always used whatever its length.
+const minAltKeyLen = 3
+
+// PrimaryKeys maps each library movie's own title key (parser.TitleKey of its Title) to
+// the ids of the movies titled so. It is the collision guard for alternative titles.
+type PrimaryKeys map[string][]int64
+
+// NewPrimaryKeys indexes the own title keys of a library snapshot.
+func NewPrimaryKeys(all []Movie) PrimaryKeys {
+	p := make(PrimaryKeys, len(all))
+	for _, m := range all {
+		k := normalizeTitle(m.Title)
+		p[k] = append(p[k], m.ID)
+	}
+	return p
+}
+
+// claimedByOther reports whether k is the own title of a library movie other than id.
+func (p PrimaryKeys) claimedByOther(k string, id int64) bool {
+	for _, other := range p[k] {
+		if other != id {
+			return true
+		}
+	}
+	return false
+}
+
+// PrimaryKeys reads the library's own title keys (see the type).
+func (s *Service) PrimaryKeys(ctx context.Context) (PrimaryKeys, error) {
+	rows, err := s.repo.q().QueryContext(ctx, `SELECT id, title FROM movies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	p := PrimaryKeys{}
+	for rows.Next() {
+		var (
+			id    int64
+			title string
+		)
+		if err := rows.Scan(&id, &title); err != nil {
+			return nil, err
+		}
+		k := normalizeTitle(title)
+		p[k] = append(p[k], id)
+	}
+	return p, rows.Err()
+}
+
+// TitleKeys returns the title keys a release for m may carry: its own title's first, then
+// its original title and alternative titles (Latin script only, at least minAltKeyLen
+// long). An alternative that is ANOTHER library movie's own title is left out, so a
+// release by that name stays that film's: with "Dune" (2021) in the library, a film whose
+// alternative title is also "Dune" never takes its releases. A nil taken guards nothing.
+//
+// Search and import share these keys (both normalise with parser.TitleKey), so a release
+// a search accepted under an alternative title is matched to the same movie on import.
+func TitleKeys(m Movie, taken PrimaryKeys) []string {
+	primary := normalizeTitle(m.Title)
+	keys := []string{primary}
+	if m.Extra == nil {
+		return keys
+	}
+	seen := map[string]bool{primary: true}
+	add := func(title string) {
+		k := normalizeTitle(title)
+		if len(k) < minAltKeyLen || seen[k] || !parser.IsLatin(title) || taken.claimedByOther(k, m.ID) {
+			return
+		}
+		seen[k] = true
+		keys = append(keys, k)
+	}
+	add(m.Extra.OriginalTitle)
+	for _, a := range m.Extra.AltTitles {
+		add(a)
+	}
+	return keys
+}
+
+// TitleMatches reports whether a parsed release title and year are for m under keys
+// (TitleKeys): the title keys the same as one of them, and the year — when both are
+// known — is within one. The year check is what keeps a same-titled remake out.
+func TitleMatches(keys []string, m Movie, title string, year int) bool {
+	k := normalizeTitle(title)
+	for _, key := range keys {
+		if k == key {
+			return year == 0 || m.Year == 0 || abs(m.Year-year) <= 1
+		}
+	}
+	return false
+}
+
+// BackfillAltTitles reads the original and alternative titles of every movie stored before
+// they were kept (Extra.TitlesRead unset), one movie per every so a large library never
+// bursts TMDB, and returns how many it filled. It stops when none are left, when TMDB
+// isn't configured (the next start tries again), or when ctx ends. A movie TMDB can't
+// answer right now is left for the next start; one TMDB no longer has is marked read.
+// New movies and Refresh fill the titles themselves.
+func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (int, error) {
+	if s.meta == nil || !s.meta.Available() {
+		return 0, nil
+	}
+	all, err := s.repo.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	filled := 0
+	for _, m := range all {
+		if m.TMDBID <= 0 || (m.Extra != nil && m.Extra.TitlesRead) {
+			continue
+		}
+		t := time.NewTimer(every)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return filled, ctx.Err()
+		case <-t.C:
+		}
+		d, err := s.meta.GetMovie(ctx, m.TMDBID)
+		switch {
+		case errors.Is(err, metadata.ErrNotConfigured):
+			return filled, nil
+		case errors.Is(err, metadata.ErrNotFound):
+			d = &metadata.MovieDetails{}
+		case err != nil:
+			if ctx.Err() != nil {
+				return filled, ctx.Err()
+			}
+			s.log.Debug("movies: couldn't read alternative titles; trying again next start", "movie", m.Title, "err", err)
+			continue
+		}
+		if err := s.repo.SetTitles(ctx, m.ID, d.OriginalTitle, d.AltTitles); err != nil {
+			return filled, err
+		}
+		filled++
+	}
+	return filled, nil
+}
+
+// SetTitles stores a movie's original and alternative titles and marks them read, leaving
+// the rest of its extra metadata as it is (json_set, so a Refresh writing the whole blob
+// at the same moment can't be half-overwritten by a read-modify-write here).
+func (r *Repo) SetTitles(ctx context.Context, id int64, original string, alts []string) error {
+	if alts == nil {
+		alts = []string{}
+	}
+	b, err := json.Marshal(alts)
+	if err != nil {
+		return err
+	}
+	_, err = r.q().ExecContext(ctx, `UPDATE movies SET extra_json = json_set(
+			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
+			'$.original_title', ?, '$.alt_titles', json(?), '$.titles_read', json('true'))
+		WHERE id = ?`, original, string(b), id)
+	return err
+}
