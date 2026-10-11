@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export interface MenuItem {
   label: ReactNode;
@@ -22,18 +23,55 @@ export interface MenuProps {
   triggerStyle?: CSSProperties;
   /** Extra classes on each item (e.g. a phone-sized tap target). */
   itemClassName?: string;
+  /**
+   * Render the list in <body>, fixed beside the trigger (flipping above it near the
+   * bottom of the screen), so a card with overflow-hidden or a scrolling table can't clip it.
+   */
+  portal?: boolean;
 }
+
+// Where a portalled list sits: fixed coordinates beside the trigger.
+interface Placement { top: number; left: number }
 
 // Menu is an accessible dropdown: a trigger with aria-haspopup/aria-expanded and a
 // role=menu list. Arrow keys and Home/End move between items, Escape and a click
 // outside close it, and focus returns to the trigger on close.
-export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle, itemClassName = "" }: MenuProps) {
+export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle, itemClassName = "", portal = false }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuId = useId();
+  const [place, setPlace] = useState<Placement | null>(null);
+
+  // A portalled list follows its trigger: below it, or above when there's no room below.
+  useLayoutEffect(() => {
+    if (!open || !portal) {
+      setPlace(null);
+      return;
+    }
+    const update = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const h = listRef.current?.offsetHeight ?? 0;
+      const w = listRef.current?.offsetWidth ?? 0;
+      const below = window.innerHeight - r.bottom;
+      const top = below < h + 8 && r.top > below ? Math.max(8, r.top - h - 8) : r.bottom + 8;
+      // Lined up with the trigger's edge, but kept on screen: a phone is narrower than
+      // the list is wide from some triggers.
+      const want = align === "right" ? r.right - w : r.left;
+      setPlace({ top, left: Math.max(8, Math.min(want, window.innerWidth - w - 8)) });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open, portal, align]);
 
   const enabled = items.map((it, i) => (!it.disabled ? i : -1)).filter((i) => i >= 0);
   const focusItem = (i: number) => itemRefs.current[i]?.focus();
@@ -53,7 +91,9 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (listRef.current?.contains(t)) return; // a portalled list isn't inside rootRef
+      if (rootRef.current && !rootRef.current.contains(t)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -72,6 +112,8 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
       case "Tab": return close(false);
     }
   };
+
+  const wrap = (list: ReactNode) => (portal ? createPortal(list, document.body) : list);
 
   const pick = async (i: number) => {
     const it = items[i];
@@ -100,15 +142,23 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
       >
         {trigger}
       </button>
-      {open && (
+      {open && wrap(
         <div
+          ref={listRef}
           id={menuId}
           role="menu"
           tabIndex={-1}
           aria-label={label}
           onKeyDown={onMenuKey}
-          className={`absolute z-drawer mt-2 min-w-[200px] rounded-xl p-2 ${align === "right" ? "right-0" : "left-0"}`}
-          style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}
+          className={portal
+            ? "fixed z-drawer min-w-[200px] rounded-xl p-2"
+            : `absolute z-drawer mt-2 min-w-[200px] rounded-xl p-2 ${align === "right" ? "right-0" : "left-0"}`}
+          style={{
+            background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)",
+            // Measured first (off-screen, still focusable), then placed beside the trigger
+            // before the browser paints.
+            ...(portal ? { top: place?.top ?? -9999, left: place?.left ?? -9999 } : {}),
+          }}
         >
           {header && (
             <>
@@ -132,7 +182,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
               {busy === i && it.busyLabel ? it.busyLabel : it.label}
             </button>
           ))}
-        </div>
+        </div>,
       )}
     </div>
   );

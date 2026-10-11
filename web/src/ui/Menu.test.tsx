@@ -73,4 +73,24 @@ describe("Menu", () => {
     await Promise.resolve();
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  it("portalled: the list lives in <body>, outside a clipping parent, and still works", async () => {
+    const onPick = vi.fn();
+    const { container } = render(
+      <div style={{ overflow: "hidden" }}>
+        <Menu portal trigger="⋯" label="Actions" items={[{ label: "Delete", onSelect: onPick, tone: "danger" }]} />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    const menu = screen.getByRole("menu");
+    expect(container.contains(menu)).toBe(false);
+    expect(document.activeElement?.textContent).toBe("Delete");
+    // A press inside the portalled list isn't "outside".
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });

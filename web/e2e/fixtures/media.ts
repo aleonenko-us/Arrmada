@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DownloadClientList, FitCounts,
-  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FormatInfo, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, Movie, MovieDeletePreview, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import { NOW, day } from "./clock";
@@ -65,6 +65,26 @@ export const movies: { movies: MovieSummary[]; metadata_available: boolean; clie
     { id: 2, title: "Anchor Point", sort_title: "anchor point", year: 2022, poster_url: poster(4), monitored: true, quality_profile: "hd-1080p", min_availability: "released", has_file: false, added_at: "2026-09-20T10:00:00Z" },
     { id: 3, title: "Driftwood", sort_title: "driftwood", year: 2025, poster_url: poster(5), monitored: true, quality_profile: "uhd-2160p", min_availability: "released", has_file: false, download: { state: "downloading", progress: 0.42, kind: "missing" } },
   ],
+};
+
+// GET /api/v1/movies/{id}: a library film's detail page, from its summary. Anchor Point
+// (id 2) is monitored with no file, so its one primary action is Search.
+export function movieDetail(id: number): Movie | null {
+  const m = movies.movies.find((x) => x.id === id);
+  if (!m) return null;
+  return {
+    id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
+    quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
+    overview: "A fixture film.", download: m.download,
+    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
+    acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
+  };
+}
+
+// GET /api/v1/movies/{id}/delete-preview: no files on disk, nothing downloading.
+export const movieDeletePreview: MovieDeletePreview = {
+  versions: [], sidecars: 0, bytes: 0, pending_downloads: [],
+  recycle: { enabled: true, dirs: ["/media/movies/.arrmada-recycle"], retention_days: 30, max_gb: 0 },
 };
 
 // GET /api/v1/movies/downloads: what the grid polls while those two download.

@@ -18,7 +18,8 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash, queueChan
 import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { OrganizeModal } from "../components/OrganizeModal";
-import { Button, ErrorState, Menu, Modal, Skeleton, StaleBanner, StatusChip } from "../ui";
+import { useCanHover } from "../lib/useCanHover";
+import { Button, ErrorState, Menu, Modal, Skeleton, StaleBanner, StatusChip, type MenuItem } from "../ui";
 
 const NO_MOVIES: MovieSummary[] = [];
 
@@ -85,6 +86,7 @@ export function Movies() {
   // Every movie search waits its turn in one throttled queue; the header says how many
   // are running and waiting, kept live by the queue's events.
   const searchQueue = useMovieSearchQueue();
+  const canHover = useCanHover(); // a mouse gets the cards' ⋯ on hover; touch always sees it
   const queueText = queueLine(searchQueue.running, searchQueue.queued);
 
   // The scan runs in the background; poll the grid for a while as entries land.
@@ -329,7 +331,7 @@ export function Movies() {
             {q ? <>No movies match “<b>{query.trim()}</b>”.</> : <>No movies match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}
           </div>
         ) : view === "table" ? (
-          <MovieTable movies={filtered} multiSelect={multiSelect} selected={selected} onToggleSelect={toggleSelect} onSearch={setSearchFor} queueKnown={queueKnown} />
+          <MovieTable movies={filtered} multiSelect={multiSelect} selected={selected} onToggleSelect={toggleSelect} onSearch={setSearchFor} onSearchNow={search} onDelete={setConfirmDelete} queueKnown={queueKnown} />
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
             {filtered.map((m) => (
@@ -339,6 +341,8 @@ export function Movies() {
                 queueKnown={queueKnown}
                 onDelete={() => setConfirmDelete(m)}
                 onSearch={() => search(m)}
+                onInteractive={() => setSearchFor(m)}
+                canHover={canHover}
                 selectable={multiSelect}
                 selected={selected.has(m.id)}
                 onToggleSelect={() => toggleSelect(m.id)}
@@ -496,7 +500,7 @@ function sortValue(m: MovieSummary, key: SortKey, fit?: FitItem): number | strin
   }
 }
 
-function MovieTable({ movies, multiSelect, selected, onToggleSelect, onSearch, queueKnown = true }: { movies: MovieSummary[]; multiSelect: boolean; selected: Set<number>; onToggleSelect: (id: number) => void; onSearch: (m: MovieSummary) => void; queueKnown?: boolean }) {
+function MovieTable({ movies, multiSelect, selected, onToggleSelect, onSearch, onSearchNow, onDelete, queueKnown = true }: { movies: MovieSummary[]; multiSelect: boolean; selected: Set<number>; onToggleSelect: (id: number) => void; onSearch: (m: MovieSummary) => void; onSearchNow: (m: MovieSummary) => void; onDelete: (m: MovieSummary) => void; queueKnown?: boolean }) {
   const th = "px-2.5 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-[0.06em] text-ink-faint";
   const td = "px-2.5 py-2 align-middle";
   // Remembered across visits, like the grid/table choice ("size:desc").
@@ -614,8 +618,17 @@ function MovieTable({ movies, multiSelect, selected, onToggleSelect, onSearch, q
                 <td className={`${td} text-right font-mono text-[11px] text-ink-dim`} style={bitrateColor(fi?.fit) ? { color: bitrateColor(fi?.fit), fontWeight: 600 } : undefined}
                   title={fi?.fit?.window ? `Window ${fi.fit.window.min || 0}–${fi.fit.window.max || "∞"} Mb/s` : undefined}>{bitrateMbps(f)}</td>
                 <td className={td}><FitBadge item={fi} /></td>
-                <td className={`${td} text-right`}>
-                  <button onClick={() => onSearch(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
+                {/* Pinned to the right edge so the menu (and Delete) is reachable at any width. */}
+                <td className={`${td} sticky right-0 text-right`} style={{ background: "inherit" }}>
+                  <Menu
+                    portal
+                    label={`Actions for ${m.title}`}
+                    trigger={<span aria-hidden className="text-[14px] font-bold leading-none">⋯</span>}
+                    triggerClassName="rounded-md px-2 py-1"
+                    triggerStyle={{ border: "1px solid var(--line)", color: "var(--ink-dim)", background: "var(--panel)" }}
+                    itemClassName="py-2"
+                    items={movieActions(m, { onSearchNow: () => onSearchNow(m), onInteractive: () => onSearch(m), onDelete: () => onDelete(m) })}
+                  />
                 </td>
               </tr>
             );
@@ -627,7 +640,17 @@ function MovieTable({ movies, multiSelect, selected, onToggleSelect, onSearch, q
   );
 }
 
-function MovieCard({ m, onDelete, onSearch, selectable, selected, onToggleSelect, queueKnown = true }: { m: MovieSummary; onDelete: () => void; onSearch: () => void; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void; queueKnown?: boolean }) {
+// movieActions is the one menu a film gets in the grid and the table: Search now (a film
+// with no file and nothing downloading), Interactive search, and Delete….
+function movieActions(m: MovieSummary, a: { onSearchNow: () => void; searching?: boolean; onInteractive: () => void; onDelete: () => void }): MenuItem[] {
+  const items: MenuItem[] = [];
+  if (!m.has_file && !m.download) items.push({ label: a.searching ? "Searching…" : "Search now", disabled: a.searching, onSelect: a.onSearchNow });
+  items.push({ label: "Interactive search", onSelect: a.onInteractive });
+  items.push({ label: "Delete…", tone: "danger", onSelect: a.onDelete });
+  return items;
+}
+
+function MovieCard({ m, onDelete, onSearch, onInteractive, canHover, selectable, selected, onToggleSelect, queueKnown = true }: { m: MovieSummary; onDelete: () => void; onSearch: () => void; onInteractive: () => void; canHover: boolean; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void; queueKnown?: boolean }) {
   const st = movieStatus(m, undefined, queueKnown);
   const [searching, setSearching] = useState(false);
   const doSearch = async () => {
@@ -657,26 +680,19 @@ function MovieCard({ m, onDelete, onSearch, selectable, selected, onToggleSelect
           </span>
         )}
         {!selectable && (
-          <button
-            onClick={onDelete}
-            title="Remove"
-            className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-full group-hover:grid"
-            style={{ background: "rgba(20,12,7,.75)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        )}
-        {!selectable && !m.has_file && !m.download && (
-          <button
-            onClick={doSearch}
-            disabled={searching}
-            title="Search now"
-            className="absolute inset-x-1.5 bottom-1.5 hidden items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold group-hover:flex"
-            style={{ background: "rgba(20,12,7,.82)", color: "#fff" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {searching ? "Searching…" : "Search now"}
-          </button>
+          // Always there on touch; on a mouse it shows on hover or keyboard focus. Never
+          // hover-only: a phone has no hover, and that used to leave no way to delete.
+          <div className={`absolute right-1.5 top-1.5 ${canHover ? "opacity-0 focus-within:opacity-100 group-hover:opacity-100" : ""}`}>
+            <Menu
+              portal
+              label={`Actions for ${m.title}`}
+              trigger={<span aria-hidden className="text-[14px] font-bold leading-none">⋯</span>}
+              triggerClassName="grid h-7 w-7 place-items-center rounded-full"
+              triggerStyle={{ background: "rgba(20,12,7,.78)", color: "#fff" }}
+              itemClassName="py-2"
+              items={movieActions(m, { onSearchNow: doSearch, searching, onInteractive, onDelete })}
+            />
+          </div>
         )}
         {m.download && (
           <div className="absolute inset-x-0 bottom-0 p-1.5">

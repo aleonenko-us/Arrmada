@@ -31,7 +31,7 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
-import { Button, StatusChip } from "../ui";
+import { Button, Menu, StatusChip } from "../ui";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 
 const AVAILABILITY_LABELS: Record<string, string> = {
@@ -1080,6 +1080,23 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
   const [showRename, setShowRename] = useState(false);
   const hasAnyFile = movie.has_file || !!movie.versions?.some((v) => v.has_file);
 
+  // At most one primary button, and it matches the movie's state: Search when it's
+  // monitored and has no file (or its file is gone), Search for upgrade when it has a
+  // file the upgrade sweep would still replace. Nothing while a download is running.
+  const acq = movie.acquisition;
+  const primary: "search" | "upgrade" | null = acq?.downloading
+    ? null
+    : movie.monitored && (!movie.has_file || missing)
+      ? "search"
+      : movie.has_file && !missing && (acq?.upgrades_allowed ?? movie.upgrades_allowed) && !movie.upgrade_hold
+        ? "upgrade"
+        : null;
+  const accentBtn = { background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" } as const;
+  const searchUpgrade = async () => {
+    const r = await api.bulkMovieSearch([movie.id], "upgrade");
+    flash(r.duplicates > 0 ? "An upgrade search for this movie is already queued." : "Looking for an upgrade — it searches when its turn in the queue comes.");
+  };
+
   return (
     <>
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1096,28 +1113,45 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
           </span>
           <span style={{ color: movie.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{movie.monitored ? "Monitored" : "Monitor"}</span>
         </button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("refresh", async () => { await api.refreshMovie(movie.id); onChange(); flash("Refreshed metadata and rescanned disk."); })}>
-          {busy === "refresh" ? "Refreshing…" : "Refresh & rescan"}
-        </button>
-        {(!movie.has_file || missing) && (
+        {primary === "search" && (
           <button
             className={btn}
-            style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}
+            style={accentBtn}
             disabled={busy !== null || search.running}
-            title={missing ? "Clears the missing file's record (nothing on disk is touched), then searches" : undefined}
+            title={missing ? "Clears the missing file's record (nothing on disk is touched), then searches" : "Searches your indexers and grabs the best release for the profile"}
             onClick={() => run("search", autoGrab)}
           >
-            {busy === "search" || search.running ? "Searching…" : "Auto-grab best"}
+            {busy === "search" || search.running ? "Searching…" : "Search"}
           </button>
         )}
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowPaste(true)}>Upload torrent</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowImport(true)}>Manual import</button>
-        {hasAnyFile && (
-          <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowRename(true)}>Rename…</button>
+        {primary === "upgrade" && (
+          <button
+            className={btn}
+            style={accentBtn}
+            disabled={busy !== null}
+            title="Looks for a release clearly better than the file you have, under this movie's profile"
+            onClick={() => run("upgrade", searchUpgrade)}
+          >
+            {busy === "upgrade" ? "Queuing…" : "Search for upgrade"}
+          </button>
         )}
-        {/* Reachable on touch, unlike the grid's hover-only X. */}
-        <button className={btn} style={{ border: "1px solid var(--reject)", color: "var(--reject)" }} disabled={busy !== null} onClick={() => setShowDelete(true)}>Delete movie</button>
+        {/* Everything else lives in one menu, reachable by keyboard and on touch. */}
+        <Menu
+          portal
+          label="More actions"
+          trigger={<span aria-hidden className="text-[15px] leading-none">⋯</span>}
+          triggerClassName={`${btn} min-w-[40px]`}
+          triggerStyle={ghost}
+          itemClassName="py-2"
+          items={[
+            { label: "Interactive search", onSelect: () => setShowSearch(true) },
+            { label: "Manual import", onSelect: () => setShowImport(true) },
+            { label: "Upload torrent", onSelect: () => setShowPaste(true) },
+            ...(hasAnyFile ? [{ label: "Rename…", onSelect: () => setShowRename(true) }] : []),
+            { label: "Refresh & rescan", busyLabel: "Refreshing…", onSelect: () => run("refresh", async () => { await api.refreshMovie(movie.id); onChange(); flash("Refreshed metadata and rescanned disk."); }) },
+            { label: "Delete movie…", tone: "danger" as const, onSelect: () => setShowDelete(true) },
+          ]}
+        />
       </div>
       {(search.running || searchResult) && (
         <div className="mt-2 text-[12px]" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
