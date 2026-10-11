@@ -725,6 +725,10 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		}
 		return
 	}
+	// Every frame of the exact file about to go in decodes cleanly, or the original stays.
+	if !s.checkBeforeSwap(ctx, job, src, dst, mi, outInfo, plan) {
+		return
+	}
 	pct := 0
 	if mi.SizeBytes > 0 {
 		pct = int(100 - outSize*100/mi.SizeBytes)

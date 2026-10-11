@@ -110,6 +110,9 @@ type Service struct {
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
 	noNumaPools bool
+	// vmaf is set when this ffmpeg has libvmaf (detected at startup): VMAF is then measured
+	// alongside SSIM, advisory only.
+	vmaf bool
 
 	encoders []Encoder
 	failures *failureStore // repeated-failure tracking
@@ -253,7 +256,8 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 			working = append(working, e.Name)
 		}
 	}
-	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "")
+	s.vmaf = hasLibVMAF(context.Background(), ffmpeg)
+	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "libvmaf", s.vmaf)
 	return s
 }
 

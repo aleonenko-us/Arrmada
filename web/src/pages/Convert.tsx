@@ -269,6 +269,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
             <li>• Converts on <b className="text-[var(--ink)]">{hw?.using ?? "…"}</b></li>
             <li>• Only re-encodes video that's wasteful for its resolution — lean and efficient files are left alone</li>
             <li>• Every re-encode is compared with the original on ten scenes spread through it: SSIM must average 0.97 or better with no scene below 0.96, and the file must save at least 20% — otherwise the original stays</li>
+            <li>• Before any file replaces its original, every frame of it is decoded to prove it plays cleanly, all the way through</li>
             <li>• Never touches a file that's still seeding</li>
             <li>• {originals}</li>
           </ul>
@@ -980,6 +981,7 @@ function HistoryRow({ e, open, onToggle }: { e: ConvertHistoryEntry; open: boole
           {windows.length > 0 && (
             <div><span className={lbl}>Quality</span> <span className="font-mono">
               SSIM {e.ssim_mean?.toFixed(4)} average, {e.ssim_min?.toFixed(4)} lowest · scenes {windows.map((w) => w.toFixed(3)).join(" ")}
+              {e.vmaf_mean ? ` · VMAF ${e.vmaf_mean.toFixed(1)} (for reference)` : ""}
             </span></div>
           )}
           {(e.dropped_tracks ?? []).length > 0 && (

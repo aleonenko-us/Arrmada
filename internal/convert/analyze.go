@@ -42,6 +42,12 @@ type MediaInfo struct {
 	Interlaced   bool    `json:"interlaced,omitempty"` // field_order says the content is interlaced → needs deinterlacing
 	VFR          bool    `json:"vfr"`                  // variable frame rate → needs CFR conversion
 	HasCC        bool    `json:"has_cc"`               // embedded EIA/CEA-608/708 closed captions in the video
+	// Frames is the video stream's frame count as the container states it (MP4 nb_frames,
+	// Matroska NUMBER_OF_FRAMES); 0 when it doesn't. VideoSec is the video stream's own
+	// length (0 = unknown), which can differ from DurationSec when an audio track runs on.
+	// Both are for the full-decode check, which compares the frames it decodes with them.
+	Frames   int64   `json:"frames,omitempty"`
+	VideoSec float64 `json:"video_sec,omitempty"`
 	// Colour tags as probed (empty / "unknown" when untagged). Re-asserted on hardware
 	// encodes, which don't always forward them.
 	ColorPrimaries string        `json:"color_primaries,omitempty"`
@@ -276,7 +282,14 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 			Tags struct {
 				Language string `json:"language"`
 				Title    string `json:"title"`
+				// Matroska statistics tags (mkvmerge writes the -eng form, ffmpeg the plain one).
+				NumberOfFrames    string `json:"NUMBER_OF_FRAMES"`
+				NumberOfFramesEng string `json:"NUMBER_OF_FRAMES-eng"`
+				Duration          string `json:"DURATION"`
+				DurationEng       string `json:"DURATION-eng"`
 			} `json:"tags"`
+			NbFrames     string `json:"nb_frames"` // MP4 and friends
+			Duration     string `json:"duration"`
 			SideDataList []struct {
 				SideDataType string `json:"side_data_type"`
 				DVProfile    int    `json:"dv_profile"` // set on the DOVI configuration record
@@ -332,6 +345,8 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 				mi.FrameRateRat = s.RFrameRate
 			}
 			mi.VFR = detectVFR(r, avg, mi.Interlaced)
+			mi.Frames = firstInt(s.NbFrames, s.Tags.NumberOfFrames, s.Tags.NumberOfFramesEng)
+			mi.VideoSec = firstDuration(s.Duration, s.Tags.Duration, s.Tags.DurationEng)
 			mi.HasCC = s.ClosedCaptions == 1
 			mi.ColorPrimaries, mi.ColorTransfer, mi.ColorSpace = s.ColorPrimaries, s.ColorTransfer, s.ColorSpace
 			// >8-bit, not just 10-bit: a 12-bit source matched neither substring, so it was
@@ -531,6 +546,44 @@ func resolutionLabel(w, h int) string {
 		return "SD"
 	}
 	return ""
+}
+
+// firstInt is the first of a probe's numeric strings that holds a positive whole number.
+func firstInt(vals ...string) int64 {
+	for _, v := range vals {
+		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+// firstDuration is the first of a probe's durations that parses, in seconds: plain seconds
+// ("7199.958000", ffprobe's stream duration) or a clock ("01:59:59.958000000", the
+// Matroska DURATION tag).
+func firstDuration(vals ...string) float64 {
+	for _, v := range vals {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if sec, err := strconv.ParseFloat(v, 64); err == nil && sec > 0 {
+			return sec
+		}
+		parts := strings.Split(v, ":")
+		if len(parts) != 3 {
+			continue
+		}
+		h, e1 := strconv.Atoi(parts[0])
+		m, e2 := strconv.Atoi(parts[1])
+		sec, e3 := strconv.ParseFloat(parts[2], 64)
+		if e1 == nil && e2 == nil && e3 == nil && h >= 0 && m >= 0 && sec >= 0 {
+			if t := float64(h*3600+m*60) + sec; t > 0 {
+				return t
+			}
+		}
+	}
+	return 0
 }
 
 func parseRate(r string) float64 {
