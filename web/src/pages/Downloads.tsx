@@ -13,7 +13,7 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "..
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
-import { ErrorState, Menu, Skeleton } from "../ui";
+import { ErrorState, Menu, Skeleton, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
@@ -147,8 +147,12 @@ export function Downloads() {
   const [diskPath, setDiskPath] = useState("");
   const [clients, setClients] = useState<DownloadClientsState | null>(null); // null = unknown
   const [guard, setGuard] = useState<DiskGuardHold | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 4500); };
+  // Short confirmations and failures go through the kit's toasts; a failed action (pause,
+  // resume, remove, reannounce) says why in the error tone rather than leaving the next
+  // refresh to show that nothing changed.
+  const toast = useToast();
+  const note = (m: string) => toast(m, { ms: 4500 });
+  const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
   const [reconnecting, setReconnecting] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
@@ -208,16 +212,16 @@ export function Downloads() {
   const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
   const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 
-  // The next poll reflects what happened; a refusal (e.g. the disk guard holding a
-  // torrent) is shown, since the poll alone can't say why nothing changed.
+  // The next refresh shows what happened; a failure (the client down, the disk guard
+  // holding a torrent) is an error toast, since a refresh alone can't say why nothing changed.
   const act = async (hash: string, fn: () => Promise<unknown>) => {
     setBusy((b) => ({ ...b, [hash]: true }));
-    try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
+    try { await fn(); } catch (e) { fail((e as Error).message); } finally { setBusy((b) => ({ ...b, [hash]: false })); }
   };
   const resumeAll = () => act("all", async () => {
     const r = await api.resumeDownload("all");
     const held = r.held_by_guard ?? 0;
-    flash(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
+    note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
 
   const activeDownloads = useMemo(() => downloads.filter((d) => d.progress < 1), [downloads]);
@@ -360,14 +364,14 @@ export function Downloads() {
           ) : tab === "downloads" ? (
             shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
               <div className="flex flex-col gap-2">
-                {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} onNote={flash} />)}
+                {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} />)}
               </div>
             )
           ) : tab === "seeding" ? (
             shownSeeding.length === 0 ? <Empty>Nothing seeding right now.</Empty> : (
               <div className="flex flex-col gap-2">
                 <SeedingSummary items={shownSeeding} />
-                {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={flash} />)}
+                {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} />)}
               </div>
             )
           ) : !wanted.data ? (
@@ -375,19 +379,18 @@ export function Downloads() {
           ) : tab === "searching" ? (
             shownSearching.length === 0 ? <Empty>Nothing is being searched. Monitored, available titles that are missing a file show up here.</Empty> : (
               <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} flash={flash} />)}
+                {shownSearching.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="searching" onSearched={() => void wanted.refetch()} onError={fail} />)}
               </div>
             )
           ) : (
             shownUpcoming.length === 0 ? <Empty>Nothing upcoming. Unreleased films and albums, and unaired episodes you monitor, land here.</Empty> : (
               <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-                {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} flash={flash} />)}
+                {shownUpcoming.map((s) => <WantedItem key={wantedKey(s)} item={s} kind="upcoming" onSearched={() => void wanted.refetch()} onError={fail} />)}
               </div>
             )
           )}
         </TabPanel>
       </div>
-      {toast && <div className="fixed bottom-5 left-1/2 max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
@@ -575,7 +578,7 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
 // WantedItem is one Searching/Upcoming row: a movie, show, book or album, linking to its
 // page, saying what is really happening to it (wantedChip) and why it isn't downloading
 // (wantedLine), with Search now. The button sits beside the link, not inside it.
-function WantedItem({ item, kind, onSearched, flash }: { item: WantedRow; kind: "searching" | "upcoming"; onSearched: () => void; flash: (m: string) => void }) {
+function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind: "searching" | "upcoming"; onSearched: () => void; onError: (m: string) => void }) {
   const [job, setJob] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [result, setResult] = useState<{ text: string; failed: boolean } | null>(null);
@@ -597,7 +600,7 @@ function WantedItem({ item, kind, onSearched, flash }: { item: WantedRow; kind: 
       if (r.job_id) setJob(r.job_id);
       else onSearched();
     } catch (e) {
-      flash((e as Error).message);
+      onError((e as Error).message);
     } finally {
       setStarting(false);
     }

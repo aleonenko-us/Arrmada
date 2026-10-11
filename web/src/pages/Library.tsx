@@ -3,6 +3,7 @@ import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type Unmat
 import { useMe, isAdmin } from "../lib/me";
 import { fmtBytes } from "../lib/disposal";
 import { announceFoldersSaved } from "../lib/restart";
+import { Modal, useToast } from "../ui";
 
 // LibraryFolders — points each library at a folder (with an in-app picker) and scans it.
 // Lives inside Settings → Library. Mount your media into the container (see the
@@ -23,16 +24,17 @@ export function LibraryFolders() {
   const [picking, setPicking] = useState<PathKey | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviewKey, setReviewKey] = useState(0); // bump to reload the unmatched lists
-  const [toast, setToast] = useState<string | null>(null);
   const [blocking, setBlocking] = useState<Partial<Record<PathKey, boolean>>>({});
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); };
+  const toast = useToast();
+  const say = (m: string) => toast(m, { ms: 4500 });
+  const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
   const { user, musicEnabled } = useMe();
   // Moving a library or browsing the host's folders is the admin's call; a manager sees
   // where each library lives and can still scan it.
   const admin = isAdmin(user);
   const onBlocking = useCallback((k: PathKey, b: boolean) => setBlocking((cur) => (cur[k] === b ? cur : { ...cur, [k]: b })), []);
 
-  useEffect(() => { api.libraryPaths().then((p) => { setPaths(p); setDraft(p); }).catch(() => flash("Could not load library paths")); }, []);
+  useEffect(() => { api.libraryPaths().then((p) => { setPaths(p); setDraft(p); }).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
   if (!draft) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
 
   const changedKeys = paths ? (Object.keys(draft) as PathKey[]).filter((k) => draft[k] !== paths[k]) : [];
@@ -48,9 +50,9 @@ export function LibraryFolders() {
       setPaths(p); setDraft(p);
       announceFoldersSaved();
       // Folders apply live: say what that means for what's already there.
-      flash("Saved. Changing a folder applies to new imports right away. What's already imported stays where it is.");
+      say("Saved. Changing a folder applies to new imports right away. What's already imported stays where it is.");
     }
-    catch (e) { flash((e as Error).message); } finally { setBusy(false); }
+    catch (e) { fail((e as Error).message); } finally { setBusy(false); }
   };
   // "Create it" saved that one folder; keep any other edits in progress.
   const created = (k: PathKey) => (saved: LibraryPaths) => {
@@ -60,12 +62,12 @@ export function LibraryFolders() {
   };
   const scan = async (row: typeof ROWS[number]) => {
     if (!row.scan) return;
-    if (dirty) { flash("Save your folders first, then scan."); return; }
+    if (dirty) { say("Save your folders first, then scan."); return; }
     try {
       await row.scan();
-      flash(`Scanning ${row.label}… matches appear in the library; anything unsure lands in "needs review" below.`);
+      say(`Scanning ${row.label}… matches appear in the library; anything unsure lands in "needs review" below.`);
       window.setTimeout(() => setReviewKey((k) => k + 1), 5000); // reload review once the scan has had a moment
-    } catch (e) { flash((e as Error).message); }
+    } catch (e) { fail((e as Error).message); }
   };
 
   return (
@@ -112,8 +114,8 @@ export function LibraryFolders() {
         <p className="mt-3 text-[11.5px] text-ink-faint">Only an admin can change these folders.</p>
       )}
 
-      <UnmatchedReview media="movie" reloadKey={reviewKey} flash={flash} />
-      <UnmatchedReview media="series" reloadKey={reviewKey} flash={flash} />
+      <UnmatchedReview media="movie" reloadKey={reviewKey} />
+      <UnmatchedReview media="series" reloadKey={reviewKey} />
 
       {picking && (
         <FolderPicker
@@ -122,7 +124,6 @@ export function LibraryFolders() {
           onSelect={(p) => { setDraft({ ...draft, [picking]: p }); setPicking(null); }}
         />
       )}
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </div>
   );
 }
@@ -130,7 +131,8 @@ export function LibraryFolders() {
 // UnmatchedReview lists folders the last scan couldn't confidently identify and
 // lets the admin pick the right title (from candidates or a manual search), so a
 // mis-titled folder never gets silently mis-filed.
-function UnmatchedReview({ media, reloadKey, flash }: { media: "movie" | "series"; reloadKey: number; flash: (m: string) => void }) {
+function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; reloadKey: number }) {
+  const toast = useToast();
   const label = media === "movie" ? "Movies" : "TV Shows";
   const [items, setItems] = useState<UnmatchedFolder[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -144,8 +146,8 @@ function UnmatchedReview({ media, reloadKey, flash }: { media: "movie" | "series
     try {
       await (media === "movie" ? api.importMovieFolder(folder, tmdb_id) : api.importSeriesFolder(folder, tmdb_id));
       setItems((xs) => (xs ?? []).filter((u) => u.folder !== folder));
-      flash(`Imported “${folder}”.`);
-    } catch (e) { flash((e as Error).message); } finally { setBusy(false); }
+      toast(`Imported “${folder}”.`, { tone: "good" });
+    } catch (e) { toast((e as Error).message, { tone: "error", ms: 6000 }); } finally { setBusy(false); }
   };
 
   if (items === null || items.length === 0) return null;
@@ -316,40 +318,38 @@ export function FolderPicker({ initial, onClose, onSelect }: { initial?: string;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[560px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Select a folder</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
-        </div>
-
-        <div className="mb-2 flex items-center gap-2">
-          <button onClick={() => data && go(data.parent)} disabled={!data || data.path === "/"} className="rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }} title="Up one level">↑</button>
-          <div className="min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{data?.path ?? "…"}</div>
-        </div>
-
-        {err && <div className="mb-2 rounded-lg p-2.5 text-[11.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{err}</div>}
-
-        <div className="thin-scroll max-h-[46vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
-          {!data ? (
-            <div className="p-6 text-center text-[12px] text-ink-faint">Loading…</div>
-          ) : data.dirs.length === 0 ? (
-            <div className="p-6 text-center text-[12px] text-ink-faint">No sub-folders here.</div>
-          ) : data.dirs.map((d) => (
-            <button key={d.path} onClick={() => go(d.path)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
-              <span style={{ color: "var(--accent)" }}>📁</span>
-              <span className="truncate">{d.name}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="text-[10.5px]" style={{ color: data?.path_disabled ? "var(--avoid)" : "var(--ink-faint)" }}>
-            {data?.path_disabled ? "This folder holds Arrmada's own data — go into your media folder and pick one there." : "Navigate into the folder you want, then select it."}
-          </span>
-          <button onClick={() => data && !data.path_disabled && onSelect(data.path)} disabled={!data || data.path_disabled}className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Select this folder</button>
-        </div>
+    <Modal onClose={onClose} labelledBy="folder-picker-title" size="md">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 id="folder-picker-title" className="m-0 text-[15px] font-bold">Select a folder</h2>
+        <button onClick={onClose} aria-label="Close" className="text-ink-faint hover:text-[var(--ink)]">✕</button>
       </div>
-    </div>
+
+      <div className="mb-2 flex items-center gap-2">
+        <button onClick={() => data && go(data.parent)} disabled={!data || data.path === "/"} className="rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }} title="Up one level">↑</button>
+        <div className="min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{data?.path ?? "…"}</div>
+      </div>
+
+      {err && <div className="mb-2 rounded-lg p-2.5 text-[11.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{err}</div>}
+
+      <div className="thin-scroll max-h-[46vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
+        {!data ? (
+          <div className="p-6 text-center text-[12px] text-ink-faint">Loading…</div>
+        ) : data.dirs.length === 0 ? (
+          <div className="p-6 text-center text-[12px] text-ink-faint">No sub-folders here.</div>
+        ) : data.dirs.map((d) => (
+          <button key={d.path} onClick={() => go(d.path)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
+            <span style={{ color: "var(--accent)" }}>📁</span>
+            <span className="truncate">{d.name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className="text-[10.5px]" style={{ color: data?.path_disabled ? "var(--avoid)" : "var(--ink-faint)" }}>
+          {data?.path_disabled ? "This folder holds Arrmada's own data — go into your media folder and pick one there." : "Navigate into the folder you want, then select it."}
+        </span>
+        <button onClick={() => data && !data.path_disabled && onSelect(data.path)} disabled={!data || data.path_disabled}className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Select this folder</button>
+      </div>
+    </Modal>
   );
 }

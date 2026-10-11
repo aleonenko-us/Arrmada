@@ -20,12 +20,14 @@ export interface MenuProps {
   header?: ReactNode;
   triggerClassName?: string;
   triggerStyle?: CSSProperties;
+  /** Extra classes on each item (e.g. a phone-sized tap target). */
+  itemClassName?: string;
 }
 
 // Menu is an accessible dropdown: a trigger with aria-haspopup/aria-expanded and a
 // role=menu list. Arrow keys and Home/End move between items, Escape and a click
 // outside close it, and focus returns to the trigger on close.
-export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle }: MenuProps) {
+export function Menu({ trigger, label, items, align = "right", header, triggerClassName, triggerStyle, itemClassName = "" }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -124,7 +126,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
               disabled={it.disabled}
               aria-disabled={it.disabled || undefined}
               onClick={() => pick(i)}
-              className="block w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50"
+              className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50 ${itemClassName}`}
               style={{ color: it.tone === "danger" ? "var(--reject)" : "var(--ink)" }}
             >
               {busy === i && it.busyLabel ? it.busyLabel : it.label}
