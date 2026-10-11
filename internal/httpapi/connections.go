@@ -409,7 +409,7 @@ func (a *api) plexItem(ctx context.Context) connectionItem {
 	cfg := a.deps.Insights.Config(ctx)
 	it := connectionItem{
 		Kind: connKindPlex, Ref: singletonRef, Card: "plex", Name: "Plex", Subtitle: displayURL(cfg.URL),
-		Configured: h.Configured, Enabled: h.Configured, Testable: h.Configured, FixPath: "/settings/plex#plex-connection",
+		Configured: h.Configured, Enabled: h.Configured, Testable: h.Configured, FixPath: health.FixPlexConnection.Path,
 		LastOKAt: timePtr(h.LastOKAt), State: connstatus.PhaseUnknown,
 	}
 	switch {

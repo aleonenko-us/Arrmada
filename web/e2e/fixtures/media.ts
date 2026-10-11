@@ -326,7 +326,7 @@ export const connections: { sections: ConnectionSectionData[] } = {
     },
     {
       id: "other", title: "Plex, alerts and apps", items: [
-        { kind: "plex", ref: "default", card: "plex", name: "Plex", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/plex#plex-connection" },
+        { kind: "plex", ref: "default", card: "plex", name: "Plex", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/connections#plex" },
         { kind: "notifications", ref: "default", card: "notifications", name: "Alerts", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/alerts", detail: "No alert connections yet" },
       ],
     },

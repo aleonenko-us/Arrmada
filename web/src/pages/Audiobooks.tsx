@@ -24,17 +24,16 @@ const AudiobooksAdmin = lazyPage(() => import("./AudiobooksAdmin"), "AudiobooksA
 // library and a sheet for each book, played right here in the mini-player — and Apps &
 // devices: how to connect a listening app (Lissen, or anything that speaks
 // Audiobookshelf), their audiobook password and their devices. Admins also get who may
-// connect, everyone's listening (how much and when — never what) and the Audiobookshelf
-// import; the server's own settings are in Settings → Audiobook server. Nobody sees anyone
-// else's places.
+// connect and everyone's listening (how much and when — never what); the server's own
+// settings are in Settings → Audiobook server, and the Audiobookshelf import in Settings →
+// Import & migrate. Nobody sees anyone else's places.
 
-type Tab = "listen" | "apps" | "people" | "listening" | "import";
+type Tab = "listen" | "apps" | "people" | "listening";
 const TABS: TabItem<Tab>[] = [
   { key: "listen", label: "Listen" },
   { key: "apps", label: "Apps & devices" },
   { key: "people", label: "People" },
   { key: "listening", label: "Listening" },
-  { key: "import", label: "Import" },
 ];
 const ALL_TABS = TABS.map((t) => t.key);
 const EVERYONE: readonly Tab[] = ["listen", "apps"];
@@ -45,6 +44,8 @@ export function Audiobooks({ chrome = true }: { chrome?: boolean }) {
   // The old Server tab's address (bookmarks, health links) opens Settings → Audiobook server.
   const [params] = useSearchParams();
   if (admin && params.get("tab") === "server") return <Navigate to={LINKS.audiobookServer} replace />;
+  // So does the old Import tab's, for the Audiobookshelf import in Settings → Import & migrate.
+  if (admin && params.get("tab") === "import") return <Navigate to={LINKS.audiobookshelfImport} replace />;
   return <AudiobooksPage chrome={chrome} admin={admin} />;
 }
 

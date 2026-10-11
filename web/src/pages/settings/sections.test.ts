@@ -50,6 +50,17 @@ describe("settingsRedirect", () => {
     expect(settingsRedirect("/settings", "?tab=system", "#api-keys", manager)).toBe("/settings/connections#api-keys");
   });
 
+  it("follows a card that moved and was renamed: the Plex connection is the Plex card on Connections", () => {
+    // CFG-16: /settings/plex#plex-connection (the health Fix link, old bookmarks).
+    expect(settingsRedirect("/settings/plex", "", "#plex-connection", admin)).toBe("/settings/connections#plex");
+    expect(settingsRedirect("/settings/plex", "", "#plex-connection", manager)).toBe("/settings/connections#plex");
+    expect(settingsRedirect("/settings/plex", "?x=1&tab=system", "#plex-connection", admin)).toBe("/settings/connections?x=1#plex");
+    // Its new home and the rest of Settings → Plex stay put.
+    expect(settingsRedirect("/settings/connections", "", "#plex", manager)).toBeNull();
+    expect(settingsRedirect("/settings/plex", "", "#plex-library-updates", manager)).toBeNull();
+    expect(settingsRedirect("/settings/plex", "", "", manager)).toBeNull();
+  });
+
   it("keeps other query params", () => {
     expect(settingsRedirect("/settings", "?tab=users&x=1", "", admin)).toBe("/settings/users?x=1");
   });
@@ -63,7 +74,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plexSignIn, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);
@@ -92,7 +103,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Metadata", "Other connections", "Plex connection", "Plex server", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {

@@ -128,7 +128,7 @@ export function PlexLibraryUpdates() {
     >
       {!view.configured && (
         <Note tone="info">
-          Connect your Plex server first, in <Link to={LINKS.plexConnection} style={{ color: "var(--accent)" }}>Plex connection</Link> above. Until then nothing is sent.
+          Connect your Plex server first, on its <Link to={LINKS.plexConnection} style={{ color: "var(--accent)" }}>card in Settings → Connections</Link>. Until then nothing is sent.
         </Note>
       )}
       <AutoToggle

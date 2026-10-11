@@ -11,10 +11,11 @@ test.describe("admin", () => {
     await expect(page).toHaveURL(/\/settings\/alerts$/);
     await page.goto("/insights?tab=notifications");
     await expect(page).toHaveURL(/\/settings\/alerts$/);
-    // The Plex connection left Insights too: its old tab lands on Settings → Plex.
+    // The Plex connection left Insights too: its old tab lands on the Plex card on
+    // Settings → Connections, open to connect it.
     await page.goto("/insights?tab=settings");
-    await expect(page).toHaveURL(/\/settings\/plex#plex-connection$/);
-    await expect(page.getByRole("heading", { name: "Plex connection" })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/connections#plex$/);
+    await expect(page.locator("#plex").getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
     await page.goto("/insights");
     await expect(page.getByRole("tab", { name: "Activity" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);

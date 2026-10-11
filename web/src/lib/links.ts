@@ -8,7 +8,10 @@ export const LINKS = {
   recycleBin: "/settings/downloads#recycle-bin",
   libraryFolders: "/settings/library#media-folders",
   users: "/settings/users",
-  plexConnection: "/settings/plex#plex-connection",
+  // The Plex connection is the Plex card on Connections (it opens its editor there); how
+  // Arrmada uses Plex — library updates, sign-in, linked accounts — is Settings → Plex.
+  plexConnection: "/settings/connections#plex",
+  plex: "/settings/plex",
   plexSignIn: "/settings/plex#plex-sign-in",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",
@@ -24,6 +27,8 @@ export const LINKS = {
   requests: "/requests",
   requestsWaiting: "/requests?tab=needs",
   backups: "/settings/system#backups",
+  tautulliImport: "/settings/import#tautulli-import",
+  audiobookshelfImport: "/settings/import#audiobookshelf-import",
   audiobookServer: "/settings/audiobook-server",
   status: "/settings/status",
   tasks: "/settings/status#tasks",

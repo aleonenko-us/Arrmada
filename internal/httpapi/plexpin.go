@@ -26,7 +26,7 @@ import (
 // tab doesn't cancel linking your account in another.
 const (
 	plexFlowLogin   = "login"   // Sign in with Plex on the login page
-	plexFlowConnect = "connect" // Settings → Plex: connect the server (stores the token)
+	plexFlowConnect = "connect" // Settings → Connections, the Plex card: connect the server (stores the token)
 	plexFlowLink    = "link"    // link a Plex account to the signed-in account
 )
 

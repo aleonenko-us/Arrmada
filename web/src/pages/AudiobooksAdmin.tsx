@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { LINKS } from "../lib/links";
-import { api, type AudioImportPreview, type AudioImportResult, type AudioListening, type AudioServerAdmin } from "../lib/api";
-import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, fmtHours, inputStyle, primary } from "./audiobooks/shared";
+import { api, type AudioListening, type AudioServerAdmin } from "../lib/api";
+import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, fmtHours, inputStyle } from "./audiobooks/shared";
 
-// The admin half of Audiobooks: who may connect, everyone's listening (how much and when,
-// never what) and the Audiobookshelf import. It is its own chunk, loaded only when an admin
-// opens one of these tabs, so requesters never download it. The server's own settings live
-// in Settings → Audiobook server.
+// The admin half of Audiobooks: who may connect and everyone's listening (how much and
+// when, never what). It is its own chunk, loaded only when an admin opens one of these
+// tabs, so requesters never download it. The server's own settings live in Settings →
+// Audiobook server, and the Audiobookshelf import in Settings → Import & migrate.
 
-export type AdminTab = "people" | "listening" | "import";
+export type AdminTab = "people" | "listening";
 
 export function AudiobooksAdmin({ tab }: { tab: AdminTab }) {
   if (tab === "people") return <PeopleView />;
-  if (tab === "listening") return <AllListeningView />;
-  return <ImportView />;
+  return <AllListeningView />;
 }
 
 function useAdmin() {
@@ -100,75 +99,6 @@ function AllListeningView() {
         <div className="mb-1 mt-4 text-[12.5px] font-bold">Sessions</div>
         <Sessions list={sessions} showUser={!who} />
       </Card>
-    </div>
-  );
-}
-
-function ImportView() {
-  const [preview, setPreview] = useState<AudioImportPreview | null>(null);
-  const [result, setResult] = useState<AudioImportResult | null>(null);
-  const [map, setMap] = useState<Record<string, number>>({});
-  const [users, setUsers] = useState<{ id: number; username: string }[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => { api.audioServer().then((d) => setUsers(d.users.filter((u) => u.eligible))).catch(() => {}); }, []);
-  const upload = async (f: File) => {
-    setBusy(true); setError(null); setResult(null);
-    try {
-      const p = await api.audioImportUpload(f);
-      setPreview(p);
-      setMap(Object.fromEntries(p.users.map((u) => [u.abs_id, u.user_id])));
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  };
-  const apply = async () => {
-    setBusy(true); setError(null);
-    try { setResult(await api.audioImportApply(map)); setPreview(null); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  };
-  return (
-    <div className="flex flex-col gap-4">
-      <Card title="Bring places over from Audiobookshelf">
-        <p className="m-0 text-[12px] text-ink-dim">
-          Upload Audiobookshelf's database — <code>absdatabase.sqlite</code> in its config folder (copy it while Audiobookshelf is stopped, or use a recent backup). People are matched by username and books by their folder, then title. Nothing is saved until you press Import, and a place that's newer in Arrmada is never replaced.
-        </p>
-        <div className="mt-3">
-          <input type="file" accept=".sqlite,.db,application/octet-stream" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} className="text-[12px]" />
-        </div>
-      </Card>
-      {error && <div className="text-[12.5px]" style={{ color: "var(--reject)" }}>{error}</div>}
-      {busy && <div className="text-[12.5px] text-ink-dim">Working…</div>}
-      {preview && (
-        <section className="rounded-xl p-4" style={card}>
-          <div className="mb-2 text-[12.5px]">
-            {preview.progress} saved place{preview.progress === 1 ? "" : "s"}, {preview.matched} on books Arrmada has · {preview.bookmarks} bookmark{preview.bookmarks === 1 ? "" : "s"}.
-          </div>
-          <div className="mb-1 text-[12px] font-semibold">People</div>
-          {preview.users.map((u) => (
-            <div key={u.abs_id} className="flex items-center justify-between gap-3 py-1 text-[12.5px]">
-              <span>{u.abs_username} <span className="text-ink-faint">· {u.progress_rows} place{u.progress_rows === 1 ? "" : "s"}</span></span>
-              <select value={map[u.abs_id] ?? 0} onChange={(e) => setMap({ ...map, [u.abs_id]: Number(e.target.value) })} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
-                <option value={0}>Skip</option>
-                {users.map((x) => <option key={x.id} value={x.id}>{x.username}</option>)}
-              </select>
-            </div>
-          ))}
-          {preview.unmatched_books && preview.unmatched_books.length > 0 && (
-            <details className="mt-2 text-[12px] text-ink-dim">
-              <summary className="cursor-pointer">{preview.unmatched_books.length} book{preview.unmatched_books.length === 1 ? "" : "s"} with progress that Arrmada doesn't have</summary>
-              <div className="mt-1">{preview.unmatched_books.slice(0, 50).join(" · ")}</div>
-            </details>
-          )}
-          <div className="mt-3 flex justify-end">
-            <button onClick={apply} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={primary}>Import</button>
-          </div>
-        </section>
-      )}
-      {result && (
-        <div className="rounded-xl p-4 text-[12.5px]" style={{ ...card, borderColor: "var(--good)" }}>
-          Imported {result.imported} place{result.imported === 1 ? "" : "s"} and {result.bookmarks} bookmark{result.bookmarks === 1 ? "" : "s"}.
-          {result.kept > 0 && ` Kept ${result.kept} place${result.kept === 1 ? "" : "s"} that were newer in Arrmada.`}
-          {result.skipped > 0 && ` Skipped ${result.skipped} (person or book not matched).`}
-        </div>
-      )}
     </div>
   );
 }

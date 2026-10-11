@@ -1,4 +1,5 @@
 import { test, expect } from "./mockApi";
+import { plexConfig } from "./fixtures/modules";
 
 // INT-16/17, CFG-15: Settings → Connections is where every integration lives. The old
 // Indexers and Download clients pages redirect to it, the sidebar has one entry, Test
@@ -31,13 +32,59 @@ test.describe("admin", () => {
     await expect(qb.getByRole("img", { name: "Failing" })).toBeVisible();
     await expect(page.locator("#indexer-1").getByText("214 searches · 2 grabs · 3 failed (24h)")).toBeVisible();
     await expect(page.locator("#apikey-tvdb").getByText("Not set up")).toBeVisible();
-    await expect(page.locator("#plex").getByRole("link", { name: "Set up →" })).toHaveAttribute("href", "/settings/plex#plex-connection");
+    // Plex is connected inside its card (CFG-16), not on another page.
+    await expect(page.locator("#plex").getByRole("button", { name: "Set up" })).toBeVisible();
 
     await qb.getByRole("button", { name: "Test" }).click();
     await expect(qb.getByRole("status")).toHaveText("✓ Connected");
     await expect(qb.getByText("Last OK just now")).toBeVisible();
     await expect(qb.getByRole("img", { name: "Working" })).toBeVisible();
     expect(api.callsTo("POST", "/api/v1/connections/download_client/1/test")).toHaveLength(1);
+  });
+
+  test("Plex is connected, tested and signed in from its card; old addresses land there", async ({ page, api }) => {
+    let saved = { ...plexConfig };
+    await page.route("**/api/v1/insights/plex", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      const body = route.request().postDataJSON() as { url: string; token?: string };
+      api.calls.push({ method: "PUT", path: "/api/v1/insights/plex", body });
+      saved = { ...saved, url: body.url, token_set: saved.token_set || !!body.token, status: "recording", server_name: "Basement" };
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(saved) });
+    });
+    await page.route("**/api/v1/insights/plex/test", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, server_name: "Basement", version: "1.41.0", libraries: [{ key: "1", title: "Movies", type: "movie" }] }) }));
+
+    // The Plex page's old connection anchor, and Settings → Plex's own link, open the card.
+    await page.goto("/settings/plex#plex-connection");
+    await expect(page).toHaveURL(/\/settings\/connections#plex$/);
+    const plex = page.locator("#plex");
+    await expect(plex.getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
+
+    await plex.getByLabel("Server URL").fill("http://192.168.1.10:32400");
+    await plex.getByLabel("X-Plex-Token").fill("tok-123");
+    await plex.getByRole("button", { name: "Test connection" }).click();
+    await expect(plex.getByText("✓ Connected to Basement · Plex 1.41.0")).toBeVisible();
+    await plex.getByRole("button", { name: "Save" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/insights/plex").length).toBe(1);
+    expect(api.callsTo("PUT", "/api/v1/insights/plex")[0].body).toMatchObject({ url: "http://192.168.1.10:32400", token: "tok-123" });
+    // The token goes back blank: it's never shown again.
+    await expect(plex.getByLabel("X-Plex-Token")).toHaveValue("");
+    await expect(plex.getByRole("link", { name: "Settings → Plex →" })).toHaveAttribute("href", "/settings/plex");
+  });
+
+  test("a redirect-mode Plex sign-in comes back to the Plex card and finishes there", async ({ page, api }) => {
+    let polls = 0;
+    await page.route(/\/api\/v1\/insights\/plex\/auth\/7$/, (route) => {
+      polls++;
+      api.calls.push({ method: "GET", path: "/api/v1/insights/plex/auth/7", body: null });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ authorized: true, server_name: "Basement" }) });
+    });
+    await page.addInitScript(() => { if (!sessionStorage.getItem("e2e-once")) { sessionStorage.setItem("e2e-once", "1"); sessionStorage.setItem("arrmada.plexpin.connect", "7"); } });
+    // An older build sent plex.tv back to Settings → Plex; that address still finishes.
+    await page.goto("/settings/plex?plexpin=7");
+    await expect(page.getByText("Signed in with Plex — connected to Basement")).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/settings\/connections$/);
+    expect(polls).toBeGreaterThan(0);
   });
 
   test("a health warning's link lands on its card", async ({ page }) => {

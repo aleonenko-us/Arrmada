@@ -21,7 +21,7 @@ export function requesterPages(booksEnabled: boolean): string {
 }
 
 // managerExceptions is what a manager can't open: the admin-only sidebar pages, the admin
-// tabs on Audiobooks (everyone's listening and the import) and the admin-only Settings
+// tabs on Audiobooks (who may connect and everyone's listening) and the admin-only Settings
 // sections. They can see the library folders but only an admin can move them.
 export function managerExceptions(): string {
   const pages = NAV.flatMap((g) => g.items).filter((i) => i.adminOnly).map((i) => i.label);

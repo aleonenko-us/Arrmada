@@ -29,6 +29,11 @@ test.describe("admin on a phone", () => {
     await expect(page.locator("#apikey-tmdb").getByRole("button", { name: "Save" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
+    // The Plex connection opens in its card too (CFG-16).
+    await page.locator("#plex").getByRole("button", { name: "Set up" }).click();
+    await expect(page.locator("#plex").getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+
     await page.getByRole("button", { name: "+ Add indexer" }).click();
     await expect(page.getByRole("form", { name: "Add an indexer" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);

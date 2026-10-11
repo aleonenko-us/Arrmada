@@ -24,4 +24,18 @@ test.describe("admin", () => {
       .toEqual(["/api/v1/insights/import/runs/1/rows?expected=12340"]);
     await expect(page.getByText("Removed 12340 imported plays")).toBeVisible();
   });
+
+  // CFG-16: one Import & migrate section holds every importer, and the Audiobooks page's
+  // old Import tab lands on its card there.
+  test("Import & migrate holds Overseerr, Tautulli and Audiobookshelf", async ({ page }) => {
+    await page.goto("/settings/import");
+    await expect(page.getByRole("heading", { name: "Import from Overseerr / Jellyseerr" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import from Tautulli" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import from Audiobookshelf" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Import & migrate" })).toBeVisible();
+
+    await page.goto("/audiobooks?tab=import");
+    await expect(page).toHaveURL(/\/settings\/import#audiobookshelf-import$/);
+    await expect(page.getByLabel("Audiobookshelf database")).toBeVisible();
+  });
 });
