@@ -3167,12 +3167,6 @@ export const api = {
     return req<{ items: ConvertHistoryEntry[]; next: string }>(`/api/v1/convert/history${qs ? `?${qs}` : ""}`);
   },
   convertHistoryEntry: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}`),
-  // Deletes a held original for good (its conversion can't be undone after).
-  convertReleaseHold: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/release`, { method: "POST" }),
-  // Puts a conversion's original back from the hold in place of the converted file.
-  convertRevert: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/revert`, { method: "POST" }),
-  convertReleaseHolds: (olderThanDays = 0) =>
-    req<{ released: number; freed_bytes: number }>(`/api/v1/convert/history/release?older_than_days=${olderThanDays}`, { method: "POST" }),
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,

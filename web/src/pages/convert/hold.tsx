@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type ConvertHistoryEntry, type ConvertHoldStats } from "../../lib/api";
+import { api, req, type ConvertHistoryEntry, type ConvertHoldStats } from "../../lib/api";
 import { fmtBytes } from "../../lib/disposal";
 import { useConfirm } from "../../ui";
 
@@ -14,6 +14,17 @@ export function inDays(unix?: number): string {
   const d = Math.ceil((unix * 1000 - Date.now()) / 86_400_000);
   return d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
 }
+
+// The hold's actions. They live here, in the Convert page's own chunk, not in lib/api.ts,
+// which every page (the requester's first load included) pays for.
+const holdApi = {
+  // Deletes a held original for good (its conversion can't be undone after).
+  release: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/release`, { method: "POST" }),
+  releaseAll: (olderThanDays = 0) =>
+    req<{ released: number; freed_bytes: number }>(`/api/v1/convert/history/release?older_than_days=${olderThanDays}`, { method: "POST" }),
+  // Puts a conversion's original back from the hold in place of the converted file.
+  revert: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}/revert`, { method: "POST" }),
+};
 
 const ghostBtn = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
@@ -41,7 +52,7 @@ export function HeldSummary({ hold, flash, onChanged }: { hold?: ConvertHoldStat
     if (!ok) return;
     setBusy(true);
     try {
-      const r = await api.convertReleaseHolds(0);
+      const r = await holdApi.releaseAll(0);
       flash(`Released ${r.released} original${r.released === 1 ? "" : "s"} — freed ${fmtBytes(r.freed_bytes)}`);
       onChanged();
     } catch (e) { flash((e as Error).message); } finally { setBusy(false); }
@@ -109,7 +120,7 @@ export function RevertButton({ e, id, flash, onDone }: {
       const row = e ?? await api.convertHistoryEntry(rowID);
       const ok = await confirm({ title: `Revert the conversion of ${row.title}?`, body: revertBody(row), confirmLabel: "Revert" });
       if (!ok) return;
-      const next = await api.convertRevert(rowID);
+      const next = await holdApi.revert(rowID);
       flash(`Reverted ${row.title} — the original is back`);
       onDone(next);
     } catch (err) { flash((err as Error).message); } finally { setBusy(false); }
@@ -137,7 +148,7 @@ export function ReleaseButton({ e, flash, onDone }: { e: ConvertHistoryEntry; fl
     if (!ok) return;
     setBusy(true);
     try {
-      const next = await api.convertReleaseHold(e.id);
+      const next = await holdApi.release(e.id);
       flash(`Released the original of ${e.title}`);
       onDone(next);
     } catch (err) { flash((err as Error).message); } finally { setBusy(false); }
