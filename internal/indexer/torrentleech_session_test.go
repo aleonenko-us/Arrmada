@@ -22,6 +22,7 @@ type tlStandIn struct {
 	mu       sync.Mutex
 	password string
 	script   []func(w http.ResponseWriter) // next browse replies, then JSON
+	paths    []string                      // every browse request's path, in order
 }
 
 const tlLoggedIn = `<html><a href="/user/account/logout">Logout</a></html>`
@@ -46,6 +47,7 @@ func newTLStandIn(t *testing.T) (*tlStandIn, *TorrentLeechSearcher) {
 		case strings.HasPrefix(r.URL.Path, "/torrents/browse/list"):
 			st.searches.Add(1)
 			st.mu.Lock()
+			st.paths = append(st.paths, r.URL.Path)
 			var next func(http.ResponseWriter)
 			if len(st.script) > 0 {
 				next, st.script = st.script[0], st.script[1:]

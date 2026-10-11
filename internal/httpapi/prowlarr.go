@@ -3,6 +3,9 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/indexer"
@@ -10,20 +13,61 @@ import (
 )
 
 const (
-	keyProwlarrURL = "prowlarr_url"
-	keyProwlarrKey = "prowlarr_api_key"
+	keyProwlarrURL = indexer.SettingProwlarrURL
+	keyProwlarrKey = indexer.SettingProwlarrKey
 )
 
-// handleProwlarrInfo returns the Prowlarr connection defaults for prefilling the
-// sync form: the URL (saved override, else the configured/bundled default) and
-// whether an API key is already stored (so the user needn't re-enter it).
+// prowlarrUIPort is the host port Prowlarr's web UI is published on. install.sh picks the
+// first free one of 9696-9698 and compose passes it in as ARRMADA_PROWLARR_HOST_PORT; the
+// link used to hard-code 9696 and so could open someone's older Prowlarr instead.
+func prowlarrUIPort() string {
+	if p := strings.TrimSpace(os.Getenv("ARRMADA_PROWLARR_HOST_PORT")); p != "" {
+		return p
+	}
+	return "9696"
+}
+
+// handleProwlarrInfo returns the Prowlarr connection for the panel: the URL (saved
+// override, else the configured/bundled default), whether an API key is stored (so the
+// user needn't re-enter it), how the last sync went, and where Prowlarr's own web UI is —
+// ui_url when one was saved for a Prowlarr on another machine, otherwise this host on
+// ui_port.
 func (a *api) handleProwlarrInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	url := a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL)
-	a.writeJSON(w, http.StatusOK, map[string]any{
-		"url":     url,
+	out := map[string]any{
+		"url":     a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL),
 		"has_key": a.deps.Settings.Get(ctx, keyProwlarrKey, "") != "",
-	})
+		"ui_port": prowlarrUIPort(),
+		"ui_url":  a.deps.Settings.Get(ctx, indexer.SettingProwlarrUIURL, ""),
+	}
+	if ls, ok := indexer.ReadProwlarrLastSync(ctx, a.deps.Settings); ok {
+		out["last_sync"] = ls
+	}
+	a.writeJSON(w, http.StatusOK, out)
+}
+
+// handleProwlarrSettings saves the address of Prowlarr's web UI, for a Prowlarr that
+// isn't on this host. Blank clears it. Only an http(s) address is kept: it becomes a link.
+func (a *api) handleProwlarrSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UIURL string `json:"ui_url"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	ui := strings.TrimRight(strings.TrimSpace(req.UIURL), "/")
+	if ui != "" {
+		u, err := url.Parse(ui)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+			a.writeError(w, http.StatusBadRequest, "Prowlarr's address must be an http:// or https:// link, like http://192.168.1.10:9696")
+			return
+		}
+	}
+	if err := a.deps.Settings.Set(r.Context(), indexer.SettingProwlarrUIURL, ui); err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not save Prowlarr's address")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"ui_url": ui})
 }
 
 // handleProwlarrSync pulls indexers from Prowlarr and mirrors them into Arrmada.
@@ -57,6 +101,10 @@ func (a *api) handleProwlarrSync(w http.ResponseWriter, r *http.Request) {
 	res, err := a.deps.Indexers.SyncProwlarr(ctx, indexer.ProwlarrSync{
 		URL: url, APIKey: key, FlareSolverrURL: flare, AddFlareSolverrProxy: req.AddFlareSolverrProxy,
 	})
+	if ctx.Err() == nil {
+		// The panel's "Last synced" line and the health check read this, whoever synced.
+		a.deps.Indexers.RecordProwlarrSync(ctx, a.deps.Settings, indexer.ProwlarrTriggerManual, res, err)
+	}
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return

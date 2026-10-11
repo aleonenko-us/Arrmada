@@ -61,6 +61,9 @@ services:
       # is just the default URL the "Sync from Prowlarr" button uses; harmless when
       # Prowlarr isn't running.
       ARRMADA_PROWLARR_URL: "http://arrmada-prowlarr:9696"
+      # The host port Prowlarr's web UI is published on (below), so the "Open Prowlarr"
+      # link points at this install's Prowlarr and not an older one on 9696.
+      ARRMADA_PROWLARR_HOST_PORT: "${ARRMADA_PROWLARR_PORT:-9696}"
       # Downloads and the library live UNDER ONE shared volume (/media) so imports
       # can hardlink instead of copy: the download keeps seeding while the same
       # bytes appear in the library, costing no extra disk. Hardlinks only work

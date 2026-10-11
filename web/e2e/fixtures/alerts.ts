@@ -1,4 +1,4 @@
-import type { AlertCatalog, AlertDelivery, NotificationConn } from "../../src/lib/api";
+import type { AlertCatalog, AlertDelivery, AlertPreset, NotificationConn } from "../../src/lib/api";
 import { NOW } from "./clock";
 
 const sec = (ms: number) => Math.floor(ms / 1000);
@@ -44,5 +44,16 @@ export const deliveries: { deliveries: AlertDelivery[] } = {
   deliveries: [
     { id: 9, event_key: "movie.imported", title: "Imported", body: "📥 The Cartographer", status: "failed", attempts: 4, last_error: "apprise: exit status 1 (404 Page not found)", created_at: sec(NOW) - 7200, next_attempt_at: 0, sent_at: 0 },
     { id: 8, event_key: "test", title: "Arrmada", body: "✅ Test notification — this connection works.", status: "sent", attempts: 1, last_error: "", created_at: sec(NOW) - 86400, next_attempt_at: 0, sent_at: sec(NOW) - 86400 },
+  ],
+};
+
+// The "Where should alerts go?" tiles (GET /api/v1/notifications/presets), trimmed to
+// what the page needs.
+export const presets: { presets: AlertPreset[] } = {
+  presets: [
+    { kind: "discord", label: "Discord", hint: "Discord: Server Settings → Integrations → Webhooks → Copy URL.", fields: [{ name: "webhook_url", label: "Webhook URL", secret: true, required: true }] },
+    { kind: "telegram", label: "Telegram", hint: "Telegram: @BotFather.", fields: [{ name: "bot_token", label: "Bot token", secret: true, required: true }, { name: "chat_id", label: "Chat id", required: true }] },
+    { kind: "custom", label: "Custom (Apprise URL)", hint: "Any Apprise link.", fields: [{ name: "url", label: "Apprise URL", secret: true, required: true }] },
+    { kind: "webpush", label: "This device", hint: "Web Push to this browser.", fields: [] },
   ],
 };

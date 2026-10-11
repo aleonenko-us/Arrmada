@@ -331,11 +331,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleSetClientSettings))
 	mux.HandleFunc("POST /api/v1/downloadclients/restore-bundled", a.requireRole(auth.RoleManager, a.handleRestoreBundledClient))
 	mux.HandleFunc("GET /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrInfo))
+	mux.HandleFunc("PUT /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrSettings))
 	mux.HandleFunc("POST /api/v1/indexers/prowlarr/sync", a.requireRole(auth.RoleManager, a.handleProwlarrSync))
 	// Alert connections: staff see the list (URLs redacted); writes and sends are the
 	// admin's, since a connection decides where the server posts.
 	mux.HandleFunc("GET /api/v1/notifications", a.requireRole(auth.RoleManager, a.handleListNotifications))
 	mux.HandleFunc("GET /api/v1/notifications/catalog", a.requireRole(auth.RoleManager, a.handleNotificationCatalog))
+	mux.HandleFunc("GET /api/v1/notifications/presets", a.requireRole(auth.RoleManager, a.handleNotificationPresets))
 	mux.HandleFunc("GET /api/v1/notifications/{id}/deliveries", a.requireRole(auth.RoleManager, a.handleNotificationDeliveries))
 	mux.HandleFunc("POST /api/v1/notifications", a.requireRole(auth.RoleAdmin, a.handleCreateNotification))
 	mux.HandleFunc("PUT /api/v1/notifications/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateNotification))

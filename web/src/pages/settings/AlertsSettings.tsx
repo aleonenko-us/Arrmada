@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Section, input, inputStyle } from "../../components/settings/ui";
-import { api, type AlertCatalog, type AlertEvent, type NotificationConn, type NotificationInput } from "../../lib/api";
+import { api, type AlertCatalog, type AlertEvent, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { ago, until } from "../../lib/taskTime";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery, invalidate } from "../../lib/query";
@@ -17,6 +17,10 @@ import { Button, useConfirm, useToast } from "../../ui";
 //
 // "This device" is the other kind of connection: Web Push to the admin's own browsers
 // and phones, no outside service needed.
+//
+// "Add alert" first asks where alerts should go. Discord, Telegram, ntfy, Pushover and
+// email are short forms (the server builds the Apprise link from them); anything else is
+// "Custom (Apprise URL)", which is also how every connection made before the forms shows.
 
 const PUSH_NAME = "This device";
 
@@ -25,7 +29,11 @@ export function AlertsSettings() {
   const admin = isAdmin(user);
   const { data: conns, error } = useQuery("notifications:list", api.notifications);
   const { data: catalog, error: catalogError } = useQuery("notifications:catalog", api.alertCatalog, { staleMs: 5 * 60_000 });
-  const [adding, setAdding] = useState(false);
+  const presetsQ = useQuery("notifications:presets", api.alertPresets, { staleMs: 10 * 60_000 });
+  // If the forms can't be loaded, a raw Apprise link still can be added.
+  const presets = presetsQ.data ?? (presetsQ.error ? [CUSTOM_PRESET] : undefined);
+  // null: not adding; "choose": the "Where should alerts go?" tiles; else the chosen form.
+  const [adding, setAdding] = useState<null | "choose" | AlertPreset>(null);
   // The list and the delivery logs: a save, a Test or a delete changes both.
   const reload = () => { invalidate("notifications:list"); invalidate("notifications:deliveries"); };
 
@@ -67,13 +75,28 @@ export function AlertsSettings() {
         ) : (
           <>
             {conns.length === 0 && !adding && <p className="text-[12px] text-ink-dim">No alert connections yet.</p>}
-            {conns.map((c) => <ConnCard key={c.id} conn={c} catalog={shown} readOnly={!admin} onChange={reload} />)}
-            {admin && (adding ? (
-              <ConnCard conn={blank()} catalog={shown} isNew onChange={() => { setAdding(false); reload(); }} onCancel={() => setAdding(false)} />
+            {conns.map((c) => <ConnCard key={c.id} conn={c} preset={presetOf(presets, c)} catalog={shown} readOnly={!admin} onChange={reload} />)}
+            {admin && (adding === "choose" ? (
+              <PresetChooser
+                presets={presets}
+                push={pushSupported()}
+                pushBusy={pushBusy}
+                onPick={(p) => { if (p.kind === "webpush") { setAdding(null); void addPush(); } else setAdding(p); }}
+                onCancel={() => setAdding(null)}
+              />
+            ) : adding ? (
+              <ConnCard
+                key={adding.kind}
+                conn={{ ...blank(), kind: adding.kind, name: adding.kind === "custom" ? "" : adding.label, preset: adding.kind }}
+                preset={adding}
+                catalog={shown}
+                isNew
+                onChange={() => { setAdding(null); reload(); }}
+                onCancel={() => setAdding(null)}
+              />
             ) : (
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => setAdding(true)}>+ Add connection</Button>
-                {pushSupported() && <Button onClick={addPush} busy={pushBusy} busyLabel="Turning on…">+ This device (push)</Button>}
+                <Button onClick={() => setAdding("choose")}>+ Add alert</Button>
               </div>
             ))}
             {admin && <p className="text-[10.5px] text-ink-faint">On iPhone, push works only when Arrmada is added to the Home Screen.</p>}
@@ -84,38 +107,127 @@ export function AlertsSettings() {
   );
 }
 
-function ConnCard({ conn, catalog, isNew, readOnly, onChange, onCancel }: { conn: NotificationConn; catalog: AlertCatalog; isNew?: boolean; readOnly?: boolean; onChange: () => void; onCancel?: () => void }) {
+// The tile for a raw Apprise link, used when the preset list can't be loaded.
+const CUSTOM_PRESET: AlertPreset = {
+  kind: "custom", label: "Custom (Apprise URL)", hint: "Any of Apprise's 80+ services as one link.",
+  fields: [{ name: "url", label: "Apprise URL", secret: true, required: true }],
+};
+
+// presetOf is the form a saved connection is edited with: its preset when it was made
+// from one, "This device" for push, and Custom for a raw link (every older connection).
+function presetOf(presets: AlertPreset[] | undefined, c: NotificationConn): AlertPreset | undefined {
+  const kind = c.preset || (c.kind === "webpush" ? "webpush" : "custom");
+  return presets?.find((p) => p.kind === kind) ?? (kind === "custom" ? CUSTOM_PRESET : undefined);
+}
+
+// usesFields: the preset is a short form the server builds the link from (not Custom's
+// raw link, not push).
+function usesFields(p: AlertPreset | undefined): p is AlertPreset {
+  return !!p && p.kind !== "custom" && p.kind !== "webpush" && p.fields.length > 0;
+}
+
+// PresetChooser is "Where should alerts go?": one tile per destination.
+function PresetChooser({ presets, push, pushBusy, onPick, onCancel }: { presets?: AlertPreset[]; push: boolean; pushBusy: boolean; onPick: (p: AlertPreset) => void; onCancel: () => void }) {
+  const tiles = (presets ?? []).filter((p) => p.kind !== "webpush" || push);
+  return (
+    <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <span className="text-[13px] font-semibold">Where should alerts go?</span>
+        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+      </div>
+      {!presets ? (
+        <p className="text-[12px] text-ink-dim">Loading…</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {tiles.map((p) => (
+            <button
+              key={p.kind}
+              type="button"
+              onClick={() => onPick(p)}
+              disabled={p.kind === "webpush" && pushBusy}
+              className="flex min-w-0 flex-col gap-0.5 rounded-lg p-3 text-left"
+              style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
+            >
+              <span className="text-[12.5px] font-semibold">{p.kind === "webpush" && pushBusy ? "Turning on…" : p.label}</span>
+              <span className="text-[10.5px] text-ink-faint">{p.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// initialValues is a preset form's starting values: what's saved, with every secret blank
+// (the server never sends one back; blank means "keep the saved one").
+function initialValues(p: AlertPreset | undefined, conn: NotificationConn): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of p?.fields ?? []) {
+    const v = conn.fields?.[f.name];
+    out[f.name] = !f.secret && typeof v === "string" ? v : "";
+  }
+  return out;
+}
+
+function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }: { conn: NotificationConn; preset?: AlertPreset; catalog: AlertCatalog; isNew?: boolean; readOnly?: boolean; onChange: () => void; onCancel?: () => void }) {
   const [c, setC] = useState<NotificationConn>(conn);
   // Only what's typed here; blank on a saved card means "keep the saved link".
   const [url, setUrl] = useState("");
+  const fieldMode = usesFields(preset) && conn.kind !== "webpush";
+  const [start, setStart] = useState(() => initialValues(preset, conn));
+  const [values, setValues] = useState<Record<string, string>>(start);
+  // Bumped on each save so the form starts over: typed secrets are cleared and show as
+  // "•••• saved" again.
+  const [saves, setSaves] = useState(0);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
   const set = (patch: Partial<NotificationConn>) => setC((p) => ({ ...p, ...patch }));
+  const dirty = JSON.stringify(values) !== JSON.stringify(start);
+  const savedSecret = (name: string) => !isNew && conn.fields?.[`${name}_set`] === true;
   const body = (): NotificationInput => ({
     name: c.name, kind: c.kind, enabled: c.enabled, events: c.events,
-    ...(url.trim() ? { url: url.trim() } : {}),
+    ...(fieldMode ? { fields: values } : url.trim() ? { url: url.trim() } : {}),
   });
+  // What's still missing before the form can be saved: a required field that's empty
+  // and not already saved.
+  const missing = (): string | null => {
+    if (!c.name.trim()) return "A name is needed";
+    if (!fieldMode) return isNew && !url.trim() ? "A link is needed" : null;
+    const f = preset?.fields.find((f) => f.required && !values[f.name]?.trim() && !(f.secret && savedSecret(f.name)));
+    return f ? `${f.label} is needed` : null;
+  };
 
   const save = async () => {
-    if (!c.name.trim() || (isNew && !url.trim())) { toast("A name and a link are both needed", { tone: "error" }); return; }
+    const why = missing();
+    if (why) { toast(why, { tone: "error" }); return; }
     setBusy("save");
     try {
       if (isNew) await api.createNotification(body());
       else await api.updateNotification(c.id!, body());
       setUrl("");
+      if (fieldMode) {
+        const secret = new Set(preset?.fields.filter((f) => f.secret).map((f) => f.name));
+        const next = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, secret.has(k) ? "" : v]));
+        setValues(next);
+        setStart(next);
+        setSaves((n) => n + 1);
+      }
       toast("Saved", { tone: "good" });
       onChange();
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
   };
-  // A link typed into the field is tried as typed (before saving); otherwise a saved card
-  // is tested through the link stored on the server.
+  // What's typed is tried as typed (before saving), with saved secrets filled in on the
+  // server; an untouched saved card is tested through what's stored, and logged.
   const test = async () => {
-    if (!url.trim() && (isNew || !c.id)) { toast("Enter a link first", { tone: "error" }); return; }
+    const saved = !isNew && !!c.id && (fieldMode ? !dirty : !url.trim());
+    if (!saved) {
+      const why = missing();
+      if (why && why !== "A name is needed") { toast(why, { tone: "error" }); return; }
+    }
     setBusy("test");
     try {
-      const saved = !url.trim();
-      const r = saved ? await api.testSavedNotification(c.id!) : await api.testNotification(body());
+      const r = saved ? await api.testSavedNotification(c.id!) : await api.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}) });
       toast(r.ok ? "Test sent" : `Test failed — ${r.error || "no reason given"}`, { tone: r.ok ? "good" : "error" });
       if (saved) onChange(); // the test is in the card's log and status now
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
@@ -127,19 +239,29 @@ function ConnCard({ conn, catalog, isNew, readOnly, onChange, onCancel }: { conn
     try { await api.deleteNotification(c.id); onChange(); } catch (e) { toast((e as Error).message, { tone: "error" }); }
   };
 
-  const placeholder = !isNew && conn.url_set ? `${conn.url_hint ?? "saved"} — saved, leave blank to keep` : "discord://webhook_id/token";
+  const placeholder = !isNew && conn.url_set ? `${conn.url_hint ?? "saved"} — saved, leave blank to keep` : "gotify://host/token";
 
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="flex flex-wrap items-center gap-2">
         {!isNew && <StatusDot conn={conn} />}
         <input aria-label="Connection name" value={c.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} placeholder="Name (e.g. My Discord)" className="min-w-[160px] flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={inputStyle} />
+        {preset && <span className="rounded px-1.5 py-0.5 text-[10px] text-ink-dim" style={{ background: "var(--panel)" }}>{preset.label}</span>}
         <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px]">
           <input type="checkbox" checked={c.enabled} disabled={readOnly} onChange={(e) => set({ enabled: e.target.checked })} /> Enabled
         </label>
       </div>
       {conn.kind === "webpush" ? (
         <PushDevices readOnly={readOnly} onChange={onChange} />
+      ) : fieldMode && preset ? (
+        <PresetForm
+          key={saves}
+          preset={preset}
+          values={values}
+          readOnly={readOnly}
+          savedSecret={savedSecret}
+          onChange={(name, v) => setValues((p) => ({ ...p, [name]: v }))}
+        />
       ) : readOnly ? (
         <div className={`mt-2 ${input}`} style={inputStyle}>{conn.url_hint || "—"}</div>
       ) : (
@@ -163,6 +285,65 @@ function ConnCard({ conn, catalog, isNew, readOnly, onChange, onCancel }: { conn
           {isNew ? <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button> : <Button variant="ghost" size="sm" onClick={del} style={{ color: "var(--reject)" }}>Delete</Button>}
         </div>
       )}
+    </div>
+  );
+}
+
+// PresetForm is a preset's fields with its one-line hint. A saved secret shows as
+// "•••• saved" with Replace; until it's replaced, the server keeps the saved one.
+function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
+  preset: AlertPreset; values: Record<string, string>; readOnly?: boolean;
+  savedSecret: (name: string) => boolean; onChange: (name: string, value: string) => void;
+}) {
+  const [replacing, setReplacing] = useState<Record<string, boolean>>({});
+  return (
+    <div className="mt-2">
+      <p className="mb-2 text-[10.5px] text-ink-faint">{preset.hint}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {preset.fields.map((f) => {
+          const kept = f.secret && savedSecret(f.name) && !replacing[f.name];
+          const label = `${f.label}${f.required ? "" : " (optional)"}`;
+          return (
+            <label key={f.name} className="flex min-w-0 flex-col gap-1">
+              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
+              {kept ? (
+                <span className="flex items-center gap-2 text-[12px] text-ink-dim">
+                  <span>•••• saved</span>
+                  {!readOnly && (
+                    <button type="button" className="text-[11px] font-semibold" style={{ color: "var(--accent)" }} onClick={() => setReplacing((r) => ({ ...r, [f.name]: true }))}>
+                      Replace
+                    </button>
+                  )}
+                </span>
+              ) : f.options ? (
+                <select aria-label={f.label} value={values[f.name] || f.options[0]} disabled={readOnly} onChange={(e) => onChange(f.name, e.target.value)} className={input} style={inputStyle}>
+                  {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <input
+                    aria-label={f.label}
+                    type={f.secret ? "password" : "text"}
+                    value={values[f.name] ?? ""}
+                    disabled={readOnly}
+                    onChange={(e) => onChange(f.name, e.target.value)}
+                    placeholder={f.placeholder}
+                    autoComplete={f.secret ? "new-password" : "off"}
+                    className={`min-w-0 flex-1 ${input}`}
+                    style={inputStyle}
+                  />
+                  {f.secret && savedSecret(f.name) && !readOnly && (
+                    <button type="button" className="flex-none text-[11px]" style={{ color: "var(--accent)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
+                      Keep saved
+                    </button>
+                  )}
+                </span>
+              )}
+              {f.hint && <span className="text-[10.5px] text-ink-faint">{f.hint}</span>}
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
