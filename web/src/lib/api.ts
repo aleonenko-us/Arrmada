@@ -2123,6 +2123,8 @@ export interface ConvertMediaStats {
   skipped: number;
   hdr10: number; hdr10_plus: number; dolby_vision: number; hlg: number;
   h264: number; hevc: number; av1: number; other: number;
+  // Every Dolby Vision file the Dolby Vision choice applies to, convertible or not.
+  dolby_vision_files: number;
 }
 // A book's series as the library can see it: the entries you own, in reading order, and
 // the numbered holes between them.
@@ -2187,6 +2189,8 @@ export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
+  // Dolby Vision files: drop the layer and keep the HDR10/HLG base, or leave them alone.
+  dolby_vision: "drop" | "skip";
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
   server_time: string; server_tz: string; plex_watching_known: boolean; can_pause: boolean;
   has_gpu: boolean; gpu_does_av1: boolean; hdr10plus_tool: boolean;
@@ -2194,6 +2198,28 @@ export interface ConvertSettings {
 export interface ConvertTrialSide { codec: string; encoder: string; bytes: number; ssim: number; est_bytes: number }
 export interface ConvertTrialResult { key: string; title: string; src_bytes: number; clips: number; seconds: number; hevc: ConvertTrialSide; av1: ConvertTrialSide; pick: string; why: string; files?: string[] }
 export interface ConvertCompareStatus { running: boolean; key?: string; title?: string; started?: number; result?: ConvertTrialResult; error?: string }
+// One file's conversion plan (GET /convert/plan?key=): built from the index by the runner's own
+// decision code, so it is what a conversion would do. to_codec "" = the picture is copied.
+export interface ConvertPlanVideo {
+  from_codec: string; from_res: string; from_hdr: string; from_bits: number;
+  to_codec?: string; to_bits?: number; to_hdr?: string; crf?: number;
+  est_bytes: number; measured?: boolean; why?: string; codec_note?: string; crop_note?: string; hdr_note?: string;
+}
+export interface ConvertPlan {
+  key: string; kind: "movie" | "episode"; title: string; poster_url?: string; size_bytes: number; needs: ConvertNeeds;
+  video: ConvertPlanVideo; audio: ConvertTrackDecision[]; subs: ConvertTrackDecision[];
+  container: { from: string; to: string }; warnings: string[]; eta_sec: number | null;
+}
+// What switching automatic conversion on would do (GET /convert/auto-preview), or converting
+// one show or season now (?series=&season=), counted from the runner's cached candidates.
+export interface ConvertAutoPreview {
+  files: number; reencode: number; bytes: number; est_bytes: number;
+  dv_files: number; cc_files: number; image_sub_tracks: number; filtered_audio_tracks: number;
+  container_changes: number; forced_tracks: number; as_of: number;
+}
+// The answer to a Convert-now request: starting now, or its place among the waiting requests
+// (1 = next) and what it waits behind; reason when nothing can start (someone is watching).
+export interface ConvertRequestResult { requested: string; starting?: boolean; position?: number; ahead?: string; reason?: string }
 
 // Insights (Plex watch monitoring).
 export interface PlexLibrary { key: string; title: string; type: string }
@@ -3130,7 +3156,7 @@ export const api = {
     return req<{ items: ConvertCandidate[] }>(`/api/v1/convert/library${qs ? `?${qs}` : ""}`).then((r) => r.items);
   },
   convertStats: () => req<ConvertLibraryStats>("/api/v1/convert/stats"),
-  convertRequest: (key: string) => req<{ requested: string }>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
+  convertRequest: (key: string) => req<ConvertRequestResult>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
   convertCancelRequest: (key?: string) => req<{ cancelled: number }>(`/api/v1/convert/requests?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "DELETE" }),
   convertCancel: (id: number) => req<{ cancelled: number }>(`/api/v1/convert/jobs/${id}/cancel`, { method: "POST" }),
   convertBlocklist: () => req<{ items: ConvertBlocked[] }>("/api/v1/convert/blocklist").then((r) => r.items),
@@ -3158,6 +3184,14 @@ export const api = {
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,
+  convertPlan: (key: string) => req<ConvertPlan>(`/api/v1/convert/plan?key=${encodeURIComponent(key)}`),
+  convertAutoPreview: (seriesID?: number, season?: number) => {
+    const q = new URLSearchParams();
+    if (seriesID !== undefined) q.set("series", String(seriesID));
+    if (seriesID !== undefined && season !== undefined) q.set("season", String(season));
+    const qs = q.toString();
+    return req<ConvertAutoPreview>(`/api/v1/convert/auto-preview${qs ? `?${qs}` : ""}`);
+  },
 
   // Insights (Plex)
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),

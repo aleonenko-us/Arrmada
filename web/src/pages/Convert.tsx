@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useTabParam } from "../lib/useTabParam";
@@ -14,6 +14,9 @@ import {
   type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type RecycleStats,
   type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision,
 } from "../lib/api";
+import { PlanCard, PlanToggle, Poster } from "./convert/PlanCard";
+import { BulkConvertDialog, ConvertNowDialog, SwitchOnDialog } from "./convert/ConfirmConvert";
+import { requestedToast, type Asking } from "./convert/plan";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
@@ -132,14 +135,18 @@ function ConvertPage() {
     return true;
   }, [flash, loadStats, refresh]);
 
+  // Switch on asks first, with what it will do across the library (SwitchOnDialog);
+  // Switch off is one click.
+  const [askSwitchOn, setAskSwitchOn] = useState(false);
+  const autoChanged = (s: ConvertSettings) => {
+    setSettings(s);
+    flash(s.auto ? "Convert is on — it works through your library during your hours" : "Automatic conversion is off");
+    refresh();
+  };
   const toggleAuto = async () => {
     if (!settings) return;
-    try {
-      const s = await api.updateConvertSettings({ auto: !settings.auto });
-      setSettings(s);
-      flash(s.auto ? "Convert is on — it works through your library during your hours" : "Automatic conversion is off");
-      refresh();
-    } catch (e) { flash((e as Error).message); }
+    if (!settings.auto) { setAskSwitchOn(true); return; }
+    try { autoChanged(await api.updateConvertSettings({ auto: false })); } catch (e) { flash((e as Error).message); }
   };
 
   const TABS: { key: Tab; label: string }[] = [
@@ -158,8 +165,10 @@ function ConvertPage() {
             Makes your library smaller at a quality checked against the original. Wasteful video is re-encoded to HEVC
             {settings?.allow_av1 ? " or AV1 (whichever is smaller at the same quality)" : ""} during your hours.
             Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link> are removed.
-            HDR10, HDR10+ and HLG are kept; Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer
-            {stats?.total?.dolby_vision ? ` (${stats.total.dolby_vision.toLocaleString()} in your library)` : ""}.
+            HDR10, HDR10+ and HLG are kept; {settings?.dolby_vision === "skip"
+              ? "Dolby Vision files are left alone, as you chose"
+              : "Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer"}
+            {stats?.total?.dolby_vision_files ? ` (${stats.total.dolby_vision_files.toLocaleString()} in your library)` : ""}.
           </p>
           <div className="flex items-center gap-2">
             <Link to={LINKS.convertSettings} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={ghostBtn}>Configure →</Link>
@@ -185,6 +194,7 @@ function ConvertPage() {
           )}
         </TabPanel>
       </div>
+      {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await api.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
       {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={flash} />}
       {toast && <div role="status" aria-live="polite" className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
@@ -210,12 +220,14 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
 
   const cancelJob = async (id: number) => { try { await api.convertCancel(id); onChanged(); } catch (e) { flash((e as Error).message); } };
   const cancelRequest = async (key: string) => { try { await api.convertCancelRequest(key); onChanged(); } catch (e) { flash((e as Error).message); } };
-  const doNext = async (key: string, title: string) => {
-    try { await api.convertRequest(key); flash(`“${title}” is queued ahead of the automatic picks`); onChanged(); } catch (e) { flash((e as Error).message); }
-  };
+  const [asking, setAsking] = useState<Asking | null>(null); // the Convert-now confirmation that's open
 
   return (
     <div className="flex flex-col gap-3.5">
+      {asking && (
+        <ConvertNowDialog itemKey={asking.key} title={asking.title} tracksOnly={asking.tracksOnly} originals={originals} onCancel={() => setAsking(null)}
+          onDone={(res) => { setAsking(null); flash(requestedToast(asking.title, res)); onChanged(); }} />
+      )}
       {status && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3" style={{ ...cardStyle, borderColor: STATUS_TONE[status.state] }}>
           <div className="flex items-center gap-2.5">
@@ -302,7 +314,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
                 <span className="font-mono text-[11px] text-ink-faint">
                   {u.video ? `${u.current} → ${u.codec.toUpperCase()} · ~${fmtSize(u.saving)} saved` : u.tracks}
                 </span>
-                <button onClick={() => doNext(u.key, u.title)} title="Convert this one now, regardless of the hours" className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold text-ink-faint hover:text-[var(--accent)]">now</button>
+                <button onClick={() => setAsking({ key: u.key, title: u.title, tracksOnly: !u.video })} title="Convert this one now, regardless of the hours" className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold text-ink-faint hover:text-[var(--accent)]">now</button>
               </div>
             ))}
             {status.remaining > status.up_next.length && <div className="text-[11.5px] text-ink-faint">+ {(status.remaining - status.up_next.length).toLocaleString()} more, biggest savings first</div>}
@@ -436,7 +448,8 @@ function NeedTag({ children, title }: { children: ReactNode; title?: string }) {
 function hdrLabel(c: ConvertCandidate): string {
   const h = c.info?.hdr;
   if (!h || h === "SDR") return "—";
-  if (h === "Dolby Vision") return c.info?.dv_base && c.info.dv_base !== "SDR" ? `DV → ${c.info.dv_base}` : "DV";
+  // "DV → HDR10" only for a file a conversion would actually take down to its base.
+  if (h === "Dolby Vision") return c.needs?.video && c.info?.dv_base && c.info.dv_base !== "SDR" ? `DV → ${c.info.dv_base}` : "DV";
   return h;
 }
 
@@ -459,6 +472,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [loadErr, setLoadErr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [openPlan, setOpenPlan] = useState<string | null>(null); // the row whose plan card is open
   const runningKeys = useMemo(() => new Set(running.filter((j) => ACTIVE.has(j.state)).map((j) => j.key)), [running]);
 
   useEffect(() => {
@@ -490,24 +504,12 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload]);
 
-  const convert = async (c: ConvertCandidate) => {
-    setBusy(c.key);
-    try {
-      await api.convertRequest(c.key);
-      setRequested((s) => new Set(s).add(c.key));
-      flash(`“${c.version_id ? `${c.title} · ${c.version_label || "version"}` : c.title}” is queued ahead of the automatic picks — it starts when a conversion slot is free, even outside your hours`);
-      onRequested();
-    } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
-  };
-  const convertBulk = async (seriesID: number, season: number | undefined, label: string, count: number) => {
-    if (count > 1 && !window.confirm(`Convert ${count} episode${count === 1 ? "" : "s"} from ${label} now?\n\nThey're queued ahead of the automatic picks and start as conversion slots free up, even outside your hours. ${originals}.`)) return;
-    setBusy(`bulk:${seriesID}:${season ?? "all"}`);
-    try {
-      const { requested: n } = await api.convertSeries(seriesID, season);
-      flash(n > 0 ? `${n} episode${n === 1 ? "" : "s"} from ${label} requested` : `Nothing to do in ${label}`);
-      onRequested();
-    } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
-  };
+  // Convert now / Fix tracks and the bulk show or season buttons confirm first, saying what
+  // will change (ConfirmConvert.tsx); the request is sent from the dialog.
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const [askingBulk, setAskingBulk] = useState<{ seriesID: number; season?: number; label: string } | null>(null);
+  const convert = (c: ConvertCandidate) => setAsking({ key: c.key, title: c.version_id ? `${c.title} · ${c.version_label || "version"}` : c.title, tracksOnly: !c.needs?.video });
+  const convertBulk = (seriesID: number, season: number | undefined, label: string) => setAskingBulk({ seriesID, season, label });
 
   const setSortKey = (key: SortKey) => setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "title" ? "asc" : "desc" });
   const setShowSortKey = (key: ShowSortKey) => setShowSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "title" ? "asc" : "desc" });
@@ -580,6 +582,14 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
 
   return (
     <div className="flex flex-col gap-2">
+      {asking && (
+        <ConvertNowDialog itemKey={asking.key} title={asking.title} tracksOnly={asking.tracksOnly} originals={originals} onCancel={() => setAsking(null)}
+          onDone={(res) => { setAsking(null); setRequested((s) => new Set(s).add(asking.key)); flash(requestedToast(asking.title, res)); onRequested(); }} />
+      )}
+      {askingBulk && (
+        <BulkConvertDialog seriesID={askingBulk.seriesID} season={askingBulk.season} label={askingBulk.label} originals={originals} onCancel={() => setAskingBulk(null)}
+          onDone={(n) => { setAskingBulk(null); flash(n > 0 ? `${n} episode${n === 1 ? "" : "s"} from ${askingBulk.label} requested` : `Nothing to do in ${askingBulk.label}`); onRequested(); }} />
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex w-fit rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
           {(["movies", "tv"] as const).map((m) => (
@@ -612,7 +622,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                   const done = sh.convertible === 0;
                   return (
                     <tr key={sh.series_id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                      <td className="px-3 py-2 font-semibold"><button onClick={() => setShow(sh)} className="text-left hover:underline">{sh.title} <span className="font-normal text-ink-faint">{sh.year || ""}</span></button></td>
+                      <td className="px-3 py-2 font-semibold"><button onClick={() => setShow(sh)} className="flex items-center gap-2 text-left hover:underline"><Poster url={sh.poster_url} title={sh.title} /><span>{sh.title} <span className="font-normal text-ink-faint">{sh.year || ""}</span></span></button></td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{sh.files.toLocaleString()}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">
                         {done ? <span className="text-ink-faint">none</span> : <span style={{ color: "var(--avoid)" }}>{sh.convertible.toLocaleString()}</span>}
@@ -624,7 +634,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1.5">
                           <button onClick={() => setShow(sh)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Episodes</button>
-                          {!done && <button onClick={() => convertBulk(sh.series_id, undefined, sh.title, sh.convertible)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy === `bulk:${sh.series_id}:all` ? "…" : "Convert now"}</button>}
+                          {!done && <button onClick={() => convertBulk(sh.series_id, undefined, sh.title)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Convert now</button>}
                         </div>
                       </td>
                     </tr>
@@ -644,9 +654,9 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {seasons.map((n) => (
-                  <button key={n} onClick={() => convertBulk(show.series_id, n, `${show.title} season ${n}`, (items ?? []).filter((c) => c.worth && c.season === n).length)} disabled={busy !== null}
+                  <button key={n} onClick={() => convertBulk(show.series_id, n, `${show.title} season ${n}`)} disabled={busy !== null}
                     className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
-                    {busy === `bulk:${show.series_id}:${n}` ? "…" : `Convert S${n}`}
+                    {`Convert S${n}`}
                   </button>
                 ))}
               </div>
@@ -665,15 +675,22 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                 {view.map((c, i) => {
                   const cd = c.info?.video_codec?.toUpperCase() ?? "?";
                   const isRunning = runningKeys.has(c.key);
+                  const planOpen = openPlan === c.key;
                   return (
-                    <tr key={c.key} style={{ borderTop: i === 0 ? "none" : nested.has(c) ? "1px dashed var(--line-soft)" : "1px solid var(--line-soft)" }}>
+                    <Fragment key={c.key}>
+                    <tr style={{ borderTop: i === 0 ? "none" : nested.has(c) ? "1px dashed var(--line-soft)" : "1px solid var(--line-soft)" }}>
                       <td className="px-3 py-2 font-semibold">
-                        {nested.has(c) ? (
-                          // Under its film's default file: the version's name says which file it is.
-                          <span className="flex items-center gap-1.5 pl-4 font-normal text-ink-dim"><span aria-hidden className="text-ink-faint">↳</span><VersionChip label={c.version_label} /></span>
-                        ) : (
-                          <>{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span>{c.version_id ? <> <VersionChip label={c.version_label} /></> : null}</>
-                        )}
+                        <PlanToggle open={planOpen} title={c.version_id ? `${c.title} · ${c.version_label || "version"}` : c.title} onToggle={() => setOpenPlan(planOpen ? null : c.key)}>
+                          {nested.has(c) ? (
+                            // Under its film's default file: the version's name says which file it is.
+                            <span className="flex items-center gap-1.5 pl-4 font-normal text-ink-dim"><span aria-hidden className="text-ink-faint">↳</span><VersionChip label={c.version_label} /></span>
+                          ) : (
+                            <>
+                              <Poster url={c.poster_url} title={c.title} />
+                              <span>{c.title} <span className="font-normal text-ink-faint">{c.year || ""}</span>{c.version_id ? <> <VersionChip label={c.version_label} /></> : null}</span>
+                            </>
+                          )}
+                        </PlanToggle>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">
@@ -682,7 +699,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                         </div>
                       </td>
                       <td className="px-3 py-2 font-mono text-ink-dim">{c.info?.resolution ?? "—"}</td>
-                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? "The Dolby Vision layer is removed when converted" : undefined}>{hdrLabel(c)}</td>
+                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? (c.needs?.video ? "The Dolby Vision layer is removed when converted" : c.needs?.why) : undefined}>{hdrLabel(c)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{c.info?.bitrate_kbps ? `${(c.info.bitrate_kbps / 1000).toFixed(1)} Mb/s` : "—"}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">{fmtSize(c.info?.size_bytes)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums" title={c.tracks || undefined}>
@@ -696,11 +713,13 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                             {!c.worth && <span className="font-mono text-[10px] text-ink-faint" title="Only the tracks differ, and tidying them would free little. Done when it's re-encoded, or now with Fix tracks.">little to gain</span>}
                             {c.needs?.video && <button onClick={() => onCompare(c.key)} title="Encode a few clips as HEVC and AV1, compare size and quality, and keep the clips to watch" className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Compare</button>}
                             {requested.has(c.key) ? <span className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good)" }}>Next ✓</span>
-                              : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{busy === c.key ? "…" : c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
+                              : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
                           </div>
                         ) : <div className="text-right"><span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span></div>}
                       </td>
                     </tr>
+                    {planOpen && <tr><td colSpan={HEADERS.length} className="px-3 pb-3"><PlanCard itemKey={c.key} /></td></tr>}
+                    </Fragment>
                   );
                 })}
               </tbody>

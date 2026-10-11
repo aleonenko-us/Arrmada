@@ -90,6 +90,7 @@ type Job struct {
 
 	cancel    context.CancelFunc // set while running, so the encode can be stopped mid-flight
 	cancelled bool
+	lane      bool         // running on the request lane (runner_lane.go)
 	procs     map[int]bool // process groups currently running for this job (for pausing)
 	rec       *jobRecord   // what the ledger keeps about it (see history.go)
 }
@@ -135,6 +136,8 @@ type Service struct {
 	binMu       sync.Mutex
 	// libraryChanged hears about the folder of each swapped-in file (Plex's scanner).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
+	// prefersDV asks whether a title's quality profile wants Dolby Vision (dvpolicy.go).
+	prefersDV atomic.Pointer[profilePrefersDV]
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool
@@ -150,7 +153,11 @@ type Service struct {
 	jobs    []*Job
 	nextID  int64
 	pending map[string]*Job // item key → its running job, so a file is never converted twice at once
-	wake    chan struct{}   // nudges idle workers (a request arrived, a setting changed)
+
+	// wake is closed (and replaced) by wakeUp to nudge EVERY idle worker at once — a request
+	// arrived, a setting changed. Guarded by wakeMu, which is never taken while holding mu.
+	wakeMu sync.Mutex
+	wake   chan struct{}
 
 	reclaimMu sync.Mutex // guards the reclaimed-bytes read-modify-write across workers
 
@@ -243,7 +250,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		index: &libraryIndex{db: db}, skips: &skipStore{db: db}, requests: &requestStore{db: db},
 		choices: &choiceStore{db: db}, measured: &measureStore{db: db}, history: &historyStore{db: db},
 		pending: map[string]*Job{},
-		wake:    make(chan struct{}, 1),
+		wake:    make(chan struct{}),
 	}
 	s.logBuf = s.logs.recent(context.Background(), maxLogLines) // restore the log after a restart
 	s.hdr10plusTool, _ = exec.LookPath("hdr10plus_tool")
