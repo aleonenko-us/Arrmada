@@ -28,16 +28,23 @@ func jobKey(j *Job) string {
 	return movieKey(j.MovieID)
 }
 
-// recordFailure bumps an item's failure count (or starts it at 1), stashing the last error.
-func (f *failureStore) recordFailure(ctx context.Context, key, errMsg string) {
+// recordFailure bumps an item's failure count (or starts it at 1), stashing the last error,
+// and returns the new count (0 if it couldn't be written) — the failure that reaches
+// maxFailures is the one that announces the file as blocked (see failureCounted).
+func (f *failureStore) recordFailure(ctx context.Context, key, errMsg string) int {
 	if len(errMsg) > 300 {
 		errMsg = errMsg[:300]
 	}
-	_, _ = f.db.ExecContext(ctx,
+	var n int
+	if err := f.db.QueryRowContext(ctx,
 		`INSERT INTO convert_failures (item_key, count, last_error, updated_at)
 		 VALUES (?, 1, ?, datetime('now'))
-		 ON CONFLICT(item_key) DO UPDATE SET count = count + 1, last_error = excluded.last_error, updated_at = datetime('now')`,
-		key, errMsg)
+		 ON CONFLICT(item_key) DO UPDATE SET count = count + 1, last_error = excluded.last_error, updated_at = datetime('now')
+		 RETURNING count`,
+		key, errMsg).Scan(&n); err != nil {
+		return 0
+	}
+	return n
 }
 
 // clearFailures resets an item's record (called after a successful conversion).

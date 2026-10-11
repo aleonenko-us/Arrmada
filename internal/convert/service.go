@@ -135,6 +135,8 @@ type Service struct {
 	binMu       sync.Mutex
 	// libraryChanged hears about the folder of each swapped-in file (Plex's scanner).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
+	// bus is where lifecycle events go (see events.go, SetBus); nil = nowhere.
+	bus atomic.Pointer[Publisher]
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool
@@ -718,9 +720,10 @@ func (s *Service) finishSkip(job *Job, kind, note string) {
 		s.finish(job, StateCancelled, "cancelled")
 		return
 	}
-	s.skips.record(context.Background(), job.Key, kind, note)
+	attempts := s.skips.record(context.Background(), job.Key, kind, note)
 	s.record(job).skipKind = kind
 	s.finish(job, StateSkipped, note)
+	s.skipRecorded(job, kind, note, attempts)
 }
 
 // finishAfterEncode skips a job that already burned a full encode and would do so again:
@@ -731,7 +734,7 @@ func (s *Service) finishAfterEncode(job *Job, kind, note string) {
 		s.finish(job, StateCancelled, "cancelled")
 		return
 	}
-	s.failures.recordFailure(context.Background(), job.Key, note)
+	s.failureCounted(context.Background(), job, note)
 	s.finishSkip(job, kind, note)
 }
 
@@ -772,14 +775,18 @@ func (s *Service) finish(job *Job, state JobState, note string) {
 		}
 		s.failures.clearFailures(ctx, job.Key)
 		s.skips.clear(ctx, job.Key)
+		s.publishDone(job)
 	case StateFailed:
 		s.event("error", fmt.Sprintf("✗ Failed %s — %s", job.Title, note))
-		if transientFailure(note) {
+		transient := transientFailure(note)
+		if transient {
 			// It will clear on its own, so it doesn't count toward the failure limit — but
 			// it must still wait, or the runner picks the same file straight back up.
 			s.skips.record(ctx, job.Key, SkipTransient, note)
-		} else {
-			s.failures.recordFailure(ctx, job.Key, note)
+		}
+		s.publishFailed(job, note, transient)
+		if !transient {
+			s.failureCounted(ctx, job, note)
 		}
 	case StateSkipped:
 		s.event("info", fmt.Sprintf("Skipped %s — %s", job.Title, note))

@@ -878,6 +878,9 @@ func main() {
 	// Convert pauses its encodes while someone is watching — which it can only know while
 	// monitoring is on, so its settings page says so when it isn't.
 	convertSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })
+	// convert.done / failed / blocked / stalled (staff-only topics): the live UI and the
+	// admin alerts hear them (internal/notify/convert.go).
+	convertSvc.SetBus(bus)
 	// Tell Plex which folder changed after an import, upgrade, rename, delete or Convert
 	// swap: one debounced partial scan per folder, translated to Plex's own paths. Plex
 	// being down or unset never holds anything up — requests are queued in memory and

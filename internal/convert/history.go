@@ -56,6 +56,9 @@ type jobRecord struct {
 	encodeStart         time.Time
 	encodeEnd           time.Time
 	historyID           int64 // the in_progress row, once the encode has started
+	// stallNeed/stallFree are the space figures behind a "waiting for room" skip, for the
+	// convert.stalled event (events.go noteStall).
+	stallNeed, stallFree int64
 }
 
 // record returns the job's ledger record, creating it on first use. Created under s.mu so
