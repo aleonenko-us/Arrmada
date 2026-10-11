@@ -505,6 +505,11 @@ func (a *api) handleWanted(w http.ResponseWriter, r *http.Request) {
 			kinds[k] = true
 		}
 	}
+	if kinds == nil {
+		// Activity → Wanted: every kind, from the cache while the pipeline hasn't moved.
+		a.writeJSON(w, http.StatusOK, a.cachedWanted(r.Context()))
+		return
+	}
 	a.writeJSON(w, http.StatusOK, a.buildWanted(r.Context(), kinds))
 }
 
@@ -593,6 +598,8 @@ func (a *api) handleWantedSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	started := time.Now().UnixMilli()
 	reset()
+	// The reset moves the title's next check; the next Wanted read rebuilds.
+	a.forgetWanted()
 	if r.PathValue("kind") == automation.AttemptMovie {
 		// Movie searches wait their turn in the movie search queue (MOV-07).
 		q, err := a.enqueueMovie(r, id, spec)

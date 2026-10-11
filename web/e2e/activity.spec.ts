@@ -1,6 +1,7 @@
 import type { WebSocketRoute } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import { historyEvents } from "./fixtures/media";
+import { FAILING_HASH, MISFILED_HASH, STALLED_HASH } from "./fixtures/system";
 
 // ACQ-26: one Activity page — Queue, Needs you, Wanted, History and Blocklist tabs — in
 // place of four pages. The old addresses open the matching tab, the tab is the address
@@ -66,11 +67,103 @@ test.describe("manager", () => {
     ]);
     await expect(page.getByText("Held", { exact: true })).toBeVisible();
     await expect(page.getByText("Import failed", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Decide →" })).toHaveAttribute("href", "/activity/needs-you");
+    // Held and failing imports are settled on Needs you, which has an action for each.
+    await expect(page.getByRole("link", { name: "Decide →" })).toHaveCount(2);
+    await expect(page.getByRole("link", { name: "Decide →" }).first()).toHaveAttribute("href", "/activity/needs-you");
     // Seeding has only the imported one.
     await views.getByRole("button", { name: /^Seeding/ }).click();
     await expect(page.getByText("Alien.1979.1080p.BluRay-FIXTURE")).toHaveCount(0);
     await expect(page.getByText("Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE")).toBeVisible();
+  });
+
+  // ACQ-29: a transfer shows the title its grab was for — poster, linked name, scope and
+  // who asked — over the release name; on a wide screen its actions sit on the row.
+  test("transfers are poster-first cards linked to their title, with scope and requester chips", async ({ page }) => {
+    await page.goto("/activity/queue");
+    const card = page.getByTestId("transfer-card").filter({ hasText: "Driftwood.2025" });
+    await expect(card.getByRole("link", { name: "Driftwood" })).toHaveAttribute("href", "/movies/3");
+    await expect(card.getByTestId("transfer-release")).toHaveText("Driftwood.2025.2160p.WEB-DL.DV.HDR.H265-FIXTURE");
+    await expect(card.getByTestId("transfer-scope")).toHaveText("4K");
+    await expect(card.getByTestId("transfer-requester")).toHaveText("for Mum");
+    await expect(card.getByRole("button", { name: "Block" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Delete" })).toBeVisible();
+    // The search box finds a transfer by its title too.
+    await page.getByRole("textbox", { name: "Search this list" }).fill("driftw");
+    await expect(page.getByTestId("transfer-card")).toHaveCount(1);
+    await page.getByRole("textbox", { name: "Search this list" }).fill("");
+    await page.getByRole("group", { name: "Queue views" }).getByRole("button", { name: /^Finishing/ }).click();
+    const heat = page.getByTestId("transfer-card").filter({ hasText: "Heat.1995" });
+    await expect(heat.getByRole("link", { name: "Heat" })).toHaveAttribute("href", "/movies/2");
+    await expect(heat.getByText("Upgrade", { exact: true })).toBeVisible();
+  });
+
+  // ACQ-30: Needs you is every stuck download, each in its section with the action that
+  // fits it, built on the shared Needs-you snapshot.
+  test("Needs you lists each stuck download with the action that fits it", async ({ page, api }) => {
+    await page.goto("/activity/needs-you");
+    for (const name of ["Held for review", "Imports failing", "Stalled or errored", "Wrong category"]) {
+      await expect(page.getByRole("heading", { level: 2, name: new RegExp(`^${name}`) })).toBeVisible();
+    }
+    // Held imports keep Review's cards and actions.
+    await expect(page.locator("#reviews").getByRole("button", { name: "Import anyway" })).toBeVisible();
+
+    await page.locator("#import-failures").getByRole("button", { name: "Retry now" }).click();
+    await expect(page.getByText("Retrying — the next import check tries it again.")).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/imports/${FAILING_HASH}/retry`)).toHaveLength(1);
+
+    await page.locator("#stalled").getByRole("button", { name: "Try another release" }).click();
+    await expect(page.getByText(/Grabbed Old\.Film\.1080p\.WEB-DL-NEW instead/)).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/queue/${STALLED_HASH}/failover`)).toHaveLength(1);
+
+    await page.locator("#wrong-category").getByRole("button", { name: "Move to TV" }).click();
+    await expect(page.getByText("Moved to TV — the next import check picks it up.")).toBeVisible();
+    expect(api.callsTo("POST", `/api/v1/queue/${MISFILED_HASH}/category`)[0].body).toEqual({ category: "arrmada-tv" });
+
+    // What waits elsewhere is one line each, linked.
+    const also = page.getByRole("region", { name: "Also waiting" });
+    await expect(also).toContainText("2 requests are waiting for approval");
+    await expect(also).toContainText("1 health problem");
+    // The tab counts what it holds, like the sidebar pill.
+    await expect(page.getByRole("tablist", { name: "Activity" }).getByRole("tab", { name: /^Needs you/ })).toContainText("4");
+  });
+
+  // ACQ-31: finished torrents Arrmada didn't grab sit, collapsed, at the bottom of Needs
+  // you; each can be imported into a picked title or ignored.
+  test("unmanaged torrents can be imported into a picked title or ignored", async ({ page, api }) => {
+    await page.goto("/activity/needs-you");
+    const toggle = page.getByRole("button", { name: /Not managed by Arrmada/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toContainText("2");
+    await expect(page.getByTestId("unmanaged-item")).toHaveCount(0);
+    await toggle.click();
+    const items = page.getByTestId("unmanaged-item");
+    await expect(items).toHaveCount(2);
+
+    await items.filter({ hasText: "Some.Linux.Distro.ISO" }).getByRole("button", { name: "Ignore" }).click();
+    await expect(page.getByText("Ignored — it stays in the download client.")).toBeVisible();
+    await expect(items).toHaveCount(1);
+    expect(api.callsTo("POST", "/api/v1/queue/e2e0000000000000000000000000000000000005/ignore")).toHaveLength(1);
+
+    await items.getByRole("button", { name: "Import into…" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Import into a movie…");
+    // The search starts from the torrent's own name, and Show lists shows instead.
+    await expect(dialog.getByRole("textbox", { name: "Filter your library" })).toHaveValue("Night Train");
+    await dialog.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(dialog).toContainText("Import into a show…");
+    await dialog.getByRole("button", { name: "Movie", exact: true }).click();
+    await dialog.getByRole("button", { name: /^Night Train \(1999\)/ }).click();
+    await expect(page.getByText("Imported into Night Train.")).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/queue/e2e0000000000000000000000000000000000006/import")[0].body).toEqual({ kind: "movie", target_id: 7 });
+    await expect(items).toHaveCount(0);
+  });
+
+  test("the Dashboard card's links open the right Needs you section", async ({ page }) => {
+    await page.goto("/");
+    const card = page.getByRole("region", { name: /Needs you/ });
+    await card.getByRole("link", { name: "See it →" }).first().click();
+    await expect(page).toHaveURL(/\/activity\/needs-you#(stalled|import-failures|wrong-category)$/);
+    await expect(page.getByRole("heading", { level: 2, name: /^Imports failing/ })).toBeVisible();
   });
 
   test("only the visible tab reads: leaving the Queue stops its queue reads", async ({ page, api }) => {

@@ -12,7 +12,8 @@ import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
 import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
-import { ErrorState, Menu, Skeleton, StatusChip, useToast } from "../ui";
+import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activity/transfer";
+import { ErrorState, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const TYPE_PILLS: { key: MediaFilter; label: string }[] = [
@@ -140,8 +141,8 @@ function ProfileChip({ profile }: { profile: string }) {
 
 // How often the Wanted tab refreshes on its own. It reads the search history, so it
 // isn't refreshed with the queue; a finished search, a grab or an import announced over
-// the socket refreshes it sooner.
-const WANTED_POLL_MS = 30_000;
+// the socket refreshes it sooner, so this is only the backstop for a dropped event.
+const WANTED_POLL_MS = 120_000;
 const WANTED_TOPICS = ["search.finished", "release.grabbed", "download.imported", "series.imported", "series.searched"];
 // What changes the queue's rows (beyond the bars, which queue.progress moves in place) —
 // including a finished download moving from Finishing to Seeding once any importer has
@@ -265,10 +266,11 @@ export function QueuePanel() {
     const q = query.trim().toLowerCase();
     let l = typeFilter === "all" ? list : list.filter((d) => (d.media_type ?? "movie") === typeFilter);
     if (problemsOnly) l = l.filter(isProblem);
-    l = q ? l.filter((d) => d.name.toLowerCase().includes(q)) : [...l];
+    // The search box finds a transfer by its title as well as its release name.
+    l = q ? l.filter((d) => d.name.toLowerCase().includes(q) || (d.item?.title ?? "").toLowerCase().includes(q)) : [...l];
     l.sort((a, b) => {
       switch (sortKey) {
-        case "name": return a.name.localeCompare(b.name);
+        case "name": return (a.item?.title ?? a.name).localeCompare(b.item?.title ?? b.name);
         case "speed": return b.down_speed - a.down_speed;
         case "size": return b.size_bytes - a.size_bytes;
         case "ratio": return b.ratio - a.ratio;
@@ -412,7 +414,7 @@ export function WantedPanel() {
 
   // Its own, slower read, refreshed by events. A sweep finishes searches in bursts: one
   // refresh for the lot, a moment after.
-  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 1500 });
+  const wanted = useLiveQuery<WantedLists>("wanted", api.wanted, { staleMs: 10_000, topics: WANTED_TOPICS, fallbackMs: WANTED_POLL_MS, debounceMs: 3000 });
   const searching = useMemo(() => wanted.data?.searching ?? [], [wanted.data]);
   const upcoming = useMemo(() => wanted.data?.upcoming ?? [], [wanted.data]);
 
@@ -508,19 +510,22 @@ function TypeChip({ mediaType }: { mediaType?: string }) {
   return <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{label}</span>;
 }
 
-// DownloadCard is an in-flight (incomplete) transfer: progress bar, speed, ETA, queue controls.
+// DownloadCard is an in-flight (incomplete) transfer: the title it's for, progress bar,
+// speed, ETA, queue controls.
 function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void }) {
   const paused = it.state === "paused";
   const [removing, setRemoving] = useState(false);
   const chip = phaseLabel(it);
   const stall = stallLine(it);
   return (
-    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="flex items-center gap-3">
+    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
+      <div className="flex items-start gap-3">
+        <TransferPoster it={it} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <TransferTitle it={it} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" title={chip.tip} style={{ background: "var(--panel-2)", color: chip.tone }}>{chip.text}</span>}
+            <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
@@ -529,23 +534,20 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
           </div>
           {stall && <div className="mt-1 font-mono text-[10.5px]" style={{ color: "var(--avoid)" }}>{stall}</div>}
         </div>
-        <div className="flex flex-none items-center gap-1">
-          <ResumeBtn it={it} guard={guard} busy={busy} act={act} />
-          <IconBtn label="Block" tone="var(--avoid)" title="Blocklist this release and grab a different one" disabled={busy} onClick={() => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); })} />
-          <IconBtn label="Delete" tone="var(--reject)" title="Remove from the client — asks what to do with the files" disabled={busy} onClick={() => setRemoving(true)} />
-          <Menu
-            trigger="⋯"
-            label={`More actions for ${it.name}`}
-            triggerClassName="rounded-md px-2 py-1 text-[11px] font-semibold"
-            triggerStyle={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
-            items={[
-              { label: "Reannounce", busyLabel: "Reannouncing…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "reannounce"); onNote("Asked the trackers for peers again."); }) },
-              { label: "Recheck files", busyLabel: "Rechecking…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "recheck"); onNote("Rechecking the downloaded data."); }) },
-              { label: "Move up the queue", disabled: busy, onSelect: () => act(it.hash, () => api.torrentAction(it.hash, "prio_up")) },
-              { label: "Move down the queue", disabled: busy, onSelect: () => act(it.hash, () => api.torrentAction(it.hash, "prio_down")) },
-            ]}
-          />
-        </div>
+        <CardActions
+          name={it.item?.title ?? it.name}
+          primary={<ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
+          secondary={[
+            { label: "Block", tone: "var(--avoid)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
+            { label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) },
+          ]}
+          extras={[
+            { label: "Reannounce", busyLabel: "Reannouncing…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "reannounce"); onNote("Asked the trackers for peers again."); }) },
+            { label: "Recheck files", busyLabel: "Rechecking…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "recheck"); onNote("Rechecking the downloaded data."); }) },
+            { label: "Move up the queue", disabled: busy, onSelect: () => act(it.hash, () => api.torrentAction(it.hash, "prio_up")) },
+            { label: "Move down the queue", disabled: busy, onSelect: () => act(it.hash, () => api.torrentAction(it.hash, "prio_down")) },
+          ]}
+        />
       </div>
       <div className="mt-2.5 flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
@@ -564,25 +566,29 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
 function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
   const [removing, setRemoving] = useState(false);
   const st = it.stage ? STAGE[it.stage] : STAGE.importing;
+  // Anything that needs a decision is settled on Needs you, in the section with the
+  // action for it.
+  const decide = it.stage === "needs_review" ? LINKS.review : it.stage === "import_retrying" ? LINKS.importProblems : it.stage === "wrong_category" ? LINKS.wrongCategory : null;
   return (
-    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="flex items-center gap-3">
+    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
+      <div className="flex items-start gap-3">
+        <TransferPoster it={it} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <TransferTitle it={it} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusChip tone={st.tone}>{st.label}</StatusChip>
+            <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
           </div>
           {it.why && <div className="mt-1 text-[11.5px] text-ink-dim" data-testid="stage-why">{it.why}</div>}
         </div>
-        <div className="flex flex-none items-center gap-1">
-          {it.stage === "needs_review" && (
-            <Link to={LINKS.review} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link>
-          )}
-          <IconBtn label="Delete" tone="var(--reject)" title="Remove from the client — asks what to do with the files" disabled={busy} onClick={() => setRemoving(true)} />
-        </div>
+        <CardActions
+          name={it.item?.title ?? it.name}
+          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
+          secondary={[{ label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) }]}
+        />
       </div>
       {removing && <RemoveDownloadDialog it={it} onClose={() => setRemoving(false)} onDone={(r) => { setRemoving(false); onRemoved(removedMessage(r)); }} />}
     </div>
@@ -625,21 +631,24 @@ function SeedingSummary({ items }: { items: ActivityDownload[] }) {
   );
 }
 
-// SeedingCard is a completed torrent that's sharing back: ratio, seed time, goal progress.
+// SeedingCard is a completed torrent that's sharing back: the title it's for, ratio, seed
+// time, goal progress.
 function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => void; onRemoved: (m: string) => void }) {
   const paused = it.state === "paused";
   const goal = seedGoal(it);
   const [removing, setRemoving] = useState(false);
   return (
-    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="flex items-center gap-3">
+    <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
+      <div className="flex items-start gap-3">
+        <TransferPoster it={it} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-[11.5px]" title={it.name}>{it.name}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <TransferTitle it={it} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {paused && it.held_by_guard ? <GuardChip guard={guard} /> : it.stage === "not_managed" ? (
               // Nothing in Arrmada grabbed or imported it: a muted chip, no seed rule.
               <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
             ) : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
+            <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
             <span className="font-mono text-[10.5px]" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>
@@ -647,10 +656,11 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
             <span className="font-mono text-[10.5px]" style={{ color: it.up_speed > 0 ? "var(--good)" : "var(--ink-faint)" }}>{it.up_speed > 0 ? `↑${bytes(it.up_speed)}/s` : "idle"}</span>
           </div>
         </div>
-        <div className="flex flex-none items-center gap-1">
-          <ResumeBtn it={it} guard={guard} busy={busy} act={act} />
-          <IconBtn label="Delete" tone="var(--reject)" title="Stop seeding and remove from the client — asks what to do with the files" disabled={busy} onClick={() => setRemoving(true)} />
-        </div>
+        <CardActions
+          name={it.item?.title ?? it.name}
+          primary={<ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
+          secondary={[{ label: "Delete", danger: true, title: "Stop seeding and remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) }]}
+        />
       </div>
       <div className="mt-2.5 flex items-center gap-2.5">
         {goal.frac != null ? (

@@ -177,23 +177,34 @@ export const activity: ActivityFeed = {
     {
       hash: "e2e0000000000000000000000000000000000001", name: "Driftwood.2025.2160p.WEB-DL.DV.HDR.H265-FIXTURE", state: "downloading",
       progress: 0.42, size_bytes: 18_000_000_000, down_speed: 12_400_000, up_speed: 400_000, eta_seconds: 900, ratio: 0.1,
-      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12, stage: "downloading",
+      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12, stage: "downloading", managed: true,
+      // ACQ-29: the title the grab was for, by hash: poster, link, version and who asked.
+      item: { kind: "movie", id: 3, title: "Driftwood", year: 2025, poster_url: poster(5), scope: "4K", requested_by: ["Mum"] },
     },
     {
       hash: "e2e0000000000000000000000000000000000002", name: "Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 2_100_000_000, down_speed: 0, up_speed: 400_000, eta_seconds: 0, ratio: 1.3,
-      quality_profile: "hd-1080p", media_type: "series", imported: true, stage: "seeding",
+      quality_profile: "hd-1080p", media_type: "series", imported: true, stage: "seeding", managed: true,
+      item: { kind: "series", id: 1, title: "Harbour Lights", year: 2024, scope: "S02E04", requested_by: ["Dad", "Gran"] },
     },
     // Finished, not in the library: one held for review, one whose import keeps failing.
     {
       hash: "e2e0000000000000000000000000000000000003", name: "Alien.1979.1080p.BluRay-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 9_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.2,
-      quality_profile: "hd-1080p", media_type: "movie", stage: "needs_review", why: "Held for review: it doesn't look like Aliens",
+      quality_profile: "hd-1080p", media_type: "movie", stage: "needs_review", why: "Held for review: it doesn't look like Aliens", managed: true,
+      item: { kind: "movie", id: 4, title: "Aliens", year: 1986 },
     },
     {
       hash: "e2e0000000000000000000000000000000000004", name: "Heat.1995.1080p.BluRay-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 11_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.1,
-      quality_profile: "hd-1080p", media_type: "movie", stage: "import_retrying", why: "Import failed 3× (permission denied) — next try in 8 min",
+      quality_profile: "hd-1080p", media_type: "movie", stage: "import_retrying", why: "Import failed 3× (permission denied) — next try in 8 min", managed: true,
+      item: { kind: "movie", id: 2, title: "Heat", year: 1995, upgrade: true },
+    },
+    // Nothing in Arrmada grabbed it: the release name is all there is.
+    {
+      hash: "e2e0000000000000000000000000000000000005", name: "Some.Linux.Distro.ISO-FIXTURE", state: "seeding",
+      progress: 1, size_bytes: 3_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.5,
+      quality_profile: "n/a", media_type: "movie", stage: "not_managed", why: "Not managed by Arrmada",
     },
   ],
   totals: { down_speed: 12_400_000, up_speed: 800_000, active: 2 },

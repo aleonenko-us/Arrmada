@@ -143,6 +143,10 @@ type api struct {
 	start        time.Time
 	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
+	// transfers caches the downloads feed's title cards and requester names (transfers.go).
+	transfers transferCache
+	// wanted caches Activity → Wanted's answer (wantedcache.go).
+	wanted wantedCache
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
@@ -202,7 +206,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
-	mux.HandleFunc("GET /api/v1/system/pending-restart",a.requireRole(auth.RoleManager, a.handlePendingRestart))
+	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.
 	mux.HandleFunc("GET /api/v1/setup", a.requireRole(auth.RoleAdmin, a.handleSetupState))
@@ -375,6 +379,15 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/queue/{hash}/block", a.requireRole(auth.RoleManager, a.handleBlockDownload))
 	mux.HandleFunc("POST /api/v1/queue/{hash}/action", a.requireRole(auth.RoleManager, a.handleTorrentAction))
 	mux.HandleFunc("DELETE /api/v1/queue/{hash}", a.requireRole(auth.RoleManager, a.handleDeleteDownload))
+	// Activity → Needs you's actions on a stuck download (needsyou.go).
+	mux.HandleFunc("POST /api/v1/queue/{hash}/failover", a.requireRole(auth.RoleManager, a.handleFailOver))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/category", a.requireRole(auth.RoleManager, a.handleSetCategory))
+	mux.HandleFunc("POST /api/v1/imports/{hash}/retry", a.requireRole(auth.RoleManager, a.handleRetryImport))
+	// Finished torrents Arrmada didn't grab: import into a picked title, or ignore (unmanaged.go).
+	mux.HandleFunc("GET /api/v1/downloads/unmanaged", a.requireRole(auth.RoleManager, a.handleUnmanaged))
+	mux.HandleFunc("GET /api/v1/queue/{hash}/targets", a.requireRole(auth.RoleManager, a.handleUnmanagedTargets))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/import", a.requireRole(auth.RoleManager, a.handleImportUnmanaged))
+	mux.HandleFunc("POST /api/v1/queue/{hash}/ignore", a.requireRole(auth.RoleManager, a.handleIgnoreDownload))
 
 	// Grab: search result → download client (closes the acquisition loop).
 	mux.HandleFunc("POST /api/v1/grab", a.requireRole(auth.RoleManager, a.handleGrab))

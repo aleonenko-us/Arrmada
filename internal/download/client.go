@@ -203,6 +203,12 @@ type Downloader interface {
 	Test(ctx context.Context, dc Client) error
 }
 
+// categorySetter is implemented by clients that can re-file a torrent under another
+// category (Needs you's "Move to TV" for a misfiled download).
+type categorySetter interface {
+	SetCategory(ctx context.Context, dc Client, hash, category string) error
+}
+
 // settingsManager is implemented by clients that expose tunable global settings.
 type settingsManager interface {
 	GetSettings(ctx context.Context, dc Client) (ClientSettings, error)

@@ -544,6 +544,14 @@ func (c *Coordinator) ReviewTargets(ctx context.Context, reviewID int64, q strin
 	if err != nil {
 		return nil, false, err
 	}
+	return c.ImportTargets(ctx, r.MediaType, q, limit)
+}
+
+// ImportTargets lists the library items of one kind (series | movie | book | music) a
+// download could be imported into, filtered by q — the picker behind a review's "Choose
+// different…" and Needs you's "Import into…" for a torrent Arrmada didn't grab.
+func (c *Coordinator) ImportTargets(ctx context.Context, kind, q string, limit int) (targets []ReviewTarget, truncated bool, err error) {
+	r := Review{MediaType: kind}
 	if limit <= 0 || limit > reviewTargetCap {
 		limit = reviewTargetCap
 	}
@@ -650,6 +658,19 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 	if dest <= 0 {
 		return needsTargetError{kindLabel(r.MediaType)}
 	}
+	if err := c.importContentInto(ctx, r, dest, "review"); err != nil {
+		return err
+	}
+	// No history line here: every kind's import already writes its own "imported" entry.
+	c.closeReviewImported(ctx, r)
+	return c.resolveReview(ctx, id, ResolutionImported)
+}
+
+// importContentInto imports a finished download's content (r.ContentPath, of kind
+// r.MediaType) into library item dest, by that kind's own import: what a review's import
+// and Needs you's "Import into…" share. from names where it was asked for, for the series
+// history line ("Imported 3 episodes from review: …").
+func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int64, from string) error {
 	// A review can outlive its download: the torrent gets removed, or the folder is
 	// cleaned up, long after the item was held. That's an ordinary situation and the user
 	// should be told plainly — it surfaced as a bare HTTP 500 with the raw stat error
@@ -687,7 +708,7 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 			}
 			return fmt.Errorf("%w: no video files were found in that download to import into %q", ErrNothingToImport, s.Title)
 		}
-		c.series.AddEvent(ctx, s.ID, "imported", fmt.Sprintf("Imported %d episode%s from review: %s", n, plural(n), r.Name))
+		c.series.AddEvent(ctx, s.ID, "imported", fmt.Sprintf("Imported %d episode%s from %s: %s", n, plural(n), from, r.Name))
 		c.seriesImported(ctx, s.ID, placed)
 	case "movie":
 		if c.movies == nil {
@@ -742,9 +763,7 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 	default:
 		return fmt.Errorf("unknown media type %q", r.MediaType)
 	}
-	// No history line here: every kind's import already writes its own "imported" entry.
-	c.closeReviewImported(ctx, r)
-	return c.resolveReview(ctx, id, ResolutionImported)
+	return nil
 }
 
 // closeReviewImported settles a review's download after its content went into the

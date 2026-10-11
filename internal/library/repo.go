@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // ImportRecord is a row in the import history.
@@ -58,6 +59,37 @@ func (r *importRepo) importedHashes(ctx context.Context) (map[string]bool, error
 		}
 	}
 	return out, rows.Err()
+}
+
+// importedAmong is importedHashes narrowed to the given hashes (as stored), looked up a
+// few hundred at a time, so a queue read doesn't scan the whole import history.
+func (r *importRepo) importedAmong(ctx context.Context, hashes []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	const chunk = 400
+	for lo := 0; lo < len(hashes); lo += chunk {
+		part := hashes[lo:min(lo+chunk, len(hashes))]
+		args := make([]any, len(part))
+		for i, h := range part {
+			args[i] = h
+		}
+		rows, err := r.db.QueryContext(ctx, `SELECT download_hash FROM imports WHERE download_hash IN (?`+
+			strings.Repeat(",?", len(part)-1)+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var h string
+			if rows.Scan(&h) == nil {
+				out[h] = true
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // targetFor returns the recorded target path for a download hash, and whether a
