@@ -35,6 +35,8 @@ func (a *api) handleConvertHardware(w http.ResponseWriter, r *http.Request) {
 		"scratch_need_title": needTitle,
 		"render_devices":     devices,
 		"vaapi_device":       vaapiDevice,
+		// Whether moving an original into each library folder's hold is an instant rename.
+		"hold_check": a.deps.Convert.HoldChecks(),
 	})
 }
 

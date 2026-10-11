@@ -24,6 +24,7 @@ func (s *Service) Run(ctx context.Context) {
 	// end, so nothing is lost). Clear its debris, then replay any file swap a crash cut off.
 	s.cleanScratch(ctx)
 	s.recoverSwaps(ctx)
+	s.holdStartup(ctx) // the originals hold's self-check (hold.go)
 	// Ledger rows still in progress belong to jobs the restart cut off; no worker has
 	// started yet, so none of them is live.
 	if n := s.history.interrupted(ctx); n > 0 {
@@ -104,9 +105,8 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 	}
 	waiting := s.skips.waitingKeys(ctx)
 	blocked := s.failures.blockedKeys(ctx, maxFailures)
-	tooBig := s.stillTooBigForBin(ctx)
 	for _, c := range s.autoCandidates(ctx, p) {
-		if waiting[c.Key] || blocked[c.Key] || tooBig(c) {
+		if waiting[c.Key] || blocked[c.Key] {
 			continue
 		}
 		it, _ := parseKey(c.Key)
@@ -115,27 +115,6 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 		}
 	}
 	return nil
-}
-
-// stillTooBigForBin reports, for a candidate already skipped as bin_full, whether its
-// original still can't fit in the bin. Those are passed over without a probe or a log line:
-// under the default cap every big remux would otherwise be picked, skipped and logged again
-// each day. The skip itself stays in Problems; one whose original now fits is picked again.
-func (s *Service) stillTooBigForBin(ctx context.Context) func(autoCand) bool {
-	none := func(autoCand) bool { return false }
-	full := s.skips.keysOfKind(ctx, SkipBinFull)
-	if len(full) == 0 {
-		return none
-	}
-	fn := s.binHeadroom.Load()
-	if fn == nil {
-		return none
-	}
-	free, capped, enabled := (*fn)(ctx)
-	if !capped || !enabled {
-		return none
-	}
-	return func(c autoCand) bool { return full[c.Key] && c.Size > free }
 }
 
 // claim creates the job for an item, or returns nil when it's already being converted.

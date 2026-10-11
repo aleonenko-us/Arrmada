@@ -2172,8 +2172,13 @@ export interface ConvertHistoryEntry {
   ssim_mean?: number; ssim_min?: number; ssim_windows?: number[];
   kept_tracks?: ConvertTrackDecision[]; dropped_tracks?: ConvertTrackDecision[]; warnings?: string[]; reclaim_deferred?: boolean;
   started_at: number; finished_at?: number; encode_secs?: number;
+  // The originals hold: where the original waits and until when, and what became of it.
+  hold_path?: string; hold_until?: number; hold_state?: ConvertHoldState; released_at?: number; reverted_at?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;
 }
+export type ConvertHoldState = "" | "held" | "released" | "reverted" | "missing";
+// What the startup self-check found for one library folder's originals hold.
+export interface ConvertHoldCheck { root: string; label: string; instant: boolean; err?: string }
 export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string }
 export interface ConvertRequest { key: string; title: string; requested_at: number }
 export interface ConvertStatus {
@@ -2185,6 +2190,7 @@ export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
+  hold_days: number;
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
   server_time: string; server_tz: string; plex_watching_known: boolean; can_pause: boolean;
   has_gpu: boolean; gpu_does_av1: boolean; hdr10plus_tool: boolean;
@@ -3113,7 +3119,8 @@ export const api = {
   searchSeriesSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/series/${id}/search`, { method: "POST" }),
 
   // Convert
-  convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string }>("/api/v1/convert/hardware"),
+  convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;
+    hold_check?: ConvertHoldCheck[] }>("/api/v1/convert/hardware"),
   convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
   convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
   updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),

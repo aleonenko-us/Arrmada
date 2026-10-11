@@ -7,10 +7,9 @@ import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
-import { useMe, isAdmin } from "../lib/me";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
-  type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type RecycleStats,
+  type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
   type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision,
 } from "../lib/api";
 
@@ -57,13 +56,12 @@ function fmtEta(sec: number): string {
 }
 
 // originalsCopy says, literally, what happens to an original once its conversion is
-// verified. null = the bin's settings couldn't be read, so it stays general.
-function originalsCopy(bin: RecycleStats | null): string {
-  if (bin && !bin.enabled) return "The recycle bin is off, so originals are deleted once the conversion is verified — there is no undo";
-  const days = bin && bin.retention_days > 0 ? ` for ${bin.retention_days} days` : "";
-  const cap = bin ? (bin.max_gb > 0 ? `its ${bin.max_gb} GB cap` : "") : "its size cap";
-  return `Originals go to the recycle bin${days}${cap ? `, within ${cap} — a file whose original wouldn't fit isn't started` : ""}. ` +
-    "To restore one, delete the converted file first";
+// verified: it waits in the originals hold, on the same disk, for the undo window (Convert's
+// settings, Undo). null = the settings couldn't be read, so it stays general.
+function originalsCopy(holdDays: number | null): string {
+  if (holdDays === 0) return "Originals are deleted once the conversion is verified — there is no undo (change this under Undo in Convert's settings)";
+  const days = holdDays ? `${holdDays} day${holdDays === 1 ? "" : "s"}` : "a while";
+  return `Originals are kept for ${days} on the same disk, so a conversion can be undone`;
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -99,9 +97,7 @@ function ConvertPage() {
   const loadHw = useCallback(() => api.convertHardware().then(setHw).catch(() => {}), []);
   const loadSettings = useCallback(() => api.convertSettings().then(setSettings).catch(() => {}), []);
   useEffect(() => { loadStats(); loadHw(); loadSettings(); }, [loadStats, loadHw, loadSettings]);
-  const [bin, setBin] = useState<RecycleStats | null>(null);
-  useEffect(() => { api.recycleStats().then(setBin).catch(() => {}); }, []);
-  const originals = originalsCopy(bin);
+  const originals = originalsCopy(settings ? settings.hold_days : null);
 
   const anyActive = jobs.some((j) => ACTIVE.has(j.state));
   usePoll(() => Promise.all([
@@ -773,7 +769,7 @@ const SKIP_LABEL: Record<string, string> = {
   source_gone: "The library file was missing when Convert went to read it — usually mid-import or mid-upgrade. Checked again later",
   transient: "These hit a problem that usually clears on its own (often a full disk). Each is tried again after an hour, then six, then once a day",
   name_taken: "The converted file would take the name of a file another library record points at (a second version, say), so it was left alone and the originals kept. Each is tried again after an hour, then six, then once a day",
-  bin_full: "Their originals are bigger than the room left in the recycle bin under its size cap. Keeping one there would make the bin delete it — and older deletions — within the hour, so these aren't converted until the cap is raised. Large 4K remuxes wait here; checked again daily, and straight away when the cap changes",
+  no_hold: "There's nowhere on the file's own disk to keep the original while the conversion can be undone — usually the file is outside your library folders, or a library folder isn't mounted. The originals were kept; each is tried again after an hour, then six, then once a day",
 };
 
 // retryIn says when a temporary skip is next tried, or "" when it isn't waiting.
@@ -786,7 +782,6 @@ function retryIn(unix: number): string {
 }
 
 function Problems({ flash }: { flash: (m: string) => void }) {
-  const admin = isAdmin(useMe().user); // the recycle bin's cap is an admin setting
   const [skips, setSkips] = useState<ConvertSkipped[] | null>(null);
   const [blocked, setBlocked] = useState<ConvertBlocked[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -825,9 +820,6 @@ function Problems({ flash }: { flash: (m: string) => void }) {
             <div>
               <div className="text-[14px] font-bold">{list.length.toLocaleString()} file{list.length === 1 ? "" : "s"}{list[0].permanent ? null : <span className="ml-2 font-mono text-[10px] font-normal text-ink-faint">TEMPORARY</span>}</div>
               <p className="mt-0.5 text-[12px] text-ink-dim">{SKIP_LABEL[kind] ?? list[0].reason}</p>
-              {kind === "bin_full" && (admin
-                ? <Link to={LINKS.recycleBin} className="mt-1 inline-block text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Raise the cap in Settings → Recycle bin</Link>
-                : <p className="mt-1 text-[12px] text-ink-faint">Ask an admin to raise the recycle bin's cap</p>)}
             </div>
             <button onClick={() => retrySkips(kind)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{busy === kind ? "…" : "Try these again"}</button>
           </div>

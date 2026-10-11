@@ -194,18 +194,21 @@ func TestSameStemGuard(t *testing.T) {
 		t.Fatal("a file was moved, or the staged copy was left behind")
 	}
 
-	// Nobody owns it: it is moved aside and the conversion lands.
+	// Nobody owns it: it waits in the hold beside the original and the conversion lands.
 	if _, err := r.db.Exec(`DELETE FROM movies WHERE id = 3`); err != nil {
 		t.Fatal(err)
 	}
 	r.skips.clear(context.Background(), movieKey(2))
 	writeFile(t, dst, 500, 'y')
-	job = r.claim(it, "Other", true)
-	r.finalizeOutput(context.Background(), job, src, dst, mi, plan)
+	job = r.convertNow(t, 2, "Other", src, dst, mi, plan)
 	if job.State != StateDone {
 		t.Fatalf("state %s (%s), want done", job.State, job.Note)
 	}
 	if sizeOf(taken) != 500 || r.moviePath(t, 2) != taken {
 		t.Fatalf("the converted file isn't in place: %d bytes, record %s", sizeOf(taken), r.moviePath(t, 2))
+	}
+	held := r.ledger(t, job).HoldPath
+	if sizeOf(held) != 1000 || sizeOf(filepath.Join(filepath.Dir(held), "Other.mkv")) != 700 {
+		t.Fatal("the original and the stray should both be in the hold")
 	}
 }

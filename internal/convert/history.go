@@ -183,6 +183,14 @@ type HistoryEntry struct {
 	FinishedAt int64   `json:"finished_at,omitempty"`
 	EncodeSecs float64 `json:"encode_secs,omitempty"`
 
+	// The originals hold (hold.go): where the original waits, until when, and what became
+	// of it ("" | held | released | reverted | missing).
+	HoldPath   string `json:"hold_path,omitempty"`
+	HoldUntil  int64  `json:"hold_until,omitempty"`
+	HoldState  string `json:"hold_state,omitempty"`
+	ReleasedAt int64  `json:"released_at,omitempty"`
+	RevertedAt int64  `json:"reverted_at,omitempty"`
+
 	// Only on the single-row read: the full probed spec of the original and the result.
 	SrcInfo *MediaInfo `json:"src_info,omitempty"`
 	OutInfo *MediaInfo `json:"out_info,omitempty"`
@@ -311,7 +319,7 @@ func (h *historyStore) prune(ctx context.Context) {
 const historyCols = `id, item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 	src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 	ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-	reclaim_deferred, started_at, finished_at, encode_secs`
+	reclaim_deferred, started_at, finished_at, encode_secs, hold_path, hold_until, hold_state, released_at, reverted_at`
 
 // list returns one page of the ledger, newest first, and the cursor for the next page (""
 // when this was the last). Rows still in progress are left out unless asked for: the
@@ -400,7 +408,8 @@ func scanHistory(sc rowScanner, full bool) (HistoryEntry, error) {
 		&e.Outcome, &e.OutcomeKind, &e.Note, &requested,
 		&e.SrcPath, &e.SrcRelease, &e.SrcSize, &srcInfo, &e.OutPath, &e.OutSize, &outInfo, &e.Codec, &e.CRF, &e.Encoder,
 		&e.SSIMMean, &e.SSIMMin, &windows, &e.Crop, &kept, &dropped, &warns,
-		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs); err != nil {
+		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs,
+		&e.HoldPath, &e.HoldUntil, &e.HoldState, &e.ReleasedAt, &e.RevertedAt); err != nil {
 		return e, err
 	}
 	e.Requested, e.ReclaimDeferred = requested == 1, deferred == 1

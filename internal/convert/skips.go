@@ -25,17 +25,20 @@ const (
 	// The converted file's .mkv name is a file another library record points at (a second
 	// version, an episode filed under that name). Never moved aside; looked at again later.
 	SkipNameTaken = "name_taken"
+	// There's nowhere to keep the original: the file is outside every library folder, the
+	// folder is inside the app's data folder, or its hold can't be made. Looked at again later.
+	SkipNoHold = "no_hold"
 
-	// The original wouldn't fit in the recycle bin under its cap, so retiring it would make
-	// the bin purge it within the hour. Waits for the owner to raise the cap (saving the
-	// bin's settings clears these) or for the bin to empty; checked daily.
+	// Retired: originals went to the recycle bin and one that didn't fit under its cap
+	// waited here. They now go to the originals hold, so these are cleared at startup; the
+	// kind stays so a row an older version wrote still reads.
 	SkipBinFull = "bin_full"
 )
 
 // backoffSkip reports whether a skip kind waits longer each time it repeats.
 func backoffSkip(kind string) bool {
 	switch kind {
-	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient, SkipNameTaken:
+	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient, SkipNameTaken, SkipNoHold:
 		return true
 	}
 	return false

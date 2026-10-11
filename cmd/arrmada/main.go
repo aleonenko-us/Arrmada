@@ -807,18 +807,22 @@ func main() {
 		}
 	}
 	convertSvc := convert.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, "ffmpeg", "ffprobe", convertScratch, "", log)
-	convertSvc.SetBin(bins) // originals go to the bin on their own library folder
+	// Converted originals wait in a hidden hold on their own library folder (same drive, a
+	// rename) for the undo window — never in the recycle bin, whose cap would purge them.
+	convertSvc.SetHoldRoots(func() []libroots.Root { return roots.Libraries(context.Background()) }, cfg.DataDir)
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)
 	// The manager looks after every bin: one per library folder (or the one override),
 	// plus the old shared bin while it still holds files, so what's in it stays listed,
-	// restorable, aged and capped until it drains. Convert's originals go to the bins, so
-	// it has to know how much room is left under the cap: an original that doesn't fit
-	// would make Enforce purge it (and everything older) within the hour.
+	// restorable, aged and capped until it drains.
 	recycleSvc := recyclebin.NewBins(bins.All, settingsSvc, log)
-	convertSvc.SetBinHeadroom(recycleSvc.Headroom)
 	grp.Loop("convert: runner", convertSvc.Run)
+	// Originals whose undo window has ended leave the hold — the only deletes it makes on
+	// its own, and only by the retention you set.
+	sched.Register("convert-hold-expire", time.Hour, true, convertSvc.ExpireHolds,
+		scheduler.Label("Release converted originals"),
+		scheduler.Description("Deletes originals Convert kept for undo once their undo window ends (Convert settings, Undo)."))
 	// Warm the probe cache off the request path so the first Convert page load after
 	// a restart is instant instead of re-analyzing the whole library, then build the
 	// library index the Convert list reads (both are incremental — see migration 0058).

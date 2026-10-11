@@ -16,12 +16,16 @@ import (
 //
 //	staging  the encode is being copied next to the original as .arrpart (original untouched)
 //	staged   the copy is complete (original untouched)
-//	retired  the original was handed to the recycle bin; the part is renamed in next
+//	holding  the original is being moved into the originals hold, to hold_path
+//	held     the original is in the hold; the part is renamed into place next
+//	retired  the original was handed to the recycle bin (swaps from before the hold)
 //
 // The row is cleared once the rename AND the library repoint have both succeeded.
 const (
 	swapStaging = "staging"
 	swapStaged  = "staged"
+	swapHolding = "holding"
+	swapHeld    = "held"
 	swapRetired = "retired"
 )
 
@@ -62,6 +66,28 @@ func (s *Service) setSwapState(ctx context.Context, part, state string) error {
 	return nil
 }
 
+// setSwapHolding records where the original is about to go in the hold, before it moves.
+func (s *Service) setSwapHolding(ctx context.Context, part, held string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE convert_swaps SET state = ?, hold_path = ? WHERE part = ?`, swapHolding, held, part)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("the swap's journal entry is missing")
+	}
+	return nil
+}
+
+// swapJournalled reports whether a swap staged at part is still in the journal (a lookup
+// that fails counts as yes: nothing is overwritten on a guess).
+func (s *Service) swapJournalled(ctx context.Context, part string) bool {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM convert_swaps WHERE part = ?`, part).Scan(&n); err != nil {
+		return true
+	}
+	return n > 0
+}
+
 // clearSwap removes a completed (or abandoned) swap's journal row.
 func (s *Service) clearSwap(part string) {
 	_, _ = s.db.ExecContext(context.Background(), `DELETE FROM convert_swaps WHERE part = ?`, part)
@@ -98,7 +124,9 @@ func exists(path string) bool {
 // with one of the two files in the library and the record pointing at it — never neither:
 //
 //   - staging / staged: the original was never touched, so the part is removed.
-//   - retired: when the original is still at its path it was never retired, so the part
+//   - holding / held: see recoverHeld — the original is in the hold or still in place, and
+//     the swap is finished or undone from there.
+//   - retired:when the original is still at its path it was never retired, so the part
 //     goes (an MP4 source used to get its .mkv renamed in next to it, a duplicate, and an
 //     MKV source had its original stamped as converted); otherwise the rename is completed
 //     and the record repointed.
@@ -111,10 +139,93 @@ func (s *Service) recoverSwaps(ctx context.Context) {
 		switch w.state {
 		case swapStaging, swapStaged:
 			s.abandonSwap(w, "an interrupted conversion was rolled back — the original was never touched")
-			continue
+			s.history.setOutcome(ctx, w.historyID, OutcomeFailed, "interrupted by a restart before the swap — the original was kept")
+		case swapHolding, swapHeld:
+			s.recoverHeld(ctx, w)
+		default:
+			s.recoverRetired(ctx, w)
 		}
-		s.recoverRetired(ctx, w)
 	}
+}
+
+// recoverHeld finishes or undoes a swap whose original was being moved into the hold.
+//
+//   - The original is still at its path in 'holding' (the move hadn't happened, or a copy
+//     across filesystems hadn't yet removed it): any copy in the hold goes, then the part;
+//     the record is untouched.
+//   - The original is in the hold: with the part still there and its name free the rename
+//     is completed; with the rename already done the record is repointed; if the converted
+//     file is gone, or its name was taken, the original is put back.
+//   - Neither (moved by hand): the converted file is all that's left, so the swap is
+//     finished as it was before the hold.
+func (s *Service) recoverHeld(ctx context.Context, w swapRow) {
+	stray := ""
+	if w.final != w.src && w.holdPath != "" {
+		stray = filepath.Join(filepath.Dir(w.holdPath), filepath.Base(w.final))
+	}
+	inHold := exists(w.holdPath)
+	// In 'holding' nothing has been renamed into the original's place yet, so a file there
+	// is the original. In 'held' it can be the converted file (an MKV source, renamed in).
+	if w.state == swapHolding && exists(w.src) {
+		if inHold {
+			_ = os.Remove(w.holdPath) // a finished copy whose source wasn't removed yet
+		}
+		_ = os.Remove(w.holdPath + ".partial")
+		s.abandonSwap(w, "an interrupted conversion was rolled back — the original was still in place")
+		_ = os.Remove(filepath.Dir(w.holdPath)) // only if empty
+		_ = s.history.setHold(ctx, w.historyID, "", 0, "")
+		s.history.setOutcome(ctx, w.historyID, OutcomeFailed, "interrupted by a restart before the swap — the original was kept")
+		return
+	}
+	if !inHold {
+		if exists(w.part) || exists(w.final) {
+			s.log.Warn("convert: an interrupted swap's original is neither in place nor in the hold — finishing the swap", "src", w.src)
+			s.recoverRetired(ctx, w)
+		} else {
+			s.clearSwap(w.part)
+		}
+		return
+	}
+	switch {
+	case exists(w.part) && !exists(w.final):
+		if err := os.Rename(w.part, w.final); err != nil {
+			s.log.Warn("convert: could not complete an interrupted swap", "part", w.part, "err", err)
+			return // keep the row; maybe the volume comes back
+		}
+		s.log.Info("convert: completed an interrupted file swap", "final", w.final)
+	case exists(w.part):
+		// Something else took the converted file's name: put the original back.
+		s.restoreHeld(ctx, w, stray, "interrupted by a restart, and the converted file's name was taken — the original was put back")
+		return
+	case !exists(w.final):
+		// The converted file is gone: the original goes back.
+		s.restoreHeld(ctx, w, stray, "interrupted by a restart and the converted file was lost — the original was put back")
+		return
+	}
+	if !s.repointRecovered(ctx, w) {
+		return
+	}
+	until := time.Now().AddDate(0, 0, s.holdDays(ctx)).Unix()
+	_ = s.history.setHold(ctx, w.historyID, w.holdPath, until, HoldHeld)
+	s.history.setOutcome(ctx, w.historyID, OutcomeDone, "converted — the swap was finished after a restart")
+}
+
+// restoreHeld puts an interrupted swap's original (and any stray moved aside with it) back
+// from the hold and drops the converted copy. If the original can't go back the row stays.
+func (s *Service) restoreHeld(ctx context.Context, w swapRow, stray, note string) {
+	if err := s.moveKept(w.holdPath, w.src); err != nil {
+		s.log.Warn("convert: could not put an original back from the hold — kept the journal entry", "held", w.holdPath, "err", err)
+		return
+	}
+	if stray != "" && exists(stray) && !exists(w.final) {
+		_ = s.moveKept(stray, w.final)
+	}
+	_ = os.Remove(w.part)
+	_ = os.Remove(filepath.Dir(w.holdPath)) // only if empty
+	s.clearSwap(w.part)
+	_ = s.history.setHold(ctx, w.historyID, "", 0, "")
+	s.history.setOutcome(ctx, w.historyID, OutcomeFailed, note)
+	s.log.Info("convert: "+note, "file", w.src)
 }
 
 // abandonSwap removes a swap's part and its row, the original being known to be in place.

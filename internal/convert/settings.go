@@ -27,6 +27,9 @@ type Settings struct {
 	TidyTracks       bool   `json:"tidy_tracks"`    // rewrite files whose only gap is a few tracks
 	Crop             bool   `json:"crop"`           // remove black bars from re-encoded films
 
+	// Undo: how long a converted original is kept in the originals hold (0 = no undo).
+	HoldDays int `json:"hold_days"`
+
 	// Advanced.
 	ScratchDir  string `json:"scratch_dir"`
 	VaapiDevice string `json:"vaapi_device"`
@@ -58,6 +61,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		KeepAudioLangs:   strings.Join(p.keepAudio, ", "),
 		KeepOriginalLang: p.keepOriginal, DropCommentary: p.dropCommentary,
 		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop,
+		HoldDays:   s.holdDays(ctx),
 		ScratchDir: g.Get(ctx, keyScratchDir, ""), VaapiDevice: g.Get(ctx, keyVaapiDevice, ""),
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),
 		ServerTime: time.Now().Format("15:04"), ServerTZ: zone,
@@ -81,6 +85,7 @@ type SettingsPatch struct {
 	ImageSubs        *string `json:"image_subs"`
 	TidyTracks       *bool   `json:"tidy_tracks"`
 	Crop             *bool   `json:"crop"`
+	HoldDays         *int    `json:"hold_days"`
 	ScratchDir       *string `json:"scratch_dir"`
 	VaapiDevice      *string `json:"vaapi_device"`
 	CPUCores         *int    `json:"cpu_cores"`
@@ -116,6 +121,9 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 	}
 	if p.CPUCores != nil && *p.CPUCores < 0 {
 		return Settings{}, fmt.Errorf("CPU cores can't be negative")
+	}
+	if p.HoldDays != nil && (*p.HoldDays < 0 || *p.HoldDays > maxHoldDays) {
+		return Settings{}, fmt.Errorf("keep originals for 0–%d days", maxHoldDays)
 	}
 
 	g := s.settings
@@ -160,6 +168,11 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 	if p.Workers != nil {
 		if err := g.Set(ctx, keyWorkers, strconv.Itoa(*p.Workers)); err != nil {
 			errs = append(errs, keyWorkers)
+		}
+	}
+	if p.HoldDays != nil {
+		if err := g.Set(ctx, keyHoldDays, strconv.Itoa(*p.HoldDays)); err != nil {
+			errs = append(errs, keyHoldDays)
 		}
 	}
 	if len(errs) > 0 {

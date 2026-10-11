@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
@@ -34,6 +35,8 @@ func newSpaceRig(t *testing.T) *spaceRig {
 		}
 	}
 	s.movies = movies.NewService(s.db, nil, nil, r.lib, r.recycle, eventbus.New(s.log), s.log)
+	// The library folder takes the originals hold, as Movies does in the app.
+	s.SetHoldRoots(func() []libroots.Root { return []libroots.Root{{Name: "movies", Path: r.lib}} }, filepath.Join(dir, "data"))
 	s.scratchDir, s.recycleDir = r.scratch, r.recycle
 	// Nothing on the PATH by these names: any step that shells out fails instead of running.
 	s.ffmpeg, s.ffprobe = filepath.Join(dir, "no-ffmpeg"), filepath.Join(dir, "no-ffprobe")
