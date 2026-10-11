@@ -6,6 +6,7 @@ import { UploadTorrentModal } from "../components/UploadTorrentModal";
 import { FileDetailsModal } from "../components/FileDetailsModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
+import { MovieRenameModal } from "../components/MovieRenameModal";
 import { LastSearchLine } from "../components/LastSearch";
 import { PlexPill, WatchedBy } from "../components/PlexBits";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
@@ -1075,16 +1076,9 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
     onChange();
   };
 
-  const rename = async () => {
-    const p = await api.renamePreview(movie.id);
-    if (p.matches) {
-      flash("Already named correctly.");
-      return;
-    }
-    await api.renameMovie(movie.id);
-    flash(`Renamed to "${p.proposed}"`);
-    onChange();
-  };
+  // Rename previews every track (old → new) in a modal before anything moves.
+  const [showRename, setShowRename] = useState(false);
+  const hasAnyFile = movie.has_file || !!movie.versions?.some((v) => v.has_file);
 
   return (
     <>
@@ -1119,10 +1113,8 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
         <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>
         <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowPaste(true)}>Upload torrent</button>
         <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowImport(true)}>Manual import</button>
-        {movie.has_file && !missing && (
-          <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("rename", rename)}>
-            {busy === "rename" ? "Renaming…" : "Rename"}
-          </button>
+        {hasAnyFile && (
+          <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowRename(true)}>Rename…</button>
         )}
         {/* Reachable on touch, unlike the grid's hover-only X. */}
         <button className={btn} style={{ border: "1px solid var(--reject)", color: "var(--reject)" }} disabled={busy !== null} onClick={() => setShowDelete(true)}>Delete movie</button>
@@ -1133,6 +1125,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
         </div>
       )}
       {showDelete && <DeleteMovieDialog movie={movie} onClose={() => setShowDelete(false)} onDeleted={() => { invalidate("movies"); navigate("/movies"); }} />}
+      {showRename && <MovieRenameModal movieId={movie.id} title={movie.title} onClose={() => setShowRename(false)} onRenamed={onChange} />}
       {showPaste && (
         <UploadTorrentModal
           what={movie.title}

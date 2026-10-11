@@ -1262,6 +1262,36 @@ export interface DeletePreview {
   confirm_over_bytes: number; // above this, the title must be typed
   recycle: RecycleMode;
 }
+// One track's planned rename (MOV-16). status ok: it moves to proposed; same: already
+// named right; conflict: something else has that name (reason says what), so it stays put;
+// missing: the recorded file isn't on disk.
+export interface MovieRenameItem {
+  media: "movie";
+  movie_id: number;
+  version_id: number; // 0 = the default track
+  title: string;
+  year?: number;
+  label: string;
+  current: string;
+  proposed: string;
+  status: "ok" | "same" | "conflict" | "missing";
+  reason?: string;
+}
+// What applying one item did.
+export interface MovieRenameResult {
+  movie_id: number;
+  version_id: number;
+  label: string;
+  from: string;
+  to: string;
+  renamed: boolean;
+  reason?: string;
+}
+export interface MovieRenameReply {
+  renamed: number;
+  skipped: number;
+  results: MovieRenameResult[];
+}
 // What deleting a movie with its files would move (each file still on disk), and where.
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
@@ -3132,9 +3162,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ path }),
     }),
+  // Every track's current file and the name the naming scheme gives it; nothing moves.
   renamePreview: (id: number) =>
-    req<{ current: string; proposed: string; matches: boolean }>(`/api/v1/movies/${id}/rename`),
-  renameMovie: (id: number) => req<{ status: string }>(`/api/v1/movies/${id}/rename`, { method: "POST" }),
+    req<{ items: MovieRenameItem[]; matches: boolean }>(`/api/v1/movies/${id}/rename`),
+  // Applies the previewed items the person ticked; anything changed since is skipped.
+  renameMovie: (id: number, items: MovieRenameItem[]) =>
+    req<MovieRenameReply>(`/api/v1/movies/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
   addVersion: (id: number, body: { label: string; quality_profile: string; edition?: string; monitored?: boolean }) =>
     req<MovieVersion>(`/api/v1/movies/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
   updateVersion: (id: number, vid: number, body: { label: string; quality_profile: string; edition?: string; monitored: boolean }) =>

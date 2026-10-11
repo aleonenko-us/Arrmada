@@ -922,40 +922,6 @@ func (a *api) handleManualImport(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "imported"})
 }
 
-// handleRenamePreview returns the proposed canonical name; handleRename applies it.
-func (a *api) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
-	id, ok := a.pathID(w, r)
-	if !ok {
-		return
-	}
-	current, proposed, matches, err := a.deps.Movies.RenamePreview(r.Context(), id)
-	if errors.Is(err, movies.ErrNotFound) {
-		a.writeError(w, http.StatusNotFound, "movie not found")
-		return
-	}
-	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not preview rename")
-		return
-	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"current": current, "proposed": proposed, "matches": matches})
-}
-
-func (a *api) handleRename(w http.ResponseWriter, r *http.Request) {
-	id, ok := a.pathID(w, r)
-	if !ok {
-		return
-	}
-	if err := a.deps.Movies.Rename(r.Context(), id); err != nil {
-		if errors.Is(err, movies.ErrNotFound) {
-			a.writeError(w, http.StatusNotFound, "movie not found")
-			return
-		}
-		a.writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"status": "renamed"})
-}
-
 // handleMovieDeletePreview says what deleting a movie with its files would move and where
 // it would go, so the dialog can state it before anything happens.
 func (a *api) handleMovieDeletePreview(w http.ResponseWriter, r *http.Request) {
