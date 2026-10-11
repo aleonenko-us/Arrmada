@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type UnmatchedFolder, type MatchCandidate } from "../lib/api";
 import { useMe, isAdmin } from "../lib/me";
 import { fmtBytes } from "../lib/disposal";
@@ -6,6 +7,7 @@ import { announceFoldersSaved } from "../lib/restart";
 import { useAutoSave } from "../lib/useAutoSave";
 import { SavedTick } from "../components/settings/auto";
 import { Modal, useToast } from "../ui";
+import { useLiveEvent, useOnReconnect } from "../lib/live";
 
 // LibraryFolders — points each library at a folder (with an in-app picker) and scans it.
 // Lives inside Settings → Library. Mount your media into the container (see the
@@ -30,8 +32,19 @@ export function LibraryFolders() {
   // Moving a library or browsing the host's folders is the admin's call; a manager sees
   // where each library lives and can still scan it.
   const admin = isAdmin(user);
+  // A finished scan (from here, the Movies page or another tab) reloads the review lists:
+  // its folders land there. A reconnect reloads too, in case the event was missed.
+  const reloadReview = () => setReviewKey((k) => k + 1);
+  useLiveEvent("library.scanned", reloadReview);
+  useOnReconnect(reloadReview);
 
   useEffect(() => { api.libraryPaths().then(setPaths).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
+  // A scan summary's "need review →" lands here; the list renders only once the folders
+  // have loaded, after Settings' own scroll-to-anchor has run.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (paths && hash === "#needs-review") document.getElementById("needs-review")?.scrollIntoView({ block: "start" });
+  }, [paths, hash]);
   if (!paths) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
 
   // A row's save answers with every folder; take them all so each row compares against
@@ -42,7 +55,6 @@ export function LibraryFolders() {
     try {
       await row.scan();
       say(`Scanning ${row.label}… matches appear in the library; anything unsure lands in "needs review" below.`);
-      window.setTimeout(() => setReviewKey((k) => k + 1), 5000); // reload review once the scan has had a moment
     } catch (e) { fail((e as Error).message); }
   };
 
@@ -68,8 +80,10 @@ export function LibraryFolders() {
 
       {!admin && <p className="mt-3 text-[11.5px] text-ink-faint">Only an admin can change these folders.</p>}
 
-      <UnmatchedReview media="movie" reloadKey={reviewKey} />
-      <UnmatchedReview media="series" reloadKey={reviewKey} />
+      <div id="needs-review">
+        <UnmatchedReview media="movie" reloadKey={reviewKey} />
+        <UnmatchedReview media="series" reloadKey={reviewKey} />
+      </div>
 
     </div>
   );

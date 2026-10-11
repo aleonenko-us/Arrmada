@@ -37,6 +37,11 @@ type Movie struct {
 	// the smaller converted file. Empty for a file never converted; cleared on import.
 	ConvertedFromRelease string `json:"converted_from_release,omitempty"`
 	ConvertedFromSize    int64  `json:"converted_from_size,omitempty"`
+	// FileMissingSince is when the missing-file check (or the detail page) found the default
+	// file gone from disk ("" = present as far as we know); FileMissing says the same as a
+	// flag. Read from the database: nothing on a list stats the file.
+	FileMissingSince string `json:"file_missing_since,omitempty"`
+	FileMissing      bool   `json:"file_missing,omitempty"`
 
 	// Extra holds enriched metadata (genres, cast, collection, …), stored as
 	// JSON. Present on both list and detail responses.
@@ -227,6 +232,10 @@ type Version struct {
 	// The track's pre-conversion baseline (see Movie.ConvertedFromRelease).
 	ConvertedFromRelease string `json:"converted_from_release,omitempty"`
 	ConvertedFromSize    int64  `json:"converted_from_size,omitempty"`
+
+	// missingSince is the default track's stored missing flag (Movie.FileMissingSince), so
+	// the detail page's live stat can set or clear it only when it changes.
+	missingSince string
 }
 
 // MovieFile describes the on-disk file for one track: size plus media info, read from the

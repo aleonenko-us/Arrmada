@@ -651,8 +651,22 @@ function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () =>
   };
 
   const missing = members.filter((m) => !m.in_library);
+  // One call for the lot (MOV-23): the server adds them in turn, skips any already there
+  // and queues their searches; the collection reloads once at the end.
   const addAll = async () => {
-    for (const m of missing) await addOne(m.tmdb_id);
+    const ids = missing.map((m) => m.tmdb_id);
+    setAdding(new Set(ids));
+    setError(null);
+    try {
+      const r = await api.bulkAddMovies({ tmdb_ids: ids, quality_profile: profile, monitored: true });
+      const failed = r.results.filter((x) => x.status === "failed");
+      if (failed.length) setError(`${failed.length} couldn't be added: ${failed[0].error ?? "unknown error"}`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAdding(new Set());
+      load();
+    }
   };
 
   return (

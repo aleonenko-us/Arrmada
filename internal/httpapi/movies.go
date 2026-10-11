@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,7 +103,9 @@ func (a *api) handleLookupMovies(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "movie metadata isn't configured — add a TMDB key in Settings → Connections (free from themoviedb.org)")
 		return
 	}
-	results, err := a.deps.Movies.Lookup(r.Context(), q)
+	// Each hit says whether the film is already in the library (and its id), so the Add
+	// dialog links to it instead of offering an add that can only answer 409.
+	results, err := a.deps.Movies.LookupInLibrary(r.Context(), q)
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -115,6 +118,8 @@ type addMovieRequest struct {
 	QualityProfile string `json:"quality_profile"`
 	Monitored      *bool  `json:"monitored"`
 	SearchOnAdd    *bool  `json:"search_on_add"`
+	// MinAvailability: announced | inCinemas | released ("" = released).
+	MinAvailability string `json:"min_availability"`
 }
 
 func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +129,10 @@ func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.TMDBID == 0 {
 		a.writeError(w, http.StatusBadRequest, "tmdb_id is required")
+		return
+	}
+	if req.MinAvailability != "" && !movies.ValidAvailability(req.MinAvailability) {
+		a.writeError(w, http.StatusBadRequest, "min_availability must be announced, inCinemas or released")
 		return
 	}
 	monitored := true
@@ -147,7 +156,9 @@ func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), "movie")
 	}
 
-	m, err := a.deps.Movies.Add(r.Context(), req.TMDBID, req.QualityProfile, monitored)
+	m, err := a.deps.Movies.AddWith(r.Context(), req.TMDBID, movies.AddOptions{
+		QualityProfile: req.QualityProfile, Monitored: monitored, MinAvailability: req.MinAvailability,
+	})
 	if errors.Is(err, movies.ErrExists) {
 		a.writeError(w, http.StatusConflict, "that movie is already in your library")
 		return
@@ -319,14 +330,30 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	root := a.libMovies(r) // resolve the configured folder before we detach
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: 15 * time.Minute,
+	// The time budget grows with the library (one listing of the folder, which the scan
+	// reads first anyway); an unreadable folder gets the minimum and fails in the scan.
+	folders, _ := movies.ScanFolders(root)
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: movies.ScanBudget(len(folders)),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			// Progress rides the job: the runner records it and announces it as job.updated
+			// (at most once a second) on the one live socket the page already has.
+			opts.Progress = func(done, total int) {
+				if total > 0 {
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s folders", thousands(done), thousands(total)))
+				}
+			}
 			res, err := a.deps.Movies.ScanLibrary(ctx, root, opts)
 			if err != nil {
 				return nil, err
 			}
 			a.deps.Log.Info("library scan complete", "imported", res.Imported, "attached", res.Attached, "duplicates", len(res.Duplicates),
 				"skipped", res.Skipped, "unmatched", len(res.Unmatched))
+			// The scan just read the whole folder, so the disks are awake: notice files that
+			// vanished now rather than at tomorrow's check (it marks nothing if the folder
+			// looks unmounted).
+			if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
+				a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+			}
 			a.deps.Bus.Publish("library.scanned", map[string]any{"media": "movie", "imported": res.Imported, "unmatched": len(res.Unmatched),
 				"attached": res.Attached, "duplicates": len(res.Duplicates)})
 			p.SetMessage(movieScanMessage(res))
@@ -338,13 +365,35 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "scanning"})
+	if existing {
+		// One scan at a time; the page follows the one that's running (job_id).
+		a.alreadyRunning(w, jobID, "a library scan is already running")
+		return
+	}
+	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
 }
 
-// handleMovieUnmatched returns the folders the last scan couldn't identify, each
-// with candidate matches to choose from.
+// thousands writes n with thousands separators ("1,204"), for progress messages.
+func thousands(n int) string {
+	if n < 0 {
+		return "-" + thousands(-n)
+	}
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// handleMovieUnmatched returns the folders scans couldn't identify, each with candidate
+// matches to choose from. The list is kept in the database, so it survives a restart.
 func (a *api) handleMovieUnmatched(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": a.deps.Movies.LastUnmatched()})
+	list, err := a.deps.Movies.LastUnmatched(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the folders that need review")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": list})
 }
 
 // handleMovieImportFolder catalogs one library folder as an explicitly chosen
@@ -399,6 +448,8 @@ func (a *api) handleGetMovie(w http.ResponseWriter, r *http.Request) {
 	if versions, verr := a.deps.Movies.VersionsLive(r.Context(), id); verr == nil {
 		m.Versions = versions
 		m.File = versions[0].File
+		// What the page just saw beats the stored flag, which that read brought up to date.
+		m.FileMissing = m.HasFile && m.File != nil && m.File.Missing
 	}
 	// What's in flight for it, by the acquisition record (ACQ-25), joined to the queue by
 	// info hash: the progress bar and the Acquisition card read the same grabs, whatever

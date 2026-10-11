@@ -5,8 +5,7 @@ import { PAGE } from "../lib/links";
 import { api, type FitItem, type MovieDownload, type MovieSummary } from "../lib/api";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
-import { usePoll, usePollBurst } from "../lib/usePoll";
-import { jobFailed, jobToast, useJob } from "../lib/useJob";
+import { usePoll } from "../lib/usePoll";
 import { useLiveQuery } from "../lib/useLiveQuery";
 import { useQuery } from "../lib/query";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
@@ -19,6 +18,7 @@ import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
+import { ScanStatus, scanProgressLabel, useMovieScan } from "../components/movies/LibraryScan";
 import { OrganizeModal } from "../components/OrganizeModal";
 
 const NO_MOVIES: MovieSummary[] = [];
@@ -58,28 +58,15 @@ export function Movies() {
   const fitQ = useQuery("movies.fit", () => api.libraryFitMovies(), { staleMs: 60_000 });
   const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.movie_id ?? 0, it])) : NO_FITS), [fitQ.data]);
 
-  // The scan runs as a job in the background; poll the grid for a while as entries land,
-  // and when it ends the toast says what it added.
-  const [scanning, setScanning] = useState(false);
+  // The library scan is a job (MOV-20): its live progress (job.updated on the one socket)
+  // is the Library tools chip while it runs, and a summary linking to the folders that
+  // need review shows when it ends. A scan started elsewhere is picked up too.
   const [showScan, setShowScan] = useState(false);
   const [showOrganize, setShowOrganize] = useState(false); // apply the naming scheme across the library
-  const watchScan = usePollBurst(() => refresh(), 2500, 12, () => setScanning(false));
-  const [scanJob, setScanJob] = useState<number | null>(null);
-  const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); refresh(); toast(jobToast(j, "Scan finished."), { tone: jobFailed(j) ? "error" : "info" }); },
-  });
-  const scanLibrary = async (opts: { monitor: boolean; quality_profile?: string }) => {
+  const scan = useMovieScan(() => void refresh(), (msg, err) => toast(msg, { tone: err ? "error" : "info" }));
+  const scanLibrary = (opts: { monitor: boolean; quality_profile?: string }) => {
     setShowScan(false);
-    setScanning(true);
-    try {
-      const r = await api.scanLibrary(opts);
-      if (r.job_id) setScanJob(r.job_id);
-      toast("Scanning your library — existing movies will appear shortly.");
-      watchScan();
-    } catch (e) {
-      toast((e as Error).message, { tone: "error" });
-      setScanning(false);
-    }
+    void scan.start(opts);
   };
 
   // While anything downloads, the bars move from queue.progress (by torrent hash) without
@@ -155,11 +142,14 @@ export function Movies() {
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
         </>}
         tools={[
-          { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" },
+          { label: "Scan library", busyLabel: "Scanning…", busy: scan.running, progress: scanProgressLabel(scan), onClick: () => setShowScan(true), title: "Find movies already in your library folder and catalog them" },
           { label: "Organize library…", onClick: () => setShowOrganize(true), title: "Preview your naming scheme across the library, then rename in the background" },
         ]}
         primary={{ label: "+ Add movie", onClick: () => setShowAdd(true), disabled: !metaOK }}
-        banners={!metaOK && <MetadataMissing variant="banner" />}
+        banners={<>
+          {!metaOK && <MetadataMissing variant="banner" />}
+          <ScanStatus scan={scan} />
+        </>}
         tableNote={<FitLegend judged={judged} misfits={misfits} />}
         bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
         emptyText={<>No movies yet. Click <b>Add movie</b>, search for a film, and Arrmada will monitor and grab it.</>}

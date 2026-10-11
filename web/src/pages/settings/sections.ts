@@ -56,6 +56,7 @@ export interface SearchEntry {
 // Every card in every section, with the words someone might type to find it.
 export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Media folders", keywords: "movies tv shows ebooks audiobooks music downloads folder path browse scan mount directory unmatched needs review", section: "library", anchor: "media-folders" },
+  { label: "Folders that need review", keywords: "scan unmatched needs review identify pick title folder", section: "library", anchor: "needs-review" },
   { label: "Adding titles", keywords: "search on add automatic default", section: "library", anchor: "adding-titles" },
   { label: "Series monitoring", keywords: "series tv show monitor monitoring preset default all future missing existing first latest season new seasons add request", section: "library", anchor: "series-monitoring" },
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
