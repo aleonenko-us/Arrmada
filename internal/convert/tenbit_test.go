@@ -43,15 +43,15 @@ func TestTenBitChoiceInCPUArgs(t *testing.T) {
 	if a := joined(videoArgs(cpuEncoder("hevc"), sdr8, Plan{VideoCodec: "hevc", MatchSourceDepth: true}, false, 4, false)); strings.Count(a, "-pix_fmt") != 1 {
 		t.Errorf("args = %s", a)
 	}
-	// The warning says so only when an 8-bit source is written as 10-bit.
-	if w := strings.Join(planWarnings(sdr8, Plan{VideoCodec: "hevc"}), "; "); !strings.Contains(w, "8-bit → 10-bit") {
-		t.Errorf("always: warnings = %q", w)
+	// The plan view's note says so only when an 8-bit source is written as 10-bit.
+	if w := eightToTenWarning(sdr8, Plan{VideoCodec: "hevc"}); !strings.Contains(w, "8-bit → 10-bit") {
+		t.Errorf("always: note = %q", w)
 	}
 	for _, c := range []struct {
 		mi   *MediaInfo
 		plan Plan
-	}{{sdr8, Plan{VideoCodec: "hevc", MatchSourceDepth: true}}, {hdr, Plan{VideoCodec: "hevc"}}, {sdr8, Plan{}}} {
-		if w := strings.Join(planWarnings(c.mi, c.plan), "; "); strings.Contains(w, "8-bit → 10-bit") {
+	}{{sdr8, Plan{VideoCodec: "hevc", MatchSourceDepth: true}}, {hdr, Plan{VideoCodec: "hevc"}}, {sdr10, Plan{VideoCodec: "hevc"}}, {sdr8, Plan{}}} {
+		if w := eightToTenWarning(c.mi, c.plan); w != "" {
 			t.Errorf("no 8→10 here: %q", w)
 		}
 	}

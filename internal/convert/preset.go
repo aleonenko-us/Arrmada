@@ -540,9 +540,6 @@ func planWarnings(mi *MediaInfo, plan Plan) []string {
 	if n := forcedLost(mi, plan); n > 0 {
 		w = append(w, fmt.Sprintf("forced subtitles (foreign dialogue) removed — %d track(s)", n))
 	}
-	if t := eightToTenWarning(mi, plan); t != "" {
-		w = append(w, t)
-	}
 	return w
 }
 
