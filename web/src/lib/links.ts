@@ -7,6 +7,8 @@ export const LINKS = {
   diskGuard: "/settings/downloads#disk-guard",
   recycleBin: "/settings/downloads#recycle-bin",
   libraryFolders: "/settings/library#media-folders",
+  // The folders a library scan couldn't identify, under the folder rows.
+  libraryReview: "/settings/library#needs-review",
   users: "/settings/users",
   // The Plex connection is the Plex card on Connections (it opens its editor there); how
   // Arrmada uses Plex — library updates, sign-in, linked accounts — is Settings → Plex.

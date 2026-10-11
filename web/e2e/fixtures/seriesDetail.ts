@@ -131,7 +131,6 @@ export function routes(): MockRoute[] {
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/scene-map$/, body: { overrides: [] } },
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/numbering$/, respond: ({ params }) => numbering[id(params)] ?? { source: "tmdb", pending: null } },
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/rename$/, body: { items: [], matches: true } },
-    { method: "GET", path: "/api/v1/library/fit", body: { items: [] } },
     // The profile picker names the show's profile before the list arrives.
     { method: "GET", path: /^\/api\/v1\/quality\/profiles\/([\w-]+)$/, respond: ({ params }) => ({ key: params[0], name: "HD 1080p" }) },
     // Where a deleted episode file goes (the delete confirm says so).

@@ -1721,6 +1721,16 @@ export interface UnmatchedFolder {
   candidates: MatchCandidate[];
 }
 
+// A finished movie library scan's job result (GET /api/v1/jobs/{id}.result): unmatched is
+// how many folders landed on the needs-review list.
+export interface MovieScanResult {
+  imported: number;
+  skipped: number;
+  unmatched: number;
+  attached: number;
+  duplicates: number;
+}
+
 export interface SeriesLookup {
   tmdb_id: number;
   title: string;
@@ -2667,7 +2677,8 @@ export const api = {
   deleteRecycleItem: (id: string) => req<{ status: string }>("/api/v1/recycle/delete", { method: "POST", body: JSON.stringify({ id }) }),
   // Catalog the movies folder: new films are added unmonitored on "n/a" unless monitor is
   // set (with a profile; "" = the default), and films already in the library without a
-  // file get the one found.
+  // file get the one found. One scan at a time: a second answers 409 naming the running
+  // job (ApiError body.job_id).
   scanLibrary: (opts?: { monitor: boolean; quality_profile?: string }) =>
     req<{ status: string } & JobRef>("/api/v1/movies/scan", { method: "POST", ...(opts ? { body: JSON.stringify(opts) } : {}) }),
   moviesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/movies/unmatched").then((r) => r.unmatched),
@@ -2732,8 +2743,14 @@ export const api = {
   checkLibraryFolder: (path: string, kind: keyof LibraryPaths, downloads?: string) =>
     req<FolderCheck>(`/api/v1/system/library/check?kind=${kind}&path=${encodeURIComponent(path)}${downloads ? `&downloads=${encodeURIComponent(downloads)}` : ""}`),
   browseFolders: (path?: string) => req<BrowseResult>(`/api/v1/system/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
-  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean }) =>
+  // search_on_add applies to this add only; the global default changes only in Settings
+  // (or through updateSettings when the dialog's "Remember as default" is ticked).
+  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability }) =>
     req<Movie>("/api/v1/movies", { method: "POST", body: JSON.stringify(body) }),
+  // Several films in one call (a collection's Add all): films already in the library are
+  // skipped, each new one's search is queued. search defaults to the search-on-add setting.
+  bulkAddMovies: (body: { tmdb_ids: number[]; quality_profile?: string; min_availability?: MinAvailability; monitored?: boolean; search?: boolean }) =>
+    req<{ results: BulkAddResult[]; added: number; existing: number; failed: number }>("/api/v1/movies/bulk-add", { method: "POST", body: JSON.stringify(body) }),
   previewTorrent: (torrent: string) =>
     req<TorrentPreview>("/api/v1/grab/preview", { method: "POST", body: JSON.stringify({ torrent }) }),
   grabMovieTorrent: (id: number, torrent: string, filename: string, title: string, versionId = 0) =>
@@ -3280,6 +3297,7 @@ export interface CollectionMember {
   overview?: string;
   vote_average?: number;
   in_library: boolean;
+  library_id?: number; // the film's id in the library, when it's there
 }
 
 export interface MovieExtra {
@@ -3479,6 +3497,10 @@ export interface Movie {
   upgrades_allowed?: boolean;
   /** The default file is kept out of profile-driven upgrades ("keep existing files"). */
   upgrade_hold?: boolean;
+  /** The recorded default file is gone from disk (the daily missing-file check, or the
+   * detail page's own look); file_missing_since says when it was noticed. MOV-21. */
+  file_missing?: boolean;
+  file_missing_since?: string;
   /** Detail only: what Arrmada will do about this movie, from the facts the sweeps act on. */
   acquisition?: MovieAcquisition;
   // Detail only (MOV-04): the missing-sweep's backoff, when it next searches (absent when
@@ -3565,6 +3587,22 @@ export interface MovieLookup {
   overview: string;
   poster_url: string;
   vote_average: number;
+  /** Already in the library (MOV-23): the Add dialog links to library_id instead. */
+  in_library?: boolean;
+  library_id?: number;
+}
+
+/** A movie's minimum availability: when it becomes eligible for searching. */
+export type MinAvailability = "announced" | "inCinemas" | "released";
+
+/** One film of a bulk add (POST /api/v1/movies/bulk-add). */
+export interface BulkAddResult {
+  tmdb_id: number;
+  status: "added" | "exists" | "failed";
+  id?: number;
+  title?: string;
+  error?: string;
+  queued?: boolean; // its search was queued
 }
 
 // The History feed (GET /api/v1/history). Music events belong to the artist.

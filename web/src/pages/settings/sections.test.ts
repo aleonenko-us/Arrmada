@@ -74,7 +74,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexMonitoring, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.libraryReview, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexMonitoring, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);

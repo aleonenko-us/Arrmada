@@ -311,6 +311,7 @@ POST /api/v1/me/push/subscribe user ext
 POST /api/v1/me/push/unsubscribe user ext
 POST /api/v1/me/sessions/revoke-others user ext
 POST /api/v1/movies staff -
+POST /api/v1/movies/bulk-add staff -
 POST /api/v1/movies/bulk/regrab staff -
 POST /api/v1/movies/import staff -
 POST /api/v1/movies/organize staff -

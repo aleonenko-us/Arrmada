@@ -164,6 +164,10 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 	if a.deps.Settings != nil {
 		reg.Register(health.LibraryFoldersCheck(a.libraryState, health.NewProbeCache(time.Hour)))
 	}
+	// The missing-file check's "looks unmounted" verdict (MOV-21): read from memory only.
+	if a.deps.Movies != nil {
+		reg.Register(health.MovieFilesCheck(a.deps.Movies.MissingSweepWarning))
+	}
 
 	if a.deps.Recycle != nil {
 		reg.Register(health.RecycleDriveCheck(func() []health.RecycleBinProblem {
