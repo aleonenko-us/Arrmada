@@ -626,7 +626,7 @@ Each page has its own 'const flash' toast (Movies:73, MovieDetail:34, Series:53,
   - **Risk:** Same as FE-11: many flows, so keep to one page per commit.
   - **Resolves:** frontend-2, frontend-11
 <a id="fe-13"></a>
-- [ ] **FE-13 · Move the ops pages onto the kit and make failed actions visible** — `P2` · `S` · Phase 9
+- [x] **FE-13 · Move the ops pages onto the kit and make failed actions visible** — `P2` · `S` · Phase 9
   - **Problem:** Silent failures:
 - Downloads.tsx:110 act() swallows failures ('next poll reflects reality'), so a failed pause, resume or remove shows nothing.
 - The Indexers (:34-36) and DownloadClients (:43-46) remove handlers delete with no confirmation and no try/catch.
@@ -1070,7 +1070,7 @@ The 404 route renders Placeholder, whose heading reads 'Not found isn't built ye
 _One websocket per tab drives Downloads, detail pages, lists, History and the Dashboard, with a slow fallback poll. Download progress arrives as a queue.changed event, and the sidebar shows live 'needs you' counts._
 
 <a id="fe-26"></a>
-- [ ] **FE-26 · Publish queue.changed from the server, and carry the torrent hash in list download status** — `P2` · `S` · Phase 9
+- [x] **FE-26 · Publish queue.changed from the server, and carry the torrent hash in list download status** — `P2` · `S` · Phase 9
   - **Problem:** The event bus has no download-progress topic. Even with a websocket-driven frontend, progress bars would still need 3-second polls of /api/v1/downloads, which hit qBittorrent on every call. The movie and episode list payloads (movies.DownloadStatus at movie.go:41, series.EpisodeDownload at series.go:130) carry only state and progress, with no hash, so a list can't patch one item from an event.
   - **Approach:** 1) internal/download/queuewatch.go
     - type QueueWatcher struct {svc queueSource; bus *eventbus.Bus; active func() bool; every time.Duration}, where queueSource is an interface {Queue(ctx) ([]Item, error)}.
@@ -1097,7 +1097,7 @@ _One websocket per tab drives Downloads, detail pages, lists, History and the Da
   - **Risk:** It adds one qBittorrent poll every 2s while a staff tab is open. That replaces the per-tab 3s polls, so the load drops overall. If ACQ's snapshot lands first, reuse it to avoid duplicate polling.
   - **Resolves:** backend-4, frontend-14
 <a id="fe-27"></a>
-- [ ] **FE-27 · One shared websocket per tab and useLiveQuery: replace the hot polls with events** — `P2` · `M` · Phase 9
+- [x] **FE-27 · One shared websocket per tab and useLiveQuery: replace the hot polls with events** — `P2` · `M` · Phase 9
   - **Problem:** After FE-07, polls pause in hidden tabs but still run every 3-10s while visible. useLive (lib/useLive.ts) is used only by Dashboard (connected) and MovieDetail (last), and each consumer opens its own socket. Movies.tsx:135-141 refetches the whole library every 4s while anything is downloading.
   - **Approach:** 1) web/src/lib/live.tsx
     - <LiveProvider> opens one WebSocket. The URL goes through lib/base ([FE-29](#fe-29)), wss when on https.
@@ -1139,7 +1139,7 @@ _One websocket per tab drives Downloads, detail pages, lists, History and the Da
   - **Risk:** The hub drops messages for slow clients and the bus drops when a buffer is full, so a page could go stale. The fallback poll and the refetch on reconnect bound that.
   - **Resolves:** frontend-14, backend-4
 <a id="fe-28"></a>
-- [ ] **FE-28 · Live 'needs you' badges in the sidebar** — `P2` · `S` · Phase 9
+- [x] **FE-28 · Live 'needs you' badges in the sidebar** — `P2` · `S` · Phase 9
   - **Problem:** No sidebar entry carries a count, so pending requests, held reviews and failures are invisible unless the owner opens each page. The Sidebar fetches only the audiobook dot (Sidebar.tsx:20-25).
   - **Approach:** 1) Sidebar.tsx
     - Read the counts with useLiveQuery('attention', api.attention, {topics: ['attention.changed', 'request.*', 'import.held'], fallbackMs: 60000}).

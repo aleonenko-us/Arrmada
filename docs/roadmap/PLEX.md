@@ -556,7 +556,7 @@ _All Plex setup lives on one page. Local accounts, the admin included, can link 
   - **Risk:** Storing the Tautulli key in settings is consistent with the UI-entered credentials rule, but it must be masked in every response. Undo deletes rows, so it requires confirmation.
   - **Resolves:** insights-13
 <a id="plex-17"></a>
-- [ ] **PLEX-17 · One Plex settings page: connection, monitoring, family sign-in, library updates, linked accounts, Tautulli import** — `P2` · `M` · Phase 9
+- [x] **PLEX-17 · One Plex settings page: connection, monitoring, family sign-in, library updates, linked accounts, Tautulli import** — `P2` · `M` · Phase 9
   - **Problem:** Plex setup is split three ways. The connection lives under Insights → Settings (Insights.tsx:923-1042). The 'Plex sign-in' toggles (Settings.tsx:166-177) and the Tautulli import (Settings.tsx:816-846) live under Settings → System. The copy points between the screens, e.g. auth_plex.go: 'connect your Plex server in Insights first'.
   - **Approach:** 1. New web/src/pages/settings/PlexIntegration.tsx, built from the existing Section, Toggle and Field components with no new visual style. Sections:
        - (a) Connection: the Sign in with Plex hook ([PLEX-06](#plex-06)), the owned-server picker ([PLEX-07](#plex-07)), URL and token (masked), Test, 'Connected to <server> · Plex <version>', and the four-state status ([PLEX-08](#plex-08)).

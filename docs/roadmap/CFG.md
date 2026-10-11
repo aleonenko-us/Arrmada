@@ -578,7 +578,7 @@ Within Settings itself:
   - **Risk:** A large file move. Land it as a pure move with no behaviour change before CFG-14, to keep the diffs reviewable. Coordinate with SAFE (delete-user modal) and COPY, which edit the same components: rebase onto the moved files.
   - **Resolves:** system-9, frontend-10
 <a id="cfg-14"></a>
-- [ ] **CFG-14 · Auto-save each setting: toggles on change, text on blur, inline 'Saved' tick; remove the Save bars** — `P2` · `M` · Phase 9
+- [x] **CFG-14 · Auto-save each setting: toggles on change, text on blur, inline 'Saved' tick; remove the Save bars** — `P2` · `M` · Phase 9
   - **Problem:** Settings alone saves in five ways: a page Save bar, a separate 'Save folders' button, per-key Save, region Save, and immediate actions. Nothing marks dirty state or guards unsaved edits (only Quality.tsx has a beforeunload guard), and the copy has to explain which button covers which field (Settings.tsx:153, 434).
 
 Decision: per-control auto-save, as the overhaul and system-9 recommend, rather than frontend.t27's sticky dirty bar. Credentials and folder paths keep an explicit, validated action.
@@ -615,7 +615,7 @@ Decision: per-control auto-save, as the overhaul and system-9 recommend, rather 
   - **Risk:** Many small PUTs, which is fine for a single-owner app. A folder auto-commit re-points imports (after CFG-19), so it commits only on an explicit pick or Enter, never on every keystroke or blur.
   - **Resolves:** system-9, system-1, frontend-12
 <a id="cfg-15"></a>
-- [ ] **CFG-15 · Settings → Connections: every integration as a card with a live status dot, last error and Test/Edit** — `P2` · `M` · Phase 9
+- [x] **CFG-15 · Settings → Connections: every integration as a card with a live status dot, last error and Test/Edit** — `P2` · `M` · Phase 9
   - **Problem:** Nothing shows at a glance what is and isn't connected:
 - The Plex connection, which sign-in, recommendations, Insights and Convert's pause depend on, sits in Insights → Settings.
 - Keys sit in Settings → System.
@@ -648,7 +648,7 @@ Decision: per-control auto-save, as the overhaul and system-9 recommend, rather 
   - **Risk:** Probes must not hammer Plex or the clients; that's why results are cached for 60 s. Once OBS's health registry lands, this should read from it rather than run its own probes. Keep the probe functions small so they can move there.
   - **Resolves:** product-8, frontend-10, system-9
 <a id="cfg-16"></a>
-- [ ] **CFG-16 · Plex connection moves to Settings → Connections; one 'Import & migrate' section for all importers** — `P2` · `M` · Phase 9
+- [x] **CFG-16 · Plex connection moves to Settings → Connections; one 'Import & migrate' section for all importers** — `P2` · `M` · Phase 9
   - **Problem:** The Plex editor (PlexSettings, Insights.tsx:923+) lives in an Insights tab, while Settings tells people to 'connect in Insights' and Insights says 'Connect your server in Settings'. The Overseerr and Tautulli importers sit in Settings → System, and the Audiobookshelf import sits in Audiobooks → Import.
   - **Approach:** 1) Move PlexSettings (with the PIN sign-in, auto-discovery and path mapping) out of Insights.tsx into a reusable `web/src/pages/settings/PlexConnection.tsx`.
        - It exports a `PlexConnect` component (sign in with Plex, server URL, test) that [CFG-23](#cfg-23)'s wizard step reuses.
@@ -674,7 +674,7 @@ Decision: per-control auto-save, as the overhaul and system-9 recommend, rather 
   - **Risk:** Moving the editor must keep insights StartPlexAuth/PollPlexAuth working. Refetch config via the API in both places; don't share component state.
   - **Resolves:** product-8, frontend-10
 <a id="cfg-17"></a>
-- [ ] **CFG-17 · Module settings into the hub: Notifications, Subtitles, Convert and Audiobook server sections, with 'Configure →' links and redirects** — `P2` · `M` · Phase 9
+- [x] **CFG-17 · Module settings into the hub: Notifications, Subtitles, Convert and Audiobook server sections, with 'Configure →' links and redirects** — `P2` · `M` · Phase 9
   - **Problem:** Subtitles, Convert, Insights (Notifications) and Audiobooks (Server) each carry their own settings tab. The owner has to remember which page holds each control, and the module pages mix working views with configuration.
   - **Approach:** 1) Lift each module's settings view into an exported component, unchanged, and render it in a hub section:
        - Insights NotificationsView and ConnCard (Insights.tsx:831-907) → settings/Notifications.tsx.
@@ -699,7 +699,7 @@ Decision: per-control auto-save, as the overhaul and system-9 recommend, rather 
   - **Risk:** Merge conflicts with CONV, SUB and AUD rebuilds of the same components. Agree the order: either this move lands first and the rebuilds edit the new files, or the move happens after their rebuilds.
   - **Resolves:** frontend-10, system-9
 <a id="cfg-18"></a>
-- [ ] **CFG-18 · People & access: one list with role, auto-approve, Plex link, last seen, sessions, audiobook access, Disable/Delete** — `P2` · `M` · Phase 9
+- [x] **CFG-18 · People & access: one list with role, auto-approve, Plex link, last seen, sessions, audiobook access, Disable/Delete** — `P2` · `M` · Phase 9
   - **Problem:** Users live in Settings → Users, audiobook access in Audiobooks → People (Audiobooks.tsx:22-34), and the Plex link nowhere. To manage one person the owner visits three places, and no list shows last seen, active sessions or disabled state.
   - **Approach:** 1) New internal/httpapi/people.go: GET /api/v1/people (admin). One query plus the audio lookups returns, per user:
        - id, username, role, auto_approve, disabled, created_at, plex_linked
@@ -913,7 +913,7 @@ _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with
 _System → Status shows version, commit, DB size, last backup, disk per library and 'update available'. CI builds and publishes the image so update.sh can pull instead of compiling. Logs gain a timed debug switch, incremental live mode, full download and a redacted support bundle._
 
 <a id="cfg-26"></a>
-- [ ] **CFG-26 · System → Status: real version and commit, DB size, last backup, disk use per library; fix the Dashboard System card** — `P2` · `S` · Phase 9
+- [x] **CFG-26 · System → Status: real version and commit, DB size, last backup, disk use per library; fix the Dashboard System card** — `P2` · `S` · Phase 9
   - **Problem:** The Dashboard's System card shows Version 'dev-docker' and a constant 'Auth: enabled' (Dashboard.tsx:228-231; server.go:561). Nowhere shows the DB size, the last backup or disk use per library.
   - **Approach:** 1) New internal/httpapi/system_status.go: GET /api/v1/system/status (admin) returns:
        - version, commit, go (runtime.Version()), started_at, uptime_seconds

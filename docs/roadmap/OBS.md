@@ -635,7 +635,7 @@ _Alerts get their own page with a grouped event catalog, including book and musi
 _Failing indexers, Prowlarr outages, a down FlareSolverr and stale backups show as health warnings with fix links. They then appear in Needs-you and in alerts automatically._
 
 <a id="obs-15"></a>
-- [ ] **OBS-15 · Health checks that wait on other epics: failing indexers, Prowlarr, FlareSolverr, backup age** — `P1` · `S` · Phase 9
+- [x] **OBS-15 · Health checks that wait on other epics: failing indexers, Prowlarr, FlareSolverr, backup age** — `P1` · `S` · Phase 9
   - **Problem:** A failing TorrentLeech or 1337x looks like 'no results'. Per-indexer errors reach only result.Errors and the log (indexer/service.go:309-318), and the panel only checks that at least one indexer is enabled. FlareSolverr is an environment-only dependency with no status (config.go:101). When it's down, both native trackers fail with errors that point at a setting that doesn't exist. Nothing warns when backups stop.
   - **Approach:** Register these checks with the [OBS-04](#obs-04) registry. None makes a live tracker call.
     1. indexers.failing reads INT's persisted per-indexer status (last_ok, last_error, consecutive_failures, failing_since):
@@ -661,7 +661,7 @@ _Failing indexers, Prowlarr outages, a down FlareSolverr and stale backups show 
 _Non-technical setup through Discord/Telegram/ntfy/Pushover/email presets with masked secrets. Stream alerts that don't spam on binge-watching. Convert problems and a daily Convert summary. Templates with posters and deep links. Recent jobs on the Tasks page._
 
 <a id="obs-16"></a>
-- [ ] **OBS-16 · Preset forms (Discord, Telegram, ntfy, Pushover, email) that build the Apprise URL, with masked secrets** — `P2` · `M` · Phase 9
+- [x] **OBS-16 · Preset forms (Discord, Telegram, ntfy, Pushover, email) that build the Apprise URL, with masked secrets** — `P2` · `M` · Phase 9
   - **Problem:** Setup is a name, a free-text Apprise URL and checkboxes (Insights.tsx:853-899), so a non-technical admin has to know discord://id/token syntax. The full URL, including Discord webhook tokens and SMTP passwords, goes to Manager-role users in list responses and sits in a plain text input. The Plex token, by contrast, is masked.
   - **Approach:** 1. internal/notify/presets.go: `BuildURL(kind string, f map[string]string) (string, error)`, plus `Presets []PresetDef{Kind, Label, Fields []FieldDef{Name, Label, Hint, Secret, Required}}`:
        - discord: a pasted https://discord.com/api/webhooks/{id}/{token} → discord://{id}/{token}

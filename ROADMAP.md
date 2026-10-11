@@ -958,6 +958,8 @@ Most of this phase is S tasks with no prerequisites, so it moves fast.
 
 ### Phase 9 — One place for everything: Activity, Settings and Connections hubs, live UI
 
+> **Status: shipped 2026-10-11** — all 27 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget and Playwright e2e green; checked in a local instance: old /downloads and /indexers redirect into Activity and Connections, People & access, System status). Built as 5 lanes plus a second wave (Activity cards/Needs-you actions/unmanaged torrents, Plex into Connections). Owner to check: a real send through each alert preset with your own accounts; that ./update.sh passes ARRMADA_PROWLARR_HOST_PORT on Unraid.
+
 **Theme:** The Activity hub, the Settings hub sections, the Connections hub, and websocket-driven pages  
 **Goal:** The owner gets one /activity page (Queue, Needs you, Wanted, History, Blocklist) and one Settings hub where:
 - every control auto-saves

@@ -943,7 +943,7 @@ A movie whose torrent name parses to a different title is re-grabbed or shows no
 _One /activity page with Queue, Needs you, Wanted, History and Blocklist tabs, a single nav entry, and redirects from the old URLs. History is a dated, filterable, linked event log across all four media types. The Queue splits Downloading, Finishing and Seeding using one stage model that admin and requester views share._
 
 <a id="acq-26"></a>
-- [ ] **ACQ-26 · Activity page: one /activity with Queue, Needs you, Wanted, History and Blocklist tabs** — `P2` · `M` · Phase 9
+- [x] **ACQ-26 · Activity page: one /activity with Queue, Needs you, Wanted, History and Blocklist tabs** — `P2` · `M` · Phase 9
   - **Problem:** Downloads, History and Review are three top-level pages for one concept, and they don't link to each other (nav.ts:17-19). /activity just redirects to /downloads (App.tsx:85), yet the Search toast says 'it'll appear in Activity' (Movies.tsx:152). Hidden pages poll on their own: Downloads every 3s, History every 5s. Nowhere answers 'what is Arrmada doing, what is stuck, what needs me'.
   - **Approach:** 1. New web/src/pages/Activity.tsx at /activity/:tab, with tabs queue | needs-you | wanted | history | blocklist:
        - Queue: sub-pills Downloading / Seeding (Finishing arrives with [ACQ-28](#acq-28)).
@@ -977,7 +977,7 @@ _One /activity page with Queue, Needs you, Wanted, History and Blocklist tabs, a
   - **Risk:** Navigation churn for the owner, mitigated by redirects. The comment at the top of internal/httpapi/activity.go notes that ad-block lists block '/activity' URLs. This applies to API requests and is avoided by keeping the API under /api/v1/downloads, but check that the SPA route itself loads with uBlock on, and fall back to /hub/:tab if it doesn't.
   - **Resolves:** product-8, ops-11, ops-4, product-12
 <a id="acq-27"></a>
-- [ ] **ACQ-27 · History becomes a dated, filterable, linked event log across movies, series, books and music** — `P2` · `M` · Phase 9
+- [x] **ACQ-27 · History becomes a dated, filterable, linked event log across movies, series, books and music** — `P2` · `M` · Phase 9
   - **Problem:** History.tsx renders only title, target_path and size from the imports table:
 - a hard LIMIT 100 (history.go:11; library.Recent)
 - imported_at is never shown
@@ -1011,7 +1011,7 @@ recordImportedHash writes rows with a blank path for dismissed reviews and for p
   - **Risk:** UNION performance on large event tables is handled by the per-branch LIMIT and the new indexes. Event names are free text today; eventCategory keeps the filter stable as new names appear.
   - **Resolves:** ops-9, ops-14, frontend-10, product-12
 <a id="acq-28"></a>
-- [ ] **ACQ-28 · One stage model for admin and requester: Finishing shows Importing, Held, Import failed and Wrong category** — `P2` · `M` · Phase 9
+- [x] **ACQ-28 · One stage model for admin and requester: Finishing shows Importing, Held, Import failed and Wrong category** — `P2` · `M` · Phase 9
   - **Problem:** Downloads splits its tabs purely on progress < 1 (Downloads.tsx:113-114) and never reads the `imported` flag the feed sends (activity.go:185). A torrent waiting to import, held for review, failing to import, or sitting in the wrong category (only logged, series.go:969-978) looks exactly like a healthy seed. requests/progress.go already models stages (queued, waiting for peers, paused, failed, importing, partial) better than the admin page, and the two vocabularies can disagree.
   - **Approach:** 1. New package internal/pipeline:
        - Stage constants: move Queued, Downloading, Paused, Failed and Importing from requests, and add FetchingMetadata, Stalled, PausedByGuard, Downloaded, ImportRetrying, NeedsReview, WrongCategory, Imported, Seeding, NotManaged and Removed.
@@ -1041,7 +1041,7 @@ recordImportedHash writes rows with a blank path for dismissed reviews and for p
 _Transfers are poster-first cards linked to their title, with scope and requester chips, and work on phones. Needs you gathers every stuck item with an action that fits it. Unmanaged torrents can be imported or ignored. Pages update from events instead of blind polling._
 
 <a id="acq-29"></a>
-- [ ] **ACQ-29 · Poster-first transfer cards linked to the title, with scope and requester** — `P2` · `M` · Phase 9
+- [x] **ACQ-29 · Poster-first transfer cards linked to the title, with scope and requester** — `P2` · `M` · Phase 9
   - **Problem:** Cards show only the monospace release name (Downloads.tsx:271-289, 345). The feed parses each torrent's name to find a movie or series, uses the match only for a profile name, and throws away the id, title and poster (activity.go:145-162). You can't jump from a transfer to its title or see whose request it is. On phones, five flex-none buttons squeeze the name to a sliver.
   - **Approach:** 1. Add `Automation.GrabLinks(ctx) map[string]GrabLink{Kind, ID, VersionID, Scope, Status}`, keyed by lower(info_hash) (normRelease(title) only for hashless rows). After [ACQ-25](#acq-25) it reads ActiveByItem.
     2. The feed resolves each torrent by grab link first, with name parsing only as a fallback:
@@ -1065,7 +1065,7 @@ _Transfers are poster-first cards linked to their title, with scope and requeste
   - **Risk:** Requester names on an admin page are fine because the feed is manager-only (SEC). Never add audiobook listening data here.
   - **Resolves:** ops-11
 <a id="acq-30"></a>
-- [ ] **ACQ-30 · Needs you tab: every stuck item with an action that fits it** — `P2` · `M` · Phase 9
+- [x] **ACQ-30 · Needs you tab: every stuck item with an action that fits it** — `P2` · `M` · Phase 9
   - **Problem:** Failed imports in retry, stalled and errored downloads, wrong-category torrents and held reviews have no shared home with actions. The owner finds them only by reading logs or noticing a title isn't arriving. Nothing answers 'what needs me' (ops-4).
   - **Approach:** 1. New `GET /api/v1/downloads/needs-you` (RoleManager; no 'activity' in the path) returns:
        - reviews: [ACQ-12](#acq-12) cards
@@ -1093,7 +1093,7 @@ _Transfers are poster-first cards linked to their title, with scope and requeste
   - **Risk:** SetCategory changes how a torrent imports. Limit it to Arrmada's categories and only offer it when the torrent parses as TV and matches a library series.
   - **Resolves:** ops-4, ops-5, ops-11
 <a id="acq-31"></a>
-- [ ] **ACQ-31 · Unmanaged completed torrents: Import into… or Ignore** — `P3` · `S` · Phase 9
+- [x] **ACQ-31 · Unmanaged completed torrents: Import into… or Ignore** — `P3` · `S` · Phase 9
   - **Problem:** Completed torrents Arrmada didn't grab (added by hand, or left over from another tool) sit in Seeding labelled 'Not managed by Arrmada', with no way to bring them into the library or hide them.
   - **Approach:** 1. needs-you ([ACQ-30](#acq-30)) gains `unmanaged`: completed torrents with no grab by hash, not imported, and not in the ignore list.
     2. Import into… opens [ACQ-01](#acq-01)'s target picker (all kinds, chosen by the user). It calls the existing manual-import paths (movies.ManualImport, ManualImportSeries, the books/music import helpers) with the torrent's content_path, then records the hash via recordImportedHash and writes the item's event.
@@ -1108,7 +1108,7 @@ _Transfers are poster-first cards linked to their title, with scope and requeste
   - **Risk:** Import paths must stay restricted to the download and library roots, which is SEC's manual-import fix. Never run this against the owner's real library files in testing.
   - **Resolves:** ops-11
 <a id="acq-32"></a>
-- [ ] **ACQ-32 · Event-driven refresh: split the downloads feed, cache the slow parts, stop blind polling** — `P3` · `M` · Phase 9
+- [x] **ACQ-32 · Event-driven refresh: split the downloads feed, cache the slow parts, stop blind polling** — `P3` · `M` · Phase 9
   - **Problem:** Downloads polls /api/v1/downloads every 3s (Downloads.tsx:104). Each call runs Movies.List, Queue, Series.AcquisitionSummary, Series.List, ImportedHashes and SeedPolicies (a scan of every live grab), plus a regex parse of every torrent (activity.go:27-213), even though Searching and Upcoming change a few times a day. ACQ-18 adds books, albums and attempts to that payload. The Dashboard opens the realtime socket only to display 'connected' (Dashboard.tsx:28, 232).
   - **Approach:** 1. Split handleDownloadsFeed:
        - `GET /api/v1/downloads/transfers`: snapshot + links + stage + seed rules; cheap.

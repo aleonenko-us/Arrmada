@@ -551,7 +551,7 @@ _Prowlarr re-sync keeps the owner's scoping and disables indexers that are gone 
 _The health panel warns about failing integrations and links to the fix. One /connections page shows every integration with live status, Test, Edit, Disable and Delete. Indexers are added from presets with test-before-save. The old Indexers and Download clients pages redirect into the hub._
 
 <a id="int-14"></a>
-- [ ] **INT-14 · Health panel warnings from integration status** — `P2` · `S` · Phase 9
+- [x] **INT-14 · Health panel warnings from integration status** — `P2` · `S` · Phase 9
   - **Problem:** handleSystemHealth (health_system.go:22-100) misses the failures that actually stop acquisition:
 - It only checks that at least one indexer is enabled and that Queue() succeeds. Queue() errors only when every client fails (download/service.go:342-344).
 - A failing tracker, a dead FlareSolverr while TorrentLeech or 1337x depend on it, an unreachable second client that has paused stall fail-over, and a rejected TMDB key all leave the panel green.
@@ -574,7 +574,7 @@ _The health panel warns about failing integrations and links to the fix. One /co
   - **Risk:** Health is polled, so these checks must read cached status only and never make live third-party calls. If OBS rebuilds the health panel (system-8), port these checks into its structure rather than adding them twice.
   - **Resolves:** product-5, integrations-1, integrations-3, integrations-13
 <a id="int-15"></a>
-- [ ] **INT-15 · Connections API: one aggregated status endpoint and a per-connection Test** — `P1` · `M` · Phase 9
+- [x] **INT-15 · Connections API: one aggregated status endpoint and a per-connection Test** — `P1` · `M` · Phase 9
   - **Problem:** No single view answers 'is everything connected and healthy?':
 - Plex lives in Insights → Settings, Apprise in Insights → Notifications, and API keys in Settings → System.
 - Indexers and Download clients are separate pages, and FlareSolverr and Prowlarr appear nowhere.
@@ -607,7 +607,7 @@ The hub UI needs one backend source.
   - **Risk:** It aggregates many dependencies, some of which may be nil in tests or old wiring; every section must tolerate nil deps and show 'unknown'. Keep it read-only apart from /test, because editing stays with the existing endpoints.
   - **Resolves:** system-9, frontend-10, integrations-12, integrations-1
 <a id="int-16"></a>
-- [ ] **INT-16 · Connections page: status cards with Test and live refresh** — `P1` · `M` · Phase 9
+- [x] **INT-16 · Connections page: status cards with Test and live refresh** — `P1` · `M` · Phase 9
   - **Problem:** Answering 'is everything working?' means visiting six screens. The Indexers and Download clients pages are bare stacked forms with no status. The Plex sign-in toggle hint can't say whether Plex is connected.
   - **Approach:** 1. New web/src/pages/Connections.tsx at /connections, in AppLayout. If CFG's Settings hub has landed, mount it as its Connections section at /settings/connections and redirect /connections there.
     2. Components under web/src/components/connections/:
@@ -632,7 +632,7 @@ The hub UI needs one backend source.
   - **Risk:** This is a large visible change, so keep strictly to the existing palette and type scale. Use the FE kit's components if they have landed, otherwise local ones that can be swapped later. The page must stay useful when some statuses are 'unknown' (never tested).
   - **Resolves:** system-9, frontend-10, integrations-12
 <a id="int-17"></a>
-- [ ] **INT-17 · Edit, disable and delete from the hub; the old pages redirect** — `P2` · `M` · Phase 9
+- [x] **INT-17 · Edit, disable and delete from the hub; the old pages redirect** — `P2` · `M` · Phase 9
   - **Problem:** Once INT-16 ships, editing still bounces to the old pages, and the sidebar has three entries for one concept.
   - **Approach:** 1. Move EditForm, SeedingRules, MediaPills and ProwlarrSync from Indexers.tsx, and the client form from DownloadClients.tsx, into web/src/components/connections/ (IndexerEditor.tsx, ClientEditor.tsx, ProwlarrPanel.tsx). Keep [INT-04](#int-04)'s fixes: pill semantics, delete confirm, responsive grids.
     2. An EditDrawer (the FE kit Drawer if available) hosts them. Each card's overflow menu offers Edit, Disable/Enable and Delete (confirmed, with an error shown on failure). Disable on a Prowlarr-managed indexer sets disabled_by='user' ([INT-07](#int-07)).
@@ -681,7 +681,7 @@ The hub UI needs one backend source.
 _Prowlarr syncs itself hourly, with managed rows locked and the correct port link. TorrentLeech and MyAnonaMouse feed RSS sync. Manual searches overtake queued sweep requests without breaking the per-host spacing._
 
 <a id="int-19"></a>
-- [ ] **INT-19 · Prowlarr on autopilot: hourly sync, managed rows locked, the correct port link** — `P2` · `M` · Phase 9
+- [x] **INT-19 · Prowlarr on autopilot: hourly sync, managed rows locked, the correct port link** — `P2` · `M` · Phase 9
   - **Problem:** Prowlarr still needs manual attention, and its link can point at the wrong instance:
 - Even when non-destructive (INT-07), the sync runs only when the button is clicked (httpapi/prowlarr.go:42). Indexers added, removed or disabled in Prowlarr aren't reflected until someone remembers.
 - Synced rows look editable, but their name, URL and key belong to Prowlarr.
@@ -713,7 +713,7 @@ _Prowlarr syncs itself hourly, with managed rows locked and the correct port lin
   - **Risk:** An hourly sync must never be destructive, so it relies on INT-07's empty-list and error guard. It needs one ./update.sh so compose passes the new variable. Implement the lock in whichever form is live (EditDrawer if INT-17 has landed).
   - **Resolves:** integrations-2, integrations-15
 <a id="int-20"></a>
-- [ ] **INT-20 · TorrentLeech and MyAnonaMouse join RSS sync; decide the TorrentLeech RSS key** — `P2` · `M` · Phase 9
+- [x] **INT-20 · TorrentLeech and MyAnonaMouse join RSS sync; decide the TorrentLeech RSS key** — `P2` · `M` · Phase 9
   - **Problem:** Neither TorrentLeech nor MyAnonaMouse implements Recent(), so RSS sync skips both (service.go:300-303; only Torznab and 1337x implement it). New uploads on the owner's two private trackers are found only by per-title sweeps. TorrentLeech's 'RSS key' field is collected (Indexers.tsx:293-295, 421-423) but downloadURL ignores it (torrentleech.go:303-305).
   - **Approach:** 1. TorrentLeech Recent(ctx, idx, limit) reuses search() with an empty Text, which takes the existing /newfilter/2 path (torrentleech.go:216-218). It goes through the [INT-08](#int-08) session, backoff and throttle.
     2. MyAnonaMouse Recent(ctx, idx, limit) uses the same JSON search with Text '', SortType 'dateDesc', the book main categories and perpage=min(limit,100). Verify with the owner's session through the UI that MAM accepts an empty-text browse; if it doesn't, leave MAM out and say so in the code.

@@ -738,7 +738,7 @@ _'Ready' is sent only once Plex has the title, with a 30-minute fallback, and ca
   - **Risk:** Notification actions aren't supported everywhere, so a plain tap on a ready notice must open Plex. app.plex.tv links work for users the owner shares with, but opening the native app on phones depends on the platform.
   - **Resolves:** product-1, discover-5
 <a id="req-17"></a>
-- [ ] **REQ-17 · Live request feed: a requests.changed nudge, one shared hook, a cached queue, no hidden-tab polling** — `P2` · `S` · Phase 9
+- [x] **REQ-17 · Live request feed: a requests.changed nudge, one shared hook, a cached queue, no hidden-tab polling** — `P2` · `S` · Phase 9
   - **Problem:** Request views poll on their own timers. REQ-05 and REQ-06 bound the worst of it, but the strip, the Requests page and the badge still each refresh separately. Each list call can still hit the download client, the strip still waits up to a minute to show an approval made elsewhere, and the existing websocket hub and useLive hook go unused (Discover.tsx:547-552).
   - **Approach:** 1. requests.changed carries no payload. [REQ-07](#req-07) publishes it on status changes. Also publish it:
        - from RunNotifier when release.grabbed, movie.downloaded, series.imported or book.imported concern an approved request with ready_at = 0
