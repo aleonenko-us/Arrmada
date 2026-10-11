@@ -2668,8 +2668,14 @@ export const api = {
   checkLibraryFolder: (path: string, kind: keyof LibraryPaths, downloads?: string) =>
     req<FolderCheck>(`/api/v1/system/library/check?kind=${kind}&path=${encodeURIComponent(path)}${downloads ? `&downloads=${encodeURIComponent(downloads)}` : ""}`),
   browseFolders: (path?: string) => req<BrowseResult>(`/api/v1/system/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
-  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean }) =>
+  // search_on_add applies to this add only; the global default changes only in Settings
+  // (or through updateSettings when the dialog's "Remember as default" is ticked).
+  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability }) =>
     req<Movie>("/api/v1/movies", { method: "POST", body: JSON.stringify(body) }),
+  // Several films in one call (a collection's Add all): films already in the library are
+  // skipped, each new one's search is queued. search defaults to the search-on-add setting.
+  bulkAddMovies: (body: { tmdb_ids: number[]; quality_profile?: string; min_availability?: MinAvailability; monitored?: boolean; search?: boolean }) =>
+    req<{ results: BulkAddResult[]; added: number; existing: number; failed: number }>("/api/v1/movies/bulk-add", { method: "POST", body: JSON.stringify(body) }),
   previewTorrent: (torrent: string) =>
     req<TorrentPreview>("/api/v1/grab/preview", { method: "POST", body: JSON.stringify({ torrent }) }),
   grabMovieTorrent: (id: number, torrent: string, filename: string, title: string) =>
@@ -3185,6 +3191,7 @@ export interface CollectionMember {
   overview?: string;
   vote_average?: number;
   in_library: boolean;
+  library_id?: number; // the film's id in the library, when it's there
 }
 
 export interface MovieExtra {
@@ -3474,6 +3481,22 @@ export interface MovieLookup {
   overview: string;
   poster_url: string;
   vote_average: number;
+  /** Already in the library (MOV-23): the Add dialog links to library_id instead. */
+  in_library?: boolean;
+  library_id?: number;
+}
+
+/** A movie's minimum availability: when it becomes eligible for searching. */
+export type MinAvailability = "announced" | "inCinemas" | "released";
+
+/** One film of a bulk add (POST /api/v1/movies/bulk-add). */
+export interface BulkAddResult {
+  tmdb_id: number;
+  status: "added" | "exists" | "failed";
+  id?: number;
+  title?: string;
+  error?: string;
+  queued?: boolean; // its search was queued
 }
 
 // The History feed (GET /api/v1/history). Music events belong to the artist.

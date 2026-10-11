@@ -163,21 +163,24 @@ func (r *Repo) List(ctx context.Context) ([]Movie, error) {
 	return out, rows.Err()
 }
 
-// ExistingTMDBIDs returns the set of TMDB ids already in the library, for
-// dedup (e.g. marking which collection members are already added).
-func (r *Repo) ExistingTMDBIDs(ctx context.Context) (map[int]bool, error) {
-	rows, err := r.q().QueryContext(ctx, `SELECT tmdb_id FROM movies`)
+// ExistingTMDBIDs maps the TMDB ids already in the library to their movie ids, for
+// dedup and links (search results and collection members already added).
+func (r *Repo) ExistingTMDBIDs(ctx context.Context) (map[int]int64, error) {
+	rows, err := r.q().QueryContext(ctx, `SELECT tmdb_id, id FROM movies`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[int]bool{}
+	out := map[int]int64{}
 	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
+		var (
+			tmdb int
+			id   int64
+		)
+		if err := rows.Scan(&tmdb, &id); err != nil {
 			return nil, err
 		}
-		out[id] = true
+		out[tmdb] = id
 	}
 	return out, rows.Err()
 }

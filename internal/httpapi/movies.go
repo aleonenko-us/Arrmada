@@ -103,7 +103,9 @@ func (a *api) handleLookupMovies(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "movie metadata isn't configured — add a TMDB key in Settings → Connections (free from themoviedb.org)")
 		return
 	}
-	results, err := a.deps.Movies.Lookup(r.Context(), q)
+	// Each hit says whether the film is already in the library (and its id), so the Add
+	// dialog links to it instead of offering an add that can only answer 409.
+	results, err := a.deps.Movies.LookupInLibrary(r.Context(), q)
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -116,6 +118,8 @@ type addMovieRequest struct {
 	QualityProfile string `json:"quality_profile"`
 	Monitored      *bool  `json:"monitored"`
 	SearchOnAdd    *bool  `json:"search_on_add"`
+	// MinAvailability: announced | inCinemas | released ("" = released).
+	MinAvailability string `json:"min_availability"`
 }
 
 func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +129,10 @@ func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.TMDBID == 0 {
 		a.writeError(w, http.StatusBadRequest, "tmdb_id is required")
+		return
+	}
+	if req.MinAvailability != "" && !movies.ValidAvailability(req.MinAvailability) {
+		a.writeError(w, http.StatusBadRequest, "min_availability must be announced, inCinemas or released")
 		return
 	}
 	monitored := true
@@ -148,7 +156,9 @@ func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), "movie")
 	}
 
-	m, err := a.deps.Movies.Add(r.Context(), req.TMDBID, req.QualityProfile, monitored)
+	m, err := a.deps.Movies.AddWith(r.Context(), req.TMDBID, movies.AddOptions{
+		QualityProfile: req.QualityProfile, Monitored: monitored, MinAvailability: req.MinAvailability,
+	})
 	if errors.Is(err, movies.ErrExists) {
 		a.writeError(w, http.StatusConflict, "that movie is already in your library")
 		return

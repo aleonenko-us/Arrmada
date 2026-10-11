@@ -196,10 +196,12 @@ func (s *Service) Lookup(ctx context.Context, query string) ([]metadata.MovieRes
 	return s.meta.SearchMovie(ctx, query)
 }
 
-// CollectionMember is a collection film plus whether it's already in the library.
+// CollectionMember is a collection film plus whether it's already in the library (and
+// its id there).
 type CollectionMember struct {
 	metadata.MovieResult
-	InLibrary bool `json:"in_library"`
+	InLibrary bool  `json:"in_library"`
+	LibraryID int64 `json:"library_id,omitempty"`
 }
 
 // Collection returns the members of the given TMDB collection, each flagged with
@@ -215,7 +217,8 @@ func (s *Service) Collection(ctx context.Context, collectionID int) (string, []C
 	}
 	members := make([]CollectionMember, 0, len(col.Members))
 	for _, m := range col.Members {
-		members = append(members, CollectionMember{MovieResult: m, InLibrary: have[m.TMDBID]})
+		id, ok := have[m.TMDBID]
+		members = append(members, CollectionMember{MovieResult: m, InLibrary: ok, LibraryID: id})
 	}
 	return col.Name, members, nil
 }
@@ -276,32 +279,10 @@ func (s *Service) RecordSearchMiss(ctx context.Context, id int64) { s.repo.Recor
 // ResetSearchMisses clears the search backoff (a grab succeeded).
 func (s *Service) ResetSearchMisses(ctx context.Context, id int64) { s.repo.ResetSearchMisses(ctx, id) }
 
-// Add pulls full metadata for a TMDB id and adds the movie to the library.
+// Add pulls full metadata for a TMDB id and adds the movie to the library (available
+// once released). AddWith takes the availability too.
 func (s *Service) Add(ctx context.Context, tmdbID int, qualityProfile string, monitored bool) (Movie, error) {
-	details, err := s.meta.GetMovie(ctx, tmdbID)
-	if err != nil {
-		return Movie{}, fmt.Errorf("fetch metadata: %w", err)
-	}
-	m := Movie{
-		TMDBID:         details.TMDBID,
-		IMDBID:         details.IMDBID,
-		Title:          details.Title,
-		Year:           details.Year,
-		Overview:       details.Overview,
-		PosterURL:      details.PosterURL,
-		Runtime:        details.Runtime,
-		Status:         details.Status,
-		Monitored:      monitored,
-		QualityProfile: qualityProfile,
-		Extra:          extraFrom(details),
-	}
-	created, err := s.repo.Create(ctx, m)
-	if err != nil {
-		return Movie{}, err
-	}
-	s.log.Info("movie added", "title", created.Title, "year", created.Year)
-	_ = s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
-	return created, nil
+	return s.AddWith(ctx, tmdbID, AddOptions{QualityProfile: qualityProfile, Monitored: monitored})
 }
 
 // ScanResult summarizes a library scan.
@@ -1284,9 +1265,7 @@ func qualityLabel(path string) string {
 
 // SetMinAvailability changes when a movie becomes eligible for searching.
 func (s *Service) SetMinAvailability(ctx context.Context, id int64, avail string) error {
-	switch avail {
-	case "announced", "inCinemas", "released":
-	default:
+	if !ValidAvailability(avail) {
 		return fmt.Errorf("invalid availability %q", avail)
 	}
 	return s.repo.SetMinAvailability(ctx, id, avail)
