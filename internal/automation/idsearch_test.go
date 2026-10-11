@@ -33,13 +33,13 @@ func TestMatchedByIMDbAcceptsForeignTitle(t *testing.T) {
 		{"another film's imdb tag, same title", indexer.Release{Title: "Leon.The.Professional.1994.1080p.BluRay.x264-GRP", IMDBID: "tt9999999"}, false},
 	}
 	for _, c := range cases {
-		if got := movieReleaseMatches(c.rel, leon); got != c.want {
+		if got := movieReleaseMatches(c.rel, leon, movies.TitleKeys(leon, nil)); got != c.want {
 			t.Errorf("%s: movieReleaseMatches(%q) = %v, want %v", c.name, c.rel.Title, got, c.want)
 		}
 	}
 	// A library movie without an IMDb id falls back to its title, whatever the tag says.
 	noID := movies.Movie{Title: "Léon: The Professional", Year: 1994}
-	if movieReleaseMatches(indexer.Release{Title: "Leon.1994.1080p-GRP", IMDBID: "tt0110413"}, noID) {
+	if movieReleaseMatches(indexer.Release{Title: "Leon.1994.1080p-GRP", IMDBID: "tt0110413"}, noID, movies.TitleKeys(noID, nil)) {
 		t.Error("without the movie's own IMDb id, a tag proves nothing")
 	}
 }

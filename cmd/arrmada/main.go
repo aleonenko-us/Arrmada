@@ -719,6 +719,16 @@ func main() {
 			log.Warn("requests: book link backfill failed", "err", err)
 		}
 	})
+	// Movies stored before original and alternative titles were kept read them from TMDB,
+	// one every two seconds, so searches and imports match them without a manual refresh.
+	grp.Go("movies: alt titles backfill", func(ctx context.Context) {
+		n, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
+		if err != nil && ctx.Err() == nil {
+			log.Warn("movies: alternative titles backfill failed", "filled", n, "err", err)
+		} else if n > 0 {
+			log.Info("movies: read alternative titles", "movies", n)
+		}
+	})
 	// Backstop for request-ready notifications: catches availability that arrived
 	// without an import (a library scan). Idempotent (unique inbox ref), so re-running
 	// never double-notifies.

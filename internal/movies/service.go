@@ -579,6 +579,9 @@ func extraFrom(d *metadata.MovieDetails) *MovieExtra {
 		CollectionID:     d.CollectionID,
 		CollectionName:   d.CollectionName,
 		VoteAverage:      d.VoteAverage,
+		OriginalTitle:    d.OriginalTitle,
+		AltTitles:        d.AltTitles,
+		TitlesRead:       true,
 	}
 	for _, c := range d.Cast {
 		ex.Cast = append(ex.Cast, CastMember{Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})

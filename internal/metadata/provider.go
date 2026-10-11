@@ -126,6 +126,10 @@ type MovieDetails struct {
 	CollectionID     int          `json:"collection_id,omitempty"`
 	CollectionName   string       `json:"collection_name,omitempty"`
 	Cast             []CastMember `json:"cast,omitempty"`
+	// OriginalTitle is the film's original title when it's in the Latin alphabet ("" when
+	// not); AltTitles the other titles its releases may be named by (movieAltTitles).
+	OriginalTitle string   `json:"original_title,omitempty"`
+	AltTitles     []string `json:"alt_titles,omitempty"`
 }
 
 // CastMember is one billed actor. ID is their TMDB person id (0 in records stored before

@@ -382,13 +382,14 @@ func (c *Coordinator) searchAndGrabExcluding(ctx context.Context, m movies.Movie
 	if len(want) == 0 {
 		return nil, nil // the version is no longer wanted — nothing to replace it with
 	}
-	result, err := c.search(ctx, movieQuery(m))
+	keys := c.movieKeys(ctx, m)
+	result, err := c.searchMovie(ctx, m, keys)
 	if err != nil {
 		return nil, err
 	}
 	notes := notesFrom(ctx) // the fail-over's search attempt (replaceRecorded)
 	notes.consider(result.Releases)
-	matching := matchingMovieReleases(m, result.Releases)
+	matching := matchingMovieReleases(m, keys, result.Releases)
 	notes.dropped(result.Releases, matching, DropWrongTitle)
 	byName, cands, err := c.candidatesExcluding(ctx, m.ID, matching, exclude)
 	if err != nil {
