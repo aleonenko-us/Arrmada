@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type UnmatchedFolder, type MatchCandidate } from "../lib/api";
 import { useMe, isAdmin } from "../lib/me";
 import { fmtBytes } from "../lib/disposal";
@@ -38,6 +39,12 @@ export function LibraryFolders() {
   useOnReconnect(reloadReview);
 
   useEffect(() => { api.libraryPaths().then(setPaths).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
+  // A scan summary's "need review →" lands here; the list renders only once the folders
+  // have loaded, after Settings' own scroll-to-anchor has run.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (paths && hash === "#needs-review") document.getElementById("needs-review")?.scrollIntoView({ block: "start" });
+  }, [paths, hash]);
   if (!paths) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
 
   // A row's save answers with every folder; take them all so each row compares against
