@@ -25,7 +25,8 @@ import {
   type MovieFile,
   type MovieVersion,
 } from "../lib/api";
-import { useLive, type LiveEvent } from "../lib/useLive";
+import { useLiveEvent } from "../lib/live";
+import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
@@ -38,6 +39,12 @@ const AVAILABILITY_LABELS: Record<string, string> = {
   released: "Released",
 };
 
+// Events that can change what this page shows. movie.* and search.finished are narrowed to
+// this movie where the event names one.
+const MOVIE_TOPICS = ["download.imported", "release.grabbed", "file.removed", "movie.refreshed", "movie.renamed", "search.finished"];
+// The download bar's backstop when queue.progress and queue.changed move it.
+const DOWNLOAD_FALLBACK_MS = 30_000;
+
 export function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
@@ -46,8 +53,6 @@ export function MovieDetail() {
   const [notFound, setNotFound] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [toastErr, setToastErr] = useState(false);
-  const live = useLive();
-  const { last } = live;
   // Bumped by anything that changes this movie's History or Blocklist (a grab, an import,
   // a block, a search), so those panels refresh without leaving the page.
   const [activity, setActivity] = useState(0);
@@ -76,9 +81,12 @@ export function MovieDetail() {
     load();
   }, [load]);
 
-  // While a download is in progress, poll only its progress (not the whole movie) so the
-  // bar advances live; when it ends the movie is read again — the file may have landed.
+  // While a download is in progress the bar moves from queue.progress (matched by the
+  // torrent's hash), and a queue.changed naming it — finished, removed, errored — reads the
+  // movie again: the file may have landed. A slow check of only its progress (not the
+  // whole movie) backs that up; when it ends the movie is read again too.
   const downloading = !!movie?.download;
+  const dlHash = movie?.download?.hash?.toLowerCase() ?? "";
   const pollDownload = async () => {
     try {
       const r = await api.movieDownloads(movieId);
@@ -87,30 +95,29 @@ export function MovieDetail() {
         void load();
         return;
       }
-      setMovie((m) => (m ? { ...m, download: { state: d.state, progress: d.progress, kind: d.kind, version_id: d.version_id, version_label: d.version_label } } : m));
+      setMovie((m) => (m ? { ...m, download: { state: d.state, progress: d.progress, hash: d.hash, kind: d.kind, version_id: d.version_id, version_label: d.version_label } } : m));
     } catch {
       /* the next tick tries again */
     }
   };
-  usePoll(pollDownload, downloading ? 3000 : null, { immediate: false });
+  // Without a hash (an old grab) only the poll can move the bar, so it stays quick.
+  usePoll(pollDownload, downloading ? (dlHash ? DOWNLOAD_FALLBACK_MS : 3000) : null, { immediate: false });
+  useLiveEvent([QUEUE_PROGRESS, QUEUE_CHANGED], (ev) => {
+    if (!dlHash) return;
+    if (queueChangedFor(ev, [dlHash])) { void load(); return; }
+    const p = progressByHash(ev)?.get(dlHash);
+    if (p) setMovie((m) => (m?.download ? { ...m, download: { ...m.download, progress: p.progress } } : m));
+  }, downloading);
 
-  useEffect(() => {
-    if (!last) return;
-    const topics = [
-      "movie.downloaded",
-      "download.imported",
-      "release.grabbed",
-      "movie.file_deleted",
-      "movie.refreshed",
-      "movie.renamed",
-    ];
-    const d = last.data as { media_type?: string; media_id?: number } | null;
-    const searched = last.topic === "search.finished" && d?.media_type === "movie" && d.media_id === movieId;
-    if (topics.includes(last.topic) || searched) load();
-    if (searched || last.topic === "release.grabbed" || last.topic === "download.imported" || last.topic.startsWith("movie.")) {
-      setActivity((n) => n + 1);
-    }
-  }, [last, load, movieId]);
+  // A grab, an import, a removed file or this movie's own refresh, rename or search reads
+  // it again, and refreshes its History and Blocklist panels.
+  useLiveEvent(MOVIE_TOPICS, (ev) => {
+    const d = ev.data as { media_type?: string; media_id?: number; id?: number } | null;
+    if (ev.topic === "search.finished" && !(d?.media_type === "movie" && d.media_id === movieId)) return;
+    if (ev.topic.startsWith("movie.") && typeof d?.id === "number" && d.id !== movieId) return;
+    load();
+    setActivity((n) => n + 1);
+  });
 
   if (notFound) {
     return (
@@ -196,7 +203,7 @@ export function MovieDetail() {
 
               <AcquisitionStatus movie={movie} onChange={load} flash={flash} searchInfo={{ summary: movie.last_search, nextAt: movie.next_search_at }} />
               <UpgradeHoldChip movie={movie} onChange={load} flash={flash} />
-              <Toolbar movie={movie} onChange={load} flash={flash} live={live} />
+              <Toolbar movie={movie} onChange={load} flash={flash} />
             </div>
           </div>
         </div>
@@ -1019,14 +1026,13 @@ function UpgradeHoldChip({ movie, onChange, flash }: { movie: Movie; onChange: (
   );
 }
 
-function Toolbar({ movie, onChange, flash, live }: { movie: Movie; onChange: () => void; flash: (m: string, err?: boolean) => void; live: { connected: boolean; last: LiveEvent | null } }) {
+function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => void; flash: (m: string, err?: boolean) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   // The search runs as a job; when it ends the page says what it actually found — in a
   // toast, and on a line under the buttons that stays until the next search.
   const [searchJob, setSearchJob] = useState<number | null>(null);
   const [searchResult, setSearchResult] = useState<{ text: string; failed: boolean } | null>(null);
   const search = useJob(searchJob, {
-    live,
     onDone: (j) => {
       setSearchJob(null);
       const text = searchJobLine(j);

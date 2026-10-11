@@ -5,7 +5,7 @@ import { api, type Indexer, type IndexerStatus, type NewIndexer } from "../lib/a
 import { INDEXER_DOT, indexerStatusLine, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../lib/indexerStatus";
 import { LINKS } from "../lib/links";
 import { useQuery } from "../lib/query";
-import { useLive } from "../lib/useLive";
+import { useLiveRefresh } from "../lib/useLiveQuery";
 import { ErrorState, Skeleton, StaleBanner, useConfirm } from "../ui";
 
 const NO_INDEXERS: Indexer[] = [];
@@ -29,14 +29,12 @@ export function Indexers() {
 
   // An indexer starting to fail, backing off or recovering is announced; re-read the list
   // a second after the last such event so a burst of them (three sweeps at once) is one read.
-  const { last } = useLive();
-  useEffect(() => {
-    if (last?.topic !== "integration.status" || (last.data as { kind?: string } | null)?.kind !== "indexer") return;
-    const t = window.setTimeout(() => refresh(), 1000);
-    return () => window.clearTimeout(t);
-    // Keyed on the event alone: refresh changes identity as the list loads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last]);
+  useLiveRefresh(refresh, {
+    topics: ["integration.status"],
+    filter: (ev) => (ev.data as { kind?: string } | null)?.kind === "indexer",
+    debounceMs: 1000,
+    fallbackMs: null,
+  });
 
   const runTest = async (id: number) => {
     setTests((t) => ({ ...t, [id]: { loading: true } }));

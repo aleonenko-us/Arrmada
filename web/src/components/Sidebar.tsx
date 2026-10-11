@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type RefObject } from "react";
 import { NavLink } from "react-router-dom";
 import { visibleNav } from "../lib/nav";
 import { useMe, isAdmin } from "../lib/me";
@@ -44,8 +44,20 @@ function toggleTheme() {
 
 // bell: this screen is wide enough that the sidebar is always open, so the inbox bell
 // lives in its brand row (AppLayout's compact bar has it otherwise).
-export function Sidebar({ open, onClose, bell = false }: { open: boolean; onClose: () => void; bell?: boolean }) {
+export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: boolean; onClose: () => void; bell?: boolean; returnFocus?: RefObject<HTMLElement> }) {
   const { user, booksEnabled, musicEnabled } = useMe();
+  // As a drawer: Escape or the backdrop closes it and puts focus back on the menu button
+  // that opened it (a link closes it too, but focus then belongs to the new page).
+  const dismiss = useCallback(() => {
+    onClose();
+    returnFocus?.current?.focus();
+  }, [onClose, returnFocus]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, dismiss]);
   // Count pills from the Needs-you feed (the staff layout polls it; this only reads).
   const attention = useAttention();
   // A dot beside Audiobooks: green when the server is running, red when it's switched on
@@ -66,7 +78,7 @@ export function Sidebar({ open, onClose, bell = false }: { open: boolean; onClos
   return (
     <>
       {/* Dim + click-to-close backdrop, only while the drawer is open on narrow windows. */}
-      {open && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={onClose} />}
+      {open && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={dismiss} />}
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[236px] flex-none transform flex-col overflow-y-auto bg-sidebar transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${

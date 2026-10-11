@@ -61,6 +61,20 @@ func (h *Hub) Count() int {
 	return len(h.clients)
 }
 
+// StaffCount is the number of connected staff clients: the only ones staff-only topics
+// (queue progress and the like) reach, so the only ones worth reading the queue for.
+func (h *Hub) StaffCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	n := 0
+	for c := range h.clients {
+		if c.viewer.Staff {
+			n++
+		}
+	}
+	return n
+}
+
 // Run subscribes to every event on the bus and sends each, as JSON
 // {"topic":...,"data":...}, to the clients allowed to see it. Each event is encoded
 // once; only the policy check runs per client. Returns when ctx is cancelled.

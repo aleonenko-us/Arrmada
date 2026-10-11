@@ -177,6 +177,11 @@ func (s *Service) NotifyMovieReady(ctx context.Context, movieID int64) error {
 	if err != nil {
 		return err
 	}
+	// The import moves an open request on (importing, then adding to Plex) before it's
+	// ready; open request views hear so now.
+	if reqs, lerr := s.repo.ListByMedia(ctx, "movie", m.TMDBID); lerr == nil {
+		s.nudge(ctx, reqs)
+	}
 	return s.notifyRequester(ctx, "movie", m.TMDBID, "")
 }
 
@@ -198,6 +203,9 @@ func (s *Service) NotifySeriesReady(ctx context.Context, seriesID int64) error {
 	if err != nil {
 		return fmt.Errorf("list requests for series %d: %w", sr.TMDBID, err)
 	}
+	// An episode landed: open request views move on ("3 of 10 episodes") even when the
+	// request isn't complete yet.
+	s.nudge(ctx, reqs)
 	var (
 		errs []error
 		prog map[int]series.SeasonProgress
@@ -353,6 +361,7 @@ func (s *Service) notifyBookRequesters(ctx context.Context, b books.Book) error 
 		// retrying caller (an outbox row) tries again.
 		return fmt.Errorf("list requests for book %d: %w", b.ID, err)
 	}
+	s.nudge(ctx, linked) // a format arrived: open request views move on
 	var errs []error
 	for _, req := range linked {
 		errs = append(errs, s.notifyBookReady(ctx, req, b, true))
