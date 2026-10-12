@@ -247,10 +247,10 @@ func TestRootNavigation(t *testing.T) {
 	want := map[string]string{"/opds/new": "acquisition", "/opds/mine": "acquisition", "/opds/authors": "navigation",
 		"/opds/series": "navigation", "/opds/all": "acquisition"}
 	for _, e := range f.Entries {
-		if len(e.Links) != 1 {
-			t.Fatalf("entry %q links = %+v", e.Title, e.Links)
+		l, ok := e.link("subsection")
+		if !ok {
+			t.Fatalf("entry %q has no subsection link: %+v", e.Title, e.Links)
 		}
-		l := e.Links[0]
 		kind, ok := want[l.Href]
 		if !ok {
 			t.Errorf("unexpected entry %q → %s", e.Title, l.Href)
@@ -270,8 +270,12 @@ func TestRootNavigation(t *testing.T) {
 	if n, _ := f.link("http://opds-spec.org/sort/new"); n.Href != "" {
 		t.Error("sort/new belongs on the New entry, not the feed")
 	}
-	if e := f.Entries[0]; e.Links[0].Rel != "http://opds-spec.org/sort/new" {
-		t.Errorf("New entry rel = %q", e.Links[0].Rel)
+	// New also says what it is, for readers that sort by it; the others don't.
+	for _, e := range f.Entries {
+		l, ok := e.link("http://opds-spec.org/sort/new")
+		if isNew := e.Title == "New"; ok != isNew || (ok && l.Href != "/opds/new") {
+			t.Errorf("%q sort/new link = %+v (present %v)", e.Title, l, ok)
+		}
 	}
 	var osd, tmpl bool
 	for _, l := range f.Links {

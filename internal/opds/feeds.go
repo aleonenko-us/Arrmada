@@ -353,12 +353,15 @@ func bookEntry(b books.Book, authorHref string, now time.Time) entry {
 }
 
 // navEntry is one row of a navigation feed: a link to another feed.
+// rel, when set, is a second, more specific relation (sort/new) after "subsection":
+// readers that only follow subsection still open it.
 func navEntry(id, title, about, href, kind, rel string, now time.Time) entry {
-	if rel == "" {
-		rel = "subsection"
+	links := []link{{Rel: "subsection", Href: href, Type: kind}}
+	if rel != "" {
+		links = append(links, link{Rel: rel, Href: href, Type: kind})
 	}
 	return entry{Title: title, ID: "urn:arrmada:opds:" + id, Updated: stamp(now),
-		Content: &text{Type: "text", Body: about}, Links: []link{{Rel: rel, Href: href, Type: kind}}}
+		Content: &text{Type: "text", Body: about}, Links: links}
 }
 
 func addedAt(b books.Book, now time.Time) time.Time {
