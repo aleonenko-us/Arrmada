@@ -45,7 +45,9 @@ type AdoptedSidecar struct {
 
 // SetAdoptHook registers who records an adopted sidecar as Arrmada's own (the
 // subtitle_files ledger). Until one is set, adoption only renames the file.
-func (s *Service) SetAdoptHook(fn func(ctx context.Context, a AdoptedSidecar) error) { s.adoptHook = fn }
+func (s *Service) SetAdoptHook(fn func(ctx context.Context, a AdoptedSidecar) error) {
+	s.adoptHook = fn
+}
 
 // recordAdopted hands an adoption to the ownership hook. The rename has already happened,
 // so a failure here is logged, not returned.

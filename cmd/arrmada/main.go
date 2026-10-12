@@ -782,7 +782,8 @@ func main() {
 	// Movies/Series catalogs via OpenSubtitles.
 	subsProvider := subtitles.NewOpenSubtitlesFunc(keyStore.Func("opensubtitles_api"), keyStore.Func("opensubtitles_username"), keyStore.Func("opensubtitles_password"))
 	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), log)
-	subtitlesSvc.SetBin(bins) // replaced and removed sidecars go to the recycle bins, like their videos
+	// Replaced and removed sidecars go to the recycle bins, like their videos.
+	subtitlesSvc.SetBin(bins)
 	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
 	// The library pass behind the Subtitles Overview/Library pages. The worker runs the
 	// first one at startup; this keeps it from going stale.
