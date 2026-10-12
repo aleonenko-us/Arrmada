@@ -806,10 +806,11 @@ func main() {
 	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), log)
 	// Replaced and removed sidecars go to the recycle bins, like their videos.
 	subtitlesSvc.SetBin(bins)
-	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
-	// A reported problem's subtitles fix resolves once its job has made subtitles.
-	issuesSvc.SetSubtitles(subtitleOutcomes{subtitlesSvc})
+	// A reported problem's subtitles fix resolves once its job has made subtitles. Hooked
+	// up before the worker starts: the queue saved at shutdown runs straight away.
+	issuesSvc.SetSubtitles(subtitleOutcomes{runCtx, subtitlesSvc, log})
 	subtitlesSvc.SetJobDoneHook(subtitleJobDone(runCtx, issuesSvc, log))
+	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
 	// The library pass behind the Subtitles Overview/Library pages. The worker runs the
 	// first one at startup; this keeps it from going stale.
 	sched.Register("subtitles-library-scan", 6*time.Hour, false, func(ctx context.Context) error {

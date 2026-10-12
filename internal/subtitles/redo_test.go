@@ -230,13 +230,63 @@ func TestLegacyRedoIsNextForEveryLanguage(t *testing.T) {
 	}
 }
 
-// Two redos of different languages of one file are two jobs.
+// A second redo of the same file and mode joins the waiting one with its language; one
+// that chooses another track can't, and stays out.
 func TestRedoDedupePerLanguage(t *testing.T) {
 	s, _, _, _ := redoFixture(t, "en,es", &fakeAI{})
 	a := s.enqueue(&Job{Kind: "movie", MovieID: 1, Mode: ModeRedoNext, Langs: []string{"en"}})
 	b := s.enqueue(&Job{Kind: "movie", MovieID: 1, Mode: ModeRedoNext, Langs: []string{"es"}})
-	c := s.enqueue(&Job{Kind: "movie", MovieID: 1, Mode: ModeRedoNext, Langs: []string{"en"}})
-	if a == b || a != c {
-		t.Errorf("dedupe: a=%p b=%p c=%p", a, b, c)
+	if a != b || strings.Join(a.Langs, ",") != "en,es" {
+		t.Errorf("merge: a=%p b=%p langs %v", a, b, a.Langs)
+	}
+	one, two := 1, 2
+	x := s.enqueue(&Job{Kind: "movie", MovieID: 1, Mode: ModeRedoExtract, Langs: []string{"en"}, TrackIndex: &one})
+	y := s.enqueue(&Job{Kind: "movie", MovieID: 1, Mode: ModeRedoExtract, Langs: []string{"es"}, TrackIndex: &two})
+	if x != y || strings.Join(x.Langs, ",") != "en" || *x.TrackIndex != 1 {
+		t.Errorf("another track joined: %v %v", x.Langs, *x.TrackIndex)
+	}
+}
+
+// With the lanes on, a redo's whisper part waits in the GPU lane: the old file stays in
+// place meanwhile, and the GPU job swaps it once the AI subtitle is written.
+func TestRedoHandsAIToGPULane(t *testing.T) {
+	ai := &fakeAI{avail: true, transcribe: true}
+	s, video, bin, prov := redoFixture(t, "en", ai, candidate("a"))
+	s.jobsDB = newJobStore(s.ledger.db)
+	s.lanes = true
+	old := writeOld(t, s, video, "Movie (2020).en.srt", "old", &SubtitleFile{Lang: "en", Source: SourceOpenSubtitles, ProviderFileID: "a"})
+	job := runRedo(s, ModeRedoNext, "en")
+	if job.Lane != LaneGPU || job.State != StateQueued || len(ai.calls) != 0 || len(prov.downloads) != 0 {
+		t.Fatalf("lane %q state %q note %q ai %v downloads %v", job.Lane, job.State, job.Note, ai.calls, prov.downloads)
+	}
+	if raw, _ := os.ReadFile(old); string(raw) != "old" {
+		t.Errorf("the old subtitle isn't back while the AI waits: %q", raw)
+	}
+	s.releaseLocked(job) // the fast worker's turn is over
+	if got := s.popLane(LaneGPU); got != job {
+		t.Fatalf("GPU lane gave %v", got)
+	}
+	s.process(context.Background(), job)
+	if job.State != StateDone || len(ai.calls) != 1 || !binHolds(t, bin, "Movie (2020).en.srt") {
+		t.Errorf("state %q note %q ai %v", job.State, job.Note, ai.calls)
+	}
+	if raw, _ := os.ReadFile(old); string(raw) != fakeSRT {
+		t.Errorf("sidecar now %q", raw)
+	}
+}
+
+// "Use this file": the chosen download is saved for that language, locked.
+func TestRedoPickSavesChosenFile(t *testing.T) {
+	s, video, _, prov := redoFixture(t, "en", &fakeAI{}, candidate("a"), candidate("chosen"))
+	writeOld(t, s, video, "Movie (2020).en.srt", "old", nil)
+	job := s.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Movie", Mode: ModeRedoPick, Langs: []string{"en"}, PickFileID: "chosen", Priority: PrioManual})
+	s.pop()
+	s.process(context.Background(), job)
+	if job.State != StateDone || strings.Join(prov.downloads, ",") != "chosen" {
+		t.Fatalf("state %q note %q downloads %v", job.State, job.Note, prov.downloads)
+	}
+	f, ok, _ := s.ledger.LiveFile(context.Background(), sidecarPath(video, "en"))
+	if !ok || f.ProviderFileID != "chosen" || !f.Locked {
+		t.Errorf("row %+v", f)
 	}
 }

@@ -401,7 +401,7 @@ func (s *Service) Retry(ctx context.Context, items []RetryItem, bucket, mode str
 		case (ref.Kind == "movie" && s.movies == nil) || (ref.Kind == "episode" && s.series == nil):
 			err = errors.New("no catalog for that kind of title")
 		case mode == ModeRedoAI:
-			_, err = s.QueueRedo(ctx, ref, lang, "", ModeRedoAI, nil, nil)
+			_, err = s.QueueRedo(ctx, ref, RedoRequest{Lang: lang, Mode: ModeRedoAI})
 		case ref.Kind == "movie":
 			_, err = s.QueueMovie(ctx, ref.MovieID, false, PrioManual)
 		default:

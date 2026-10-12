@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type NumberingApplied, type NumberingPending } from "../../lib/api";
+import { type NumberingApplied, type NumberingPending } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { useQuery } from "../../lib/query";
 import { jobFailed, useJob } from "../../lib/useJob";
 import { Button, Modal } from "../../ui";
@@ -12,7 +13,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 // moves files for that on its own; the owner reviews the moves here and applies or
 // dismisses them. Checked again whenever the show was refreshed.
 export function NumberingBanner({ seriesId, refreshKey, onApplied }: { seriesId: number; refreshKey?: string; onApplied: () => void }) {
-  const q = useQuery(`series-numbering:${seriesId}`, () => api.seriesNumbering(seriesId), { staleMs: 0 });
+  const q = useQuery(`series-numbering:${seriesId}`, () => seriesApi.seriesNumbering(seriesId), { staleMs: 0 });
   const { refetch } = q;
   // The mount's own fetch covers the first render; after that, every refresh re-checks.
   const mounted = useRef(false);
@@ -65,7 +66,7 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
     setBusy("apply");
     setError(null);
     try {
-      const r = await api.applySeriesNumbering(seriesId, pending.plan_hash);
+      const r = await seriesApi.applySeriesNumbering(seriesId, pending.plan_hash);
       if (r.job_id) setJobId(r.job_id);
       else { setBusy(null); onSettled(); onClose(); }
     } catch (e) {
@@ -78,7 +79,7 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
     setBusy("dismiss");
     setError(null);
     try {
-      await api.dismissSeriesNumbering(seriesId);
+      await seriesApi.dismissSeriesNumbering(seriesId);
       onSettled();
       onClose();
     } catch (e) {

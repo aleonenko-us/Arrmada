@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+
+import { indexerApi } from "../../lib/indexerApi";
 import { prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../../lib/indexerStatus";
 import { useQuery } from "../../lib/query";
 
@@ -32,7 +33,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
   // Prowlarr is someone's own setup and is only changed when this box is ticked.
   const bundled = isBundledProwlarr(url);
   // Re-read after a sync (clicked or the hourly one) so "Last synced" stays current.
-  const info = useQuery("prowlarr-info", () => api.prowlarrInfo(), { staleMs: 60_000 });
+  const info = useQuery("prowlarr-info", () => indexerApi.prowlarrInfo(), { staleMs: 60_000 });
 
   useEffect(() => {
     const i = info.data;
@@ -46,7 +47,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
     setBusy(true);
     setResult(null);
     try {
-      const r = await api.syncProwlarr({ url, api_key: apiKey, add_flaresolverr_proxy: !bundled && addProxy });
+      const r = await indexerApi.syncProwlarr({ url, api_key: apiKey, add_flaresolverr_proxy: !bundled && addProxy });
       setResult({ ok: true, msg: prowlarrSyncMessage(r) });
       setHasKey(true);
       setApiKey("");
@@ -62,7 +63,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
   const saveUiUrl = async () => {
     setUiMsg(null);
     try {
-      const r = await api.saveProwlarrUIURL(uiUrl.trim());
+      const r = await indexerApi.saveProwlarrUIURL(uiUrl.trim());
       setUiUrl(r.ui_url);
       setUiMsg({ ok: true, msg: r.ui_url ? "Saved" : "Cleared — the link uses this host again" });
       void info.refetch();

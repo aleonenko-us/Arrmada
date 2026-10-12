@@ -27,12 +27,61 @@ func (a *api) handleSubtitleDownloadModel(w http.ResponseWriter, r *http.Request
 }
 
 // handleSubtitleJobs returns recent + active subtitle-ensure jobs (polled for the Queue tab).
+// With ?before=, ?state= or ?limit= it pages the saved history instead, newest first
+// (before is the next_before of the previous page; state is one job state).
 func (a *api) handleSubtitleJobs(w http.ResponseWriter, r *http.Request) {
-	jobs := a.deps.Subtitles.Jobs()
+	q := r.URL.Query()
+	if !q.Has("before") && !q.Has("state") && !q.Has("limit") {
+		jobs := a.deps.Subtitles.Jobs()
+		if jobs == nil {
+			jobs = []subtitles.Job{}
+		}
+		// The AI backlog rides along: how much whisper work waits, and how long it'll take
+		// at the measured speed.
+		b := a.deps.Subtitles.GPUBacklog(r.Context())
+		a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "gpu_backlog": b.Files,
+			"gpu_backlog_audio_sec": b.AudioSec, "gpu_eta_sec": b.ETASec, "rtf": b.RTF})
+		return
+	}
+	jq := subtitles.JobQuery{Limit: 50}
+	if v := q.Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			a.writeError(w, http.StatusBadRequest, "before must be a job id")
+			return
+		}
+		jq.Before = n
+	}
+	if v := q.Get("state"); v != "" {
+		switch st := subtitles.JobState(v); st {
+		case subtitles.StateQueued, subtitles.StateRunning, subtitles.StateDone, subtitles.StateSkipped, subtitles.StateFailed, subtitles.StateCancelled:
+			jq.State = st
+		default:
+			a.writeError(w, http.StatusBadRequest, "state must be queued, running, done, skipped, failed or cancelled")
+			return
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			a.writeError(w, http.StatusBadRequest, "limit must be a positive number")
+			return
+		}
+		jq.Limit = min(n, 500)
+	}
+	jobs, err := a.deps.Subtitles.JobHistory(r.Context(), jq)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the subtitle job history")
+		return
+	}
 	if jobs == nil {
 		jobs = []subtitles.Job{}
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+	var next int64
+	if len(jobs) == jq.Limit {
+		next = jobs[len(jobs)-1].ID
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "next_before": next})
 }
 
 // handleSubtitleCancelJob stops one job: drops it if queued, kills it if running.
@@ -48,9 +97,15 @@ func (a *api) handleSubtitleCancelJob(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "cancelling"})
 }
 
-// handleSubtitleClearQueue drops every queued (not yet started) job.
+// handleSubtitleClearQueue drops every queued (not yet started) job; ?lane=gpu only the AI
+// backlog, ?lane=fast only extractions and downloads.
 func (a *api) handleSubtitleClearQueue(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"cleared": a.deps.Subtitles.ClearQueue()})
+	lane := r.URL.Query().Get("lane")
+	if lane != "" && lane != subtitles.LaneFast && lane != subtitles.LaneGPU {
+		a.writeError(w, http.StatusBadRequest, "lane must be fast or gpu")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"cleared": a.deps.Subtitles.ClearLane(lane)})
 }
 
 // handleSubtitleLogs returns the recent Subtitles activity console lines.
@@ -357,7 +412,7 @@ func (a *api) handleSubtitleSyncCheck(w http.ResponseWriter, r *http.Request) {
 
 // handleSubtitleRedo queues a redo of one language of one file ({kind, movie_id |
 // series_id+season+episode, lang, variant, mode: next|ai|extract, audio_stream?,
-// track_index?}) at manual priority. Only that language is touched; the old file goes to
+// track_index?, file_id? for mode pick}) at manual priority. Only that language is touched; the old file goes to
 // the recycle bin once the new one exists.
 func (a *api) handleSubtitleRedo(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -367,14 +422,20 @@ func (a *api) handleSubtitleRedo(w http.ResponseWriter, r *http.Request) {
 		Mode        string `json:"mode"`
 		AudioStream *int   `json:"audio_stream"`
 		TrackIndex  *int   `json:"track_index"`
+		FileID      string `json:"file_id"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	job, err := a.deps.Subtitles.QueueRedo(r.Context(), req.MediaRef, req.Lang, req.Variant, req.Mode, req.AudioStream, req.TrackIndex)
+	job, err := a.deps.Subtitles.QueueRedo(r.Context(), req.MediaRef, subtitles.RedoRequest{
+		Lang: req.Lang, Variant: req.Variant, Mode: req.Mode, AudioStream: req.AudioStream, TrackIndex: req.TrackIndex, FileID: req.FileID,
+	})
 	switch {
 	case errors.Is(err, subtitles.ErrNoVideo):
 		a.writeError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, subtitles.ErrRedoBusy):
+		a.writeError(w, http.StatusConflict, err.Error())
 		return
 	case err != nil:
 		a.writeError(w, http.StatusBadRequest, err.Error())

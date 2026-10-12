@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../../lib/api";
+
+import { convertApi } from "../../lib/convertApi";
 import { keepSubsLine } from "../../lib/convertKeepSubs";
 import { langName, useLanguages } from "../../lib/languages";
 import { LINKS } from "../../lib/links";
@@ -17,7 +18,7 @@ export const cardStyle = { border: "1px solid var(--line)", background: "var(--p
 export function KeptTracksNote() {
   const [keep, setKeep] = useState<string | null>(null);
   const languages = useLanguages();
-  useEffect(() => { api.convertSettings().then((s) => setKeep(s.keep_sub_langs ?? "")).catch(() => {}); }, []);
+  useEffect(() => { convertApi.convertSettings().then((s) => setKeep(s.keep_sub_langs ?? "")).catch(() => {}); }, []);
   return (
     <>
       Embedded subtitle tracks stay inside the video.{" "}

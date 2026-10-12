@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type ConvertAutoPreview, type ConvertRequestResult } from "../../lib/api";
+import { type ConvertAutoPreview, type ConvertRequestResult } from "../../lib/api";
+import { convertApi } from "../../lib/convertApi";
 import { ConfirmDialog } from "../../ui";
 import { planChanges, previewLines } from "./plan";
 import { usePlan } from "./PlanCard";
@@ -33,7 +34,7 @@ export function ConvertNowDialog({ itemKey, title, tracksOnly, originals, onCanc
   const [error, setError] = useState<string | null>(null);
   const confirm = async () => {
     setBusy(true); setError(null);
-    try { onDone(await api.convertRequest(itemKey)); } catch (e) { setError(errText(e)); setBusy(false); }
+    try { onDone(await convertApi.convertRequest(itemKey)); } catch (e) { setError(errText(e)); setBusy(false); }
   };
   return (
     <ConfirmDialog
@@ -65,7 +66,7 @@ function usePreview(seriesID?: number, season?: number) {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    api.convertAutoPreview(seriesID, season).then((p) => { if (live) setPreview(p); }).catch((e) => { if (live) setError(errText(e)); });
+    convertApi.convertAutoPreview(seriesID, season).then((p) => { if (live) setPreview(p); }).catch((e) => { if (live) setError(errText(e)); });
     return () => { live = false; };
   }, [seriesID, season]);
   return { preview, error };
@@ -81,7 +82,7 @@ export function BulkConvertDialog({ seriesID, season, label, originals, onCancel
   const [error, setError] = useState<string | null>(null);
   const confirm = async () => {
     setBusy(true); setError(null);
-    try { onDone((await api.convertSeries(seriesID, season)).requested); } catch (e) { setError(errText(e)); setBusy(false); }
+    try { onDone((await convertApi.convertSeries(seriesID, season)).requested); } catch (e) { setError(errText(e)); setBusy(false); }
   };
   const lines = preview ? previewLines(preview) : [];
   return (

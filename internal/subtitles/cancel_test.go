@@ -60,7 +60,7 @@ func TestCancelRunningJobCancelsItsContext(t *testing.T) {
 	done()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.running != nil || s.cancelRun != nil {
+	if len(s.runs) != 0 || len(s.busy) != 0 {
 		t.Error("worker bookkeeping not released after the job returned")
 	}
 }

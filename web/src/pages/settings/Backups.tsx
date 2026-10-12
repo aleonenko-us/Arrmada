@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { api, backupDownloadURL, uploadBackup, type BackupFile, type BackupKind, type BackupSchedule, type BackupsState } from "../../lib/api";
+import { systemApi } from "../../lib/systemApi";
 import { restartAndWait, startedAt, waitForRestart } from "../../lib/restart";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { AutoNumber, AutoSelect, AutoToggle, wholeNumber } from "../../components/settings/auto";
@@ -69,7 +70,7 @@ export function Backups() {
   const scheduleChain = useRef<Promise<unknown>>(Promise.resolve());
   const storedSchedule = useRef<BackupSchedule | null>(null);
 
-  const load = () => api.backups()
+  const load = () => systemApi.backups()
     .then((s) => { storedSchedule.current = s.settings; setState(s); setLoadErr(null); })
     .catch((e: Error) => setLoadErr(e.message));
   useEffect(() => { load(); }, []);
@@ -90,7 +91,7 @@ export function Backups() {
   const backUpNow = async () => {
     setBusy(true); setMsg(null);
     try {
-      const b = await api.backupNow();
+      const b = await systemApi.backupNow();
       setMsg({ ok: true, text: `Saved ${b.name} (${fmtBytes(b.size_bytes)}).` });
       load();
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
@@ -100,7 +101,7 @@ export function Backups() {
   const closeConfirm = () => { setToDelete(null); setToRestore(null); setConfirmErr(null); };
   const remove = async (b: BackupFile) => {
     setConfirmBusy(true); setConfirmErr(null);
-    try { await api.deleteBackup(b.name); closeConfirm(); load(); }
+    try { await systemApi.deleteBackup(b.name); closeConfirm(); load(); }
     catch (e) { setConfirmErr((e as Error).message); }
     finally { setConfirmBusy(false); }
   };
@@ -118,7 +119,7 @@ export function Backups() {
     setConfirmBusy(true); setConfirmErr(null);
     try {
       const before = await startedAt();
-      const r = await api.restoreBackup(b.name);
+      const r = await systemApi.restoreBackup(b.name);
       closeConfirm(); setUploaded(null);
       if (r.restarting) await awaitRestart(() => waitForRestart(before));
       else load();
@@ -130,7 +131,7 @@ export function Backups() {
 
   const cancelRestore = async () => {
     setBusy(true); setMsg(null);
-    try { await api.cancelRestore(); setMsg({ ok: true, text: "Restore cancelled. Nothing was changed." }); load(); }
+    try { await systemApi.cancelRestore(); setMsg({ ok: true, text: "Restore cancelled. Nothing was changed." }); load(); }
     catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); }
   };
@@ -152,7 +153,7 @@ export function Backups() {
     const run = scheduleChain.current.then(async () => {
       const base = storedSchedule.current ?? state?.settings;
       if (!base) return;
-      const next = await api.saveBackupSchedule({ ...base, ...p });
+      const next = await systemApi.saveBackupSchedule({ ...base, ...p });
       storedSchedule.current = next;
       setState((cur) => (cur ? { ...cur, settings: next } : cur));
     });

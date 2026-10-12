@@ -3,6 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { PAGE } from "../lib/links";
 import { api, type FitItem, type MovieDownload, type MovieSummary } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
 import { usePoll } from "../lib/usePoll";
@@ -46,7 +47,7 @@ export function Movies() {
   const [searchFor, setSearchFor] = useState<MovieSummary | null>(null); // the table's per-row "Search indexers"
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   useEffect(() => {
-    api.qualityProfiles("movie").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
+    qualityApi.qualityProfiles("movie").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
   }, []);
   // Every movie search waits its turn in one throttled queue; the header says how many
   // are running and waiting, kept live by the queue's events.
@@ -55,7 +56,7 @@ export function Movies() {
 
   // How each file fits its profile's ideal file — report only, from the analysed library
   // (a database read). The table's Fit column and the "Doesn't fit" filter read it.
-  const fitQ = useQuery("movies.fit", () => api.libraryFitMovies(), { staleMs: 60_000 });
+  const fitQ = useQuery("movies.fit", () => qualityApi.libraryFitMovies(), { staleMs: 60_000 });
   const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.movie_id ?? 0, it])) : NO_FITS), [fitQ.data]);
 
   // The library scan is a job (MOV-20): its live progress (job.updated on the one socket)

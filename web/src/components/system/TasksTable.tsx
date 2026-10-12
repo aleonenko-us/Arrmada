@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, type TaskStatus } from "../../lib/api";
+import { ApiError, type TaskStatus } from "../../lib/api";
+import { systemApi } from "../../lib/systemApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { ago, every, took, until } from "../../lib/taskTime";
 import { usePoll } from "../../lib/usePoll";
@@ -49,7 +50,7 @@ export function TasksTable() {
   }, []);
 
   const load = () =>
-    api.tasks()
+    systemApi.tasks()
       .then((ts) => { if (alive.current) { setTasks(ts); setErr(null); } })
       .catch((e: Error) => { if (alive.current) setErr(e.message); });
 
@@ -59,7 +60,7 @@ export function TasksTable() {
     setMsg(null);
     setStarting((s) => new Set(s).add(t.name));
     try {
-      const r = await api.runTask(t.name);
+      const r = await systemApi.runTask(t.name);
       // existing: a Run now for this task was already queued or running; this joined it.
       setMsg(r.existing ? { ok: false, text: `“${nameOf(t)}” is already running.` } : { ok: true, text: `Started “${nameOf(t)}”.` });
     } catch (e) {

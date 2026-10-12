@@ -7,7 +7,8 @@ import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { EmptyState } from "../ui/EmptyState";
-import { api, type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
+import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
+import { insightsApi } from "../lib/insightsApi";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
@@ -87,7 +88,7 @@ function InsightsPage() {
   // Re-read every 15 s for the monitoring status, so the badge turns "unreachable" (and
   // back) on its own. The form that edits these settings lives in Settings now, so
   // nothing here is being typed into for a poll to overwrite.
-  usePoll(() => api.insightsConfig()
+  usePoll(() => insightsApi.insightsConfig()
     .then(setCfg)
     .catch(() => { if (!cfgDone) flash("Could not load Plex settings"); })
     .finally(() => setCfgDone(true)), 15000);
@@ -100,7 +101,7 @@ function InsightsPage() {
   const turnOn = async () => {
     if (!cfg) return;
     setTurningOn(true);
-    try { setCfg(await api.updateInsightsConfig({ enabled: true })); flash("Monitoring is on"); }
+    try { setCfg(await insightsApi.updateInsightsConfig({ enabled: true })); flash("Monitoring is on"); }
     catch (e) { flash((e as Error).message); } finally { setTurningOn(false); }
   };
 
@@ -189,7 +190,7 @@ function ActivityView({ connected }: { connected: boolean }) {
   const clock = useRef<Record<string, { base: number; at: number }>>({});
   const [, tickNow] = useState(0);
 
-  usePoll(() => api.insightsActivity().then((a) => { setAct(a); setErr(null); }).catch((e) => { setErr((e as Error).message); }), connected ? 4000 : null);
+  usePoll(() => insightsApi.insightsActivity().then((a) => { setAct(a); setErr(null); }).catch((e) => { setErr((e as Error).message); }), connected ? 4000 : null);
 
   // Re-render once a second so playing streams' progress interpolates in real time.
   usePoll(() => tickNow((n) => n + 1), 1000, { immediate: false });
@@ -290,12 +291,12 @@ function HomeExtras({ live }: { live: boolean }) {
   // these two parts need the server, so they say so in place instead of vanishing.
   const [plexErr, setPlexErr] = useState<string | null>(null);
 
-  useEffect(() => { api.insightsStats(30, metric).then(setStats).catch(() => setStats(null)); }, [metric]);
+  useEffect(() => { insightsApi.insightsStats(30, metric).then(setStats).catch(() => setStats(null)); }, [metric]);
   useEffect(() => {
     if (!live) return;
     const failed = (e: unknown) => setPlexErr((e as Error).message || "no answer");
-    api.insightsLibraries().then(setLibs).catch((e) => { setLibs([]); failed(e); });
-    api.insightsRecentlyAdded(20).then(setRecent).catch((e) => { setRecent([]); failed(e); });
+    insightsApi.insightsLibraries().then(setLibs).catch((e) => { setLibs([]); failed(e); });
+    insightsApi.insightsRecentlyAdded(20).then(setRecent).catch((e) => { setRecent([]); failed(e); });
   }, [live]);
 
   const hasStats = stats && (stats.most_watched_movies.length || stats.most_watched_shows.length || stats.most_active_users.length);
@@ -395,7 +396,7 @@ function StatCard({ title, rows, metric }: { title: string; rows: { label: strin
 function UsersView({ connected }: { connected: boolean }) {
   const [users, setUsers] = useState<UserEntry[] | null>(null);
   // Users come from recorded plays, so an import shows here before Plex is connected.
-  useEffect(() => { api.insightsUsers().then(setUsers).catch(() => setUsers([])); }, []);
+  useEffect(() => { insightsApi.insightsUsers().then(setUsers).catch(() => setUsers([])); }, []);
   if (!users) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading people…</div>;
   if (users.length === 0 && !connected) return <SetupState tab="people" />;
   if (users.length === 0) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-faint" style={{ border: "1px solid var(--line)" }}>Nobody has watched anything yet.</div>;
@@ -576,7 +577,7 @@ function HistoryView({ connected }: { connected: boolean }) {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    const run = () => api.insightsHistory({ type, decision, q, page, page_size: pageSize })
+    const run = () => insightsApi.insightsHistory({ type, decision, q, page, page_size: pageSize })
       .then((r) => { if (alive) { setRows(r.rows ?? []); setTotal(r.total); } })
       .catch(() => { if (alive) setRows([]); })
       .finally(() => { if (alive) setLoading(false); });
@@ -696,7 +697,7 @@ function GraphsView({ connected }: { connected: boolean }) {
   const [g, setG] = useState<InsightsGraphs | null>(null);
   const [win, setWin] = useState(30);
   // Graphs are drawn from recorded plays, so imported history charts before Plex is connected.
-  useEffect(() => { api.insightsGraphs(win).then(setG).catch(() => setG(null)); }, [win]);
+  useEffect(() => { insightsApi.insightsGraphs(win).then(setG).catch(() => setG(null)); }, [win]);
   if (!g) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
 
   const anyPlays = g.daily_tv.some(Boolean) || g.daily_movies.some(Boolean) || g.daily_music.some(Boolean);
@@ -824,7 +825,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
   const [r, setR] = useState<Reliability | null>(null);
   const [win, setWin] = useState(30);
   // Stalls are read from recorded sessions, so imported history shows before Plex is connected.
-  useEffect(() => { api.insightsReliability(win).then(setR).catch(() => setR(null)); }, [win]);
+  useEffect(() => { insightsApi.insightsReliability(win).then(setR).catch(() => setR(null)); }, [win]);
   if (!r) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading reliability…</div>;
 
   const s = r.summary;

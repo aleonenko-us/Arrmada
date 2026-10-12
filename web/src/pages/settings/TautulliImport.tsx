@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Field, Section, input, inputStyle } from "../../components/settings/ui";
-import { api, type ImportRun } from "../../lib/api";
+import { type ImportRun } from "../../lib/api";
+import { importApi } from "../../lib/importApi";
 import { invalidate, useQuery } from "../../lib/query";
 import { jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { usePoll } from "../../lib/usePoll";
@@ -42,9 +43,9 @@ function useFollowedJob(fallback: string) {
 export function TautulliImport() {
   const toast = useToast();
   const confirm = useConfirm();
-  const cfg = useQuery(CONFIG_KEY, api.tautulliConfig, { staleMs: 0 });
-  const runs = useQuery(RUNS_KEY, api.importRuns, { staleMs: 0 });
-  const overlaps = useQuery(OVERLAPS_KEY, api.importOverlaps, { staleMs: 0 });
+  const cfg = useQuery(CONFIG_KEY, importApi.tautulliConfig, { staleMs: 0 });
+  const runs = useQuery(RUNS_KEY, importApi.importRuns, { staleMs: 0 });
+  const overlaps = useQuery(OVERLAPS_KEY, importApi.importOverlaps, { staleMs: 0 });
   const { follow, job } = useFollowedJob("Done.");
   const [urlEdit, setUrl] = useState<string | null>(null); // null: show the saved URL
   const [key, setKey] = useState("");
@@ -77,7 +78,7 @@ export function TautulliImport() {
 
   const run = async () => {
     if (!url.trim() || (!key.trim() && !keySaved)) return;
-    const ok = await start(() => api.importTautulli(url.trim(), key.trim(), onlyBefore && firstLive > 0 ? firstLive : undefined));
+    const ok = await start(() => importApi.importTautulli(url.trim(), key.trim(), onlyBefore && firstLive > 0 ? firstLive : undefined));
     if (ok) {
       // The server saved the connection: show it as saved rather than as typed.
       setKey("");
@@ -100,7 +101,7 @@ export function TautulliImport() {
       confirmLabel: "Remove",
       tone: "danger",
     });
-    if (ok) void start(() => api.removeImportRun(r.id, r.rows));
+    if (ok) void start(() => importApi.removeImportRun(r.id, r.rows));
   };
 
   const busy = starting || job.running;
@@ -127,7 +128,7 @@ export function TautulliImport() {
       {list.length > 0 && (
         <div className="flex flex-col gap-2">
           {list.map((r) => (
-            <RunRow key={r.id} run={r} busy={busy} onRetry={() => void start(() => api.retryImportRun(r.id))} onRemove={() => void remove(r)} />
+            <RunRow key={r.id} run={r} busy={busy} onRetry={() => void start(() => importApi.retryImportRun(r.id))} onRemove={() => void remove(r)} />
           ))}
         </div>
       )}
@@ -191,7 +192,7 @@ function DoubleCounts({ count, firstLive }: { count: number; firstLive: number }
     if (!ok) return;
     setStarting(true);
     try {
-      const r = await api.removeImportOverlaps(count);
+      const r = await importApi.removeImportOverlaps(count);
       follow(r.job_id);
     } catch (e) {
       toast((e as Error).message, { tone: "error" });

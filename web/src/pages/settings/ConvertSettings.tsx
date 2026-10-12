@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
 import { api, type ConvertDevice, type ConvertHoldCheck, type ConvertSettings as Settings } from "../../lib/api";
+import { convertApi } from "../../lib/convertApi";
 import { backlogLine } from "../../lib/convertForecast";
 import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices } from "../../components/convert/DevicesPanel";
 import { useConfirm } from "../../ui";
@@ -29,12 +30,12 @@ const accentBtn = { background: "linear-gradient(150deg, var(--accent), var(--ac
 export function ConvertSettings() {
   const [s, setS] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { api.convertSettings().then(setS).catch((e: Error) => setError(e.message)); }, []);
+  useEffect(() => { convertApi.convertSettings().then(setS).catch((e: Error) => setError(e.message)); }, []);
   useScrollWhenLoaded(CONVERT_SETTINGS_ID, !!s);
   // Each save sends just its own keys and takes back just those, so two saves answering out
   // of order can't put an older value back.
   const commit = useCallback(async (p: Partial<Settings>) => {
-    const next = await api.updateConvertSettings(p);
+    const next = await convertApi.updateConvertSettings(p);
     setS((cur) => {
       if (!cur) return next;
       const merged = { ...cur } as Record<string, unknown>;
@@ -106,7 +107,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   const dolbyVision = useAutoSave(s.dolby_vision, put("dolby_vision"), { keepOnError: false });
   // How many files the Dolby Vision choice applies to, from the library stats.
   const [dvFiles, setDvFiles] = useState<number | null>(null);
-  useEffect(() => { api.convertStats().then((st) => setDvFiles(st.total.dolby_vision_files ?? 0)).catch(() => {}); }, []);
+  useEffect(() => { convertApi.convertStats().then((st) => setDvFiles(st.total.dolby_vision_files ?? 0)).catch(() => {}); }, []);
   const audioLangs = useAutoSave(s.keep_audio_langs, put("keep_audio_langs"));
   const origLang = useAutoSave(s.keep_original_lang, put("keep_original_lang"));
   const commentary = useAutoSave(s.drop_commentary, put("drop_commentary"));
@@ -131,12 +132,12 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
 
   const [hw, setHw] = useState<{ dir: string; free: number; need: number; needTitle: string; devices: { path: string; pci: string; vendor: string }[]; holdCheck: ConvertHoldCheck[] } | null>(null);
   const loadHw = useCallback(() => {
-    api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [], holdCheck: h.hold_check ?? [] })).catch(() => {});
+    convertApi.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [], holdCheck: h.hold_check ?? [] })).catch(() => {});
   }, []);
   useEffect(loadHw, [loadHw]);
   // The backlog's encoding time, so the hours show what they mean before they're saved.
   const [backlogSec, setBacklogSec] = useState(0);
-  useEffect(() => { api.convertStatus().then((st) => setBacklogSec(st.backlog_sec ?? 0)).catch(() => {}); }, []);
+  useEffect(() => { convertApi.convertStatus().then((st) => setBacklogSec(st.backlog_sec ?? 0)).catch(() => {}); }, []);
   // A new transcode folder changes the free space shown under it.
   useEffect(() => { if (scratch.status === "saved") loadHw(); }, [scratch.status, loadHw]);
 

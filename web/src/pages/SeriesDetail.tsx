@@ -11,6 +11,8 @@ import { refreshSearches } from "../components/LastSearch";
 import { Button, StatusChip, useToast } from "../ui";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { api, type CastMember, type FitItem, type Series as SeriesT, type Episode } from "../lib/api";
+import { seriesApi } from "../lib/seriesApi";
+import { qualityApi } from "../lib/qualityApi";
 import { Hero } from "./series/Hero";
 import { HeroActions } from "./series/HeroActions";
 import { AliasPanel } from "./series/panels";
@@ -58,14 +60,14 @@ export function SeriesDetail() {
   // How each episode file fits the show's profile's ideal file — report only.
   const [fits, setFits] = useState<Map<string, FitItem>>(new Map());
   useEffect(() => {
-    api.libraryFitEpisodes(sid).then((r) => setFits(new Map((r.items ?? []).map((it) => [`${it.season}:${it.episode}`, it])))).catch(() => {});
+    qualityApi.libraryFitEpisodes(sid).then((r) => setFits(new Map((r.items ?? []).map((it) => [`${it.season}:${it.episode}`, it])))).catch(() => {});
   }, [sid]);
 
   // The Numbering tab shows for anime, or while a standard show has something to decide:
   // a pending renumber or downloads held because their files couldn't be placed. The
   // numbering query is the banner's own (same key), re-asked whenever the show was
   // refreshed; the held downloads are re-asked when its history moves.
-  const numbering = useQuery(`series-numbering:${sid}`, () => api.seriesNumbering(sid), { staleMs: 0 });
+  const numbering = useQuery(`series-numbering:${sid}`, () => seriesApi.seriesNumbering(sid), { staleMs: 0 });
   const reviews = useQuery(`series-reviews:${sid}`, () => api.seriesReviews(sid), { staleMs: 30_000 });
   const unplaced = reviews.data ?? [];
   const numberingKey = s ? `${s.last_refreshed_at ?? ""}|${s.numbering_source ?? ""}` : "";
@@ -230,7 +232,7 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
   const resume = async () => {
     setBusy(true);
     try {
-      await api.resumeSeriesUpgrades(series.id);
+      await qualityApi.resumeSeriesUpgrades(series.id);
       flash("Upgrades resumed — the next sweep can replace these episodes again.");
       onChange();
     } catch (e) {
