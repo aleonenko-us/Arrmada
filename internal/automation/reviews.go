@@ -915,6 +915,15 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 			refs = c.series.ResolveEpisodes(ctx, s.ID, rel)
 		}
 		if len(refs) == 0 {
+			// A special released by its title has no numbering to place it by, but its grab
+			// named the special. The quality gate below still applies.
+			if ref, ok := grabTargetSpecial(len(videos), rel, force.Target); ok {
+				c.log.Info("series import: placed by the grab's target episode",
+					"series", s.Title, "file", filepath.Base(v.Path), "episode", refsLabel([]series.EpisodeRef{ref}))
+				refs = []series.EpisodeRef{ref}
+			}
+		}
+		if len(refs) == 0 {
 			unresolved++
 			c.log.Warn("series import: couldn't place file",
 				"file", filepath.Base(v.Path), "season", rel.Season, "episodes", rel.Episodes,

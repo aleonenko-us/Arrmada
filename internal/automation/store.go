@@ -298,7 +298,8 @@ func (c *Coordinator) markGrab(ctx context.Context, infoHash string, manual bool
 }
 
 // grabForce reads which episodes of this download skip the import gate: none for an
-// automatic grab, the recorded scope for one the user chose.
+// automatic grab, the recorded scope for one the user chose. Target carries the recorded
+// scope either way.
 // Matched on info hash only: a name can be rewritten by the client, and getting this
 // wrong in the permissive direction would let an automatic grab overwrite a better file.
 func (c *Coordinator) grabForce(ctx context.Context, infoHash string) forceRule {
@@ -309,7 +310,7 @@ func (c *Coordinator) grabForce(ctx context.Context, infoHash string) forceRule 
 	var scope string
 	if err := c.db.QueryRowContext(ctx,
 		`SELECT manual, scope FROM grabs WHERE lower(info_hash) = lower(?) ORDER BY id DESC LIMIT 1`,
-		infoHash).Scan(&manual, &scope); err != nil || manual == 0 {
+		infoHash).Scan(&manual, &scope); err != nil {
 		return forceRule{}
 	}
 	sc, ok := parseGrabScope(scope)
@@ -319,7 +320,10 @@ func (c *Coordinator) grabForce(ctx context.Context, infoHash string) forceRule 
 		c.log.Warn("automation: unreadable grab scope — applying the import gate", "scope", scope)
 		return forceRule{}
 	}
-	return forceRule{On: true, Scope: sc}
+	if manual == 0 {
+		return forceRule{Target: sc}
+	}
+	return forceRule{On: true, Scope: sc, Target: sc}
 }
 
 // pendingGrabs returns grabs still downloading as far as we know — the ones the stall

@@ -141,13 +141,14 @@ func refKeys(refs []series.EpisodeRef) []epKey {
 }
 
 // episodeUpgradeCandidates lists the releases that could replace one episode's file —
-// single- or multi-episode releases that contain it — each carrying the runtime it covers,
-// so an S01E01E02 double is costed over both episodes and the ceiling holds for upgrades
-// too. Sorted by name so the pick doesn't depend on map order.
-func (c *Coordinator) episodeUpgradeCandidates(ctx context.Context, s series.Series, idx runtimeIndex, byName map[string]indexer.Release, season, episode int) []quality.Candidate {
+// names, the single- or multi-episode releases that hold it (episodeReleaseIndex) — each
+// carrying the runtime it covers, so an S01E01E02 double is costed over both episodes and
+// the ceiling holds for upgrades too. Sorted by name so the pick doesn't depend on map
+// order.
+func (c *Coordinator) episodeUpgradeCandidates(ctx context.Context, s series.Series, idx runtimeIndex, byName map[string]indexer.Release, names []string) []quality.Candidate {
 	var cands []quality.Candidate
-	for name, rel := range byName {
-		if episodeRelease(parser.Parse(name), season, episode) {
+	for _, name := range names {
+		if rel, ok := byName[name]; ok {
 			cands = append(cands, c.newSeriesCandidate(ctx, s, idx, rel))
 		}
 	}

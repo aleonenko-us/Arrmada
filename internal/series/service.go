@@ -1902,6 +1902,14 @@ func (s *Service) SetAbsoluteCursor(ctx context.Context, seriesID int64, cursor 
 	s.repo.SetAbsoluteCursor(ctx, seriesID, cursor)
 }
 
+// UpgradeCursor / SetUpgradeCursor are where the upgrade sweep's per-season queries resume.
+func (s *Service) UpgradeCursor(ctx context.Context, seriesID int64) int {
+	return s.repo.UpgradeCursor(ctx, seriesID)
+}
+func (s *Service) SetUpgradeCursor(ctx context.Context, seriesID int64, cursor int) {
+	s.repo.SetUpgradeCursor(ctx, seriesID, cursor)
+}
+
 // HasWantedEpisodes reports whether the automation would actually grab anything for
 // this series (monitored + aired + no file) — used to skip a pointless indexer search.
 func (s *Service) HasWantedEpisodes(ctx context.Context, seriesID int64) bool {
