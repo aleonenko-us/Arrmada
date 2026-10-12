@@ -7,6 +7,7 @@ package quality
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -127,14 +128,31 @@ type Condition struct {
 	Negate bool          `json:"negate,omitempty"`
 }
 
-// matches tests one condition. A Value may list alternatives ("TrueHD|DTS-HD|FLAC"), any
-// of which matches; dynamic range "SDR" matches a release with no HDR tag at all.
-func (c Condition) matches(r parser.Release) bool {
+// matches tests one condition against a release whose raw name is name (customformat.go
+// has the release_title side). A Value may list alternatives ("TrueHD|DTS-HD|FLAC"), any of
+// which matches; dynamic range "SDR" matches a release with no HDR tag at all. A condition
+// that can't be evaluated — an unknown type, a pattern that doesn't compile — never holds,
+// negated or not, so a broken condition can't turn a format into "matches everything".
+func (c Condition) matches(name string, r parser.Release, regex map[string]*regexp.Regexp) bool {
+	if !knownCondition(c.Type) {
+		return false
+	}
 	hit := false
-	for _, v := range strings.Split(c.Value, "|") {
-		if c.matchOne(r, v) {
-			hit = true
-			break
+	if c.Type == CondReleaseTitle {
+		re, ok := regex[c.Value]
+		if !ok {
+			re = cachedRegex(c.Value)
+		}
+		if re == nil {
+			return false
+		}
+		hit = name != "" && re.MatchString(name)
+	} else {
+		for _, v := range strings.Split(c.Value, "|") {
+			if c.matchOne(r, strings.TrimSpace(v)) {
+				hit = true
+				break
+			}
 		}
 	}
 	if c.Negate {
@@ -143,21 +161,23 @@ func (c Condition) matches(r parser.Release) bool {
 	return hit
 }
 
+// matchOne compares one alternative. Values are compared case-insensitively; NewEngine has
+// already rewritten aliases ("HEVC", "Dolby Vision", "Blu-ray") to the parser's own labels.
 func (c Condition) matchOne(r parser.Release, v string) bool {
 	var hit bool
 	switch c.Type {
 	case CondDynamicRange:
-		hit = containsStr(r.HDR, v) || (v == "SDR" && len(r.HDR) == 0)
+		hit = containsFold(r.HDR, v) || (strings.EqualFold(v, "SDR") && len(r.HDR) == 0)
 	case CondAudio:
-		hit = containsStr(r.Audio, v)
+		hit = containsFold(r.Audio, v)
 	case CondCodec:
-		hit = string(r.Codec) == v
+		hit = r.Codec != parser.CodecUnknown && strings.EqualFold(string(r.Codec), v)
 	case CondSource:
-		hit = string(r.Source) == v
+		hit = r.Source != parser.SourceUnknown && strings.EqualFold(string(r.Source), v)
 	case CondResolution:
-		hit = string(r.Resolution) == v
+		hit = r.Resolution != parser.ResUnknown && strings.EqualFold(string(r.Resolution), v)
 	case CondEdition:
-		hit = strings.EqualFold(r.Edition, v)
+		hit = strings.EqualFold(r.Edition, v) || sameEdition(r.Edition, v)
 	case CondReleaseGroup:
 		hit = strings.EqualFold(r.Group, v)
 	case CondLossless:
@@ -173,20 +193,37 @@ func losslessAudio(r parser.Release) bool {
 	return r.AudioLossless || containsStr(r.Audio, "TrueHD") || containsStr(r.Audio, "FLAC") || containsStr(r.Audio, "LPCM")
 }
 
-// CustomFormat is a named set of conditions (all must match — AND).
+// CustomFormat is a named set of conditions. Match says how they combine: MatchAll (the
+// default, and what every format saved before it existed means) needs every condition,
+// MatchAny needs one.
 type CustomFormat struct {
 	Name       string      `json:"name"`
+	Match      string      `json:"match,omitempty"`
 	Conditions []Condition `json:"conditions"`
 }
 
-// Matches reports whether every condition holds for the release.
+// Matches reports whether the format holds for a parsed release. It has no release name,
+// so release_title conditions never hold here; the engine matches with the name.
 func (f CustomFormat) Matches(r parser.Release) bool {
+	return normalizeFormat(f).holds("", r, nil)
+}
+
+// holds evaluates an already-normalised format (see normalizeFormat).
+func (f CustomFormat) holds(name string, r parser.Release, regex map[string]*regexp.Regexp) bool {
+	if len(f.Conditions) == 0 {
+		return false
+	}
+	anyOf := f.Match == MatchAny
 	for _, c := range f.Conditions {
-		if !c.matches(r) {
+		hit := c.matches(name, r, regex)
+		if anyOf && hit {
+			return true
+		}
+		if !anyOf && !hit {
 			return false
 		}
 	}
-	return len(f.Conditions) > 0
+	return !anyOf
 }
 
 // capFor is the bitrate ceiling for a resolution: its window's, else the profile-wide one.
@@ -200,7 +237,7 @@ func (p Profile) capFor(res parser.Resolution) float64 {
 // missingRequired returns a required format the release lacks ("" when it has them all).
 // Required formats that are alternatives of one another (two codecs, two HDR formats)
 // need only one of them: requiring HEVC and AV1 means "either", not "both".
-func (e *Engine) missingRequired(required []string, r parser.Release) string {
+func (e *Engine) missingRequired(required []string, relName string, r parser.Release) string {
 	groups := map[string][]string{}
 	var order []string
 	for _, name := range required {
@@ -210,7 +247,7 @@ func (e *Engine) missingRequired(required []string, r parser.Release) string {
 		}
 		g := anyOfGroup(name)
 		if g == "" {
-			if !f.Matches(r) {
+			if !e.match(f, relName, r) {
 				return name
 			}
 			continue
@@ -223,7 +260,7 @@ func (e *Engine) missingRequired(required []string, r parser.Release) string {
 	for _, g := range order {
 		hit := false
 		for _, name := range groups[g] {
-			if e.formats[name].Matches(r) {
+			if e.match(e.formats[name], relName, r) {
 				hit = true
 				break
 			}
@@ -416,15 +453,25 @@ func (ev *Evaluation) reject(code, reason string) {
 // Engine scores releases using a catalog of custom formats.
 type Engine struct {
 	formats map[string]CustomFormat
+	// regex holds every release_title pattern the formats use, compiled once here rather
+	// than per release (nil for a pattern that doesn't compile: it never matches).
+	regex map[string]*regexp.Regexp
 }
 
 // NewEngine builds an engine over the given custom-format catalog.
 func NewEngine(formats []CustomFormat) *Engine {
 	m := make(map[string]CustomFormat, len(formats))
 	for _, f := range formats {
-		m[f.Name] = f
+		// Aliases are rewritten here, so what's stored stays as the user typed it.
+		m[f.Name] = normalizeFormat(f)
 	}
-	return &Engine{formats: m}
+	return &Engine{formats: m, regex: compileFormats(m)}
+}
+
+// match reports whether f — one of this engine's normalised formats — holds for the
+// release called name.
+func (e *Engine) match(f CustomFormat, name string, r parser.Release) bool {
+	return f.holds(name, r, e.regex)
 }
 
 // NewDefaultEngine uses the built-in custom formats.
@@ -487,7 +534,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		}
 	}
 
-	if missing := e.missingRequired(p.Required, r); missing != "" {
+	if missing := e.missingRequired(p.Required, c.Name, r); missing != "" {
 		ev.reject(RejectMissingRequired, "No "+missing+" — your profile requires it")
 		return ev
 	}
@@ -501,7 +548,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 	for name, score := range p.FormatScores {
 		f, ok := e.formats[name]
-		if !ok || !f.Matches(r) {
+		if !ok || !e.match(f, c.Name, r) {
 			continue
 		}
 		ev.FormatScore += score
@@ -539,7 +586,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	// recommendation can say the release has it.
 	for _, name := range p.Required {
 		// Only the ones the release has: of "HEVC or AV1", it carries one.
-		if f, ok := e.formats[name]; ok && f.Matches(r) && !containsStr(ev.Matched, name) {
+		if f, ok := e.formats[name]; ok && e.match(f, c.Name, r) && !containsStr(ev.Matched, name) {
 			ev.Matched = append(ev.Matched, name)
 		}
 	}
@@ -576,7 +623,11 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 // containsTerm reports whether term appears in name as a whole token — bounded by non-alphanumeric
 // characters (the "." / " " / "-" / "_" that separate release-name parts) or the string ends. This
 // keeps a reject term like "com" (the .com executable extension) from matching inside "Complete".
+//
+// Both sides are compared with their separators folded to spaces, so "Directors Cut" matches
+// "Directors.Cut" and "WEB-DL" matches "WEB.DL".
 func containsTerm(name, term string) bool {
+	name, term = foldSeparators(name), foldSeparators(term)
 	if term == "" {
 		return false
 	}

@@ -93,6 +93,10 @@ func (a *api) handleCreateQualityProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	created, err := a.deps.Quality.Create(r.Context(), sp)
+	if invalid := (*quality.InvalidProfileError)(nil); errors.As(err, &invalid) {
+		a.writeError(w, http.StatusBadRequest, invalid.Error())
+		return
+	}
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not create profile")
 		return
@@ -117,7 +121,12 @@ func (a *api) handleUpdateQualityProfile(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, upgradeTriggerError)
 		return
 	}
-	if err := a.deps.Quality.Update(r.Context(), id, sp); err != nil {
+	err := a.deps.Quality.Update(r.Context(), id, sp)
+	if invalid := (*quality.InvalidProfileError)(nil); errors.As(err, &invalid) {
+		a.writeError(w, http.StatusBadRequest, invalid.Error())
+		return
+	}
+	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not update profile")
 		return
 	}

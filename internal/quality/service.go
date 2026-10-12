@@ -464,15 +464,30 @@ func (s *Service) AtCeiling(ctx context.Context, ref string, current CurrentFile
 	return sp.JudgeFile(current).AtCeiling
 }
 
-// Create, Update, Delete manage user profiles.
+// Create, Update, Delete manage user profiles. Create and Update refuse custom formats
+// that don't hold together (see Validate) with an *InvalidProfileError.
 func (s *Service) Create(ctx context.Context, sp StoredProfile) (StoredProfile, error) {
+	if err := checkFormats(sp); err != nil {
+		return StoredProfile{}, err
+	}
 	normalize(&sp)
 	return s.repo.Create(ctx, sp)
 }
 
 func (s *Service) Update(ctx context.Context, id int64, sp StoredProfile) error {
+	if err := checkFormats(sp); err != nil {
+		return err
+	}
 	normalize(&sp)
 	return s.repo.Update(ctx, id, sp)
+}
+
+// checkFormats is Validate as the error a save returns.
+func checkFormats(sp StoredProfile) error {
+	if problems := ValidateFormats(sp.CustomFormats); len(problems) > 0 {
+		return &InvalidProfileError{Problems: problems}
+	}
+	return nil
 }
 
 // DecideSpec runs the engine for a profile that may not be saved yet — the builder's "test
