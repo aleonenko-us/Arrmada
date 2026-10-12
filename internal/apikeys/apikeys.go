@@ -41,6 +41,9 @@ type Key struct {
 	// wrong key shows before it replaces a working one. The candidate is sent once and
 	// never stored.
 	TestsCandidate bool `json:"tests_candidate"`
+	// Hidden credentials belong to a settings card of their own (Outgoing email), not the
+	// API keys list: Status leaves them out and the generic key routes refuse them.
+	Hidden bool `json:"-"`
 }
 
 // settingKey is where a credential is persisted. Namespaced so it can't collide with an
@@ -90,6 +93,25 @@ var Catalog = []Key{
 		HelpURL: "https://github.com/FlareSolverr/FlareSolverr", EnvVar: "ARRMADA_FLARESOLVERR_URL", Secret: false, Testable: true,
 		Steps: "The bundled container answers at http://arrmada-flaresolverr:8191. Point this at your own FlareSolverr only if you run one elsewhere.",
 	},
+	// Outgoing email (Settings → Alerts → Outgoing email). The server, the login and the
+	// password are entered on that card only: no install-time env var, and none of the
+	// three is ever sent back to the browser in full.
+	{ID: SMTPHost, Label: "Mail server", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
+	{ID: SMTPUsername, Label: "Mail username", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
+	{ID: SMTPPassword, Label: "Mail password", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
+}
+
+// The outgoing-email credentials' ids.
+const (
+	SMTPHost     = "smtp_host"
+	SMTPUsername = "smtp_username"
+	SMTPPassword = "smtp_password"
+)
+
+// Listed reports whether id is a credential the API keys list shows and its routes edit.
+func Listed(id string) bool {
+	k, ok := keyByID(id)
+	return ok && !k.Hidden
 }
 
 func keyByID(id string) (Key, bool) {
@@ -122,6 +144,9 @@ func (s *Store) Value(ctx context.Context, id string) string {
 	}
 	if v := strings.TrimSpace(s.s.Get(ctx, k.settingKey(), "")); v != "" {
 		return v
+	}
+	if k.EnvVar == "" {
+		return ""
 	}
 	return strings.TrimSpace(os.Getenv(k.EnvVar))
 }
@@ -175,6 +200,9 @@ type KeyStatus struct {
 func (s *Store) Status(ctx context.Context) []KeyStatus {
 	out := make([]KeyStatus, 0, len(Catalog))
 	for _, k := range Catalog {
+		if k.Hidden {
+			continue
+		}
 		st := KeyStatus{Key: k}
 		if env := strings.TrimSpace(os.Getenv(k.EnvVar)); env != "" {
 			st.EnvSet, st.EnvHint = true, hint(env, k.Secret)
