@@ -1,6 +1,7 @@
 package subtitles
 
 import (
+	"context"
 	"errors"
 
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -20,11 +21,16 @@ func (s *Service) SetBin(b library.Bin) { s.bin = b }
 // that is deliberately switched off follows the app-wide policy (library.RemoveToBin
 // deletes then); any other bin failure returns the error and the file stays where it is,
 // so the caller must abort whatever it was replacing. A file that is already gone is not
-// an error.
-func (s *Service) retireSidecar(path string) error {
+// an error. Once the file has gone, the ledger's live row for the path is superseded.
+func (s *Service) retireSidecar(ctx context.Context, path string) error {
 	if s.bin == nil {
 		return errNoBin
 	}
-	_, err := library.RemoveToBin(s.bin, path)
-	return err
+	if _, err := library.RemoveToBin(s.bin, path); err != nil {
+		return err
+	}
+	if err := s.ledger.SupersedeFile(context.WithoutCancel(ctx), path); err != nil {
+		s.log.Warn("subtitles: couldn't record a retired subtitle", "path", path, "err", err)
+	}
+	return nil
 }

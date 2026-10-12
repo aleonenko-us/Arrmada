@@ -24,4 +24,31 @@ func TestMigrationsApplyFresh(t *testing.T) {
 	if _, err := st.DB().Exec(`SELECT path, media_type, video_codec FROM convert_library LIMIT 1`); err != nil {
 		t.Fatalf("convert_library missing after 0058: %v", err)
 	}
+	// 0222: the subtitle ledger. One live row per sidecar path; a superseded row frees it.
+	db := st.DB()
+	for _, q := range []string{
+		`INSERT INTO subtitle_files (media_key, kind, video_path, path, lang, source, created_at) VALUES ('m:1', 'movie', '/v.mkv', '/v.en.srt', 'en', 'embedded', 1)`,
+		`UPDATE subtitle_files SET superseded_at = 2 WHERE path = '/v.en.srt'`,
+		`INSERT INTO subtitle_files (media_key, kind, video_path, path, lang, source, created_at) VALUES ('m:1', 'movie', '/v.mkv', '/v.en.srt', 'en', 'opensubtitles', 3)`,
+		`INSERT INTO subtitle_attempts (run_id, media_key, video_path, lang, rung, outcome, at) VALUES ('r', 'm:1', '/v.mkv', 'en', 'ai', 'ok', 3)`,
+		`INSERT INTO subtitle_blocklist (provider, file_id, media_key, lang, reason, at) VALUES ('opensubtitles', '9', 'm:1', 'en', 'redo', 3)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("subtitle ledger after 0222: %v\n%s", err, q)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO subtitle_files (media_key, kind, video_path, path, lang, source, created_at) VALUES ('m:1', 'movie', '/v.mkv', '/v.en.srt', 'en', 'ai-transcribe', 4)`); err == nil {
+		t.Error("a second live row for the same sidecar path was accepted")
+	}
+	var variant string
+	if err := db.QueryRow(`SELECT variant FROM subtitle_attempts`).Scan(&variant); err != nil || variant != "full" {
+		t.Errorf("attempt variant = %q (%v), want the 'full' default", variant, err)
+	}
+	// 0223: subtitle backoff, one row per (file, language, variant); NULL next_retry_at.
+	if _, err := db.Exec(`INSERT INTO subtitle_backoff (media_key, lang, video_path, primary_reason, reasons_json, updated_at) VALUES ('m:1', 'en', '/v.mkv', 'auth_failed', '{}', 1)`); err != nil {
+		t.Fatalf("subtitle_backoff after 0223: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO subtitle_backoff (media_key, lang, video_path, primary_reason, reasons_json, updated_at) VALUES ('m:1', 'en', '/v.mkv', 'no_match', '{}', 2)`); err == nil {
+		t.Error("a second backoff row for the same file and language was accepted")
+	}
 }

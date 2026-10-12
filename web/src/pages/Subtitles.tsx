@@ -7,7 +7,7 @@ import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
-import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
+import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
 import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
@@ -19,6 +19,19 @@ const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs"];
 const ACTIVE = new Set(["queued", "running"]);
 
 const SOURCE_LABEL: Record<string, string> = { extract: "extract", ocr: "OCR", download: "download", ai: "AI" };
+// Why a missing language is backing off, and what brings it back early.
+const REASON_LABEL: Record<string, string> = {
+  auth_failed: "OpenSubtitles login rejected", model_missing: "no whisper model for it", quota: "OpenSubtitles quota spent",
+  rate_limited: "OpenSubtitles rate limit", provider_error: "OpenSubtitles error", ai_failed: "AI failed",
+  out_of_sync: "only out-of-sync matches", below_score: "only poor matches", no_match: "no OpenSubtitles match",
+  impossible: "whisper can't make this language from the audio", no_audio: "no audio", ocr_needed: "needs OCR",
+};
+const RETRY_ON_LABEL: Record<string, string> = { creds: "login", model: "a model", langs: "a language change" };
+// OpenSubtitles' state in a word or two, for the header pill.
+const PROVIDER_STATE_LABEL: Record<SubtitleProviderState, string> = {
+  not_configured: "not set up", needs_account: "search only", unverified: "not checked yet", ok: "logged in",
+  auth_failed: "login rejected", quota_spent: "quota used", rate_limited: "rate-limited",
+};
 
 const lbl = "font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint";
 
@@ -55,12 +68,16 @@ function SubtitlesPage() {
 
   const activeCount = jobs.filter((j) => ACTIVE.has(j.state)).length;
   // The pill lists the sources that work right now, read from real state: embedded tracks
-  // always do; OpenSubtitles and AI only once they're set up.
+  // always do; OpenSubtitles by what it last said (green only after a login worked), AI
+  // once a model is installed. A rejected login turns it red.
+  const ps = settings?.provider_state;
   const sources = ["embedded"];
-  if (settings?.provider_ready) sources.push(settings.can_download ? "OpenSubtitles" : "OpenSubtitles (search only)");
+  if (ps && ps !== "not_configured") sources.push(ps === "ok" ? "OpenSubtitles" : `OpenSubtitles (${PROVIDER_STATE_LABEL[ps]})`);
   if (settings?.ai_ready) sources.push("AI");
   const provider = `Sources: ${sources.join(" · ")}`;
-  const providerOK = !!settings?.can_download || !!settings?.ai_ready;
+  const pillTone = ps === "auth_failed" ? "reject"
+    : ps === "quota_spent" || ps === "rate_limited" || ps === "unverified" ? "avoid"
+    : ps === "ok" || settings?.ai_ready ? "good" : null;
   // The Queue tab counts the jobs working right now; nothing shows while it's idle.
   const TABS: TabItem<Tab>[] = [
     { key: "overview", label: "Overview" },
@@ -76,8 +93,8 @@ function SubtitlesPage() {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[64ch] text-[12.5px] text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Settings</Link>.</p>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold" style={{ border: `1px solid ${providerOK ? "var(--good)" : "var(--line)"}`, background: providerOK ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)" }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: providerOK ? "var(--good)" : "var(--ink-faint)" }} />
+            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold" title={settings?.provider_detail || undefined} style={{ border: `1px solid ${pillTone ? `var(--${pillTone})` : "var(--line)"}`, background: pillTone ? `var(--${pillTone}-soft)` : "var(--panel-2)" }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: pillTone ? `var(--${pillTone})` : "var(--ink-faint)" }} />
               {provider}
             </span>
             <Link to={LINKS.subtitlesSettings} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Configure →</Link>
@@ -151,7 +168,7 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
           <div className={lbl}>Sources &amp; automation</div>
           <div className="mt-2 flex flex-col gap-1.5 text-[12px] text-ink-dim">
             <Row2 label="Embedded extract" state="on" />
-            <Row2 label="OpenSubtitles download" state={settings?.can_download ? "on" : "setup"} onClick={onSettings} />
+            <Row2 label="OpenSubtitles download" state={providerRow(settings?.provider_state)} onClick={onSettings} />
             <Row2 label="AI transcription" state={settings?.ai_ready ? "on" : "model"} onClick={onSettings} />
             <Row2 label="Image-sub OCR" state="unsupported" />
           </div>
@@ -172,7 +189,17 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
 }
 // Row2 is one source's real state. Something that needs setting up is a button to its
 // settings; image-sub OCR isn't something Arrmada does, so it says so rather than "soon".
-const ROW_LABEL = { on: "on", setup: "set up", model: "needs a model", unsupported: "not supported" } as const;
+const ROW_LABEL = { on: "on", setup: "set up", model: "needs a model", unsupported: "not supported", rejected: "login rejected", paused: "paused", unchecked: "not checked" } as const;
+// providerRow is OpenSubtitles' row: on only once a login has worked.
+function providerRow(ps?: SubtitleProviderState): keyof typeof ROW_LABEL {
+  switch (ps) {
+    case "ok": return "on";
+    case "auth_failed": return "rejected";
+    case "quota_spent": case "rate_limited": return "paused";
+    case "unverified": return "unchecked";
+    default: return "setup";
+  }
+}
 function Row2({ label, state, onClick }: { label: string; state: keyof typeof ROW_LABEL; onClick?: () => void }) {
   const on = state === "on";
   const chip = "rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase";
@@ -291,6 +318,16 @@ function fmtElapsed(sec: number): string {
   sec = Math.max(0, Math.round(sec));
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+}
+// retryIn is how far off a backoff's next try is: "in 6 days", "in 3 h", "in 10 min", or
+// "soon" once it's due (the next sweep picks it up).
+function retryIn(at: number): string {
+  const sec = at - Date.now() / 1000;
+  if (sec < 60) return "soon";
+  if (sec < 90 * 60) return `in ${Math.round(sec / 60)} min`;
+  if (sec < 36 * 3600) return `in ${Math.round(sec / 3600)} h`;
+  const d = Math.round(sec / 86400);
+  return `in ${d} day${d === 1 ? "" : "s"}`;
 }
 function StateBadge({ state }: { state: string }) {
   const s = state === "done" ? { bg: "var(--good-soft, rgba(127,176,105,.16))", fg: "var(--good)" }
@@ -830,6 +867,14 @@ function CoverChip({ l }: { l: SubLangStatus }) {
   if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }} title="External SRT present">✓ {l.lang}</span>;
   // A subtitle under another name covers it, but Plex won't pair it with this file.
   if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{l.lang} · orphaned</span>;
+  // Backing off: the last run couldn't make it, and the sweep leaves it alone until then.
+  if (l.reason) {
+    const why = REASON_LABEL[l.reason] ?? l.reason.replace(/_/g, " ");
+    const when = l.next_retry_at ? `next try ${retryIn(l.next_retry_at)}`
+      : l.retry_on ? `waiting for ${l.retry_on.split(",").map((e) => RETRY_ON_LABEL[e] ?? e).join(" or ")}`
+      : "retry by hand";
+    return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{l.lang} · {when}</span>;
+  }
   // The ladder tries the first source, then falls back to AI when that comes up empty.
   const first = SOURCE_LABEL[l.source ?? "ai"] ?? l.source;
   const plan = l.fallback ? `${first} → ${SOURCE_LABEL[l.fallback] ?? l.fallback}` : first;

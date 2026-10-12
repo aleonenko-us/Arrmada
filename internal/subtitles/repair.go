@@ -247,7 +247,11 @@ func (s *Service) processRepair(ctx context.Context, job *Job, ref fileRef) {
 	}
 	s.update(job, func(j *Job) { j.Stage = "repairing a subtitle taken from a forced track" })
 	var notes []string
+	var outs []Outcome
 	fixed := 0
+	runID := NewRunID()
+	s.update(job, func(j *Job) { j.RunID = runID })
+	defer func() { s.recordAttempts(ctx, runID, ref, outs) }()
 	for _, l := range job.repairLangs {
 		if ctx.Err() != nil {
 			break
@@ -256,9 +260,12 @@ func (s *Service) processRepair(ctx context.Context, job *Job, ref fileRef) {
 		if err != nil {
 			s.event("warn", fmt.Sprintf("%s: forced-repair %s failed: %v", ref.Title, l, err))
 			note = "failed: " + shortErr(err, 120)
+			outs = append(outs, Outcome{Lang: l, Rung: RungRepair, Result: ResultExtractFailed, Detail: note})
 		}
 		if ok {
 			fixed++
+			outs = append(outs, Outcome{Lang: l, Rung: RungRepair, Result: ResultOK, Detail: note})
+			s.recordRepaired(ctx, job, ref, mi, l)
 		}
 		notes = append(notes, strings.ToLower(l)+": "+note)
 	}
@@ -323,7 +330,7 @@ func (s *Service) repairLang(ctx context.Context, ref fileRef, mi *mediaInfo, la
 	forced := sidecarPathV(ref.Path, strings.ToLower(lang), VariantForced)
 	keptAsForced := false
 	if _, err := os.Stat(forced); err == nil {
-		if err := s.retireSidecar(cur); err != nil {
+		if err := s.retireSidecar(ctx, cur); err != nil {
 			return false, "", err // nothing moved: the short sidecar stays
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
@@ -347,4 +354,22 @@ func (s *Service) repairLang(ctx context.Context, ref fileRef, mi *mediaInfo, la
 		note += "; the short one went to the recycle bin"
 	}
 	return true, note, nil
+}
+
+// recordRepaired writes the ledger rows for a repaired language: the full track now at
+// "<base>.<lang>.srt", and the short one kept as ".forced.srt" when it was kept.
+func (s *Service) recordRepaired(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, lang string) {
+	if t, ok := pickFullTrack(mi.Subs, lang); ok {
+		idx := t.Index
+		s.recordFile(ctx, job, ref, SubtitleFile{Path: sidecarPath(ref.Path, strings.ToLower(lang)), Lang: lang,
+			Source: SourceEmbedded, EmbeddedIndex: &idx})
+	}
+	forced := sidecarPathV(ref.Path, strings.ToLower(lang), VariantForced)
+	if t, ok := pickForcedTrack(mi.Subs, lang); ok {
+		if live, found, _ := s.ledger.LiveFile(ctx, forced); !found || live.Source != SourceEmbedded {
+			idx := t.Index
+			s.recordFile(ctx, job, ref, SubtitleFile{Path: forced, Lang: lang, Variant: VariantForced,
+				Source: SourceEmbedded, EmbeddedIndex: &idx})
+		}
+	}
 }

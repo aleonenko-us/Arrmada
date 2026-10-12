@@ -242,6 +242,9 @@ func (s *Service) refreshSnapshot(ctx context.Context, job *Job) {
 func (s *Service) patchMovie(ctx context.Context, m movies.Movie, langs []string) {
 	fs := FileSubs{Kind: "movie", MovieID: m.ID, Title: m.Title, Year: m.Year, PosterURL: m.PosterURL, Path: m.MovieFilePath}
 	s.fillCoverage(ctx, &fs, langs, s.provider != nil && s.provider.CanDownload())
+	if bs, err := s.ledger.BackoffsFor(ctx, fmt.Sprintf("m:%d", m.ID)); err == nil {
+		applyBackoff(&fs, bs, time.Now())
+	}
 	s.snap.mu.Lock()
 	defer s.snap.mu.Unlock()
 	for i := range s.snap.movies {

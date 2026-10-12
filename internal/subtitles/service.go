@@ -48,10 +48,9 @@ type Service struct {
 	ffprobe  string
 	cache    *probeCache
 	whisper  *whisperGen
+	ledger   *Ledger // provenance, attempts and the blocklist (ledger.go); nil-safe
 	log      *slog.Logger
 	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
-	// adoptHook records an adopted orphan as Arrmada's own (SetAdoptHook); nil = no record.
-	adoptHook func(ctx context.Context, a AdoptedSidecar) error
 	// libraryChanged hears about the folder of each sidecar change (Plex's scanner; events.go).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
 
@@ -64,6 +63,8 @@ type Service struct {
 	probe   func(ctx context.Context, path string) (*mediaInfo, error)
 	extract func(ctx context.Context, path string, picks []extractPick) error
 	ai      aiRunner
+	// rateWait replaces a 429's Retry-After wait when set (tests).
+	rateWait time.Duration
 	// ffprobeRun is probeCached's ffprobe call (probeSubs when nil).
 	ffprobeRun func(ctx context.Context, ffprobe, path string) (*mediaInfo, error)
 	// passFn is one library pass (Library + SeriesGroups when nil).
@@ -90,6 +91,8 @@ type Service struct {
 	logMu     sync.Mutex
 	logBuf    []LogLine // recent activity console lines, for the Logs tab
 
+	onJobDone func(Job) // SetJobDoneHook; under mu
+
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
 }
 
@@ -100,14 +103,24 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	s := &Service{
 		movies: mv, series: sr, settings: set, provider: provider,
 		ffmpeg: ffmpeg, ffprobe: ffprobe, cache: &probeCache{db: db},
-		whisper: detectWhisper(whisperModelsDir), log: log,
+		whisper: detectWhisper(whisperModelsDir), ledger: NewLedger(db), log: log,
 		wake: make(chan struct{}, 1),
 	}
+	s.blocklist = s.ledgerBlocklist
 	// A silent fall-back from the oneAPI build would hide a broken GPU setup behind a
 	// slow run; surface it as a warning event the first time it happens.
 	s.whisper.note = func(level, msg string) { s.event(level, msg) }
 	s.whisper.log = log
 	return s
+}
+
+// Ledger is the module's record of sidecar sources, attempts and blocked provider files.
+func (s *Service) Ledger() *Ledger { return s.ledger }
+
+// ledgerBlocklist is the blocklist seam over the ledger: the OpenSubtitles file ids never
+// to download again for a media key. Its error fails the download rung closed.
+func (s *Service) ledgerBlocklist(ctx context.Context, mediaKey string) (map[string]bool, error) {
+	return s.ledger.Blocklisted(ctx, providerOpenSubtitles, mediaKey)
 }
 
 // Settings is the module's configuration + provider readiness for the dashboard.
@@ -131,6 +144,12 @@ type Settings struct {
 	Stale bool `json:"stale"`
 	// MinScore is the match score (0-100) a download without a hash match needs.
 	MinScore int `json:"min_score"`
+	// What OpenSubtitles actually said: not_configured | needs_account | unverified | ok |
+	// auth_failed | quota_spent | rate_limited. Only "ok" means a login has worked.
+	ProviderState    string `json:"provider_state"`
+	ProviderDetail   string `json:"provider_detail"`
+	VIP              bool   `json:"vip"`
+	AllowedDownloads int    `json:"allowed_downloads"` // per day; -1 = unknown
 }
 
 // GetSettings returns the current configuration + provider status.
@@ -151,6 +170,8 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 	s.snap.mu.Lock()
 	out.Stale = s.staleLocked(ctx)
 	s.snap.mu.Unlock()
+	st := s.providerStatus()
+	out.ProviderState, out.ProviderDetail, out.VIP, out.AllowedDownloads = st.State, st.Detail, st.VIP, st.Allowed
 	if q, ok := s.provider.(quotaReporter); ok {
 		remaining, resetAt := q.Quota()
 		out.QuotaRemaining = remaining
@@ -159,6 +180,21 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		}
 	}
 	return out
+}
+
+// providerStatus is the provider's real state; one that can't report it is judged by
+// what's configured, and never "ok".
+func (s *Service) providerStatus() ProviderStatus {
+	if sr, ok := s.provider.(statusReporter); ok {
+		return sr.Status()
+	}
+	switch {
+	case s.provider == nil || !s.provider.Available():
+		return ProviderStatus{State: ProviderNotConfigured, Allowed: -1}
+	case !s.provider.CanDownload():
+		return ProviderStatus{State: ProviderNeedsAccount, Allowed: -1}
+	}
+	return ProviderStatus{State: ProviderUnverified, Allowed: -1}
 }
 
 // quotaReporter is implemented by providers that meter downloads.
@@ -176,9 +212,6 @@ var ErrUnknownLanguage = errors.New("unknown language")
 // stored in their canonical spelling ("fre" → "fr", "pt-BR" → "pt-br"), in the order given
 // — the first is the language an untagged sidecar counts as.
 func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool, languages []string) error {
-	// A change of languages makes every count stale: recount now rather than at the next
-	// six-hourly pass. Saving the same list starts nothing.
-	defer s.recountIfLanguagesChanged(ctx, langsKey(s.languages(ctx)))
 	var clean []string
 	if languages != nil {
 		var err error
@@ -200,11 +233,30 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 		}
 	}
 	if clean != nil {
+		before := strings.Join(s.languages(ctx), ",")
 		if err := s.settings.Set(ctx, keyLanguages, strings.Join(clean, ",")); err != nil {
 			return err
 		}
+		// A language the AI couldn't make from that audio may be makeable now (or no
+		// longer wanted); let the next sweep look again.
+		if strings.Join(clean, ",") != before {
+			s.ClearBackoff(ctx, EventLangs)
+			// And every count is stale: recount now rather than at the next six-hourly
+			// pass. Saving the same list starts nothing.
+			s.recountIfLanguagesChanged(ctx, before)
+		}
 	}
 	return nil
+}
+
+// CredentialsChanged is called after an OpenSubtitles credential is saved or cleared:
+// the provider forgets the last login (the next job or Test signs in fresh), and files
+// parked on a rejected login are tried again by the next sweep.
+func (s *Service) CredentialsChanged(ctx context.Context) {
+	if r, ok := s.provider.(interface{ ResetAuth() }); ok {
+		r.ResetAuth()
+	}
+	s.ClearBackoff(ctx, EventCreds)
 }
 
 // canonicalLanguages spells each code canonically, drops blanks and repeats (keeping the
@@ -254,6 +306,11 @@ func (s *Service) languages(ctx context.Context) []string {
 // scheduled sweep. The worker then makes each missing kept-language SRT by the best-source
 // pipeline (extract → download → …), so auto-mode isn't download-only.
 func (s *Service) AutoGrab(ctx context.Context) {
+	if n, err := s.ledger.PruneAttempts(ctx, time.Now().Add(-AttemptRetention)); err != nil {
+		s.log.Warn("subtitles: could not prune old attempts", "err", err)
+	} else if n > 0 {
+		s.log.Info("subtitles: pruned old attempts", "count", n)
+	}
 	set := s.GetSettings(ctx)
 	if set.MoviesAuto {
 		if n, _ := s.SweepMissing(ctx, "movies"); n > 0 {
@@ -266,6 +323,9 @@ func (s *Service) AutoGrab(ctx context.Context) {
 		}
 	}
 }
+
+// providerOpenSubtitles is the provider name the ledger records downloads and blocks under.
+const providerOpenSubtitles = "opensubtitles"
 
 // grabResult is what one language's download attempt came to.
 type grabResult struct {
@@ -286,6 +346,9 @@ func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (
 	// A paused quota means no requests at all: searching would spend the API's rate
 	// limit on results that can't be downloaded until the reset.
 	if s.providerPaused() {
+		if res, msg := s.pauseOutcome(); res == ResultAuthFailed {
+			return grabResult{}, fmt.Errorf("%w: %s", ErrAuthFailed, msg)
+		}
 		return grabResult{}, ErrQuotaExhausted
 	}
 	results, err := s.provider.Search(ctx, SearchRequest{

@@ -2055,10 +2055,22 @@ export interface SubtitleSettings {
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;
   min_score: number; // 0-100: what a download without a hash match must score
+  // What OpenSubtitles actually said; only "ok" means a login has worked.
+  provider_state: SubtitleProviderState;
+  provider_detail: string;
+  vip: boolean;
+  allowed_downloads: number; // per day; -1 = unknown
   stale?: boolean; // the Library/Overview figures were counted for other languages; a recount is under way
 }
+export type SubtitleProviderState = "not_configured" | "needs_account" | "unverified" | "ok" | "auth_failed" | "quota_spent" | "rate_limited";
 export interface SubTrack { index: number; codec: string; lang: string; text: boolean; title?: string; forced?: boolean; sdh?: boolean; default?: boolean }
-export interface SubLangStatus { lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean }
+export interface SubLangStatus {
+  lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean;
+  // Set when the sweep is leaving this missing language alone for now (backoff).
+  reason?: SubtitleResult;
+  next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
+  retry_on?: string; // CSV: creds | model | langs
+}
 export interface SubHealth { score: number; notes?: string[] }
 export interface SubFileEntry {
   kind: "movie" | "episode";
@@ -2076,6 +2088,19 @@ export interface SubtitleJob {
   started_at?: number; // unix seconds the worker picked it up
   redo?: boolean; // replacing the sidecars already there
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
+  run_id?: string; // this run's rows in GET /subtitles/history?run_id=
+  outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
+}
+// One rung's typed result for one language (internal/subtitles/ledger.go Outcome).
+export type SubtitleRung = "extract" | "opensubtitles" | "ai" | "upgrade" | "repair";
+export type SubtitleResult =
+  | "ok" | "empty" | "extract_failed" | "no_match" | "quota" | "rate_limited" | "auth_failed" | "provider_error"
+  | "below_score" | "out_of_sync" | "model_missing" | "ai_failed" | "no_audio" | "impossible" | "ocr_needed" | "cancelled";
+export interface SubtitleOutcome { lang: string; variant?: string; rung: SubtitleRung; result: SubtitleResult; detail?: string; score?: number; reasons?: string[] }
+// A row of GET /api/v1/subtitles/history (newest first; page with ?before=next_before).
+export interface SubtitleAttempt {
+  id: number; run_id: string; media_key: string; video_path: string; lang: string; variant?: string;
+  rung: SubtitleRung; outcome: SubtitleResult; detail?: string; at: number;
 }
 // SubtitleCoverage is the Overview's totals, from the last library pass (not a live walk).
 export interface SubtitleCoverage {

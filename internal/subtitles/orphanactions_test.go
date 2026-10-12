@@ -42,7 +42,7 @@ func newOrphanFixture(t *testing.T, langs string) *orphanFixture {
 	f := &orphanFixture{st: st, videos: map[int64]string{}, bin: filepath.Join(t.TempDir(), "bin"), ai: &fakeAI{avail: true, transcribe: true}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	f.s = &Service{settings: set, log: log, wake: make(chan struct{}, 1), ai: f.ai,
-		movies: movies.NewService(st.DB(), nil, nil, t.TempDir(), "", nil, log)}
+		movies: movies.NewService(st.DB(), nil, nil, t.TempDir(), "", nil, log), ledger: NewLedger(st.DB())}
 	f.s.SetBin(library.SingleBin(f.bin))
 	f.s.probe = func(context.Context, string) (*mediaInfo, error) { return englishAudio(), nil }
 	f.s.resolve = func(_ context.Context, j *Job) (fileRef, bool) {
@@ -90,8 +90,6 @@ func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 func TestAdoptOrphanRenames(t *testing.T) {
 	f := newOrphanFixture(t, "en")
 	video := f.movie(t, 1, "Anchorman (2004) Bluray-2160p.mkv", "Anchorman.eng.srt")
-	var got []AdoptedSidecar
-	f.s.SetAdoptHook(func(_ context.Context, a AdoptedSidecar) error { got = append(got, a); return nil })
 	f.pass(t)
 
 	name, err := f.s.AdoptOrphan(context.Background(), 1, "Anchorman.eng.srt", nil, nil)
@@ -108,8 +106,10 @@ func TestAdoptOrphanRenames(t *testing.T) {
 	if p := scanSidecars(video, []string{"en"}, "movie").Present; !reflect.DeepEqual(p, []string{"en"}) {
 		t.Errorf("present after adopt = %v, want [en]", p)
 	}
-	if len(got) != 1 || got[0].Path != filepath.Join(dir, name) || got[0].Lang != "en" || got[0].MediaKey != "m:1" {
-		t.Errorf("adopt hook got %+v", got)
+	// Arrmada owns it now: the ledger has its live row, as adopted.
+	if row, ok, err := f.s.Ledger().LiveFile(context.Background(), filepath.Join(dir, name)); err != nil || !ok ||
+		row.Source != SourceAdopted || row.Lang != "en" || row.MediaKey != "m:1" || row.MovieID != 1 {
+		t.Errorf("ledger row = %+v ok=%v err=%v, want a live adopted en row", row, ok, err)
 	}
 	// The Library entry turns ✓ without waiting for a pass.
 	list, _ := f.s.SnapshotMovies()

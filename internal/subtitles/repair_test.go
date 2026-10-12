@@ -162,6 +162,7 @@ func passFixture(t *testing.T) (*Service, string, *[]extractPick) {
 		t.Fatal(err)
 	}
 	s.movies = movies.NewService(st.DB(), nil, nil, t.TempDir(), "", nil, s.log)
+	s.ledger = NewLedger(st.DB())
 	if _, err := st.DB().Exec(`INSERT INTO movies (id, tmdb_id, title, monitored, has_file, movie_file_path) VALUES (1, 101, 'Movie', 1, 1, ?)`, video); err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +213,17 @@ func TestForcedRepairRunsOnce(t *testing.T) {
 	}
 	if !s.settings.GetBool(context.Background(), keyForcedRepairDone, false) {
 		t.Fatal("guard key not set after the pass")
+	}
+	// The ledger knows both files' sources, and the run's repair attempt.
+	ctx := context.Background()
+	if row, ok, _ := s.Ledger().LiveFile(ctx, sidecarPath(video, "en")); !ok || row.Source != SourceEmbedded || row.EmbeddedIndex == nil || *row.EmbeddedIndex != 1 {
+		t.Errorf("en.srt ledger row = %+v (live %v), want embedded track 1", row, ok)
+	}
+	if row, ok, _ := s.Ledger().LiveFile(ctx, sidecarPathV(video, "en", VariantForced)); !ok || row.Variant != VariantForced {
+		t.Errorf("en.forced.srt ledger row = %+v (live %v), want a forced row", row, ok)
+	}
+	if at, err := s.Ledger().Attempts(ctx, AttemptQuery{MediaKey: "m:1"}); err != nil || len(at) != 1 || at[0].Rung != RungRepair || at[0].Outcome != ResultOK {
+		t.Errorf("attempts = %+v err=%v, want one ok repair", at, err)
 	}
 
 	// A restart after completion: the key stops it before it looks at anything.

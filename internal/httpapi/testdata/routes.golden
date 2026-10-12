@@ -227,6 +227,7 @@ GET /api/v1/settings staff -
 GET /api/v1/setup admin -
 GET /api/v1/status public ext
 GET /api/v1/subtitles/coverage staff -
+GET /api/v1/subtitles/history staff -
 GET /api/v1/subtitles/jobs staff -
 GET /api/v1/subtitles/library staff -
 GET /api/v1/subtitles/logs staff -

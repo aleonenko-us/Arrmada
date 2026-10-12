@@ -34,29 +34,14 @@ var (
 	ErrJobBusy = errors.New("a subtitle job for this movie is running — try again when it finishes")
 )
 
-// AdoptedSidecar is one orphan the owner adopted: from now on Arrmada owns it.
-type AdoptedSidecar struct {
-	MediaKey  string // "m:<id>"
-	VideoPath string
-	Path      string // the sidecar's new, paired path
-	Lang      string
-	Variant   string
-}
-
-// SetAdoptHook registers who records an adopted sidecar as Arrmada's own (the
-// subtitle_files ledger). Until one is set, adoption only renames the file.
-func (s *Service) SetAdoptHook(fn func(ctx context.Context, a AdoptedSidecar) error) {
-	s.adoptHook = fn
-}
-
-// recordAdopted hands an adoption to the ownership hook. The rename has already happened,
-// so a failure here is logged, not returned.
-func (s *Service) recordAdopted(ctx context.Context, a AdoptedSidecar) {
-	if s.adoptHook == nil {
-		return
-	}
-	if err := s.adoptHook(ctx, a); err != nil {
-		s.log.Warn("subtitles: couldn't record an adopted subtitle", "path", a.Path, "err", err)
+// recordAdopted records an adopted orphan in the ledger (subtitle_files, source
+// "adopted"): from now on Arrmada owns it. The rename has already happened, so a failure
+// here is logged, not returned.
+func (s *Service) recordAdopted(ctx context.Context, m movies.Movie, path, lang, variant string) {
+	f := SubtitleFile{MediaKey: fmt.Sprintf("m:%d", m.ID), Kind: "movie", MovieID: m.ID, VideoPath: m.MovieFilePath,
+		Path: path, Lang: lang, Variant: variant, Source: SourceAdopted}
+	if _, err := s.ledger.RecordFile(context.WithoutCancel(ctx), f); err != nil {
+		s.log.Warn("subtitles: couldn't record an adopted subtitle", "path", path, "err", err)
 	}
 }
 
@@ -184,7 +169,7 @@ func (s *Service) adoptOne(ctx context.Context, m movies.Movie, o Orphan, lang, 
 	if err := renameNoClobber(filepath.Join(dir, o.Name), dst); err != nil {
 		return "", err
 	}
-	s.recordAdopted(ctx, AdoptedSidecar{MediaKey: fmt.Sprintf("m:%d", m.ID), VideoPath: video, Path: dst, Lang: lang, Variant: variant})
+	s.recordAdopted(ctx, m, dst, lang, variant)
 	s.sidecarChanged("movie", video, dst, SidecarAdopted)
 	s.patchSeenMovie(ctx, m)
 	return newName, nil
@@ -265,13 +250,13 @@ func (s *Service) queueReplace(m movies.Movie, retire []orphanRetire) (*Job, err
 // retireReplaced runs at the end of a replace job: each orphan whose language the job
 // made goes to the recycle bin. One whose language wasn't made stays, and so does one
 // that is no longer an orphan (renamed or adopted meanwhile). A bin failure keeps the file.
-func (s *Service) retireReplaced(ctx context.Context, job *Job, ref fileRef, outcomes []langOutcome) {
+func (s *Service) retireReplaced(ctx context.Context, job *Job, ref fileRef, outcomes []Outcome) {
 	if len(job.retire) == 0 {
 		return
 	}
 	made := map[string]bool{}
 	for _, o := range outcomes {
-		if o.Result == "done" {
+		if o.Result == ResultOK {
 			made[strings.ToLower(o.Lang)] = true
 		}
 	}
@@ -287,7 +272,7 @@ func (s *Service) retireReplaced(ctx context.Context, job *Job, ref fileRef, out
 			// Gone, or no longer an orphan: nothing to retire.
 		default:
 			p := filepath.Join(filepath.Dir(ref.Path), r.Name)
-			if err := s.retireSidecar(p); err != nil {
+			if err := s.retireSidecar(ctx, p); err != nil {
 				s.event("warn", fmt.Sprintf("%s: kept %s — %v", ref.Title, r.Name, err))
 				continue
 			}
