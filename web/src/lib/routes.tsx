@@ -34,6 +34,7 @@ const ArtistDetail = lazyPage(() => import("../pages/ArtistDetail"), "ArtistDeta
 const AlbumDetail = lazyPage(() => import("../pages/AlbumDetail"), "AlbumDetail");
 const BookDetail = lazyPage(() => import("../pages/BookDetail"), "BookDetail");
 const AuthorDetail = lazyPage(() => import("../pages/AuthorDetail"), "AuthorDetail");
+const AuthorByName = lazyPage(() => import("../pages/AuthorDetail"), "AuthorByName");
 const Subtitles = lazyPage(() => import("../pages/Subtitles"), "Subtitles");
 const Convert = lazyPage(() => import("../pages/Convert"), "Convert");
 const Insights = lazyPage(() => import("../pages/Insights"), "Insights");
@@ -149,7 +150,10 @@ function staffRoutes(admin: boolean): RouteObject[] {
     page("/music/album/:id", "Album", music(<AlbumDetail />)),
     page("/music/:id", "Artist", music(<ArtistDetail />)),
     page("/books", "Books", books(<Books />)),
-    page("/books/author/:name", "Author", books(<AuthorDetail />)),
+    page("/books/authors/:id", "Author", books(<AuthorDetail />)),
+    // Links from before authors had ids: resolved to the id page, or a choice when the
+    // name could be more than one author.
+    page("/books/author/:name", "Author", books(<AuthorByName />)),
     page("/books/:id", "Book", books(<BookDetail />)),
     page("/subtitles", "Subtitles", <Subtitles />),
     page("/convert", "Convert", <Convert />),

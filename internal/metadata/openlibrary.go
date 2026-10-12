@@ -73,7 +73,7 @@ func (o *OpenLibrary) SearchBooks(ctx context.Context, query string) ([]BookResu
 	q.Set("q", query)
 	q.Set("limit", "24")
 	// subject feeds the adult-content filter (BookResult.Tags); nothing displays it.
-	q.Set("fields", "key,title,author_name,first_publish_year,cover_i,subject")
+	q.Set("fields", "key,title,author_name,author_key,first_publish_year,cover_i,subject")
 	body, err := o.get(ctx, "/search.json", q)
 	if err != nil {
 		return nil, err
@@ -83,6 +83,7 @@ func (o *OpenLibrary) SearchBooks(ctx context.Context, query string) ([]BookResu
 			Key     string   `json:"key"`
 			Title   string   `json:"title"`
 			Authors []string `json:"author_name"`
+			AuthKey []string `json:"author_key"`
 			Year    int      `json:"first_publish_year"`
 			CoverID int      `json:"cover_i"`
 			Subject []string `json:"subject"`
@@ -97,12 +98,13 @@ func (o *OpenLibrary) SearchBooks(ctx context.Context, query string) ([]BookResu
 			continue
 		}
 		out = append(out, BookResult{
-			Key:      workKey(d.Key),
-			Title:    d.Title,
-			Author:   firstOr(d.Authors, ""),
-			Year:     d.Year,
-			CoverURL: coverURL(d.CoverID),
-			Tags:     capTags(d.Subject),
+			Key:       workKey(d.Key),
+			Title:     d.Title,
+			Author:    firstOr(d.Authors, ""),
+			AuthorKey: olAuthorKeyFor(d.Authors, d.AuthKey),
+			Year:      d.Year,
+			CoverURL:  coverURL(d.CoverID),
+			Tags:      capTags(d.Subject),
 		})
 	}
 	return filterBundles(out), nil
@@ -156,7 +158,7 @@ func (o *OpenLibrary) AuthorWorks(ctx context.Context, key string, limit int) ([
 	q.Set("sort", "editions") // most-published works first ≈ the author's real, notable books
 	q.Set("language", "eng")  // collapse the pile of translations to the English edition
 	q.Set("limit", fmt.Sprintf("%d", limit))
-	q.Set("fields", "key,title,author_name,first_publish_year,cover_i,subject")
+	q.Set("fields", "key,title,author_name,author_key,first_publish_year,cover_i,subject")
 	body, err := o.get(ctx, "/search.json", q)
 	if err != nil {
 		return nil, err
@@ -166,6 +168,7 @@ func (o *OpenLibrary) AuthorWorks(ctx context.Context, key string, limit int) ([
 			Key     string   `json:"key"`
 			Title   string   `json:"title"`
 			Authors []string `json:"author_name"`
+			AuthKey []string `json:"author_key"`
 			Year    int      `json:"first_publish_year"`
 			CoverID int      `json:"cover_i"`
 			Subject []string `json:"subject"`
@@ -180,7 +183,7 @@ func (o *OpenLibrary) AuthorWorks(ctx context.Context, key string, limit int) ([
 			continue
 		}
 		out = append(out, BookResult{
-			Key: workKey(d.Key), Title: d.Title, Author: firstOr(d.Authors, ""),
+			Key: workKey(d.Key), Title: d.Title, Author: firstOr(d.Authors, ""), AuthorKey: olAuthorKeyFor(d.Authors, d.AuthKey),
 			Year: d.Year, CoverURL: coverURL(d.CoverID), Tags: capTags(d.Subject),
 		})
 	}
@@ -231,7 +234,9 @@ func decodeWorkList(body []byte) ([]BookResult, error) {
 			CoverID     int      `json:"cover_id"`
 			Year        int      `json:"first_publish_year"`
 			AuthorNames []string `json:"author_name"`
+			AuthorKeys  []string `json:"author_key"`
 			Authors     []struct {
+				Key  string `json:"key"`
 				Name string `json:"name"`
 			} `json:"authors"`
 			// Subjects, when the list carries them (/subjects does): only the adult
@@ -256,8 +261,10 @@ func decodeWorkList(body []byte) ([]BookResult, error) {
 		}
 		if len(wk.AuthorNames) > 0 {
 			br.Author = wk.AuthorNames[0]
+			br.AuthorKey = olAuthorKeyFor(wk.AuthorNames, wk.AuthorKeys)
 		} else if len(wk.Authors) > 0 {
 			br.Author = wk.Authors[0].Name
+			br.AuthorKey = olAuthorKey(wk.Authors[0].Key)
 		}
 		out = append(out, br)
 	}
@@ -299,6 +306,9 @@ func (o *OpenLibrary) GetBook(ctx context.Context, key string) (*BookDetails, er
 	// Author name needs a second lookup (work only carries the author key).
 	if len(w.Authors) > 0 {
 		d.Author = o.authorName(ctx, w.Authors[0].Author.Key)
+		if d.Author != "" {
+			d.AuthorKey = olAuthorKey(w.Authors[0].Author.Key)
+		}
 	}
 	return d, nil
 }
