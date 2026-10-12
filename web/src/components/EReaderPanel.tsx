@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useMe } from "../lib/me";
-import { Card, Field } from "../pages/audiobooks/shared";
+import { Button, useToast } from "../ui";
+import { Card } from "../pages/audiobooks/shared";
 
 // EReaderPanel is "Read on your e-reader": the OPDS catalogue's address, the sign-in, and
 // a line of setup for each reader app that speaks OPDS. Readers sign in with the person's
@@ -26,6 +27,26 @@ export const READER_APPS: { name: string; where: string; how: string }[] = [
   { name: "Librera", where: "Android", how: "Library → Network (OPDS) → +, then the address; sign in when it asks." },
   { name: "Thorium Reader", where: "Windows, Mac, Linux", how: "Catalogs → Add OPDS feed, then the address; sign in when it asks." },
 ];
+
+// CopyField is one value to type into the reader app, whole (it wraps rather than
+// truncating: on a phone you need all of it), with a Copy button.
+function CopyField({ label, value, note }: { label: string; value: string; note?: string }) {
+  const toast = useToast();
+  const copy = () => {
+    const done = navigator.clipboard?.writeText(value);
+    if (!done) { toast("Couldn't copy — select it and copy by hand.", { tone: "error" }); return; }
+    done.then(() => toast(`${label} copied`, { tone: "good" }), () => toast("Couldn't copy — select it and copy by hand.", { tone: "error" }));
+  };
+  return (
+    <div className="mb-2">
+      <div className="text-[11px] font-semibold text-ink-faint">{label}{note ? ` · ${note}` : ""}</div>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 break-all rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{value}</code>
+        <Button size="sm" onClick={copy} aria-label={`Copy ${label.toLowerCase()}`}>Copy</Button>
+      </div>
+    </div>
+  );
+}
 
 /** password: the person's password state (undefined: the panel looks it up). passwordCard: the
  *  form to set it, where the page has one (Audiobooks); elsewhere the panel links there. */
@@ -52,8 +73,8 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
         <p className="m-0 text-[12.5px] text-ink-dim">Your account isn't set up for reading apps. Ask an admin.</p>
       ) : (
         <>
-          <Field label="Catalogue address (OPDS)" value={address} note={!https && !external ? "At home" : undefined} />
-          {user?.username && <Field label="Username" value={user.username} />}
+          <CopyField label="Catalogue address (OPDS)" value={address} note={!https && !external ? "At home" : undefined} />
+          {user?.username && <CopyField label="Username" value={user.username} />}
           <p className="m-0 mb-3 text-[12px] text-ink-dim">
             Password: your <b>audiobook &amp; e-reader password</b> — not your Arrmada password.{" "}
             {passwordCard ? null : known?.has === false

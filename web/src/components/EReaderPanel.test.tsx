@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { EReaderPanel, opdsAddress, READER_APPS } from "./EReaderPanel";
 
@@ -32,6 +32,14 @@ describe("EReaderPanel", () => {
     show({ has: false, allowed: true });
     const link = screen.getByRole("link", { name: /set it in Audiobooks/ });
     expect(link.getAttribute("href")).toBe("/audiobooks?tab=apps");
+  });
+
+  it("copies the catalogue address", () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (s: string) => { copied.push(s); return Promise.resolve(); } } });
+    show({ has: true, allowed: true });
+    fireEvent.click(screen.getByRole("button", { name: "Copy catalogue address (opds)" }));
+    expect(copied).toEqual([opdsAddress(window.location.origin)]);
   });
 
   it("says so when the account may not connect", () => {
