@@ -204,6 +204,9 @@ type seriesGrabber struct {
 	// skip the quality gate, and for which episodes. The sweep's grabs are neither.
 	manual bool
 	scope  GrabScope
+	// scopeOf overrides scope for single releases: a special found by its title is
+	// recorded as grabbed for that special.
+	scopeOf map[string]GrabScope
 
 	grabbed map[string]bool // by download URL
 	// grabbedGB tracks what this pass has already committed, so a series with many missing
@@ -257,9 +260,13 @@ func (g *seriesGrabber) try(ctx context.Context, name, label string) bool {
 	g.grabbedGB += rel.SizeGB()
 	g.titles = append(g.titles, rel.Title)
 	c.recordSeriesGrab(ctx, s.ID, rel.Title, rel.Indexer, g.profile, hash)
+	scope := g.scope
+	if sc, ok := g.scopeOf[name]; ok {
+		scope = sc
+	}
 	// An automatic whole-show grab is the column defaults, so there's nothing to write.
-	if g.manual || g.scope != WholeShow {
-		c.markGrab(ctx, hash, g.manual, g.scope)
+	if g.manual || scope != WholeShow {
+		c.markGrab(ctx, hash, g.manual, scope)
 	}
 	c.series.AddEvent(ctx, s.ID, "grabbed", label+": "+rel.Title+" · "+rel.Indexer)
 	c.log.Info("series: grabbing", "series", s.Title, "release", rel.Title, "tier", label)

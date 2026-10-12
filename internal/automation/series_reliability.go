@@ -174,9 +174,10 @@ func (c *Coordinator) UpgradeSeries(ctx context.Context) {
 }
 
 // upgradeSeries looks for a better release for each monitored episode that already has
-// a file. Upgrades are surgical — only individual-episode releases are considered (not
-// whole-season packs), so a single better episode doesn't re-download the season. b is
-// the sweep's upgrade budget (nil = unlimited); each episode grabbed counts as one.
+// a file. Upgrades are surgical: single-episode releases, and a season pack only when it
+// would upgrade at least half of a fully aired season and downgrade none of it
+// (packUpgrades), so a single better episode never re-downloads the season. b is the
+// sweep's upgrade budget (nil = unlimited); each episode or pack grabbed counts as one.
 func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgradeBudget) (err error) {
 	// Recorded under scope "upgrade", so the Wanted view's summaries can leave it out.
 	ctx, notes := newSearchNotes(WithDefaultSearchTrigger(ctx, TriggerUpgrade))
@@ -263,19 +264,28 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 			"series", s.Title, "at_ceiling", atCeiling, "searching", len(haveEps))
 	}
 
-	res, err := c.search(ctx, seriesQuery(s, indexerQuery(s.Title), 100))
+	title := indexerQuery(s.Title)
+	res, err := c.search(ctx, seriesQuery(s, title, 100))
 	if err != nil || len(res.Releases) == 0 {
 		return err
 	}
-	notes.consider(res.Releases)
+	// The broad query is one capped page of mostly recent releases. A few seasons by number
+	// as well, rotating through the show over the sweeps, so a long show's older seasons and
+	// their BluRay packs are searched too.
+	upSeasons := map[int]bool{}
+	for _, ep := range haveEps {
+		upSeasons[ep.season] = true
+	}
+	releases := c.searchSeasons(ctx, s, title, c.upgradeSeasonQueries(ctx, s, sortedSeasons(upSeasons)), res.Releases)
+	notes.consider(releases)
 	blocked, err := c.blockedSetSeries(ctx, s.ID)
 	if err != nil {
 		c.skipUnreadable(s.Title, err)
 		return err
 	}
-	byName := make(map[string]indexer.Release, len(res.Releases))
+	byName := make(map[string]indexer.Release, len(releases))
 	droppedTitle := 0
-	for _, rel := range bestByTitle(grabbable(res.Releases)) {
+	for _, rel := range bestByTitle(grabbable(releases)) {
 		// The candidate must actually BE this show. Nothing here checked, and matching on
 		// season/episode numbers alone is not a check: a search for "Goliath" returns
 		// "House of David S01E07 David and Goliath - Part 1" — the indexer matched the
@@ -306,9 +316,25 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		return err
 	}
 	rts := newRuntimeIndex(s)
-	var picks []episodeUpgrade
+	// Season packs first: a finished show's upgrades mostly come as a BluRay pack, and one
+	// that beats most of a season replaces that season's single-episode picks.
+	picks, err := c.packUpgrades(ctx, s, rts, profile, byName, upSeasons)
+	if err != nil {
+		c.skipUnreadable(s.Title, err)
+		return err
+	}
+	packed := map[int]bool{}
+	for _, p := range picks {
+		packed[p.season] = true
+	}
+	// Single episodes, resolved the way the grab side resolves them, so an anime's
+	// "[Grp] Show - 137" is its TMDB episode.
+	holding := c.episodeReleaseIndex(ctx, s, rts, byName)
 	for _, ep := range haveEps {
-		cands := c.episodeUpgradeCandidates(ctx, s, rts, byName, ep.season, ep.episode)
+		if packed[ep.season] {
+			continue
+		}
+		cands := c.episodeUpgradeCandidates(ctx, s, rts, byName, holding[epKey{ep.season, ep.episode}])
 		if len(cands) == 0 {
 			continue
 		}
@@ -316,7 +342,8 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 			picks = append(picks, episodeUpgrade{season: ep.season, episode: ep.episode, pick: pick})
 		}
 	}
-	// Each episode is one grab against the sweep's budget; the rest wait for the next sweep.
+	// Each episode, or season pack, is one grab against the sweep's budget; the rest wait
+	// for the next sweep.
 	takeUpgrades(picks, b, func(u episodeUpgrade) bool {
 		winner := byName[u.pick.Name]
 		if grabbed[winner.DownloadURL] {
@@ -329,7 +356,14 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 			c.log.Warn("series: low disk, skipping upgrade", "series", s.Title, "need_gb", u.pick.SizeGB)
 			return false
 		}
-		c.log.Info("series: upgrading episode", "series", s.Title, "s", u.season, "e", u.episode, "to", winner.Title)
+		if u.pack {
+			// Grabbed as automatic, whole-show: the import gate judges every file, so only
+			// the episodes the pack beats are replaced (and never a held one).
+			c.log.Info("series: upgrading a season with a pack", "series", s.Title, "s", u.season,
+				"upgrades", u.upgraded, "of", u.of, "to", winner.Title)
+		} else {
+			c.log.Info("series: upgrading episode", "series", s.Title, "s", u.season, "e", u.episode, "to", winner.Title)
+		}
 		if err := c.GrabForSeriesAuto(ctx, s.ID, winner.Indexer, winner.DownloadURL, winner.Title); err != nil {
 			c.log.Warn("series: upgrade grab failed", "series", s.Title, "err", err)
 			return false
@@ -341,10 +375,14 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 	return nil
 }
 
-// episodeUpgrade is one episode's chosen upgrade, before it's grabbed.
+// episodeUpgrade is one episode's chosen upgrade, or a season pack's, before it's grabbed.
 type episodeUpgrade struct {
 	season, episode int
 	pick            quality.Candidate
+	// pack: a season pack (episode 0) expected to upgrade `upgraded` of the season's `of`
+	// episodes with files.
+	pack         bool
+	upgraded, of int
 }
 
 // SeriesInFlight says which of a show's seasons have a download still being fetched (see
