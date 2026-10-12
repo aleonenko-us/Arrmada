@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
@@ -15,7 +15,7 @@ import { LINKS } from "../lib/links";
 import { useMe, isAdmin } from "../lib/me";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { useQuery } from "../lib/query";
-import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type MenuItem } from "../ui";
+import { Button, ErrorState, FilterBar, LibraryToolbar, Modal, Skeleton, StaleBanner, useToast, type LibraryTool, type MenuItem } from "../ui";
 import { LibraryCard } from "../features/library/LibraryCard";
 import type { LibraryConfig } from "../features/library/types";
 import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
@@ -75,7 +75,6 @@ export function Books() {
   const [adding, setAdding] = useState(false);
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [savedView, setView] = usePersisted("books.view", "grid", ["grid", "table"] as const);
   // A phone always gets the grid (the table doesn't fit); the saved choice is kept for the desktop.
   const phone = useMediaQuery(PHONE);
@@ -121,16 +120,16 @@ export function Books() {
   const loaded = !!booksQ.data;
   useEffect(() => { if (loaded) countDupes(); }, [loaded, list.length]);
 
-  const [toastErr, setToastErr] = useState(false);
+  const toast = useToast();
   // err shows the toast in the error colour: a search or scan that failed says so plainly.
-  const flash = (m: string, err = false) => { setToast(m); setToastErr(err); window.setTimeout(() => setToast(null), 3500); };
+  const say = (m: string, err = false) => toast(m, { tone: err ? "error" : "info", ms: 3500 });
   const refresh = booksQ.refetch;
   // Poll the upgrade while it runs, then reload the library once it lands.
   usePoll(() => api.bookUpgradeStatus().then((st) => {
     setUpgrade(st);
     if (!st.running) {
       refresh();
-      flash(st.error ? `Upgrade stopped: ${st.error}` : `Upgraded ${st.upgraded}, flagged ${st.flagged} as possible duplicates, no match for ${st.unmatched}.${st.notes?.length ? ` E.g. ${st.notes[0]}` : ""}`);
+      say(st.error ? `Upgrade stopped: ${st.error}` : `Upgraded ${st.upgraded}, flagged ${st.flagged} as possible duplicates, no match for ${st.unmatched}.${st.notes?.length ? ` E.g. ${st.notes[0]}` : ""}`);
     }
   }).catch(() => {}), upgrade?.running ? 2000 : null, { immediate: false });
   // Poll the missing-editions sweep while it runs, then reload once it lands.
@@ -138,15 +137,15 @@ export function Books() {
     setSweep(st);
     if (!st.running) {
       refresh();
-      flash(`Searched ${st.done} book${st.done === 1 ? "" : "s"}: ${st.grabbed} edition${st.grabbed === 1 ? "" : "s"} grabbed${st.skipped ? `, ${st.skipped} already downloading` : ""}.`);
+      say(`Searched ${st.done} book${st.done === 1 ? "" : "s"}: ${st.grabbed} edition${st.grabbed === 1 ? "" : "s"} grabbed${st.skipped ? `, ${st.skipped} already downloading` : ""}.`);
     }
   }).catch(() => {}), sweep?.running ? 2000 : null, { immediate: false });
   const startSweep = async () => {
     try {
       const r = await api.startBookSweep();
       setSweep(r.status);
-      flash(r.started ? "Searching for every missing edition — this takes a while, one book at a time." : "A sweep is already running.");
-    } catch (e) { flash((e as Error).message); }
+      say(r.started ? "Searching for every missing edition — this takes a while, one book at a time." : "A sweep is already running.");
+    } catch (e) { say((e as Error).message, true); }
   };
   // Books the sweep would search: any lacking an edition its profile wants. Monitoring
   // only governs the automatic sweep; a library catalogued from disk is mostly unmonitored.
@@ -171,19 +170,19 @@ export function Books() {
       setKept((s) => new Set(s).add(id));
       const cur = booksQ.data;
       if (cur) booksQ.mutate((r) => ({ ...(r ?? cur), upgradable: Math.max(0, ((r ?? cur).upgradable ?? 0) - 1) }));
-    } catch (e) { flash((e as Error).message); }
+    } catch (e) { say((e as Error).message, true); }
   };
   const keepAll = async () => {
     const ids = (upgrade?.left ?? []).map((l) => l.id).filter((id) => !kept.has(id));
     for (const id of ids) await keepOne(id);
-    flash(`Ignoring ${ids.length} book${ids.length === 1 ? "" : "s"} — the re-match leaves them alone from now on.`);
+    say(`Ignoring ${ids.length} book${ids.length === 1 ? "" : "s"} — the re-match leaves them alone from now on.`);
   };
   const startUpgrade = async () => {
     try {
       const r = await api.startBookUpgrade();
       setUpgrade(r.status);
-      flash(r.started ? "Re-matching your books to Hardcover…" : "An upgrade is already running.");
-    } catch (e) { flash((e as Error).message); }
+      say(r.started ? "Re-matching your books to Hardcover…" : "An upgrade is already running.");
+    } catch (e) { say((e as Error).message, true); }
   };
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
@@ -199,7 +198,7 @@ export function Books() {
     setBulkBusy(true);
     try {
       await Promise.all([...selected].map((id) => api.setBookMonitored(id, mon)));
-      flash(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
+      say(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
       clearSelect();
       refresh();
     } finally { setBulkBusy(false); }
@@ -208,7 +207,7 @@ export function Books() {
     setBulkBusy(true);
     try {
       await Promise.all([...selected].map((id) => api.setBookProfile(id, profile)));
-      flash(`Quality profile set on ${selected.size} books.`);
+      say(`Quality profile set on ${selected.size} books.`);
       clearSelect();
       refresh();
     } finally { setBulkBusy(false); }
@@ -234,7 +233,7 @@ export function Books() {
     onDone: (j) => {
       const title = searchJob?.title;
       setSearchJob(null);
-      flash(title ? `“${title}”: ${jobToast(j, "search finished.")}` : jobToast(j, "Search finished."), jobFailed(j));
+      say(title ? `“${title}”: ${jobToast(j, "search finished.")}` : jobToast(j, "Search finished."), jobFailed(j));
       refresh();
     },
   });
@@ -242,8 +241,8 @@ export function Books() {
     try {
       const r = await api.searchBook(b.id);
       if (r.job_id) setSearchJob({ id: r.job_id, title: b.title });
-      flash(`Searching for “${b.title}”…`);
-    } catch (e) { flash((e as Error).message); }
+      say(`Searching for “${b.title}”…`);
+    } catch (e) { say((e as Error).message, true); }
   };
   // One-off: a series is normally learned from the release that matched a book, so a
   // library assembled before that existed knows nothing — and a book you already own is
@@ -253,8 +252,8 @@ export function Books() {
     setBackfilling(true);
     try {
       await api.backfillBookSeries();
-      flash("Looking up series for your books — this takes a few minutes.");
-    } catch (e) { flash((e as Error).message); }
+      say("Looking up series for your books — this takes a few minutes.");
+    } catch (e) { say((e as Error).message, true); }
     finally { setBackfilling(false); }
   };
   // After a scan starts, refresh the grid a dozen times as books land.
@@ -262,16 +261,16 @@ export function Books() {
   // The scan runs as a job; when it ends the toast says what it added.
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); refresh(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
+    onDone: (j) => { setScanJob(null); refresh(); say(jobToast(j, "Scan finished."), jobFailed(j)); },
   });
   const scanLibrary = async () => {
     setScanning(true);
     try {
       const r = await api.scanBooks();
       if (r.job_id) setScanJob(r.job_id);
-      flash("Scanning your library — books will appear shortly.");
+      say("Scanning your library — books will appear shortly.");
       watchScan();
-    } catch (e) { flash((e as Error).message); setScanning(false); }
+    } catch (e) { say((e as Error).message, true); setScanning(false); }
   };
 
   // The header keeps the everyday actions in sight (+ Add book, + Add author, Search
@@ -447,10 +446,9 @@ export function Books() {
           </div>
         )}
 
-        {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>{toast}</div>}
       </div>
       {adding && <AddBookModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
-      {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); flash(msg); }} />}
+      {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); say(msg); }} />}
       {dupesOpen && (
         <Suspense fallback={null}>
           <DuplicatesModal onClose={() => setDupesOpen(false)} onChanged={() => { refresh(); countDupes(); }} />
@@ -535,6 +533,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   const [source, setSource] = useState<BookSource>("openlibrary");
   const [olResults, setOlResults] = useState<BookLookup[] | null>(null);
   const [olLoading, setOlLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => {
@@ -579,20 +578,19 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add a book</h2>
-          <div className="flex items-center gap-2">
+    <Modal onClose={onClose} labelledBy="add-book-title" size="lg" initialFocus={inputRef}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="add-book-title" className="m-0 text-[15px] font-bold">Add a book</h2>
+          <label className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
             <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
-          </div>
+          </label>
         </div>
         <form onSubmit={search} className="mb-3 flex gap-2">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or author — e.g. Dune Herbert" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-          <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{loading ? "…" : "Search"}</button>
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by title or author" placeholder="Search by title or author — e.g. Dune Herbert" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+          <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
         {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="thin-scroll max-h-[56vh] overflow-y-auto">
@@ -609,8 +607,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -730,6 +727,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => {
@@ -763,16 +761,15 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add an author</h2>
-          <div className="flex items-center gap-2">
+    <Modal onClose={onClose} labelledBy="add-author-title" size="lg" initialFocus={inputRef}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="add-author-title" className="m-0 text-[15px] font-bold">Add an author</h2>
+          <label className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
             <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
@@ -781,8 +778,8 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
           <>
             <p className="mb-3 text-[12px] text-ink-dim">Search for an author and add their entire catalogue of official individual books (box sets and collections are excluded).</p>
             <form onSubmit={search} className="mb-3 flex gap-2">
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by author — e.g. Brandon Sanderson" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-              <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{loading ? "…" : "Search"}</button>
+              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by author" placeholder="Search by author — e.g. Brandon Sanderson" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+              <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
             </form>
             <div className="thin-scroll max-h-[52vh] overflow-y-auto">
               {authors === null ? null : authors.length === 0 ? (
@@ -810,9 +807,9 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
                 <div className="text-[15px] font-bold">{selected.name}</div>
                 <div className="text-[11.5px] text-ink-faint">{works === null ? "Loading catalogue…" : `${works.length} official book${works.length === 1 ? "" : "s"}`}</div>
               </div>
-              <button onClick={add} disabled={busy || works === null || works.length === 0} className="flex-none rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-                {busy ? "Adding…" : works ? `Add all ${works.length} books` : "Add all"}
-              </button>
+              <Button variant="primary" onClick={add} disabled={works === null || works.length === 0} busy={busy} busyLabel="Adding…" className="flex-none disabled:opacity-50">
+                {works ? `Add all ${works.length} books` : "Add all"}
+              </Button>
             </div>
             <div className="thin-scroll max-h-[48vh] overflow-y-auto">
               {works === null ? (
@@ -831,8 +828,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

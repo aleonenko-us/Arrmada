@@ -22,7 +22,12 @@ test.describe("Books on a phone", () => {
       await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible();
     }
     await page.getByRole("menuitem", { name: "+ Add author" }).click();
-    await expect(page.getByRole("heading", { name: "Add an author" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Add an author" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: "Search by author" })).toBeFocused();
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
     await api.quiet();
     expect(await sideways(page)).toBeLessThanOrEqual(0);
   });
