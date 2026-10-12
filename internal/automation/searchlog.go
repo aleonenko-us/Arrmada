@@ -81,6 +81,8 @@ const (
 	DropNotTorrent   = "not_torrent"   // a usenet release, which no download client takes
 	DropNotWanted    = "not_wanted"    // a book format the profile doesn't want
 	DropWrongEdition = "wrong_edition" // a movie track wants another edition (or another track wants this one)
+	// DropWrongLanguage is a book release stating a language outside the book languages.
+	DropWrongLanguage = "wrong_language"
 	// The two "taken" states, never counted as reasons.
 	classEligible = "eligible"
 	classGrabbed  = "grabbed"
@@ -747,6 +749,7 @@ var reasonLabels = map[string]string{
 	DropWrongEdition:              "not the edition a version wants",
 	DropNotTorrent:                "usenet only",
 	DropNotWanted:                 "a format you don't want",
+	DropWrongLanguage:             "not in your book languages",
 	rejectedUncoded:               "rejected by your profile",
 	quality.RejectResolution:      "not a resolution you want",
 	quality.RejectSourceFloor:     "below your minimum source",

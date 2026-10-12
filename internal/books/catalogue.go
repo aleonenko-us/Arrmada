@@ -98,14 +98,16 @@ func (s *Service) catalogueSeries(ctx context.Context, bookID int64) (*SeriesVie
 	return view, missing, true
 }
 
-// AddMissingInSeries adds every entry of a book's series that the library lacks.
-func (s *Service) AddMissingInSeries(ctx context.Context, bookID int64, profile string, monitored bool) (added, skipped int, err error) {
+// AddMissingInSeries adds every entry of a book's series that the library lacks, and
+// returns the books it added. They carry only what the series list knew; the caller
+// refreshes them (RefreshBooks) so the first search uses the catalogue's details.
+func (s *Service) AddMissingInSeries(ctx context.Context, bookID int64, profile string, monitored bool) (added []Book, skipped int, err error) {
 	_, missing, ok := s.catalogueSeries(ctx, bookID)
 	if !ok {
-		return 0, 0, metadata.ErrNotSupported
+		return nil, 0, metadata.ErrNotSupported
 	}
 	if len(missing) == 0 {
-		return 0, 0, nil
+		return nil, 0, nil
 	}
 	got, skip := s.AddWorks(ctx, missing, profile, monitored)
 	// AddWorks builds rows from the search result alone; series membership is known
@@ -119,7 +121,7 @@ func (s *Service) AddMissingInSeries(ctx context.Context, bookID int64, profile 
 			}
 		}
 	}
-	return len(got), skip, nil
+	return got, skip, nil
 }
 
 // SimilarBooks is the catalogue's "readers also liked" for a key (Discover detail).

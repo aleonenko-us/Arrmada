@@ -236,6 +236,33 @@ func TestSettingsUpgradeBudget(t *testing.T) {
 	}
 }
 
+// Book languages default to English, are stored as canonical codes whatever spelling was
+// sent, may be emptied (any language), and refuse anything that isn't a language. [BOOK-16]
+func TestSettingsBookLanguages(t *testing.T) {
+	a := settingsAPI(t)
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["books_languages"], []any{"en"}) {
+		t.Fatalf("default = %v, want [en]", got["books_languages"])
+	}
+	if w := putSettingsAs(t, a, auth.RoleManager, `{"books_languages":["English","SPA","es"]}`); w.Code != http.StatusOK {
+		t.Fatalf("manager PUT: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["books_languages"], []any{"en", "es"}) {
+		t.Errorf("saved = %v, want [en es]", got["books_languages"])
+	}
+	if w := putSettings(t, a, `{"books_languages":["en","klingonish"]}`); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown language: HTTP %d, want 400", w.Code)
+	}
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["books_languages"], []any{"en", "es"}) {
+		t.Errorf("a refused PUT changed the list: %v", got["books_languages"])
+	}
+	if w := putSettings(t, a, `{"books_languages":[]}`); w.Code != http.StatusOK {
+		t.Fatalf("empty list: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["books_languages"], []any{}) {
+		t.Errorf("emptied = %v, want [] (any language)", got["books_languages"])
+	}
+}
+
 func mustAtoi(t *testing.T, s string) int {
 	t.Helper()
 	n, err := strconv.Atoi(s)
@@ -290,6 +317,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"request_quota_movies":            `3`,
 		"request_quota_seasons":           `2`,
 		"request_quota_books":             `4`,
+		"books_languages":                 `["en","es"]`,
 	}
 	// The legacy all-types switch and the per-type list are two views of one setting.
 	linked := map[string]string{"plex_login_auto_approve": "plex_login_auto_approve_types", "plex_login_auto_approve_types": "plex_login_auto_approve"}

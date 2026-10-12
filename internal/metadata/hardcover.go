@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -38,6 +39,9 @@ type Hardcover struct {
 	extraCovers *OpenLibrary
 	budget      *hcBudget // daily request count + spacing (hccache.go)
 	cache       *hcCache  // TTL cache over every read
+	// noReleaseDate: the live schema refused release_date once, so the book query
+	// stops asking for it (see book).
+	noReleaseDate atomic.Bool
 }
 
 // NewHardcoverFunc builds a provider that reads the key lazily, so a key pasted in
@@ -178,6 +182,7 @@ type hcBook struct {
 	Subtitle      string    `json:"subtitle"`
 	Description   string    `json:"description"`
 	ReleaseYear   *int      `json:"release_year"`
+	ReleaseDate   *string   `json:"release_date"` // asked for only by the book and author-works queries
 	CanonicalID   *int      `json:"canonical_id"`
 	Image         *hcImage  `json:"image"`
 	Images        []hcImage `json:"images"`
@@ -240,6 +245,9 @@ func (b hcBook) result() BookResult {
 	if b.ReleaseYear != nil {
 		r.Year = *b.ReleaseYear
 	}
+	if b.ReleaseDate != nil {
+		r.ReleaseDate = releaseDay(*b.ReleaseDate)
+	}
 	if b.Image != nil {
 		r.CoverURL = b.Image.URL
 	}
@@ -257,6 +265,20 @@ func (b hcBook) result() BookResult {
 	}
 	r.Tags = hcFilterTags(b.CachedTags)
 	return r
+}
+
+// releaseDay reads a catalogue date ("2027-03-12", or a timestamp starting with one) as
+// YYYY-MM-DD; anything else, a bare year included, is "" — a year alone can't say
+// which day to search on.
+func releaseDay(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) < 10 {
+		return ""
+	}
+	if _, err := time.Parse("2006-01-02", s[:10]); err != nil {
+		return ""
+	}
+	return s[:10]
 }
 
 // hcFilterTags is every Genre and Tag label in cached_tags, untrimmed, for the adult
@@ -514,9 +536,9 @@ func (h *Hardcover) GetBook(ctx context.Context, key string) (*BookDetails, erro
 	if !ok {
 		return nil, fmt.Errorf("hardcover: not a hardcover key: %q", key)
 	}
-	// "v2": the author is picked by role now; entries cached before would keep the
-	// illustrator for a day.
-	return cached(ctx, h.cache, "book:v2:"+key, hcTTLBook, func(ctx context.Context) (*BookDetails, error) {
+	// "v3": books carry their release date now; "v2" entries were cached without it.
+	// (v2: the author is picked by role, not the first contributor.)
+	return cached(ctx, h.cache, "book:v3:"+key, hcTTLBook, func(ctx context.Context) (*BookDetails, error) {
 		return h.getBookLive(ctx, id)
 	})
 }
@@ -556,18 +578,37 @@ func (h *Hardcover) getBookLive(ctx context.Context, id int) (*BookDetails, erro
 	return d, nil
 }
 
-func (h *Hardcover) book(ctx context.Context, id int) (*hcBook, error) {
-	const q = `query($id: Int!) {
+// hcBookQuery is the one-book query, with or without release_date. The field is new to
+// this query and unverified against the live schema; Hasura refuses a whole query over
+// one unknown field, which would break every GetBook.
+func hcBookQuery(withReleaseDate bool) string {
+	extra := ""
+	if withReleaseDate {
+		extra = " release_date"
+	}
+	return `query($id: Int!) {
   books(where: {id: {_eq: $id}}, limit: 1) {
-    ` + hcBookFields + `
+    ` + hcBookFields + extra + `
     subtitle description pages
     book_series { position series { id name } }
   }
 }`
+}
+
+func (h *Hardcover) book(ctx context.Context, id int) (*hcBook, error) {
 	var data struct {
 		Books []hcBook `json:"books"`
 	}
-	if err := h.query(ctx, q, map[string]any{"id": id}, &data); err != nil {
+	withDate := !h.noReleaseDate.Load()
+	err := h.query(ctx, hcBookQuery(withDate), map[string]any{"id": id}, &data)
+	if err != nil && withDate && strings.Contains(err.Error(), "release_date") {
+		// The schema refused the field: say so with the API's own words, and stop
+		// asking for it until a restart, so books keep loading without release dates.
+		slog.Warn("hardcover: the book query refused release_date — loading books without release dates", "err", err)
+		h.noReleaseDate.Store(true)
+		err = h.query(ctx, hcBookQuery(false), map[string]any{"id": id}, &data)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if len(data.Books) == 0 {

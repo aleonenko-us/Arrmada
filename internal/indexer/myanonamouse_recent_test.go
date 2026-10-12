@@ -93,7 +93,7 @@ func TestMAMRecentAsksForNewestBooks(t *testing.T) {
 	}
 	r := rels[0]
 	if r.Title != "Andy Weir - Project Hail Mary [M4B]" || r.Format != "M4B" || r.Author != "Andy Weir" ||
-		r.Language != "ENG" || r.Narrator != "Ray Porter" || r.Indexer != "MAM" || r.Seeders != 12 {
+		r.Language != "en" || r.Narrator != "Ray Porter" || r.Indexer != "MAM" || r.Seeders != 12 {
 		t.Errorf("first release mapped as %+v", r)
 	}
 	if rels[1].Format != "EPUB" || rels[1].Series != "Coven of Bones #1" {

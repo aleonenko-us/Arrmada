@@ -173,6 +173,7 @@ func (s *Service) Add(ctx context.Context, olKey, qualityProfile string, monitor
 		OLKey: d.Key, Title: orStr(d.Title, fallback.Title), Author: orStr(d.Author, fallback.Author),
 		Year: d.Year, CoverURL: orStr(d.CoverURL, fallback.CoverURL),
 		Description: d.Description, Subjects: d.Subjects, Monitored: monitored, QualityProfile: qualityProfile,
+		ReleaseDate: orStr(d.ReleaseDate, fallback.ReleaseDate),
 	}
 	if b.Year == 0 {
 		b.Year = fallback.Year
@@ -286,7 +287,7 @@ func (s *Service) addWorks(ctx context.Context, works []metadata.BookResult, pro
 		}
 		created, err := s.repo.Create(ctx, Book{
 			OLKey: wk.Key, Title: wk.Title, Author: wk.Author, Year: wk.Year,
-			CoverURL: wk.CoverURL, Monitored: monitored, QualityProfile: profile,
+			CoverURL: wk.CoverURL, Monitored: monitored, QualityProfile: profile, ReleaseDate: wk.ReleaseDate,
 		})
 		if errors.Is(err, ErrExists) {
 			skipped++
@@ -355,13 +356,39 @@ func (s *Service) ClearEdition(ctx context.Context, id int64, kind string) error
 	return nil
 }
 
-// Refresh re-pulls Open Library metadata (description, cover, subjects) for a book.
+// Refresh re-pulls catalogue metadata (description, cover, subjects, author, series) for
+// a book. A catalogue that can't answer leaves the book as it was; that isn't an error.
 func (s *Service) Refresh(ctx context.Context, id int64) (Book, error) {
+	b, _, err := s.refresh(ctx, id)
+	return b, err
+}
+
+// refresh is Refresh that also says why the catalogue lookup failed (fetchErr), so the
+// refresh job can tell "Hardcover's budget is spent, stop" from "this key is gone". The
+// book is stamped as checked unless the lookup was refused for budget or cut short, so
+// the job doesn't come straight back to a book it just tried.
+func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err error) {
 	b, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return Book{}, err
+		return Book{}, nil, err
 	}
-	if d, derr := s.meta.GetBook(ctx, b.OLKey); derr == nil {
+	d, derr := s.meta.GetBook(ctx, b.OLKey)
+	if derr == nil && d == nil {
+		derr = errors.New("the catalogue returned no book")
+	}
+	switch {
+	case derr == nil:
+	case errors.Is(derr, metadata.ErrHardcoverBudget) || ctx.Err() != nil:
+		b, err = s.repo.Get(ctx, id)
+		return b, derr, err
+	default:
+		// The provider's own words, so a query Hardcover rejects shows why in the log.
+		s.log.Info("book refresh: catalogue lookup failed", "title", b.Title, "key", b.OLKey, "err", derr)
+	}
+	if err := s.repo.StampMetaChecked(ctx, id); err != nil {
+		s.log.Warn("book refresh: couldn't record the check", "title", b.Title, "err", err)
+	}
+	if derr == nil {
 		if d.Description != "" {
 			b.Description = d.Description
 		}
@@ -372,6 +399,9 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Book, error) {
 			b.Subjects = d.Subjects
 		}
 		_ = s.repo.UpdateMeta(ctx, b.ID, b.Description, b.CoverURL, b.Subjects)
+		// Existing books pick up their release date here (and through the refresh-books
+		// job); a catalogue that doesn't know one leaves the stored date alone.
+		_ = s.repo.SetReleaseDate(ctx, b.ID, d.ReleaseDate)
 		// The catalogue's author wins over the one on file: a book filed under its
 		// illustrator (the catalogue once listed that contributor first) is put right
 		// here, and every indexer search from then on carries the right name.
@@ -397,7 +427,8 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Book, error) {
 			_ = s.repo.SetSeriesRef(ctx, b.ID, d.SeriesName, d.SeriesPosition, d.SeriesKey)
 		}
 	}
-	return s.repo.Get(ctx, id)
+	b, err = s.repo.Get(ctx, id)
+	return b, derr, err
 }
 
 // MatchByRelease finds the book a release name refers to — used to route a finished
@@ -551,6 +582,7 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 		CoverURL:    orStr(d.CoverURL, fallback.CoverURL),
 		Description: d.Description,
 		Subjects:    d.Subjects,
+		ReleaseDate: d.ReleaseDate,
 	}
 	if next.Year == 0 {
 		next.Year = fallback.Year
@@ -563,6 +595,9 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 	// the old key was a wrong identification, and keeping it would make that other book
 	// read as owned — and refuse to be added.
 	keepOld := SameBook(before.Title, before.Author, next.Title, next.Author)
+	if next.ReleaseDate == "" && keepOld {
+		next.ReleaseDate = before.ReleaseDate // the same book; this catalogue just doesn't say
+	}
 	if err := s.repo.Rematch(ctx, id, next, keepOld); err != nil {
 		return Book{}, err
 	}

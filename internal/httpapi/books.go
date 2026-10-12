@@ -879,6 +879,10 @@ func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 		_, _, _ = a.submit(r, jobs.Spec{Kind: "books.add-author-search", Target: "author:" + req.AuthorKey, Class: jobs.ClassIndexerSearch, Timeout: 20 * time.Minute,
 			Fn: errFn(func(ctx context.Context) error {
 				for i, id := range ids {
+					// Refresh first, so the search uses the catalogue's corrected author and
+					// series. Budget-aware: past the Hardcover gate the book is searched as
+					// it is and the refresh-books job fills it in later.
+					a.deps.Books.RefreshBooks(ctx, []int64{id})
 					_, err := a.deps.Automation.SearchBookNow(automation.WithSearchTrigger(ctx, automation.TriggerAdd), id)
 					if errors.Is(err, automation.ErrAlreadySearching) {
 						continue // already being searched: that search covers it
@@ -984,7 +988,20 @@ func (a *api) handleAddMissingInSeries(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, "could not load the series")
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"added": added, "skipped": skipped})
+	if len(added) > 0 {
+		// The new rows carry only what the series list knew. Fill in descriptions,
+		// genres and the catalogue's author now, while the sweep is still to search them.
+		ids := make([]int64, len(added))
+		for i, b := range added {
+			ids[i] = b.ID
+		}
+		_, _, _ = a.submit(r, jobs.Spec{Kind: "books.refresh-new", Target: fmt.Sprintf("series:%d", id), Class: jobs.ClassOther, Timeout: 20 * time.Minute,
+			Fn: errFn(func(ctx context.Context) error {
+				a.deps.Books.RefreshBooks(ctx, ids)
+				return nil
+			})})
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"added": len(added), "skipped": skipped})
 }
 
 // handleBookAuthorDetail returns an author's photo and biography when the catalogue has them.

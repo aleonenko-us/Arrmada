@@ -14,6 +14,7 @@ export const REASON_LABELS: Record<string, string> = {
   wrong_edition: "not the edition a version wants",
   not_torrent: "usenet only",
   not_wanted: "a format you don't want",
+  wrong_language: "not in your book languages",
   rejected: "rejected by your profile",
   resolution: "not a resolution you want",
   source_floor: "below your minimum source",

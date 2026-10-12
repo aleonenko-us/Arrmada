@@ -970,6 +970,8 @@ export interface AppSettings {
   downloads_stall_minutes: number;
   /** How many upgrades one upgrade sweep may grab; 0 = no limit. Default 10. */
   upgrade_max_grabs_per_sweep: number;
+  /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
+  books_languages: string[];
 }
 
 export interface TorrentPreview {
@@ -1439,6 +1441,8 @@ export interface RequestTracking {
   note?: string;
   /** Books not found yet: when the next search is due (RFC3339; format in the viewer's locale). */
   next_check_at?: string;
+  /** A book not out yet: the day it is (YYYY-MM-DD, a calendar day) — "Out 12 Mar". */
+  release_date?: string;
   /** While searching: when it was last looked for (RFC3339), and how many looks in a row found nothing. */
   last_search_at?: string;
   misses?: number;
@@ -1479,6 +1483,7 @@ export interface MyRequest {
   stage?: RequestStage;
   note?: string; // "Not found yet"
   next_check_at?: string; // RFC3339
+  release_date?: string; // the book isn't out yet: the day it is (YYYY-MM-DD)
 }
 
 export interface DiscoverCard {
@@ -1892,6 +1897,8 @@ export interface Book {
   last_search_at?: string;
   search_misses: number;
   next_search_at?: string;
+  /** The day the book comes out (YYYY-MM-DD) when the catalogue says; not searched before it. */
+  release_date?: string;
 }
 export interface CatalogueRef {
   name: "Hardcover" | "Open Library" | "Google Books";
@@ -1971,6 +1978,8 @@ export interface BookMeta {
   genres?: string[];
   series_name?: string;
   series_position?: number;
+  /** The day it comes out (YYYY-MM-DD), when the catalogue knows it. */
+  release_date?: string;
   /** Detail only: the editions of the owner's default book profile, where the request
    *  control starts when the viewer hasn't picked before. */
   default_book_formats?: "ebook" | "audiobook" | "both";

@@ -285,7 +285,9 @@ export function Books() {
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
           tools={[
             { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
-            { label: "Find series", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "One-off: look up which series your books belong to. Searches indexers to read the series off, and downloads nothing." },
+            // Hardcover hands over the series with each book (the refresh-books job fills it
+            // in), so this indexer-search fallback is for Open Library setups only.
+            { label: "Find series", hidden: source === "hardcover", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "Open Library doesn't say which series a book is in, so this searches your indexers once per book to read the series off release names. Downloads nothing." },
             { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
             {
               label: `Re-match ${upgradable} to Hardcover`,

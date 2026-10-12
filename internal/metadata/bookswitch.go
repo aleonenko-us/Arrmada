@@ -51,6 +51,16 @@ func (s *BookSources) byKey(key string) BookProvider {
 
 func (s *BookSources) Available() bool { return true }
 
+// HardcoverUsage is today's Hardcover request count against its daily budget, for
+// background jobs that must leave room for people browsing (the refresh-books job, the
+// author release check). budget 0 means Hardcover isn't configured: no budget to mind.
+func (s *BookSources) HardcoverUsage() (used, budget int) {
+	if s.hardcover == nil || !s.hardcover.Available() {
+		return 0, 0
+	}
+	return s.hardcover.Usage()
+}
+
 // VerifyHardcover exercises the Hardcover key end to end (settings "Test" button).
 func (s *BookSources) VerifyHardcover(ctx context.Context) (string, error) {
 	if s.hardcover == nil {
