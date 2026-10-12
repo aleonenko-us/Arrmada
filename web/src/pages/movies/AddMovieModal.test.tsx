@@ -4,13 +4,14 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom";
 import { AddMovieModal } from "./AddMovieModal";
 import { api, type AppSettings, type Movie } from "../../lib/api";
+import { qualityApi } from "../../lib/qualityApi";
 
 // MOV-23: films already in the library link to themselves; any other opens a confirm step
 // with the profile, minimum availability and a per-add search choice that leaves the
 // shared default alone unless "Remember as my default" is ticked.
 
 beforeEach(() => {
-  vi.spyOn(api, "qualityProfiles").mockResolvedValue({ profiles: [{ key: "hd", name: "HD", is_default: true }], formats: [] } as unknown as Awaited<ReturnType<typeof api.qualityProfiles>>);
+  vi.spyOn(qualityApi, "qualityProfiles").mockResolvedValue({ profiles: [{ key: "hd", name: "HD", is_default: true }], formats: [] } as unknown as Awaited<ReturnType<typeof qualityApi.qualityProfiles>>);
   vi.spyOn(api, "settings").mockResolvedValue({ search_on_add: true } as AppSettings);
   vi.spyOn(api, "lookupMovies").mockResolvedValue([
     { tmdb_id: 1, title: "Dune", year: 2021, overview: "", poster_url: "", vote_average: 8, in_library: true, library_id: 42 },

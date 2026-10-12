@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
+import { type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
+import { downloadClientApi } from "../../lib/downloadClientApi";
 
 // The download-client form, moved from the old Download clients page into the cards on
 // Settings → Connections. It adds a client, or edits one in place; the stored password is
@@ -36,8 +37,8 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
     setError(null);
     try {
       const c = editing
-        ? await api.updateDownloadClient(editing.id, { name, kind: editing.kind, url, username, password, enabled: editing.enabled, priority: order })
-        : await api.createDownloadClient({ name, kind: "qbittorrent", url, username, password, priority: order });
+        ? await downloadClientApi.updateDownloadClient(editing.id, { name, kind: editing.kind, url, username, password, enabled: editing.enabled, priority: order })
+        : await downloadClientApi.createDownloadClient({ name, kind: "qbittorrent", url, username, password, priority: order });
       onSaved(c);
     } catch (err) {
       setError((err as Error).message);
@@ -108,7 +109,7 @@ export function ClientEditor({ client, onSaved }: { client: DownloadClient; onSa
   useEffect(() => {
     if (client.kind !== "qbittorrent" || !client.enabled) return;
     let live = true;
-    api.downloadClientStatus(client.id).then((s) => { if (live) setPort(s.listen_port); }).catch(() => {});
+    downloadClientApi.downloadClientStatus(client.id).then((s) => { if (live) setPort(s.listen_port); }).catch(() => {});
     return () => { live = false; };
   }, [client.id, client.kind, client.enabled]);
   return (

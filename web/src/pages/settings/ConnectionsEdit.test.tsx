@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { api, type DownloadClient, type Indexer } from "../../lib/api";
+import { type DownloadClient, type Indexer } from "../../lib/api";
+import { downloadClientApi } from "../../lib/downloadClientApi";
+import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem } from "../../lib/connectionsApi";
 import { clearQueryCache } from "../../lib/query";
 import { ConfirmProvider } from "../../ui";
@@ -36,15 +38,15 @@ function serve({ indexers = [], clients = [], canRestore = false }: { indexers?:
     { id: "metadata", title: "Metadata", items: [] },
     { id: "other", title: "Other", items: [] },
   ]);
-  vi.spyOn(api, "indexers").mockResolvedValue(indexers);
-  vi.spyOn(api, "downloadClientList").mockResolvedValue({ clients, categories: CATS, can_restore_bundled: canRestore });
+  vi.spyOn(indexerApi, "indexers").mockResolvedValue(indexers);
+  vi.spyOn(downloadClientApi, "downloadClientList").mockResolvedValue({ clients, categories: CATS, can_restore_bundled: canRestore });
 }
 
 beforeEach(() => {
   clearQueryCache();
   Element.prototype.scrollIntoView = vi.fn();
-  vi.spyOn(api, "prowlarrInfo").mockResolvedValue({ url: "", has_key: false });
-  vi.spyOn(api, "downloadClientStatus").mockResolvedValue({ listen_port: 0 });
+  vi.spyOn(indexerApi, "prowlarrInfo").mockResolvedValue({ url: "", has_key: false });
+  vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 0 });
 });
 afterEach(() => {
   cleanup();
@@ -84,7 +86,7 @@ describe("adding an indexer", () => {
 describe("an indexer's card", () => {
   it("asks before deleting and does nothing on Cancel", async () => {
     serve({ indexers: [idx()] });
-    const del = vi.spyOn(api, "deleteIndexer").mockResolvedValue(undefined);
+    const del = vi.spyOn(indexerApi, "deleteIndexer").mockResolvedValue(undefined);
     page();
     const card = await cardOf("indexer-1");
     await menuPick(card, "TorrentLeech", "Delete");
@@ -96,7 +98,7 @@ describe("an indexer's card", () => {
 
   it("shows the server's error when the delete fails", async () => {
     serve({ indexers: [idx()] });
-    vi.spyOn(api, "deleteIndexer").mockRejectedValue(new Error("database is locked"));
+    vi.spyOn(indexerApi, "deleteIndexer").mockRejectedValue(new Error("database is locked"));
     page();
     const card = await cardOf("indexer-1");
     await menuPick(card, "TorrentLeech", "Delete");
@@ -106,7 +108,7 @@ describe("an indexer's card", () => {
 
   it("Disable saves the indexer switched off, keeping its saved key", async () => {
     serve({ indexers: [idx({ prowlarr_id: 4, kind: "torznab", url: "http://p/4/api" })] });
-    const upd = vi.spyOn(api, "updateIndexer").mockResolvedValue(undefined);
+    const upd = vi.spyOn(indexerApi, "updateIndexer").mockResolvedValue(undefined);
     page();
     const card = await cardOf("indexer-1");
     expect(within(card).getByText("Managed by Prowlarr")).toBeTruthy();
@@ -117,7 +119,7 @@ describe("an indexer's card", () => {
 
   it("opens the editor: tie-break explained, and the 'Used for' pills read 'searched for this area'", async () => {
     serve({ indexers: [idx()] });
-    const upd = vi.spyOn(api, "updateIndexer").mockResolvedValue(undefined);
+    const upd = vi.spyOn(indexerApi, "updateIndexer").mockResolvedValue(undefined);
     page();
     const card = await cardOf("indexer-1");
     fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
@@ -130,7 +132,7 @@ describe("an indexer's card", () => {
 
   it("won't turn off the last lit pill", async () => {
     serve({ indexers: [idx({ media_types: ["book"] })] });
-    const upd = vi.spyOn(api, "updateIndexer");
+    const upd = vi.spyOn(indexerApi, "updateIndexer");
     page();
     const card = await cardOf("indexer-1");
     fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
@@ -143,7 +145,7 @@ describe("an indexer's card", () => {
 describe("a download client's card", () => {
   it("asks before removing, naming what it leaves alone; a bundled one says it stays removed", async () => {
     serve({ clients: [client({ bundled: true })] });
-    const del = vi.spyOn(api, "deleteDownloadClient").mockResolvedValue(undefined);
+    const del = vi.spyOn(downloadClientApi, "deleteDownloadClient").mockResolvedValue(undefined);
     page();
     const card = await cardOf("download_client-1");
     await menuPick(card, "qBittorrent", "Delete");
@@ -156,7 +158,7 @@ describe("a download client's card", () => {
 
   it("Disable saves via PUT with a blank password (kept), and a failure shows on the card", async () => {
     serve({ clients: [client()] });
-    const upd = vi.spyOn(api, "updateDownloadClient").mockRejectedValue(new Error("download client not found"));
+    const upd = vi.spyOn(downloadClientApi, "updateDownloadClient").mockRejectedValue(new Error("download client not found"));
     page();
     const card = await cardOf("download_client-1");
     await menuPick(card, "qBittorrent", "Disable");
@@ -166,7 +168,7 @@ describe("a download client's card", () => {
 
   it("edits in place — blank password kept, order checked — then tests it", async () => {
     serve({ clients: [client({ username: "admin" })] });
-    const upd = vi.spyOn(api, "updateDownloadClient").mockResolvedValue(client({ name: "Home qB" }));
+    const upd = vi.spyOn(downloadClientApi, "updateDownloadClient").mockResolvedValue(client({ name: "Home qB" }));
     const test = vi.spyOn(connectionsApi, "test").mockResolvedValue({ ok: true, detail: "Connected", item: clientCard(client({ name: "Home qB" })) });
     page();
     const card = await cardOf("download_client-1");
@@ -186,7 +188,7 @@ describe("a download client's card", () => {
 
   it("adds a client with no default URL, lists the fixed categories, and offers the bundled one back", async () => {
     serve({ canRestore: true });
-    const restore = vi.spyOn(api, "restoreBundledClient").mockResolvedValue({ restored: true });
+    const restore = vi.spyOn(downloadClientApi, "restoreBundledClient").mockResolvedValue({ restored: true });
     page();
     await screen.findByText(/No download clients yet/);
     expect(screen.getByText("arrmada-tv")).toBeTruthy();

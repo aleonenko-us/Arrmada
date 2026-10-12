@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api, type SeriesLookup } from "../../lib/api";
+import { qualityApi } from "../../lib/qualityApi";
 import { Button, Modal } from "../../ui";
 import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "./presets";
 
@@ -19,7 +20,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.qualityProfiles("series").then((r) => {
+    qualityApi.qualityProfiles("series").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);

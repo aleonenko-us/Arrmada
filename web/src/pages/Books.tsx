@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
 import { api, type BookSource, type BookUpgradeStatus, type BookSweepStatus, type Book, type BookLookup, type BookAuthor, type BookDiscoverCard } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { usePersisted } from "../lib/persist";
 import { useSearchParamState } from "../lib/useSearchState";
 import { PHONE, useMediaQuery } from "../lib/useMediaQuery";
@@ -164,7 +165,7 @@ export function Books() {
     } catch (e) { flash((e as Error).message); }
   };
   useEffect(() => {
-    api.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
+    qualityApi.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
     api.bookUpgradeStatus().then((st) => { if (st.started_at) setUpgrade(st); }).catch(() => {});
     api.bookSweepStatus().then((st) => { if (st.running) setSweep(st); }).catch(() => {});
   }, []);
@@ -539,7 +540,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   const [olLoading, setOlLoading] = useState(false);
 
   useEffect(() => {
-    api.qualityProfiles("book").then((r) => {
+    qualityApi.qualityProfiles("book").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);
@@ -692,7 +693,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.qualityProfiles("book").then((r) => {
+    qualityApi.qualityProfiles("book").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);

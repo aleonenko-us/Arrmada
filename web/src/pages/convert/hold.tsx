@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { api, req, type ConvertHistoryEntry, type ConvertHoldStats } from "../../lib/api";
+import { req, type ConvertHistoryEntry, type ConvertHoldStats } from "../../lib/api";
+import { convertApi } from "../../lib/convertApi";
 import { fmtBytes } from "../../lib/disposal";
 import { useConfirm } from "../../ui";
 
@@ -117,7 +118,7 @@ export function RevertButton({ e, id, flash, onDone }: {
   const revert = async () => {
     setBusy(true);
     try {
-      const row = e ?? await api.convertHistoryEntry(rowID);
+      const row = e ?? await convertApi.convertHistoryEntry(rowID);
       const ok = await confirm({ title: `Revert the conversion of ${row.title}?`, body: revertBody(row), confirmLabel: "Revert" });
       if (!ok) return;
       const next = await holdApi.revert(rowID);

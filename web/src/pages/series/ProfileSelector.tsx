@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
-import { api, type Series as SeriesT } from "../../lib/api";
+import { type Series as SeriesT } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
+import { qualityApi } from "../../lib/qualityApi";
 
 export function ProfileSelector({ series, onChange }: { series: SeriesT; onChange: () => void }) {
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [fallbackName, setFallbackName] = useState<string | null>(null);
   const cur = series.quality_profile;
-  useEffect(() => { api.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
+  useEffect(() => { qualityApi.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
   useEffect(() => {
     if (!cur || cur === "n/a" || profiles.some((p) => p.key === cur)) { setFallbackName(null); return; }
-    api.qualityProfile(cur).then((sp) => setFallbackName(sp.name || cur)).catch(() => setFallbackName(cur));
+    qualityApi.qualityProfile(cur).then((sp) => setFallbackName(sp.name || cur)).catch(() => setFallbackName(cur));
   }, [cur, profiles]);
-  const change = async (p: string) => { if (p === cur) return; await api.setSeriesProfile(series.id, p); onChange(); };
+  const change = async (p: string) => { if (p === cur) return; await seriesApi.setSeriesProfile(series.id, p); onChange(); };
   const opts = [...profiles];
   if (cur && !opts.some((o) => o.key === cur)) opts.unshift({ key: cur, name: cur === "n/a" ? "Not set" : (fallbackName ?? "…") });
   return (

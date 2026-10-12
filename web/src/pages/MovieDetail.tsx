@@ -26,6 +26,8 @@ import {
   type MovieFile,
   type MovieVersion,
 } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
+import { convertApi } from "../lib/convertApi";
 import { useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
 import { jobFailed, useJob } from "../lib/useJob";
@@ -266,7 +268,7 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
   const extras = versions.filter((v) => !v.is_default);
 
   useEffect(() => {
-    api
+    qualityApi
       .qualityProfiles("movie")
       .then((r) => setProfileNames(Object.fromEntries(r.profiles.map((p) => [p.key, p.name]))))
       .catch(() => {});
@@ -593,7 +595,7 @@ function VersionFormModal({ movieId, version, onClose, onSaved }: { movieId: num
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.qualityProfiles("movie").then((r) => {
+    qualityApi.qualityProfiles("movie").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       if (editing) return; // keep the version's own profile
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
@@ -713,7 +715,7 @@ function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () =>
 
   useEffect(() => {
     load();
-    api.qualityProfiles("movie").then((r) => {
+    qualityApi.qualityProfiles("movie").then((r) => {
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);
     }).catch(() => {});
@@ -801,7 +803,7 @@ function ProfileSelector({ movie, onChange }: { movie: Movie; onChange: () => vo
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
 
   useEffect(() => {
-    api
+    qualityApi
       .qualityProfiles("movie")
       .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name }))))
       .catch(() => {});
@@ -1051,7 +1053,7 @@ function MonitorWithProfile({ movie, onDone, onDowngrade, flash }: {
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api.qualityProfiles("movie").then((r) => {
+    qualityApi.qualityProfiles("movie").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       const own = r.profiles.find((p) => p.key === movie.quality_profile);
       const def = own ?? r.profiles.find((p) => p.is_default) ?? r.profiles[0];
@@ -1105,7 +1107,7 @@ function UpgradeHoldChip({ movie, onChange, flash }: { movie: Movie; onChange: (
   const resume = async () => {
     setBusy(true);
     try {
-      await api.resumeMovieUpgrades(movie.id);
+      await qualityApi.resumeMovieUpgrades(movie.id);
       flash("Upgrades resumed — the next sweep can replace this file again.");
       onChange();
     } catch (e) {
@@ -1372,7 +1374,7 @@ function FileBody({ movieId, versionId, file }: { movieId: number; versionId: nu
           subtitle={file.quality || undefined}
           // Convert works on every track: the default file is 'movie:ID', an extra
           // version 'movie:ID:v:VID'.
-          onCleanTracks={async () => { await api.convertRequest(versionId === 0 ? `movie:${movieId}` : `movie:${movieId}:v:${versionId}`); }}
+          onCleanTracks={async () => { await convertApi.convertRequest(versionId === 0 ? `movie:${movieId}` : `movie:${movieId}:v:${versionId}`); }}
           onClose={() => setShowFile(false)}
         />
       )}

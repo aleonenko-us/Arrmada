@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { api, type ConvertPlan, type ConvertTrackDecision } from "../../lib/api";
+import { type ConvertPlan, type ConvertTrackDecision } from "../../lib/api";
+import { convertApi } from "../../lib/convertApi";
 import { posterThumb } from "../../lib/img";
 import { useQuery } from "../../lib/query";
 import { StatusChip } from "../../ui";
@@ -14,7 +15,7 @@ export const planQueryKey = (key: string) => `convert-plan:${key}`;
 
 export function usePlan(key: string, enabled = true) {
   // Short-lived: a settings change elsewhere changes the plan.
-  return useQuery<ConvertPlan>(planQueryKey(key), () => api.convertPlan(key), { enabled, staleMs: 10_000 });
+  return useQuery<ConvertPlan>(planQueryKey(key), () => convertApi.convertPlan(key), { enabled, staleMs: 10_000 });
 }
 
 export function PlanCard({ itemKey }: { itemKey: string }) {

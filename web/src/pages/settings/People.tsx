@@ -4,6 +4,7 @@ import { PlexMergeDialog } from "../../components/PlexMergeDialog";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Section, inputStyle } from "../../components/settings/ui";
 import { api, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
+import { peopleApi } from "../../lib/peopleApi";
 import { accountApi } from "../../lib/accountApi";
 import { LINKS } from "../../lib/links";
 import { useMe } from "../../lib/me";
@@ -116,7 +117,7 @@ export const ROLES: { value: UserRole; label: string }[] = [
   { value: "admin", label: "Admin" },
 ];
 
-type UserPatch = Parameters<typeof api.updateUser>[1];
+type UserPatch = Parameters<typeof peopleApi.updateUser>[1];
 
 // PeopleList is everyone, one row each, plus the add-a-person form and the blocked Plex
 // accounts. A person's saves run one after another: the server writes role and
@@ -131,8 +132,8 @@ function PeopleList({ meId }: { meId?: number }) {
   const chains = useRef(new Map<number, Promise<unknown>>());
 
   const load = useCallback(() => {
-    api.people().then((ps) => { stored.current = new Map(ps.map((p) => [p.id, p])); setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message));
-    api.plexBlocks().then(setBlocks).catch(() => {});
+    peopleApi.people().then((ps) => { stored.current = new Map(ps.map((p) => [p.id, p])); setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message));
+    peopleApi.plexBlocks().then(setBlocks).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -155,7 +156,7 @@ function PeopleList({ meId }: { meId?: number }) {
 
   const update = useCallback((id: number, build: (cur: Person) => UserPatch) => queue(id, async (cur) => {
     const body = build(cur);
-    const r = await api.updateUser(id, body);
+    const r = await peopleApi.updateUser(id, body);
     // The answer is the account as it now stands; anything it leaves out stays as it was.
     merge(id, {
       role: r.role ?? cur.role, disabled: r.disabled ?? cur.disabled,
@@ -173,7 +174,7 @@ function PeopleList({ meId }: { meId?: number }) {
 
   const unblock = async (b: PlexBlock) => {
     setBlockErr(null);
-    try { setBlocks(await api.unblockPlex(b.plex_id)); load(); }
+    try { setBlocks(await peopleApi.unblockPlex(b.plex_id)); load(); }
     catch (e) { setBlockErr((e as Error).message); }
   };
 
@@ -397,8 +398,8 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
         });
     if (!ok) return;
     try {
-      if (kind === "unlink") await api.updateUser(p.id, { plex_unlink: true });
-      else await api.blockUserPlex(p.id);
+      if (kind === "unlink") await peopleApi.updateUser(p.id, { plex_unlink: true });
+      else await peopleApi.blockUserPlex(p.id);
       ctx.reload();
     } catch (e) { ctx.toast((e as Error).message, { tone: "error" }); }
   };
@@ -471,7 +472,7 @@ function AddPerson({ onAdded }: { onAdded: () => void }) {
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      await api.createUser({ email: email.trim(), password, role, ...typeFlags(autoApprove) });
+      await peopleApi.createUser({ email: email.trim(), password, role, ...typeFlags(autoApprove) });
       setEmail(""); setPassword(""); setRole("requester"); setAutoApprove(NO_TYPES);
       onAdded();
     } catch (e) { setErr((e as Error).message); }
@@ -530,7 +531,7 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
   const [blockPlex, setBlockPlex] = useState(false);
 
   useEffect(() => {
-    api.userImpact(p.id).then(setImpact).catch((e: Error) => setErr(`Couldn't check what this would remove: ${e.message}`));
+    peopleApi.userImpact(p.id).then(setImpact).catch((e: Error) => setErr(`Couldn't check what this would remove: ${e.message}`));
   }, [p.id]);
 
   const listening = !!impact && (impact.places > 0 || impact.listening_hours > 0);
@@ -539,7 +540,7 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
 
   const confirm = async () => {
     setBusy(true); setErr(null);
-    try { await api.deleteUser(p.id, listening ? p.username : undefined, canBlock && blockPlex); onDeleted(); }
+    try { await peopleApi.deleteUser(p.id, listening ? p.username : undefined, canBlock && blockPlex); onDeleted(); }
     catch (e) { setErr((e as Error).message); setBusy(false); }
   };
 

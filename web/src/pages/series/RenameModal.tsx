@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type RenameSkip, type SeriesRenameItem } from "../../lib/api";
+import { type RenameSkip, type SeriesRenameItem } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 
 const base = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1);
 const seasonName = (n: number) => (n === 0 ? "Specials" : `Season ${n}`);
@@ -16,7 +17,7 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
 
   useEffect(() => {
     let alive = true;
-    api.seriesRenamePreview(seriesId)
+    seriesApi.seriesRenamePreview(seriesId)
       .then((r) => { if (alive) setItems(r.items ?? []); })
       .catch((e: Error) => { if (alive) setError(e.message); });
     return () => { alive = false; };
@@ -35,7 +36,7 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
     setBusy(true);
     setError(null);
     try {
-      const res = await api.renameSeries(seriesId, moves);
+      const res = await seriesApi.renameSeries(seriesId, moves);
       setResult({ renamed: res.renamed, skipped: res.skipped ?? [] });
       onRenamed();
     } catch (e) {

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision } from "../../lib/api";
+import { type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision } from "../../lib/api";
+import { convertApi } from "../../lib/convertApi";
 import { fmtBytes } from "../../lib/disposal";
 import { posterThumb } from "../../lib/img";
 import { ReleaseButton, RevertButton, holdLine } from "./hold";
@@ -92,7 +93,7 @@ export function HistoryTab({ reload, flash }: { reload: number; flash: (m: strin
   useEffect(() => {
     let alive = true;
     const t = window.setTimeout(() => {
-      api.convertHistory({ outcome: outcome || undefined, media: media || undefined, q: q.trim() || undefined, limit: 30 })
+      convertApi.convertHistory({ outcome: outcome || undefined, media: media || undefined, q: q.trim() || undefined, limit: 30 })
         .then((r) => { if (alive) { setItems(r.items); setNext(r.next); } })
         .catch(() => { if (alive) { setItems([]); setNext(""); } });
     }, q ? 250 : 0);
@@ -101,7 +102,7 @@ export function HistoryTab({ reload, flash }: { reload: number; flash: (m: strin
   const more = async () => {
     setBusy(true);
     try {
-      const r = await api.convertHistory({ ...filter, before: next });
+      const r = await convertApi.convertHistory({ ...filter, before: next });
       // A row can't repeat across pages (the cursor is strict), but a reload racing Load
       // more could: keep the first copy.
       setItems((cur) => {
@@ -220,7 +221,7 @@ export function RecentCard({ reload, onSeeAll }: { reload: number; onSeeAll: () 
   const [items, setItems] = useState<ConvertHistoryEntry[] | null>(null);
   useEffect(() => {
     let alive = true;
-    api.convertHistory({ limit: 8 }).then((r) => { if (alive) setItems(r.items); }).catch(() => { if (alive) setItems([]); });
+    convertApi.convertHistory({ limit: 8 }).then((r) => { if (alive) setItems(r.items); }).catch(() => { if (alive) setItems([]); });
     return () => { alive = false; };
   }, [reload]);
   if (!items || items.length === 0) return null;

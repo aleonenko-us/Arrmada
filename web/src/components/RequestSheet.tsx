@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MediaRequest, type QualityProfileInfo } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { isStaff, useMe } from "../lib/me";
 import { posterThumb } from "../lib/img";
 import { formatSeasons, libraryPath, mediaLabel, requestAge, requestStage } from "../lib/requestStage";
@@ -63,7 +64,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
   useEffect(() => {
     if (!staff || !pending || !media) return;
     let alive = true;
-    api.qualityProfiles(media)
+    qualityApi.qualityProfiles(media)
       .then((r) => { if (alive) setProfiles(r.profiles.filter((p) => p.media_type === media)); })
       .catch(() => { if (alive) setProfiles([]); });
     return () => { alive = false; };

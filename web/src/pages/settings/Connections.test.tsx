@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { api } from "../../lib/api";
+
+import { downloadClientApi } from "../../lib/downloadClientApi";
+import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData } from "../../lib/connectionsApi";
 import { clearQueryCache } from "../../lib/query";
 import { ConfirmProvider } from "../../ui";
@@ -31,8 +33,8 @@ const page = (at = "/settings/connections") =>
 beforeEach(() => {
   clearQueryCache();
   Element.prototype.scrollIntoView = vi.fn();
-  vi.spyOn(api, "indexers").mockResolvedValue([]);
-  vi.spyOn(api, "downloadClientList").mockResolvedValue({ clients: [] });
+  vi.spyOn(indexerApi, "indexers").mockResolvedValue([]);
+  vi.spyOn(downloadClientApi, "downloadClientList").mockResolvedValue({ clients: [] });
 });
 afterEach(() => {
   cleanup();
