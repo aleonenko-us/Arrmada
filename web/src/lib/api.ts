@@ -2086,23 +2086,6 @@ export interface SubtitleCoverage {
 }
 export interface WhisperModel { name: string; label: string; size_mb: number; present: boolean; downloading: boolean }
 export interface WhisperStatus { binary_ready: boolean; ready: boolean; models: WhisperModel[] }
-export interface MovieSubStatus {
-  id: number;
-  title: string;
-  year: number;
-  poster_url?: string;
-  present: string[];
-  missing: string[];
-}
-export interface SeriesSubStatus {
-  id: number;
-  title: string;
-  year: number;
-  poster_url?: string;
-  episodes: number;
-  complete: number;
-  missing_subs: number;
-}
 
 // --- Convert ---
 export interface ConvertEncoder { codec: string; name: string; kind: string; label: string; hardware: boolean; available: boolean }
@@ -3149,7 +3132,7 @@ export const api = {
   subtitleSettings: () => req<SubtitleSettings>("/api/v1/subtitles/settings"),
   updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) =>
     req<SubtitleSettings>("/api/v1/subtitles/settings", { method: "PUT", body: JSON.stringify(body) }),
-  subtitleLibrary: (media: "movies" | "tv" = "movies") => req<{ items: SubFileEntry[]; scanning?: boolean; stale?: boolean }>(`/api/v1/subtitles/library${media === "tv" ? "?media=tv" : ""}`),
+  subtitleLibrary: () => req<{ items: SubFileEntry[]; scanning?: boolean; stale?: boolean }>("/api/v1/subtitles/library"),
   subtitleCoverage: () => req<SubtitleCoverage>("/api/v1/subtitles/coverage"),
   subtitleRescan: () => req<{ started: boolean }>("/api/v1/subtitles/library/rescan", { method: "POST" }),
   // TV rolled up per show. The flat list is one probed row per episode, which at
@@ -3169,10 +3152,6 @@ export const api = {
   subtitleSweep: (media: "movies" | "tv" = "movies") => req<{ queued: number }>(`/api/v1/subtitles/sweep${media === "tv" ? "?media=tv" : ""}`, { method: "POST" }),
   subtitleModels: () => req<WhisperStatus>("/api/v1/subtitles/models"),
   subtitleDownloadModel: (name: string) => req<{ status: string }>(`/api/v1/subtitles/models/${encodeURIComponent(name)}`, { method: "POST" }),
-  subtitleMovies: () => req<{ movies: MovieSubStatus[] }>("/api/v1/subtitles/movies").then((r) => r.movies),
-  subtitleSeries: () => req<{ series: SeriesSubStatus[] }>("/api/v1/subtitles/series").then((r) => r.series),
-  searchMovieSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/movies/${id}/search`, { method: "POST" }),
-  searchSeriesSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/series/${id}/search`, { method: "POST" }),
 
   // Convert
   convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;

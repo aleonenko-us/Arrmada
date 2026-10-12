@@ -5,9 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
-	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 )
@@ -140,8 +138,9 @@ func (a *api) handleUpdateSubtitleSettings(w http.ResponseWriter, r *http.Reques
 	a.writeJSON(w, http.StatusOK, a.deps.Subtitles.GetSettings(r.Context()))
 }
 
-// handleSubtitleLibrary returns per-file subtitle coverage for the Subtitles Library tab
-// (media=movies|tv), computed against the kept languages.
+// handleSubtitleLibrary returns per-file subtitle coverage for the Subtitles Library tab,
+// computed against the kept languages: movies (the default), TV per show (group=series),
+// or one show's episodes (series=<id>).
 func (a *api) handleSubtitleLibrary(w http.ResponseWriter, r *http.Request) {
 	media := "movies"
 	if r.URL.Query().Get("media") == "tv" {
@@ -175,23 +174,17 @@ func (a *api) handleSubtitleLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if media == "movies" {
-		list, scanned := a.deps.Subtitles.SnapshotMovies()
-		if list == nil {
-			list = []subtitles.FileSubs{}
-		}
-		a.writeJSON(w, http.StatusOK, map[string]any{"items": list, "scanning": !scanned, "stale": a.deps.Subtitles.Stale()})
+	if media == "tv" {
+		// The flat list was one probed row per episode — tens of thousands of probes for
+		// one page load. Nothing in the app asks for it any more.
+		a.writeError(w, http.StatusBadRequest, "use group=series or series=<id>")
 		return
 	}
-	list, err := a.deps.Subtitles.Library(r.Context(), media)
-	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not load subtitle library")
-		return
-	}
+	list, scanned := a.deps.Subtitles.SnapshotMovies()
 	if list == nil {
 		list = []subtitles.FileSubs{}
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"items": list})
+	a.writeJSON(w, http.StatusOK, map[string]any{"items": list, "scanning": !scanned, "stale": a.deps.Subtitles.Stale()})
 }
 
 // handleSubtitleQueueSeries queues subtitle-ensure jobs for every episode of a show
@@ -219,82 +212,6 @@ func (a *api) handleSubtitleRescan(w http.ResponseWriter, r *http.Request) {
 	// Not the request's context: the pass outlives the response.
 	started := a.deps.Subtitles.Rescan(context.WithoutCancel(r.Context()))
 	a.writeJSON(w, http.StatusAccepted, map[string]any{"started": started})
-}
-
-func (a *api) handleSubtitleMovies(w http.ResponseWriter, r *http.Request) {
-	list, err := a.deps.Subtitles.MovieStatuses(r.Context())
-	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not load movie subtitles")
-		return
-	}
-	if list == nil {
-		list = []subtitles.MovieStatus{}
-	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"movies": list})
-}
-
-func (a *api) handleSubtitleSeries(w http.ResponseWriter, r *http.Request) {
-	list, err := a.deps.Subtitles.SeriesStatuses(r.Context())
-	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not load series subtitles")
-		return
-	}
-	if list == nil {
-		list = []subtitles.SeriesStatus{}
-	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"series": list})
-}
-
-// handleSubtitleSearchMovie grabs missing subtitles for one movie (background).
-func (a *api) handleSubtitleSearchMovie(w http.ResponseWriter, r *http.Request) {
-	id, ok := a.pathID(w, r)
-	if !ok {
-		return
-	}
-	if !a.deps.Subtitles.GetSettings(r.Context()).CanDownload {
-		a.writeError(w, http.StatusBadRequest, "OpenSubtitles isn't configured — add an API key, username and password to grab subtitles")
-		return
-	}
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "subtitles.search", Target: jobTarget("movie", id), Timeout: 5 * time.Minute,
-		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			n, err := a.deps.Subtitles.GrabMovie(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			a.deps.Log.Info("subtitle movie grab done", "movie_id", id, "grabbed", n)
-			p.SetMessage("Downloaded " + countOf(n, "subtitle"))
-			return map[string]int{"grabbed": n}, nil
-		}})
-	if !ok {
-		return
-	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "searching"})
-}
-
-// handleSubtitleSearchSeries grabs missing subtitles for a whole series (background).
-func (a *api) handleSubtitleSearchSeries(w http.ResponseWriter, r *http.Request) {
-	id, ok := a.pathID(w, r)
-	if !ok {
-		return
-	}
-	if !a.deps.Subtitles.GetSettings(r.Context()).CanDownload {
-		a.writeError(w, http.StatusBadRequest, "OpenSubtitles isn't configured — add an API key, username and password to grab subtitles")
-		return
-	}
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "subtitles.search", Target: jobTarget("series", id), Timeout: 20 * time.Minute,
-		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			n, err := a.deps.Subtitles.GrabSeries(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			a.deps.Log.Info("subtitle series grab done", "series_id", id, "grabbed", n)
-			p.SetMessage("Downloaded " + countOf(n, "subtitle"))
-			return map[string]int{"grabbed": n}, nil
-		}})
-	if !ok {
-		return
-	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "searching"})
 }
 
 // orphanError maps an orphan action's error to its HTTP answer.

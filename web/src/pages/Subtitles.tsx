@@ -337,7 +337,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   useEffect(() => {
     // TV is rendered per show by TVLibrary, which fetches its own rolled-up list.
     if (media === "tv") return;
-    api.subtitleLibrary(media).then((r) => { setItems(r.items); setScanning(!!r.scanning); setStale(!!r.stale); }).catch(() => setItems([]));
+    api.subtitleLibrary().then((r) => { setItems(r.items); setScanning(!!r.scanning); setStale(!!r.stale); }).catch(() => setItems([]));
   }, [media, refreshKey]);
   // While the list is from the old languages, wait for the recount and then reload.
   usePoll(async () => {
