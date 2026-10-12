@@ -326,7 +326,7 @@ func ValidateFormats(formats []CustomFormat) []FormatProblem {
 		key := strings.ToLower(name)
 		switch {
 		case name == "":
-			add(-1, "give it a name")
+			add(-1, "format %d has no name — give it one", i+1)
 		case len(name) > maxFormatName:
 			add(-1, "the name is longer than %d characters", maxFormatName)
 		case builtIn[key]:

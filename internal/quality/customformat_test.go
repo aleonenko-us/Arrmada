@@ -226,7 +226,7 @@ func TestValidateFormats(t *testing.T) {
 		{CustomFormat{Name: "Unknown", Conditions: []Condition{{Type: "bitrate", Value: "9"}}}, "unknown type"},
 		{CustomFormat{Name: "Empty", Conditions: []Condition{{Type: CondCodec, Value: "  "}}}, "needs a value"},
 		{CustomFormat{Name: "None"}, "at least one condition"},
-		{CustomFormat{Name: "", Conditions: []Condition{{Type: CondCodec, Value: "x265"}}}, "give it a name"},
+		{CustomFormat{Name: "", Conditions: []Condition{{Type: CondCodec, Value: "x265"}}}, "has no name"},
 		{CustomFormat{Name: "hevc", Conditions: []Condition{{Type: CondCodec, Value: "x265"}}}, "built-in"},
 		{CustomFormat{Name: "Mode", Match: "most", Conditions: []Condition{{Type: CondCodec, Value: "x265"}}}, "all or any"},
 	}
