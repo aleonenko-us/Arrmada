@@ -170,7 +170,7 @@ func TestProcessQuotaPausedSkipsSearch(t *testing.T) {
 // still reaches the AI rung.
 func TestProcessQuotaHitMidJobLeavesRestForAI(t *testing.T) {
 	prov := &fakeProvider{canDownload: true, downloadErr: ErrQuotaExhausted,
-		results: map[string][]SubtitleResult{"en": {{FileID: "1"}}, "es": {{FileID: "2"}}}}
+		results: map[string][]SubtitleResult{"en": {{FileID: "1", HashMatch: true}}, "es": {{FileID: "2", HashMatch: true}}}}
 	ai := &fakeAI{avail: true, transcribe: true}
 	mi := &mediaInfo{AudioLangs: []string{"eng", "spa"}, Audio: []AudioTrack{{Index: 0, Lang: "eng"}, {Index: 1, Lang: "spa"}}}
 	s, video := ladderFixture(t, "en,es", mi, prov, ai)

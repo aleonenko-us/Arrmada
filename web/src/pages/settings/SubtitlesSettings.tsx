@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { SavedTick } from "../../components/settings/auto";
+import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
 import { api, type SubtitleSettings, type WhisperStatus } from "../../lib/api";
 import { LINKS } from "../../lib/links";
@@ -32,7 +32,7 @@ export function SubtitlesSettings() {
 const sameLangs = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSaved: (s: SubtitleSettings) => void }) {
-  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) => api.updateSubtitleSettings(body).then(onSaved);
+  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) => api.updateSubtitleSettings(body).then(onSaved);
   const langs = useAutoSave(settings.languages, (v) => save({ languages: v }), {
     equal: sameLangs,
     keepOnError: false,
@@ -40,6 +40,9 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
   });
   const movies = useAutoSave(settings.movies_auto, (v) => save({ movies_auto: v }));
   const series = useAutoSave(settings.series_auto, (v) => save({ series_auto: v }));
+  const minScore = useAutoSave(String(settings.min_score ?? 60), (v) => save({ min_score: Number(v) }), {
+    validate: wholeNumber(0, 100, "The minimum match score"),
+  });
   return (
     <>
       <div className={card} style={cardStyle}>
@@ -87,6 +90,13 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
                 ? <>Searching works; add your OpenSubtitles username and password under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link> to download.</>
                 : <>Add an OpenSubtitles API key (free) under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>, plus your account username and password to download.</>}
           </span>
+        </div>
+        {/* Advanced: how close a download's release must be to the file when it wasn't
+            uploaded for this exact file. Read per job, so a change applies to the next one. */}
+        <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
+          <AutoNumber label="Minimum match score" save={minScore} min={0} max={100} placeholder="60" className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]">
+            <span className="text-[10.5px] text-ink-faint">Advanced. A subtitle uploaded for this exact file is always taken. Any other is scored 0–100 on how closely its release matches the file (group, source, edition, frame rate), and one below this goes to the next source instead. Default 60.</span>
+          </AutoNumber>
         </div>
       </div>
     </>

@@ -124,9 +124,20 @@ func (a *api) handleUpdateSubtitleSettings(w http.ResponseWriter, r *http.Reques
 		MoviesAuto *bool     `json:"movies_auto"`
 		SeriesAuto *bool     `json:"series_auto"`
 		Languages  *[]string `json:"languages"`
+		MinScore   *int      `json:"min_score"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
+	}
+	if req.MinScore != nil {
+		if err := a.deps.Subtitles.SetMinScore(r.Context(), *req.MinScore); err != nil {
+			if errors.Is(err, subtitles.ErrBadMinScore) {
+				a.writeError(w, http.StatusBadRequest, "Minimum match score must be between 0 and 100.")
+				return
+			}
+			a.writeError(w, http.StatusInternalServerError, "could not save subtitle settings")
+			return
+		}
 	}
 	var langs []string
 	if req.Languages != nil {
