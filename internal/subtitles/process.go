@@ -25,6 +25,8 @@ type fileRef struct {
 	SourceRelease string // the release name the file was imported from, when recorded
 
 	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
+
+	audio *jobAudio // the job's decoded audio, shared by sync checks and the AI; nil outside a job
 }
 
 // mkOutcome is one rung's Outcome for one wanted language (every want is the full subtitle today).
@@ -105,6 +107,8 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if mi != nil {
 		ref.FPS = mi.FPS
 	}
+	ref.audio = s.newJobAudio(ref.Path, mi) // extracted on first use, deleted when the job ends
+	defer ref.audio.close()
 	langs := s.languages(ctx)
 	present := map[string]bool{}
 	orphaned := 0
@@ -468,11 +472,15 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 				variant = VariantSDH
 			}
 			score := res.Pick.Score
-			s.recordFile(ctx, job, ref, SubtitleFile{
+			f := SubtitleFile{
 				Path: res.Path, Lang: strings.ToLower(l), Variant: variant, Source: SourceOpenSubtitles,
 				Provider: providerOpenSubtitles, ProviderFileID: res.Pick.FileID, ReleaseName: res.Pick.Release,
 				HashMatch: res.Pick.HashMatch, Score: &score,
-			})
+			}
+			if c, ok := ref.audio.verdict(l, res.Pick.FileID); ok {
+				c.apply(&f) // the sync check it passed: its Health
+			}
+			s.recordFile(ctx, job, ref, f)
 			o := mkOutcome(l, RungOpenSubtitles, ResultOK, "downloaded")
 			o.Score, o.Reasons = res.Pick.Score, res.Pick.Reasons
 			outs = append(outs, o)

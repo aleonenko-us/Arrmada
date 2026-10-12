@@ -29,12 +29,14 @@ type LangStatus struct {
 	Reason      string `json:"reason,omitempty"`
 	NextRetryAt int64  `json:"next_retry_at,omitempty"`
 	RetryOn     string `json:"retry_on,omitempty"`
+	// Health is a present language's sync Health (health.go); nil while missing.
+	Health *LangHealth `json:"health,omitempty"`
 }
 
-// SubHealth is the Tier-1 sync/health score for a file's subtitle (0-100). Nil until the scoring
-// phase lands — the field is here now so the model and UI don't need retrofitting.
+// SubHealth is a file's Health: its worst present language's (health.go).
 type SubHealth struct {
-	Score int      `json:"score"`
+	State string   `json:"state"`           // HealthOK | HealthUncertain | HealthBad | HealthUnknown | HealthUnchecked
+	Score int      `json:"score,omitempty"` // that language's sync confidence, when checked
 	Notes []string `json:"notes,omitempty"`
 }
 
@@ -54,7 +56,7 @@ type FileSubs struct {
 	Embedded    []SubTrack   `json:"embedded"`          // embedded subtitle tracks (for badges/filters)
 	External    []string     `json:"external"`          // kept languages that already have a sidecar
 	Languages   []LangStatus `json:"languages"`         // per-kept-language coverage + best source
-	Health      *SubHealth   `json:"health,omitempty"`  // Tier-1 sync/health score (nil until scored)
+	Health      *SubHealth   `json:"health,omitempty"`  // the worst present language's Health; nil = none present
 	Missing     int          `json:"missing"`           // count of kept languages still without an SRT
 	Orphans     []Orphan     `json:"orphans,omitempty"` // movies: subtitles in the folder paired with no video
 }
@@ -65,6 +67,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 	langs := s.languages(ctx)
 	canDownload := s.provider != nil && s.provider.CanDownload()
 	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
+	health := s.liveFilesByKey(ctx)                  // and one for Health
 	var out []FileSubs
 
 	if media == "tv" {
@@ -89,6 +92,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 					}
 					s.fillCoverage(ctx, &fs, langs, canDownload)
 					applyBackoff(&fs, backoffs, now)
+					applyHealth(&fs, health[mediaKeyOf(&fs)])
 					out = append(out, fs)
 				}
 			}
@@ -110,6 +114,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 		}
 		s.fillCoverage(ctx, &fs, langs, canDownload)
 		applyBackoff(&fs, backoffs, now)
+		applyHealth(&fs, health[mediaKeyOf(&fs)])
 		out = append(out, fs)
 	}
 	return out, nil
@@ -346,6 +351,7 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 			}
 			s.fillCoverage(ctx, &fs, langs, canDownload)
 			applyBackoff(&fs, backoffs, now)
+			s.fillHealth(ctx, &fs)
 			out = append(out, fs)
 		}
 	}

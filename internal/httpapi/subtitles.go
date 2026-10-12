@@ -323,6 +323,53 @@ func (a *api) handleSubtitleSearchMovie(w http.ResponseWriter, r *http.Request) 
 	a.accepted(w, jobID, existing, map[string]any{"status": "searching"})
 }
 
+// handleSubtitleSyncCheck measures how one language's sidecar lines up with its video's
+// speech and stores the result as its Health. The file is named by catalog identity
+// ({kind, movie_id | series_id+season+episode, lang, variant}); its path is found server
+// side, never taken from the request. Reading the soundtrack takes a while, so the check
+// runs as a job: an unknown title or a missing sidecar is answered at once, the
+// measurement follows.
+func (a *api) handleSubtitleSyncCheck(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		subtitles.MediaRef
+		Lang    string `json:"lang"`
+		Variant string `json:"variant"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	t, err := a.deps.Subtitles.SyncTarget(r.Context(), req.MediaRef, req.Lang, req.Variant)
+	switch {
+	case errors.Is(err, subtitles.ErrNoVideo), errors.Is(err, subtitles.ErrNoSidecar):
+		a.writeError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, subtitles.ErrNotSRT):
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
+		a.writeError(w, http.StatusInternalServerError, "could not find that subtitle")
+		return
+	}
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "subtitles.sync-check", Target: t.Key, Timeout: 30 * time.Minute,
+		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			p.SetMessage("Reading the audio of " + t.Title + "…")
+			rep, err := a.deps.Subtitles.CheckSync(ctx, req.MediaRef, req.Lang, req.Variant)
+			if err != nil {
+				return nil, err
+			}
+			msg := t.Name + ": " + rep.Health.Note
+			if !rep.Judged {
+				msg = t.Name + ": too little speech or too few lines to judge its sync"
+			}
+			p.SetMessage(msg)
+			return rep, nil
+		}})
+	if !ok {
+		return
+	}
+	a.accepted(w, jobID, existing, map[string]any{"status": "checking", "file": t.Name})
+}
+
 // handleSubtitleSearchSeries grabs missing subtitles for a whole series (background).
 func (a *api) handleSubtitleSearchSeries(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)

@@ -2069,8 +2069,20 @@ export interface SubLangStatus {
   reason?: SubtitleResult;
   next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
   retry_on?: string; // CSV: creds | model | langs
+  health?: SubLangHealth; // present languages: how well it lines up with the speech
 }
-export interface SubHealth { score: number; notes?: string[] }
+export type SubHealthState = "ok" | "uncertain" | "bad" | "unknown" | "unchecked";
+export interface SubLangHealth {
+  state: SubHealthState;
+  score?: number; // sync confidence 0-100, when checked
+  offset_ms?: number; // how late it ran when checked (+ = late)
+  shift_ms?: number; // the shift Arrmada applied
+  stretched?: boolean; // a frame-rate correction was applied too
+  checked_at?: number; // unix seconds
+  source?: string;
+  note: string; // "shifted −3.0 s · checked 2026-10-12", "not checked"
+}
+export interface SubHealth { state: SubHealthState; score?: number; notes?: string[] }
 export interface SubFileEntry {
   kind: "movie" | "episode";
   movie_id?: number; series_id?: number; season?: number; episode?: number;

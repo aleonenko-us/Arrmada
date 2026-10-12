@@ -9,6 +9,7 @@ import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
 import { KeptTracksNote, card, cardStyle } from "./subtitles/shared";
+import { HealthCell } from "./subtitles/health";
 import { langName, useLanguages } from "../lib/languages";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
@@ -367,6 +368,11 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
     if (media === "tv") return;
     api.subtitleLibrary(media).then((r) => { setItems(r.items); setScanning(!!r.scanning); }).catch(() => setItems([]));
   }, [media, refreshKey]);
+  // A finished sync check patched its movie on the server; fetch the list again in place,
+  // keeping the filters and the queued marks.
+  const reloadMovies = useCallback(() => {
+    api.subtitleLibrary("movies").then((r) => setItems(r.items)).catch(() => {});
+  }, []);
 
   // Start a fresh pass and hold the spinner until it lands, then reload. Bounded so a
   // stalled pass can't pin the button.
@@ -437,7 +443,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const filtering = filters.size > 0;
   const HEADERS: { label: string; key?: SortKey }[] = [
     { label: "Title", key: "title" }, { label: "Audio" }, { label: "Embedded", key: "embedded" },
-    { label: "Coverage" }, { label: "" },
+    { label: "Coverage" }, { label: "Health" }, { label: "" },
   ];
 
   return (
@@ -491,6 +497,8 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     queued={queued.has(rowKey(f))}
                     onEnsure={() => ensure(f)}
                     onRedo={() => ensure(f, true)}
+                    flash={flash}
+                    onChanged={reloadMovies}
                   />
                 ))}
               </tbody>
@@ -667,13 +675,14 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
             <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
               <table className="w-full border-collapse text-[12.5px]" style={{ minWidth: 900 }}>
                 <thead><tr style={{ background: "var(--panel-2)" }}>
-                  {["Episode", "Audio", "Embedded", "Coverage", ""].map((h, i) => (
+                  {["Episode", "Audio", "Embedded", "Coverage", "Health", ""].map((h, i) => (
                     <th key={i} className="px-3 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
                   {eps.map((f, i) => (
-                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)} />
+                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)}
+                      flash={flash} onChanged={() => { api.subtitleSeriesEpisodes(g.series_id).then(setEps).catch(() => {}); }} />
                   ))}
                 </tbody>
               </table>
@@ -692,7 +701,10 @@ function confirmRedo(title: string) {
   return window.confirm(`Redo subtitles for ${title}?\n\nThe existing .srt files for your kept languages will be replaced — use this when what's there is wrong (the AI transcribed the wrong audio track, a bad download).`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void }) {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged }: {
+  f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void;
+  flash: (m: string) => void; onChanged: () => void;
+}) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
   return (
@@ -711,6 +723,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo }: { f: SubFileEntry;
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang} l={l} />)}</div>
       </td>
+      <td className="px-3 py-2"><HealthCell f={f} flash={flash} onChanged={onChanged} /></td>
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2">
           {queued ? (
