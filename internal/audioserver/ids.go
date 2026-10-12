@@ -195,3 +195,21 @@ func normalizePathIDs(r *http.Request) {
 		r.SetPathValue("lib", libraryID)
 	}
 }
+
+// followMovedPathID points the path's item id (already in classic form) at the item it
+// was merged into, if it was. Handlers that write by the path's key — progress,
+// bookmarks, hiding — then write to the kept book, and a late report from an app that
+// still holds the old id isn't lost. Book and version ids are never reused, so a key
+// with a redirect never names a live item of its own.
+func (s *Server) followMovedPathID(r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" || s.listen == nil {
+		return
+	}
+	if _, _, ok := parseLegacyItemKey(id); !ok {
+		return
+	}
+	if moved := s.listen.ResolveItem(r.Context(), id); moved != id {
+		r.SetPathValue("id", moved)
+	}
+}

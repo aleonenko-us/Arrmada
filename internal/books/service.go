@@ -19,6 +19,9 @@ type Service struct {
 	log  *slog.Logger
 
 	upgrade upgradeState // the "upgrade library to Hardcover" job (upgrade.go)
+
+	items         ItemRekeyer    // moves listening places in a merge (merge.go)
+	announceMerge MergeAnnouncer // queues the kept book's follow-up work (merge.go)
 }
 
 // NewService wires the module.
