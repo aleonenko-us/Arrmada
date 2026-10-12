@@ -771,6 +771,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/movies/{id}/delete-preview", a.requireRole(auth.RoleManager, a.handleMovieDeletePreview))
 	mux.HandleFunc("DELETE /api/v1/movies/{id}", a.requireRole(auth.RoleManager, a.handleDeleteMovie))
 
+	// The OPDS catalogue for e-reader apps (opds.go): it signs readers in itself.
+	a.registerOPDS(mux)
+
 	ui := webui.Handler()
 	mux.HandleFunc("/", a.public(a.spa(ui)).ext())
 }
