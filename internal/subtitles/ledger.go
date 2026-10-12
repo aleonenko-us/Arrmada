@@ -73,6 +73,24 @@ type Outcome struct {
 	Rung    Rung   `json:"rung"`
 	Result  Result `json:"result"`
 	Detail  string `json:"detail,omitempty"` // human wording for the job note, e.g. "no OpenSubtitles match"
+	// Score and Reasons are the OpenSubtitles candidate's match score and its explanation
+	// (scoring.go), for a download that was saved or refused. The attempt row's detail
+	// carries them; the job note stays short.
+	Score   int      `json:"score,omitempty"`
+	Reasons []string `json:"reasons,omitempty"`
+}
+
+// attemptDetail is what the ledger stores as an attempt's detail: the note's wording plus
+// the scoring explanation, when there is one.
+func (o Outcome) attemptDetail() string {
+	if o.Score == 0 && len(o.Reasons) == 0 {
+		return o.Detail
+	}
+	d := fmt.Sprintf("%s (score %d", o.Detail, o.Score)
+	if len(o.Reasons) > 0 {
+		d += ": " + strings.Join(o.Reasons, ", ")
+	}
+	return d + ")"
 }
 
 // Sidecar sources, for SubtitleFile.Source.
@@ -386,7 +404,7 @@ func (l *Ledger) RecordAttempts(ctx context.Context, runID, mediaKey, videoPath 
 			if _, err := tx.ExecContext(ctx, `INSERT INTO subtitle_attempts
 				(run_id, media_key, video_path, lang, variant, rung, outcome, detail, at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				runID, mediaKey, videoPath, strings.ToLower(o.Lang), dbVariant(o.Variant), string(o.Rung), string(o.Result), nullStr(o.Detail), at); err != nil {
+				runID, mediaKey, videoPath, strings.ToLower(o.Lang), dbVariant(o.Variant), string(o.Rung), string(o.Result), nullStr(o.attemptDetail()), at); err != nil {
 				return err
 			}
 		}

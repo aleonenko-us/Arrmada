@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
-import { SavedTick } from "../../components/settings/auto";
+import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
 import { api, type SubtitleProviderState, type SubtitleSettings, type WhisperStatus } from "../../lib/api";
 import { LINKS } from "../../lib/links";
@@ -33,7 +33,7 @@ export function SubtitlesSettings() {
 const sameLangs = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSaved: (s: SubtitleSettings) => void }) {
-  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) => api.updateSubtitleSettings(body).then(onSaved);
+  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) => api.updateSubtitleSettings(body).then(onSaved);
   const langs = useAutoSave(settings.languages, (v) => save({ languages: v }), {
     equal: sameLangs,
     keepOnError: false,
@@ -41,6 +41,9 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
   });
   const movies = useAutoSave(settings.movies_auto, (v) => save({ movies_auto: v }));
   const series = useAutoSave(settings.series_auto, (v) => save({ series_auto: v }));
+  const minScore = useAutoSave(String(settings.min_score ?? 60), (v) => save({ min_score: Number(v) }), {
+    validate: wholeNumber(0, 100, "The minimum match score"),
+  });
   const toggleLang = (code: string) => {
     const has = langs.value.includes(code);
     void langs.commit(has ? langs.value.filter((l) => l !== code) : [...langs.value, code]);
@@ -72,7 +75,15 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
 
       <LocalAI backend={settings.ai_backend} note={settings.ai_note} />
 
-      <OpenSubtitlesCard settings={settings} onChanged={() => void api.subtitleSettings().then(onSaved).catch(() => {})} />
+      <OpenSubtitlesCard settings={settings} onChanged={() => void api.subtitleSettings().then(onSaved).catch(() => {})}>
+        {/* Advanced: how close a download's release must be to the file when it wasn't
+            uploaded for this exact file. Read per job, so a change applies to the next one. */}
+        <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
+          <AutoNumber label="Minimum match score" save={minScore} min={0} max={100} placeholder="60" className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]">
+            <span className="text-[10.5px] text-ink-faint">Advanced. A subtitle uploaded for this exact file is always taken. Any other is scored 0–100 on how closely its release matches the file (group, source, edition, frame rate), and one below this goes to the next source instead. Default 60.</span>
+          </AutoNumber>
+        </div>
+      </OpenSubtitlesCard>
     </>
   );
 }
@@ -106,7 +117,7 @@ function providerLine(s: SubtitleSettings): string {
 // OpenSubtitlesCard is the download source's real state and, for admins, its credentials
 // right here (the same saved keys as Settings → Connections; a value is never shown back).
 // Saving tests the login straight away; Test signs in fresh.
-function OpenSubtitlesCard({ settings, onChanged }: { settings: SubtitleSettings; onChanged: () => void }) {
+function OpenSubtitlesCard({ settings, onChanged, children }: { settings: SubtitleSettings; onChanged: () => void; children?: ReactNode }) {
   const { user } = useMe();
   const admin = isAdmin(user);
   const keys = useAPIKeys(admin, onChanged);
@@ -123,6 +134,7 @@ function OpenSubtitlesCard({ settings, onChanged }: { settings: SubtitleSettings
       {admin
         ? <KeyEditor ids={keyRowsFor("opensubtitles_api")} ctl={keys} />
         : <p className="m-0 mt-2 text-[11.5px] text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</p>}
+      {children}
     </div>
   );
 }

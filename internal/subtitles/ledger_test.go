@@ -324,3 +324,54 @@ func TestJobOutcomesJSON(t *testing.T) {
 		t.Errorf("full variant should be omitted: %v", o)
 	}
 }
+
+// The download rung reads the ledger's blocklist (a blocked file is never fetched again
+// for that video), stores the saved candidate's score, and types a refused candidate as
+// below_score with its explanation, falling through to AI.
+func TestDownloadUsesLedgerBlocklistAndRecordsScore(t *testing.T) {
+	prov := &fakeProvider{canDownload: true, results: map[string][]SubtitleResult{
+		"en": {{FileID: "1", HashMatch: true, Downloads: 900}, {FileID: "2", HashMatch: true, Downloads: 5}},
+	}}
+	s, _ := ladderFixture(t, "en", englishAudio(), prov, &fakeAI{})
+	s.blocklist = s.ledgerBlocklist
+	ctx := context.Background()
+	if err := s.ledger.Block(ctx, BlockEntry{Provider: "opensubtitles", FileID: "1", MediaKey: "m:1", Lang: "en", Reason: BlockRedo}); err != nil {
+		t.Fatal(err)
+	}
+	job := runJob(s)
+	if job.State != StateDone {
+		t.Fatalf("state=%q note=%q", job.State, job.Note)
+	}
+	files, _ := s.ledger.FilesFor(ctx, "m:1")
+	if len(files) != 1 || files[0].ProviderFileID != "2" || files[0].Score == nil || *files[0].Score < 100 {
+		t.Fatalf("files = %+v, want file 2 (1 is blocked) with its score", files)
+	}
+	rows, _ := s.ledger.Attempts(ctx, AttemptQuery{RunID: job.RunID})
+	if len(rows) != 1 || rows[0].Outcome != ResultOK || !strings.Contains(rows[0].Detail, "score ") {
+		t.Errorf("attempts = %+v, want the score in the detail", rows)
+	}
+
+	// A blocklist that can't be read downloads nothing (fail closed).
+	prov2 := &fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "3", HashMatch: true}}}}
+	s2, video2 := ladderFixture(t, "en", englishAudio(), prov2, &fakeAI{})
+	s2.blocklist = func(context.Context, string) (map[string]bool, error) { return nil, errors.New("disk I/O error") }
+	job = runJob(s2)
+	if _, err := os.Stat(sidecarPath(video2, "en")); err == nil {
+		t.Error("a subtitle was downloaded while the blocklist couldn't be read")
+	}
+	if len(job.Outcomes) == 0 || job.Outcomes[0].Result != ResultProviderError {
+		t.Errorf("outcomes = %+v", job.Outcomes)
+	}
+
+	// No hash match and nothing in common with the file: refused as below_score, then AI.
+	prov3 := &fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "4", Release: "Other.Film.1999.720p.HDTV-XYZ"}}}}
+	s3, _ := ladderFixture(t, "en", englishAudio(), prov3, &fakeAI{avail: true, transcribe: true})
+	job = runJob(s3)
+	if len(job.Outcomes) != 2 || job.Outcomes[0].Result != ResultBelowScore || job.Outcomes[1].Result != ResultOK {
+		t.Fatalf("outcomes = %+v, want below_score then AI", job.Outcomes)
+	}
+	rows, _ = s3.ledger.Attempts(ctx, AttemptQuery{RunID: job.RunID})
+	if len(rows) != 2 || rows[1].Outcome != ResultBelowScore || !strings.Contains(rows[1].Detail, "below") {
+		t.Errorf("attempts = %+v", rows)
+	}
+}

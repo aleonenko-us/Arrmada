@@ -2053,6 +2053,7 @@ export interface SubtitleSettings {
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;
+  min_score: number; // 0-100: what a download without a hash match must score
   // What OpenSubtitles actually said; only "ok" means a login has worked.
   provider_state: SubtitleProviderState;
   provider_detail: string;
@@ -2093,7 +2094,7 @@ export type SubtitleRung = "extract" | "opensubtitles" | "ai" | "upgrade" | "rep
 export type SubtitleResult =
   | "ok" | "empty" | "extract_failed" | "no_match" | "quota" | "rate_limited" | "auth_failed" | "provider_error"
   | "below_score" | "out_of_sync" | "model_missing" | "ai_failed" | "no_audio" | "impossible" | "ocr_needed" | "cancelled";
-export interface SubtitleOutcome { lang: string; variant?: string; rung: SubtitleRung; result: SubtitleResult; detail?: string }
+export interface SubtitleOutcome { lang: string; variant?: string; rung: SubtitleRung; result: SubtitleResult; detail?: string; score?: number; reasons?: string[] }
 // A row of GET /api/v1/subtitles/history (newest first; page with ?before=next_before).
 export interface SubtitleAttempt {
   id: number; run_id: string; media_key: string; video_path: string; lang: string; variant?: string;
@@ -3170,7 +3171,7 @@ export const api = {
 
   // Subtitles
   subtitleSettings: () => req<SubtitleSettings>("/api/v1/subtitles/settings"),
-  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) =>
+  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) =>
     req<SubtitleSettings>("/api/v1/subtitles/settings", { method: "PUT", body: JSON.stringify(body) }),
   subtitleLibrary: (media: "movies" | "tv" = "movies") => req<{ items: SubFileEntry[]; scanning?: boolean }>(`/api/v1/subtitles/library${media === "tv" ? "?media=tv" : ""}`),
   subtitleCoverage: () => req<SubtitleCoverage>("/api/v1/subtitles/coverage"),

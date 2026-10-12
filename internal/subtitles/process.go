@@ -23,6 +23,8 @@ type fileRef struct {
 	Episode       int
 	MediaKey      string // Job.key() format: "m:<id>" or "e:<series>:<season>:<episode>"
 	SourceRelease string // the release name the file was imported from, when recorded
+
+	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
 }
 
 // mkOutcome is one rung's Outcome for one wanted language (every want is the full subtitle today).
@@ -98,6 +100,9 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
+	if mi != nil {
+		ref.FPS = mi.FPS
+	}
 	langs := s.languages(ctx)
 	present := map[string]bool{}
 	orphaned := 0
@@ -415,7 +420,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			outs = append(outs, o)
 			continue
 		}
-		got, err := s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+		res, err := s.grabOne(ctx, ref, hash, l)
 		var rl *RateLimitError
 		if errors.As(err, &rl) && !waited {
 			waited = true
@@ -427,7 +432,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			select {
 			case <-ctx.Done():
 			case <-time.After(wait):
-				got, err = s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+				res, err = s.grabOne(ctx, ref, hash, l)
 			}
 		}
 		switch {
@@ -454,19 +459,45 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 		case err != nil:
 			s.event("warn", fmt.Sprintf("%s: download %s failed: %v", ref.Title, l, err))
 			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultProviderError, "OpenSubtitles error"))
-		case got != nil:
+		case res.Written:
 			done[strings.ToLower(l)] = true
+			variant := VariantFull
+			if res.Pick.HearingImpaired {
+				variant = VariantSDH
+			}
+			score := res.Pick.Score
 			s.recordFile(ctx, job, ref, SubtitleFile{
-				Path: got.Path, Lang: strings.ToLower(l), Variant: got.Variant, Source: SourceOpenSubtitles,
-				Provider: providerOpenSubtitles, ProviderFileID: got.Result.FileID, ReleaseName: got.Result.Release,
-				HashMatch: got.Result.HashMatch,
+				Path: res.Path, Lang: strings.ToLower(l), Variant: variant, Source: SourceOpenSubtitles,
+				Provider: providerOpenSubtitles, ProviderFileID: res.Pick.FileID, ReleaseName: res.Pick.Release,
+				HashMatch: res.Pick.HashMatch, Score: &score,
 			})
-			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultOK, "downloaded"))
+			o := mkOutcome(l, RungOpenSubtitles, ResultOK, "downloaded")
+			o.Score, o.Reasons = res.Pick.Score, res.Pick.Reasons
+			outs = append(outs, o)
 		default:
-			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultNoMatch, "no OpenSubtitles match"))
+			// no_match, below_score (with the scoring explanation) or out_of_sync: the
+			// language falls through to AI either way.
+			o := mkOutcome(l, RungOpenSubtitles, grabOutcome(res.Outcome), res.Detail)
+			if res.Outcome != "no_match" {
+				o.Score, o.Reasons = res.Pick.Score, res.Pick.Reasons
+			}
+			outs = append(outs, o)
 		}
 	}
 	return without(langs, done), outs
+}
+
+// grabOutcome types grabOne's outcome word for the ledger.
+func grabOutcome(o string) Result {
+	switch o {
+	case "below_score":
+		return ResultBelowScore
+	case "out_of_sync":
+		return ResultOutOfSync
+	case "done":
+		return ResultOK
+	}
+	return ResultNoMatch
 }
 
 // rungAI generates each language still missing from the file's audio with local whisper —

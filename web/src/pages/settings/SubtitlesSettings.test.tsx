@@ -19,7 +19,7 @@ vi.mock("../../lib/usePoll", () => ({ usePoll: () => {} }));
 
 const settings = (over: Partial<SubtitleSettings> = {}): SubtitleSettings => ({
   movies_auto: true, series_auto: true, languages: ["en"], provider_ready: true, can_download: true,
-  ai_ready: false, ai_backend: "", ai_note: "", quota_remaining: -1, quota_reset_at: 0, pending: 0,
+  ai_ready: false, ai_backend: "", ai_note: "", quota_remaining: -1, quota_reset_at: 0, pending: 0, min_score: 60,
   provider_state: "unverified", provider_detail: "Not checked yet — Test signs in, or the next download will.",
   vip: false, allowed_downloads: -1, ...over,
 });

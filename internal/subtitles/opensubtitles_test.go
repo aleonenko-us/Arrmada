@@ -83,7 +83,7 @@ func (f *osFake) serve(w http.ResponseWriter, r *http.Request) {
 	case "/infos/user":
 		_, _ = io.WriteString(w, f.userInfo)
 	case "/subtitles":
-		_, _ = io.WriteString(w, `{"data":[{"attributes":{"language":"en","release":"Movie.2020","download_count":5,"files":[{"file_id":9}]}}]}`)
+		_, _ = io.WriteString(w, `{"data":[{"attributes":{"language":"en","release":"Movie.2020","download_count":5,"moviehash_match":true,"files":[{"file_id":9}]}}]}`)
 	case "/download":
 		if r.Header.Get("Authorization") != "Bearer tok" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -308,7 +308,7 @@ func (p *rateLimitedProvider) Search(ctx context.Context, r SearchRequest) ([]Su
 // In a job, a 429 is waited out once and asked again; still limited, it's recorded as
 // rate_limited and the rest goes to AI.
 func TestProcessRateLimitWaitsOnce(t *testing.T) {
-	prov := &rateLimitedProvider{fakeProvider: fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "1"}}}}, limit: 1}
+	prov := &rateLimitedProvider{fakeProvider: fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "1", HashMatch: true}}}}, limit: 1}
 	s, video := ladderFixture(t, "en", englishAudio(), prov, &fakeAI{})
 	s.rateWait = time.Millisecond
 	job := runJob(s)

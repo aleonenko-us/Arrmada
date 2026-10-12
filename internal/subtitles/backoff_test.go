@@ -211,7 +211,7 @@ func TestManualQueueIgnoresBackoff(t *testing.T) {
 	}
 
 	// Ensure (manual) runs it anyway; a match now clears the row.
-	prov.results = map[string][]SubtitleResult{"es": {{FileID: "5"}}}
+	prov.results = map[string][]SubtitleResult{"es": {{FileID: "5", HashMatch: true}}}
 	manual := runJob(s)
 	if prov.searches != 2 || manual.State != StateDone {
 		t.Errorf("manual job: searches=%d state=%q note=%q", prov.searches, manual.State, manual.Note)
