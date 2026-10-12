@@ -2053,6 +2053,7 @@ export interface SubtitleSettings {
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;
+  min_score: number; // 0-100: what a download without a hash match must score
   stale?: boolean; // the Library/Overview figures were counted for other languages; a recount is under way
 }
 export interface SubTrack { index: number; codec: string; lang: string; text: boolean; title?: string; forced?: boolean; sdh?: boolean; default?: boolean }
@@ -3130,7 +3131,7 @@ export const api = {
 
   // Subtitles
   subtitleSettings: () => req<SubtitleSettings>("/api/v1/subtitles/settings"),
-  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[] }) =>
+  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) =>
     req<SubtitleSettings>("/api/v1/subtitles/settings", { method: "PUT", body: JSON.stringify(body) }),
   subtitleLibrary: () => req<{ items: SubFileEntry[]; scanning?: boolean; stale?: boolean }>("/api/v1/subtitles/library"),
   subtitleCoverage: () => req<SubtitleCoverage>("/api/v1/subtitles/coverage"),

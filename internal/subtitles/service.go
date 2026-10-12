@@ -3,6 +3,7 @@ package subtitles
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -66,6 +67,16 @@ type Service struct {
 	// passFn is one library pass (Library + SeriesGroups when nil).
 	passFn func(ctx context.Context) ([]FileSubs, []SeriesGroup, error)
 
+	// blocklist returns the provider file ids never to download again for a media key
+	// (Job.key() format). The ledger (SUB-11) sets it; nil blocks nothing. An error stops
+	// the download rung for that language (fail closed).
+	blocklist func(ctx context.Context, mediaKey string) (map[string]bool, error)
+	// syncGate checks a downloaded non-hash candidate against the file's audio before it
+	// is saved, returning the bytes to save (shifted into sync if need be). SUB-19 sets
+	// it. While it's nil, candidates at or above the minimum score are saved as they
+	// come, and the band between scoreFloor and the minimum is refused.
+	syncGate func(ctx context.Context, ref fileRef, lang string, c ScoredCandidate, srt []byte) (out []byte, ok bool, detail string)
+
 	mu        sync.Mutex
 	jobs      []*Job           // recent subtitle-ensure jobs (newest first), for the Queue tab
 	pending   [numPrios][]*Job // waiting for the worker, one oldest-first line per priority — unbounded, see Run
@@ -115,6 +126,8 @@ type Settings struct {
 	// Stale: the Library and Overview figures were counted for a different set of kept
 	// languages; a recount is running or about to.
 	Stale bool `json:"stale"`
+	// MinScore is the match score (0-100) a download without a hash match needs.
+	MinScore int `json:"min_score"`
 }
 
 // GetSettings returns the current configuration + provider status.
@@ -130,6 +143,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		AINote:         s.whisper.SyclNote(),
 		QuotaRemaining: -1,
 		Pending:        s.Pending(),
+		MinScore:       s.minScore(ctx),
 	}
 	s.snap.mu.Lock()
 	out.Stale = s.staleLocked(ctx)
@@ -214,41 +228,95 @@ func (s *Service) AutoGrab(ctx context.Context) {
 	}
 }
 
-// grabOne searches for and downloads the best subtitle for one media file + language,
-// writing it as a sidecar. Returns whether a file was written.
-func (s *Service) grabOne(ctx context.Context, imdb, title string, year, season, episode int, mediaPath, hash, lang string) (bool, error) {
+// grabResult is what one language's download attempt came to.
+type grabResult struct {
+	Written bool
+	Path    string          // the sidecar written
+	Pick    ScoredCandidate // the candidate saved, or the best one refused
+	Outcome string          // "done" | "no_match" | "below_score" | "out_of_sync"
+	Detail  string          // human wording for the job note
+}
+
+// grabOne searches for the best subtitle for one media file + language and writes it as
+// a sidecar, if one is good enough. Candidates are scored against the file (scoring.go):
+// a hash match always wins; otherwise the best must reach the minimum match score. A
+// candidate between scoreFloor and the minimum is used only if the sync check (syncGate,
+// SUB-19) passes it — refused while there is none. Blocklisted and rejected candidates
+// are never downloaded.
+func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (grabResult, error) {
 	// A paused quota means no requests at all: searching would spend the API's rate
 	// limit on results that can't be downloaded until the reset.
 	if s.providerPaused() {
-		return false, ErrQuotaExhausted
+		return grabResult{}, ErrQuotaExhausted
 	}
 	results, err := s.provider.Search(ctx, SearchRequest{
-		IMDBID: imdb, Title: title, Year: year, Season: season, Episode: episode, Language: lang,
-		MovieHash: hash,
+		IMDBID: ref.IMDB, Title: ref.Title, Year: ref.Year, Season: ref.Season, Episode: ref.Episode,
+		Language: lang, MovieHash: hash,
 	})
 	if err != nil {
-		return false, err
+		return grabResult{}, err
 	}
+	noMatch := grabResult{Outcome: "no_match", Detail: "no OpenSubtitles match"}
 	if len(results) == 0 {
-		return false, nil
+		return noMatch, nil
 	}
-	data, err := s.provider.Download(ctx, results[0].FileID)
+	blocked, err := s.blockedFiles(ctx, ref.MediaKey)
 	if err != nil {
-		return false, err
+		return grabResult{}, fmt.Errorf("read subtitle blocklist: %w", err)
 	}
-	// A hearing-impaired upload is still the full subtitle; the ".sdh" qualifier lets Plex
-	// label it as such.
-	variant := VariantFull
-	if results[0].HearingImpaired {
-		variant = VariantSDH
+	ranked := rankCandidates(results, matchContextFor(ref), blocked)
+	if !ranked[0].usable() {
+		noMatch.Detail = "no usable OpenSubtitles match"
+		return noMatch, nil
 	}
-	dst := sidecarPathV(mediaPath, lang, variant)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return false, err
+	best := ranked[0]
+	need := s.minScore(ctx)
+	s.log.Info("subtitle candidates scored", "media", ref.MediaKey, "lang", lang, "candidates", len(results),
+		"best", best.Score, "hash_match", best.HashMatch, "min", need)
+
+	tries := 0
+	var refusal string
+	for _, c := range ranked {
+		if !c.usable() || c.Score < scoreFloor || tries == maxDownloadTries {
+			break
+		}
+		if !c.HashMatch && c.Score < need && s.syncGate == nil {
+			break // SUB-19: this band is accepted only when a sync check passes
+		}
+		data, err := s.provider.Download(ctx, c.FileID)
+		if err != nil {
+			return grabResult{}, err
+		}
+		tries++
+		if !c.HashMatch && s.syncGate != nil {
+			out, ok, detail := s.syncGate(ctx, ref, lang, c, data)
+			if !ok {
+				refusal = detail
+				continue
+			}
+			data = out
+		}
+		// A hearing-impaired upload is still the full subtitle; the ".sdh" qualifier lets
+		// Plex label it as such.
+		variant := VariantFull
+		if c.HearingImpaired {
+			variant = VariantSDH
+		}
+		dst := sidecarPathV(ref.Path, lang, variant)
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return grabResult{}, err
+		}
+		s.log.Info("subtitle saved", "path", dst, "lang", lang, "release", c.Release, "score", c.Score,
+			"hash_match", c.HashMatch, "hearing_impaired", c.HearingImpaired)
+		s.event("info", fmt.Sprintf("%s: %s subtitle scored %d (%s)", ref.Title, lang, c.Score, strings.Join(c.Reasons, ", ")))
+		return grabResult{Written: true, Path: dst, Pick: c, Outcome: "done", Detail: "downloaded"}, nil
 	}
-	s.log.Info("subtitle saved", "path", dst, "lang", lang, "release", results[0].Release,
-		"hash_match", results[0].HashMatch, "hearing_impaired", results[0].HearingImpaired)
-	return true, nil
+	if refusal != "" {
+		return grabResult{Pick: best, Outcome: "out_of_sync", Detail: refusal}, nil
+	}
+	detail := fmt.Sprintf("best OpenSubtitles match scored %d, below %d: %s", best.Score, need, best.mismatches())
+	s.event("info", fmt.Sprintf("%s: %s — %s", ref.Title, lang, detail))
+	return grabResult{Pick: best, Outcome: "below_score", Detail: detail}, nil
 }
 
 // nonNil returns an empty (non-nil) slice for nil, so JSON emits [] not null.

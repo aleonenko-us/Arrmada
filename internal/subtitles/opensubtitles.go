@@ -331,8 +331,20 @@ func (o *OpenSubtitles) Search(ctx context.Context, sr SearchRequest) ([]Subtitl
 				AITranslated    bool   `json:"ai_translated"`
 				MachineTrans    bool   `json:"machine_translated"`
 				Files           []struct {
-					FileID int `json:"file_id"`
+					FileID   int    `json:"file_id"`
+					FileName string `json:"file_name"`
 				} `json:"files"`
+
+				// What scoring (scoring.go) compares against the file on disk.
+				FPS         float64 `json:"fps"`
+				FromTrusted bool    `json:"from_trusted"`
+				Uploader    struct {
+					Rank string `json:"rank"`
+				} `json:"uploader"`
+				Feature struct {
+					Season  int `json:"season_number"`
+					Episode int `json:"episode_number"`
+				} `json:"feature_details"`
 			} `json:"attributes"`
 		} `json:"data"`
 	}
@@ -354,6 +366,15 @@ func (o *OpenSubtitles) Search(ctx context.Context, sr SearchRequest) ([]Subtitl
 			Downloads:       d.Attributes.DownloadCount,
 			HearingImpaired: d.Attributes.HearingImpaired,
 			HashMatch:       d.Attributes.HashMatch,
+			FPS:             d.Attributes.FPS,
+			Trusted:         d.Attributes.FromTrusted,
+			FileName:        d.Attributes.Files[0].FileName,
+			UploaderRank:    d.Attributes.Uploader.Rank,
+			Season:          d.Attributes.Feature.Season,
+			Episode:         d.Attributes.Feature.Episode,
+			// Filtered out above already; carried so scoring would refuse them regardless.
+			AITranslated:     d.Attributes.AITranslated || d.Attributes.MachineTrans,
+			ForeignPartsOnly: d.Attributes.ForeignParts,
 		})
 	}
 	// Ranking: a hash match is in sync by construction and beats everything; then a

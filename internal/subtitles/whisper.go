@@ -327,13 +327,8 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 
 	// 1. Extract mono 16 kHz PCM — what whisper expects — from the chosen audio stream,
 	// and confirm it's real audio.
-	extract := []string{"-y", "-hide_banner", "-i", videoPath}
-	if audioStream >= 0 {
-		extract = append(extract, "-map", fmt.Sprintf("0:a:%d", audioStream))
-	}
-	extract = append(extract, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav)
-	if out, err := toolrun.Command(ctx, toolrun.Background, ffmpeg, extract...).CombinedOutput(); err != nil {
-		return fmt.Errorf("extract audio: %w: %s", err, tailStr(out, 300))
+	if err := extractWAV(ctx, ffmpeg, videoPath, audioStream, wav); err != nil {
+		return err
 	}
 	if fi, err := os.Stat(wav); err != nil || fi.Size() < 4096 {
 		return fmt.Errorf("extracted audio was empty (no decodable audio track?)")
