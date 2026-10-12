@@ -500,6 +500,21 @@ export interface UnwantedSettings {
 }
 export interface UnwantedItemInfo { key: string; label: string; description: string; default: UnwantedAction }
 
+// An Evaluation's rank keys (quality/rankkeys.go): what ranking v2 compares, key by key.
+// Declared apart and merged into Evaluation, for the Advanced raw view and row explanations.
+export interface Evaluation {
+  target_avoided?: boolean; // a target Avoid, the bitrate floor or an Unwanted avoid
+  custom_avoided?: boolean; // a negative custom format or keyword score
+  res_tier?: number; // 2160p 5 … 480p 1
+  pref_count?: number; // the target's preferred/required formats it has (0 when waived)
+  custom_score?: number;
+  source_tier?: number; // Remux 6, BluRay 5, WEB 4, HDTV 2, DVD 1, unstated 0, cam -1
+  proper_fix?: boolean;
+  group_tier?: number;
+  eff_bitrate?: number; // H.264-equivalent Mb/s, 0 without a runtime
+  in_window?: boolean;
+}
+
 export type UpgradeTrigger = "any" | "source" | "format" | "resolution";
 
 // ProfileImpact mirrors quality.Impact: the files an edit would make eligible for

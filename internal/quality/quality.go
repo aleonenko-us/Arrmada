@@ -376,6 +376,31 @@ type Evaluation struct {
 	// there's an alternative" — not merely a score penalty a better source could overcome.
 	Avoided        bool     `json:"avoided,omitempty"`
 	AvoidedFormats []string `json:"avoided_formats,omitempty"`
+
+	// Rank keys (rankkeys.go): the evaluation taken apart into what ranking v2 compares,
+	// key by key. Pure description — Total and Avoided above are computed exactly as
+	// before. Set on eligible evaluations.
+	//
+	// TargetAvoided: a target-format Avoid, the bitrate floor, or an Unwanted item set to
+	// avoid — the avoids that are a tier of their own. CustomAvoided: a negative custom
+	// format or keyword score, which v2 treats as a score, not a cliff.
+	TargetAvoided bool `json:"target_avoided,omitempty"`
+	CustomAvoided bool `json:"custom_avoided,omitempty"`
+	// ResTier ranks the resolution (2160p 5 … 480p 1, unknown 0); the goal is the top
+	// allowed tier. PrefCount is how many of the target's preferred or required formats
+	// the release has (0 when its bonus was waived for a collapsed bitrate).
+	ResTier   int `json:"res_tier,omitempty"`
+	PrefCount int `json:"pref_count,omitempty"`
+	// SourceTier: Remux 6, BluRay 5, WEB 4 (WEB-DL and WEBRip alike), HDTV 2, DVD 1,
+	// unstated 0, a cam -1. ProperFix is a PROPER or REPACK.
+	SourceTier int  `json:"source_tier,omitempty"`
+	ProperFix  bool `json:"proper_fix,omitempty"`
+	// GroupTier is the release group's tier (0 until group tiers exist).
+	GroupTier int `json:"group_tier,omitempty"`
+	// EffBitrate is the bitrate in H.264-equivalent Mb/s (0 without a runtime), and
+	// InWindow says it is inside the resolution's window (or there is none to judge).
+	EffBitrate float64 `json:"eff_bitrate,omitempty"`
+	InWindow   bool    `json:"in_window,omitempty"`
 	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
 	// out of it can be told apart (current.go).
 	lowGroup bool
@@ -530,6 +555,11 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		} else if score < 0 {
 			ev.Avoided = true
 			ev.AvoidedFormats = append(ev.AvoidedFormats, name)
+			if target {
+				ev.TargetAvoided = true
+			} else {
+				ev.CustomAvoided = true
+			}
 		}
 	}
 	for _, k := range p.Keywords {
@@ -543,6 +573,8 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		if k.Score > 0 {
 			ev.Matched = append(ev.Matched, k.Term)
 			ev.PreferBonus += k.Score
+		} else if k.Score < 0 {
+			ev.CustomAvoided = true
 		}
 	}
 	// A required format that carries no score still counts as matched, so the
@@ -561,6 +593,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if w, ok := p.Windows[ResolutionKey(r.Resolution)]; ok && w.Min > 0 {
 		if br := c.bitrateMbps(); br > 0 && br < w.Min {
 			ev.Avoided = true
+			ev.TargetAvoided = true
 			// Read as "it has <this>, which you avoid" in the decision's explanation.
 			ev.AvoidedFormats = append(ev.AvoidedFormats, fmt.Sprintf("a bitrate under your %.0f Mbps floor", w.Min))
 		}
@@ -570,6 +603,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	for _, h := range unwanted {
 		if p.unwantedAction(h.item) == UnwantedAvoid {
 			ev.Avoided = true
+			ev.TargetAvoided = true
 			ev.lowGroup = ev.lowGroup || h.item == UnwantedLowQualityGroup
 			ev.AvoidedFormats = append(ev.AvoidedFormats, h.avoid)
 		}
@@ -588,6 +622,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		ev.SizeScore = -int(c.SizeGB * p.SmallBias)
 	}
 	ev.Total = ev.QualityScore + ev.FormatScore + ev.SizeScore
+	ev.fillRankKeys(p)
 	ev.Eligible = true
 	return ev
 }
@@ -741,6 +776,7 @@ func waiveCollapsedBonuses(evs []Evaluation) {
 			ev.TargetScore -= ev.targetBonus
 			ev.CustomScore -= ev.PreferBonus - ev.targetBonus
 			ev.BonusWaived = true
+			ev.PrefCount = 0 // the preferences stopped counting, for the preferences key too
 		}
 	}
 }
