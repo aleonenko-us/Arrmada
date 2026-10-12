@@ -357,8 +357,9 @@ func (c *Coordinator) grabBookEditionCounted(ctx context.Context, b books.Book, 
 		return "", st, err
 	}
 	st.usable = len(res.Releases)
-	noteBookVerdicts(notes, sp, res.Releases, kind)
-	best := pickBestBookForKind(sp, res.Releases, kind)
+	allowed := c.bookLanguages(ctx)
+	noteBookVerdicts(notes, sp, allowed, res.Releases, kind)
+	best := pickBestBookForKind(sp, allowed, res.Releases, kind)
 	if best == nil {
 		c.log.Info("book: no matching-format release", "title", b.Title, "edition", kind)
 		return "", st, nil
@@ -647,8 +648,9 @@ func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition stri
 
 // pickBestBookForKind ranks releases of the given edition by the profile: format
 // score + keyword score combine (so "graphic audio +100" or a preferred format
-// wins), seeders break ties. Hard-reject terms and unwanted formats are skipped.
-func pickBestBookForKind(sp quality.StoredProfile, releases []indexer.Release, kind string) *indexer.Release {
+// wins), seeders break ties. Hard-reject terms, unwanted formats and releases in a
+// language the owner doesn't read are skipped.
+func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind string) *indexer.Release {
 	var best *indexer.Release
 	var bestScore int
 	var bestPartial bool
@@ -656,7 +658,7 @@ func pickBestBookForKind(sp quality.StoredProfile, releases []indexer.Release, k
 		if books.EditionOf(releaseBookFormat(releases[i])) != kind {
 			continue
 		}
-		score, ok := bookRelScore(sp, releases[i])
+		score, ok := bookRelScore(sp, allowed, releases[i])
 		if !ok {
 			continue
 		}
@@ -708,16 +710,18 @@ func bookScoreText(rel indexer.Release) string {
 // bookRelScore ranks a book release under a profile — format score plus keyword
 // score (so preferences like "graphic audio +100" combine with format
 // preference), seeders as the low-order tiebreak. ok=false when the format isn't
-// wanted (score ≤ 0 or unknown) or a hard-reject term is present.
-func bookRelScore(sp quality.StoredProfile, rel indexer.Release) (int, bool) {
-	score, code := bookRelVerdict(sp, rel)
+// wanted (score ≤ 0 or unknown), the release states a language outside allowed, or a
+// hard-reject term is present.
+func bookRelScore(sp quality.StoredProfile, allowed bookLangs, rel indexer.Release) (int, bool) {
+	score, code := bookRelVerdict(sp, allowed, rel)
 	return score, code == ""
 }
 
 // bookRelVerdict is bookRelScore saying why a release was turned down: DropNotWanted for
-// a format the profile doesn't want (or can't tell), quality.RejectTerm for a reject term,
-// "" when it's acceptable. A search attempt counts by the code.
-func bookRelVerdict(sp quality.StoredProfile, rel indexer.Release) (int, string) {
+// a format the profile doesn't want (or can't tell), DropWrongLanguage for a language
+// outside the book languages, quality.RejectTerm for a reject term, "" when it's
+// acceptable. A search attempt counts by the code.
+func bookRelVerdict(sp quality.StoredProfile, allowed bookLangs, rel indexer.Release) (int, string) {
 	f := releaseBookFormat(rel)
 	if f == "" {
 		return 0, DropNotWanted
@@ -725,6 +729,9 @@ func bookRelVerdict(sp quality.StoredProfile, rel indexer.Release) (int, string)
 	fs, ok := sp.FormatScores[f]
 	if !ok || fs <= 0 {
 		return 0, DropNotWanted
+	}
+	if !allowed.allows(rel.Language) {
+		return 0, DropWrongLanguage
 	}
 	text := bookScoreText(rel)
 	if quality.Rejects(sp.Rejected, text) {
@@ -735,7 +742,7 @@ func bookRelVerdict(sp quality.StoredProfile, rel indexer.Release) (int, string)
 
 // noteBookVerdicts tells the search attempt what pickBestBookForKind makes of each
 // release: the other edition, turned down by the profile (and why), or acceptable.
-func noteBookVerdicts(n *searchNotes, sp quality.StoredProfile, releases []indexer.Release, kind string) {
+func noteBookVerdicts(n *searchNotes, sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind string) {
 	if n == nil {
 		return
 	}
@@ -744,7 +751,7 @@ func noteBookVerdicts(n *searchNotes, sp quality.StoredProfile, releases []index
 			n.mark(rel.Title, DropOutOfScope)
 			continue
 		}
-		if _, code := bookRelVerdict(sp, rel); code != "" {
+		if _, code := bookRelVerdict(sp, allowed, rel); code != "" {
 			n.mark(rel.Title, code)
 		} else {
 			n.mark(rel.Title, classEligible)
@@ -1165,6 +1172,7 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 		return ReleaseList{}, err
 	}
 	sp := c.bookProfile(ctx, b.QualityProfile)
+	allowed := c.bookLanguages(ctx)
 	// Both passes (and each pass's title-only retry) report into one collector.
 	ctx, notes := withSearchNotes(ctx)
 	// Dedup by download URL — the unique per-torrent link. Deduping by title
@@ -1223,13 +1231,19 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 			continue // not an identifiable book release
 		}
 		edition := books.EditionOf(f)
-		score, eligible := bookRelScore(sp, rel)
+		score, eligible := bookRelScore(sp, allowed, rel)
 		if edition == books.KindAudiobook {
 			// A version's release is scored the way its own search scores it: audio
 			// always acceptable, and its own words not vetoed by a profile reject.
 			if v := books.VersionFor(b.AudioVersions, bookScoreText(rel)); v != nil {
-				score, eligible = bookRelScore(versionProfile(sp, *v), rel)
+				score, eligible = bookRelScore(versionProfile(sp, *v), allowed, rel)
 			}
+		}
+		// Another language is listed, not hidden: the automation won't take it, but the
+		// admin may want exactly that edition and can grab it by hand.
+		var reject string
+		if !allowed.allows(rel.Language) {
+			reject = bookLangRejectReason(rel.Language)
 		}
 		if rel.Transport == indexer.TransportUsenet {
 			eligible = false // no client can take it, so it is never the recommended pick
@@ -1242,7 +1256,7 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 			rr: withIndexerFacts(RankedRelease{
 				Title: rel.Title, Indexer: rel.Indexer, DownloadURL: rel.DownloadURL, InfoHash: rel.InfoHash,
 				InfoURL: safeInfoURL(rel.InfoURL, rel.DownloadURL), SizeGB: rel.SizeGB(),
-				Seeders: rel.Seeders, Summary: summarizeBook(f),
+				Seeders: rel.Seeders, Summary: summarizeBook(f), RejectReason: reject,
 				Eligible: eligible, Edition: edition, Format: f, Narrator: narrator,
 				Author: rel.Author, Series: rel.Series, Language: rel.Language,
 			}, rel),
@@ -2014,6 +2028,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 	// search path and the importer use.
 	match := books.MatcherOver(all)
 	downloading := booksDownloading(queue, match)
+	allowed := c.bookLanguages(ctx)
 	for _, b := range all {
 		if !b.Monitored {
 			continue
@@ -2048,7 +2063,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if kind == books.KindAudiobook {
 				pool = dropVersionReleases(b, matched)
 			}
-			best := pickBestBookForKind(sp, pool, kind)
+			best := pickBestBookForKind(sp, allowed, pool, kind)
 			if best == nil {
 				continue
 			}
@@ -2067,7 +2082,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if !versionWanted(v) {
 				continue
 			}
-			best := pickBestBookForKind(versionProfile(sp, v), releasesForVersion(v, matched), books.KindAudiobook)
+			best := pickBestBookForKind(versionProfile(sp, v), allowed, releasesForVersion(v, matched), books.KindAudiobook)
 			if best == nil {
 				continue
 			}

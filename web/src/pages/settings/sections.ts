@@ -59,6 +59,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Folders that need review", keywords: "scan unmatched needs review identify pick title folder", section: "library", anchor: "needs-review" },
   { label: "Adding titles", keywords: "search on add automatic default", section: "library", anchor: "adding-titles" },
   { label: "Series monitoring", keywords: "series tv show monitor monitoring preset default all future missing existing first latest season new seasons add request", section: "library", anchor: "series-monitoring" },
+  { label: "Books", keywords: "book books ebook audiobook language languages english foreign translation mam myanonamouse grab", section: "library", anchor: "books" },
   { label: "Plex recommended naming", keywords: "preset plex tmdb tvdb imdb id edition folder naming", section: "media", anchor: "naming-presets" },
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },

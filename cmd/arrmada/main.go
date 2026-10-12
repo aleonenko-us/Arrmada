@@ -559,6 +559,10 @@ func main() {
 	coordinator.SetUpgradeBudget(func(ctx context.Context) int {
 		return automation.ParseUpgradeBudget(settingsSvc.Get(ctx, automation.KeyUpgradeBudget, ""))
 	})
+	// The languages automatic book grabs accept (Settings → Library), read per search.
+	coordinator.SetBookLanguages(func(ctx context.Context) []string {
+		return automation.ParseBookLanguages(settingsSvc.Get(ctx, automation.KeyBookLanguages, automation.DefaultBookLanguages))
+	})
 	sched.Register("import-completed", 30*time.Second, false, func(ctx context.Context) error {
 		completed, err := downloads.CompletedInCategory(ctx, cfg.DownloadCategory)
 		if err != nil {

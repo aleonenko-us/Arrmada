@@ -970,6 +970,8 @@ export interface AppSettings {
   downloads_stall_minutes: number;
   /** How many upgrades one upgrade sweep may grab; 0 = no limit. Default 10. */
   upgrade_max_grabs_per_sweep: number;
+  /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
+  books_languages: string[];
 }
 
 export interface TorrentPreview {
