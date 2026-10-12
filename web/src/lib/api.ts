@@ -2221,6 +2221,8 @@ export interface ConvertSettings {
   dolby_vision: "drop" | "skip";
   /** 8-bit SDR sources: "always" written 10-bit, or "match_source" (kept 8-bit). */
   ten_bit?: "always" | "match_source";
+  /** Encode long CPU films in pieces a restart can't throw away (off by default). */
+  resumable?: boolean;
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
   server_time: string; server_tz: string; plex_watching_known: boolean; can_pause: boolean;
   has_gpu: boolean; gpu_does_av1: boolean; hdr10plus_tool: boolean;

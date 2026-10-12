@@ -75,6 +75,9 @@ type prefs struct {
 	// dolbyVision is DVDrop or DVSkip (see dvpolicy.go).
 	dolbyVision string
 	tenBit      string // TenBitAlways | TenBitMatchSource (tenbit.go)
+	// resumable encodes long films in pieces a restart can't throw away (chunk.go). Off
+	// unless you turned it on.
+	resumable bool
 	// measured holds what test encodes measured (see measured.go), keyed by measureKey.
 	measured map[string]measurement
 }
@@ -96,6 +99,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
 		crop:           g.GetBool(ctx, keyCrop, false),
 		tenBit:         s.tenBitChoice(ctx),
+		resumable:      g.GetBool(ctx, keyResumable, false),
 		measured:       s.measured.all(ctx),
 		dolbyVision:    dvPolicy(g.Get(ctx, keyDolbyVision, "")),
 	}
@@ -111,10 +115,11 @@ func (s *Service) prefs(ctx context.Context) prefs {
 	return p
 }
 
-// cacheKey identifies the settings that change which files need work, for cached views.
+// cacheKey identifies the settings that change which files need work, for cached views —
+// and resumable, which changes the scratch space each one needs.
 func (p prefs) cacheKey() string {
-	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v|%s|%s", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
-		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks, p.dolbyVision, p.tenBit)
+	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v|%s|%s|%v", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
+		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks, p.dolbyVision, p.tenBit, p.resumable)
 }
 
 // Needs is the gap between a file and the target.

@@ -55,6 +55,8 @@ type jobRecord struct {
 	// stallNeed/stallFree are the space figures behind a "waiting for room" skip, for the
 	// convert.stalled event (events.go noteStall).
 	stallNeed, stallFree int64
+	// resume is set while the job runs with resumable pieces on (chunk.go); nil = in one go.
+	resume *resumeRun
 }
 
 // record returns the job's ledger record, creating it on first use. Created under s.mu so
@@ -686,6 +688,10 @@ func (s *Service) historyRowFor(job *Job, outcome, note string) historyRow {
 			// The time actually spent encoding: a film frozen across four nights' worth of
 			// daytime took a day to encode, not four — and the forecast learns from this.
 			r.encodeSecs = j.activeSecs
+		}
+		if rec.resume != nil && rec.resume.priorSecs > 0 {
+			// Pieces encoded before a restart (chunk.go) are part of this encode's time.
+			r.encodeSecs += rec.resume.priorSecs
 		}
 	}
 	return r

@@ -335,7 +335,8 @@ func (s *Service) swapped(job *Job, finalPath string) {
 
 // cleanScratch removes leftover per-job scratch files (partial encodes, test clips, HDR10+
 // sidecars) at startup — the debris of any conversion cut short by a restart. Only runs
-// before the workers start, so nothing live is touched.
+// before the workers start, so nothing live is touched. A pieced encode's resume-* folders
+// are left alone: they're what it carries on from (chunk.go; pruneResume tidies them).
 func (s *Service) cleanScratch(ctx context.Context) {
 	seen := map[string]bool{}
 	for _, dir := range []string{s.scratchDir, s.activeScratch(ctx)} {
@@ -798,6 +799,12 @@ func (s *Service) finish(job *Job, state JobState, note string) {
 			// Otherwise the runner would pick the very file you just stopped, right away.
 			s.skips.record(ctx, job.Key, SkipCancelled, "cancelled by you")
 		}
+	}
+	// The job is over: its pieces (chunk.go) are no use now — unless it is only waiting for
+	// room, when they're a day of encoding it will carry on from. (A restart never gets here:
+	// runJob ends those without finish, so their pieces survive it.)
+	if !waitsForRoom(state, s.record(job).skipKind) {
+		s.dropResume(ctx, job.Key, "")
 	}
 	s.requests.remove(ctx, job.Key)
 	s.releasePending(job.Key, job)

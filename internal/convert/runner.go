@@ -23,6 +23,7 @@ func (s *Service) Run(ctx context.Context) {
 	// A restart abandons any in-flight encode (the original is only replaced at the very
 	// end, so nothing is lost). Clear its debris, then replay any file swap a crash cut off.
 	s.cleanScratch(ctx)
+	s.pruneResume(ctx) // a pieced encode's finished pieces stay for it to carry on (chunk.go)
 	s.recoverSwaps(ctx)
 	s.holdStartup(ctx) // the originals hold's self-check (hold.go)
 	// Ledger rows still in progress belong to jobs the restart cut off; no worker has
@@ -114,7 +115,23 @@ func (s *Service) pickJob(ctx context.Context) *Job {
 	waiting := s.skips.waitingKeys(ctx)
 	blocked := s.failures.blockedKeys(ctx, maxFailures)
 	holdFull := s.holdTooFull(ctx) // the originals hold's budget (holdbudget.go)
-	for _, c := range s.autoCandidates(ctx, p) {
+	cands := s.autoCandidates(ctx, p)
+	// A film with pieces already encoded (chunk.go) goes first: a restart interrupted it,
+	// and starting something else would leave that work sitting in the scratch space.
+	if p.resumable {
+		if resumable := s.resumableKeys(ctx); len(resumable) > 0 {
+			for _, c := range cands {
+				if !resumable[c.Key] || waiting[c.Key] || blocked[c.Key] || holdFull(c) {
+					continue
+				}
+				it, _ := parseKey(c.Key)
+				if job := s.claim(it, c.Title, false); job != nil {
+					return job
+				}
+			}
+		}
+	}
+	for _, c := range cands {
 		if waiting[c.Key] || blocked[c.Key] || holdFull(c) {
 			continue
 		}
@@ -209,11 +226,19 @@ type autoCand struct {
 // read, so any HEVC HDR10 file is assumed to: that pipeline holds the stream twice, and
 // under-promising room is what makes a big remux fail hours in.
 func candScratch(mi MediaInfo, plan Plan, size int64) int64 {
+	return candScratchFor(mi, plan, size, false)
+}
+
+// candScratchFor is candScratch with resumable pieces on or off: a film that would be
+// encoded in pieces (chunk.go) holds the pieces and the joined film at once. Whether it
+// ends up on the GPU, and so in one go, isn't known here; the larger figure is the safe one.
+func candScratchFor(mi MediaInfo, plan Plan, size int64, resumable bool) int64 {
 	if mi.SizeBytes <= 0 {
 		mi.SizeBytes = size
 	}
 	maybeHDR10Plus := mi.HDR == "HDR10+" || (codecClass(mi.VideoCodec) == "hevc" && mi.EncodeHDR() == "HDR10")
-	return scratchNeeded(&mi, plan, maybeHDR10Plus)
+	pieced := resumable && plan.VideoCodec != "" && chunkPlan(&mi) != nil
+	return scratchNeeded(&mi, plan, maybeHDR10Plus || pieced)
 }
 
 // scratchNeedWindow is how many upcoming files the scratch indicator looks ahead over.
@@ -221,19 +246,25 @@ const scratchNeedWindow = 20
 
 // ScratchNeed is the most scratch space any of the next few files the runner would pick will
 // need, and that file's title — the figure the Settings indicator compares free space with.
-// Files waiting on a skip or blocked by failures are passed over, as the runner does.
+// Files waiting on a skip or blocked by failures are passed over, as the runner does. A
+// file with pieces already encoded (chunk.go) needs that much less: they're on the disk.
 func (s *Service) ScratchNeed(ctx context.Context) (int64, string) {
 	waiting := s.skips.waitingKeys(ctx)
 	blocked := s.failures.blockedKeys(ctx, maxFailures)
+	p := s.prefs(ctx)
+	var done map[string]int64
+	if p.resumable {
+		done = s.resumeBytes(ctx)
+	}
 	var need int64
 	var title string
 	seen := 0
-	for _, c := range s.autoCandidates(ctx, s.prefs(ctx)) {
+	for _, c := range s.autoCandidates(ctx, p) {
 		if waiting[c.Key] || blocked[c.Key] {
 			continue
 		}
-		if c.needScratch > need {
-			need, title = c.needScratch, c.Title
+		if n := max(c.needScratch-done[c.Key], 0); n > need {
+			need, title = n, c.Title
 		}
 		if seen++; seen == scratchNeedWindow {
 			break
@@ -292,7 +323,7 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		c := autoCand{Key: ItemKey(mediaType, movieID, versionID, seriesID, season, episode),
 			Title: trackTitle(title, label, versionID), Kind: mediaType, VersionID: versionID, VersionLabel: label,
 			Video: n.Video, Size: size, Tracks: trackSummary(&mi, plan), Current: strings.ToUpper(mi.VideoCodec),
-			needScratch: candScratch(mi, plan, size), effects: effectsOf(&mi, plan, n, size, seriesID, season),
+			needScratch: candScratchFor(mi, plan, size, p.resumable), effects: effectsOf(&mi, plan, n, size, seriesID, season),
 			facts: factsFor(&mi, plan, size)}
 		if n.Video {
 			c.Codec = plan.VideoCodec

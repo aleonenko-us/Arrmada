@@ -88,7 +88,13 @@ func (s *Service) encodeHDR10Plus(ctx context.Context, job *Job, src, dst, scrat
 		return fmt.Errorf("inject HDR10+: %v (%s)", err, tailStr(out))
 	}
 	_ = os.Remove(encoded) // each stage frees the last: a 4K stream is tens of gigabytes
-	if err := s.remuxVideoStream(ctx, injected, src, dst, mi, plan); err != nil {
+	// The raw stream's timestamps start at zero. With resumable pieces on, the remux puts
+	// the video back where the original's started against its audio (chunk.go startOffset).
+	var offset []string
+	if s.record(job).resume != nil {
+		offset = startOffset(mi)
+	}
+	if err := s.remuxVideoStream(ctx, injected, src, dst, mi, plan, offset); err != nil {
 		return fmt.Errorf("remux: %w", err)
 	}
 	return nil
@@ -121,8 +127,23 @@ func (s *Service) encodeHEVCStream(ctx context.Context, job *Job, src, dst strin
 		args = append(args, "-vf", vf)
 	}
 	hdrParams, colourTags := hdr10Params(mi)
-	args = append(args, cpuVideoArgs("libx265", "hevc", crf, cores, hdrParams+":bframes=0", s.noNumaPools)...)
-	args = append(args, colourTags...)
+	vargs := cpuVideoArgs("libx265", "hevc", crf, cores, hdrParams+":bframes=0", s.noNumaPools)
+	vargs = append(vargs, colourTags...)
+	if spans := s.piecedSpans(job, mi, cpuEncoder("hevc"), plan); spans != nil {
+		// In pieces a restart can't throw away (chunk.go); in one go if that fails.
+		pv := vargs
+		if vf := swFilterChain(mi, plan); vf != "" {
+			pv = append([]string{"-vf", vf}, vargs...)
+		}
+		pp := plan
+		pp.Quality = crf
+		err := s.encodeHEVCPieces(ctx, job, src, dst, mi, pp, pv, spans, sizeLimit)
+		if err == nil || ctx.Err() != nil || errors.Is(err, errTooBig) {
+			return err
+		}
+		s.piecesFailed(ctx, job, err)
+	}
+	args = append(args, vargs...)
 	if sizeLimit > 0 {
 		args = append(args, "-fs", strconv.FormatInt(sizeLimit, 10))
 	}
@@ -137,7 +158,7 @@ func (s *Service) encodeHEVCStream(ctx context.Context, job *Job, src, dst strin
 //
 // The frame rate is ffprobe's EXACT RATIONAL (e.g. "24000/1001"). Stamping a rounded float
 // instead re-times every frame slightly, and over a feature the video drifts out of sync.
-func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, mi *MediaInfo, plan Plan) error {
+func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, mi *MediaInfo, plan Plan, offset []string) error {
 	r := mi.FrameRateRat
 	if r == "" || r == "0/0" || strings.HasPrefix(r, "0/") {
 		r = "24"
@@ -152,7 +173,9 @@ func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, 
 	_ = os.Remove(video)
 	// 2) MP4 video + the original's kept tracks → final MKV. Metadata and chapters come from
 	// the original (input 1), not the throwaway video-only temp file.
-	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-i", tmp, "-i", src, "-map", "0:v:0"}
+	args := []string{"-y", "-hide_banner", "-loglevel", "error"}
+	args = append(args, offset...) // applies to the video input
+	args = append(args, "-i", tmp, "-i", src, "-map", "0:v:0")
 	args = append(args, trackArgs(mi, plan, 1)...)
 	args = append(args, "-map_metadata", "1", "-map_chapters", "1", "-c:v", "copy", dst)
 	if out, err := s.tool(ctx, nil, toolrun.Background, s.ffmpeg, args...).CombinedOutput(); err != nil {
