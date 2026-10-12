@@ -50,6 +50,12 @@ func newMergeFixture(t *testing.T) *mergeFixture {
 	exec(`INSERT INTO listen_progress (user_id, item_key, position, updated_at) VALUES (?, 'b1', 100, 1)`, f.admin.ID)
 	exec(`INSERT INTO listen_log (session_id, user_id, started_at, ended_at, seconds) VALUES ('s1', ?, 1, 2, 60)`, f.dup.ID)
 	exec(`INSERT INTO audio_passwords (user_id, hash, updated_at) VALUES (?, 'dup-hash', 1)`, f.dup.ID)
+	// Two reported problems: one only the duplicate reported, one both did.
+	dupIssue := exec(`INSERT INTO issues (media_type, library_id, title, category, reported_by, reported_by_name, created_at, updated_at) VALUES ('movie', 1, 'Dup asked', 'audio', ?, 'ownerplex', 1, 1)`, f.dup.ID)
+	bothIssue := exec(`INSERT INTO issues (media_type, library_id, title, category, reported_by, reported_by_name, created_at, updated_at) VALUES ('movie', 2, 'Admin asked', 'video', ?, 'owner', 1, 1)`, f.admin.ID)
+	exec(`INSERT INTO issue_reporters (issue_id, user_id, user_name, created_at) VALUES (?, ?, 'ownerplex', 1)`, dupIssue, f.dup.ID)
+	exec(`INSERT INTO issue_reporters (issue_id, user_id, user_name, created_at) VALUES (?, ?, 'owner', 1)`, bothIssue, f.admin.ID)
+	exec(`INSERT INTO issue_reporters (issue_id, user_id, user_name, created_at) VALUES (?, ?, 'ownerplex', 2)`, bothIssue, f.dup.ID)
 	exec(`UPDATE users SET notify_prefs = '{"approved":false}' WHERE id = ?`, f.dup.ID)
 	if _, _, err := s.CreateSession(ctx, f.dup.ID); err != nil {
 		t.Fatal(err)
@@ -100,6 +106,8 @@ func TestMergePlexDuplicateMovesRequests(t *testing.T) {
 		{"listening log moved", `SELECT COUNT(*) FROM listen_log WHERE user_id = ?`, []any{a}, 1},
 		{"audiobook password moved (the admin had none)", `SELECT COUNT(*) FROM audio_passwords WHERE user_id = ? AND hash = 'dup-hash'`, []any{a}, 1},
 		{"notification choices moved (the admin made none)", `SELECT COUNT(*) FROM users WHERE id = ? AND notify_prefs = '{"approved":false}'`, []any{a}, 1},
+		{"reported problems moved, one row per issue", `SELECT COUNT(*) FROM issue_reporters WHERE user_id = ?`, []any{a}, 2},
+		{"the duplicate's report is the admin's", `SELECT COUNT(*) FROM issues WHERE reported_by = ? AND reported_by_name = 'owner'`, []any{a}, 2},
 		{"duplicate gone", `SELECT COUNT(*) FROM users WHERE id = ?`, []any{f.dup.ID}, 0},
 		{"its sessions signed out", `SELECT COUNT(*) FROM sessions WHERE user_id = ?`, []any{f.dup.ID}, 0},
 		{"nothing left under the duplicate", `SELECT (SELECT COUNT(*) FROM user_notifications WHERE user_id = ?) + (SELECT COUNT(*) FROM request_subscribers WHERE user_id = ?)`, []any{f.dup.ID, f.dup.ID}, 0},

@@ -16,7 +16,9 @@ var bookRefSuffix = regexp.MustCompile(`(:(approved|declined):\d+|:(audiobook|eb
 // RefPath is the app address an inbox reference leads to, for a Web Push tap to open:
 // the exact title ("movie:603…" → /discover/movie/603, "series:1399…" →
 // /discover/series/1399), the book on Discover's Books tab ("book:<key>…" →
-// /discover?tab=books&work=<key>), or the request ("request:40…" → /requests?id=40).
+// /discover?tab=books&work=<key>), the request ("request:40…" → /requests?id=40), or a
+// reported problem ("issue:12…" → /requests?tab=issues&issue=12; a reporter's notice is
+// keyed by its title instead, "movie:603:issue:12:resolved", and opens the title).
 // "" for a reference it doesn't know; the caller falls back to /discover.
 //
 // Twin: refToPath in web/src/lib/refLink.ts (the bell). Keep the two, and the test
@@ -45,6 +47,11 @@ func RefPath(ref string) string {
 		id, _, _ := strings.Cut(rest, ":")
 		if positiveID(id) {
 			return "/requests?id=" + id
+		}
+	case "issue":
+		id, _, _ := strings.Cut(rest, ":")
+		if positiveID(id) {
+			return "/requests?tab=issues&issue=" + id
 		}
 	}
 	return ""

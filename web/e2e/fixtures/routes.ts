@@ -65,6 +65,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // this is never called.
     { method: "POST", path: "/api/v1/requests", respond: ({ body }) => discover.created(p, body) },
     { method: "POST", path: "/api/v1/requests/bulk", respond: ({ body }) => discover.bulk(body) },
+    // Reported problems: none open (the Requests page reads the count for its Issues tab).
+    get("/api/v1/issues", { issues: [], total: 0, counts: { open: 0, closed: 0 } }),
+    { method: "POST", path: "/api/v1/issues", respond: ({ body }) => ({ issue: { id: 1, status: "open", reporter_count: 1, ...(body as object) }, joined: false }) },
+    get(/^\/api\/v1\/issues\/episodes\/\d+$/, { seasons: [{ season: 1, episodes: [{ episode: 3, title: "Low Water" }, { episode: 4, title: "Fog Bank" }] }] }),
     { method: "GET", path: /^\/api\/v1\/requests\/(\d+)$/, respond: ({ params }) => discover.requestDetail(Number(params[0])) },
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/approve$/, respond: ({ params, body }) => discover.approved(Number(params[0]), body) },
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/decline$/, body: { status: "declined" } },
