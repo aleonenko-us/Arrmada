@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
@@ -68,28 +69,33 @@ type orphanRetire struct {
 var langTagRe = regexp.MustCompile(`^[a-z]{2,3}(-[a-z0-9]{2,4})?$`)
 
 // sidecarLangTag picks the code a sidecar for a language token is named with: the kept
-// language it matches (an "eng" orphan adopted for a kept "en" becomes ".en"), else the
-// token's two-letter code, else the token as it is. ok is false for anything that isn't a
-// language.
+// language it is (an "eng" orphan adopted for a kept "en" becomes ".en"), else a kept
+// language it matches, else its own canonical tag. ok is false for anything the language
+// table doesn't know.
 func sidecarLangTag(tok string, kept []string) (string, bool) {
-	t := normLang(strings.ToLower(strings.TrimSpace(tok)))
-	if !langTagRe.MatchString(t) {
+	l, ok := langs.Lookup(tok)
+	if !ok {
 		return "", false
 	}
+	tag := langs.SidecarTag(l.Code)
 	for _, k := range kept {
-		if langMatches(t, k) {
-			return strings.ToLower(k), true
+		if langs.Canonical(k) == l.Code {
+			tag = langs.SidecarTag(k)
+			break
 		}
 	}
-	if !isKnownLang(t) {
+	if tag == langs.SidecarTag(l.Code) {
+		for _, k := range kept {
+			if langs.Match(l.Code, k) {
+				tag = langs.SidecarTag(k)
+				break
+			}
+		}
+	}
+	if !langTagRe.MatchString(tag) {
 		return "", false
 	}
-	for two, three := range twoToThree {
-		if three == t {
-			return two, true
-		}
-	}
-	return t, true
+	return tag, true
 }
 
 // isKept reports whether lang is one of the kept languages.

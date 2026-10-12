@@ -180,6 +180,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/subtitles/settings", mod.subtitleSettings),
     get("/api/v1/subtitles/models", mod.subtitleModels),
     get("/api/v1/subtitles/jobs", mod.subtitleJobs),
+    get("/api/v1/languages", mod.languages),
     get("/api/v1/insights/plex", mod.plexConfig),
     get("/api/v1/insights/plex/scan", mod.plexScan),
     // Watch on Plex: no Plex connected, so no title is in it.

@@ -42,8 +42,8 @@ func TestOrphanSidecars(t *testing.T) {
 	// The acceptance case: an Anchorman sidecar under an old name.
 	_, video := mkFiles(t, "Anchorman (2004) Bluray-2160p.mkv", "Anchorman.eng.srt")
 	sc := scanSidecars(video, []string{"en"}, "movie")
-	if len(sc.Present) != 0 || len(sc.Orphans) != 1 || sc.Orphans[0].Lang != "eng" {
-		t.Fatalf("scan = %+v, want en missing and one eng orphan", sc)
+	if len(sc.Present) != 0 || len(sc.Orphans) != 1 || sc.Orphans[0].Lang != "en" {
+		t.Fatalf("scan = %+v, want en missing and one English orphan (canonical: en)", sc)
 	}
 	if got := orphanCovered([]string{"en"}, sc.Present, sc.Orphans); !got["en"] {
 		t.Errorf("orphanCovered = %v, want en", got)

@@ -8,7 +8,8 @@ import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
-import { KeptTracksNote, RowPoster, card, cardStyle, langName } from "./subtitles/shared";
+import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
+import { langName, useLanguages } from "../lib/languages";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
 import { useConfirm } from "../ui";
 
@@ -105,6 +106,7 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
   // tab opened.
   const [cov, setCov] = useState<SubtitleCoverage | null>(null);
   const [busy, setBusy] = useState(false);
+  const languages = useLanguages();
   const load = useCallback(() => api.subtitleCoverage().then(setCov).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
   // While a pass is running (or a recount for new languages is due), keep asking until it lands.
@@ -141,7 +143,7 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
         <div className={card} style={cardStyle}>
           <div className={lbl}>Kept languages</div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {(settings?.languages ?? []).map((c) => <span key={c} className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{langName(c)}</span>)}
+            {(settings?.languages ?? []).map((c) => <span key={c} className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{langName(c, languages)}</span>)}
           </div>
           <div className="mt-3 text-[11.5px] text-ink-faint">Each of these gets an external <code>.srt</code>. <KeptTracksNote /></div>
         </div>

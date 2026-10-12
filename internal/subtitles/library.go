@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // LangStatus is one kept-language's coverage for a file: whether an external SRT exists, and if
@@ -153,7 +155,6 @@ func bestSource(embedded []SubTrack, lang string, canDownload bool) string {
 // picked — it only carries the foreign-language lines — so a language whose only text
 // track is forced falls through to download or AI.
 func pickFullTrack(subs []SubTrack, lang string) (SubTrack, bool) {
-	best, found := SubTrack{}, false
 	rank := func(t SubTrack) int {
 		r := 0
 		if t.SDH {
@@ -164,44 +165,44 @@ func pickFullTrack(subs []SubTrack, lang string) (SubTrack, bool) {
 		}
 		return r
 	}
-	for _, t := range subs {
-		if !t.Text || t.Forced || !langMatches(t.Lang, lang) {
-			continue
-		}
-		if !found || rank(t) < rank(best) {
-			best, found = t, true
-		}
-	}
-	return best, found
+	return pickTrack(subs, lang, func(t SubTrack) bool { return t.Text && !t.Forced }, rank)
 }
 
 // pickForcedTrack is the first forced text track in a language, if any.
 func pickForcedTrack(subs []SubTrack, lang string) (SubTrack, bool) {
-	for _, t := range subs {
-		if t.Text && t.Forced && langMatches(t.Lang, lang) {
-			return t, true
+	return pickTrack(subs, lang, func(t SubTrack) bool { return t.Text && t.Forced }, func(SubTrack) int { return 0 })
+}
+
+// pickTrack returns the lowest-ranked track that passes ok and is in lang (stream order
+// breaks ties). A regional want ("pt-br") takes a track tagged with just its base
+// language ("por") only when no track carries the region: muxers rarely write regions,
+// but a track explicitly tagged for another region ("pt-pt") is never taken.
+func pickTrack(subs []SubTrack, lang string, ok func(SubTrack) bool, rank func(SubTrack) int) (SubTrack, bool) {
+	pick := func(match func(string) bool) (SubTrack, bool) {
+		best, found := SubTrack{}, false
+		for _, t := range subs {
+			if !ok(t) || !match(t.Lang) {
+				continue
+			}
+			if !found || rank(t) < rank(best) {
+				best, found = t, true
+			}
 		}
+		return best, found
+	}
+	if t, found := pick(func(tag string) bool { return langMatches(tag, lang) }); found {
+		return t, true
+	}
+	if base := langs.Base(lang); base != langs.Canonical(lang) {
+		return pick(func(tag string) bool { return langs.Canonical(tag) == base })
 	}
 	return SubTrack{}, false
 }
 
-// twoToThree maps common ISO 639-1 codes to 639-2/T so a wanted "en" matches an "eng" track.
-var twoToThree = map[string]string{
-	"en": "eng", "es": "spa", "fr": "fre", "de": "ger", "it": "ita", "pt": "por",
-	"nl": "dut", "sv": "swe", "pl": "pol", "ru": "rus", "tr": "tur", "ar": "ara",
-	"hi": "hin", "ja": "jpn", "ko": "kor", "zh": "chi",
-}
-
-// langMatches reports whether a track's language tag matches a wanted code, tolerating 2- vs
-// 3-letter forms (en ≡ eng). An untagged track never matches a specific wanted language.
-func langMatches(track, wanted string) bool {
-	t := strings.ToLower(strings.TrimSpace(track))
-	w := strings.ToLower(strings.TrimSpace(wanted))
-	if t == "" || t == "und" || w == "" {
-		return false
-	}
-	return t == w || twoToThree[w] == t || twoToThree[t] == w
-}
+// langMatches reports whether a track's language tag matches a wanted code in any spelling
+// (en ≡ eng ≡ english; a base want matches a regional track). An untagged track never
+// matches a specific wanted language. See langs.Match.
+func langMatches(track, wanted string) bool { return langs.Match(track, wanted) }
 
 // SeriesGroup is one show's subtitle coverage, rolled up.
 //

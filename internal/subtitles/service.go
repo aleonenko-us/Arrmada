@@ -3,6 +3,7 @@ package subtitles
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
@@ -21,7 +23,7 @@ import (
 const (
 	keyMoviesAuto = "subs_movies_auto"
 	keySeriesAuto = "subs_series_auto"
-	keyLanguages  = "subs_languages" // CSV of ISO 639-1 codes
+	keyLanguages  = "subs_languages" // CSV of canonical internal/langs codes ("en", "pt-br")
 )
 
 // defaultLanguages is used until the admin configures otherwise.
@@ -104,6 +106,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	// A silent fall-back from the oneAPI build would hide a broken GPU setup behind a
 	// slow run; surface it as a warning event the first time it happens.
 	s.whisper.note = func(level, msg string) { s.event(level, msg) }
+	s.whisper.log = log
 	return s
 }
 
@@ -165,11 +168,27 @@ type quotaReporter interface {
 	Quota() (remaining int, resetAt time.Time)
 }
 
-// SetSettings updates whichever fields are provided (nil = leave unchanged).
+// ErrUnknownLanguage is returned by SetSettings for a language code the shared table
+// (internal/langs) doesn't know; nothing is saved.
+var ErrUnknownLanguage = errors.New("unknown language")
+
+// SetSettings updates whichever fields are provided (nil = leave unchanged). Languages are
+// stored in their canonical spelling ("fre" → "fr", "pt-BR" → "pt-br"), in the order given
+// — the first is the language an untagged sidecar counts as.
 func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool, languages []string) error {
 	// A change of languages makes every count stale: recount now rather than at the next
 	// six-hourly pass. Saving the same list starts nothing.
 	defer s.recountIfLanguagesChanged(ctx, langsKey(s.languages(ctx)))
+	var clean []string
+	if languages != nil {
+		var err error
+		if clean, err = canonicalLanguages(languages); err != nil {
+			return err // checked before anything is written, so a bad list saves nothing
+		}
+		if len(clean) == 0 {
+			clean = defaultLanguages
+		}
+	}
 	if moviesAuto != nil {
 		if err := s.settings.SetBool(ctx, keyMoviesAuto, *moviesAuto); err != nil {
 			return err
@@ -180,16 +199,7 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 			return err
 		}
 	}
-	if languages != nil {
-		clean := make([]string, 0, len(languages))
-		for _, l := range languages {
-			if l = strings.ToLower(strings.TrimSpace(l)); l != "" {
-				clean = append(clean, l)
-			}
-		}
-		if len(clean) == 0 {
-			clean = defaultLanguages
-		}
+	if clean != nil {
 		if err := s.settings.Set(ctx, keyLanguages, strings.Join(clean, ",")); err != nil {
 			return err
 		}
@@ -197,11 +207,40 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 	return nil
 }
 
+// canonicalLanguages spells each code canonically, drops blanks and repeats (keeping the
+// first), and refuses any code the language table doesn't know.
+func canonicalLanguages(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, l := range in {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		lang, ok := langs.Lookup(l)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", ErrUnknownLanguage, strings.TrimSpace(l))
+		}
+		if !seen[lang.Code] {
+			seen[lang.Code] = true
+			out = append(out, lang.Code)
+		}
+	}
+	return out, nil
+}
+
+// Languages is the kept-language list (what Convert's "Same as Subtitles" keeps).
+func (s *Service) Languages(ctx context.Context) []string { return s.languages(ctx) }
+
+// languages is the kept-language list, canonical and in the owner's order. A value saved
+// before the shared table existed ("eng") reads back canonical ("en"); a code the table
+// doesn't know is kept as written rather than silently dropped.
 func (s *Service) languages(ctx context.Context) []string {
 	raw := s.settings.Get(ctx, keyLanguages, strings.Join(defaultLanguages, ","))
 	var out []string
+	seen := map[string]bool{}
 	for _, l := range strings.Split(raw, ",") {
-		if l = strings.ToLower(strings.TrimSpace(l)); l != "" {
+		if l = langs.Canonical(l); l != "" && !seen[l] {
+			seen[l] = true
 			out = append(out, l)
 		}
 	}

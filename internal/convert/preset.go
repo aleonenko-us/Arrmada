@@ -6,10 +6,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	langtab "github.com/tristenlammi/arrmada/internal/langs" // "langs" is a test helper here
 )
 
-// langIn reports whether an audio/subtitle language tag matches any wanted language,
-// tolerating 2- vs 3-letter codes for the common languages.
+// langIn reports whether an audio/subtitle language tag matches any wanted language, in
+// any spelling the shared table knows (fr ≡ fre ≡ fra ≡ French). A wanted regional
+// variant keeps every track of its base language: muxers rarely tag a region, and a keep
+// filter should never strip the Portuguese audio because the list says "pt-br".
 func langIn(lang string, wanted []string) bool {
 	l := strings.ToLower(strings.TrimSpace(lang))
 	// An untagged or explicitly-unknown track is KEPT. Dropping it lost untagged original-
@@ -18,53 +22,17 @@ func langIn(lang string, wanted []string) bool {
 	if l == "" || l == "und" {
 		return true
 	}
-	nl := normLang(l)
 	for _, w := range wanted {
-		if normLang(w) == nl {
+		if langtab.Match(l, langtab.Base(w)) {
 			return true
 		}
 	}
 	return false
 }
 
-// normLang canonicalises a language code for comparison: 639-1 two-letter codes and the
-// bibliographic 639-2/B variants (fre, ger, dut, chi, …) all collapse to the terminological
-// 639-2/T code, so "fr", "fre" and "fra" tags all match a user's "french" filter however the
-// muxer spelled it.
-func normLang(c string) string {
-	c = strings.ToLower(strings.TrimSpace(c))
-	if t, ok := twoToThree[c]; ok {
-		return t
-	}
-	if t, ok := biblioToTerm[c]; ok {
-		return t
-	}
-	return c
-}
-
-// twoToThree maps common ISO 639-1 codes to 639-2/T (terminological) so "en" matches an
-// "eng" track. Bibliographic variants are folded in separately (biblioToTerm).
-var twoToThree = map[string]string{
-	"en": "eng", "es": "spa", "fr": "fra", "de": "deu", "it": "ita", "pt": "por",
-	"nl": "nld", "sv": "swe", "pl": "pol", "ru": "rus", "tr": "tur", "ar": "ara",
-	"hi": "hin", "ja": "jpn", "ko": "kor", "zh": "zho", "cs": "ces", "el": "ell",
-	"da": "dan", "no": "nor", "fi": "fin", "he": "heb", "th": "tha", "vi": "vie",
-	"uk": "ukr", "hu": "hun", "ro": "ron", "id": "ind", "ta": "tam", "te": "tel",
-	"ms": "msa", "fa": "fas", "bn": "ben", "tl": "tgl", "is": "isl", "sk": "slk",
-	"bg": "bul", "hr": "hrv", "sr": "srp", "sl": "slv", "et": "est", "lv": "lav",
-	"lt": "lit", "ca": "cat", "eu": "eus", "gl": "glg", "cy": "cym",
-}
-
-// biblioToTerm maps the ISO 639-2/B (bibliographic) codes to their /T (terminological)
-// twins. Muxers disagree on which to write — "fre" and "fra" are both French — so both
-// spellings must match a language filter, or tracks are dropped depending on which tool
-// tagged them.
-var biblioToTerm = map[string]string{
-	"fre": "fra", "ger": "deu", "dut": "nld", "chi": "zho", "cze": "ces", "gre": "ell",
-	"ice": "isl", "per": "fas", "rum": "ron", "slo": "slk", "alb": "sqi", "arm": "hye",
-	"baq": "eus", "bur": "mya", "geo": "kat", "mac": "mkd", "may": "msa", "mao": "mri",
-	"tib": "bod", "wel": "cym",
-}
+// normLang canonicalises a language tag for use as a map key, so "fr", "fre" and "fra"
+// tags land on the same entry however the muxer spelled them (see langtab.Canonical).
+func normLang(c string) string { return langtab.Canonical(c) }
 
 // vaapiDevice is the default DRM render node VAAPI encodes through. On a box with
 // both an iGPU and a discrete card there are several (renderD128, renderD129, …);
@@ -783,10 +751,10 @@ func cpuVideoArgs(name, codec string, crf, cores int, hdrParams string, noNumaPo
 // many episodes, and the index pass would otherwise ReadDir the same folder once per
 // episode.
 //
-// This is the shared sidecar-naming rule (subtitles.parseSidecarTag in
-// internal/subtitles/sidecar.go applies the same one): "forced" marks a forced track,
-// which is never the full subtitle; "sdh", "cc" and "hi" (after a language) are still the
-// full subtitle; a bare "hi" is Hindi. Keep the two in step until they share one place.
+// The names are read with the shared sidecar-naming rule, langs.ParseSidecarTag, which the
+// Subtitles module uses too: "forced" marks a forced track, which is never the full
+// subtitle; "sdh", "cc" and "hi" (after a language) are still the full subtitle; a bare
+// "hi" is Hindi.
 func sidecarLangs(path string, cache map[string][]string) (full, forced []string) {
 	if path == "" {
 		return nil, nil
@@ -819,19 +787,13 @@ func sidecarLangs(path string, cache map[string][]string) (full, forced []string
 		if !strings.HasSuffix(ln, ".srt") || !strings.HasPrefix(ln, base+".") {
 			continue
 		}
-		// Every dot-segment after the base: the first short one is the language, and a
-		// "forced" anywhere marks the track forced.
-		rest := strings.TrimSuffix(strings.TrimPrefix(ln, base+"."), ".srt")
-		lang, isForced := "", false
-		for _, seg := range strings.Split(rest, ".") {
-			switch {
-			case seg == "forced":
-				isForced = true
-			case seg == "sdh" || seg == "cc" || seg == "default":
-				// still the full subtitle
-			case lang == "" && seg != "" && len(seg) <= 3:
-				lang = seg // "hi" here, first, is Hindi; after a language it's ignored
-			}
+		// The shared sidecar-naming rule (langs.ParseSidecarTag). The language is kept as
+		// written — normLang folds the spelling later — and a short tag the table doesn't
+		// know still counts, as it always has here.
+		n := langtab.ParseSidecarTag(strings.Split(strings.TrimSuffix(strings.TrimPrefix(ln, base+"."), ".srt"), "."))
+		lang, isForced := n.Token, n.Variant == langtab.VariantForced
+		if n.Lang == "" && len(lang) > 3 {
+			lang = "" // a word, not a language
 		}
 		if lang == "" {
 			continue

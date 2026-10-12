@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 const osBaseURL = "https://api.opensubtitles.com/api/v1"
@@ -281,7 +283,7 @@ func (o *OpenSubtitles) Search(ctx context.Context, sr SearchRequest) ([]Subtitl
 		return nil, ErrNotConfigured
 	}
 	q := url.Values{}
-	q.Set("languages", strings.ToLower(sr.Language))
+	q.Set("languages", langs.OpenSubtitles(sr.Language)) // pt → pt-pt, zh-tw → zh-tw
 	if id := strings.TrimPrefix(sr.IMDBID, "tt"); id != "" {
 		if sr.Season > 0 {
 			q.Set("parent_imdb_id", id)

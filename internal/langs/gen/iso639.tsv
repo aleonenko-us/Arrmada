@@ -1,0 +1,199 @@
+# ISO 639 languages for internal/langs. Run `go generate ./internal/langs` after editing.
+# Columns (tab-separated):
+#   code      ISO 639-1 code, or a regional tag "<639-1>-<region>" (canonical, lower case)
+#   iso2b     ISO 639-2/B code ("-" on regional rows: they inherit the base's)
+#   iso2t     ISO 639-2/T code ("-" likewise)
+#   name      English name, as shown in the UI
+#   aliases   other spellings that mean exactly this entry, comma-separated, lower case
+#             ("-" for none): alternative names, retired codes, other tools' codes
+#   opensubs  OpenSubtitles.com language code ("-" = the code itself)
+aa	aar	aar	Afar	-	-
+ab	abk	abk	Abkhazian	abkhaz	-
+ae	ave	ave	Avestan	-	-
+af	afr	afr	Afrikaans	-	-
+ak	aka	aka	Akan	-	-
+am	amh	amh	Amharic	-	-
+an	arg	arg	Aragonese	-	-
+ar	ara	ara	Arabic	-	-
+as	asm	asm	Assamese	-	-
+av	ava	ava	Avaric	-	-
+ay	aym	aym	Aymara	-	-
+az	aze	aze	Azerbaijani	azeri	-
+ba	bak	bak	Bashkir	-	-
+be	bel	bel	Belarusian	belarussian	-
+bg	bul	bul	Bulgarian	-	-
+bi	bis	bis	Bislama	-	-
+bm	bam	bam	Bambara	-	-
+bn	ben	ben	Bengali	bangla	-
+bo	tib	bod	Tibetan	-	-
+br	bre	bre	Breton	-	-
+bs	bos	bos	Bosnian	-	-
+ca	cat	cat	Catalan	valencian	-
+ce	che	che	Chechen	-	-
+ch	cha	cha	Chamorro	-	-
+co	cos	cos	Corsican	-	-
+cr	cre	cre	Cree	-	-
+cs	cze	ces	Czech	-	-
+cu	chu	chu	Church Slavic	church slavonic,old church slavonic	-
+cv	chv	chv	Chuvash	-	-
+cy	wel	cym	Welsh	-	-
+da	dan	dan	Danish	-	-
+de	ger	deu	German	-	-
+dv	div	div	Divehi	dhivehi,maldivian	-
+dz	dzo	dzo	Dzongkha	-	-
+ee	ewe	ewe	Ewe	-	-
+el	gre	ell	Greek	modern greek	-
+en	eng	eng	English	-	-
+eo	epo	epo	Esperanto	-	-
+es	spa	spa	Spanish	castilian,espanol,español	-
+et	est	est	Estonian	-	-
+eu	baq	eus	Basque	-	-
+fa	per	fas	Persian	farsi	-
+ff	ful	ful	Fulah	fula,fulani	-
+fi	fin	fin	Finnish	-	-
+fj	fij	fij	Fijian	-	-
+fo	fao	fao	Faroese	-	-
+fr	fre	fra	French	francais,français	-
+fy	fry	fry	Western Frisian	frisian	-
+ga	gle	gle	Irish	-	-
+gd	gla	gla	Scottish Gaelic	gaelic	-
+gl	glg	glg	Galician	-	-
+gn	grn	grn	Guarani	-	-
+gu	guj	guj	Gujarati	-	-
+gv	glv	glv	Manx	-	-
+ha	hau	hau	Hausa	-	-
+he	heb	heb	Hebrew	iw	-
+hi	hin	hin	Hindi	-	-
+ho	hmo	hmo	Hiri Motu	-	-
+hr	hrv	hrv	Croatian	-	-
+ht	hat	hat	Haitian Creole	haitian	-
+hu	hun	hun	Hungarian	-	-
+hy	arm	hye	Armenian	-	-
+hz	her	her	Herero	-	-
+ia	ina	ina	Interlingua	-	-
+id	ind	ind	Indonesian	-	-
+ie	ile	ile	Interlingue	occidental	-
+ig	ibo	ibo	Igbo	-	-
+ii	iii	iii	Sichuan Yi	nuosu	-
+ik	ipk	ipk	Inupiaq	-	-
+io	ido	ido	Ido	-	-
+is	ice	isl	Icelandic	-	-
+it	ita	ita	Italian	-	-
+iu	iku	iku	Inuktitut	-	-
+ja	jpn	jpn	Japanese	-	-
+jv	jav	jav	Javanese	-	-
+ka	geo	kat	Georgian	-	-
+kg	kon	kon	Kongo	-	-
+ki	kik	kik	Kikuyu	gikuyu	-
+kj	kua	kua	Kuanyama	kwanyama	-
+kk	kaz	kaz	Kazakh	-	-
+kl	kal	kal	Greenlandic	kalaallisut	-
+km	khm	khm	Khmer	cambodian	-
+kn	kan	kan	Kannada	-	-
+ko	kor	kor	Korean	-	-
+kr	kau	kau	Kanuri	-	-
+ks	kas	kas	Kashmiri	-	-
+ku	kur	kur	Kurdish	-	-
+kv	kom	kom	Komi	-	-
+kw	cor	cor	Cornish	-	-
+ky	kir	kir	Kyrgyz	kirghiz	-
+la	lat	lat	Latin	-	-
+lb	ltz	ltz	Luxembourgish	letzeburgesch	-
+lg	lug	lug	Ganda	luganda	-
+li	lim	lim	Limburgish	limburgan	-
+ln	lin	lin	Lingala	-	-
+lo	lao	lao	Lao	laotian	-
+lt	lit	lit	Lithuanian	-	-
+lu	lub	lub	Luba-Katanga	-	-
+lv	lav	lav	Latvian	-	-
+mg	mlg	mlg	Malagasy	-	-
+mh	mah	mah	Marshallese	-	-
+mi	mao	mri	Maori	-	-
+mk	mac	mkd	Macedonian	-	-
+ml	mal	mal	Malayalam	-	-
+mn	mon	mon	Mongolian	-	-
+mr	mar	mar	Marathi	-	-
+ms	may	msa	Malay	-	-
+mt	mlt	mlt	Maltese	-	-
+my	bur	mya	Burmese	-	-
+na	nau	nau	Nauru	nauruan	-
+nb	nob	nob	Norwegian Bokmål	bokmal,bokmål	-
+nd	nde	nde	North Ndebele	-	-
+ne	nep	nep	Nepali	-	-
+ng	ndo	ndo	Ndonga	-	-
+nl	dut	nld	Dutch	flemish	-
+nn	nno	nno	Norwegian Nynorsk	nynorsk	-
+no	nor	nor	Norwegian	-	-
+nr	nbl	nbl	South Ndebele	-	-
+nv	nav	nav	Navajo	navaho	-
+ny	nya	nya	Chichewa	nyanja,chewa	-
+oc	oci	oci	Occitan	-	-
+oj	oji	oji	Ojibwe	ojibwa	-
+om	orm	orm	Oromo	-	-
+or	ori	ori	Odia	oriya	-
+os	oss	oss	Ossetian	ossetic	-
+pa	pan	pan	Punjabi	panjabi	-
+pi	pli	pli	Pali	-	-
+pl	pol	pol	Polish	-	-
+ps	pus	pus	Pashto	pushto	-
+pt	por	por	Portuguese	-	pt-pt
+qu	que	que	Quechua	-	-
+rm	roh	roh	Romansh	-	-
+rn	run	run	Rundi	kirundi	-
+ro	rum	ron	Romanian	moldavian,moldovan	-
+ru	rus	rus	Russian	-	-
+rw	kin	kin	Kinyarwanda	-	-
+sa	san	san	Sanskrit	-	-
+sc	srd	srd	Sardinian	-	-
+sd	snd	snd	Sindhi	-	-
+se	sme	sme	Northern Sami	-	-
+sg	sag	sag	Sango	-	-
+si	sin	sin	Sinhala	sinhalese	-
+sk	slo	slk	Slovak	-	-
+sl	slv	slv	Slovenian	slovene	-
+sm	smo	smo	Samoan	-	-
+sn	sna	sna	Shona	-	-
+so	som	som	Somali	-	-
+sq	alb	sqi	Albanian	-	-
+sr	srp	srp	Serbian	-	-
+ss	ssw	ssw	Swati	swazi	-
+st	sot	sot	Southern Sotho	sesotho	-
+su	sun	sun	Sundanese	-	-
+sv	swe	swe	Swedish	-	-
+sw	swa	swa	Swahili	kiswahili	-
+ta	tam	tam	Tamil	-	-
+te	tel	tel	Telugu	-	-
+tg	tgk	tgk	Tajik	-	-
+th	tha	tha	Thai	-	-
+ti	tir	tir	Tigrinya	-	-
+tk	tuk	tuk	Turkmen	-	-
+tl	tgl	tgl	Tagalog	filipino,fil	-
+tn	tsn	tsn	Tswana	setswana	-
+to	ton	ton	Tongan	-	-
+tr	tur	tur	Turkish	-	-
+ts	tso	tso	Tsonga	-	-
+tt	tat	tat	Tatar	-	-
+tw	twi	twi	Twi	-	-
+ty	tah	tah	Tahitian	-	-
+ug	uig	uig	Uyghur	uighur	-
+uk	ukr	ukr	Ukrainian	-	-
+ur	urd	urd	Urdu	-	-
+uz	uzb	uzb	Uzbek	-	-
+ve	ven	ven	Venda	-	-
+vi	vie	vie	Vietnamese	-	-
+vo	vol	vol	Volapük	volapuk	-
+wa	wln	wln	Walloon	-	-
+wo	wol	wol	Wolof	-	-
+xh	xho	xho	Xhosa	-	-
+yi	yid	yid	Yiddish	ji	-
+yo	yor	yor	Yoruba	-	-
+za	zha	zha	Zhuang	-	-
+zh	chi	zho	Chinese	-	zh-cn
+zu	zul	zul	Zulu	-	-
+pt-br	-	-	Portuguese (Brazil)	pob,brazilian,brazilian portuguese,portuguese (brazil),portuguese-brazil	-
+pt-pt	-	-	Portuguese (Portugal)	european portuguese,portuguese (portugal)	-
+zh-cn	-	-	Chinese (Simplified)	zh-hans,zh-sg,zh-hans-cn,chs,zhs,simplified chinese,chinese (simplified)	-
+zh-tw	-	-	Chinese (Traditional)	zh-hant,zh-hk,zh-mo,zh-hant-tw,cht,zht,traditional chinese,chinese (traditional)	-
+es-419	-	-	Spanish (Latin America)	es-la,es-lat,es-ar,es-cl,es-co,es-pe,es-ve,es-us,latin american spanish,spanish (latin america),latino	ea
+es-mx	-	-	Spanish (Mexico)	mexican spanish,spanish (mexico)	ea
+fr-ca	-	-	French (Canada)	canadian french,french (canada),quebecois	fr
