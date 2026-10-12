@@ -114,6 +114,10 @@ type Coordinator struct {
 	// set once at startup; nil means DefaultUpgradeBudget. See upgradebudget.go.
 	upgradeBudgetFn func(ctx context.Context) int
 
+	// bookLangsFn reads the languages automatic book grabs accept (Settings → Library),
+	// set once at startup; nil accepts every language. See booklangs.go.
+	bookLangsFn func(ctx context.Context) []string
+
 	// now is the books sweep's clock; nil means time.Now. Tests set it to step through
 	// the search ladder.
 	now func() time.Time
@@ -456,6 +460,7 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			// don't-seed, so an uploaded torrent from a private tracker isn't deleted
 			// the moment it imports.
 			c.recordBookGrab(ctx, bookID, versionID, title, "manual", b.QualityProfile, hash)
+			c.markGrabManual(ctx, hash) // imports into this book whatever the torrent is called
 		}
 		c.books.AddEvent(ctx, bookID, "grabbed", "Uploaded torrent — "+title)
 	}

@@ -96,6 +96,8 @@ type Request struct {
 	searchMisses int
 	lastSearchAt string
 	nextCheckAt  string
+	// releaseDate: a book that isn't out yet, the day it is (YYYY-MM-DD).
+	releaseDate string
 	// Books: for a "both" request with one format here, which one and what's coming.
 	partNote string
 	// onDiskAt is when a movie or series request was first seen complete while Plex is

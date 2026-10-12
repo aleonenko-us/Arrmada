@@ -84,6 +84,10 @@ type Book struct {
 	// FillNextSearch once the wanted editions are known. Empty when nothing is being
 	// searched for (unmonitored, or every wanted edition is here) or the book is due now.
 	NextSearchAt string `json:"next_search_at,omitempty"`
+	// ReleaseDate is the day the book comes out (YYYY-MM-DD, from the catalogue; "" =
+	// not known). The sweep doesn't search an upcoming book before it, searches daily for
+	// two weeks after it, and its request reads 'Out <date>' (ladder.go).
+	ReleaseDate string `json:"release_date,omitempty"`
 	// MetaUpdatedAt is when the book's details last changed (unix ms; 0 = never since
 	// it was added). SQLite triggers keep it current (migrations 0262_books_meta_updated
 	// and 0263_audio_narrator), not the Go code; TouchMeta covers changes that aren't a column, like a cover file.
@@ -116,7 +120,7 @@ func (b *Book) FillNextSearch() {
 	if !b.Monitored || !b.LacksWanted() {
 		return
 	}
-	if next := NextSearchAt(b.LastSearchAt, b.SearchMisses); !next.IsZero() {
+	if next := NextSearchAtFor(b.LastSearchAt, b.SearchMisses, b.ReleaseDate, time.Now()); !next.IsZero() {
 		b.NextSearchAt = next.UTC().Format(time.RFC3339)
 	}
 }
@@ -189,7 +193,7 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	monitored, quality_profile, added_at, series_name, series_position, series_key, keep_catalogue,
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
-	last_search_at, search_misses,
+	last_search_at, search_misses, release_date,
 	meta_updated_at, audiobook_narrator`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
@@ -208,7 +212,7 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
-		&lastSearch, &b.SearchMisses,
+		&lastSearch, &b.SearchMisses, &b.ReleaseDate,
 		&b.MetaUpdatedAt, &b.AudiobookNarrator)
 	if err != nil {
 		return Book{}, err
@@ -322,9 +326,9 @@ func (r *Repo) Create(ctx context.Context, b Book) (Book, error) {
 			return ErrExists
 		}
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO books (ol_key, title, author, year, cover_url, description, subjects_json, monitored, quality_profile)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			b.OLKey, b.Title, b.Author, b.Year, b.CoverURL, b.Description, subjectsJSON, b2i(b.Monitored), b.QualityProfile)
+			`INSERT INTO books (ol_key, title, author, year, cover_url, description, subjects_json, monitored, quality_profile, release_date)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			b.OLKey, b.Title, b.Author, b.Year, b.CoverURL, b.Description, subjectsJSON, b2i(b.Monitored), b.QualityProfile, cleanReleaseDate(b.ReleaseDate))
 		if err != nil {
 			return err
 		}
@@ -466,8 +470,8 @@ func (r *Repo) Rematch(ctx context.Context, id int64, b Book, keepOld bool) erro
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE books SET ol_key = ?, title = ?, author = ?, year = ?, cover_url = ?,
-			        description = ?, subjects_json = ? WHERE id = ?`,
-			b.OLKey, b.Title, b.Author, b.Year, b.CoverURL, b.Description, subjectsJSON, id); err != nil {
+			        description = ?, subjects_json = ?, release_date = ? WHERE id = ?`,
+			b.OLKey, b.Title, b.Author, b.Year, b.CoverURL, b.Description, subjectsJSON, cleanReleaseDate(b.ReleaseDate), id); err != nil {
 			return err
 		}
 		if old != b.OLKey {

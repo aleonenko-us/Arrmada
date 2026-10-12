@@ -27,3 +27,19 @@ describe("wantedTitle", () => {
     expect(wantedTitle({ monitored: false, search_misses: 4 }, now)).toBeUndefined();
   });
 });
+
+describe("upcoming books", () => {
+  const now = new Date(2026, 9, 9, 12).getTime(); // 9 Oct 2026, the viewer's own day
+  it("says when an upcoming book will be searched, not that it's searching", () => {
+    const b = { monitored: true, search_misses: 2, release_date: "2027-03-12" };
+    const line = wantedCopy(b, "Ebook", now);
+    expect(line.startsWith("Not out yet — we'll search on ")).toBe(true);
+    expect(line).toMatch(/12/);
+    expect(line).toMatch(/Mar/);
+    expect(line).toMatch(/2027/); // not this year, so the year is said
+    expect(wantedTitle(b, now)?.startsWith("Out ")).toBe(true);
+  });
+  it("treats a book already out as any other", () => {
+    expect(wantedCopy({ monitored: true, search_misses: 0, release_date: "2026-10-01" }, "Ebook", now)).toBe("Wanted — searching.");
+  });
+});

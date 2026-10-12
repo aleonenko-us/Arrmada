@@ -73,6 +73,10 @@ type Tracking struct {
 	// (RFC3339, UTC). The page formats it in the viewer's own locale; the server never
 	// writes a date into the copy.
 	NextCheckAt string `json:"next_check_at,omitempty"`
+	// ReleaseDate is, for a book that isn't out yet (Note "Not out yet"), the day it comes
+	// out (YYYY-MM-DD): a calendar day, sent as a date so every viewer's page shows the
+	// same day ("Out 12 Mar") whatever its time zone. NextCheckAt is then that day's start.
+	ReleaseDate string `json:"release_date,omitempty"`
 	// While it's searching: when it was last checked (RFC3339, UTC — the later of the
 	// sweep's own stamp and the newest stored search), how many searches in a row have
 	// found nothing suitable, and for a book, whether the ladder has slowed to a monthly
@@ -345,6 +349,10 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 		switch {
 		case !rq.released:
 			t.Note = "Not out yet"
+			if rq.MediaType == "book" {
+				// The release day is when it's first searched: "Out 12 Mar — we'll grab it then".
+				t.NextCheckAt, t.ReleaseDate = rq.nextCheckAt, rq.releaseDate
+			}
 		case rq.MediaType == "book" && rq.searchMisses > 0:
 			// Searched and not found, as opposed to just added: say so, and when the
 			// next look is, instead of an open-ended "Searching".

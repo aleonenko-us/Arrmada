@@ -148,10 +148,12 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             {rel.recommended && <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>★ Recommended{rel.version ? ` · ${rel.version}` : targets && targets.length > 0 && rel.edition === "audiobook" ? " · Standard" : ""}</span>}
             {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
             {rel.format && <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>{rel.format}</span>}
-            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-[9.5px] uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : "not in profile"}</span>}
+            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-[9.5px] uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
           </div>
           {/* The raw torrent name — narrator and edition detail live here. */}
           <div className="mt-1 break-words text-[12.5px] font-medium">{rel.title}</div>
+          {/* Another language: the automation skips it, a hand pick is still allowed. */}
+          {rel.reject_reason && !usenet && <div className="mt-0.5 text-[11px]" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
           {/* Structured metadata (rich on trackers like MyAnonaMouse). */}
           {(rel.narrator || rel.series || rel.language) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">

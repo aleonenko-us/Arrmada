@@ -25,7 +25,7 @@ func TestPickBestBookKeyword(t *testing.T) {
 		bookRel("Some Book GraphicAudio M4B", 10),
 		bookRel("Some Book Abridged GraphicAudio M4B", 999), // rejected
 	}
-	best := pickBestBookForKind(sp, releases, "audiobook")
+	best := pickBestBookForKind(sp, nil, releases, "audiobook")
 	if best == nil || best.Title != "Some Book GraphicAudio M4B" {
 		t.Fatalf("got %v, want the GraphicAudio M4B", best)
 	}
@@ -44,7 +44,7 @@ func TestPickBestBookKeywordInNarrator(t *testing.T) {
 		{Title: "Brandon Sanderson - Rhythm of War [M4B]", Narrator: "Kate Reading, Michael Kramer", Format: "M4B", Seeders: 1072},
 		{Title: "Brandon Sanderson - Rhythm of War [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 61},
 	}
-	best := pickBestBookForKind(sp, releases, "audiobook")
+	best := pickBestBookForKind(sp, nil, releases, "audiobook")
 	if best == nil || best.Narrator != "GraphicAudio" {
 		t.Fatalf("got %+v, want the GraphicAudio narration to win on the keyword preference", best)
 	}
@@ -62,7 +62,7 @@ func TestPickBestBookPrefersComplete(t *testing.T) {
 		{Title: "Rhythm of War (Part 1 of 6) [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 500},
 		{Title: "Rhythm of War [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 40},
 	}
-	best := pickBestBookForKind(sp, releases, "audiobook")
+	best := pickBestBookForKind(sp, nil, releases, "audiobook")
 	if best == nil || best.Title != "Rhythm of War [M4B]" {
 		t.Fatalf("got %+v, want the complete release", best)
 	}
@@ -91,7 +91,7 @@ func TestPickBestBookFormatPreference(t *testing.T) {
 		bookRel("Some Book MP3", 900),
 		bookRel("Some Book M4B", 5),
 	}
-	best := pickBestBookForKind(sp, releases, "audiobook")
+	best := pickBestBookForKind(sp, nil, releases, "audiobook")
 	if best == nil || best.Title != "Some Book M4B" {
 		t.Fatalf("got %v, want M4B (higher format score)", best)
 	}
@@ -118,7 +118,7 @@ func TestPickBestBookEditionFilter(t *testing.T) {
 		bookRel("Some Book EPUB", 999), // ebook — not for the audiobook edition
 		bookRel("Some Book M4B", 1),
 	}
-	best := pickBestBookForKind(sp, releases, "audiobook")
+	best := pickBestBookForKind(sp, nil, releases, "audiobook")
 	if best == nil || best.Title != "Some Book M4B" {
 		t.Fatalf("got %v, want the M4B audiobook", best)
 	}

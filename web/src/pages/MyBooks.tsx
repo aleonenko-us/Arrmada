@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api, type MyBook, type MyRequest } from "../lib/api";
 import { usePoll } from "../lib/usePoll";
 import { posterThumb } from "../lib/img";
-import { formatCheckDay, notFoundYet } from "../lib/format";
+import { formatCheckDay, formatReleaseDay, notFoundYet } from "../lib/format";
 import { stillComingLine } from "../lib/bookFormats";
 import { Link } from "react-router-dom";
 import { playAudiobook } from "../lib/playerStub";
@@ -208,7 +208,9 @@ function requestBadge(r: MyRequest): { label: string; tone: string } {
   if (r.status === "declined") return { label: "Declined", tone: "var(--reject)" };
   if (r.status === "pending") return { label: "Pending", tone: "var(--avoid)" };
   switch (r.stage) {
-    case "searching": return r.note === "Not found yet" ? { label: "Not found yet", tone: "var(--avoid)" } : { label: "Searching", tone: "var(--accent)" };
+    case "searching":
+      if (r.note === "Not out yet") return { label: "Not out yet", tone: "var(--ink-dim)" };
+      return r.note === "Not found yet" ? { label: "Not found yet", tone: "var(--avoid)" } : { label: "Searching", tone: "var(--accent)" };
     // The download stages say what the staff queue says (lib/stages).
     case "queued": return { label: STAGE.queued.label, tone: "var(--accent)" };
     case "downloading": return { label: STAGE.downloading.label, tone: "var(--accent)" };
@@ -235,7 +237,9 @@ function RequestCard({ r }: { r: MyRequest }) {
       <div className="p-2">
         <div className="truncate text-[11.5px] font-semibold" title={r.title}>{r.title}</div>
         {r.author && <div className="truncate text-[10.5px] text-ink-dim" title={r.author}>{r.author}</div>}
-        {coming && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
+        {/* Not out yet: the day it is, which is when it's first searched for. */}
+        {r.release_date && r.status !== "declined" && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date)}</div>}
+        {coming && !r.release_date && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
         {notFound && r.next_check_at && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--avoid)" }} title={notFoundYet(r.next_check_at)}>Next check {formatCheckDay(r.next_check_at)}</div>}
       </div>
     </div>

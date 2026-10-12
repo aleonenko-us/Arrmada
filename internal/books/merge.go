@@ -275,10 +275,14 @@ func carryOverTx(ctx context.Context, tx *sql.Tx, keep, drop Book) error {
 	if len(subjects) == 0 {
 		subjects = drop.Subjects
 	}
+	// The release day (BOOK-18): the kept book's, else the dropped one's. meta_checked_at
+	// deliberately stays the kept book's own: the stamp says when the KEPT key was looked
+	// up, and an empty one only means the refresh job looks at it soon.
+	releaseDate := orStr(keep.ReleaseDate, drop.ReleaseDate)
 	_, err := tx.ExecContext(ctx,
 		`UPDATE books SET monitored = ?, series_name = ?, series_position = ?, series_key = ?,
-		        description = ?, cover_url = ?, subjects_json = ? WHERE id = ?`,
-		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), keep.ID)
+		        description = ?, cover_url = ?, subjects_json = ?, release_date = ? WHERE id = ?`,
+		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), cleanReleaseDate(releaseDate), keep.ID)
 	return err
 }
 

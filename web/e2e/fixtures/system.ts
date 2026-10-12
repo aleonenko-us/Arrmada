@@ -139,6 +139,7 @@ export const settings: AppSettings = {
   downloads_disk_guard_resume_pct: "90",
   downloads_stall_minutes: 60,
   upgrade_max_grabs_per_sweep: 10,
+  books_languages: ["en"],
 };
 
 export const recycle: RecycleStats = {

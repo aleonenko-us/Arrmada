@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
 	"github.com/tristenlammi/arrmada/internal/auth"
@@ -83,6 +84,8 @@ type MyRequest struct {
 	Stage       string `json:"stage,omitempty"`
 	Note        string `json:"note,omitempty"`
 	NextCheckAt string `json:"next_check_at,omitempty"`
+	// ReleaseDate: the book isn't out yet; the day it is (YYYY-MM-DD), for "Out 12 Mar".
+	ReleaseDate string `json:"release_date,omitempty"`
 }
 
 // MyEbook is what the download button needs to know.
@@ -192,6 +195,9 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		mr.Waiting = requests.StillComing(rq.Formats, b)
 		if t := rq.Tracking; tracked && t != nil {
 			mr.Stage, mr.Note, mr.NextCheckAt = t.Stage, t.Note, t.NextCheckAt
+		}
+		if b.ID > 0 && !books.Released(b.ReleaseDate, time.Now()) {
+			mr.ReleaseDate = b.ReleaseDate
 		}
 		pending = append(pending, mr)
 	}

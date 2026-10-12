@@ -16,6 +16,7 @@ import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { LastSearches, refreshSearches } from "../components/LastSearch";
 import { wantedCopy } from "../lib/bookSearch";
+import { formatReleaseDay, isUpcoming } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
@@ -101,6 +102,10 @@ export function BookDetail() {
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
                 {b.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{b.year}</span>}
+                {/* Not out yet: searches start on this day. */}
+                {b.release_date && isUpcoming(b.release_date) && (
+                  <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Out {formatReleaseDay(b.release_date)}</span>
+                )}
                 {/* The catalogue the book actually came from. Open Library keeps its navy
                     chip; the others use the panel style so the palette doesn't grow. */}
                 {b.catalogue && (

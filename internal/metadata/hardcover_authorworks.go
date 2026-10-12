@@ -14,8 +14,10 @@ import (
 // Discover, and "Add author" all see the same clean list.
 
 // hcAuthorBookFields adds to the shared book fields what the filters need: each
-// contribution's role, and the language of the default editions.
-const hcAuthorBookFields = hcBookFields + ` default_physical_edition { language { code2 } } default_ebook_edition { language { code2 } }`
+// contribution's role, and the language of the default editions. release_date rides
+// along so books added from an author's list know when they come out; if the schema
+// refuses any of these, authorWorksLive retries with the plain fields.
+const hcAuthorBookFields = hcBookFields + ` release_date default_physical_edition { language { code2 } } default_ebook_edition { language { code2 } }`
 
 // mainAuthorRoles are the contribution labels that mean "wrote it". Hardcover leaves
 // the role empty for the principal author and names the rest ("Illustrator",

@@ -148,6 +148,16 @@ func (b *wantedBuild) schedule(row *wantedRow, lastAt string, misses int) {
 	}
 }
 
+// reschedule replaces the row's next search with next (zero or past = due now), for a
+// kind whose sweep has a rule beyond the plain ladder (a book's release window).
+func (b *wantedBuild) reschedule(row *wantedRow, next time.Time) {
+	row.Due = false
+	if !next.After(b.now) {
+		next, row.Due = b.now, true
+	}
+	row.NextSearchAt = next.UTC().Format(time.RFC3339)
+}
+
 // settle applies what overrides "searching", once the row's last search is known: a
 // client that can't be read, or indexers that all failed last time. A row that isn't
 // going to be searched automatically loses its next-search time.
@@ -196,7 +206,7 @@ func (a *api) buildWanted(ctx context.Context, kinds wantedKinds) wantedLists {
 		add(b.series())
 	}
 	if kinds.has(automation.AttemptBook) && a.deps.Books != nil && a.booksEnabled(ctx) {
-		add(b.books(), nil)
+		add(b.books())
 	}
 	if kinds.has(automation.AttemptMusic) && a.deps.Music != nil && a.musicEnabled(ctx) {
 		add(b.albums())
@@ -377,15 +387,14 @@ func (b *wantedBuild) seriesInFlight(row *wantedRow, sa series.SeriesAcquisition
 }
 
 // books: monitored books missing an edition (or monitored audio version) their profile
-// wants. Books have no release date to wait on, so there is no Upcoming half.
-func (b *wantedBuild) books() []wantedRow {
+// wants. One whose release day hasn't come is Upcoming: the sweep won't search it yet.
+func (b *wantedBuild) books() (rows, upcoming []wantedRow) {
 	list, err := b.a.deps.Books.List(b.ctx)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	active := b.active(automation.AttemptBook)
 	wants := map[string][2]bool{}
-	var rows []wantedRow
 	for _, bk := range list {
 		if !bk.Monitored {
 			continue
@@ -406,14 +415,23 @@ func (b *wantedBuild) books() []wantedRow {
 		row := wantedRow{MediaType: automation.AttemptBook, ID: bk.ID, BookID: bk.ID, Title: bk.Title, Year: bk.Year,
 			PosterURL: bk.CoverURL, QualityProfile: b.profile(bk.QualityProfile), Byline: bk.Author,
 			Missing: bookMissing(bk), State: wantedSearching}
+		if !books.Released(bk.ReleaseDate, b.now) {
+			row.State, row.AvailableAt = wantedNotReleased, bk.ReleaseDate
+			upcoming = append(upcoming, row)
+			continue
+		}
 		b.schedule(&row, bk.LastSearchAt, bk.SearchMisses)
+		if bk.ReleaseDate != "" {
+			// Just out: due now, then at most a day apart for two weeks — the sweep's rule.
+			b.reschedule(&row, books.NextSearchAtFor(bk.LastSearchAt, bk.SearchMisses, bk.ReleaseDate, b.now))
+		}
 		if held {
 			row.State, row.ReviewID = wantedHeld, b.reviews[fmt.Sprintf("book:%d", bk.ID)]
 		}
 		rows = append(rows, row)
 	}
 	b.attach(automation.AttemptBook, rows)
-	return rows
+	return rows, upcoming
 }
 
 // bookMissing names what a book still lacks, in the words its page uses.
