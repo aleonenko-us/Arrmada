@@ -113,7 +113,8 @@ export function Books() {
       .then((r) => setDupeCount(r.groups.length))
       .catch(() => {});
   };
-  useEffect(countDupes, [list.length]);
+  const loaded = !!booksQ.data;
+  useEffect(() => { if (loaded) countDupes(); }, [loaded, list.length]);
 
   const [toastErr, setToastErr] = useState(false);
   // err shows the toast in the error colour: a search or scan that failed says so plainly.
