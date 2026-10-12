@@ -333,6 +333,7 @@ func (s *Service) upgradeOne(ctx context.Context, b Book) (outcome, reason strin
 		// save) lands here again: note each pairing once, not once per run.
 		s.flagOnce(ctx, b.ID, possibleDuplicateNote(other))
 		s.flagOnce(ctx, other.ID, possibleDuplicateNote(b))
+		s.flagDuplicate(ctx, b.ID, other.ID, DupReasonHardcover) // listed under Possible duplicates
 		// Ids only: the log never needs a title to say two rows collided.
 		s.log.Info("books: upgrade found a possible duplicate", "book_id", b.ID, "other_id", other.ID)
 		return "flagged", fmt.Sprintf("Hardcover lists it as the same book as %q (book %d); not merged", other.Title, other.ID), nil
