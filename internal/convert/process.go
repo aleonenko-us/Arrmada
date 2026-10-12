@@ -87,16 +87,47 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		return
 	}
 	scratch := s.activeScratch(ctx)
+	// Resumable pieces (chunk.go): with the setting on, a re-encode keeps its finished
+	// pieces across a restart, and an encode a restart interrupted carries on with the plan
+	// it had settled. With it off, any pieces left from when it was on are no use.
+	var resumed *resumeManifest
+	if p.resumable && needs.Video {
+		rec.resume = &resumeRun{cropOn: p.crop}
+		resumed = s.loadResume(ctx, job, src, scratch, mi, plan, p)
+	} else {
+		s.dropResume(ctx, job.Key, "")
+	}
 	// Room on both disks and in the recycle bin is checked before anything heavy: the HDR10+
 	// read, crop detection and the format test all read the film, and a file that can't fit
 	// would only fail after them — then be picked again and do it all over.
 	if !s.spaceCheck(ctx, job, src, mi, plan, scratch) {
+		if resumed != nil && resumed.h10pJSON != "" {
+			_ = os.Remove(resumed.h10pJSON)
+		}
 		return
 	}
 
 	h10pJSON := ""
 	var enc Encoder
-	if needs.Video {
+	if needs.Video && resumed != nil {
+		// Settled before the restart: the HDR10+ read, the crop detection, the format test
+		// and the test encodes aren't run again — a re-run could land on another quality
+		// and orphan the pieces.
+		plan.VideoCodec, plan.Quality, plan.Crop = resumed.Codec, resumed.CRF, resumed.Crop
+		rec.resume.attempt, rec.resume.priorSecs = resumed.Attempt, resumed.ActiveSec
+		if resumed.h10pJSON != "" {
+			h10pJSON = resumed.h10pJSON
+			rec.resume.h10pJSON = h10pJSON
+			defer os.Remove(h10pJSON)
+		}
+		enc = s.pickEncoder(job, mi, plan.VideoCodec, p.useGPU)
+		if !s.canPreserveHDR(mi, plan, enc, h10pJSON != "") {
+			s.finishSkip(job, SkipHDRUnsupported, mi.EncodeHDR()+" couldn't be carried through a conversion on this machine — kept the original")
+			return
+		}
+		s.event("info", fmt.Sprintf("%s: carrying on with the encode a restart interrupted — %s at CRF %d, as settled before the restart",
+			job.Title, strings.ToUpper(plan.VideoCodec), plan.Quality))
+	} else if needs.Video {
 		hdr := mi.EncodeHDR()
 		// HDR10+ is dynamic metadata ffprobe doesn't reliably report, so any PQ grade in an
 		// HEVC stream is checked by extracting it. Success means the file has it, and it is
@@ -116,7 +147,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			case found:
 				// The HDR10+ pipeline holds the stream twice in scratch. Check for that room
 				// before the whole-file read, not after it.
-				if !s.scratchFits(job, scratch, scratchNeeded(mi, plan, true)) {
+				if !s.scratchFits(job, scratch, s.jobScratchNeed(ctx, job, mi, plan, true, "cpu")) {
 					_ = os.Remove(jf)
 					return
 				}
@@ -129,6 +160,9 @@ func (s *Service) process(ctx context.Context, job *Job) {
 					return
 				}
 				h10pJSON = jf
+				if rec.resume != nil {
+					rec.resume.h10pJSON = jf // kept with the pieces (chunk.go)
+				}
 				defer os.Remove(jf)
 			case hdr == "HDR10+":
 				_ = os.Remove(jf)
@@ -161,7 +195,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	// The exact disk-space guard, now the codec is settled: room for the biggest output that
 	// could be kept (a re-encode is stopped once it passes that) and the HDR10+ pipeline's
 	// intermediate copy. The early check above worked from the provisional plan.
-	if !s.scratchFits(job, scratch, scratchNeeded(mi, plan, h10pJSON != "")) {
+	if !s.scratchFits(job, scratch, s.jobScratchNeed(ctx, job, mi, plan, h10pJSON != "", enc.Kind)) {
 		return
 	}
 	s.update(job, func(j *Job) { j.Codec = plan.VideoCodec })
@@ -169,7 +203,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 
 	// A re-encode is rehearsed on clips first, so a film that wouldn't pass the quality
 	// check or wouldn't shrink enough is found out in minutes rather than after a day.
-	if plan.VideoCodec != "" {
+	if plan.VideoCodec != "" && resumed == nil {
 		v, err := s.preflight(ctx, job, src, mi, enc, plan, h10pJSON != "")
 		switch {
 		case ctx.Err() != nil:
@@ -207,7 +241,14 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	rec.setPlan(plan)
 	s.beginHistory(job)
 
-	for attempt := 0; ; attempt++ {
+	startAttempt := 0
+	if resumed != nil {
+		startAttempt = min(resumed.Attempt, qualityRetries) // a retry before the restart still counts
+	}
+	for attempt := startAttempt; ; attempt++ {
+		if rec.resume != nil {
+			rec.resume.attempt = attempt
+		}
 		if err := s.runEncode(ctx, job, src, dst, scratch, mi, enc, plan, h10pJSON); err != nil {
 			if ctx.Err() != nil {
 				return
@@ -329,7 +370,11 @@ func (s *Service) spaceCheck(ctx context.Context, job *Job, src string, mi *Medi
 		return false
 	}
 	need := scratchNeeded(mi, plan, false)
-	if !s.scratchFits(job, scratch, need) {
+	encKind := ""
+	if s.record(job).resume != nil {
+		encKind = s.encoderChoice(mi, plan.VideoCodec, s.prefs(ctx).useGPU).Kind // provisional
+	}
+	if !s.scratchFits(job, scratch, s.jobScratchNeed(ctx, job, mi, plan, false, encKind)) {
 		return false
 	}
 	dir := filepath.Dir(src)
@@ -514,17 +559,30 @@ func keptAudioBytes(mi *MediaInfo, plan Plan) int64 {
 
 // scratchNeeded is the scratch space a conversion can use at its peak: the whole output for
 // a track tidy-up, the size cap (plus muxing slack) for a re-encode, and twice that for the
-// HDR10+ pipeline, which holds the stream and its injected copy at once.
-func scratchNeeded(mi *MediaInfo, plan Plan, hdr10plus bool) int64 {
+// HDR10+ pipeline, which holds the stream and its injected copy at once — or a pieced encode
+// (chunk.go), which holds the pieces and the joined film; both pass twoCopies.
+func scratchNeeded(mi *MediaInfo, plan Plan, twoCopies bool) int64 {
 	const slack = 512 << 20
 	limit := sizeCap(mi, plan)
 	switch {
 	case limit == 0:
 		return mi.SizeBytes + slack
-	case hdr10plus:
+	case twoCopies:
 		return 2*limit + slack
 	}
 	return limit + slack
+}
+
+// jobScratchNeed is scratchNeeded for one job. A job running with resumable pieces on needs
+// the two copies of a pieced encode when it will be pieced (encKind is the encoder it runs
+// on), less the pieces already in its resume folder: they're on the disk already, and the
+// free figure has counted them.
+func (s *Service) jobScratchNeed(ctx context.Context, job *Job, mi *MediaInfo, plan Plan, hdr10plus bool, encKind string) int64 {
+	if s.record(job).resume == nil {
+		return scratchNeeded(mi, plan, hdr10plus)
+	}
+	pieced := s.piecedSpans(job, mi, Encoder{Kind: encKind}, plan) != nil
+	return max(scratchNeeded(mi, plan, hdr10plus || pieced)-s.resumeBytes(ctx)[job.Key], 0)
 }
 
 func savedPct(src, out int64) int {
@@ -578,6 +636,15 @@ func (s *Service) runEncodeOnce(ctx context.Context, job *Job, src, dst, scratch
 
 // encode runs ffmpeg for one job, parsing live progress from the -progress pipe.
 func (s *Service) encode(ctx context.Context, job *Job, src, dst string, mi *MediaInfo, enc Encoder, plan Plan, hwDecode bool) error {
+	if spans := s.piecedSpans(job, mi, enc, plan); spans != nil {
+		// In pieces a restart can't throw away (chunk.go). Should that fail for any reason
+		// but its size cap, the film is encoded in one go as before.
+		err := s.encodeResumable(ctx, job, src, dst, mi, enc, plan, spans)
+		if err == nil || ctx.Err() != nil || errors.Is(err, errTooBig) {
+			return err
+		}
+		s.piecesFailed(ctx, job, err)
+	}
 	cores := s.cpuCores(ctx)
 	// -loglevel warning suppresses the input stream dump, which otherwise floods the
 	// retained error tail with metadata lines.
@@ -616,6 +683,12 @@ func (s *Service) encode(ctx context.Context, job *Job, src, dst string, mi *Med
 // job live, registering the process so it can be paused, and returning any error with a
 // tail of stderr for diagnosis.
 func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, durationSec float64) error {
+	return s.runWithProgressSpan(ctx, job, args, durationSec, 0, 1)
+}
+
+// runWithProgressSpan is runWithProgress for a command that covers only base..base+span
+// of the job's progress (one piece of a pieced encode, chunk.go).
+func (s *Service) runWithProgressSpan(ctx context.Context, job *Job, args []string, durationSec, base, span float64) error {
 	cmd := s.tool(ctx, job, toolrun.Background, s.ffmpeg, args...) // niced, paused and killed as a group
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -633,15 +706,16 @@ func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	s.readProgress(job, stdout, durationSec)
+	s.readProgress(job, stdout, durationSec, base, span)
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("%v: %s", err, tail.String())
 	}
 	return nil
 }
 
-// readProgress consumes ffmpeg's -progress key=value stream and updates the job live.
-func (s *Service) readProgress(job *Job, r io.Reader, durationSec float64) {
+// readProgress consumes ffmpeg's -progress key=value stream and updates the job live,
+// mapping the command's own progress onto base..base+span of the job's.
+func (s *Service) readProgress(job *Job, r io.Reader, durationSec, base, span float64) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		s.tickActive(job) // encoding time for the forecast and the ledger (pauses excluded)
@@ -652,7 +726,7 @@ func (s *Service) readProgress(job *Job, r io.Reader, durationSec float64) {
 		switch k {
 		case "out_time_ms":
 			if us, err := strconv.ParseFloat(v, 64); err == nil && durationSec > 0 {
-				p := math.Min(1, (us/1e6)/durationSec)
+				p := base + span*math.Min(1, (us/1e6)/durationSec)
 				s.update(job, func(j *Job) { j.Progress = p })
 			}
 		case "fps":

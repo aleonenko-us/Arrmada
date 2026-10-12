@@ -35,13 +35,18 @@ type MediaInfo struct {
 	// a %.6g float of 23.976… re-times every frame slightly and drifts over a feature.
 	FrameRateRat string  `json:"frame_rate_rat,omitempty"`
 	DurationSec  float64 `json:"duration_sec"`
-	SizeBytes    int64   `json:"size_bytes"`
-	AudioTracks  int     `json:"audio_tracks"`
-	SubTracks    int     `json:"sub_tracks"`
-	TenBit       bool    `json:"ten_bit"`
-	Interlaced   bool    `json:"interlaced,omitempty"` // field_order says the content is interlaced → needs deinterlacing
-	VFR          bool    `json:"vfr"`                  // variable frame rate → needs CFR conversion
-	HasCC        bool    `json:"has_cc"`               // embedded EIA/CEA-608/708 closed captions in the video
+	// VideoStartSec is where the video starts relative to the file (an audio track that
+	// begins a frame earlier puts it at ~0.042). A conversion that rebuilds the video's
+	// timestamps — the pieced, resumable encode (chunk.go) — restores this offset, or the
+	// sound would sit that far off the picture.
+	VideoStartSec float64 `json:"video_start_sec,omitempty"`
+	SizeBytes     int64   `json:"size_bytes"`
+	AudioTracks   int     `json:"audio_tracks"`
+	SubTracks     int     `json:"sub_tracks"`
+	TenBit        bool    `json:"ten_bit"`
+	Interlaced    bool    `json:"interlaced,omitempty"` // field_order says the content is interlaced → needs deinterlacing
+	VFR           bool    `json:"vfr"`                  // variable frame rate → needs CFR conversion
+	HasCC         bool    `json:"has_cc"`               // embedded EIA/CEA-608/708 closed captions in the video
 	// Frames is the video stream's frame count as the container states it (MP4 nb_frames,
 	// Matroska NUMBER_OF_FRAMES); 0 when it doesn't. VideoSec is the video stream's own
 	// length (0 = unknown), which can differ from DurationSec when an audio track runs on.
@@ -270,6 +275,7 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 			ColorSpace     string `json:"color_space"`
 			FieldOrder     string `json:"field_order"`
 			RFrameRate     string `json:"r_frame_rate"`
+			StartTime      string `json:"start_time"`
 			AvgFrameRate   string `json:"avg_frame_rate"`
 			ClosedCaptions int    `json:"closed_captions"`
 			Channels       int    `json:"channels"`
@@ -298,6 +304,7 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 		Format struct {
 			FormatName string `json:"format_name"`
 			Duration   string `json:"duration"`
+			StartTime  string `json:"start_time"`
 			Size       string `json:"size"`
 			BitRate    string `json:"bit_rate"`
 		} `json:"format"`
@@ -327,6 +334,10 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 			}
 			mi.VideoIndex = vidx
 			mi.VideoCodec = s.CodecName
+			if vs, err := strconv.ParseFloat(s.StartTime, 64); err == nil {
+				fs, _ := strconv.ParseFloat(raw.Format.StartTime, 64)
+				mi.VideoStartSec = max(vs-fs, 0)
+			}
 			mi.Width, mi.Height = s.Width, s.Height
 			mi.Resolution = resolutionLabel(s.Width, s.Height)
 			// Interlaced content needs a deinterlace filter or the encode bakes combing in.

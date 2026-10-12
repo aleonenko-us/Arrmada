@@ -28,6 +28,7 @@ type Settings struct {
 	Crop             bool   `json:"crop"`           // remove black bars from re-encoded films
 	DolbyVision      string `json:"dolby_vision"`   // drop (keep the HDR10/HLG base) | skip (leave them alone)
 	TenBit           string `json:"ten_bit"`        // 8-bit SDR sources: "always" 10-bit | "match_source"
+	Resumable        bool   `json:"resumable"`      // encode long films in pieces a restart can't throw away (chunk.go)
 
 	// Undo: how long a converted original is kept in the originals hold (0 = no undo), and
 	// how much the hold may keep before conversions pause (GB; 0 = no limit).
@@ -64,7 +65,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		AllowAV1: p.allowAV1, UseGPU: p.useGPU, PauseWatching: p.pauseWatching,
 		KeepAudioLangs:   strings.Join(p.keepAudio, ", "),
 		KeepOriginalLang: p.keepOriginal, DropCommentary: p.dropCommentary,
-		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision, TenBit: p.tenBit,
+		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision, TenBit: p.tenBit, Resumable: p.resumable,
 		HoldDays: s.holdDays(ctx), HoldMaxGB: s.holdMaxGB(ctx),
 		ScratchDir: g.Get(ctx, keyScratchDir, ""), VaapiDevice: g.Get(ctx, keyVaapiDevice, ""),
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),
@@ -91,6 +92,7 @@ type SettingsPatch struct {
 	Crop             *bool   `json:"crop"`
 	DolbyVision      *string `json:"dolby_vision"`
 	TenBit           *string `json:"ten_bit"`
+	Resumable        *bool   `json:"resumable"`
 	HoldDays         *int    `json:"hold_days"`
 	HoldMaxGB        *int    `json:"hold_max_gb"`
 	ScratchDir       *string `json:"scratch_dir"`
@@ -175,6 +177,7 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 	setB(keyCrop, p.Crop)
 	setS(keyDolbyVision, p.DolbyVision, trim)
 	setS(keyTenBit, p.TenBit, trim)
+	setB(keyResumable, p.Resumable)
 	setS(keyScratchDir, p.ScratchDir, trim)
 	setS(keyVaapiDevice, p.VaapiDevice, trim)
 	setS(keyScanAt, p.ScanAt, trim)

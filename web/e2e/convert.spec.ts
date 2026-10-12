@@ -90,4 +90,24 @@ test.describe("manager", () => {
     await expect(group.getByText("Now: every re-encode is 10-bit (Main10).")).toBeVisible();
     await expect.poll(() => puts).toEqual([{ ten_bit: "always" }]);
   });
+
+  // CONV-27: resumable pieced encoding is a switch under Advanced, off until it's proven.
+  test("encoding in pieces is off by default, says what it does, and saves", async ({ page }) => {
+    const puts: unknown[] = [];
+    await page.route("**/api/v1/convert/settings", (route) => {
+      if (route.request().method() === "GET") return route.fallback();
+      const body = route.request().postDataJSON() as object;
+      puts.push(body);
+      return route.fulfill({ json: { ...convertSettings, ...body } });
+    });
+    await page.goto("/settings/tools#convert");
+    await page.getByText("Advanced", { exact: true }).click();
+    const pieces = page.getByRole("checkbox", { name: /Encode long films in pieces/ });
+    await expect(pieces).not.toBeChecked();
+    await expect(page.getByText(/a restart or update during the encode loses at most one piece/)).toBeVisible();
+    await expect(page.getByText(/Off by default while it's being proven/)).toBeVisible();
+    await pieces.click();
+    await expect(pieces).toBeChecked();
+    await expect.poll(() => puts).toEqual([{ resumable: true }]);
+  });
 });

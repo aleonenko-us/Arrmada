@@ -246,7 +246,8 @@ func TestRealConversions(t *testing.T) {
 	// --- 6: pausing a running encode while someone watches -----------------------------
 	// This one is rehearsed on clips first, as a feature film would be — and it's
 	// letterboxed (a 2.39:1 picture in a 16:9 frame), so its black bars come off.
-	set(t, s, map[string]string{keyAllowAV1: "false"})
+	// Black-bar removal is off unless you turn it on (CONV-12): this film turns it on.
+	set(t, s, map[string]string{keyAllowAV1: "false", keyCrop: "true"})
 	preflightMinDuration = 30
 	defer func() { preflightMinDuration = 20 * 60 }()
 	slow := filepath.Join(lib, "Long (2022).mkv")

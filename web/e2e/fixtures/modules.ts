@@ -27,7 +27,7 @@ export const convertHardware = {
 export const convertSettings: ConvertSettings = {
   auto: false, hours_start: "01:00", hours_end: "07:00", allow_av1: false, use_gpu: false, pause_watching: true,
   keep_audio_langs: "en", keep_original_lang: true, drop_commentary: false, keep_sub_langs: "en",
-  image_subs: "keep", tidy_tracks: true, crop: false, dolby_vision: "drop", ten_bit: "match_source", hold_days: 14, hold_max_gb: 500, scratch_dir: "/scratch", vaapi_device: "", cpu_cores: 8, workers: 1,
+  image_subs: "keep", tidy_tracks: true, crop: false, dolby_vision: "drop", ten_bit: "match_source", resumable: false, hold_days: 14, hold_max_gb: 500, scratch_dir: "/scratch", vaapi_device: "", cpu_cores: 8, workers: 1,
   scan_at: "03:00", server_time: "12:00", server_tz: "UTC", plex_watching_known: false, can_pause: false,
   has_gpu: false, gpu_does_av1: false, hdr10plus_tool: false,
 };
