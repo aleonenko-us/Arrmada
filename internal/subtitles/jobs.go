@@ -54,11 +54,29 @@ type Job struct {
 	// worker always takes the lowest non-empty line first, so tonight's import isn't stuck
 	// behind a sweep's worth of hour-long AI runs.
 	Priority int `json:"priority"`
+	// Mode is "" for an ordinary ensure job. ModeRepairForced is the one-shot repair of a
+	// sidecar that was extracted from a forced track (repair.go).
+	Mode string `json:"mode,omitempty"`
+
+	repairLangs []string // ModeRepairForced: the kept languages whose sidecar is suspect
+	// retire lists orphaned subtitles this job replaces: each goes to the recycle bin once
+	// its language has been made (orphans.go), and stays if it wasn't.
+	retire []orphanRetire
 	// RunID names this run's rows in the attempt ledger (GET /subtitles/history?run_id=).
 	RunID string `json:"run_id,omitempty"`
 	// Outcomes is what each rung did for each language, in the order tried; the Note is
 	// generated from them.
 	Outcomes []Outcome `json:"outcomes,omitempty"`
+}
+
+// dedupeKey is what enqueue dedupes on: the file, plus the mode for a special job. A
+// forced-track repair is a different piece of work from ensuring the file's languages, so
+// one must not swallow the other.
+func (j *Job) dedupeKey() string {
+	if j.Mode != "" {
+		return j.key() + "#" + j.Mode
+	}
+	return j.key()
 }
 
 // Queue priorities, most urgent first. Each has its own FIFO line in Service.pending.
@@ -246,7 +264,7 @@ func (s *Service) pop() *Job {
 // missing, and without this every file was in the queue several times over.
 func (s *Service) enqueue(job *Job) *Job {
 	s.mu.Lock()
-	key := job.key()
+	key := job.dedupeKey()
 	// Looked up, not scanned: a sweep queues thousands, and walking the list for each
 	// one (with a key rendered per entry) was quadratic — slow enough under the race
 	// detector to fail the "never blocks" test.
@@ -259,6 +277,7 @@ func (s *Service) enqueue(job *Job) *Job {
 			if job.Redo {
 				j.Redo = true // the waiting job takes on the stronger intent
 			}
+			j.retire = mergeRetire(j.retire, job.retire)
 			// Pressing Ensure on a file the sweep already queued moves it up to the
 			// button's line rather than leaving it hours deep behind the sweep.
 			if job.Priority < j.Priority {
@@ -591,8 +610,11 @@ func (s *Service) SetJobDoneHook(fn func(Job)) {
 // retireLocked forgets a job that is no longer queued or running, so its file can be
 // queued again. The mutex must be held.
 func (s *Service) retireLocked(job *Job) {
-	if k := job.key(); s.active[k] == job {
+	if k := job.dedupeKey(); s.active[k] == job {
 		delete(s.active, k)
+	}
+	if job.Mode == ModeRepairForced {
+		s.repairNudge() // the repair pass waits for its jobs, however they end
 	}
 }
 
