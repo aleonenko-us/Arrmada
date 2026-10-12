@@ -154,12 +154,43 @@ func TestStatusNeverLeaksSecrets(t *testing.T) {
 func TestCatalogIsComplete(t *testing.T) {
 	seen := map[string]bool{}
 	for _, k := range Catalog {
-		if k.ID == "" || k.Label == "" || k.EnvVar == "" || k.HelpURL == "" || k.Steps == "" {
+		if !k.Hidden && (k.ID == "" || k.Label == "" || k.EnvVar == "" || k.HelpURL == "" || k.Steps == "") {
 			t.Errorf("catalog entry missing fields: %+v", k)
+		}
+		// A hidden credential is entered on its own card only — never from the install.
+		if k.Hidden && (k.ID == "" || k.EnvVar != "") {
+			t.Errorf("hidden credential %q must have an id and no env var", k.ID)
 		}
 		if seen[k.ID] {
 			t.Errorf("duplicate key id %q", k.ID)
 		}
 		seen[k.ID] = true
+	}
+}
+
+// The outgoing-email credentials live in the store but stay off the API keys list, and the
+// generic key routes can't reach them (Listed); an empty env var name never reads the
+// environment.
+func TestHiddenCredentialsStayOffTheList(t *testing.T) {
+	ctx := context.Background()
+	s := NewStore(memStore{})
+	for _, id := range []string{SMTPHost, SMTPUsername, SMTPPassword} {
+		if Listed(id) {
+			t.Errorf("%s is listed", id)
+		}
+		if err := s.Set(ctx, id, "secret-"+id); err != nil {
+			t.Fatal(err)
+		}
+		if s.Value(ctx, id) != "secret-"+id {
+			t.Errorf("%s didn't save", id)
+		}
+	}
+	for _, st := range s.Status(ctx) {
+		if st.Hidden || st.ID == SMTPHost || st.ID == SMTPUsername || st.ID == SMTPPassword {
+			t.Errorf("Status lists %s", st.ID)
+		}
+	}
+	if !Listed("tmdb") || Listed("nope") {
+		t.Error("Listed must be true for ordinary keys and false for unknown ones")
 	}
 }

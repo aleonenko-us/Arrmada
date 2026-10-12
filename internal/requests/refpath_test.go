@@ -28,6 +28,7 @@ var refPathVectors = []struct{ ref, want string }{
 	{"request:40:new:1700000000:2", "/requests?id=40"},
 	{"issue:12:new", "/requests?tab=issues&issue=12"},
 	{"issue:0:new", ""},
+	{"kindle:9f2c41d07a1b3e55", "/shelf"},
 	{"movie:603:issue:12:resolved", "/discover/movie/603"},
 	{"series:1399:issue:12:dismissed", "/discover/series/1399"},
 	{"1007", ""},

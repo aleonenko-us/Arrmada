@@ -11,6 +11,8 @@ import "strconv"
 //   - each requester (and subscriber) hears about their own request on
 //     user.<id>.request.updated, with the request's id, status and media type only.
 //   - attention.changed is staff-only, with the Needs-you counts and nothing else.
+//   - user.<id>.inbox.updated tells one person their inbox has a new message that no
+//     request event announces (a Send to Kindle result). It carries no data.
 const (
 	TopicQueueProgress    = "queue.progress"
 	TopicQueueChanged     = "queue.changed"

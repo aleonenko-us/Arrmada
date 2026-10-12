@@ -30,9 +30,13 @@ export interface RequestStage {
   unknown?: boolean;
 }
 
+// StagedRequest is all requestStage reads: a request's status and tracking, which My
+// shelf's own request rows have too.
+export type StagedRequest = Pick<MediaRequest, "media_type" | "status" | "available" | "tracking" | "decline_reason">;
+
 // requestStage turns a request's tracking into its badge and a one-line detail. queueKnown
 // false (downloads can't be checked right now) makes a queue-read stage "Status unknown".
-export function requestStage(rq: MediaRequest, queueKnown = true): RequestStage {
+export function requestStage(rq: StagedRequest, queueKnown = true): RequestStage {
   const tr = rq.tracking;
   if (!queueKnown && QUEUE_STAGES.has(tr?.stage ?? "")) {
     return { badge: "Status unknown", tone: "faint", detail: "Can't check downloads right now", unknown: true };
