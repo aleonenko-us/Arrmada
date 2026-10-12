@@ -157,7 +157,7 @@ func TestForcedOnlyFallsThrough(t *testing.T) {
 
 // A downloaded hearing-impaired subtitle is written with the .sdh qualifier.
 func TestDownloadedHearingImpairedIsSDH(t *testing.T) {
-	prov := &fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "1", HearingImpaired: true}}}}
+	prov := &fakeProvider{canDownload: true, results: map[string][]SubtitleResult{"en": {{FileID: "1", HearingImpaired: true, HashMatch: true}}}}
 	s, video := ladderFixture(t, "en", englishAudio(), prov, &fakeAI{})
 	job := runJob(s)
 	if _, err := os.Stat(sidecarPathV(video, "en", VariantSDH)); err != nil || job.Note != "en: downloaded" {
