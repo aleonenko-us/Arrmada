@@ -45,6 +45,90 @@ type prober struct {
 	db      *sql.DB
 	ffprobe string
 	cache   filesCache
+	// stat and walk are the only ways the prober touches the disk (nil = os.Stat and
+	// library.FindBookFiles), so tests can count them: a warm-up with nothing new to read
+	// must not wake the array's disks.
+	stat func(string) (os.FileInfo, error)
+	walk func(string) []library.FoundFile
+}
+
+func (p *prober) statPath(path string) (os.FileInfo, error) {
+	if p.stat != nil {
+		return p.stat(path)
+	}
+	return os.Stat(path)
+}
+
+func (p *prober) walkDir(path string) []library.FoundFile {
+	if p.walk != nil {
+		return p.walk(path)
+	}
+	return library.FindBookFiles(path)
+}
+
+// known is what the database already holds about the audio files of one item (its
+// folder, or its single file). Answering it touches no disk.
+type known struct {
+	Files    int     // probed files with a length
+	Seconds  float64 // their total length
+	Bytes    int64   // their total size, as of the probe
+	Chapters int     // embedded chapter markers across them
+}
+
+// underRange is the primary-key range holding root and everything below it: root+sep up
+// to root+(sep+1). It goes through the index, and never matches a sibling whose name
+// merely starts the same ("Title (Full cast)" next to "Title").
+func underRange(root string) (clean, from, to string) {
+	clean = filepath.Clean(root)
+	return clean, clean + string(filepath.Separator), clean + string(rune(filepath.Separator+1))
+}
+
+// knownUnder sums the probed files of an item from the database alone.
+func (p *prober) knownUnder(ctx context.Context, root string) known {
+	var k known
+	if root == "" {
+		return k
+	}
+	clean, from, to := underRange(root)
+	_ = p.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(duration), 0), COALESCE(SUM(size), 0),
+		        COALESCE(SUM(CASE WHEN json_valid(chapters) THEN json_array_length(chapters) ELSE 0 END), 0)
+		   FROM audio_file_meta WHERE duration > 0 AND (path = ? OR (path >= ? AND path < ?))`,
+		clean, from, to).Scan(&k.Files, &k.Seconds, &k.Bytes, &k.Chapters)
+	return k
+}
+
+// knownPaths lists every file with stored details at root or below it.
+func (p *prober) knownPaths(ctx context.Context, root string) ([]string, error) {
+	clean, from, to := underRange(root)
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT path FROM audio_file_meta WHERE path = ? OR (path >= ? AND path < ?)`, clean, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		out = append(out, path)
+	}
+	return out, rows.Err()
+}
+
+// forget drops the stored details of files that are gone, returning how many went.
+func (p *prober) forget(ctx context.Context, paths []string) int {
+	n := 0
+	for _, path := range paths {
+		if res, err := p.db.ExecContext(ctx, `DELETE FROM audio_file_meta WHERE path = ?`, path); err == nil {
+			if c, _ := res.RowsAffected(); c > 0 {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // files lists an item's audio files in play order, probed (cached per file).
@@ -64,13 +148,13 @@ func (p *prober) files(ctx context.Context, path string, probe bool) ([]AudioFil
 }
 
 func (p *prober) list(ctx context.Context, path string, probe bool) ([]AudioFile, error) {
-	st, err := os.Stat(path)
+	st, err := p.statPath(path)
 	if err != nil {
 		return nil, err
 	}
 	var paths []string
 	if st.IsDir() {
-		for _, f := range library.FindBookFiles(path) {
+		for _, f := range p.walkDir(path) {
 			if library.IsAudiobookFile(f.Path) {
 				paths = append(paths, f.Path)
 			}
@@ -88,7 +172,7 @@ func (p *prober) list(ctx context.Context, path string, probe bool) ([]AudioFile
 	}
 	out := make([]AudioFile, 0, len(paths))
 	for i, fp := range paths {
-		fi, err := os.Stat(fp)
+		fi, err := p.statPath(fp)
 		if err != nil {
 			continue
 		}

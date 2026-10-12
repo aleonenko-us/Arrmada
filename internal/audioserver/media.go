@@ -44,24 +44,44 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
-	files, err := s.probe.files(ctx, it.Path, false)
-	if err != nil {
+	f, ok := s.fileByIno(ctx, it.Path, ino)
+	if !ok {
 		writeError(w, http.StatusNotFound, "File not found")
 		return
 	}
-	for _, f := range files {
-		if f.Ino != ino {
-			continue
-		}
-		w.Header().Set("Content-Type", mimeFor(f.Ext))
-		w.Header().Set("Cache-Control", "private, max-age=86400")
-		if attach {
-			w.Header().Set("Content-Disposition", attachment(f.Name))
-		}
-		http.ServeFile(w, r, f.Path)
-		return
+	w.Header().Set("Content-Type", mimeFor(f.Ext))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	if attach {
+		w.Header().Set("Content-Disposition", attachment(f.Name))
 	}
-	writeError(w, http.StatusNotFound, "File not found")
+	http.ServeFile(w, r, f.Path)
+}
+
+// fileByIno finds one of an item's files. File lists are cached for a while, so when
+// the file isn't in the list or is no longer on disk (replaced or renamed outside
+// Arrmada), the folder is listed again once before giving up.
+func (s *Server) fileByIno(ctx context.Context, root, ino string) (AudioFile, bool) {
+	find := func(files []AudioFile) (AudioFile, bool) {
+		for _, f := range files {
+			if f.Ino == ino {
+				return f, true
+			}
+		}
+		return AudioFile{}, false
+	}
+	files, err := s.probe.files(ctx, root, false)
+	if err == nil {
+		if f, ok := find(files); ok {
+			if _, err := s.probe.statPath(f.Path); err == nil {
+				return f, true
+			}
+		}
+	}
+	s.probe.cache.drop(root)
+	if files, err = s.probe.files(ctx, root, false); err != nil {
+		return AudioFile{}, false
+	}
+	return find(files)
 }
 
 // handleItemDownload sends the whole audiobook: the file itself, or a zip of its files.

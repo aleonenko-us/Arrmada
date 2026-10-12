@@ -78,9 +78,8 @@ type ItemDetail struct {
 
 // card shapes an item for the web player.
 func (s *Server) card(ctx context.Context, it Item, prog map[string]listening.Progress) Card {
-	files, _ := s.probe.files(ctx, it.Path, false)
 	c := Card{Key: it.Key, BookID: it.Book.ID, Title: it.Title, Author: it.Book.Author, Series: it.Book.SeriesName,
-		SeriesSeq: seriesSequence(it.Book), Duration: totalDuration(files), AddedAt: it.AddedAt}
+		SeriesSeq: seriesSequence(it.Book), Duration: s.probe.knownUnder(ctx, it.Path).Seconds, AddedAt: it.AddedAt}
 	if it.Version != nil {
 		c.VersionID = it.Version.ID
 	}
@@ -163,10 +162,7 @@ func (s *Server) Catalog(ctx context.Context, userID int64, q CatalogQuery) ([]C
 	default:
 		items = append([]Item(nil), items...) // sortItems sorts in place; the catalogue is shared
 	}
-	dur := func(it Item) float64 {
-		files, _ := s.probe.files(ctx, it.Path, false)
-		return totalDuration(files)
-	}
+	dur := func(it Item) float64 { return s.probe.knownUnder(ctx, it.Path).Seconds }
 	switch q.Sort {
 	case "author":
 		sortItems(items, "media.metadata.authorName", false, nil)

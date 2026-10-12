@@ -20,18 +20,18 @@ func (s *Server) handleLibraries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, obj{"libraries": []obj{lib}})
 }
 
-// libraryTotals is the library's ?include=stats block. Only files already read count —
-// listing libraries mustn't probe the whole library.
+// libraryTotals is the library's ?include=stats block. Only files already read count,
+// from the database — listing libraries mustn't walk or probe the library.
 func (s *Server) libraryTotals(ctx context.Context) obj {
 	items, _ := s.items(ctx)
 	var size int64
 	var dur float64
 	files := 0
 	for _, it := range items {
-		f, _ := s.probe.files(ctx, it.Path, false)
-		size += totalSize(f)
-		dur += totalDuration(f)
-		files += len(f)
+		k := s.probe.knownUnder(ctx, it.Path)
+		size += k.Bytes
+		dur += k.Seconds
+		files += k.Files
 	}
 	return obj{"totalSize": size, "totalDuration": dur, "numAudioFiles": files, "totalItems": len(items)}
 }
@@ -216,8 +216,7 @@ func (s *Server) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 		sortKey = "media.metadata.title"
 	}
 	sortItems(items, sortKey, q.Get("desc") == "1" || q.Get("desc") == "true", func(it Item) float64 {
-		files, _ := s.probe.files(ctx, it.Path, false)
-		return totalDuration(files)
+		return s.probe.knownUnder(ctx, it.Path).Seconds
 	})
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	page, _ := strconv.Atoi(q.Get("page"))

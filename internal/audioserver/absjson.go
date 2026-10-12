@@ -57,25 +57,37 @@ func metadataExpanded(it Item) obj {
 	return m
 }
 
-// itemMinified is an item in lists; files are only described if already probed.
+// itemMinified is an item in lists, described from what the database knows about its
+// files (no folder is listed). Before its first probe it carries the file count and size
+// the import recorded: an app that drops books with no audio files (ShelfPlayer) still
+// lists it.
 func (s *Server) itemMinified(ctx context.Context, it Item, progress map[string]listening.Progress) obj {
-	files, _ := s.probe.files(ctx, it.Path, false)
-	dur := totalDuration(files)
+	k := s.probe.knownUnder(ctx, it.Path)
+	numFiles, size := k.Files, k.Bytes
+	if numFiles == 0 {
+		if bf := it.recordedFile(); bf != nil {
+			numFiles, size = max(bf.FileCount, 1), bf.SizeBytes
+		}
+	}
 	chapters := 0
-	if dur > 0 {
-		chapters = len(bookChapters(files))
+	if k.Seconds > 0 {
+		// bookChapters' rule: one file's embedded chapters, otherwise one per file.
+		chapters = k.Files
+		if k.Files == 1 {
+			chapters = max(k.Chapters, 1)
+		}
 	}
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
-		"path": it.Path, "relPath": it.Title, "isFile": len(files) == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
+		"path": it.Path, "relPath": it.Title, "isFile": numFiles == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
 		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.AddedAt, "isMissing": false, "isInvalid": false,
 		"mediaType": "book",
 		"media": obj{
 			"id": "m" + it.Key, "metadata": metadataMinified(it), "coverPath": coverPath(it), "tags": []string{},
-			"numTracks": len(files), "numAudioFiles": len(files), "numChapters": chapters, "duration": dur,
-			"size": totalSize(files), "ebookFormat": nil,
+			"numTracks": numFiles, "numAudioFiles": numFiles, "numChapters": chapters, "duration": k.Seconds,
+			"size": size, "ebookFormat": nil,
 		},
-		"numFiles": len(files), "size": totalSize(files),
+		"numFiles": numFiles, "size": size,
 	}
 	if p, ok := progress[it.Key]; ok {
 		o["userMediaProgress"] = mediaProgress(p)

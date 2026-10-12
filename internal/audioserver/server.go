@@ -50,6 +50,7 @@ type Server struct {
 	limiter  *loginLimiter
 	catalog  catalogCache
 	warming  atomic.Bool // stops overlapping Warm runs (the schedule, switching on, an import)
+	warm     warmState   // books whose files changed, and items with nothing to read (warm.go)
 
 	traceUntil atomic.Int64     // unix ms; see trace.go
 	now        func() time.Time // the clock (tests set it); nil means time.Now

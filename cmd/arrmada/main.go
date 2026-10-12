@@ -1017,6 +1017,16 @@ func main() {
 		}
 		return nil
 	}, scheduler.Label("Read audiobook chapters"), scheduler.Description("Reads chapters and durations for new audiobooks so listening apps start quickly."))
+	// The one full walk of the audiobook folders: the warm-up and every listing read what
+	// is known from the database, so a file deleted outside Arrmada is noticed here.
+	sched.Register("audioserver-verify", 24*time.Hour, false, func(ctx context.Context) error {
+		if settingsSvc.GetBool(ctx, audioserver.KeyEnabled, false) {
+			if n := audioSrv.Verify(ctx); n > 0 {
+				log.Info("audiobook server: forgot audio files that are gone", "files", n)
+			}
+		}
+		return nil
+	}, scheduler.Label("Check audiobook files"), scheduler.Description("Once a day, checks the audiobook folders for files added or removed outside Arrmada."))
 
 	// Health checks run in the background on their own intervals (the health-check task
 	// below drives them); the health endpoint serves their cached results. httpapi.New

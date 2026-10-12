@@ -58,9 +58,10 @@ func outboxFor(t *testing.T, c *Coordinator) (*outbox.Outbox, *recorder) {
 	box := outbox.New(c.db, c.log)
 	rec := &recorder{}
 	for topic, consumers := range map[string][]string{
-		outbox.TopicMovieImported:  {"convert", "subtitles", "requests.ready"},
-		outbox.TopicSeriesImported: {"convert", "subtitles", "requests.ready"},
-		outbox.TopicBookImported:   {"requests.ready", "audioserver.cache"},
+		outbox.TopicMovieImported:    {"convert", "subtitles", "requests.ready"},
+		outbox.TopicSeriesImported:   {"convert", "subtitles", "requests.ready"},
+		outbox.TopicBookImported:     {"requests.ready", "audioserver.cache"},
+		outbox.TopicBookFilesChanged: {"audioserver.cache"},
 	} {
 		for _, name := range consumers {
 			box.Register(topic, name, rec.handler(topic+"/"+name))

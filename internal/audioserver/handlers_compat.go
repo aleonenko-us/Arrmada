@@ -111,11 +111,12 @@ func (s *Server) handleLibraryStats(w http.ResponseWriter, r *http.Request) {
 		for _, g := range it.Book.Subjects {
 			genres[strings.ToLower(g)] = true
 		}
-		// Only what's already been read — a stats call mustn't probe the whole library.
-		files, _ := s.probe.files(ctx, it.Path, false)
-		dur += totalDuration(files)
-		size += totalSize(files)
-		tracks += len(files)
+		// Only what's already been read, from the database — a stats call mustn't walk
+		// or probe the whole library.
+		k := s.probe.knownUnder(ctx, it.Path)
+		dur += k.Seconds
+		size += k.Bytes
+		tracks += k.Files
 	}
 	writeJSON(w, http.StatusOK, obj{
 		"totalItems": len(items), "totalAuthors": len(authors), "totalGenres": len(genres), "totalDuration": dur,

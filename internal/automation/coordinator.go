@@ -208,6 +208,13 @@ func (c *Coordinator) bookImported(ctx context.Context, bookID int64, edition st
 	c.enqueue(ctx, outbox.TopicBookImported, outbox.BookImported{BookID: bookID, Edition: edition}, fmt.Sprintf("book:%d", bookID))
 }
 
+// bookFilesChanged queues the audiobook catalogue's re-read after a book's files were
+// renamed or deleted. It is never book.imported, which would tell the requester the book
+// is ready.
+func (c *Coordinator) bookFilesChanged(ctx context.Context, bookID int64) {
+	c.enqueue(ctx, outbox.TopicBookFilesChanged, outbox.BookFilesChanged{BookID: bookID}, fmt.Sprintf("book:%d", bookID))
+}
+
 // SetRecycleDir points book file deletion at the recycle bin (matching movies). Empty
 // means the bin is switched off and deletes are permanent.
 func (c *Coordinator) SetRecycleDir(dir string) { c.recycle = dir }
