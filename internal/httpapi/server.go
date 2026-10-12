@@ -691,6 +691,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/books/{id}/file", a.requireRole(auth.RoleManager, a.handleDeleteBookFile))
 	mux.HandleFunc("DELETE /api/v1/books/{id}", a.requireRole(auth.RoleManager, a.handleDeleteBook))
 
+	// The shared language table (internal/langs) for pickers and chips: static data.
+	mux.HandleFunc("GET /api/v1/languages", a.signedIn(a.handleLanguages))
+
 	// Discover (browse trending/popular/upcoming/by-genre; enriched with library status).
 	mux.HandleFunc("GET /api/v1/calendar", a.signedIn(a.handleCalendar))
 	mux.HandleFunc("GET /api/v1/discover/trending", a.signedIn(a.handleDiscoverTrending).ext())
