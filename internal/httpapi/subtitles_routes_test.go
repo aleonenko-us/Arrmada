@@ -35,7 +35,8 @@ func TestSubtitleRoutesRequireManager(t *testing.T) {
 	}
 }
 
-// The legacy endpoints are gone: nothing answers them any more.
+// The legacy endpoints are gone: no API route claims them, so they fall to the SPA
+// catch-all, which answers any unknown /api/ path with a JSON 404 (spa()).
 func TestLegacySubtitleRoutesRemoved(t *testing.T) {
 	rt := testRouter(t, true)
 	for _, path := range []string{
@@ -45,9 +46,15 @@ func TestLegacySubtitleRoutesRemoved(t *testing.T) {
 		method, p, _ := strings.Cut(path, " ")
 		rec := httptest.NewRecorder()
 		rt.ServeHTTP(rec, asRole(httptest.NewRequest(method, p, nil), auth.RoleAdmin))
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("%s: HTTP %d, want 404", path, rec.Code)
+		if route := rec.Header().Get("X-Route"); strings.Contains(route, "/api/") {
+			t.Errorf("%s reached %q; want no API route", path, route)
 		}
+	}
+	a := &api{deps: Deps{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	rec := httptest.NewRecorder()
+	a.spa(http.NotFoundHandler())(rec, httptest.NewRequest("GET", "/api/v1/subtitles/movies", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("an unclaimed /api/ path: HTTP %d, want 404", rec.Code)
 	}
 }
 
