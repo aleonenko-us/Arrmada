@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,6 +58,7 @@ type whisperGen struct {
 	syclProbed bool                    // the one-off device probe has run (sycl.go)
 	syclDev    int                     // the SYCL device index the probe settled on; 0 = whisper's default
 	note       func(level, msg string) // where to report on the switch, when the service wants to hear it
+	log        *slog.Logger            // debug lines (the exact whisper-cli arguments); nil = quiet
 }
 
 // pickBin is the build to run: the oneAPI one while it works, else the portable one.
@@ -310,9 +312,10 @@ func audioStreamFor(mi *mediaInfo, lang string, translate bool) (int, AudioTrack
 // generate produces an SRT for one language from a video's audio: extract 16 kHz mono,
 // cut it into chunks at silences (chunks.go), run whisper.cpp on each with DTW word
 // timestamps, and build the cues from the timed words (words.go). translate=true asks
-// whisper to translate the (foreign) audio to English. audioStream is the 0:a:N stream
-// to transcribe, or -1 for ffmpeg's default.
-func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, lang string, translate bool, audioStream int, progress func(pct int)) error {
+// whisper to translate the (foreign) audio to English; srcLang is that audio's language
+// tag ("" when the track is untagged). audioStream is the 0:a:N stream to transcribe, or
+// -1 for ffmpeg's default.
+func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, lang, srcLang string, translate bool, audioStream int, progress func(pct int)) error {
 	model := w.modelPath(translate)
 	if model == "" {
 		return fmt.Errorf("no whisper model available for %s", ifElse(translate, "translation", "transcription"))
@@ -372,7 +375,7 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 			}
 		}
 		run := func(b string) ([]byte, error) {
-			args := w.args(model, cwav, outB, lang, translate, dtw)
+			args := w.args(model, cwav, outB, lang, srcLang, translate, dtw)
 			if noGPU {
 				args = append(args, "--no-gpu")
 			}
@@ -380,6 +383,9 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 				args = append(args, "-dev", strconv.Itoa(w.syclDev))
 			}
 			return runWhisper(ctx, b, args, prog)
+		}
+		if i == 0 && w.log != nil {
+			w.log.Debug("subtitles: whisper-cli", "bin", bin, "args", strings.Join(w.args(model, cwav, outB, lang, srcLang, translate, dtw), " "))
 		}
 		out, err := run(bin)
 		if err != nil && bin == w.sycl && ctx.Err() == nil {
@@ -454,11 +460,22 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 //     every retry invents the same line. Off.
 //   - --suppress-nst: no ♪ / [Music] tokens.
 //   - -pp: progress lines, which runWhisper turns into the job's progress.
-func (w *whisperGen) args(model, wav, outBase, lang string, translate, dtw bool) []string {
+//   - -l: the language spoken. Transcribing, that's the wanted language. Translating, it's
+//     the audio's own language (srcLang) — without it whisper-cli assumes English and
+//     decodes French audio under an English language token — or "auto" when the track
+//     is untagged, so whisper detects it.
+func (w *whisperGen) args(model, wav, outBase, lang, srcLang string, translate, dtw bool) []string {
 	args := []string{"-m", model, "-f", wav, "-ojf", "-of", outBase, "-t", strconv.Itoa(threads()), "-pp"}
 	if translate {
-		args = append(args, "--translate")
+		src := langs.ISO1(srcLang)
+		if src == "" {
+			src = "auto"
+		}
+		args = append(args, "-l", src, "--translate")
 	} else if lang != "" {
+		if l := langs.ISO1(lang); l != "" {
+			lang = l // whisper knows "pt", not "pt-br"
+		}
 		args = append(args, "-l", lang)
 	}
 	if dtw {
@@ -551,8 +568,11 @@ func tailStr(out []byte, n int) string {
 // aiPlan decides how (if at all) AI can produce a wanted-language subtitle from a file's audio:
 //
 //	"transcribe" — the audio is already in that language;
-//	"translate"  — the target is English and the audio isn't (Whisper's only translation direction),
-//	               or the audio language is unknown (auto-detect + translate is a safe default);
+//	"translate"  — the target is English and no audio track is tagged English: Whisper's
+//	               only translation direction. Untagged audio lands here too (it is most
+//	               often foreign); the run then passes -l auto, so whisper detects the
+//	               language — and if that turns out to be English, translating English to
+//	               English is still an English subtitle;
 //	""           — impossible: Whisper can't translate into a non-English language.
 func aiPlan(audioLangs []string, wanted string) string {
 	for _, a := range audioLangs {

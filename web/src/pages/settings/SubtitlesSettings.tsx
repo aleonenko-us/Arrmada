@@ -149,7 +149,7 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
           </div>
         ))}
       </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint">Get <b>turbo</b> for English, plus <b>large-v3</b> to translate foreign audio to English.</div>
+      <div className="mt-2 text-[10.5px] text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English.</div>
     </div>
   );
 }
