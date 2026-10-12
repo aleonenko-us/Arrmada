@@ -2,11 +2,8 @@ package httpapi
 
 import (
 	"fmt"
-	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -32,6 +29,13 @@ type MyBook struct {
 	CoverURL string `json:"cover_url,omitempty"`
 	AddedAt  string `json:"added_at,omitempty"`
 	Series   string `json:"series,omitempty"` // "Name #3" when known
+	// The shelf's book sheet and its series rows: the description (capped, see
+	// shelfDescription), the series and the place in it apart (position 0 = unknown), and
+	// the first few subjects.
+	Description    string   `json:"description,omitempty"`
+	SeriesName     string   `json:"series_name,omitempty"`
+	SeriesPosition float64  `json:"series_position,omitempty"`
+	Subjects       []string `json:"subjects,omitempty"`
 	// Ebook is set when an ebook edition exists; Audiobook says one exists (served by
 	// Audiobookshelf, so no download here).
 	Ebook     *MyEbook `json:"ebook,omitempty"`
@@ -72,6 +76,7 @@ func myAudiobooks(b books.Book) []MyAudiobook {
 
 // MyRequest is one of the caller's book requests that hasn't produced a file yet.
 type MyRequest struct {
+	ID          int64  `json:"id"` // opens it on the Requests page
 	Title       string `json:"title"`
 	Author      string `json:"author,omitempty"`
 	Year        int    `json:"year,omitempty"`
@@ -86,14 +91,42 @@ type MyRequest struct {
 	Stage       string `json:"stage,omitempty"`
 	Note        string `json:"note,omitempty"`
 	NextCheckAt string `json:"next_check_at,omitempty"`
+	// Tracking is the whole of it, in the shape the Requests page reads (lib/stages'
+	// vocabulary, mapped for requesters by internal/pipeline): "Downloading 40% · 2h left".
+	// Absent when nothing could be tracked; with queue_known false, a stage read off the
+	// download queue isn't to be trusted.
+	Tracking *requests.Tracking `json:"tracking,omitempty"`
+	// DeclineReason is what staff said when they turned it down (it's the caller's own).
+	DeclineReason string `json:"decline_reason,omitempty"`
 	// ReleaseDate: the book isn't out yet; the day it is (YYYY-MM-DD), for "Out 12 Mar".
 	ReleaseDate string `json:"release_date,omitempty"`
 }
 
-// MyEbook is what the download button needs to know.
+// shelfDescriptionMax caps a description on the shelf: the whole shelf comes in one
+// answer, so a library of long blurbs would weigh on a phone. The sheet shows the start.
+const shelfDescriptionMax = 1500
+
+// shelfDescription is a book's description, cut at a word near shelfDescriptionMax.
+func shelfDescription(s string) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= shelfDescriptionMax {
+		return s
+	}
+	cut := string(r[:shelfDescriptionMax])
+	if i := strings.LastIndexAny(cut, " \n"); i > shelfDescriptionMax/2 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,.;:\n") + "…"
+}
+
+// MyEbook is what the download and Send to Kindle buttons need to know.
 type MyEbook struct {
 	Format    string `json:"format"`
 	SizeBytes int64  `json:"size_bytes"`
+	// Kindle: Amazon's Send to Kindle email takes this format (books.KindleAccepts), so the
+	// button is offered; otherwise it's shown disabled with the format named.
+	Kindle bool `json:"kindle"`
 }
 
 // handleMyBooks lists the library's books that have a file, plus the caller's own
@@ -141,9 +174,13 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		}
 		have[b.OLKey], haveID[b.ID] = true, true
 		mb := MyBook{BookID: b.ID, Title: b.Title, Author: b.Author, Year: b.Year, CoverURL: b.CoverURL,
-			AddedAt: b.AddedAt, Audiobook: audio, Audiobooks: audiobooks, Mine: mineID[b.ID] || mine[b.OLKey]}
+			AddedAt: b.AddedAt, Audiobook: audio, Audiobooks: audiobooks, Mine: mineID[b.ID] || mine[b.OLKey],
+			Description: shelfDescription(b.Description), SeriesName: b.SeriesName, SeriesPosition: b.SeriesPosition}
+		if len(b.Subjects) > 0 {
+			mb.Subjects = b.Subjects[:min(3, len(b.Subjects))]
+		}
 		if ebook {
-			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes}
+			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes, Kindle: books.KindleAccepts(b.Ebook.Format)}
 		}
 		if b.SeriesName != "" {
 			mb.Series = b.SeriesName
@@ -167,14 +204,14 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		open = append(open, rq)
 	}
 	// Where each one has got to, from its grabs and the download queue — read once. A
-	// queue that can't be read leaves the stage out rather than calling a downloading
-	// book "searching".
-	tracked := false
+	// queue that can't be read leaves the older stage fields out rather than calling a
+	// downloading book "searching", and says so (queue_known) for the tracking.
+	tracked, queueKnown := false, true
 	if len(open) > 0 && a.deps.Downloads != nil {
-		if queue, qerr := a.deps.Downloads.Queue(r.Context()); qerr == nil {
-			a.deps.Requests.Track(r.Context(), open, queue, true)
-			tracked = true
-		}
+		queue, qerr := a.deps.Downloads.Queue(r.Context())
+		queueKnown = qerr == nil
+		a.deps.Requests.Track(r.Context(), open, queue, queueKnown)
+		tracked = queueKnown
 	}
 	// Which of the formats asked for is still coming, from the library row itself, so the
 	// shelf can say "Audiobook on the way" even when the download client can't be read.
@@ -188,8 +225,9 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 	}
 	pending := []MyRequest{}
 	for _, rq := range open {
-		mr := MyRequest{Title: rq.Title, Author: rq.Author, Year: rq.Year,
-			CoverURL: rq.PosterURL, Status: rq.Status, RequestedAt: rq.CreatedAt, Formats: rq.Formats}
+		mr := MyRequest{ID: rq.ID, Title: rq.Title, Author: rq.Author, Year: rq.Year,
+			CoverURL: rq.PosterURL, Status: rq.Status, RequestedAt: rq.CreatedAt, Formats: rq.Formats,
+			Tracking: rq.Tracking, DeclineReason: rq.DeclineReason}
 		b, ok := byID[rq.BookID]
 		if !ok {
 			b = byKey[rq.OLKey]
@@ -207,7 +245,7 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 	// account is allowed), so the shelf offers Listen beside the downloads.
 	listen := a.deps.AudioServer != nil && a.deps.Settings.GetBool(r.Context(), audioserver.KeyEnabled, false) &&
 		a.deps.AudioServer.Allowed(r.Context(), u)
-	a.writeJSON(w, http.StatusOK, map[string]any{"books": shelf, "requests": pending, "listen": listen})
+	a.writeJSON(w, http.StatusOK, map[string]any{"books": shelf, "requests": pending, "listen": listen, "queue_known": queueKnown})
 }
 
 // handleBookEbook sends a book's ebook file as a download to any signed-in account
@@ -232,17 +270,17 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusNotFound, "no ebook has arrived for this book yet")
 		return
 	}
-	path, err := ebookFile(b.Ebook.Path)
+	path, err := books.EbookFile(b.Ebook.Path)
 	if err != nil {
 		a.deps.Log.Warn("ebook download: file missing", "book", b.Title, "path", b.Ebook.Path, "err", err)
 		a.writeError(w, http.StatusNotFound, "the ebook file is missing on disk")
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(path))
-	if ct := ebookContentType(ext); ct != "" {
+	if ct := books.EbookContentType(ext); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Header().Set("Content-Disposition", attachmentHeader(downloadName(b, ext)))
+	w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(b, ext)))
 	w.Header().Set("Cache-Control", "private, no-store")
 	http.ServeFile(w, r, path)
 }
@@ -252,96 +290,4 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 func (a *api) mayDownloadBook(r *http.Request, _ books.Book) bool {
 	u, ok := userFrom(r)
 	return ok && u != nil && !u.Disabled && u.Role.AtLeast(auth.RoleRequester)
-}
-
-// ebookFile resolves the stored ebook path to the file to send. An ebook edition is
-// one file, but should it ever be a folder, the best-known format inside wins.
-func ebookFile(stored string) (string, error) {
-	st, err := os.Stat(stored)
-	if err != nil {
-		return "", err
-	}
-	if !st.IsDir() {
-		return stored, nil
-	}
-	entries, err := os.ReadDir(stored)
-	if err != nil {
-		return "", err
-	}
-	var found []string
-	for _, e := range entries {
-		if !e.IsDir() && ebookContentType(strings.ToLower(filepath.Ext(e.Name()))) != "" {
-			found = append(found, e.Name())
-		}
-	}
-	if len(found) == 0 {
-		return "", os.ErrNotExist
-	}
-	sort.SliceStable(found, func(i, j int) bool {
-		return ebookRank(found[i]) < ebookRank(found[j])
-	})
-	return filepath.Join(stored, found[0]), nil
-}
-
-// ebookRank orders formats for the pick above: the ones most readers open first.
-func ebookRank(name string) int {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".epub":
-		return 0
-	case ".azw3", ".kepub":
-		return 1
-	case ".mobi", ".azw":
-		return 2
-	case ".pdf":
-		return 3
-	}
-	return 4
-}
-
-// ebookContentType maps an ebook extension to its media type ("" = not an ebook).
-func ebookContentType(ext string) string {
-	switch ext {
-	case ".epub", ".kepub":
-		return "application/epub+zip"
-	case ".mobi":
-		return "application/x-mobipocket-ebook"
-	case ".azw", ".azw3":
-		return "application/vnd.amazon.mobi8-ebook"
-	case ".pdf":
-		return "application/pdf"
-	}
-	return ""
-}
-
-// downloadName is "Title - Author.ext" with anything a filesystem or header would
-// choke on removed.
-func downloadName(b books.Book, ext string) string {
-	name := b.Title
-	if b.Author != "" {
-		name += " - " + b.Author
-	}
-	name = strings.Map(func(r rune) rune {
-		switch {
-		case r < 0x20, r == 0x7f:
-			return -1
-		case strings.ContainsRune(`/\:*?"<>|`, r):
-			return -1
-		}
-		return r
-	}, name)
-	name = strings.TrimSpace(strings.Join(strings.Fields(name), " "))
-	if name == "" {
-		name = "book"
-	}
-	return name + ext
-}
-
-// attachmentHeader builds a Content-Disposition that survives non-ASCII titles: Go
-// encodes those per RFC 2231, and a name it still can't express falls back to the
-// bare extension rather than a broken header.
-func attachmentHeader(name string) string {
-	if h := mime.FormatMediaType("attachment", map[string]string{"filename": name}); h != "" {
-		return h
-	}
-	return `attachment; filename="book` + filepath.Ext(name) + `"`
 }

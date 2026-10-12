@@ -14,6 +14,8 @@ const NotificationSettings = lazyPage(() => import("../components/NotificationSe
 const PlexAccountLink = lazy(() => import("../components/PlexAccountLink"));
 // Your password and your other devices (every role).
 const AccountSettings = lazyPage(() => import("../components/AccountSettings"), "AccountSettings");
+// Your Kindle's address, for Send to Kindle on My shelf (anyone who can read the shelf).
+const KindleCard = lazyPage(() => import("../components/Kindle"), "KindleCard");
 
 const ROLE: Record<UserRole, string> = {
   admin: "Admin",
@@ -29,12 +31,14 @@ const ROLE: Record<UserRole, string> = {
 //   Get notified — the one push switch for this device, with a plain answer when it can't
 //                  be on, then Apprise under Advanced;
 //   Plex         — link your Plex account (PLEX-14); plex.tv's redirect comes back here;
+//   Send to Kindle — your Kindle's address (Books on, requester and up);
 //   Account      — change your password (or set a first one after Plex sign-in) and sign
 //                  out your other devices;
 //   More, Sign out.
 export function Me({ chrome = false }: { chrome?: boolean }) {
-  const { user, external } = useMe();
+  const { user, external, booksEnabled } = useMe();
   const name = user?.username || "Guest";
+  const kindle = booksEnabled && !!user && user.role !== "readonly";
   useHashScroll();
   return (
     <>
@@ -61,6 +65,14 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
             <PlexAccountLink variant="me" />
           </Suspense>
         </MeSection>
+
+        {kindle && (
+          <MeSection id="kindle" title="Send to Kindle">
+            <Suspense fallback={<Loading />}>
+              <KindleCard />
+            </Suspense>
+          </MeSection>
+        )}
 
         <MeSection id="account" title="Account">
           <Suspense fallback={<Loading />}>

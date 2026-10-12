@@ -9,6 +9,7 @@ import { REQUEST_TOPICS } from "../lib/useRequestsFeed";
 // Where the bell's Settings button goes: the Me page's "Get notified" card, the one place
 // push and Apprise are set up.
 const SETTINGS = "/me#notifications";
+const BELL_TOPICS = [...REQUEST_TOPICS, "user.*.inbox.updated"];
 
 // Pull the media title out of a notification: bodies read like “Dune” is ready to
 // watch — the quoted part is the title. Falls back to the whole body if nothing is
@@ -39,8 +40,9 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
   const load = () => api.myNotifications().then((r) => { setItems(r.notifications ?? []); setUnread(r.unread); }).catch(() => {});
   // Most notices are about a request (approved, declined, ready; a new one, for staff), and
   // each is written before the request's change is announced: the request feed's events
-  // bring the badge along within a second. Once a minute catches the rest.
-  useLiveRefresh(load, { topics: REQUEST_TOPICS, fallbackMs: 60_000, debounceMs: 1000, immediate: true });
+  // bring the badge along within a second; a notice about nothing on the request feed (a
+  // Send to Kindle result) says so on user.<id>.inbox.updated. Once a minute catches the rest.
+  useLiveRefresh(load, { topics: BELL_TOPICS, fallbackMs: 60_000, debounceMs: 1000, immediate: true });
 
   // Close on outside click (the side panel lives outside the bell's own box).
   useEffect(() => {

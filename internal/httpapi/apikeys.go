@@ -203,6 +203,11 @@ func (a *api) handleSetAPIKey(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "key store unavailable")
 		return
 	}
+	// The mail credentials have their own card and checks (/settings/smtp).
+	if !apikeys.Listed(id) {
+		a.writeError(w, http.StatusNotFound, "unknown key")
+		return
+	}
 	switch err := a.deps.APIKeys.Set(r.Context(), id, req.Value); {
 	case errors.Is(err, apikeys.ErrEmptyValue):
 		a.writeError(w, http.StatusBadRequest, "value is required — use Clear to remove a key")
@@ -232,6 +237,10 @@ func (a *api) handleSetAPIKey(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleClearAPIKey(w http.ResponseWriter, r *http.Request) {
 	if a.deps.APIKeys == nil {
 		a.writeError(w, http.StatusInternalServerError, "key store unavailable")
+		return
+	}
+	if !apikeys.Listed(r.PathValue("id")) {
+		a.writeError(w, http.StatusNotFound, "unknown key")
 		return
 	}
 	switch err := a.deps.APIKeys.Clear(r.Context(), r.PathValue("id")); {
