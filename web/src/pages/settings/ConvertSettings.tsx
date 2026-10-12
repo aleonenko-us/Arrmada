@@ -385,7 +385,7 @@ function KeepSubsChoice({ save, input }: { save: AutoSave<string>; input: ReactN
   const follows = save.value.split(",").some((t) => t.trim().toLowerCase() === SAME_AS_SUBTITLES);
   const [subsLangs, setSubsLangs] = useState<string[] | null>(null);
   const languages = useLanguages();
-  useEffect(() => { if (follows) api.subtitleSettings().then((st) => setSubsLangs(st.languages)).catch(() => {}); }, [follows]);
+  useEffect(() => { if (follows) api.subtitleSettings().then((st) => setSubsLangs(st.keep_languages ?? st.languages)).catch(() => {}); }, [follows]);
   return (
     <div role="radiogroup" aria-label="Keep subtitles in" className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">Keep subtitles in <SavedTick save={save as AutoSave<unknown>} /></div>

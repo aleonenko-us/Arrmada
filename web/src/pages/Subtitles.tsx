@@ -10,6 +10,7 @@ import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
 import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
+import { ProfileSelect } from "./subtitles/ProfileSelect";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
 import { useConfirm } from "../ui";
 
@@ -586,6 +587,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     onEnsure={() => ensure(f)}
                     onRedo={() => ensure(f, true)}
                     onOrphan={(name, action) => orphanAction(f, name, action)}
+                    onProfileChanged={() => setRefreshKey((k) => k + 1)}
                   />
                 ))}
               </tbody>
@@ -686,6 +688,7 @@ function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: 
               onToggle={() => setOpen((cur) => (cur === g.series_id ? null : g.series_id))}
               flash={flash}
               onQueued={onQueued}
+              onProfileChanged={() => setReload((k) => k + 1)}
             />
           ))
         )}
@@ -696,9 +699,9 @@ function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: 
 
 // SeriesGroupRow is one show, expanding to its episodes. The episodes are fetched on
 // first open and kept, so collapsing and reopening doesn't re-probe the files.
-function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
+function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued, onProfileChanged }: {
   g: SubSeriesGroup; first: boolean; open: boolean; onToggle: () => void;
-  flash: (m: string) => void; onQueued: () => void;
+  flash: (m: string) => void; onQueued: () => void; onProfileChanged: () => void;
 }) {
   const [eps, setEps] = useState<SubFileEntry[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -758,6 +761,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
           {g.missing ? `${g.missing} missing` : "complete"}
         </span>
       </button>
+      <ProfileSelect kind="series" id={g.series_id} value={g.profile_id} title={g.title} onChanged={() => { setEps(null); onProfileChanged(); }} />
       <button
         type="button"
         onClick={ensureShow}
@@ -805,14 +809,15 @@ function confirmRedo(title: string) {
   return window.confirm(`Redo subtitles for ${title}?\n\nThe existing .srt files for your kept languages will be replaced — use this when what's there is wrong (the AI transcribed the wrong audio track, a bad download).`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void }) {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan, onProfileChanged }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void; onProfileChanged?: () => void }) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
   return (
     <tr style={{ borderTop: first ? "none" : "1px solid var(--line-soft)" }}>
       <td className="px-3 py-2 font-semibold">
         {f.kind === "movie" ? (
-          <span className="flex items-center gap-2.5"><RowPoster url={f.poster_url} /><span>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></span></span>
+          <span className="flex items-center gap-2.5"><RowPoster url={f.poster_url} /><span>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></span>
+            {onProfileChanged && !!f.movie_id && <ProfileSelect kind="movie" id={f.movie_id} value={f.profile_id} title={f.title} onChanged={onProfileChanged} />}</span>
         ) : <>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></>}
       </td>
       <td className="px-3 py-2 font-mono text-[10.5px] text-ink-dim">{(f.audio_langs ?? []).map((l) => l.toUpperCase()).join(" ") || "—"}</td>
@@ -826,7 +831,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: Sub
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang} l={l} />)}</div>
+        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang + (l.variant ?? "")} l={l} />)}</div>
         {onOrphan && (f.orphans ?? []).length > 0 && (
           <div className="mt-1 flex flex-col gap-0.5">
             {f.orphans!.map((o) => (
@@ -864,21 +869,24 @@ function EmbBadge({ kind }: { kind: "txt" | "pgs" | "vob" }) {
   return <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase" style={style} title={title}>{label}</span>;
 }
 function CoverChip({ l }: { l: SubLangStatus }) {
-  if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }} title="External SRT present">✓ {l.lang}</span>;
+  // A profile's forced want: only a ".forced" subtitle (the foreign-dialogue lines) meets it.
+  const name = l.variant === "forced" ? `${l.lang} forced` : l.lang;
+  if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }} title="External SRT present">✓ {name}</span>;
   // A subtitle under another name covers it, but Plex won't pair it with this file.
-  if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{l.lang} · orphaned</span>;
+  if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{name} · orphaned</span>;
   // Backing off: the last run couldn't make it, and the sweep leaves it alone until then.
   if (l.reason) {
     const why = REASON_LABEL[l.reason] ?? l.reason.replace(/_/g, " ");
     const when = l.next_retry_at ? `next try ${retryIn(l.next_retry_at)}`
       : l.retry_on ? `waiting for ${l.retry_on.split(",").map((e) => RETRY_ON_LABEL[e] ?? e).join(" or ")}`
       : "retry by hand";
-    return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{l.lang} · {when}</span>;
+    return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{name} · {when}</span>;
   }
   // The ladder tries the first source, then falls back to AI when that comes up empty.
-  const first = SOURCE_LABEL[l.source ?? "ai"] ?? l.source;
+  // Whisper can't make a forced subtitle, so a forced want with no track or download has no source.
+  const first = l.variant === "forced" && !l.source ? "no source" : SOURCE_LABEL[l.source ?? "ai"] ?? l.source;
   const plan = l.fallback ? `${first} → ${SOURCE_LABEL[l.fallback] ?? l.fallback}` : first;
-  return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={`Missing — will try ${plan}`}>{l.lang} · {plan}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={`Missing — will try ${plan}`}>{name} · {plan}</span>;
 }
 
 /* ============================= LOGS ============================= */
