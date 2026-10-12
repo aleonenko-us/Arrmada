@@ -852,6 +852,9 @@ func summarize(r parser.Release) string {
 	if r.Source != "" {
 		parts = append(parts, string(r.Source))
 	}
+	if r.Streaming != "" {
+		parts = append(parts, r.Streaming)
+	}
 	if r.Edition != "" {
 		parts = append(parts, r.Edition)
 	}
