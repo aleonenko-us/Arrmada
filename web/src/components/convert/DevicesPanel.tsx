@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type ConvertDevice, type ConvertDeviceCodec, type ConvertDevices } from "../../lib/api";
+import { req, type ConvertDevice, type ConvertDeviceCodec, type ConvertDevices } from "../../lib/api";
 import { formatAgo } from "../../lib/format";
 import { LINKS } from "../../lib/links";
 
@@ -14,10 +14,11 @@ export type DeviceFormat = "hevc" | "hevc10" | "av1";
 
 export const FORMAT_LABEL: Record<DeviceFormat, string> = { hevc: "HEVC", hevc10: "HEVC 10-bit", av1: "AV1" };
 
-/** The recorded devices, fetched once (null while loading or when it can't be read). */
+/** The recorded devices, fetched once (null while loading or when it can't be read). The
+ *  call lives here rather than in lib/api's table, which is in every requester's first load. */
 export function useConvertDevices(): ConvertDevices | null {
   const [d, setD] = useState<ConvertDevices | null>(null);
-  useEffect(() => { api.convertDevices().then(setD).catch(() => {}); }, []);
+  useEffect(() => { req<ConvertDevices>("/api/v1/convert/devices").then(setD).catch(() => {}); }, []);
   return d;
 }
 

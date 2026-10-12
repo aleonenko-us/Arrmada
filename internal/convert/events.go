@@ -56,8 +56,8 @@ type DoneEvent struct {
 	SeriesID int64  `json:"series_id,omitempty"`
 	Season   int    `json:"season"`
 	Episode  int    `json:"episode,omitempty"`
-	// VersionID is the movie version (track) the file belongs to, once jobs carry one
-	// (CONV-24); 0 = the default track.
+	// VersionID is the movie's extra version track the file belongs to; 0 = its default
+	// file. Title already names the track ("Film · Director's Cut").
 	VersionID int64  `json:"version_id,omitempty"`
 	Path      string `json:"path"`     // the new file
 	OldPath   string `json:"old_path"` // the original it replaced (now in the bin or hold)
@@ -153,7 +153,7 @@ func (s *Service) publishDone(job *Job) {
 		saved = 0
 	}
 	s.publish(TopicDone, DoneEvent{
-		Title: j.Title, Key: j.Key, Kind: j.Kind, MovieID: j.MovieID, SeriesID: j.SeriesID,
+		Title: j.Title, Key: j.Key, Kind: j.Kind, MovieID: j.MovieID, VersionID: j.VersionID, SeriesID: j.SeriesID,
 		Season: j.Season, Episode: j.Episode, Path: rec.outPath, OldPath: rec.srcPath,
 		SrcBytes: j.SrcBytes, OutBytes: j.OutBytes, SavedBytes: saved, Codec: j.Codec,
 		HistoryID: rec.historyID, At: time.Now().Unix(),

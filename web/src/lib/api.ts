@@ -2111,11 +2111,11 @@ export interface ConvertMediaInfo {
 export interface ConvertSkipped {
   key: string; kind: string; reason: string; permanent: boolean; updated_at: string;
   retry_after: number; attempts: number; // unix seconds (0 = no wait); same-kind repeats in a row
-  media_kind: string; movie_id?: number; series_id?: number; season: number; episode: number; title: string;
+  media_kind: string; movie_id?: number; version_id?: number; series_id?: number; season: number; episode: number; title: string;
 }
 
 export interface ConvertBlocked {
-  key: string; kind: string; movie_id?: number; series_id?: number; season: number; episode: number;
+  key: string; kind: string; movie_id?: number; version_id?: number; series_id?: number; season: number; episode: number;
   title: string; count: number; last_error: string; updated_at: string;
 }
 
@@ -2124,6 +2124,8 @@ export interface ConvertMediaStats {
   skipped: number;
   hdr10: number; hdr10_plus: number; dolby_vision: number; hlg: number;
   h264: number; hevc: number; av1: number; other: number;
+  // Every Dolby Vision file the Dolby Vision choice applies to, convertible or not.
+  dolby_vision_files: number;
 }
 // A book's series as the library can see it: the entries you own, in reading order, and
 // the numbered holes between them.
@@ -2151,9 +2153,11 @@ export interface ConvertSeriesRollup {
 }
 
 export interface ConvertNeeds { video: boolean; subs: boolean; audio: boolean; why?: string; save: number; worth: boolean; measured?: boolean }
-export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string }
+// version_id/version_label: an extra version track of the movie (absent = its default file);
+// title stays the film's own.
+export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string; version_id?: number; version_label?: string }
 export interface ConvertJob {
-  id: number; key: string; kind?: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string;
+  id: number; key: string; kind?: string; movie_id?: number; version_id?: number; series_id?: number; season?: number; episode?: number; title: string;
   state: "preparing" | "testing" | "encoding" | "verifying" | "replacing" | "done" | "failed" | "skipped" | "cancelled";
   progress: number; fps: number; speed_x: number; duration_sec?: number; encoder: string; codec?: string;
   src_bytes: number; out_bytes: number; ssim?: number; note?: string; requested: boolean; paused?: string;
@@ -2166,17 +2170,18 @@ export interface ConvertTrackDecision {
 export type ConvertHistoryOutcome = "in_progress" | "done" | "failed" | "skipped" | "cancelled";
 // One row of the conversion ledger (GET /convert/history). src_info/out_info only on the single-row read.
 export interface ConvertHistoryEntry {
-  id: number; key: string; kind: "movie" | "episode"; movie_id?: number; series_id?: number; season: number; episode?: number; title: string;
+  id: number; key: string; kind: "movie" | "episode"; movie_id?: number; version_id?: number; series_id?: number; season: number; episode?: number; title: string;
   outcome: ConvertHistoryOutcome; outcome_kind?: string; note?: string; requested: boolean;
   src_path?: string; src_release?: string; src_size: number; src_spec?: string;
   out_path?: string; out_size: number; out_spec?: string; codec?: string; crf?: number; encoder?: string; crop?: string;
-  ssim_mean?: number; ssim_min?: number; ssim_windows?: number[];
+  ssim_mean?: number; ssim_min?: number; ssim_windows?: number[]; vmaf_mean?: number; // vmaf_mean: advisory, only with a libvmaf ffmpeg
   kept_tracks?: ConvertTrackDecision[]; dropped_tracks?: ConvertTrackDecision[]; warnings?: string[]; reclaim_deferred?: boolean;
   started_at: number; finished_at?: number; encode_secs?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;
 }
 export interface ConvertUpNext {
   key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string;
+  version_id?: number; version_label?: string;
   eta_sec?: number; nights?: number; // the time forecast: seconds, and nights of the encode hours
 }
 export interface ConvertRequest { key: string; title: string; requested_at: number }
@@ -2201,6 +2206,8 @@ export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
+  // Dolby Vision files: drop the layer and keep the HDR10/HLG base, or leave them alone.
+  dolby_vision: "drop" | "skip";
   /** 8-bit SDR sources: "always" written 10-bit, or "match_source" (kept 8-bit). */
   ten_bit?: "always" | "match_source";
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
@@ -2210,6 +2217,28 @@ export interface ConvertSettings {
 export interface ConvertTrialSide { codec: string; encoder: string; bytes: number; ssim: number; est_bytes: number }
 export interface ConvertTrialResult { key: string; title: string; src_bytes: number; clips: number; seconds: number; hevc: ConvertTrialSide; av1: ConvertTrialSide; pick: string; why: string; files?: string[] }
 export interface ConvertCompareStatus { running: boolean; key?: string; title?: string; started?: number; result?: ConvertTrialResult; error?: string }
+// One file's conversion plan (GET /convert/plan?key=): built from the index by the runner's own
+// decision code, so it is what a conversion would do. to_codec "" = the picture is copied.
+export interface ConvertPlanVideo {
+  from_codec: string; from_res: string; from_hdr: string; from_bits: number;
+  to_codec?: string; to_bits?: number; to_hdr?: string; crf?: number;
+  est_bytes: number; measured?: boolean; why?: string; codec_note?: string; crop_note?: string; hdr_note?: string;
+}
+export interface ConvertPlan {
+  key: string; kind: "movie" | "episode"; title: string; poster_url?: string; size_bytes: number; needs: ConvertNeeds;
+  video: ConvertPlanVideo; audio: ConvertTrackDecision[]; subs: ConvertTrackDecision[];
+  container: { from: string; to: string }; warnings: string[]; eta_sec: number | null;
+}
+// What switching automatic conversion on would do (GET /convert/auto-preview), or converting
+// one show or season now (?series=&season=), counted from the runner's cached candidates.
+export interface ConvertAutoPreview {
+  files: number; reencode: number; bytes: number; est_bytes: number;
+  dv_files: number; cc_files: number; image_sub_tracks: number; filtered_audio_tracks: number;
+  container_changes: number; forced_tracks: number; as_of: number;
+}
+// The answer to a Convert-now request: starting now, or its place among the waiting requests
+// (1 = next) and what it waits behind; reason when nothing can start (someone is watching).
+export interface ConvertRequestResult { requested: string; starting?: boolean; position?: number; ahead?: string; reason?: string }
 
 // Insights (Plex watch monitoring).
 export interface PlexLibrary { key: string; title: string; type: string }
@@ -3133,7 +3162,6 @@ export const api = {
   // Convert
   convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string }>("/api/v1/convert/hardware"),
   convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
-  convertDevices: () => req<ConvertDevices>("/api/v1/convert/devices"),
   convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
   updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),
   convertReindex: () => req<{ started: boolean; reason?: string } & JobRef>("/api/v1/convert/reindex", { method: "POST" }),
@@ -3147,7 +3175,7 @@ export const api = {
     return req<{ items: ConvertCandidate[] }>(`/api/v1/convert/library${qs ? `?${qs}` : ""}`).then((r) => r.items);
   },
   convertStats: () => req<ConvertLibraryStats>("/api/v1/convert/stats"),
-  convertRequest: (key: string) => req<{ requested: string }>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
+  convertRequest: (key: string) => req<ConvertRequestResult>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
   convertCancelRequest: (key?: string) => req<{ cancelled: number }>(`/api/v1/convert/requests?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "DELETE" }),
   convertCancel: (id: number) => req<{ cancelled: number }>(`/api/v1/convert/jobs/${id}/cancel`, { method: "POST" }),
   convertBlocklist: () => req<{ items: ConvertBlocked[] }>("/api/v1/convert/blocklist").then((r) => r.items),
@@ -3175,6 +3203,14 @@ export const api = {
   convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
   convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
   convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,
+  convertPlan: (key: string) => req<ConvertPlan>(`/api/v1/convert/plan?key=${encodeURIComponent(key)}`),
+  convertAutoPreview: (seriesID?: number, season?: number) => {
+    const q = new URLSearchParams();
+    if (seriesID !== undefined) q.set("series", String(seriesID));
+    if (seriesID !== undefined && season !== undefined) q.set("season", String(season));
+    const qs = q.toString();
+    return req<ConvertAutoPreview>(`/api/v1/convert/auto-preview${qs ? `?${qs}` : ""}`);
+  },
 
   // Insights (Plex)
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),

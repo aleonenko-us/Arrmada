@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // SubTrack is one embedded subtitle stream in a media file.
@@ -71,7 +72,7 @@ var textSubCodecs = map[string]bool{
 
 // probeSubs runs ffprobe and parses a file's runtime, audio languages, and subtitle tracks.
 func probeSubs(ctx context.Context, ffprobe, path string) (*mediaInfo, error) {
-	out, err := exec.CommandContext(ctx, ffprobe,
+	out, err := toolrun.Command(ctx, toolrun.Normal, ffprobe,
 		"-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path).Output()
 	if err != nil {
 		return nil, err

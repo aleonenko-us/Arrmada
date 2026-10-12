@@ -268,3 +268,30 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 		})
 	}
 }
+
+// TestToolsThroughRunner: the media packages start ffmpeg, ffprobe and the other helper
+// tools through internal/toolrun, never exec.Command or exec.CommandContext. A bare one
+// runs at full CPU and disk priority next to someone's Plex stream, can't be paused with the
+// rest of a conversion, and leaves anything it spawned running when it is cancelled.
+// exec.LookPath (finding a tool) is fine.
+func TestToolsThroughRunner(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract"} {
+		fset, files := parseDir(t, filepath.Join(root, filepath.FromSlash(rel)))
+		for _, f := range files {
+			ast.Inspect(f, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok || (sel.Sel.Name != "Command" && sel.Sel.Name != "CommandContext") {
+					return true
+				}
+				if id, ok := sel.X.(*ast.Ident); !ok || id.Name != "exec" {
+					return true
+				}
+				pos := fset.Position(sel.Pos())
+				t.Errorf("%s:%d: exec.%s in %s — start tools with toolrun.Command (or s.tool in convert) so they are niced, pausable and killed as a group",
+					filepath.ToSlash(strings.TrimPrefix(pos.Filename, root+string(filepath.Separator))), pos.Line, sel.Sel.Name, rel)
+				return true
+			})
+		}
+	}
+}

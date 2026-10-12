@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Chunked transcription.
@@ -41,7 +42,7 @@ var silenceLineRe = regexp.MustCompile(`silence_(start|end):\s*(-?\d+(?:\.\d+)?)
 // detectSilences runs ffmpeg's silencedetect over the extracted WAV. total bounds a
 // trailing silence that has no end line (the file ended inside it).
 func detectSilences(ctx context.Context, ffmpeg, wav string, total time.Duration) ([]silence, error) {
-	out, err := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-nostats", "-i", wav,
+	out, err := toolrun.Command(ctx, toolrun.Background, ffmpeg, "-hide_banner", "-nostats", "-i", wav,
 		"-af", fmt.Sprintf("silencedetect=noise=%s:d=%.2f", chunkNoise, chunkSilenceMin.Seconds()),
 		"-f", "null", "-").CombinedOutput()
 	if err != nil {
@@ -138,7 +139,7 @@ func planChunks(total time.Duration, sils []silence) []chunk {
 
 // cutChunk writes one chunk of the WAV to dst (PCM copy — no re-encode, sample-exact).
 func cutChunk(ctx context.Context, ffmpeg, wav string, c chunk, dst string) error {
-	out, err := exec.CommandContext(ctx, ffmpeg, "-y", "-hide_banner", "-nostats",
+	out, err := toolrun.Command(ctx, toolrun.Background, ffmpeg, "-y", "-hide_banner", "-nostats",
 		"-ss", fmt.Sprintf("%.3f", c.start.Seconds()), "-t", fmt.Sprintf("%.3f", (c.end-c.start).Seconds()),
 		"-i", wav, "-c", "copy", dst).CombinedOutput()
 	if err != nil {

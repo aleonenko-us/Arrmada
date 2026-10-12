@@ -32,7 +32,7 @@ func TestConvertStallItems(t *testing.T) {
 	}
 	if it.Kind != KindConvert || it.Title != "Convert is stuck: the scratch folder is full" ||
 		it.Detail != "Dune (2021) and 2 more: needs ~91 GB of scratch in /transcode, it has 40 GB free" ||
-		it.Since != since.UnixMilli() || it.Link != "/convert?tab=problems" || it.LinkKey != "convertProblems" {
+		it.Since != since.UnixMilli() || it.Link != "/convert?tab=problems" || it.LinkKey != "" {
 		t.Errorf("item = %+v", it)
 	}
 	if got["convert:stalled:library_full"].Detail != "Heat (1995): needs ~30 GB free on the library disk" {

@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/parser"
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // Seams over the disks and ffprobe, so tests can stage a full disk or a probed film without
@@ -45,6 +45,12 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	// than fail it — a missing file says nothing about whether it can be converted.
 	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
 		s.finishSkip(job, SkipSourceGone, "the library file is missing from disk — checking again later")
+		return
+	}
+	// The result is swapped in as <name>.mkv, and a file already there is moved aside. When
+	// that file is another version of this film, nothing is encoded: the swap would take it.
+	if final := convertedPath(src); final != src && s.otherTrackOwns(ctx, job, final) {
+		s.finishSkip(job, SkipTransient, otherTrackNote(final))
 		return
 	}
 	mi, err := probeFn(ctx, s.ffprobe, src)
@@ -221,8 +227,13 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			break // a copy can't lose quality
 		}
 		s.update(job, func(j *Job) { j.State = StateVerifying })
+		if !s.waitAllowed(ctx, job) {
+			return
+		}
 		s.event("info", fmt.Sprintf("Checking %s against the original…", job.Title))
-		sctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
+		// The 25 minutes count only while the check runs: frozen for a Plex stream, it
+		// mustn't time out and cost the encode.
+		sctx, cancel := s.pausableTimeout(ctx, job, 25*time.Minute)
 		res, err := s.computeSSIM(sctx, dst, src, plan.Crop.filter())
 		cancel()
 		rec.ssimMean, rec.ssimWindows = res.Mean, res.Scores
@@ -272,11 +283,8 @@ func (s *Service) sourceRelease(ctx context.Context, job *Job, src string) strin
 		}
 		return ""
 	}
-	if s.movies == nil {
-		return ""
-	}
-	if m, err := s.movies.Get(ctx, job.MovieID); err == nil && m.MovieFilePath == src {
-		return m.SourceRelease
+	if t, ok := s.lookupMovieTrack(ctx, job.MovieID, job.VersionID); ok && t.version.FilePath == src {
+		return t.version.SourceRelease
 	}
 	return ""
 }
@@ -365,14 +373,13 @@ func (s *Service) resolveSource(ctx context.Context, job *Job) (src, title, orig
 		}
 		return path, job.Title, origLang, true
 	}
-	if s.movies == nil {
+	// The job's own track — the default file, or the extra version it names — and never
+	// another track's file: a version job whose version is gone is gone, not the default.
+	t, ok := s.lookupMovieTrack(ctx, job.MovieID, job.VersionID)
+	if !ok {
 		return "", "", "", false
 	}
-	m, err := s.movies.Get(ctx, job.MovieID)
-	if err != nil || !m.HasFile || m.MovieFilePath == "" {
-		return "", "", "", false
-	}
-	return m.MovieFilePath, m.Title, movieOrigLang(m), true
+	return t.version.FilePath, t.title(), movieOrigLang(t.movie), true
 }
 
 // chooseCodec settles the format for one file:
@@ -611,8 +618,7 @@ func (s *Service) encode(ctx context.Context, job *Job, src, dst string, mi *Med
 // job live, registering the process so it can be paused, and returning any error with a
 // tail of stderr for diagnosis.
 func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, durationSec float64) error {
-	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
-	lowPriority(cmd) // own process group: niced, paused and signalled together
+	cmd := s.tool(ctx, job, toolrun.Background, s.ffmpeg, args...) // niced, paused and killed as a group
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -629,10 +635,6 @@ func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	pid := cmd.Process.Pid
-	applyNice(pid, encodeNice)
-	s.trackProc(job, pid)
-	defer s.untrackProc(job, pid)
 	s.readProgress(job, stdout, durationSec)
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("%v: %s", err, tail.String())
@@ -728,6 +730,10 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		}
 		return
 	}
+	// Every frame of the exact file about to go in decodes cleanly, or the original stays.
+	if !s.checkBeforeSwap(ctx, job, src, dst, mi, outInfo, plan) {
+		return
+	}
 	pct := 0
 	if mi.SizeBytes > 0 {
 		pct = int(100 - outSize*100/mi.SizeBytes)
@@ -787,6 +793,14 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 	// the rename below would otherwise overwrite it, and if the bin refuses it the
 	// original must still be in place to keep.
 	if finalPath != src {
+		// Never another version's file of this film, nor a path its record holds (either
+		// may have arrived mid-encode).
+		if s.otherTrackOwns(ctx, job, finalPath) {
+			s.binMu.Unlock()
+			_ = os.Remove(part)
+			s.finishSkip(job, SkipTransient, otherTrackNote(finalPath))
+			return
+		}
 		if _, e := os.Stat(finalPath); e == nil {
 			if err := s.retire(finalPath); err != nil {
 				s.binMu.Unlock()

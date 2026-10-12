@@ -69,17 +69,6 @@ func withPixFmt(args []string, pixFmt string) []string {
 	return args
 }
 
-// eightToTenWarning is the plan view's note for an 8-bit SDR source written as 10-bit
-// (CONV-12 lists it with planWarnings). It isn't one of planWarnings itself: those are
-// losses the owner didn't ask for, logged on every finished conversion, and this is the
-// setting doing what it was set to.
-func eightToTenWarning(mi *MediaInfo, plan Plan) string {
-	if plan.VideoCodec == "" || mi == nil || mi.TenBit || isHDR(mi.EncodeHDR()) || outputPixFmt(mi, plan) != pixFmt10 {
-		return ""
-	}
-	return "8-bit → 10-bit (Main10): less banding, but some older players transcode 10-bit — see Your devices"
-}
-
 // recordPixFmt stores what the conversion wrote in the ledger row: the output's own depth
 // when it was probed, else what the plan asked for.
 func (s *Service) recordPixFmt(ctx context.Context, rec *jobRecord) {

@@ -30,8 +30,6 @@ export const LINKS = {
   indexers: "/settings/connections#search",
   subtitlesSettings: "/settings/tools#subtitles",
   convertSettings: "/settings/tools#convert",
-  // Convert's Problems tab: files it gave up on, and files waiting for disk space.
-  convertProblems: "/convert?tab=problems",
   requests: "/requests",
   requestsWaiting: "/requests?tab=needs",
   backups: "/settings/system#backups",

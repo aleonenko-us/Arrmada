@@ -73,6 +73,7 @@ GET /api/v1/books/{id}/releases staff -
 GET /api/v1/books/{id}/series staff -
 GET /api/v1/calendar user -
 GET /api/v1/connections staff -
+GET /api/v1/convert/auto-preview staff -
 GET /api/v1/convert/blocklist staff -
 GET /api/v1/convert/compare staff -
 GET /api/v1/convert/compare/files/{name} staff -
@@ -83,6 +84,7 @@ GET /api/v1/convert/history/{id} staff -
 GET /api/v1/convert/jobs staff -
 GET /api/v1/convert/library staff -
 GET /api/v1/convert/logs staff -
+GET /api/v1/convert/plan staff -
 GET /api/v1/convert/reindex staff -
 GET /api/v1/convert/settings staff -
 GET /api/v1/convert/skips staff -

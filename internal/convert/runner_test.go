@@ -60,17 +60,17 @@ func TestPauseReason(t *testing.T) {
 	closed := prefs{start: "00:00", end: "00:01"} // a window that's (almost) never open
 	auto, asked := &Job{}, &Job{Requested: true}
 	if !windowAllows(closed.start, closed.end) {
-		if s.pauseReason(auto, closed, false) == "" {
+		if s.pauseReason(auto, closed, false, false) == "" {
 			t.Error("an automatic job outside the hours must pause")
 		}
-		if s.pauseReason(asked, closed, false) != "" {
+		if s.pauseReason(asked, closed, false, false) != "" {
 			t.Error("a requested job must ignore the hours")
 		}
 	}
-	if s.pauseReason(asked, prefs{}, true) == "" {
+	if s.pauseReason(asked, prefs{}, true, false) == "" {
 		t.Error("everything pauses while someone is watching")
 	}
-	if s.pauseReason(auto, prefs{}, false) != "" {
+	if s.pauseReason(auto, prefs{}, false, false) != "" {
 		t.Error("no hours set and nobody watching: run")
 	}
 }

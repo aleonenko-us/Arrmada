@@ -52,6 +52,7 @@ type jobRecord struct {
 	skipKind            string
 	ssimMean            float64
 	ssimWindows         []float64
+	vmafMean            float64 // 0 = not measured (no libvmaf, or it couldn't be)
 	reclaimDeferred     bool
 	encodeStart         time.Time
 	encodeEnd           time.Time
@@ -152,6 +153,7 @@ type HistoryEntry struct {
 	Key         string `json:"key"`
 	Kind        string `json:"kind"` // "movie" | "episode"
 	MovieID     int64  `json:"movie_id,omitempty"`
+	VersionID   int64  `json:"version_id,omitempty"` // the movie's extra version track; 0 = its default file
 	SeriesID    int64  `json:"series_id,omitempty"`
 	Season      int    `json:"season"` // NOT omitempty: season 0 is specials
 	Episode     int    `json:"episode,omitempty"`
@@ -176,6 +178,7 @@ type HistoryEntry struct {
 	SSIMMean    float64   `json:"ssim_mean,omitempty"`
 	SSIMMin     float64   `json:"ssim_min,omitempty"`
 	SSIMWindows []float64 `json:"ssim_windows,omitempty"`
+	VMAFMean    float64   `json:"vmaf_mean,omitempty"` // advisory; 0 = not measured
 
 	Kept            []TrackDecision `json:"kept_tracks,omitempty"`
 	Dropped         []TrackDecision `json:"dropped_tracks,omitempty"`
@@ -207,6 +210,7 @@ type historyStore struct{ db *sql.DB }
 type historyRow struct {
 	key, kind                        string
 	movieID, seriesID                int64
+	versionID                        int64 // the movie's extra version track; 0 = its default file
 	season, episode                  int
 	title, outcome, outcomeKind      string
 	note                             string
@@ -270,17 +274,26 @@ func (h *historyStore) insert(ctx context.Context, r historyRow) int64 {
 		  item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 		  src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 		  ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-		  reclaim_deferred, started_at, finished_at, encode_secs)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  reclaim_deferred, started_at, finished_at, encode_secs, version_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.key, r.kind, r.movieID, r.seriesID, r.season, r.episode, r.title, r.outcome, r.outcomeKind, r.note, boolInt(r.requested),
 		r.srcPath, r.srcRelease, r.srcSize, r.srcInfoJSON, r.outPath, r.outSize, r.outInfoJSON, r.codec, r.crf, r.encoder,
 		r.ssimMean, r.ssimMin, r.ssimWindowsJSON, r.crop, r.keptJSON, r.droppedJSON, r.warnJSON,
-		boolInt(r.reclaimDeferred), r.startedAt, r.finishedAt, r.encodeSecs)
+		boolInt(r.reclaimDeferred), r.startedAt, r.finishedAt, r.encodeSecs, r.versionID)
 	if err != nil {
 		return 0
 	}
 	id, _ := res.LastInsertId()
 	return id
+}
+
+// setVMAF records the advisory VMAF score on a job's in-progress row. Kept out of the
+// begin/finish writes, which don't touch the column, so it survives the final update.
+func (h *historyStore) setVMAF(ctx context.Context, id int64, v float64) {
+	if h == nil || h.db == nil || id <= 0 {
+		return
+	}
+	_, _ = h.db.ExecContext(ctx, `UPDATE convert_history SET vmaf_mean = ? WHERE id = ?`, v, id)
 }
 
 // interrupted closes the rows a restart cut off. Runs at startup, before any worker, so
@@ -314,7 +327,7 @@ func (h *historyStore) prune(ctx context.Context) {
 const historyCols = `id, item_key, kind, movie_id, series_id, season, episode, title, outcome, outcome_kind, note, requested,
 	src_path, src_release, src_size, src_info_json, out_path, out_size, out_info_json, codec, crf, encoder,
 	ssim_mean, ssim_min, ssim_windows_json, crop, kept_tracks_json, dropped_tracks_json, warnings_json,
-	reclaim_deferred, started_at, finished_at, encode_secs`
+	reclaim_deferred, started_at, finished_at, encode_secs, vmaf_mean`
 
 // list returns one page of the ledger, newest first, and the cursor for the next page (""
 // when this was the last). Rows still in progress are left out unless asked for: the
@@ -403,10 +416,13 @@ func scanHistory(sc rowScanner, full bool) (HistoryEntry, error) {
 		&e.Outcome, &e.OutcomeKind, &e.Note, &requested,
 		&e.SrcPath, &e.SrcRelease, &e.SrcSize, &srcInfo, &e.OutPath, &e.OutSize, &outInfo, &e.Codec, &e.CRF, &e.Encoder,
 		&e.SSIMMean, &e.SSIMMin, &windows, &e.Crop, &kept, &dropped, &warns,
-		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs); err != nil {
+		&deferred, &e.StartedAt, &e.FinishedAt, &e.EncodeSecs, &e.VMAFMean); err != nil {
 		return e, err
 	}
 	e.Requested, e.ReclaimDeferred = requested == 1, deferred == 1
+	if it, ok := parseKey(e.Key); ok {
+		e.VersionID = it.VersionID // the key names the track ('movie:ID:v:VID')
+	}
 	_ = unmarshalIf(windows, &e.SSIMWindows)
 	_ = unmarshalIf(kept, &e.Kept)
 	_ = unmarshalIf(dropped, &e.Dropped)
@@ -526,7 +542,7 @@ func (s *Service) historyRowFor(job *Job, outcome, note string) historyRow {
 	s.mu.Unlock()
 	rec := s.record(job)
 	r := historyRow{
-		key: j.Key, kind: j.Kind, movieID: j.MovieID, seriesID: j.SeriesID, season: j.Season, episode: j.Episode,
+		key: j.Key, kind: j.Kind, movieID: j.MovieID, versionID: j.VersionID, seriesID: j.SeriesID, season: j.Season, episode: j.Episode,
 		title: j.Title, outcome: outcome, note: note, requested: j.Requested, encoder: j.Encoder,
 		srcPath: rec.srcPath, srcRelease: rec.srcRelease, srcSize: j.SrcBytes,
 		outPath: rec.outPath, outSize: rec.outSize, reclaimDeferred: rec.reclaimDeferred,

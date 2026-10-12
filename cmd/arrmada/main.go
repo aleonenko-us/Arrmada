@@ -811,6 +811,16 @@ func main() {
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)
+	// A conversion plan warns when dropping a file's Dolby Vision layer would leave it
+	// outside the target of the profile its title runs under.
+	convertSvc.SetProfilePrefersDV(func(ctx context.Context, kind string, id int64) bool {
+		if kind == "episode" {
+			sr, err := seriesSvc.Get(ctx, id)
+			return err == nil && qualitySvc.PrefersDolbyVision(ctx, sr.QualityProfile, quality.MediaSeries)
+		}
+		m, err := movieSvc.Get(ctx, id)
+		return err == nil && qualitySvc.PrefersDolbyVision(ctx, m.QualityProfile, quality.MediaMovie)
+	})
 	// The manager looks after every bin: one per library folder (or the one override),
 	// plus the old shared bin while it still holds files, so what's in it stays listed,
 	// restorable, aged and capped until it drains. Convert's originals go to the bins, so

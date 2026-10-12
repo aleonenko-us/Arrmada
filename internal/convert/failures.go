@@ -25,7 +25,7 @@ func jobKey(j *Job) string {
 	if j.Kind == "episode" {
 		return episodeKey(j.SeriesID, j.Season, j.Episode)
 	}
-	return movieKey(j.MovieID)
+	return movieVersionKey(j.MovieID, j.VersionID)
 }
 
 // recordFailure bumps an item's failure count (or starts it at 1), stashing the last error,
@@ -61,9 +61,10 @@ func (f *failureStore) failureCount(ctx context.Context, key string) int {
 
 // Blocked is one quarantined file, for the UI's Problems list.
 type Blocked struct {
-	Key       string `json:"key"` // "movie:12" | "episode:76:2:5"
+	Key       string `json:"key"` // "movie:12" | "movie:12:v:3" | "episode:76:2:5"
 	Kind      string `json:"kind"`
 	MovieID   int64  `json:"movie_id,omitempty"`
+	VersionID int64  `json:"version_id,omitempty"` // the movie's extra version; 0 = its default file
 	SeriesID  int64  `json:"series_id,omitempty"`
 	Season    int    `json:"season"`
 	Episode   int    `json:"episode"`
@@ -93,13 +94,18 @@ func (f *failureStore) list(ctx context.Context) ([]Blocked, error) {
 	return out, rows.Err()
 }
 
-// parseItemKey unpacks "movie:12" / "episode:76:2:5" back into identifiers.
+// parseItemKey unpacks "movie:12" / "movie:12:v:3" / "episode:76:2:5" back into
+// identifiers.
 func parseItemKey(b *Blocked) {
 	parts := strings.Split(b.Key, ":")
 	switch {
 	case len(parts) == 2 && parts[0] == "movie":
 		b.Kind = "movie"
 		b.MovieID, _ = strconv.ParseInt(parts[1], 10, 64)
+	case len(parts) == 4 && parts[0] == "movie" && parts[2] == "v":
+		b.Kind = "movie"
+		b.MovieID, _ = strconv.ParseInt(parts[1], 10, 64)
+		b.VersionID, _ = strconv.ParseInt(parts[3], 10, 64)
 	case len(parts) == 4 && parts[0] == "episode":
 		b.Kind = "episode"
 		b.SeriesID, _ = strconv.ParseInt(parts[1], 10, 64)

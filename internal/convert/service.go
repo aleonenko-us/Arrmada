@@ -31,10 +31,6 @@ import (
 // run it can wake the array, so keep it away from prime viewing hours.
 const defaultScanAt = "03:00"
 
-// encodeNice is the scheduling priority encodes run at. 19 is the lowest — encoding is bulk
-// background work that should yield instantly to Plex or anything else the user notices.
-const encodeNice = 19
-
 // maxJobHistory caps how many FINISHED jobs are kept for the activity list.
 const maxJobHistory = 200
 
@@ -71,6 +67,7 @@ type Job struct {
 	Key         string   `json:"key"`
 	Kind        string   `json:"kind"` // "movie" | "episode"
 	MovieID     int64    `json:"movie_id,omitempty"`
+	VersionID   int64    `json:"version_id,omitempty"` // the movie's extra version track; 0 = its default file
 	SeriesID    int64    `json:"series_id,omitempty"`
 	Season      int      `json:"season"` // NOT omitempty: season 0 is specials
 	Episode     int      `json:"episode,omitempty"`
@@ -93,6 +90,7 @@ type Job struct {
 
 	cancel    context.CancelFunc // set while running, so the encode can be stopped mid-flight
 	cancelled bool
+	lane      bool         // running on the request lane (runner_lane.go)
 	procs     map[int]bool // process groups currently running for this job (for pausing)
 	rec       *jobRecord   // what the ledger keeps about it (see history.go)
 	// activeSecs is how long the full encode has actually been encoding, pauses excluded
@@ -118,6 +116,9 @@ type Service struct {
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
 	noNumaPools bool
+	// vmaf is set when this ffmpeg has libvmaf (detected at startup): VMAF is then measured
+	// alongside SSIM, advisory only.
+	vmaf bool
 
 	encoders []Encoder
 	failures *failureStore // repeated-failure tracking
@@ -143,6 +144,8 @@ type Service struct {
 	bus atomic.Pointer[Publisher]
 	// tput is the time forecast's speed model (throughput.go).
 	tput throughputCache
+	// prefersDV asks whether a title's quality profile wants Dolby Vision (dvpolicy.go).
+	prefersDV atomic.Pointer[profilePrefersDV]
 
 	indexMu       sync.Mutex // serializes index sweeps
 	indexScanning atomic.Bool
@@ -158,7 +161,11 @@ type Service struct {
 	jobs    []*Job
 	nextID  int64
 	pending map[string]*Job // item key → its running job, so a file is never converted twice at once
-	wake    chan struct{}   // nudges idle workers (a request arrived, a setting changed)
+
+	// wake is closed (and replaced) by wakeUp to nudge EVERY idle worker at once — a request
+	// arrived, a setting changed. Guarded by wakeMu, which is never taken while holding mu.
+	wakeMu sync.Mutex
+	wake   chan struct{}
 
 	reclaimMu sync.Mutex // guards the reclaimed-bytes read-modify-write across workers
 
@@ -251,7 +258,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		index: &libraryIndex{db: db}, skips: &skipStore{db: db}, requests: &requestStore{db: db},
 		choices: &choiceStore{db: db}, measured: &measureStore{db: db}, history: &historyStore{db: db},
 		pending: map[string]*Job{},
-		wake:    make(chan struct{}, 1),
+		wake:    make(chan struct{}),
 	}
 	s.logBuf = s.logs.recent(context.Background(), maxLogLines) // restore the log after a restart
 	s.hdr10plusTool, _ = exec.LookPath("hdr10plus_tool")
@@ -265,7 +272,8 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 			working = append(working, e.Name)
 		}
 	}
-	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "")
+	s.vmaf = hasLibVMAF(context.Background(), ffmpeg)
+	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "libvmaf", s.vmaf)
 	return s
 }
 
@@ -464,7 +472,7 @@ type Candidate struct {
 	SeriesID  int64      `json:"series_id,omitempty"`
 	Season    int        `json:"season"` // NOT omitempty — season 0 is specials
 	Episode   int        `json:"episode,omitempty"`
-	Title     string     `json:"title"`
+	Title     string     `json:"title"` // the film's or episode's title; a version's label is VersionLabel
 	Year      int        `json:"year,omitempty"`
 	PosterURL string     `json:"poster_url,omitempty"`
 	Path      string     `json:"path"`
@@ -475,6 +483,10 @@ type Candidate struct {
 	Needs     Needs      `json:"needs"`
 	EstBytes  int64      `json:"est_bytes"` // rough estimate of the converted size
 	Tracks    string     `json:"tracks,omitempty"`
+
+	// An extra version track of the movie (0 = its default file) and that track's name.
+	VersionID    int64  `json:"version_id,omitempty"`
+	VersionLabel string `json:"version_label,omitempty"`
 }
 
 // Library returns every movie with its spec and what it needs, from the index.
@@ -513,7 +525,7 @@ func (s *Service) Blocklist(ctx context.Context) ([]Blocked, error) {
 		if b.Count < maxFailures {
 			continue // still being retried — not blocked yet
 		}
-		b.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.SeriesID, b.Season, b.Episode, b.Key)
+		b.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.VersionID, b.SeriesID, b.Season, b.Episode, b.Key)
 		out = append(out, b)
 	}
 	return out, nil
@@ -526,7 +538,7 @@ func (s *Service) Skips(ctx context.Context) ([]Skipped, error) {
 		return nil, err
 	}
 	for i := range list {
-		list[i].Title = s.titleForKey(ctx, list[i].MediaKind, list[i].MovieID, list[i].SeriesID, list[i].Season, list[i].Episode, list[i].Key)
+		list[i].Title = s.titleForKey(ctx, list[i].MediaKind, list[i].MovieID, list[i].VersionID, list[i].SeriesID, list[i].Season, list[i].Episode, list[i].Key)
 	}
 	return list, nil
 }
@@ -564,13 +576,26 @@ func (s *Service) ClearBlocklist(ctx context.Context, key string) error {
 	return nil
 }
 
-// titleForKey resolves a display title for a movie or episode, falling back to the raw key.
-func (s *Service) titleForKey(ctx context.Context, kind string, movieID, seriesID int64, season, episode int, key string) string {
+// titleForKey resolves a display title for a movie track or episode, falling back to the
+// raw key.
+func (s *Service) titleForKey(ctx context.Context, kind string, movieID, versionID, seriesID int64, season, episode int, key string) string {
 	switch kind {
 	case "movie":
 		if s.movies != nil {
 			if m, err := s.movies.Get(ctx, movieID); err == nil {
-				return m.Title
+				if versionID == 0 {
+					return m.Title
+				}
+				// The track's own label; a track deleted since still names its film.
+				label := ""
+				if rows, err := s.movies.VersionRows(ctx, movieID); err == nil {
+					for _, v := range rows {
+						if !v.IsDefault && v.ID == versionID {
+							label = v.Label
+						}
+					}
+				}
+				return trackTitle(m.Title, label, versionID)
 			}
 		}
 	case "episode":

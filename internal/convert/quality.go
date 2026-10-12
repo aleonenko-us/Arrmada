@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // This file holds the C4 quality gate: after a transcode, measure how close the output is to the
-// source and re-encode at a higher quality if it falls short. We use SSIM — the bundled ffmpeg
-// isn't built with libvmaf, so VMAF isn't available; SSIM is a solid always-present proxy (≈0.98+
-// is visually near-transparent). If a libvmaf build is ever bundled, swap the metric here.
+// source and re-encode at a higher quality if it falls short. The gate is SSIM, which every
+// ffmpeg build has (≈0.98+ is visually near-transparent). VMAF needs a libvmaf build: it's
+// detected at startup (hasLibVMAF) and, when present, measured on the same scenes and recorded
+// as advisory (integrity.go). The bundled jellyfin-ffmpeg7 had no libvmaf when last checked
+// (October 2026), so on the standard image only SSIM is measured.
 
 // ssimResult is what the final check measured: each scene it looked at and that scene's score,
 // in order, and their mean.
@@ -189,6 +192,15 @@ func ssimWindows(dur float64) []ssimWnd {
 // on a perfect encode, dragging the average to ~0.96, and failing the quality check on files
 // that were fine.
 func (s *Service) ssimWindow(ctx context.Context, distorted, reference string, dStart, rStart, dur float64, w, h int, rate, crop string) (float64, error) {
+	args := pairedArgs(distorted, reference, dStart, rStart, dur, w, h, rate, crop, "ssim")
+	out, _ := s.tool(ctx, nil, toolrun.Idle, s.ffmpeg, args...).CombinedOutput()
+	return parseSSIM(string(out))
+}
+
+// pairedArgs is the ffmpeg command line that pairs one window of a converted file with the
+// same window of its source, frame by frame (see ssimWindow), and feeds both to metric — a
+// two-input filter taking the converted picture first ("ssim", "libvmaf=…").
+func pairedArgs(distorted, reference string, dStart, rStart, dur float64, w, h int, rate, crop, metric string) []string {
 	align := "setpts=PTS-STARTPTS"
 	if validRate(rate) {
 		align += ",fps=" + rate + ",setpts=N/FRAME_RATE/TB"
@@ -197,7 +209,7 @@ func (s *Service) ssimWindow(ctx context.Context, distorted, reference string, d
 	if crop != "" {
 		ref = crop + ","
 	}
-	lavfi := fmt.Sprintf("[0:v]%s[d];[1:v]%sscale=%d:%d:flags=bicubic,%s[r];[d][r]ssim", align, ref, w, h, align)
+	lavfi := fmt.Sprintf("[0:v]%s[d];[1:v]%sscale=%d:%d:flags=bicubic,%s[r];[d][r]%s", align, ref, w, h, align, metric)
 	args := []string{"-nostdin", "-hide_banner"}
 	seek := func(path string, start float64) {
 		if start > 0 {
@@ -210,9 +222,7 @@ func (s *Service) ssimWindow(ctx context.Context, distorted, reference string, d
 	}
 	seek(distorted, dStart)
 	seek(reference, rStart)
-	args = append(args, "-lavfi", lavfi, "-an", "-sn", "-f", "null", "-")
-	out, _ := exec.CommandContext(ctx, s.ffmpeg, args...).CombinedOutput()
-	return parseSSIM(string(out))
+	return append(args, "-lavfi", lavfi, "-an", "-sn", "-f", "null", "-")
 }
 
 // validRate reports whether a probed frame rate ("24000/1001") is usable for re-timing.

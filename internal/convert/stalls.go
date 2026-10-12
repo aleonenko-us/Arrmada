@@ -72,7 +72,7 @@ func (s *Service) Stalls(ctx context.Context) ([]Stall, error) {
 		st := byReason[k]
 		b := Blocked{Key: latestKey[k]}
 		parseItemKey(&b)
-		st.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.SeriesID, b.Season, b.Episode, b.Key)
+		st.Title = s.titleForKey(ctx, b.Kind, b.MovieID, b.VersionID, b.SeriesID, b.Season, b.Episode, b.Key)
 		out = append(out, *st)
 	}
 	return out, nil

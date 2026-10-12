@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
 // The HDR10+ pipeline. HDR10+ is dynamic metadata — per-scene brightness instructions — and
@@ -40,13 +41,13 @@ func (s *Service) readHDR10Plus(ctx context.Context, src, jsonOut string) error 
 
 // extractHDR10Plus extracts up to limit frames' metadata (0 = all of them).
 func (s *Service) extractHDR10Plus(ctx context.Context, src, jsonOut string, limit int) error {
-	ff := exec.CommandContext(ctx, s.ffmpeg, "-loglevel", "error", "-i", src,
+	ff := s.tool(ctx, nil, toolrun.Idle, s.ffmpeg, "-loglevel", "error", "-i", src,
 		"-map", "0:v:0", "-c", "copy", "-bsf:v", "hevc_mp4toannexb", "-f", "hevc", "-")
 	args := []string{"extract", "-o", jsonOut}
 	if limit > 0 {
 		args = append(args, "--limit", strconv.Itoa(limit))
 	}
-	h10 := exec.CommandContext(ctx, s.hdr10plusTool, append(args, "-")...)
+	h10 := s.tool(ctx, nil, toolrun.Idle, s.hdr10plusTool, append(args, "-")...)
 	// With a frame limit the tool stops reading early on purpose, so ffmpeg then hits a
 	// broken pipe — expected, not a failure. Reading everything, ffmpeg must succeed:
 	// a stream cut short would leave metadata for only part of the film.
@@ -83,7 +84,7 @@ func (s *Service) encodeHDR10Plus(ctx context.Context, job *Job, src, dst, scrat
 	if videoCap > 0 && fileSize(encoded) >= videoCap {
 		return errTooBig
 	}
-	if out, err := exec.CommandContext(ctx, s.hdr10plusTool, "inject", "-i", encoded, "-j", jsonPath, "-o", injected).CombinedOutput(); err != nil {
+	if out, err := s.tool(ctx, job, toolrun.Idle, s.hdr10plusTool, "inject", "-i", encoded, "-j", jsonPath, "-o", injected).CombinedOutput(); err != nil {
 		return fmt.Errorf("inject HDR10+: %v (%s)", err, tailStr(out))
 	}
 	_ = os.Remove(encoded) // each stage frees the last: a 4K stream is tens of gigabytes
@@ -144,7 +145,7 @@ func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, 
 	tmp := video + ".mp4"
 	defer os.Remove(tmp)
 	// 1) Raw HEVC ES → video-only MP4 (the -r generates timestamps for the timestamp-less ES).
-	if out, err := exec.CommandContext(ctx, s.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+	if out, err := s.tool(ctx, nil, toolrun.Background, s.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
 		"-r", r, "-i", video, "-c", "copy", "-tag:v", "hvc1", tmp).CombinedOutput(); err != nil {
 		return fmt.Errorf("package video: %v (%s)", err, tailStr(out))
 	}
@@ -154,7 +155,7 @@ func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, 
 	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-i", tmp, "-i", src, "-map", "0:v:0"}
 	args = append(args, trackArgs(mi, plan, 1)...)
 	args = append(args, "-map_metadata", "1", "-map_chapters", "1", "-c:v", "copy", dst)
-	if out, err := exec.CommandContext(ctx, s.ffmpeg, args...).CombinedOutput(); err != nil {
+	if out, err := s.tool(ctx, nil, toolrun.Background, s.ffmpeg, args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("%v (%s)", err, tailStr(out))
 	}
 	return nil
@@ -173,7 +174,7 @@ var errSourceStream = errors.New("source stream failed")
 // have their own. Holding the read end open (as exec's StdoutPipe does until Wait) means a
 // consumer that exits early — hdr10plus_tool on a file with no HDR10+ — never breaks the
 // pipe: the producer blocks on a full pipe forever, and the conversion with it.
-func pipeCommands(producer, consumer *exec.Cmd, consumerMayStopEarly bool) error {
+func pipeCommands(producer, consumer *toolrun.Cmd, consumerMayStopEarly bool) error {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return err
