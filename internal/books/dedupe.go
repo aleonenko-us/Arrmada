@@ -267,6 +267,10 @@ func authorKey(author string) string {
 	return strings.Join(keep, " ")
 }
 
+// AuthorKey is authorKey for other packages: the form two spellings of one author's
+// name agree in, for grouping books whose author isn't linked to an author row.
+func AuthorKey(author string) string { return authorKey(author) }
+
 // findDuplicate returns the library book that is the same title and author, if any.
 // An author is required on both sides unless both are blank: "Beloved" by nobody is
 // not the same as "Beloved" by Toni Morrison.

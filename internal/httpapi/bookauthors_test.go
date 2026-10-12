@@ -65,6 +65,11 @@ func TestBookAuthorsAPI(t *testing.T) {
 		a.QualityProfile != "book-ebook" || a.Books != 2 || a.Wanted != 2 {
 		t.Errorf("author = %+v, want a followed Brandon Sanderson (hc:a:5) with 2 wanted books", a)
 	}
+	// The list it added from is the release check's record of the author: [BOOK-21]
+	var seen int
+	if err := s.deps.Store.DB().QueryRow(`SELECT COUNT(*) FROM author_works_seen WHERE author_id = ?`, added.AuthorID).Scan(&seen); err != nil || seen == 0 || a.WorksCheckedAt == "" {
+		t.Errorf("add author recorded %d seen works (err %v), checked at %q", seen, err, a.WorksCheckedAt)
+	}
 	list, err := s.deps.Books.List(context.Background())
 	if err != nil {
 		t.Fatal(err)

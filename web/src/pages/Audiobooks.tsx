@@ -19,6 +19,8 @@ import { Card, DailyBars, DaysPicker, Field, Loading, Sessions, Totals, addresse
 
 // The admin tabs are their own chunk: requesters never download them.
 const AudiobooksAdmin = lazyPage(() => import("./AudiobooksAdmin"), "AudiobooksAdmin");
+// So is "Read on your e-reader" (the OPDS catalogue), shared with My shelf.
+const EReaderPanel = lazyPage(() => import("../components/EReaderPanel"), "EReaderPanel");
 
 // Audiobooks is where people listen. Everyone gets Listen — their shelves, the whole
 // library and a sheet for each book, played right here in the mini-player — and Apps &
@@ -167,9 +169,12 @@ function CheckPlaces({ places, onOpen }: { places: AudioPlace[]; onOpen: (key: s
 // --- Apps & devices -----------------------------------------------------------------
 
 function AppsView() {
-  const { external } = useMe();
+  const { external, booksEnabled } = useMe();
   const [data, setData] = useState<MyAudio | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // While the listening setup shows its password step, the e-reader box points there
+  // rather than showing the same form twice.
+  const [setupAsks, setSetupAsks] = useState(false);
   const load = () => api.myAudio().then(setData).catch((e) => setError((e as Error).message));
   useEffect(() => { load(); }, []);
   if (!data) return <Loading error={error} />;
@@ -181,8 +186,15 @@ function AppsView() {
   }
   return (
     <div className="flex flex-col gap-4">
-      <AppSetup data={data} external={external} onData={setData} />
+      <AppSetup data={data} external={external} onData={setData} onPasswordStep={setSetupAsks} />
       {data.devices.length > 0 && <DevicesCard data={data} onChange={load} />}
+      {booksEnabled && (
+        <Suspense fallback={null}>
+          <EReaderPanel password={{ has: data.has_password, allowed: data.allowed }} passwordCard={setupAsks
+            ? <span className="text-[12px] text-ink-dim">Set or change it in step 2 of Set up listening, above.</span>
+            : <PasswordCard data={data} onSaved={setData} />} />
+        </Suspense>
+      )}
       <div className="rounded-xl px-4 py-2.5 text-[12px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
         Your places moved to Listen: open a book there to see where you're up to and put back an earlier place.
       </div>
@@ -194,13 +206,15 @@ function AppsView() {
 // phone — only apps actually tried with Arrmada are called working), then for an app set
 // the audiobook password, type in the exact fields, and wait for the phone to sign in,
 // which ticks green on its own.
-function AppSetup({ data, external, onData }: { data: MyAudio; external: boolean; onData: (d: MyAudio) => void }) {
+function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; external: boolean; onData: (d: MyAudio) => void; onPasswordStep: (shown: boolean) => void }) {
   const [platform, setPlatform] = useState<DevicePlatform>(() => {
     try { return devicePlatform(navigator.userAgent, navigator.maxTouchPoints > 1); } catch { return "other"; }
   });
   const apps = appsFor(platform);
   const [pick, setPick] = useState<AudioApp["id"] | null>(null);
   const chosen = apps.find((a) => a.id === pick) ?? null;
+  const asksPassword = !!chosen && chosen.id !== "web";
+  useEffect(() => { onPasswordStep(asksPassword); }, [asksPassword, onPasswordStep]);
   const servers = addresses(data, external);
   return (
     <Card title="Set up listening" note="Your place is kept in Arrmada, so you can switch between this page and an app any time.">
@@ -251,7 +265,7 @@ function AppSetup({ data, external, onData }: { data: MyAudio; external: boolean
                 {platform === "ios" && <> Listening right here works on an iPhone today.</>}
               </li>
             )}
-            <Step n={2} title="Set your audiobook password" done={data.has_password}>
+            <Step n={2} title="Set your audiobook & e-reader password" done={data.has_password}>
               <PasswordCard data={data} onSaved={onData} />
             </Step>
             <Step n={3} title={`Enter these in ${chosen.name}`} done={false}>
@@ -262,7 +276,7 @@ function AppSetup({ data, external, onData }: { data: MyAudio; external: boolean
               {servers.map((s, i) => <Field key={i} label={s.label} value={s.value} note={s.note} />)}
               {external && !data.public_url && <div className="mb-2 text-[12px] text-ink-dim">The server address works on the home network. Open this page at home to see it.</div>}
               <Field label="Username" value={data.username} />
-              <div className="text-[11.5px] text-ink-faint">Password: your audiobook password from step 2 — not your Arrmada password.</div>
+              <div className="text-[11.5px] text-ink-faint">Password: your audiobook &amp; e-reader password from step 2 — not your Arrmada password.</div>
             </Step>
             {data.has_password && <WaitForDevice data={data} onData={onData} />}
           </>
@@ -353,15 +367,17 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
   };
   const remove = async () => {
-    const ok = await confirm({ title: "Remove your audiobook password?", body: "Your apps will be signed out and can't connect until you set a new one.", confirmLabel: "Remove", tone: "danger" });
+    const ok = await confirm({ title: "Remove your audiobook & e-reader password?", body: "Your listening apps will be signed out, and neither they nor your e-reader apps can connect until you set a new one.", confirmLabel: "Remove", tone: "danger" });
     if (!ok) return;
     setBusy(true); setMsg(null);
     try { onSaved(await api.removeAudioPassword()); setOpen(true); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
   };
   return (
     <Card
-      title="Audiobook password"
-      note={data.has_password ? "Set. Apps sign in with your username and this password." : "Not set yet — set one to connect an app. It's separate from your Arrmada password."}
+      title="Audiobook & e-reader password"
+      note={data.has_password
+        ? "Set. Listening apps and e-reader apps sign in with your username and this password — it unlocks both."
+        : "Not set yet — set one to connect a listening or e-reader app. It's separate from your Arrmada password."}
       right={data.has_password && !open ? (
         <div className="flex flex-none gap-2">
           <button onClick={() => setOpen(true)} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={ghost}>Change</button>

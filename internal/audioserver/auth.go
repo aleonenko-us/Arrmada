@@ -2,6 +2,7 @@ package audioserver
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -10,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,14 @@ var (
 	errBadToken = errors.New("invalid or expired token")
 )
 
+// ErrBadLogin and ErrNoAccess are what Authenticate answers for a wrong username or
+// password, and for a right password on an account that may not connect (disabled,
+// below requester, or switched off by an admin).
+var (
+	ErrBadLogin = errBadLogin
+	ErrNoAccess = errNoAccess
+)
+
 // Tokens is what a sign-in hands the app.
 type Tokens struct {
 	Legacy  string
@@ -58,10 +68,114 @@ type Accounts struct {
 
 	mu      sync.Mutex
 	touched map[string]time.Time
+	// logins remembers recent good Authenticate calls (see there), keyed by an HMAC of
+	// the username and password under loginKey, a secret that never leaves the process.
+	logins   map[string]rememberedLogin
+	loginKey []byte
 }
 
+// rememberedLogin is one recent good sign-in: whose, and the password hash it matched,
+// so a changed or removed password stops it at once.
+type rememberedLogin struct {
+	userID int64
+	hash   string
+	until  time.Time
+}
+
+const (
+	// rememberLogin is how long a checked password is trusted without another bcrypt.
+	rememberLogin = 10 * time.Minute
+	// maxRemembered bounds the map; a flood of distinct good passwords can't happen
+	// (each needs a real account), but the bound costs nothing.
+	maxRemembered = 512
+)
+
 func newAccounts(db *sql.DB, users *auth.Service, allowed func(context.Context, *auth.User) bool) *Accounts {
-	return &Accounts{db: db, users: users, allowed: allowed, now: time.Now, touched: map[string]time.Time{}}
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return &Accounts{db: db, users: users, allowed: allowed, now: time.Now, touched: map[string]time.Time{},
+		logins: map[string]rememberedLogin{}, loginKey: key}
+}
+
+// Authenticate checks a username and audiobook password for a client that signs in on
+// every request instead of holding a token — e-reader apps browsing the OPDS catalogue
+// send HTTP Basic each time. Arrmada's own password is never accepted, the bcrypt timing
+// guard is the same as Login's, and the account must be allowed to connect (ErrNoAccess,
+// said only once the password is right).
+//
+// A feed page and its fifty covers would otherwise cost fifty-one bcrypt runs, so a
+// right password is remembered for a few minutes — in memory, as an HMAC under a
+// per-process secret, and only while the stored hash it matched is unchanged.
+func (a *Accounts) Authenticate(ctx context.Context, username, password string) (*auth.User, error) {
+	if username == "" || password == "" {
+		return nil, errBadLogin
+	}
+	key := a.credKey(username, password)
+	u, ok := a.remembered(ctx, key, username)
+	if !ok {
+		var hash string
+		var err error
+		u, err = a.users.UserByUsername(ctx, username)
+		if err == nil {
+			hash = a.passwordHash(ctx, u.ID)
+		}
+		if err != nil || hash == "" {
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+			return nil, errBadLogin
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+			return nil, errBadLogin
+		}
+		a.remember(key, u.ID, hash)
+	}
+	if u.Disabled || !a.allowed(ctx, u) {
+		return nil, errNoAccess
+	}
+	return u, nil
+}
+
+func (a *Accounts) credKey(username, password string) string {
+	m := hmac.New(sha256.New, a.loginKey)
+	m.Write([]byte(username))
+	m.Write([]byte{0})
+	m.Write([]byte(password))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// remembered returns the account a recent good sign-in under key belongs to, if it's
+// still fresh, still that username, and the password hash hasn't changed since.
+func (a *Accounts) remembered(ctx context.Context, key, username string) (*auth.User, bool) {
+	a.mu.Lock()
+	e, ok := a.logins[key]
+	a.mu.Unlock()
+	if !ok || a.now().After(e.until) {
+		return nil, false
+	}
+	u, err := a.users.UserByID(ctx, e.userID)
+	if err != nil || !strings.EqualFold(u.Username, username) || a.passwordHash(ctx, e.userID) != e.hash {
+		a.mu.Lock()
+		delete(a.logins, key)
+		a.mu.Unlock()
+		return nil, false
+	}
+	return u, true
+}
+
+func (a *Accounts) remember(key string, userID int64, hash string) {
+	now := a.now()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.logins) >= maxRemembered {
+		for k, e := range a.logins {
+			if now.After(e.until) {
+				delete(a.logins, k)
+			}
+		}
+		if len(a.logins) >= maxRemembered {
+			clear(a.logins)
+		}
+	}
+	a.logins[key] = rememberedLogin{userID: userID, hash: hash, until: now.Add(rememberLogin)}
 }
 
 // Login checks a username and audiobook-server password and issues a token family.

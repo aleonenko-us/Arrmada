@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/books"
 )
 
 func decodeLenient(r *http.Request, dst any) error {
@@ -173,13 +175,24 @@ func (s *Server) serveCover(w http.ResponseWriter, r *http.Request, key, cache s
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
+	s.serveBookCover(w, r, it.Book, cache)
+}
+
+// ServeBookCover sends a book's cover whatever editions it has — the OPDS catalogue's
+// covers for ebooks — from the same uploaded covers and image cache the apps use.
+// cache is the Cache-Control to send ("" keeps the default).
+func (s *Server) ServeBookCover(w http.ResponseWriter, r *http.Request, b books.Book, cache string) {
+	s.serveBookCover(w, r, b, cache)
+}
+
+func (s *Server) serveBookCover(w http.ResponseWriter, r *http.Request, b books.Book, cache string) {
 	// A cover uploaded in Arrmada wins.
-	if m, _ := filepath.Glob(filepath.Join(s.coverDir, fmt.Sprintf("book-%d.*", it.Book.ID))); len(m) > 0 {
+	if m, _ := filepath.Glob(filepath.Join(s.coverDir, fmt.Sprintf("book-%d.*", b.ID))); len(m) > 0 {
 		w.Header().Set("Cache-Control", firstNonEmpty(cache, "public, max-age=86400"))
 		http.ServeFile(w, r, m[0])
 		return
 	}
-	u := it.Book.CoverURL
+	u := b.CoverURL
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
 		writeError(w, http.StatusNotFound, "No cover")
 		return

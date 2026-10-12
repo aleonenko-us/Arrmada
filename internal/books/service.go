@@ -284,6 +284,12 @@ func (s *Service) AddAuthorWorks(ctx context.Context, authorID int64, works []me
 }
 
 func (s *Service) addWorks(ctx context.Context, works []metadata.BookResult, profile string, monitored bool, authorID int64) ([]Book, int) {
+	return s.addWorksNoted(ctx, works, profile, monitored, authorID, "Added from the author's catalogue")
+}
+
+// addWorksNoted is addWorks with the timeline line each added book gets ("New from
+// <author>" for a followed author's new book).
+func (s *Service) addWorksNoted(ctx context.Context, works []metadata.BookResult, profile string, monitored bool, authorID int64, note string) ([]Book, int) {
 	var author Author
 	if authorID > 0 {
 		var err error
@@ -332,7 +338,7 @@ func (s *Service) addWorks(ctx context.Context, works []metadata.BookResult, pro
 			created.AuthorID = s.linkAuthor(ctx, created.ID, created.Author, wk.AuthorKey, false)
 		}
 		have.Add(created)
-		s.repo.AddEvent(ctx, created.ID, "added", "Added from the author's catalogue")
+		s.repo.AddEvent(ctx, created.ID, "added", note)
 		added = append(added, created)
 	}
 	if len(added) > 0 {

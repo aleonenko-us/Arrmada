@@ -25,6 +25,8 @@ import { PAGE, asRequest, fmtSize, newThisWeek, seriesGroups, seriesLabel } from
 // slow fallback poll that stops while the tab is hidden — no polling in the background.
 
 const BookSheet = lazyPage(() => import("./myshelf/BookSheet"), "BookSheet");
+// "Read on your e-reader" (the OPDS catalogue) is its own chunk, shared with Audiobooks.
+const EReaderPanel = lazyPage(() => import("../components/EReaderPanel"), "EReaderPanel");
 
 // Their own requests moving (and arriving), and their inbox changing (a Kindle send).
 const SHELF_TOPICS = ["user.*.request.updated", "user.*.inbox.updated"] as const;
@@ -162,6 +164,8 @@ export function MyBooks() {
           </Button>
         </div>
       )}
+
+      {ebooks > 0 && <div className="mt-6"><Suspense fallback={null}><EReaderPanel /></Suspense></div>}
 
       {open && books && (
         <Suspense fallback={null}>
