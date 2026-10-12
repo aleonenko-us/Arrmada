@@ -8,7 +8,7 @@ import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
-import { KeptTracksNote, card, cardStyle, langName } from "./subtitles/shared";
+import { KeptTracksNote, RowPoster, card, cardStyle, langName } from "./subtitles/shared";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
 import { useConfirm } from "../ui";
 
@@ -315,6 +315,7 @@ function embeddedKinds(f: SubFileEntry): { txt: boolean; pgs: boolean; vob: bool
 }
 type Filter = "missing" | "pgs" | "text" | "external" | "orphaned";
 const orphanCount = (f: SubFileEntry) => (f.orphans ?? []).length;
+const PAGE_ROWS = 100;
 // The library list is for movies or shows (?media=tv).
 const MEDIA_KINDS = ["movies", "tv"] as const;
 
@@ -329,6 +330,11 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const [queued, setQueued] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "missing", dir: "desc" });
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
+  // The same search box as the TV list: title or year. The box updates at once; the
+  // address follows after a pause.
+  const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
+  // Rows are rendered a page at a time: a library of thousands stays quick to type into.
+  const [shown, setShown] = useState(PAGE_ROWS);
 
   const confirm = useConfirm();
   useEffect(() => { setItems(null); setQueued(new Set()); setFilters(new Set()); }, [media]);
@@ -439,7 +445,8 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   }, [items]);
 
   const view = useMemo(() => {
-    let list = (items ?? []).slice();
+    const q = query.trim().toLowerCase();
+    let list = q ? (items ?? []).filter((f) => `${f.title} ${f.year ?? ""}`.toLowerCase().includes(q)) : (items ?? []).slice();
     if (filters.has("missing")) list = list.filter((f) => f.missing > 0);
     if (filters.has("pgs")) list = list.filter((f) => { const k = embeddedKinds(f); return k.pgs || k.vob; });
     if (filters.has("text")) list = list.filter((f) => embeddedKinds(f).txt);
@@ -457,10 +464,12 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
       const va = val(a), vb = val(b);
       return typeof va === "string" || typeof vb === "string" ? String(va).localeCompare(String(vb)) * dir : (va - vb) * dir;
     });
-  }, [items, filters, sort]);
+  }, [items, filters, sort, query]);
+  // A new search, filter or sort starts again from the first page.
+  useEffect(() => { setShown(PAGE_ROWS); }, [filters, sort, query, media]);
 
   const noun = media === "tv" ? "episodes" : "movies";
-  const filtering = filters.size > 0;
+  const filtering = filters.size > 0 || query.trim() !== "";
   const HEADERS: { label: string; key?: SortKey }[] = [
     { label: "Title", key: "title" }, { label: "Audio" }, { label: "Embedded", key: "embedded" },
     { label: "Coverage" }, { label: "" },
@@ -494,12 +503,20 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search movies…"
+              aria-label="Search movies"
+              className="mr-1 w-full rounded-lg px-3 py-1.5 text-[12.5px] sm:w-[240px]"
+              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+            />
             <Pill active={filters.has("missing")} disabled={!counts.missing} onClick={() => toggleF("missing")}>Missing <span className="opacity-60">{counts.missing}</span></Pill>
             <Pill active={filters.has("pgs")} disabled={!counts.pgs} onClick={() => toggleF("pgs")}>PGS/VobSub <span className="opacity-60">{counts.pgs}</span></Pill>
             <Pill active={filters.has("text")} disabled={!counts.text} onClick={() => toggleF("text")}>Embedded text <span className="opacity-60">{counts.text}</span></Pill>
             <Pill active={filters.has("external")} disabled={!counts.external} onClick={() => toggleF("external")}>Has external <span className="opacity-60">{counts.external}</span></Pill>
             <Pill active={filters.has("orphaned")} disabled={!counts.orphaned} onClick={() => toggleF("orphaned")}>Orphaned <span className="opacity-60">{counts.orphaned}</span></Pill>
-            {filtering && <button onClick={() => setFilters(new Set())} className="ml-1 text-[10.5px] text-ink-faint underline hover:text-[var(--ink)]">clear</button>}
+            {filtering && <button onClick={() => { setFilters(new Set()); setQuery(""); }} className="ml-1 text-[10.5px] text-ink-faint underline hover:text-[var(--ink)]">clear</button>}
             {filters.has("orphaned") && view.some((f) => orphanCount(f) > 0) && (
               <span className="ml-auto flex items-center gap-1.5">
                 <button type="button" onClick={() => bulkOrphans("adopt")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Adopt all</button>
@@ -520,7 +537,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                 </th>
               ))}</tr></thead>
               <tbody>
-                {view.map((f, i) => (
+                {view.slice(0, shown).map((f, i) => (
                   <SubRow
                     key={rowKey(f)}
                     f={f}
@@ -534,7 +551,13 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                 ))}
               </tbody>
             </table>
+            {view.length === 0 && <div className="p-8 text-center text-[12.5px] text-ink-dim">No movies match.</div>}
           </div>
+          {view.length > shown && (
+            <button type="button" onClick={() => setShown((n) => n + PAGE_ROWS)} className="self-center rounded-lg px-3.5 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>
+              Show more <span className="font-mono text-[10.5px] text-ink-faint">{Math.min(PAGE_ROWS, view.length - shown)} of {(view.length - shown).toLocaleString()} left</span>
+            </button>
+          )}
         </>
       )}
     </div>
@@ -680,6 +703,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
       <div className="flex items-center gap-2 pr-3 hover:bg-[var(--panel-2)]">
       <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left">
         <span className="w-3 flex-none text-[10px] text-ink-faint">{open ? "▾" : "▸"}</span>
+        <RowPoster url={g.poster_url} />
         <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
           {g.title} <span className="font-normal text-ink-faint">{g.year || ""}</span>
         </span>
@@ -747,7 +771,11 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: Sub
   const k = embeddedKinds(f);
   return (
     <tr style={{ borderTop: first ? "none" : "1px solid var(--line-soft)" }}>
-      <td className="px-3 py-2 font-semibold">{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></td>
+      <td className="px-3 py-2 font-semibold">
+        {f.kind === "movie" ? (
+          <span className="flex items-center gap-2.5"><RowPoster url={f.poster_url} /><span>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></span></span>
+        ) : <>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></>}
+      </td>
       <td className="px-3 py-2 font-mono text-[10.5px] text-ink-dim">{(f.audio_langs ?? []).map((l) => l.toUpperCase()).join(" ") || "—"}</td>
       <td className="px-3 py-2">
         {(f.embedded ?? []).length === 0 ? <span className="text-ink-faint">—</span> : (
