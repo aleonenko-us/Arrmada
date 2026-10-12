@@ -158,7 +158,7 @@ func (s *Service) mergeTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64,
 
 	// 2. The audiobook: moved when the kept book has none, otherwise kept as an audio
 	// version of the kept book, unmonitored so the sweep never searches for it.
-	// (AUD-17's narrator, once it exists, travels with the file in both branches.)
+	// A narrator typed for the dropped audiobook travels with the file in both branches.
 	dropMain := listening.ItemKey(dropID, 0)
 	moves[dropMain] = listening.ItemKey(keepID, 0)
 	taken := map[string]bool{}
@@ -170,13 +170,20 @@ func (s *Service) mergeTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64,
 			if err := setEditionTx(ctx, tx, keepID, KindAudiobook, *drop.Audiobook); err != nil {
 				return err
 			}
+			if drop.AudiobookNarrator != "" {
+				if _, err := tx.ExecContext(ctx, `UPDATE books SET audiobook_narrator = ? WHERE id = ?`,
+					drop.AudiobookNarrator, keepID); err != nil {
+					return err
+				}
+			}
 			res.MovedAudiobook = true
 		} else {
 			label := uniqueLabel(MergedCopyLabel, taken)
 			r, err := tx.ExecContext(ctx,
-				`INSERT INTO book_audio_versions (book_id, label, terms, monitored, path, format, size, files)
-				 VALUES (?, ?, '', 0, ?, ?, ?, ?)`,
-				keepID, label, drop.Audiobook.Path, drop.Audiobook.Format, drop.Audiobook.SizeBytes, max1(drop.Audiobook.FileCount))
+				`INSERT INTO book_audio_versions (book_id, label, terms, monitored, path, format, size, files, narrator)
+				 VALUES (?, ?, '', 0, ?, ?, ?, ?, ?)`,
+				keepID, label, drop.Audiobook.Path, drop.Audiobook.Format, drop.Audiobook.SizeBytes, max1(drop.Audiobook.FileCount),
+				drop.AudiobookNarrator)
 			if err != nil {
 				return err
 			}
