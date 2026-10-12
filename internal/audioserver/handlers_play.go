@@ -410,12 +410,12 @@ func (s *Server) handlePatchProgress(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &b) {
 		return
 	}
-	key := r.PathValue("id")
-	if _, err := s.item(r.Context(), key); err != nil {
+	it, err := s.item(r.Context(), r.PathValue("id"))
+	if err != nil {
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
-	p, err := s.patchProgress(r.Context(), userOf(r).ID, key, b)
+	p, err := s.patchProgress(r.Context(), userOf(r).ID, it.Key, b)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Couldn't save progress")
 		return

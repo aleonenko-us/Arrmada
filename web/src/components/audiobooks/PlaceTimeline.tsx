@@ -15,7 +15,9 @@ export function timelineReason(h: AudioHistoryEntry): string {
   const on = h.device ? ` on ${h.device}` : "";
   switch (h.kind) {
     case "before":
-      return "place before a change";
+      // "merge": two copies of a book were merged and this was the place in the copy
+      // whose place wasn't kept.
+      return h.reason === "merge" ? "place in the other copy, before the books were merged" : "place before a change";
     case "rejected":
       return h.reason === "unproven" ? "not used: jump not proven" : "not used: older than your place";
     case "held":

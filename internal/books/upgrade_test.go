@@ -76,6 +76,17 @@ func TestUpgradeFlagsInsteadOfMerging(t *testing.T) {
 			t.Errorf("book %d: want a possible_duplicate event, got %+v", id, evs)
 		}
 	}
+	// And the pair waits in the duplicates review.
+	groups, err := s.PossibleDuplicates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reason2 string
+	_ = repo.db.QueryRowContext(ctx, `SELECT reason FROM book_dupe_reviews WHERE a_id = ? AND b_id = ? AND status = 'open'`,
+		min(held.ID, old.ID), max(held.ID, old.ID)).Scan(&reason2)
+	if reason2 != DupReasonHardcover || len(groups) != 1 || len(groups[0].Books) != 2 {
+		t.Fatalf("review row reason %q, groups %+v", reason2, groups)
+	}
 }
 
 // The duplicate's audio versions and the family's listening places survive a whole
