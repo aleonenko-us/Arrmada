@@ -3,21 +3,21 @@ import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
 
 // The indexer forms, moved from the old Indexers page into the cards on Settings →
-// Connections: adding one, editing one (with its seed rules), testing settings before they
-// are saved, and the "Used for" pills. INT-04's fixes stay: a new indexer is named after
-// its kind until someone types a name, the pills read "searched for this area", and the
-// grids are one column on a phone.
+// Connections: editing one (with its seed rules), testing settings before they are saved,
+// and the "Used for" pills. INT-04's fixes stay: the pills read "searched for this area",
+// and the grids are one column on a phone. Adding one is the preset catalogue in
+// AddIndexerModal, which shares the pieces exported here.
 
-type TestState = { loading?: boolean; ok?: boolean; error?: string; caps?: string };
+export type TestState = { loading?: boolean; ok?: boolean; error?: string; caps?: string };
 
 // Priority only orders results that are otherwise level, so say so wherever it shows.
 export const TIE_BREAK_HELP = "Only breaks ties between equally seeded results, such as the same release from two indexers. 1 = preferred.";
 
-const field = "w-full rounded-lg px-3 py-2 text-[13px]";
-const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
+export const field = "w-full rounded-lg px-3 py-2 text-[13px]";
+export const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
 // TestLine is a Test's answer: connected (with what the indexer supports) or why not.
-function TestLine({ state }: { state: TestState }) {
+export function TestLine({ state }: { state: TestState }) {
   return (
     <div className="mt-2.5 break-words font-mono text-[11px]" style={{ color: state.ok ? "var(--good)" : "var(--reject)" }}>
       {state.ok ? `✓ Connected${state.caps ? ` · ${state.caps}` : ""}` : `✕ ${state.error ?? "failed"}`}
@@ -45,138 +45,6 @@ function TestSettings({ body }: { body: () => NewIndexer & { id?: number } }) {
       </button>
       {!state.loading && state.ok !== undefined && <TestLine state={state} />}
     </div>
-  );
-}
-
-// The name a new indexer gets from its kind, until the user types their own.
-const KIND_NAMES: Record<string, string> = {
-  "1337x": "1337x",
-  torrentleech: "TorrentLeech",
-  myanonamouse: "MyAnonaMouse",
-  torznab: "Torznab",
-};
-
-export function AddIndexerForm({ onAdded }: { onAdded: () => void }) {
-  const [name, setName] = useState(KIND_NAMES["1337x"]);
-  const [nameTouched, setNameTouched] = useState(false);
-  const [kind, setKind] = useState("1337x");
-  const changeKind = (k: string) => {
-    setKind(k);
-    if (!nameTouched) setName(KIND_NAMES[k] ?? k);
-  };
-  const [url, setUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [priority, setPriority] = useState(25);
-  const [minSeeders, setMinSeeders] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const isTL = kind === "torrentleech";
-  const is1337 = kind === "1337x";
-  const isMAM = kind === "myanonamouse";
-
-  const body = (): NewIndexer =>
-    isTL
-      ? { name, kind, username, password, api_key: apiKey, priority, min_seeders: minSeeders }
-      : isMAM
-        ? { name, kind, api_key: apiKey, media_types: ["book"], priority, min_seeders: minSeeders }
-        : is1337
-          ? { name, kind, url, priority, min_seeders: minSeeders }
-          : { name, kind, url, api_key: apiKey, priority, min_seeders: minSeeders };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await indexerApi.createIndexer(body());
-      onAdded();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} aria-label="Add an indexer" className="rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Labeled label="Name">
-          <input className={field} style={fieldStyle} value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true); }} required />
-        </Labeled>
-        <Labeled label="Kind">
-          <select className={field} style={fieldStyle} value={kind} onChange={(e) => changeKind(e.target.value)}>
-            <option value="1337x">1337x (public torrents)</option>
-            <option value="torrentleech">TorrentLeech (native)</option>
-            <option value="myanonamouse">MyAnonaMouse (native, books)</option>
-            <option value="torznab">Torznab (torrent, via Prowlarr/Jackett)</option>
-          </select>
-        </Labeled>
-
-        {isMAM ? (
-          <Labeled label="mam_id session" span2>
-            <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="paste the mam_id session string from MyAnonaMouse" autoComplete="off" required />
-          </Labeled>
-        ) : isTL ? (
-          <>
-            <Labeled label="Username">
-              <input className={field} style={fieldStyle} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" required />
-            </Labeled>
-            <Labeled label="Password">
-              <input type="password" className={field} style={fieldStyle} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
-            </Labeled>
-          </>
-        ) : is1337 ? (
-          <Labeled label="Site URL (optional mirror)" span2>
-            <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://1337x.to (leave blank for default)" />
-          </Labeled>
-        ) : (
-          <>
-            <Labeled label="API URL" span2>
-              <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tracker.example/api" required />
-            </Labeled>
-            <Labeled label="API key">
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="••••••••" />
-            </Labeled>
-          </>
-        )}
-
-        <Labeled label="Tie-break priority (1–50)" hint={TIE_BREAK_HELP}>
-          <input type="number" min={1} max={50} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
-        </Labeled>
-        <Labeled label="Min seeders (0 = off)">
-          <input type="number" min={0} className={field} style={fieldStyle} value={minSeeders} onChange={(e) => setMinSeeders(Math.max(0, Number(e.target.value)))} />
-        </Labeled>
-      </div>
-
-      {is1337 && (
-        <p className="mt-3 text-[11px] text-ink-faint">
-          Public tracker — no login, no ratio. Uses FlareSolverr to get past Cloudflare and hands qBittorrent a magnet, so there’s nothing to seed. Great for testing.
-        </p>
-      )}
-      {isTL && (
-        <p className="mt-3 text-[11px] text-ink-faint">
-          Native — no Prowlarr/Jackett needed. Credentials stored on your server. Uses FlareSolverr for Cloudflare. New uploads are checked every 15 minutes. 2FA not supported yet.
-        </p>
-      )}
-      {isMAM && (
-        <p className="mt-3 text-[11px] text-ink-faint">
-          Native books/audiobooks integration. In MyAnonaMouse go to <b>Preferences → Security → Create session</b>, allow your server's IP (ASN-locked is fine), and paste the <span className="font-mono">mam_id</span> here. Pulls full metadata — narrator, author, series, language, format — straight from MAM's API. Scoped to Books automatically. If you already have MAM in Prowlarr, remove that entry to avoid duplicate results.
-        </p>
-      )}
-      <TestSettings body={body} />
-      {error && <div className="mt-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-      <button
-        type="submit"
-        disabled={saving}
-        className="mt-3.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold"
-        style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: saving ? 0.6 : 1 }}
-      >
-        {saving ? "Saving…" : "Save indexer"}
-      </button>
-    </form>
   );
 }
 
@@ -336,7 +204,7 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
   );
 }
 
-function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, onTime, onUnit }: {
+export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, onTime, onUnit }: {
   enabled: boolean; ratio: number; time: number; unit: "hours" | "days";
   onEnabled: (v: boolean) => void; onRatio: (v: number) => void; onTime: (v: number) => void; onUnit: (v: "hours" | "days") => void;
 }) {
@@ -369,7 +237,7 @@ function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, onTime, 
   );
 }
 
-function Labeled({ label, hint, span2, children }: { label: string; hint?: string; span2?: boolean; children: React.ReactNode }) {
+export function Labeled({ label, hint, span2, children }: { label: string; hint?: string; span2?: boolean; children: React.ReactNode }) {
   return (
     <label className={`flex flex-col gap-1.5 ${span2 ? "sm:col-span-2" : ""}`}>
       <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
@@ -379,13 +247,13 @@ function Labeled({ label, hint, span2, children }: { label: string; hint?: strin
   );
 }
 
-const MEDIA_TYPES = [
+export const MEDIA_TYPES = [
   { key: "movie", label: "Movies" },
   { key: "series", label: "TV" },
   { key: "book", label: "Books" },
   { key: "music", label: "Music" },
 ] as const;
-const ALL_MEDIA = MEDIA_TYPES.map((m) => m.key as string);
+export const ALL_MEDIA = MEDIA_TYPES.map((m) => m.key as string);
 
 // indexerBody is an indexer's saved settings as a PUT body, with what changes swapped in.
 // Its key and password go back blank, which keeps the stored ones.

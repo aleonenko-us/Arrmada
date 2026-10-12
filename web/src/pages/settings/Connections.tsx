@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { CategoryLine, ClientEditor, ClientForm, clientBody } from "../../components/connections/ClientEditor";
 import { ConnectionCard, type CardFix, type CardTest } from "../../components/connections/ConnectionCard";
 import { ConnectionSection } from "../../components/connections/ConnectionSection";
-import { AddIndexerForm, IndexerEditor, indexerBody } from "../../components/connections/IndexerEditor";
+import { IndexerEditor, indexerBody } from "../../components/connections/IndexerEditor";
 import { DiscoveryRegion, KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { ProwlarrPanel } from "../../components/connections/ProwlarrPanel";
 import { type DownloadClient, type Indexer } from "../../lib/api";
@@ -16,7 +16,12 @@ import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
 import { PlexConnect } from "./PlexConnection";
 
+// The add-indexer catalogue loads when it's opened.
+const AddIndexerModal = lazy(() => import("../../components/connections/AddIndexerModal"));
+
 const NO_SECTIONS: ConnectionSectionData[] = [];
+// The Prowlarr card's id (and anchor): the catalogue's Prowlarr tile opens it.
+const PROWLARR_CARD = "prowlarr";
 // The Plex card's id (and anchor): LINKS.plexConnection lands on it.
 const PLEX_CARD = "plex";
 
@@ -266,9 +271,7 @@ export function ConnectionsSettings() {
     switch (id) {
       case "search":
         return (
-          <Button size="sm" variant={adding === "indexer" ? "secondary" : "primary"} onClick={() => setAdding(adding === "indexer" ? null : "indexer")}>
-            {adding === "indexer" ? "Cancel" : "+ Add indexer"}
-          </Button>
+          <Button size="sm" variant="primary" onClick={() => setAdding("indexer")}>+ Add indexer</Button>
         );
       case "downloads":
         return (
@@ -286,7 +289,6 @@ export function ConnectionsSettings() {
   };
 
   const above = (id: ConnectionSectionId): ReactNode => {
-    if (id === "search" && adding === "indexer") return <AddIndexerForm onAdded={() => { setAdding(null); void refreshAll(); }} />;
     if (id === "downloads") {
       return (
         <>
@@ -307,9 +309,22 @@ export function ConnectionsSettings() {
     return undefined;
   };
 
+  // The catalogue's Prowlarr tile: Prowlarr isn't added like an indexer, its card pulls
+  // Prowlarr's indexers in, so the tile opens that card.
+  const openProwlarr = () => {
+    setAdding(null);
+    setEditing(PROWLARR_CARD);
+    document.getElementById(PROWLARR_CARD)?.scrollIntoView({ block: "start" });
+  };
+
   return (
     <div className="flex flex-col gap-8">
       {error && <StaleBanner message={error} onRetry={refetch} />}
+      {adding === "indexer" && (
+        <Suspense fallback={null}>
+          <AddIndexerModal onClose={() => setAdding(null)} onAdded={() => { setAdding(null); void refreshAll(); }} onProwlarr={openProwlarr} />
+        </Suspense>
+      )}
       {sections.map((s) => (
         <ConnectionSection
           key={s.id}
