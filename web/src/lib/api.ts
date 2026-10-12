@@ -777,7 +777,7 @@ export interface SystemHealth {
 
 // The Needs-you feed (GET /api/v1/attention, staff only): what's waiting on a person.
 export type AttentionKind =
-  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert";
+  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert" | "issue";
 export interface AttentionCounts {
   requests: number;
   reviews: number;
@@ -787,6 +787,7 @@ export interface AttentionCounts {
   health: number;
   health_errors: number;
   convert?: number; // reasons Convert is stuck waiting for disk space
+  issues?: number; // reported problems still open
   total: number;
 }
 export interface AttentionItem {
@@ -2439,8 +2440,6 @@ export const api = {
   updateIndexer: (id: number, body: NewIndexer) =>
     req<void>(`/api/v1/indexers/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteIndexer: (id: number) => req<void>(`/api/v1/indexers/${id}`, { method: "DELETE" }),
-  testIndexer: (id: number) =>
-    req<IndexerTestResult>(`/api/v1/indexers/${id}/test`, { method: "POST" }),
   /** Tests settings without saving them; with id, a blank key or password means the saved one. */
   testIndexerSettings: (body: NewIndexer & { id?: number }) =>
     req<IndexerTestResult>("/api/v1/indexers/test", { method: "POST", body: JSON.stringify(body) }),
@@ -2549,8 +2548,6 @@ export const api = {
     req<{ restored: boolean }>("/api/v1/downloadclients/restore-bundled", { method: "POST" }),
   deleteDownloadClient: (id: number) =>
     req<void>(`/api/v1/downloadclients/${id}`, { method: "DELETE" }),
-  testDownloadClient: (id: number) =>
-    req<{ ok: boolean; error?: string }>(`/api/v1/downloadclients/${id}/test`, { method: "POST" }),
   downloadClientStatus: (id: number) =>
     req<{ listen_port: number }>(`/api/v1/downloadclients/${id}/status`),
 
@@ -2696,7 +2693,6 @@ export const api = {
     const qs = p.toString();
     return req<{ jobs: Job[] }>(`/api/v1/jobs${qs ? `?${qs}` : ""}`).then((r) => r.jobs);
   },
-  cancelJob: (id: number) => req<{ status: string; job_id: number }>(`/api/v1/jobs/${id}/cancel`, { method: "POST" }),
   // Recurring tasks (System → Status): staff can list them; Run now is admin-only and
   // answers 409 when the task is already running.
   tasks: () => req<TaskStatus[]>("/api/v1/system/tasks"),
@@ -2770,8 +2766,6 @@ export const api = {
   audioCloseBeacon: (sid: string, r: AudioSyncReport): boolean =>
     typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function" &&
     navigator.sendBeacon(`/api/v1/me/audio/sessions/${encodeURIComponent(sid)}/close`, new Blob([JSON.stringify(r)], { type: "application/json" })),
-  /** The same-origin URL of one audio file (tracks[].url already is one); the sign-in cookie authorises it. */
-  audioFileUrl: (key: string, ino: string) => `/api/v1/me/audio/items/${encodeURIComponent(key)}/file/${encodeURIComponent(ino)}`,
   audioBookmarks: (key: string) => req<{ bookmarks: AudioBookmark[] }>(`/api/v1/me/audio/items/${encodeURIComponent(key)}/bookmarks`),
   addAudioBookmark: (key: string, time: number, title = "") =>
     req<AudioBookmark>(`/api/v1/me/audio/items/${encodeURIComponent(key)}/bookmarks`, { method: "POST", body: JSON.stringify({ time, title }) }),
@@ -3066,8 +3060,6 @@ export const api = {
   setBookCover: (id: number, url: string) =>
     req<{ cover_url: string }>(`/api/v1/books/${id}/cover`, { method: "PUT", body: JSON.stringify({ url }) }).then((r) => r.cover_url),
   // Books Discover
-  bookDiscoverTrending: () =>
-    req<{ books: BookDiscoverCard[] }>("/api/v1/books/discover/trending").then((r) => r.books),
   bookDiscoverBrowse: (kind: "trending" | "new_releases" | "top_rated" | "popular") =>
     req<{ books: BookDiscoverCard[] }>(`/api/v1/books/discover/browse/${kind}`).then((r) => r.books),
   bookDiscoverRecommended: () =>

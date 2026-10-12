@@ -18,6 +18,7 @@ import (
 var samples = map[string]map[string]any{
 	"request.auto_approved": {"id": int64(4), "title": "Dune", "year": 2021, "media_type": "movie", "requested_by": "Sam"},
 	"request.created":       {"id": int64(42), "media_type": "movie", "title": "Dune", "year": 2021, "requested_by_name": "Sam", "note": "for movie night"},
+	"issue.reported":        {"id": int64(5), "title": "Severance", "year": 2022, "season": 1, "episode": 4, "category": "audio", "note": "no English audio", "reported_by_name": "Sam"},
 	"release.grabbed":       {"title": "Dune.2021.2160p.WEB-DL", "indexer": "Tracker"},
 	"movie.imported":        {"id": int64(12), "version_id": int64(0), "path": "/m/Dune.mkv", "title": "Dune", "upgrade": true},
 	"episodes.imported":     {"title": "Severance", "id": int64(3), "count": 2},
@@ -101,6 +102,10 @@ func TestCatalogFormat(t *testing.T) {
 	m, _ = mustLookup(t, "request.auto_approved").Format(samples["request.auto_approved"])
 	if m.Body != "✅ Auto-approved: Dune (2021) for Sam" {
 		t.Errorf("auto-approved body = %q", m.Body)
+	}
+	m, _ = mustLookup(t, "issue.reported").Format(samples["issue.reported"])
+	if m.Body != "Sam reported a problem with Severance S01E04: sound.\nNote: “no English audio”" || m.Link != "/requests?tab=issues&issue=5" {
+		t.Errorf("issue.reported = %+v", m)
 	}
 	if _, ok := mustLookup(t, "movie.imported").Format(map[string]any{"title": "Dune", "source": "scan"}); ok {
 		t.Error("a library scan adopting a file should not alert")

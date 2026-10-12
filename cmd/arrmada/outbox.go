@@ -9,6 +9,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
 	"github.com/tristenlammi/arrmada/internal/convert"
+	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/outbox"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/safego"
@@ -33,6 +34,8 @@ type importConsumers struct {
 	showFolder func(ctx context.Context, seriesID int64) string
 	// plexIndexStale asks the Plex library index to look again soon (nil = nothing).
 	plexIndexStale func()
+	// issues resolves a reported problem being fixed when the new file for it lands.
+	issues *issues.Service
 }
 
 // register adds every consumer. It must run before anything can import — the scheduler's
@@ -47,6 +50,12 @@ func (c importConsumers) register(box *outbox.Outbox) {
 	c.registerPlex(box)
 	box.Register(outbox.TopicMovieImported, "requests.ready", decode(func(ctx context.Context, p outbox.MovieImported) error {
 		return c.requests.NotifyMovieReady(ctx, p.MovieID)
+	}))
+	box.Register(outbox.TopicMovieImported, "issues.resolve", decode(func(ctx context.Context, p outbox.MovieImported) error {
+		if c.issues == nil {
+			return nil
+		}
+		return c.issues.OnMovieImported(ctx, p.MovieID, p.VersionID)
 	}))
 	box.Register(outbox.TopicMovieImported, "convert", decode(func(ctx context.Context, p outbox.MovieImported) error {
 		return c.convert.IndexMovie(ctx, p.MovieID) // a movie deleted since is simply forgotten
@@ -67,6 +76,17 @@ func (c importConsumers) register(box *outbox.Outbox) {
 
 	box.Register(outbox.TopicSeriesImported, "requests.ready", decode(func(ctx context.Context, p outbox.SeriesImported) error {
 		return c.requests.NotifySeriesReady(ctx, p.SeriesID)
+	}))
+	// Only the episodes this import placed: an issue on S01E04 isn't fixed by S01E05.
+	box.Register(outbox.TopicSeriesImported, "issues.resolve", decode(func(ctx context.Context, p outbox.SeriesImported) error {
+		if c.issues == nil {
+			return nil
+		}
+		eps := make([]issues.Episode, 0, len(p.Episodes))
+		for _, e := range p.Episodes {
+			eps = append(eps, issues.Episode{Season: e.Season, Episode: e.Episode})
+		}
+		return c.issues.OnSeriesImported(ctx, p.SeriesID, eps)
 	}))
 	box.Register(outbox.TopicSeriesImported, "convert", decode(func(ctx context.Context, p outbox.SeriesImported) error {
 		return gone(c.convert.IndexSeries(ctx, p.SeriesID), series.ErrNotFound)

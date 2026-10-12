@@ -145,3 +145,29 @@ func TestNotifyPartiesSkipsInternalApprise(t *testing.T) {
 		t.Errorf("status for the blocked URL = %v %q %q %v, want set with a reason and no token", set, hint, blocked, err)
 	}
 }
+
+// NotifyUsers (what Issues tells its reporters through) writes one inbox row per person and
+// reference: a repeat, or a person listed twice, tells nobody again.
+func TestNotifyUsersOncePerRef(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	s := &Service{repo: NewRepo(st.DB()), log: slog.Default()}
+	ctx := context.Background()
+	n := UserNotice{Title: "Problem fixed", Body: "The problem you reported with “Dune” is fixed.", Ref: "movie:438631:issue:3:resolved", Kind: "issue-resolved", MediaType: "movie"}
+	told, err := s.NotifyUsers(ctx, []int64{7, 8, 7, 0}, n)
+	if err != nil || told != 2 {
+		t.Fatalf("first send: told=%d err=%v, want 2", told, err)
+	}
+	if told, err = s.NotifyUsers(ctx, []int64{7, 8}, n); err != nil || told != 0 {
+		t.Fatalf("repeat: told=%d err=%v, want 0", told, err)
+	}
+	for _, uid := range []int64{7, 8} {
+		inbox, _ := s.repo.listUserNotifications(ctx, uid)
+		if len(inbox) != 1 || inbox[0].Ref != n.Ref || inbox[0].MediaType != "movie" {
+			t.Errorf("user %d inbox = %+v", uid, inbox)
+		}
+	}
+}

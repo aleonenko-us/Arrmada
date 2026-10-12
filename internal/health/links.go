@@ -33,6 +33,8 @@ var (
 	// Convert's Problems tab: files it gave up on, and files waiting for disk space. No LINKS
 	// key: the path is followed as it is (LINKS is in the requester's first load, full).
 	FixConvertProblems = &Fix{Path: "/convert?tab=problems", Label: "Convert problems"}
+	// Problems requesters reported: Requests → Issues. No LINKS key, for the same reason.
+	FixIssues = &Fix{Path: "/requests?tab=issues", Label: "Issues"}
 )
 
 // connectionsPath is Settings → Connections, where every integration has a card.
