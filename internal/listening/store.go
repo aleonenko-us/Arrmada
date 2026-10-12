@@ -549,16 +549,23 @@ func (s *Store) insertHistory(ctx context.Context, h histRow) error {
 		h.userID, h.key, h.pos, h.at, h.device, h.reason, h.kind, boolInt(h.dismissed)); err != nil {
 		return err
 	}
-	place := h.kind == KindApplied || h.kind == KindBefore
+	return pruneHistory(ctx, s.db, h.userID, h.key, h.kind == KindApplied || h.kind == KindBefore)
+}
+
+// pruneHistory trims one user's timeline for an item to the newest historyKeep places
+// (place: applied and before rows) or historyKeepOther of everything else.
+func pruneHistory(ctx context.Context, ex interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}, userID int64, key string, place bool) error {
 	keep := historyKeepOther
 	if place {
 		keep = historyKeep
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := ex.ExecContext(ctx,
 		`DELETE FROM listen_history WHERE user_id = ? AND item_key = ? AND (kind IN (?, ?)) = ? AND id NOT IN (
 		   SELECT id FROM listen_history WHERE user_id = ? AND item_key = ? AND (kind IN (?, ?)) = ?
 		   ORDER BY at DESC, id DESC LIMIT ?)`,
-		h.userID, h.key, KindApplied, KindBefore, boolInt(place), h.userID, h.key, KindApplied, KindBefore, boolInt(place), keep)
+		userID, key, KindApplied, KindBefore, boolInt(place), userID, key, KindApplied, KindBefore, boolInt(place), keep)
 	return err
 }
 

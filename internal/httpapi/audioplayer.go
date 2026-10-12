@@ -212,14 +212,15 @@ func (a *api) handleAudioFile(w http.ResponseWriter, r *http.Request) {
 	a.deps.AudioServer.ServeFile(w, r, r.PathValue("key"), r.PathValue("ino"))
 }
 
-// audioBookItem checks the path's item is an audiobook in the library.
+// audioBookItem checks the path's item is an audiobook in the library and returns the
+// key it lives under now (a book merged into another answers as the kept book's item).
 func (a *api) audioBookItem(w http.ResponseWriter, r *http.Request) (string, bool) {
-	key := r.PathValue("key")
-	if _, ok := a.deps.AudioServer.Info(r.Context(), key); !ok {
+	info, ok := a.deps.AudioServer.Info(r.Context(), r.PathValue("key"))
+	if !ok {
 		a.audioItemErr(w, audioserver.ErrNotFound)
 		return "", false
 	}
-	return key, true
+	return info.Key, true
 }
 
 // handleAudioBookmarks — GET /api/v1/me/audio/items/{key}/bookmarks → {bookmarks}

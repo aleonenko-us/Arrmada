@@ -5,13 +5,13 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/listening"
 )
 
 // The library a listening app sees: one item per audiobook — the standard audiobook of
@@ -32,12 +32,7 @@ type Item struct {
 	AddedAt int64
 }
 
-func itemKeyFor(bookID int64, versionID int64) string {
-	if versionID > 0 {
-		return fmt.Sprintf("b%dv%d", bookID, versionID)
-	}
-	return fmt.Sprintf("b%d", bookID)
-}
+func itemKeyFor(bookID int64, versionID int64) string { return listening.ItemKey(bookID, versionID) }
 
 // parseItemKey splits an item id in either shape (ids.go) into book and version ids.
 func parseItemKey(id string) (bookID, versionID int64, ok bool) {
@@ -115,7 +110,28 @@ func (s *Server) loadItems(ctx context.Context) ([]Item, error) {
 
 // item loads one audiobook by its id in either shape; the Item always carries the
 // internal key, so whatever shape an app sent, replies and places use the classic one.
+//
+// An id that names nothing any more is followed once through the merge redirects
+// (listening.ResolveItem): an app still holding a merged-away book's id — an offline
+// upload, a queued progress update — reaches the kept book, and the Item it gets back
+// carries the kept book's key, which is where everything is written.
 func (s *Server) item(ctx context.Context, id string) (Item, error) {
+	it, err := s.itemExact(ctx, id)
+	if !errors.Is(err, errItemNotFound) || s.listen == nil {
+		return it, err
+	}
+	key, ok := itemKeyFromID(id)
+	if !ok {
+		return it, err
+	}
+	if moved := s.listen.ResolveItem(ctx, key); moved != key {
+		return s.itemExact(ctx, moved)
+	}
+	return it, err
+}
+
+// itemExact is item without following redirects.
+func (s *Server) itemExact(ctx context.Context, id string) (Item, error) {
 	bookID, versionID, ok := parseItemKey(id)
 	if !ok {
 		return Item{}, errItemNotFound
@@ -246,7 +262,8 @@ type ItemInfo struct {
 	CoverURL  string `json:"cover_url,omitempty"`
 }
 
-// Info resolves an item key for display.
+// Info resolves an item key for display. Key is the item's key now: the classic shape,
+// and the kept book's when the key was merged away.
 func (s *Server) Info(ctx context.Context, key string) (ItemInfo, bool) {
 	it, err := s.item(ctx, key)
 	if err != nil {
@@ -256,5 +273,5 @@ func (s *Server) Info(ctx context.Context, key string) (ItemInfo, bool) {
 	if it.Version != nil {
 		vid = it.Version.ID
 	}
-	return ItemInfo{Key: key, BookID: it.Book.ID, VersionID: vid, Title: it.Title, Author: it.Book.Author, CoverURL: it.Book.CoverURL}, true
+	return ItemInfo{Key: it.Key, BookID: it.Book.ID, VersionID: vid, Title: it.Title, Author: it.Book.Author, CoverURL: it.Book.CoverURL}, true
 }

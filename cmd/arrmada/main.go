@@ -996,6 +996,12 @@ func main() {
 	// Audiobook server: listening apps (Lissen and other Audiobookshelf clients) connect to
 	// its own port. Off until an admin switches it on in Books → Audiobook server.
 	listenStore := listening.NewStore(st.DB())
+	// A book merge moves everyone's listening places with the book, and queues the kept
+	// book's catalogue refresh and requesters' "ready" in the same transaction.
+	booksSvc.SetMergeHooks(listenStore, func(ctx context.Context, q store.Execer, keepID int64) error {
+		return box.Enqueue(ctx, q, outbox.TopicBookImported, outbox.BookImported{BookID: keepID, Edition: "merge"},
+			fmt.Sprintf("book:%d", keepID))
+	})
 	audioSrv := audioserver.New(audioserver.Options{
 		DB: st.DB(), Books: booksSvc, Listen: listenStore, Users: authSvc, Settings: settingsSvc,
 		Log: log, FFprobe: "ffprobe", DataDir: cfg.DataDir,
