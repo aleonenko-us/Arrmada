@@ -50,7 +50,9 @@ type aiRunner interface {
 	// canRun reports whether a model for that task is installed: translating needs
 	// large-v3, transcribing takes turbo or large-v3.
 	canRun(translate bool) bool
-	generate(ctx context.Context, ffmpeg, video, srt, lang string, translate bool, stream int, progress func(int)) error
+	// srcLang is the audio track's language tag ("" = untagged); translating passes it to
+	// whisper as the spoken language.
+	generate(ctx context.Context, ffmpeg, video, srt, lang, srcLang string, translate bool, stream int, progress func(int)) error
 	Backend() string
 	Device() string
 }
@@ -388,7 +390,7 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		started := time.Now()
 		s.update(job, func(j *Job) { j.Stage = "AI " + verb + " (" + l + ")"; j.Progress = 0 })
 		onProgress := func(pct int) { s.update(job, func(j *Job) { j.Progress = pct }) }
-		if err := ai.generate(ctx, s.ffmpeg, ref.Path, sidecarPath(ref.Path, strings.ToLower(l)), l, translate, stream, onProgress); err != nil {
+		if err := ai.generate(ctx, s.ffmpeg, ref.Path, sidecarPath(ref.Path, strings.ToLower(l)), l, track.Lang, translate, stream, onProgress); err != nil {
 			if ctx.Err() != nil {
 				break
 			}

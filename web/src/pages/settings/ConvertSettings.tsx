@@ -8,6 +8,8 @@ import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices
 import { useConfirm } from "../../ui";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
+import { langName, useLanguages } from "../../lib/languages";
+import { SAME_AS_SUBTITLES } from "../../lib/convertKeepSubs";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { SwitchOnDialog } from "../convert/ConfirmConvert";
 
@@ -236,9 +238,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <Toggle save={origLang} label="Also keep the original language"
           hint="A Japanese film keeps its Japanese track even if you only listed English." />
         <Toggle save={commentary} label="Remove commentary tracks" hint="Tracks flagged or titled as commentary." />
-        <Field label="Keep subtitles in" hint="comma-separated, e.g. en · blank = keep every language" save={subLangs}>
-          <input aria-label="Keep subtitles in" placeholder="all" className={`${inp} w-[190px]`} {...textProps(subLangs)} />
-        </Field>
+        <KeepSubsChoice save={subLangs} input={<input aria-label="Keep subtitles in" placeholder="all" className={`${inp} w-[190px]`} {...textProps(subLangs)} />} />
         <div role="radiogroup" aria-label="Image subtitles">
           <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">Image subtitles (PGS, VobSub) <SavedTick save={imageSubs} /></div>
           <div className="mb-1.5 text-[10.5px] text-ink-faint">Plex has to burn these into the picture, which transcodes the video every time they're on.</div>
@@ -374,6 +374,32 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
       <div className="text-[13.5px] font-bold">{title}</div>
       {desc && <div className="mt-0.5 text-[11.5px] text-ink-faint">{desc}</div>}
       <div className="mt-3 flex flex-col gap-3.5">{children}</div>
+    </div>
+  );
+}
+
+// KeepSubsChoice: follow the Subtitles module's kept languages ("@subtitles" on the server,
+// so the two lists can't drift apart), or name languages here. Following is only ever
+// chosen, never switched on for you: an existing list stays as it was.
+function KeepSubsChoice({ save, input }: { save: AutoSave<string>; input: ReactNode }) {
+  const follows = save.value.split(",").some((t) => t.trim().toLowerCase() === SAME_AS_SUBTITLES);
+  const [subsLangs, setSubsLangs] = useState<string[] | null>(null);
+  const languages = useLanguages();
+  useEffect(() => { if (follows) api.subtitleSettings().then((st) => setSubsLangs(st.languages)).catch(() => {}); }, [follows]);
+  return (
+    <div role="radiogroup" aria-label="Keep subtitles in" className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">Keep subtitles in <SavedTick save={save as AutoSave<unknown>} /></div>
+      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+        <input type="radio" name="keep_sub_langs" checked={follows} onChange={() => void save.commit(SAME_AS_SUBTITLES)} />
+        <span>Same as Subtitles{follows && subsLangs ? <span className="text-ink-faint"> — {subsLangs.map((c) => langName(c, languages)).join(", ")}</span> : null}</span>
+      </label>
+      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+        <input type="radio" name="keep_sub_langs" checked={!follows} onChange={() => { if (follows) void save.commit(""); }} />
+        These languages
+      </label>
+      {follows
+        ? <span className="ml-6 text-[10.5px] text-ink-faint">Change them under <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Subtitles → Kept languages</Link>.</span>
+        : <span className="ml-6 flex flex-wrap items-center gap-2">{input}<span className="text-[10.5px] text-ink-faint">comma-separated, e.g. en · blank = keep every language</span></span>}
     </div>
   );
 }

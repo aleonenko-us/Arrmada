@@ -55,6 +55,7 @@ type fakeAI struct {
 	avail, transcribe, translate bool
 	fail                         error
 	calls                        []string // "<lang>/<transcribe|translate>"
+	srcs                         []string // the audio language each call was given
 }
 
 func (a *fakeAI) available() bool { return a.avail }
@@ -64,8 +65,9 @@ func (a *fakeAI) canRun(translate bool) bool {
 	}
 	return a.transcribe
 }
-func (a *fakeAI) generate(_ context.Context, _, _, srt, lang string, translate bool, _ int, _ func(int)) error {
+func (a *fakeAI) generate(_ context.Context, _, _, srt, lang, src string, translate bool, _ int, _ func(int)) error {
 	a.calls = append(a.calls, lang+"/"+ifElse(translate, "translate", "transcribe"))
+	a.srcs = append(a.srcs, src)
 	if a.fail != nil {
 		return a.fail
 	}

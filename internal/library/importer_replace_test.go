@@ -248,14 +248,14 @@ func TestSubtitleSameSizeDifferentContentIsPlaced(t *testing.T) {
 	writeBytes(t, src, different)
 
 	im := NewImporter(dir, quiet())
-	im.placeSub(src, base, "en")
+	im.placeSub(src, base, "en", "")
 	placed := base + ".en.2.srt"
 	if got, err := os.ReadFile(placed); err != nil || !bytes.Equal(got, different) {
 		t.Fatalf("the different subtitle wasn't placed at %s: %v", filepath.Base(placed), err)
 	}
 
 	// The same subtitle again finds itself already there and adds nothing.
-	im.placeSub(src, base, "en")
+	im.placeSub(src, base, "en", "")
 	if _, err := os.Stat(base + ".en.3.srt"); err == nil {
 		t.Error("an identical subtitle was stacked as a duplicate")
 	}
