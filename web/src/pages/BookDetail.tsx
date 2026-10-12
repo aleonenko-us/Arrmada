@@ -7,7 +7,7 @@ import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { BookReleaseModal } from "../components/BookReleaseModal";
 import { UploadTorrentModal } from "../components/UploadTorrentModal";
 import { FileDetailsModal } from "../components/FileDetailsModal";
-import { AddAudioVersion, AudioVersionPanel } from "../components/AudioVersions";
+import { AddAudioVersion, AudioVersionPanel, NarratorField, setBookNarrator } from "../components/AudioVersions";
 import { api, importListNotice, type BookSeriesEntry, type BookSource, type Book, type BookFile, type BookFileEntry, type BookImportCandidate, type BookLookup, type BookSeries, type MovieEvent } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
@@ -299,6 +299,12 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, flash, sear
             {file.path}
           </button>
           {multi && <FileList bookId={bookId} kind={kind} count={file.file_count} />}
+          {kind === "audiobook" && (
+            <NarratorField
+              value={search.book.audiobook_narrator ?? ""}
+              onSave={async (narrator) => { await setBookNarrator(bookId, narrator); onChange(); }}
+            />
+          )}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} flash={flash} />}

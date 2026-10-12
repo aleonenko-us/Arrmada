@@ -6,8 +6,9 @@ import (
 	"strings"
 )
 
-// Routes Audiobookshelf has that this server has nothing behind — collections, playlists,
-// narrators, listening-session history, podcasts. Clients written against newer servers
+// Routes Audiobookshelf has that this server has little or nothing behind — collections,
+// playlists, listening-session history, podcasts (and narrators, read from the files' tags
+// or typed in Arrmada). Clients written against newer servers
 // (Plappa among them) call some of these while loading, and a bare 404 can make them give
 // up on the whole screen; an empty answer in the right shape lets them carry on.
 
@@ -78,7 +79,16 @@ func (s *Server) handleNarrators(w http.ResponseWriter, r *http.Request) {
 	if !s.checkLibrary(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, obj{"narrators": []obj{}})
+	items, err := s.items(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Couldn't read the library")
+		return
+	}
+	list := []obj{}
+	for _, c := range countNarrators(items, s.narratorLookup(r.Context())) {
+		list = append(list, obj{"id": narratorID(c.name), "name": c.name, "numBooks": c.books})
+	}
+	writeJSON(w, http.StatusOK, obj{"narrators": list})
 }
 
 func (s *Server) handleNoCollections(w http.ResponseWriter, _ *http.Request) {

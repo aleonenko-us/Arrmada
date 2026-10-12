@@ -28,12 +28,19 @@ func (h *harness) audioDir() string { return h.book.Audiobook.Path }
 // listing takes the row as current.
 func (h *harness) remember(path string, seconds float64) {
 	h.t.Helper()
+	h.rememberAs(path, seconds, "", metaVersion)
+}
+
+// rememberAs is remember with a narrator read from the tags, written by the probe of
+// the given version (1 = from before narrators were read).
+func (h *harness) rememberAs(path string, seconds float64, narrator string, version int) {
+	h.t.Helper()
 	var size, mtime int64 = 1000, 1
 	if fi, err := os.Stat(path); err == nil {
 		size, mtime = fi.Size(), fi.ModTime().UnixMilli()
 	}
-	if _, err := h.srv.db.Exec(`INSERT INTO audio_file_meta (path, size, mtime, duration, bitrate, codec, title, chapters)
-		VALUES (?, ?, ?, ?, 64000, 'mp3', '', '[]')`, path, size, mtime, seconds); err != nil {
+	if _, err := h.srv.db.Exec(`INSERT INTO audio_file_meta (path, size, mtime, duration, bitrate, codec, title, narrator, chapters, meta_version)
+		VALUES (?, ?, ?, ?, 64000, 'mp3', '', ?, '[]', ?)`, path, size, mtime, seconds, narrator, version); err != nil {
 		h.t.Fatal(err)
 	}
 }

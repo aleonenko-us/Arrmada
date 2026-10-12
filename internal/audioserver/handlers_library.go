@@ -59,7 +59,7 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Couldn't read the library")
 			return
 		}
-		out["filterdata"] = filterData(items)
+		out["filterdata"] = filterData(items, s.narratorLookup(r.Context()))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -73,10 +73,10 @@ func (s *Server) handleFilterData(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Couldn't read the library")
 		return
 	}
-	writeJSON(w, http.StatusOK, filterData(items))
+	writeJSON(w, http.StatusOK, filterData(items, s.narratorLookup(r.Context())))
 }
 
-func filterData(items []Item) obj {
+func filterData(items []Item, narr func(Item) []string) obj {
 	authors := map[string]string{}
 	series := map[string]string{}
 	genres := map[string]bool{}
@@ -91,9 +91,13 @@ func filterData(items []Item) obj {
 			genres[g] = true
 		}
 	}
+	narrators := []string{}
+	for _, c := range countNarrators(items, narr) {
+		narrators = append(narrators, c.name)
+	}
 	return obj{
 		"authors": namedList(authors), "series": namedList(series), "genres": sortedKeys(genres),
-		"tags": []string{}, "narrators": []string{}, "languages": []string{}, "publishers": []string{},
+		"tags": []string{}, "narrators": narrators, "languages": []string{}, "publishers": []string{},
 		"publishedDecades": []string{}, "bookCount": len(items), "authorCount": len(authors), "seriesCount": len(series),
 		"podcastCount": 0, "numIssues": 0, "loadedAt": 0,
 	}
@@ -133,12 +137,13 @@ func progressByKey(all []listening.Progress) map[string]listening.Progress {
 }
 
 // applyFilter keeps items matching an Audiobookshelf filter ("authors.<base64 id>",
-// "series.…", "genres.…", "progress.finished|not-finished|in-progress|not-started").
+// "series.…", "narrators.…", "genres.…", "progress.finished|not-finished|in-progress|not-started").
+// narr names an item's narrators (nil: a narrator filter matches nothing).
 //
 // It always returns a new slice: items is the shared cached catalogue, and callers sort
 // the result in place — sorting the cache itself would race between requests and
 // reorder it for everyone.
-func applyFilter(items []Item, filter string, prog map[string]listening.Progress) []Item {
+func applyFilter(items []Item, filter string, prog map[string]listening.Progress, narr func(Item) []string) []Item {
 	key, enc, ok := strings.Cut(filter, ".")
 	if filter == "" || !ok {
 		return append([]Item(nil), items...)
@@ -148,6 +153,13 @@ func applyFilter(items []Item, filter string, prog map[string]listening.Progress
 	// "+" sent unencoded has become a space by now.
 	if u, err := url.PathUnescape(enc); err == nil {
 		enc = u
+	}
+	// A narrator's id is already URL-encoded ("…%3D%3D", as Audiobookshelf makes it), so
+	// an app that encodes it for the query sends it encoded twice. Base64 has no "%".
+	if strings.Contains(enc, "%") {
+		if u, err := url.PathUnescape(enc); err == nil {
+			enc = u
+		}
 	}
 	val := enc
 	b64 := strings.ReplaceAll(enc, " ", "+")
@@ -170,7 +182,14 @@ func applyFilter(items []Item, filter string, prog map[string]listening.Progress
 		case "series":
 			keep = it.Book.SeriesName != "" && isSeriesID(val, it.Book.SeriesName)
 		case "narrators":
-			keep = false // no narrators are recorded, so none match (rather than all)
+			keep = false
+			if narr != nil {
+				for _, n := range narr(it) {
+					if strings.EqualFold(n, val) {
+						keep = true
+					}
+				}
+			}
 		case "genres":
 			keep = false
 			for _, g := range it.Book.Subjects {
@@ -210,7 +229,7 @@ func (s *Server) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prog := s.progressMap(ctx, userOf(r).ID)
-	items = applyFilter(items, q.Get("filter"), prog)
+	items = applyFilter(items, q.Get("filter"), prog, s.narratorLookup(ctx))
 	sortKey := q.Get("sort")
 	if sortKey == "" {
 		sortKey = "media.metadata.title"
@@ -494,6 +513,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			series[it.Book.SeriesName] = append(series[it.Book.SeriesName], it)
 		}
 	}
+	// Narrators named like the search, each with how many books they read.
+	narrators := []obj{}
+	if q != "" {
+		for _, c := range countNarrators(items, s.narratorLookup(ctx)) {
+			if strings.Contains(strings.ToLower(c.name), q) {
+				narrators = append(narrators, obj{"name": c.name, "numBooks": c.books})
+			}
+		}
+	}
 	authorList := namedList(authors)
 	for _, a := range authorList {
 		a["libraryId"] = libraryID
@@ -508,7 +536,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		seriesList = append(seriesList, obj{"series": obj{"id": seriesID(name), "name": name, "libraryId": libraryID}, "books": bks})
 	}
 	writeJSON(w, http.StatusOK, obj{"book": bookHits, "authors": limitObjs(authorList, limit), "series": limitObjs(seriesList, limit),
-		"narrators": []obj{}, "tags": []obj{}, "genres": []obj{}, "podcast": []obj{}})
+		"narrators": limitObjs(narrators, limit), "tags": []obj{}, "genres": []obj{}, "podcast": []obj{}})
 }
 
 func limitObjs(v []obj, n int) []obj {

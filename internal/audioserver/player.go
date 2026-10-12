@@ -69,6 +69,7 @@ type VersionRef struct {
 type ItemDetail struct {
 	Card
 	Description string               `json:"description,omitempty"`
+	Narrator    string               `json:"narrator,omitempty"`
 	Year        int                  `json:"year,omitempty"`
 	Genres      []string             `json:"genres"`
 	Chapters    []Chapter            `json:"chapters"`
@@ -160,7 +161,7 @@ func (s *Server) Catalog(ctx context.Context, userID int64, q CatalogQuery) ([]C
 	switch q.Filter {
 	case "in-progress", "finished", "not-started":
 		// The same filter an app's library view uses (it takes the value base64'd).
-		items = applyFilter(items, "progress."+base64.StdEncoding.EncodeToString([]byte(q.Filter)), prog)
+		items = applyFilter(items, "progress."+base64.StdEncoding.EncodeToString([]byte(q.Filter)), prog, nil)
 	default:
 		items = append([]Item(nil), items...) // sortItems sorts in place; the catalogue is shared
 	}
@@ -188,7 +189,7 @@ func (s *Server) Detail(ctx context.Context, userID int64, key string) (ItemDeta
 	if err != nil {
 		return ItemDetail{}, ErrNotFound
 	}
-	files, _ := s.probe.files(ctx, it.Path, true)
+	files, _ := s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 	prog := map[string]listening.Progress{}
 	// Look the place up by the canonical key, so a key in either id shape finds it.
 	if p, ok, err := s.listen.Progress(ctx, userID, it.Key); err != nil {
@@ -196,7 +197,7 @@ func (s *Server) Detail(ctx context.Context, userID int64, key string) (ItemDeta
 	} else if ok {
 		prog[it.Key] = p
 	}
-	d := ItemDetail{Card: s.card(ctx, it, prog), Description: it.Book.Description, Year: it.Book.Year,
+	d := ItemDetail{Card: s.card(ctx, it, prog), Description: it.Book.Description, Narrator: filesNarrator(it, files), Year: it.Book.Year,
 		Genres: nonNilStrings(it.Book.Subjects), Chapters: nonNilChapters(bookChapters(files)), Tracks: tracksFor(it, files),
 		Versions: []VersionRef{}}
 	d.Duration = totalDuration(files)
@@ -257,7 +258,7 @@ func (s *Server) StartSession(ctx context.Context, userID int64, key, deviceID, 
 	if err != nil {
 		return PlayStart{}, ErrNotFound
 	}
-	files, _ := s.probe.files(ctx, it.Path, true)
+	files, _ := s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 	sess, _, err := s.listen.OpenSession(ctx, userID, it.Key, clip(deviceID, 100), "Web player · "+clip(deviceName, 60), "Arrmada web")
 	if err != nil {
 		return PlayStart{}, err

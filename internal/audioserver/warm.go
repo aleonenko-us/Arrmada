@@ -130,10 +130,11 @@ func (s *Server) warmOnce(ctx context.Context) (probed int, finished bool) {
 			return probed, false
 		}
 		_, changed := marks[it.Book.ID]
-		if !changed && (s.knownNothing(it.Key) || s.probe.knownUnder(ctx, it.Path).Files > 0) {
+		// Files probed before narrators were read (Stale) are read once more.
+		if k := s.probe.knownUnder(ctx, it.Path); !changed && (s.knownNothing(it.Key) || k.Files > 0 && k.Stale == 0) {
 			continue
 		}
-		files, err := s.probe.files(ctx, it.Path, true)
+		files, err := s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 		if changed && err == nil {
 			s.forgetVanished(ctx, it.Path, files)
 		}
@@ -203,7 +204,7 @@ func (s *Server) Verify(ctx context.Context) (forgotten int) {
 		if !unknown {
 			continue
 		}
-		_, _ = s.probe.files(ctx, it.Path, true)
+		_, _ = s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 		s.setNothing(it.Key, s.probe.knownUnder(ctx, it.Path).Files == 0)
 		select {
 		case <-ctx.Done():

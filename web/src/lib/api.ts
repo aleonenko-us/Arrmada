@@ -1890,6 +1890,8 @@ export interface Book {
   last_search_at?: string;
   search_misses: number;
   next_search_at?: string;
+  /** Who reads the standard audiobook, typed by hand; absent = the audio files' tags say. */
+  audiobook_narrator?: string;
 }
 export interface CatalogueRef {
   name: "Hardcover" | "Open Library" | "Google Books";
@@ -1911,6 +1913,8 @@ export interface AudioVersion {
   monitored: boolean;
   file?: BookFile;
   added_at?: string;
+  /** Who reads it, typed by hand; absent = the audio files' tags say. */
+  narrator?: string;
 }
 export interface BookImportCandidate {
   path: string;
@@ -2880,7 +2884,7 @@ export const api = {
     req<{ status: string }>(`/api/v1/books/${id}/manualimport`, { method: "POST", body: JSON.stringify({ path, version_id: versionId || 0 }) }),
   addAudioVersion: (id: number, body: { label: string; terms: string[]; monitored: boolean }) =>
     req<AudioVersion>(`/api/v1/books/${id}/audio-versions`, { method: "POST", body: JSON.stringify(body) }),
-  updateAudioVersion: (id: number, vid: number, body: { label?: string; terms?: string[]; monitored?: boolean }) =>
+  updateAudioVersion: (id: number, vid: number, body: { label?: string; terms?: string[]; monitored?: boolean; narrator?: string }) =>
     req<AudioVersion>(`/api/v1/books/${id}/audio-versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteAudioVersion: (id: number, vid: number, deleteFiles: boolean) =>
     req<void>(`/api/v1/books/${id}/audio-versions/${vid}${deleteFiles ? "?delete_files=true" : ""}`, { method: "DELETE" }),

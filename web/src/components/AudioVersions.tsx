@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, type AudioVersion, type Book } from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, req, type AudioVersion, type Book } from "../lib/api";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { BookReleaseModal } from "./BookReleaseModal";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -231,7 +231,57 @@ export function AudioVersionPanel({ book, v, onChange, flash }: { book: Book; v:
           onClose={() => setBrowsing(false)}
         />
       )}
+      {has && <NarratorField value={v.narrator ?? ""} onSave={async (narrator) => { await api.updateAudioVersion(book.id, v.id, { narrator }); onChange(); }} />}
       {editing && <VersionForm book={book} existing={v} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChange(); flash("Version updated."); }} />}
+    </div>
+  );
+}
+
+// setBookNarrator sets who reads a book's standard audiobook, leaving its other details
+// alone. It lives here, not in api.ts, so it only downloads with the Books page.
+export const setBookNarrator = (id: number, narrator: string) =>
+  req<{ status: string }>(`/api/v1/books/${id}/metadata`, { method: "PUT", body: JSON.stringify({ narrator }) });
+
+// NarratorField is who reads an audiobook, as listening apps show it. Left empty, the
+// audiobook server reads it from the audio files' tags; what's typed here wins.
+export function NarratorField({ value, onSave }: { value: string; onSave: (narrator: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (editing) input.current?.focus(); }, [editing]);
+  const save = async () => {
+    setBusy(true); setError(null);
+    try { await onSave(draft.trim()); setEditing(false); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  if (!editing) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+        <span className="text-[10.5px] text-ink-faint">Narrator</span>
+        <span className={value ? "text-ink-dim" : "text-ink-faint"}>{value || "From the audio files' tags"}</span>
+        <button onClick={() => { setDraft(value); setError(null); setEditing(true); }} className="font-semibold text-ink-faint hover:text-[var(--ink)] hover:underline" title="Type who reads this audiobook; listening apps show it">Edit</button>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={input}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void save(); if (e.key === "Escape") setEditing(false); }}
+          placeholder="Leave empty to use the files' tags"
+          maxLength={200}
+          aria-label="Narrator"
+          className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px] sm:max-w-[320px]"
+          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+        />
+        <button onClick={save} disabled={busy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{busy ? "Saving…" : "Save"}</button>
+        <button onClick={() => setEditing(false)} disabled={busy} className="rounded-lg px-3 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
+      </div>
+      {error && <div className="mt-1 text-[11.5px]" style={{ color: "var(--reject)" }}>{error}</div>}
     </div>
   );
 }
