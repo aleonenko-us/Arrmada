@@ -54,6 +54,11 @@ type Job struct {
 	// worker always takes the lowest non-empty line first, so tonight's import isn't stuck
 	// behind a sweep's worth of hour-long AI runs.
 	Priority int `json:"priority"`
+	// RunID names this run's rows in the attempt ledger (GET /subtitles/history?run_id=).
+	RunID string `json:"run_id,omitempty"`
+	// Outcomes is what each rung did for each language, in the order tried; the Note is
+	// generated from them.
+	Outcomes []Outcome `json:"outcomes,omitempty"`
 }
 
 // Queue priorities, most urgent first. Each has its own FIFO line in Service.pending.
@@ -524,8 +529,14 @@ func (s *Service) update(job *Job, fn func(*Job)) {
 
 // finish sets a job's terminal state + note, and clears the in-flight stage/progress.
 func (s *Service) finish(job *Job, state JobState, note string) {
+	s.finishOutcomes(job, state, note, nil)
+}
+
+// finishOutcomes is finish for a run of the ladder, keeping what each rung did.
+func (s *Service) finishOutcomes(job *Job, state JobState, note string, outcomes []Outcome) {
 	s.mu.Lock()
 	job.State, job.Note, job.Stage, job.Progress = state, note, "", 0
+	job.Outcomes = outcomes
 	s.retireLocked(job)
 	s.mu.Unlock()
 }

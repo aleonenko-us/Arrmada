@@ -60,6 +60,44 @@ func (a *api) handleSubtitleLogs(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"lines": logs})
 }
 
+// handleSubtitleHistory pages the attempt ledger, newest first: every (language, rung) a
+// job tried and its typed outcome, kept across restarts. ?media_key= ("m:<id>" or
+// "e:<series>:<season>:<episode>") and ?run_id= narrow it; ?before= is the next_before
+// of the previous page.
+func (a *api) handleSubtitleHistory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	aq := subtitles.AttemptQuery{MediaKey: q.Get("media_key"), RunID: q.Get("run_id"), Limit: 50}
+	if v := q.Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			a.writeError(w, http.StatusBadRequest, "before must be an attempt id")
+			return
+		}
+		aq.Before = n
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			a.writeError(w, http.StatusBadRequest, "limit must be a positive number")
+			return
+		}
+		aq.Limit = min(n, 500)
+	}
+	rows, err := a.deps.Subtitles.Ledger().Attempts(r.Context(), aq)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the subtitle history")
+		return
+	}
+	if rows == nil {
+		rows = []subtitles.Attempt{}
+	}
+	var next int64
+	if len(rows) == aq.Limit {
+		next = rows[len(rows)-1].ID
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"attempts": rows, "next_before": next})
+}
+
 // handleSubtitleQueueMovie queues a subtitle-ensure job for one movie; ?redo=1 replaces
 // the sidecars already there.
 func (a *api) handleSubtitleQueueMovie(w http.ResponseWriter, r *http.Request) {

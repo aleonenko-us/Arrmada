@@ -97,6 +97,7 @@ func ladderFixture(t *testing.T, langs string, mi *mediaInfo, prov Provider, ai 
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		wake:     make(chan struct{}, 1),
 		ai:       ai,
+		ledger:   NewLedger(st.DB()),
 	}
 	s.resolve = func(context.Context, *Job) (fileRef, bool) {
 		return fileRef{Path: video, Title: "Movie", Year: 2020, MediaKey: "m:1"}, true
@@ -251,8 +252,8 @@ func TestProcessExtractStopsTheLadder(t *testing.T) {
 func TestProcessAIUnavailableNote(t *testing.T) {
 	s, _ := ladderFixture(t, "en", englishAudio(), nil, &fakeAI{})
 	job := runJob(s)
-	if job.State != StateSkipped {
-		t.Errorf("state = %q, want skipped", job.State)
+	if job.State != StateFailed {
+		t.Errorf("state = %q, want failed (nothing could act and no model is the fix)", job.State)
 	}
 	if job.Note != "en: no whisper model installed" {
 		t.Errorf("note = %q", job.Note)
@@ -283,7 +284,7 @@ func TestProcessAIFailureIsNamed(t *testing.T) {
 	ai := &fakeAI{avail: true, transcribe: true, fail: errors.New("whisper: exit status 1: out of memory")}
 	s, _ := ladderFixture(t, "en", englishAudio(), nil, ai)
 	job := runJob(s)
-	if job.State != StateSkipped || !strings.HasPrefix(job.Note, "en: AI failed: ") || !strings.Contains(job.Note, "out of memory") {
+	if job.State != StateFailed || !strings.HasPrefix(job.Note, "en: AI failed: ") || !strings.Contains(job.Note, "out of memory") {
 		t.Errorf("state=%q note=%q", job.State, job.Note)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,13 +25,9 @@ type fileRef struct {
 	SourceRelease string // the release name the file was imported from, when recorded
 }
 
-// langOutcome is what one rung of the ladder did for one language. It drives the job's
-// note today; SUB-11 persists it so failures are visible per file.
-type langOutcome struct {
-	Lang   string
-	Rung   string // "extract" | "download" | "ai"
-	Result string // "done" | "empty" | "error" | "no_match" | "quota" | "model_missing" | "impossible" | "ai_failed"
-	Detail string // human wording for the note, e.g. "no OpenSubtitles match"
+// mkOutcome is one rung's Outcome for one wanted language (every want is the full subtitle today).
+func mkOutcome(lang string, rung Rung, res Result, detail string) Outcome {
+	return Outcome{Lang: lang, Variant: VariantFull, Rung: rung, Result: res, Detail: detail}
 }
 
 // extractPick is one embedded text track to pull out to a sidecar.
@@ -95,6 +92,9 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.finish(job, StateFailed, "file is gone")
 		return
 	}
+	if ref.MediaKey == "" {
+		ref.MediaKey = job.key()
+	}
 	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
@@ -133,53 +133,122 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		return
 	}
 
-	var outcomes []langOutcome
+	runID := NewRunID()
+	s.update(job, func(j *Job) { j.RunID = runID })
+	wanted := remaining
+	var outcomes []Outcome
+	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
+	inFlight := RungExtract
 	remaining, outs := s.rungExtract(ctx, job, ref, mi, remaining)
 	outcomes = append(outcomes, outs...)
+	if ctx.Err() == nil {
+		inFlight = RungOpenSubtitles
+	}
 	remaining, outs = s.rungDownload(ctx, job, ref, remaining)
 	outcomes = append(outcomes, outs...)
+	if ctx.Err() == nil {
+		inFlight = RungAI
+	}
 	outcomes = append(outcomes, s.rungAI(ctx, job, ref, mi, remaining)...)
 
 	produced := 0
 	for _, o := range outcomes {
-		if o.Result == "done" {
+		if o.Result == ResultOK {
 			produced++
 		}
 	}
 	summary := outcomeNote(langs, outcomes)
 	if ctx.Err() != nil {
+		// Every language the stop left without a subtitle gets a cancelled attempt, so
+		// the history says the run was cut short rather than that nothing was tried.
+		got := map[string]bool{}
+		for _, o := range outcomes {
+			if o.Result == ResultOK {
+				got[strings.ToLower(o.Lang)] = true
+			}
+		}
+		for _, l := range without(wanted, got) {
+			outcomes = append(outcomes, mkOutcome(l, inFlight, ResultCancelled, "stopped"))
+		}
+		s.recordAttempts(ctx, runID, ref, outcomes)
 		note := "stopped"
 		if summary != "" {
 			note = "stopped after " + summary
 		}
 		s.event("info", fmt.Sprintf("■ %s — %s", ref.Title, note))
-		s.finish(job, StateCancelled, note)
+		s.finishOutcomes(job, StateCancelled, note, outcomes)
 		if produced > 0 {
 			s.refreshSnapshot(context.WithoutCancel(ctx), job)
 		}
 		return
 	}
+	s.recordAttempts(ctx, runID, ref, outcomes)
 	if summary == "" {
 		summary = "no source could act" // every rung declined without a reason; shouldn't happen
 	}
-	s.event("info", fmt.Sprintf("✓ %s — %s", ref.Title, summary))
-	if produced > 0 {
-		s.finish(job, StateDone, summary)
-		s.refreshSnapshot(ctx, job)
+	state := jobStateFor(outcomes)
+	if state == StateFailed {
+		s.event("warn", fmt.Sprintf("✗ %s — %s", ref.Title, summary))
 	} else {
-		s.finish(job, StateSkipped, summary)
+		s.event("info", fmt.Sprintf("✓ %s — %s", ref.Title, summary))
+	}
+	s.finishOutcomes(job, state, summary, outcomes)
+	if produced > 0 {
+		s.refreshSnapshot(ctx, job)
+	}
+}
+
+// jobStateFor is a finished run's honest state: done when anything was written, failed
+// when every language it tried ended in an error (a rejected login, a provider or whisper
+// failure, a missing model), and skipped when the subtitles simply don't exist anywhere
+// it can look.
+func jobStateFor(outcomes []Outcome) JobState {
+	last := map[string]Result{}
+	for _, o := range outcomes {
+		if o.Result == ResultOK {
+			return StateDone
+		}
+		last[strings.ToLower(o.Lang)+"|"+o.Variant] = o.Result
+	}
+	if len(last) == 0 {
+		return StateSkipped
+	}
+	for _, r := range last {
+		if !r.IsError() {
+			return StateSkipped
+		}
+	}
+	return StateFailed
+}
+
+// recordAttempts writes a run's outcomes to the ledger. Bookkeeping: an error is logged,
+// never the job's failure, and a stopped job still records what it did.
+func (s *Service) recordAttempts(ctx context.Context, runID string, ref fileRef, outcomes []Outcome) {
+	if err := s.ledger.RecordAttempts(context.WithoutCancel(ctx), runID, ref.MediaKey, ref.Path, outcomes); err != nil {
+		s.log.Warn("subtitles: could not record attempts", "media_key", ref.MediaKey, "err", err)
+	}
+}
+
+// recordFile writes a sidecar's provenance to the ledger, with the job's identity filled
+// in. Logged, never fatal, like recordAttempts.
+func (s *Service) recordFile(ctx context.Context, job *Job, ref fileRef, f SubtitleFile) {
+	f.MediaKey, f.Kind, f.VideoPath = ref.MediaKey, job.Kind, ref.Path
+	f.MovieID, f.SeriesID, f.Season, f.Episode = job.MovieID, job.SeriesID, job.Season, job.Episode
+	if _, err := s.ledger.RecordFile(context.WithoutCancel(ctx), f); err != nil {
+		s.log.Warn("subtitles: could not record a sidecar's source", "path", f.Path, "err", err)
 	}
 }
 
 // outcomeNote renders the ladder's outcomes as one line per language, in kept-language
 // order, each rung's result chained with arrows: "en: no OpenSubtitles match →
-// AI-generated · es: quota spent → whisper can't translate into es".
-func outcomeNote(langs []string, outcomes []langOutcome) string {
+// AI-generated · es: quota spent → whisper can't translate into es". A stop isn't a
+// step: the note already starts with "stopped".
+func outcomeNote(langs []string, outcomes []Outcome) string {
 	var parts []string
 	for _, l := range langs {
 		var steps []string
 		for _, o := range outcomes {
-			if strings.EqualFold(o.Lang, l) {
+			if strings.EqualFold(o.Lang, l) && o.Result != ResultCancelled {
 				steps = append(steps, o.Detail)
 			}
 		}
@@ -209,7 +278,7 @@ func without(langs []string, done map[string]bool) []string {
 // While ffmpeg is reading the file anyway, each wanted language's forced track comes out
 // too, as "<base>.<lang>.forced.srt", so Plex keeps showing the foreign-dialogue lines.
 // It is an extra: it never counts as the language's subtitle.
-func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, langs []string) ([]string, []langOutcome) {
+func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, langs []string) ([]string, []Outcome) {
 	if ctx.Err() != nil || mi == nil || len(langs) == 0 {
 		return langs, nil
 	}
@@ -245,25 +314,30 @@ func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *me
 	if err != nil {
 		s.event("warn", fmt.Sprintf("%s: extract failed: %v", ref.Title, err))
 	}
-	var outs []langOutcome
+	var outs []Outcome
 	done := map[string]bool{}
 	for _, p := range picks {
 		fi, serr := os.Stat(p.Path)
 		if p.Variant == VariantForced {
 			if serr == nil && fi.Size() == 0 {
 				_ = os.Remove(p.Path)
+			} else if serr == nil {
+				idx := p.Index
+				s.recordFile(ctx, job, ref, SubtitleFile{Path: p.Path, Lang: strings.ToLower(p.Lang), Variant: VariantForced, Source: SourceEmbedded, EmbeddedIndex: &idx})
 			}
 			continue // an extra, not the language's outcome
 		}
 		switch {
 		case serr != nil:
-			outs = append(outs, langOutcome{p.Lang, "extract", "error", "extract failed"})
+			outs = append(outs, mkOutcome(p.Lang, RungExtract, ResultExtractFailed, "extract failed"))
 		case fi.Size() == 0:
 			_ = os.Remove(p.Path)
-			outs = append(outs, langOutcome{p.Lang, "extract", "empty", "embedded track was empty"})
+			outs = append(outs, mkOutcome(p.Lang, RungExtract, ResultEmpty, "embedded track was empty"))
 		default:
 			done[strings.ToLower(p.Lang)] = true
-			outs = append(outs, langOutcome{p.Lang, "extract", "done", "extracted"})
+			idx := p.Index
+			s.recordFile(ctx, job, ref, SubtitleFile{Path: p.Path, Lang: strings.ToLower(p.Lang), Variant: p.Variant, Source: SourceEmbedded, EmbeddedIndex: &idx})
+			outs = append(outs, mkOutcome(p.Lang, RungExtract, ResultOK, "extracted"))
 		}
 	}
 	return without(langs, done), outs
@@ -282,14 +356,14 @@ func (s *Service) providerPaused() bool {
 // rungDownload searches OpenSubtitles for each language. A language with no match, a
 // provider error or a spent quota stays in the returned list for the AI rung. Skipped
 // without a single request when downloads aren't configured or the quota is paused.
-func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs []string) ([]string, []langOutcome) {
+func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs []string) ([]string, []Outcome) {
 	if ctx.Err() != nil || len(langs) == 0 || s.provider == nil || !s.provider.CanDownload() {
 		return langs, nil
 	}
-	var outs []langOutcome
+	var outs []Outcome
 	if s.providerPaused() {
 		for _, l := range langs {
-			outs = append(outs, langOutcome{l, "download", "quota", "quota spent"})
+			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultQuota, "quota spent"))
 		}
 		return langs, outs
 	}
@@ -300,33 +374,47 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 		s.log.Debug("subtitles: could not hash file for provider search", "path", ref.Path, "err", herr)
 	}
 	done := map[string]bool{}
-	quotaHit := false
+	// stopAll is a provider-wide failure (a spent quota, a rejected login): every further
+	// language would fail the same way, so they get the same outcome without a request.
+	var stopAll *Outcome
 	for _, l := range langs {
 		if ctx.Err() != nil {
 			return without(langs, done), outs
 		}
-		if quotaHit {
-			// Every further language would fail the same way; leave them for AI.
-			outs = append(outs, langOutcome{l, "download", "quota", "quota spent"})
+		if stopAll != nil {
+			o := *stopAll
+			o.Lang = l
+			outs = append(outs, o)
 			continue
 		}
-		okDL, err := s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+		got, err := s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
 		switch {
 		case ctx.Err() != nil:
 			return without(langs, done), outs
 		case errors.Is(err, ErrQuotaExhausted):
 			// Say it once per job. The sweep re-queues anything still missing after the reset.
 			s.event("warn", fmt.Sprintf("%s: OpenSubtitles daily download quota is used up — will retry after it resets", ref.Title))
-			quotaHit = true
-			outs = append(outs, langOutcome{l, "download", "quota", "quota spent"})
+			o := mkOutcome(l, RungOpenSubtitles, ResultQuota, "quota spent")
+			stopAll = &o
+			outs = append(outs, o)
+		case errors.Is(err, ErrAuthFailed):
+			s.event("warn", fmt.Sprintf("%s: %v — check the OpenSubtitles credentials", ref.Title, err))
+			o := mkOutcome(l, RungOpenSubtitles, ResultAuthFailed, err.Error())
+			stopAll = &o
+			outs = append(outs, o)
 		case err != nil:
 			s.event("warn", fmt.Sprintf("%s: download %s failed: %v", ref.Title, l, err))
-			outs = append(outs, langOutcome{l, "download", "error", "OpenSubtitles error"})
-		case okDL:
+			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultProviderError, "OpenSubtitles error"))
+		case got != nil:
 			done[strings.ToLower(l)] = true
-			outs = append(outs, langOutcome{l, "download", "done", "downloaded"})
+			s.recordFile(ctx, job, ref, SubtitleFile{
+				Path: got.Path, Lang: strings.ToLower(l), Variant: got.Variant, Source: SourceOpenSubtitles,
+				Provider: providerOpenSubtitles, ProviderFileID: got.Result.FileID, ReleaseName: got.Result.Release,
+				HashMatch: got.Result.HashMatch,
+			})
+			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultOK, "downloaded"))
 		default:
-			outs = append(outs, langOutcome{l, "download", "no_match", "no OpenSubtitles match"})
+			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultNoMatch, "no OpenSubtitles match"))
 		}
 	}
 	return without(langs, done), outs
@@ -334,7 +422,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 
 // rungAI generates each language still missing from the file's audio with local whisper —
 // the last rung, so every outcome it records says why when it can't.
-func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, langs []string) []langOutcome {
+func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, langs []string) []Outcome {
 	if ctx.Err() != nil || len(langs) == 0 {
 		return nil
 	}
@@ -343,25 +431,25 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 	if mi != nil {
 		audioLangs = mi.AudioLangs
 	}
-	var outs []langOutcome
+	var outs []Outcome
 	for _, l := range langs {
 		if ctx.Err() != nil {
 			break
 		}
 		if !ai.available() {
-			outs = append(outs, langOutcome{l, "ai", "model_missing", "no whisper model installed"})
+			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "no whisper model installed"))
 			continue
 		}
 		// Only what whisper can actually do: transcribe when the audio is that language, or
 		// translate to English. It can't translate into other languages.
 		plan := aiPlan(audioLangs, l)
 		if plan == "" {
-			outs = append(outs, langOutcome{l, "ai", "impossible", "whisper can't translate into " + strings.ToLower(l)})
+			outs = append(outs, mkOutcome(l, RungAI, ResultImpossible, "whisper can't translate into "+strings.ToLower(l)))
 			continue
 		}
 		translate := plan == "translate"
 		if !ai.canRun(translate) {
-			outs = append(outs, langOutcome{l, "ai", "model_missing", "needs large-v3 to translate"})
+			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate"))
 			continue
 		}
 		verb := "transcribing"
@@ -382,15 +470,21 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		started := time.Now()
 		s.update(job, func(j *Job) { j.Stage = "AI " + verb + " (" + l + ")"; j.Progress = 0 })
 		onProgress := func(pct int) { s.update(job, func(j *Job) { j.Progress = pct }) }
-		if err := ai.generate(ctx, s.ffmpeg, ref.Path, sidecarPath(ref.Path, strings.ToLower(l)), l, translate, stream, onProgress); err != nil {
+		dst := sidecarPath(ref.Path, strings.ToLower(l))
+		if err := ai.generate(ctx, s.ffmpeg, ref.Path, dst, l, translate, stream, onProgress); err != nil {
 			if ctx.Err() != nil {
 				break
 			}
 			s.event("warn", fmt.Sprintf("%s: AI %s failed: %v", ref.Title, l, err))
-			outs = append(outs, langOutcome{l, "ai", "ai_failed", "AI failed: " + shortErr(err, 120)})
+			outs = append(outs, mkOutcome(l, RungAI, ResultAIFailed, "AI failed: "+shortErr(err, 120)))
 			continue
 		}
-		outs = append(outs, langOutcome{l, "ai", "done", "AI-generated"})
+		src := SourceAITranscribe
+		if translate {
+			src = SourceAITranslate
+		}
+		s.recordFile(ctx, job, ref, SubtitleFile{Path: dst, Lang: strings.ToLower(l), Variant: VariantFull, Source: src, Model: aiModelName(ai, translate)})
+		outs = append(outs, mkOutcome(l, RungAI, ResultOK, "AI-generated"))
 		took := time.Since(started)
 		msg := fmt.Sprintf("%s: AI subtitle written (%s) in %s on %s", ref.Title, l, took.Round(time.Second), ai.Backend())
 		if dev := ai.Device(); dev != "" {
@@ -404,6 +498,17 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		s.event("info", msg)
 	}
 	return outs
+}
+
+// aiModelName is the whisper model file a run used, for the sidecar's provenance; "" when
+// the runner can't say (a test fake).
+func aiModelName(ai aiRunner, translate bool) string {
+	if m, ok := ai.(interface{ modelPath(bool) string }); ok {
+		if p := m.modelPath(translate); p != "" {
+			return filepath.Base(p)
+		}
+	}
+	return ""
 }
 
 // shortErr is the tail of an error message, for a job note that has to fit on one line.

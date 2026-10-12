@@ -43,6 +43,7 @@ type Service struct {
 	ffprobe  string
 	cache    *probeCache
 	whisper  *whisperGen
+	ledger   *Ledger // provenance, attempts and the blocklist (ledger.go); nil-safe
 	log      *slog.Logger
 
 	// Test seams for process(). Nil means the real code path: resolveFile, probeCached,
@@ -75,7 +76,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	s := &Service{
 		movies: mv, series: sr, settings: set, provider: provider,
 		ffmpeg: ffmpeg, ffprobe: ffprobe, cache: &probeCache{db: db},
-		whisper: detectWhisper(whisperModelsDir), log: log,
+		whisper: detectWhisper(whisperModelsDir), ledger: NewLedger(db), log: log,
 		wake: make(chan struct{}, 1),
 	}
 	// A silent fall-back from the oneAPI build would hide a broken GPU setup behind a
@@ -83,6 +84,9 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	s.whisper.note = func(level, msg string) { s.event(level, msg) }
 	return s
 }
+
+// Ledger is the module's record of sidecar sources, attempts and blocked provider files.
+func (s *Service) Ledger() *Ledger { return s.ledger }
 
 // Settings is the module's configuration + provider readiness for the dashboard.
 type Settings struct {
@@ -267,12 +271,12 @@ func (s *Service) GrabMovie(ctx context.Context, id int64) (int, error) {
 	grabbed := 0
 	hash, _ := osHash(m.MovieFilePath) // "" on error: the search still works, just unranked by sync
 	for _, lang := range missing {
-		ok, err := s.grabOne(ctx, m.IMDBID, m.Title, m.Year, 0, 0, m.MovieFilePath, hash, lang)
+		got, err := s.grabOne(ctx, m.IMDBID, m.Title, m.Year, 0, 0, m.MovieFilePath, hash, lang)
 		if err != nil {
 			s.log.Warn("subtitle grab failed", "movie", m.Title, "lang", lang, "err", err)
 			continue
 		}
-		if ok {
+		if got != nil {
 			grabbed++
 		}
 	}
@@ -298,12 +302,12 @@ func (s *Service) GrabSeries(ctx context.Context, id int64) (int, error) {
 			}
 			hash, _ := osHash(ep.FilePath)
 			for _, lang := range missing {
-				ok, err := s.grabOne(ctx, full.IMDBID, full.Title, full.Year, ep.SeasonNumber, ep.EpisodeNumber, ep.FilePath, hash, lang)
+				got, err := s.grabOne(ctx, full.IMDBID, full.Title, full.Year, ep.SeasonNumber, ep.EpisodeNumber, ep.FilePath, hash, lang)
 				if err != nil {
 					s.log.Warn("subtitle grab failed", "series", full.Title, "s", ep.SeasonNumber, "e", ep.EpisodeNumber, "lang", lang, "err", err)
 					continue
 				}
-				if ok {
+				if got != nil {
 					grabbed++
 				}
 			}
@@ -316,6 +320,11 @@ func (s *Service) GrabSeries(ctx context.Context, id int64) (int, error) {
 // scheduled sweep. The worker then makes each missing kept-language SRT by the best-source
 // pipeline (extract → download → …), so auto-mode isn't download-only.
 func (s *Service) AutoGrab(ctx context.Context) {
+	if n, err := s.ledger.PruneAttempts(ctx, time.Now().Add(-AttemptRetention)); err != nil {
+		s.log.Warn("subtitles: could not prune old attempts", "err", err)
+	} else if n > 0 {
+		s.log.Info("subtitles: pruned old attempts", "count", n)
+	}
 	set := s.GetSettings(ctx)
 	if set.MoviesAuto {
 		if n, _ := s.SweepMissing(ctx, "movies"); n > 0 {
@@ -329,27 +338,37 @@ func (s *Service) AutoGrab(ctx context.Context) {
 	}
 }
 
+// providerOpenSubtitles is the provider name the ledger records downloads under.
+const providerOpenSubtitles = "opensubtitles"
+
+// grabbed is the sidecar grabOne wrote and the candidate it came from.
+type grabbed struct {
+	Result  SubtitleResult
+	Path    string
+	Variant string
+}
+
 // grabOne searches for and downloads the best subtitle for one media file + language,
-// writing it as a sidecar. Returns whether a file was written.
-func (s *Service) grabOne(ctx context.Context, imdb, title string, year, season, episode int, mediaPath, hash, lang string) (bool, error) {
+// writing it as a sidecar. Returns what was written, or nil when nothing matched.
+func (s *Service) grabOne(ctx context.Context, imdb, title string, year, season, episode int, mediaPath, hash, lang string) (*grabbed, error) {
 	// A paused quota means no requests at all: searching would spend the API's rate
 	// limit on results that can't be downloaded until the reset.
 	if s.providerPaused() {
-		return false, ErrQuotaExhausted
+		return nil, ErrQuotaExhausted
 	}
 	results, err := s.provider.Search(ctx, SearchRequest{
 		IMDBID: imdb, Title: title, Year: year, Season: season, Episode: episode, Language: lang,
 		MovieHash: hash,
 	})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if len(results) == 0 {
-		return false, nil
+		return nil, nil
 	}
 	data, err := s.provider.Download(ctx, results[0].FileID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	// A hearing-impaired upload is still the full subtitle; the ".sdh" qualifier lets Plex
 	// label it as such.
@@ -359,11 +378,11 @@ func (s *Service) grabOne(ctx context.Context, imdb, title string, year, season,
 	}
 	dst := sidecarPathV(mediaPath, lang, variant)
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return false, err
+		return nil, err
 	}
 	s.log.Info("subtitle saved", "path", dst, "lang", lang, "release", results[0].Release,
 		"hash_match", results[0].HashMatch, "hearing_impaired", results[0].HearingImpaired)
-	return true, nil
+	return &grabbed{Result: results[0], Path: dst, Variant: variant}, nil
 }
 
 // nonNil returns an empty (non-nil) slice for nil, so JSON emits [] not null.

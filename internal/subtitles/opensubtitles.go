@@ -47,6 +47,24 @@ type OpenSubtitles struct {
 // ErrQuotaExhausted means the provider's daily download allowance is spent.
 var ErrQuotaExhausted = errors.New("opensubtitles: daily download quota used up")
 
+// ErrAuthFailed means OpenSubtitles rejected the API key or the account login. Every
+// further request fails the same way until the credentials change, so a job records
+// auth_failed and moves on to AI rather than trying each language.
+var ErrAuthFailed = errors.New("opensubtitles: credentials rejected")
+
+// authError is an ErrAuthFailed with what was rejected and the HTTP status, worded for
+// the job note: "OpenSubtitles login rejected (401)".
+type authError struct {
+	what   string // "login" | "API key"
+	status int
+}
+
+func (e *authError) Error() string {
+	return fmt.Sprintf("OpenSubtitles %s rejected (%d)", e.what, e.status)
+}
+
+func (e *authError) Is(target error) bool { return target == ErrAuthFailed }
+
 // Quota implements quotaReporter.
 func (o *OpenSubtitles) Quota() (int, time.Time) {
 	o.quotaMu.Lock()
@@ -178,6 +196,9 @@ func (o *OpenSubtitles) login(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", &authError{what: "login", status: resp.StatusCode}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("opensubtitles login: HTTP %d", resp.StatusCode)
 	}
@@ -316,6 +337,9 @@ func (o *OpenSubtitles) Search(ctx context.Context, sr SearchRequest) ([]Subtitl
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, &authError{what: "API key", status: resp.StatusCode}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("opensubtitles search: HTTP %d", resp.StatusCode)
 	}

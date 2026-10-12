@@ -2073,6 +2073,19 @@ export interface SubtitleJob {
   started_at?: number; // unix seconds the worker picked it up
   redo?: boolean; // replacing the sidecars already there
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
+  run_id?: string; // this run's rows in GET /subtitles/history?run_id=
+  outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
+}
+// One rung's typed result for one language (internal/subtitles/ledger.go Outcome).
+export type SubtitleRung = "extract" | "opensubtitles" | "ai" | "upgrade" | "repair";
+export type SubtitleResult =
+  | "ok" | "empty" | "extract_failed" | "no_match" | "quota" | "rate_limited" | "auth_failed" | "provider_error"
+  | "below_score" | "out_of_sync" | "model_missing" | "ai_failed" | "no_audio" | "impossible" | "ocr_needed" | "cancelled";
+export interface SubtitleOutcome { lang: string; variant?: string; rung: SubtitleRung; result: SubtitleResult; detail?: string }
+// A row of GET /api/v1/subtitles/history (newest first; page with ?before=next_before).
+export interface SubtitleAttempt {
+  id: number; run_id: string; media_key: string; video_path: string; lang: string; variant?: string;
+  rung: SubtitleRung; outcome: SubtitleResult; detail?: string; at: number;
 }
 // SubtitleCoverage is the Overview's totals, from the last library pass (not a live walk).
 export interface SubtitleCoverage {
