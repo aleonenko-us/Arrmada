@@ -12,6 +12,8 @@ import { badgeFor, FOLLOWING, PosterPlaceholder, useCloseOverlay, useOpenOverlay
 const SeasonPicker = lazyPage(() => import("../../components/SeasonPicker"), "SeasonPicker");
 // "3 movie requests left this week": its own chunk, only fetched when a sheet opens.
 const QuotaHint = lazyPage(() => import("../../components/QuotaHint"), "QuotaHint");
+// "Report a problem" and its API calls load only when someone taps it.
+const IssueReportSheet = lazyPage(() => import("../../components/IssueReportSheet"), "IssueReportSheet");
 
 // TitleSheet is the sheet for the title in the address. Opened from a poster it starts
 // from that card; opened cold (a shared link, a notification, a reload) it starts from a
@@ -82,6 +84,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   const [subscribed, setSubscribed] = useState(false);
   const [note, setNote] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The requester has no movie requests left (QuotaHint says when the next frees up).
   const [quotaOut, setQuotaOut] = useState(false);
@@ -111,7 +114,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   useEffect(() => {
     let alive = true;
     setD(null); setDetailLoading(true); setDetailError(null); setError(null);
-    setDone(ctxRef.current.isRequested(current)); setSubscribed(false); setNote(""); setNoteOpen(false);
+    setDone(ctxRef.current.isRequested(current)); setSubscribed(false); setNote(""); setNoteOpen(false); setReporting(false);
     setSeasons(null); setPicking(!!pick);
     scrollRef.current?.scrollTo({ top: 0 });
     api.mediaDetail(current.media_type, current.tmdb_id)
@@ -291,6 +294,10 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                   Trailer
                 </a>
               )}
+              {/* Something wrong with the copy in the library: tell the owner. */}
+              {ctx.canRequest && c.title && c.in_library && c.has_file && (
+                <button onClick={() => setReporting(true)} className="min-h-[36px] px-1 text-[12px] font-semibold text-ink-dim underline-offset-2 hover:underline">Report a problem</button>
+              )}
             </div>
             {/* An optional note for whoever approves it, folded away until asked for. */}
             {ctx.canRequest && !!c.title && (picking || (!(done && subscribed) && (!badge || declined))) && (
@@ -421,6 +428,9 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           )}
         </div>
       </div>
+      {reporting && (
+        <Suspense fallback={null}><IssueReportSheet media={c.media_type} tmdbId={c.tmdb_id} title={c.title} onClose={() => setReporting(false)} /></Suspense>
+      )}
     </Sheet>
   );
 }

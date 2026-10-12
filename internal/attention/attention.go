@@ -36,6 +36,7 @@ const (
 	KindSearch   = "search"   // titles whose searches keep coming up empty (one aggregate)
 	KindHealth   = "health"   // a health check finding
 	KindConvert  = "convert"  // conversions stuck waiting for disk space (one per reason)
+	KindIssue    = "issue"    // a problem a requester reported that is still open
 )
 
 // Levels, the same words the health registry uses.
@@ -85,6 +86,7 @@ type Counts struct {
 	Health       int `json:"health"`    // health findings, any level
 	HealthErrors int `json:"health_errors"`
 	Convert      int `json:"convert"` // reasons conversions are stuck
+	Issues       int `json:"issues"`  // reported problems still open or being fixed
 	Total        int `json:"total"`
 }
 
@@ -401,7 +403,7 @@ func (s *Service) build(items []Item, now time.Time) (snap *Snapshot, all []Item
 // kindOrder is the order kinds are listed in: what blocks something first.
 var kindOrder = map[string]int{
 	KindHealth: 0, KindRequest: 1, KindReview: 2, KindImport: 3, KindDownload: 4,
-	KindWrongCat: 5, KindStalled: 6, KindConvert: 7, KindSearch: 8,
+	KindWrongCat: 5, KindStalled: 6, KindConvert: 7, KindSearch: 8, KindIssue: 9,
 }
 
 // sortItems: errors first, then by kind, then oldest first.
@@ -441,6 +443,8 @@ func countItems(items []Item) Counts {
 			c.Searches += n
 		case KindConvert:
 			c.Convert += n
+		case KindIssue:
+			c.Issues += n
 		case KindHealth:
 			c.Health += n
 			if it.Level == LevelError {
@@ -448,7 +452,7 @@ func countItems(items []Item) Counts {
 			}
 		}
 	}
-	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health + c.Convert
+	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health + c.Convert + c.Issues
 	return c
 }
 
@@ -517,6 +521,8 @@ func groupTitle(kind string, n int) string {
 		return num + pick(" health problem", " health problems")
 	case KindConvert:
 		return "Convert is stuck waiting for disk space"
+	case KindIssue:
+		return num + pick(" reported problem is open", " reported problems are open")
 	}
 	return num + " items"
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { RequestSheet } from "../components/RequestSheet";
@@ -13,6 +13,9 @@ import { DECLINE_REASON_MAX, ReRequestFlag, decisionLine } from "../components/D
 import { refreshAttention } from "../lib/useAttention";
 import { quotaLine, useQuota } from "../lib/quota";
 import { TabPanel, Tabs } from "../ui/Tabs";
+import { lazyPage } from "../lib/lazyPage";
+import { ISSUE_TOPICS, issuesApi, type IssueCounts } from "../lib/issuesApi";
+import { useLiveRefresh } from "../lib/useLiveRefresh";
 import { Button, EmptyState, ErrorState, StatusChip, useConfirm, useToast } from "../ui";
 
 // The Requests page: every request in sections, for staff to decide and for requesters to
@@ -23,19 +26,23 @@ import { Button, EmptyState, ErrorState, StatusChip, useConfirm, useToast } from
 //   ?type=movie|series|book            a media filter
 //   ?q=                                a title search
 //   ?id=<request id>                   the RequestSheet open on one request
+//   ?tab=issues                        reported problems (IssuesPanel: ?show=, ?issue=)
 //
 // Links from elsewhere (the Needs-you feed, notifications) use /requests?tab=needs for
 // what's waiting, or /requests?id=<id> for one request. ?section=pending (or the API's own
 // section names) is accepted as a synonym for the tab.
 
-type Tab = "needs" | "active" | "ready" | "declined";
-const TAB_SECTION: Record<Tab, RequestSection> = { needs: "needs_approval", active: "in_progress", ready: "ready", declined: "declined" };
+// The Issues tab: problems people reported with titles in the library. Its own chunk.
+const IssuesPanel = lazyPage(() => import("../components/IssuesPanel"), "IssuesPanel");
+
+type Tab = "needs" | "active" | "ready" | "declined" | "issues";
+const TAB_SECTION: Record<Exclude<Tab, "issues">, RequestSection> = { needs: "needs_approval", active: "in_progress", ready: "ready", declined: "declined" };
 const SECTION_TAB: Record<string, Tab> = {
   needs_approval: "needs", pending: "needs", needs: "needs",
   in_progress: "active", active: "active", approved: "active",
-  ready: "ready", available: "ready", declined: "declined",
+  ready: "ready", available: "ready", declined: "declined", issues: "issues",
 };
-const TABS: Tab[] = ["needs", "active", "ready", "declined"];
+const TABS: Tab[] = ["needs", "active", "ready", "declined", "issues"];
 const PAGE = 50;
 const TYPES = [
   { key: "", label: "All" },
@@ -63,6 +70,8 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   const [declineID, setDeclineID] = useState(0);
   // A bulk decline's reason, told to every requester.
   const [bulkReason, setBulkReason] = useState("");
+  // How many reported problems are open, for the Issues tab's count.
+  const [issueCounts, setIssueCounts] = useState<IssueCounts | null>(null);
 
   // The tab: ?tab=, or a ?section= synonym; without either, staff land on what's waiting
   // when anything is (once the counts are in), everyone else on what's in progress.
@@ -90,7 +99,10 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   const loadMore = () => setMore({ view, n: limit + PAGE });
   useEffect(() => { setSelected(new Set()); setRowErrors({}); }, [view]);
 
+  const issuesTab = tab === "issues";
   const load = useCallback(async () => {
+    // The Issues tab lists problems, not requests; it loads its own (IssuesPanel).
+    if (tab === "issues") return;
     try {
       const r = await api.requests({ section: TAB_SECTION[tab], limit, media_type: type || undefined, q: q || undefined });
       setItems(r.requests);
@@ -105,8 +117,16 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   // The effect loads each new view at once; the live feed refreshes it when a request it
   // could show changes, with a backstop poll (quick only while something is moving on its
   // own, never in a hidden tab).
-  useRequestsFeed(load, items);
+  useRequestsFeed(load, items, !issuesTab);
   useEffect(() => { void load(); }, [load]);
+  // The Issues tab's count, kept current by the same live events the tab reloads on. On
+  // the tab itself the panel reports it with every load instead.
+  const loadIssueCounts = useCallback(async () => {
+    if (issuesTab) return;
+    try { setIssueCounts((await issuesApi.list({ status: "open", limit: 1 })).counts); } catch { /* the count just stays */ }
+  }, [issuesTab]);
+  useEffect(() => { void loadIssueCounts(); }, [loadIssueCounts]);
+  useLiveRefresh(loadIssueCounts, { topics: ISSUE_TOPICS, fallbackMs: 5 * 60_000, enabled: !issuesTab });
 
   const pendingIDs = useMemo(() => (items ?? []).filter((rq) => rq.status === "pending").map((rq) => rq.id), [items]);
   const selectable = staff && tab === "needs";
@@ -166,10 +186,11 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   // The middle tab names a request section, not a library status (lib/status).
   const active = "In progress"; // copy-ok: a request section, not a library status
   const tabLabel: Record<Tab, string> = staff
-    ? { needs: "Needs approval", active, ready: "Ready", declined: "Declined" }
-    : { needs: "Waiting", active, ready: "Ready", declined: "Declined" };
+    ? { needs: "Needs approval", active, ready: "Ready", declined: "Declined", issues: "Issues" }
+    : { needs: "Waiting", active, ready: "Ready", declined: "Declined", issues: "Problems" };
   const countOf: Record<Tab, number | undefined> = {
     needs: counts?.needs_approval, active: counts?.in_progress, ready: counts?.ready, declined: counts?.declined,
+    issues: issueCounts?.open,
   };
   const types = booksEnabled ? TYPES : TYPES.filter((t) => t.key !== "book");
   const open = openID ? (items ?? []).find((rq) => rq.id === openID) : undefined;
@@ -189,7 +210,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
           className="mb-4 border-b"
         />
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        {!issuesTab && <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }} role="group" aria-label="Media type">
             {types.map((t) => (
               <button
@@ -214,10 +235,14 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
               style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             />
           </form>
-        </div>
+        </div>}
 
         <TabPanel idPrefix="requests" value={tab}>
-          {error && !items ? (
+          {issuesTab ? (
+            <Suspense fallback={<div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>}>
+              <IssuesPanel staff={staff} onCounts={setIssueCounts} />
+            </Suspense>
+          ) : error && !items ? (
             <ErrorState what="requests" message={error} onRetry={() => { void load(); }} />
           ) : !items ? (
             <div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>
@@ -366,6 +391,7 @@ function emptyTitle(tab: Tab, staff: boolean, filtered: boolean): string {
     case "active": return "Nothing in progress";
     case "ready": return "Nothing ready yet";
     case "declined": return "Nothing declined";
+    case "issues": return "No problems reported";
   }
 }
 

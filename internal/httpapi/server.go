@@ -28,6 +28,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
@@ -136,6 +137,8 @@ type Deps struct {
 	// movie importer's and the series sweep's), for the queue's Finishing stages. nil =
 	// the movie importer's alone (Library.Failures).
 	ImportFailures func() []library.FailureInfo
+	// Issues is "Report a problem" (Requests → Issues). nil = reporting answers 503.
+	Issues *issues.Service
 }
 
 type api struct {
@@ -513,6 +516,13 @@ func (a *api) registerRoutes(mux *router) {
 	// requesters; the handler enforces ownership vs manager.
 	mux.HandleFunc("DELETE /api/v1/requests/{id}", a.requireRole(auth.RoleRequester, a.handleDeleteRequest).ext())
 	mux.HandleFunc("POST /api/v1/requests/import/overseerr", a.requireRole(auth.RoleAdmin, a.handleImportOverseerr).ext())
+	// Reported problems: a requester reports one from a title's sheet (from outside the LAN
+	// too) and lists their own; staff list everyone's and close them.
+	mux.HandleFunc("GET /api/v1/issues", a.signedIn(a.handleListIssues).ext())
+	mux.HandleFunc("POST /api/v1/issues", a.requireRole(auth.RoleRequester, a.handleReportIssue).ext())
+	mux.HandleFunc("GET /api/v1/issues/episodes/{tmdb}", a.requireRole(auth.RoleRequester, a.handleIssueEpisodes).ext())
+	mux.HandleFunc("POST /api/v1/issues/{id}/resolve", a.requireRole(auth.RoleManager, a.handleCloseIssue(false)))
+	mux.HandleFunc("POST /api/v1/issues/{id}/dismiss", a.requireRole(auth.RoleManager, a.handleCloseIssue(true)))
 	mux.HandleFunc("POST /api/v1/insights/import/tautulli", a.requireRole(auth.RoleAdmin, a.handleImportTautulli))
 	// Tautulli imports as tracked runs: the saved connection (key masked), the latest runs
 	// with progress and counts, Retry, and undo of exactly one run's plays (backup first).
