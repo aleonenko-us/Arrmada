@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { FIT_COLOR } from "../../components/FitBadge";
-import { api, type FitItem, type FitStatus, type Series as SeriesT, type SeriesRenameItem } from "../../lib/api";
+import { type FitItem, type FitStatus, type Series as SeriesT, type SeriesRenameItem } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { Button } from "../../ui";
 import type { Flash } from "./HeroActions";
 import { DuplicatesPanel, SeriesBlocklistPanel } from "./panels";
@@ -70,7 +71,7 @@ function RenamePreview({ series, refreshKey, onChange }: { series: SeriesT; refr
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let alive = true;
-    api.seriesRenamePreview(series.id)
+    seriesApi.seriesRenamePreview(series.id)
       .then((r) => { if (alive) { setItems(r.items ?? []); setErr(null); } })
       .catch((e: Error) => { if (alive) setErr(e.message); });
     return () => { alive = false; };

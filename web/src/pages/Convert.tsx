@@ -9,11 +9,8 @@ import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
 import { backlogLine, fileForecast, restartLoss } from "../lib/convertForecast";
 import { groupVersions, nestedVersions } from "../lib/convertVersions";
-import {
-  api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
-  type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
-  type ConvertHoldStats,
-} from "../lib/api";
+import { type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped, type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type ConvertHoldStats } from "../lib/api";
+import { convertApi } from "../lib/convertApi";
 import { HeldSummary, RevertButton } from "./convert/hold";
 import { HistoryTab, RecentCard } from "./convert/History";
 import { PlanCard, PlanToggle, Poster } from "./convert/PlanCard";
@@ -96,9 +93,9 @@ function ConvertPage() {
   }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  const loadStats = useCallback(() => api.convertStats().then(setStats).catch(() => {}), []);
-  const loadHw = useCallback(() => api.convertHardware().then(setHw).catch(() => {}), []);
-  const loadSettings = useCallback(() => api.convertSettings().then(setSettings).catch(() => {}), []);
+  const loadStats = useCallback(() => convertApi.convertStats().then(setStats).catch(() => {}), []);
+  const loadHw = useCallback(() => convertApi.convertHardware().then(setHw).catch(() => {}), []);
+  const loadSettings = useCallback(() => convertApi.convertSettings().then(setSettings).catch(() => {}), []);
   useEffect(() => { loadStats(); loadHw(); loadSettings(); }, [loadStats, loadHw, loadSettings]);
   const originals = originalsCopy(settings ? settings.hold_days : null);
 
@@ -106,25 +103,25 @@ function ConvertPage() {
   // Bumps as jobs finish, so the ledger views re-read what was just recorded.
   const finished = jobs.filter((j) => !ACTIVE.has(j.state)).length;
   usePoll(() => Promise.all([
-    api.convertJobs().then(setJobs).catch(() => {}),
-    api.convertStatus().then(setStatus).catch(() => {}),
+    convertApi.convertJobs().then(setJobs).catch(() => {}),
+    convertApi.convertStatus().then(setStatus).catch(() => {}),
   ]), anyActive ? 1500 : 5000);
   useEffect(() => { if (!anyActive) { loadHw(); loadStats(); } }, [anyActive, loadHw, loadStats]);
 
   const refresh = useCallback(() => {
-    api.convertJobs().then(setJobs).catch(() => {});
-    api.convertStatus().then(setStatus).catch(() => {});
+    convertApi.convertJobs().then(setJobs).catch(() => {});
+    convertApi.convertStatus().then(setStatus).catch(() => {});
     loadStats();
     loadHw(); // freed and held space (a release moves bytes from one to the other)
   }, [loadStats, loadHw]);
 
   const rescanLibrary = useCallback(async (): Promise<boolean> => {
-    const r = await api.convertReindex();
+    const r = await convertApi.convertReindex();
     if (!r.started) { flash(r.reason ?? "A scan is already running."); return false; }
     flash("Rescanning the library…");
     for (let i = 0; i < 240; i++) {
       await new Promise((res) => setTimeout(res, 2000));
-      const st = await api.convertReindexStatus().catch(() => ({ running: false }));
+      const st = await convertApi.convertReindexStatus().catch(() => ({ running: false }));
       if (!st.running) break;
     }
     await loadStats();
@@ -144,7 +141,7 @@ function ConvertPage() {
   const toggleAuto = async () => {
     if (!settings) return;
     if (!settings.auto) { setAskSwitchOn(true); return; }
-    try { autoChanged(await api.updateConvertSettings({ auto: false })); } catch (e) { flash((e as Error).message); }
+    try { autoChanged(await convertApi.updateConvertSettings({ auto: false })); } catch (e) { flash((e as Error).message); }
   };
 
   const TABS: { key: Tab; label: string }[] = [
@@ -189,7 +186,7 @@ function ConvertPage() {
           {tab === "activity" && <LogsConsole />}
         </TabPanel>
       </div>
-      {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await api.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
+      {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await convertApi.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
       {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={flash} />}
       {toast && <div role="status" aria-live="polite" className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
@@ -213,8 +210,8 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
   const n = t?.files ?? 0;
   const pct = (x: number) => (n ? Math.round((x / n) * 100) : 0);
 
-  const cancelJob = async (id: number) => { try { await api.convertCancel(id); onChanged(); } catch (e) { flash((e as Error).message); } };
-  const cancelRequest = async (key: string) => { try { await api.convertCancelRequest(key); onChanged(); } catch (e) { flash((e as Error).message); } };
+  const cancelJob = async (id: number) => { try { await convertApi.convertCancel(id); onChanged(); } catch (e) { flash((e as Error).message); } };
+  const cancelRequest = async (key: string) => { try { await convertApi.convertCancelRequest(key); onChanged(); } catch (e) { flash((e as Error).message); } };
   const [asking, setAsking] = useState<Asking | null>(null); // the Convert-now confirmation that's open
   // The hours as the status reports them ("01:00–07:00"), for the time forecast.
   const [winStart, winEnd] = status?.window ? status.window.split("–") : ["", ""];
@@ -465,16 +462,16 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
     setItems(null); setShow(null); setRequested(new Set()); setCodecF(new Set()); setLoadErr(false);
     if (media === "tv") {
       setShows(null);
-      api.convertLibrarySeries().then(setShows).catch(() => { setShows([]); setLoadErr(true); });
+      convertApi.convertLibrarySeries().then(setShows).catch(() => { setShows([]); setLoadErr(true); });
     } else {
-      api.convertLibrary("movies", undefined, onlyConvertible).then(setItems).catch(() => { setItems([]); setLoadErr(true); });
+      convertApi.convertLibrary("movies", undefined, onlyConvertible).then(setItems).catch(() => { setItems([]); setLoadErr(true); });
     }
   }, [media, onlyConvertible, refreshKey]);
 
   useEffect(() => {
     if (media !== "tv" || !show) return;
     setItems(null); setCodecF(new Set()); setLoadErr(false);
-    api.convertLibrary("tv", show.series_id, onlyConvertible).then(setItems).catch(() => { setItems([]); setLoadErr(true); });
+    convertApi.convertLibrary("tv", show.series_id, onlyConvertible).then(setItems).catch(() => { setItems([]); setLoadErr(true); });
   }, [media, show, onlyConvertible, refreshKey]);
 
   // Re-read in place (keeping the open show and filters) when something outside this view
@@ -482,10 +479,10 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   useEffect(() => {
     if (!reload) return;
     if (media === "tv") {
-      api.convertLibrarySeries().then(setShows).catch(() => {});
-      if (show) api.convertLibrary("tv", show.series_id, onlyConvertible).then(setItems).catch(() => {});
+      convertApi.convertLibrarySeries().then(setShows).catch(() => {});
+      if (show) convertApi.convertLibrary("tv", show.series_id, onlyConvertible).then(setItems).catch(() => {});
     } else {
-      api.convertLibrary("movies", undefined, onlyConvertible).then(setItems).catch(() => {});
+      convertApi.convertLibrary("movies", undefined, onlyConvertible).then(setItems).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload]);
@@ -734,14 +731,14 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    api.convertCompare(itemKey).then(setSt).catch(async (e) => {
-      const cur = await api.convertCompareStatus().catch(() => null);
+    convertApi.convertCompare(itemKey).then(setSt).catch(async (e) => {
+      const cur = await convertApi.convertCompareStatus().catch(() => null);
       if (cur?.running && cur.key !== itemKey) flash(`Another comparison is running (${cur.title})`);
       else flash((e as Error).message);
       setSt(cur);
     });
   }, [itemKey, flash]);
-  usePoll(() => api.convertCompareStatus().then(setSt).catch(() => {}), 2500, { immediate: false });
+  usePoll(() => convertApi.convertCompareStatus().then(setSt).catch(() => {}), 2500, { immediate: false });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -777,7 +774,7 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
               <div className="mt-3">
                 <div className={lbl}>Watch the clips (VLC or mpv)</div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {r.files.map((f) => <a key={f} href={api.convertCompareFileURL(f)} className="rounded-md px-2 py-1 font-mono text-[11px]" style={ghostBtn}>{f}</a>)}
+                  {r.files.map((f) => <a key={f} href={convertApi.convertCompareFileURL(f)} className="rounded-md px-2 py-1 font-mono text-[11px]" style={ghostBtn}>{f}</a>)}
                 </div>
                 <p className="mt-1.5 text-[10.5px] text-ink-faint">Dark scenes and skies are where codecs differ — look there. The original clip may start a moment earlier than the encoded ones.</p>
               </div>
@@ -822,23 +819,23 @@ function Problems({ flash }: { flash: (m: string) => void }) {
   const [blocked, setBlocked] = useState<ConvertBlocked[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(() => {
-    api.convertSkips().then(setSkips).catch(() => setSkips([]));
-    api.convertBlocklist().then(setBlocked).catch(() => setBlocked([]));
+    convertApi.convertSkips().then(setSkips).catch(() => setSkips([]));
+    convertApi.convertBlocklist().then(setBlocked).catch(() => setBlocked([]));
   }, []);
   useEffect(() => { load(); }, [load]);
 
   const retrySkips = async (kind?: string, key?: string) => {
     setBusy(key ?? kind ?? "all");
     try {
-      if (key) await api.convertSkipsClear(key);
-      else for (const s of (skips ?? []).filter((x) => !kind || x.kind === kind)) await api.convertSkipsClear(s.key);
+      if (key) await convertApi.convertSkipsClear(key);
+      else for (const s of (skips ?? []).filter((x) => !kind || x.kind === kind)) await convertApi.convertSkipsClear(s.key);
       flash("Cleared — they'll be picked up again");
       load();
     } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
   };
   const retryBlocked = async (key?: string) => {
     setBusy(key ?? "blocked");
-    try { await api.convertBlocklistClear(key); flash("Cleared — will be tried again"); load(); }
+    try { await convertApi.convertBlocklistClear(key); flash("Cleared — will be tried again"); load(); }
     catch (e) { flash((e as Error).message); } finally { setBusy(null); }
   };
 
@@ -902,7 +899,7 @@ function LogsConsole() {
   const [lines, setLines] = useState<{ at: number; level: string; msg: string }[]>([]);
   const [follow, setFollow] = useState(true);
   const boxRef = useRef<HTMLDivElement | null>(null);
-  usePoll(() => api.convertLogs().then((l) => {
+  usePoll(() => convertApi.convertLogs().then((l) => {
     setLines((prev) => {
       const a = prev[prev.length - 1], b = l[l.length - 1];
       if (prev.length === l.length && a?.at === b?.at && a?.msg === b?.msg) return prev;

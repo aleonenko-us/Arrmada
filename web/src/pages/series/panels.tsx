@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type BlockEntry, type DuplicateEpisodeFile, type SceneOverride, type Series as SeriesT, type SeriesAlias } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 
 // SeriesBlocklistPanel mirrors the movie blocklist: releases rejected via Replace/stall-failover,
 // with a Remove action. Hidden when empty.
 export function SeriesBlocklistPanel({ seriesId, refreshKey }: { seriesId: number; refreshKey: unknown }) {
   const [entries, setEntries] = useState<BlockEntry[] | null>(null);
-  const load = () => api.seriesBlocklist(seriesId).then(setEntries).catch(() => setEntries([]));
+  const load = () => seriesApi.seriesBlocklist(seriesId).then(setEntries).catch(() => setEntries([]));
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seriesId, refreshKey]);
-  const unblock = async (bid: number) => { await api.unblockSeries(seriesId, bid); load(); };
+  const unblock = async (bid: number) => { await seriesApi.unblockSeries(seriesId, bid); load(); };
   if (!entries || entries.length === 0) return null;
   return (
     <div className="mt-8">
@@ -172,7 +173,7 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api.sceneOverrides(series.id).then((r) => setRows(r.overrides ?? [])).catch(() => setRows([]));
+    seriesApi.sceneOverrides(series.id).then((r) => setRows(r.overrides ?? [])).catch(() => setRows([]));
   }, [series.id]);
   useEffect(load, [load]);
 
@@ -180,7 +181,7 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
     setErr(null);
     setBusy(true);
     try {
-      await api.setSceneOverride(series.id, {
+      await seriesApi.setSceneOverride(series.id, {
         scene_season: Number(sceneSeason),
         tmdb_season: Number(tmdbSeason),
         tmdb_episode: Number(tmdbEpisode),
@@ -222,7 +223,7 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
               <button
                 className="ml-auto text-[11px] font-semibold"
                 style={{ color: "var(--reject)" }}
-                onClick={async () => { await api.deleteSceneOverride(series.id, o.scene_season); load(); }}
+                onClick={async () => { await seriesApi.deleteSceneOverride(series.id, o.scene_season); load(); }}
               >
                 Remove
               </button>

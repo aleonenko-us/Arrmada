@@ -50,7 +50,9 @@ export const subtitleSettings: SubtitleSettings = {
   provider_state: "not_configured", provider_detail: "Add an OpenSubtitles API key to search, plus the account's username and password to download.", vip: false, allowed_downloads: -1,
 };
 
-export const subtitleJobs: { jobs: SubtitleJob[] } = { jobs: [] };
+// GET /subtitles/jobs: the live list plus the AI backlog (none here).
+export const subtitleJobs: { jobs: SubtitleJob[]; gpu_backlog: number; gpu_backlog_audio_sec: number; gpu_eta_sec: number; rtf: number; next_before: number } =
+  { jobs: [], gpu_backlog: 0, gpu_backlog_audio_sec: 0, gpu_eta_sec: 0, rtf: 0, next_before: 0 };
 
 // Language profiles: just Default, the kept languages above.
 export const subtitleProfiles: ProfileList = {

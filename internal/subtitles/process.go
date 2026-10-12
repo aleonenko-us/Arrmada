@@ -106,7 +106,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if ref.MediaKey == "" {
 		ref.MediaKey = job.key()
 	}
-	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
+	s.markRunning(job)
 	if job.Mode == ModeRepairForced {
 		s.processRepair(ctx, job, ref)
 		return
@@ -127,12 +127,19 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if job.Redo {
 		// Make every wanted subtitle again; the sidecars there now get written over.
 		s.event("info", fmt.Sprintf("Redoing %s: replacing its existing subtitles", ref.Title))
-		remaining, remainingForced = langs, wantLangs(cov.active, VariantForced)
+		for _, l := range langs {
+			if inLangs(job.Langs, l) {
+				remaining = append(remaining, l)
+			}
+		}
+		remainingForced = wantLangs(cov.active, VariantForced)
 	} else {
 		for _, w := range cov.missing() {
 			switch {
 			case w.Variant == VariantForced:
 				remainingForced = append(remainingForced, w.Lang)
+			case !inLangs(job.Langs, w.Lang):
+				// A GPU-lane job makes only the languages the fast lane handed it.
 			case job.Priority == PrioSweep && cov.orphaned[strings.ToLower(w.Lang)]:
 				// The sweep leaves languages an orphaned subtitle covers alone (see
 				// SweepMissing); an import or a button press makes a real paired one.
@@ -142,6 +149,11 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			}
 		}
 	}
+	if job.lane() == LaneGPU {
+		remainingForced = nil // forced subtitles are the fast lane's: whisper can't make them
+	}
+	// prior is what the fast lane already did for a job now in the GPU lane (recorded then).
+	prior := job.Outcomes
 	if len(remaining) == 0 && len(remainingForced) == 0 {
 		note := "all kept languages already have subtitles"
 		if len(cov.active) == 0 {
@@ -150,7 +162,15 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		if orphaned > 0 {
 			note = fmt.Sprintf("%d language(s) covered only by orphaned subtitles — Ensure replaces them", orphaned)
 		}
-		s.finish(job, StateSkipped, note)
+		state := StateSkipped
+		if sum := outcomeNote(langs, prior); sum != "" {
+			note = sum + " · " + note
+			if madeIt(prior) {
+				state = StateDone
+				s.retireReplaced(context.WithoutCancel(ctx), job, ref, prior)
+			}
+		}
+		s.finishOutcomes(job, state, note, prior)
 		return
 	}
 
@@ -166,22 +186,33 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 	}
 
-	runID := NewRunID()
-	s.update(job, func(j *Job) { j.RunID = runID })
-	wanted, wantedForced := remaining, remainingForced
-	var outcomes []Outcome
-	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
-	inFlight := RungExtract
-	remaining, outs := s.rungExtract(ctx, job, ref, mi, remaining)
-	outcomes = append(outcomes, outs...)
-	if ctx.Err() == nil {
-		inFlight = RungOpenSubtitles
+	runID := job.RunID // a job in the GPU lane carries on its fast-lane run
+	if runID == "" {
+		runID = NewRunID()
+		s.update(job, func(j *Job) { j.RunID = runID })
 	}
-	remaining, outs = s.rungDownload(ctx, job, ref, remaining)
-	outcomes = append(outcomes, outs...)
-	outcomes = append(outcomes, s.rungForced(ctx, job, ref, mi, remainingForced)...)
-	if ctx.Err() == nil {
-		inFlight = RungAI
+	wanted, wantedForced := remaining, remainingForced
+	outcomes := append([]Outcome(nil), prior...)
+	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
+	inFlight := RungAI
+	if job.lane() != LaneGPU {
+		inFlight = RungExtract
+		var outs []Outcome
+		remaining, outs = s.rungExtract(ctx, job, ref, mi, remaining)
+		outcomes = append(outcomes, outs...)
+		if ctx.Err() == nil {
+			inFlight = RungOpenSubtitles
+		}
+		remaining, outs = s.rungDownload(ctx, job, ref, remaining)
+		outcomes = append(outcomes, outs...)
+		outcomes = append(outcomes, s.rungForced(ctx, job, ref, mi, remainingForced)...)
+		if ctx.Err() == nil {
+			inFlight = RungAI
+		}
+		// Whisper work waits in the GPU lane, so the next extraction doesn't wait for it.
+		if s.handOffAI(ctx, job, ref, mi, runID, remaining, outcomes) {
+			return
+		}
 	}
 	outcomes = append(outcomes, s.rungAI(ctx, job, ref, mi, remaining)...)
 
@@ -202,7 +233,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		// Every language the stop left without a subtitle gets a cancelled attempt, so
 		// the history says the run was cut short rather than that nothing was tried.
 		outcomes = append(outcomes, stoppedOutcomes(wanted, wantedForced, outcomes, inFlight)...)
-		s.recordAttempts(ctx, runID, ref, outcomes)
+		s.recordAttempts(ctx, runID, ref, outcomes[len(prior):])
 		note := "stopped"
 		if summary != "" {
 			note = "stopped after " + summary
@@ -214,9 +245,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 		return
 	}
-	s.recordAttempts(ctx, runID, ref, outcomes)
-	s.updateBackoff(ctx, ref, wanted, outcomes)
-	s.updateBackoffV(ctx, ref, wantedForced, VariantForced, outcomes)
+	s.recordAttempts(ctx, runID, ref, outcomes[len(prior):])
+	// A GPU-lane job settles the fast lane's languages too (prior): full and forced alike.
+	s.updateBackoff(ctx, ref, unionLangs(outcomeLangs(prior), wanted), outcomes)
+	s.updateBackoffV(ctx, ref, unionLangs(forcedOutcomeLangs(prior), wantedForced), VariantForced, outcomes)
 	if summary == "" {
 		summary = "no source could act" // every rung declined without a reason; shouldn't happen
 	}
@@ -643,6 +675,7 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 			// The number that says whether the GPU is pulling its weight.
 			dur := float64(mi.DurationSec)
 			msg += fmt.Sprintf(" — %s of audio, %.1f× realtime", fmtAudio(dur), dur/took.Seconds())
+			s.noteRTF(ctx, ai.Backend(), dur/took.Seconds()) // the AI backlog's ETA reads it
 		}
 		s.event("info", msg)
 	}

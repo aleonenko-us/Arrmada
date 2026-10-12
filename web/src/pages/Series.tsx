@@ -3,6 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { DeleteSeriesDialog } from "../components/DeleteSeriesDialog";
 import { api, type Series as SeriesT, type SeriesFitSummary } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { SeriesSearchModal } from "../components/SeriesSearchModal";
 import { usePollBurst } from "../lib/usePoll";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
@@ -29,12 +30,12 @@ export function Series() {
   const [searchFor, setSearchFor] = useState<SeriesT | null>(null); // the table's per-row "Search indexers"
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   useEffect(() => {
-    api.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
+    qualityApi.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
   }, []);
 
   // How each show's episode files fit its profile's ideal file — report only; only the
   // table shows it.
-  const fitQ = useQuery("series.fit", () => api.libraryFitSeries(), { staleMs: 60_000, enabled: view.mode === "table" });
+  const fitQ = useQuery("series.fit", () => qualityApi.libraryFitSeries(), { staleMs: 60_000, enabled: view.mode === "table" });
   const fits = useMemo(() => (fitQ.data ? new Map((fitQ.data.items ?? []).map((it) => [it.series_id, it])) : NO_FITS), [fitQ.data]);
 
   // While a refresh-all works, poll so the user sees episode counts settle rather than

@@ -4,6 +4,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { AutoNumber, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Field, Note, Section, input, inputStyle } from "../../components/settings/ui";
 import { api, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
+import { systemApi } from "../../lib/systemApi";
 import { LINKS } from "../../lib/links";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { useLoadedSettings, useSetting, useSettingGroup } from "../../lib/useSettings";
@@ -76,7 +77,7 @@ function RecycleBin() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = () => api.recycleStats().then(setStats).catch(() => setStats(null));
-  const loadItems = () => api.recycleItems().then(setItems).catch(() => setItems([]));
+  const loadItems = () => systemApi.recycleItems().then(setItems).catch(() => setItems([]));
   useEffect(() => { load(); }, []);
   useEffect(() => { if (showItems) loadItems(); }, [showItems]);
 
@@ -89,7 +90,7 @@ function RecycleBin() {
   const empty = async (bin?: RecycleBinStats) => {
     setBusy(true); setMsg(null); setConfirmErr(null);
     try {
-      const r = await api.emptyRecycle(bin?.key);
+      const r = await systemApi.emptyRecycle(bin?.key);
       setMsg(`Freed ${fmtBytes(r.freed_bytes)}.`);
       closeConfirm();
       load(); if (showItems) loadItems();
@@ -99,13 +100,13 @@ function RecycleBin() {
 
   const restore = async (it: RecycleItem) => {
     setRowBusy(it.id); setMsg(null);
-    try { await api.restoreRecycle(it.id); setMsg(`Restored ${it.name}.`); load(); loadItems(); }
+    try { await systemApi.restoreRecycle(it.id); setMsg(`Restored ${it.name}.`); load(); loadItems(); }
     catch (e) { setMsg((e as Error).message); }
     finally { setRowBusy(null); }
   };
   const deleteItem = async (it: RecycleItem) => {
     setRowBusy(it.id); setMsg(null); setConfirmErr(null);
-    try { await api.deleteRecycleItem(it.id); closeConfirm(); load(); loadItems(); }
+    try { await systemApi.deleteRecycleItem(it.id); closeConfirm(); load(); loadItems(); }
     catch (e) { setConfirmErr((e as Error).message); }
     finally { setRowBusy(null); }
   };

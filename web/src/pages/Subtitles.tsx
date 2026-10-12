@@ -13,11 +13,12 @@ import { langName, useLanguages } from "../lib/languages";
 import { ProfileSelect } from "./subtitles/ProfileSelect";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
 import { useConfirm } from "../ui";
+import { ACTIVE, ActiveRow, Queue, backlogText, sortActive } from "./subtitles/queue";
+import { queueApi, type SubtitleQueue } from "./subtitles/queueApi";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
 const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs"];
-const ACTIVE = new Set(["queued", "running"]);
 
 const SOURCE_LABEL: Record<string, string> = { extract: "extract", ocr: "OCR", download: "download", ai: "AI" };
 // Why a missing language is backing off, and what brings it back early.
@@ -48,14 +49,17 @@ function SubtitlesPage() {
   const [tab, setTab] = useTabParam(TAB_KEYS, "overview");
   const [settings, setSettings] = useState<SubtitleSettings | null>(null);
   const [jobs, setJobs] = useState<SubtitleJob[]>([]);
+  const [backlog, setBacklog] = useState<SubtitleQueue | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); }, []);
 
   const loadSettings = useCallback(() => api.subtitleSettings().then(setSettings).catch(() => {}), []);
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
+  // The live list carries the AI backlog (files, audio, ETA) along with the jobs.
+  const loadJobs = useCallback(() => queueApi.live().then((q) => { setJobs(q.jobs); setBacklog(q); }).catch(() => {}), []);
   const anyActive = jobs.some((j) => ACTIVE.has(j.state));
-  usePoll(() => api.subtitleJobs().then(setJobs).catch(() => {}), anyActive ? 1500 : 4000);
+  usePoll(loadJobs, anyActive ? 1500 : 4000);
 
   const ensureAll = async () => {
     try {
@@ -63,7 +67,7 @@ function SubtitlesPage() {
       const n = m.queued + tv.queued;
       flash(n ? `Queued ${n} file${n === 1 ? "" : "s"} missing subtitles…` : "Everything already has its subtitles. 🎉");
       setTab("queue");
-      api.subtitleJobs().then(setJobs);
+      void loadJobs();
     } catch (e) { flash((e as Error).message); }
   };
 
@@ -106,9 +110,9 @@ function SubtitlesPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="subtitles" label="Subtitles sections" />
 
         <TabPanel idPrefix="subtitles" value={tab}>
-          {tab === "overview" && <Overview jobs={jobs} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)} />}
-          {tab === "queue" && <Queue jobs={jobs} onChange={() => api.subtitleJobs().then(setJobs).catch(() => {})} flash={flash} />}
-          {tab === "library" && <Library flash={flash} onQueued={() => api.subtitleJobs().then(setJobs)} />}
+          {tab === "overview" && <Overview jobs={jobs} backlog={backlog} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)} />}
+          {tab === "queue" && <Queue jobs={jobs} backlog={backlog} onChange={loadJobs} flash={flash} />}
+          {tab === "library" && <Library flash={flash} onQueued={loadJobs} />}
           {tab === "logs" && <LogsConsole />}
         </TabPanel>
       </div>
@@ -118,7 +122,7 @@ function SubtitlesPage() {
 }
 
 /* ============================= OVERVIEW ============================= */
-function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void }) {
+function Overview({ jobs, backlog, settings, flash, onSettings }: { jobs: SubtitleJob[]; backlog: SubtitleQueue | null; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void }) {
   // The totals come from the server's last library pass. This used to fetch the flat
   // list of every file — a directory listing per file, 25,000 of them — every time the
   // tab opened.
@@ -136,6 +140,7 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
     finally { setBusy(false); }
   };
   const active = sortActive(jobs);
+  const ai = backlogText(backlog);
   const scanned = !!cov && cov.scanned_at > 0;
   // Figures counted for the old kept languages would be wrong, so they aren't shown.
   const recounting = !!cov?.stale;
@@ -181,7 +186,11 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
 
       {active.length > 0 && (
         <div className={card} style={cardStyle}>
-          <div className="text-[14px] font-bold">Working now</div>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div className="text-[14px] font-bold">Working now</div>
+            {/* Whisper works through its own lane; this says how far behind it is. */}
+            {ai && <div className="font-mono text-[11px] text-ink-faint">{ai}</div>}
+          </div>
           <div className="mt-2 flex flex-col gap-1.5">{active.map((j) => <ActiveRow key={j.id} j={j} />)}</div>
         </div>
       )}
@@ -215,111 +224,7 @@ function Row2({ label, state, onClick }: { label: string; state: keyof typeof RO
   );
 }
 
-/* ============================= QUEUE ============================= */
-function Queue({ jobs, onChange, flash }: { jobs: SubtitleJob[]; onChange: () => void; flash: (m: string) => void }) {
-  // The API lists newest-first (right for "Recent"), which put the running job — the
-  // oldest active one — at the bottom. Show it the way the worker sees it: what's running
-  // on top, then what's next, in the order it will run.
-  const active = sortActive(jobs);
-  const done = jobs.filter((j) => !ACTIVE.has(j.state));
-  const running = active.filter((j) => j.state === "running").length;
-  const queued = active.length - running;
-  const [busy, setBusy] = useState(false);
-  const cancel = async (j: SubtitleJob) => {
-    setBusy(true);
-    try { await api.subtitleCancelJob(j.id); onChange(); }
-    catch (e) { flash(e instanceof Error ? e.message : "Couldn't stop that job"); }
-    finally { setBusy(false); }
-  };
-  const clear = async () => {
-    setBusy(true);
-    try { const r = await api.subtitleClearQueue(); flash(`Removed ${r.cleared} queued job${r.cleared === 1 ? "" : "s"}.`); onChange(); }
-    catch (e) { flash(e instanceof Error ? e.message : "Couldn't clear the queue"); }
-    finally { setBusy(false); }
-  };
-  return (
-    <div className="flex flex-col gap-3.5">
-      <div className={card} style={cardStyle}>
-        <div className="flex items-center gap-2">
-          <div className="text-[14px] font-bold">Active <span className="font-mono text-[11px] text-ink-faint">{running} running · {queued} queued</span></div>
-          <div className="flex-1" />
-          {queued > 0 && (
-            <button type="button" onClick={clear} disabled={busy} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50" style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>
-              Clear queue
-            </button>
-          )}
-        </div>
-        {active.length === 0 ? <div className="mt-2 text-[12px] text-ink-dim">Nothing in the queue right now.</div> : <div className="mt-2 flex flex-col gap-1.5">{active.map((j) => <ActiveRow key={j.id} j={j} onCancel={() => cancel(j)} busy={busy} />)}</div>}
-      </div>
-      {done.length > 0 && (
-        <div className={card} style={cardStyle}>
-          <div className="text-[14px] font-bold">Recent</div>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {done.slice(0, 30).map((j) => (
-              <div key={j.id} className="flex items-center gap-2.5 text-[12px]">
-                <StateBadge state={j.state} />
-                <span className="flex-1 truncate font-semibold">{j.title}{j.redo && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-ink-faint" style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}</span>
-                <span className="text-[11.5px] text-ink-faint">{j.note}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-// sortActive lists the running job first, then the queue in the order the worker will
-// take it: imports, then button presses, then the sweep, oldest first within each. The
-// API's newest-first order put the running job at the bottom.
-function sortActive(jobs: SubtitleJob[]): SubtitleJob[] {
-  return jobs
-    .filter((j) => ACTIVE.has(j.state))
-    .sort((a, b) => (a.state === b.state ? (a.priority ?? 1) - (b.priority ?? 1) || a.at - b.at || a.id - b.id : a.state === "running" ? -1 : 1));
-}
-const PRIO_LABEL = ["import", "manual", "sweep"];
-const PRIO_TITLE = ["Just imported — runs before anything else", "Queued from a button — runs before the sweep", "Queued by the periodic sweep — runs after imports and button presses"];
-
-function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: () => void; busy?: boolean }) {
-  const running = j.state === "running";
-  const stopping = running && j.note === "stopping…";
-  const pct = running && j.progress ? Math.min(100, Math.max(0, j.progress)) : 0;
-  // Elapsed since the worker picked it up, and a straight-line ETA once there's enough
-  // progress to extrapolate from. The list is polled every 1.5s, so this stays live.
-  const elapsed = running && j.started_at ? Date.now() / 1000 - j.started_at : 0;
-  const eta = elapsed > 0 && pct >= 5 ? (elapsed * (100 - pct)) / pct : 0;
-  return (
-    <div className="flex flex-col gap-1 text-[12px]">
-      <div className="flex items-center gap-2.5">
-        <StateBadge state={j.state} />
-        <span className="flex-1 truncate font-semibold">{j.title}{j.redo && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-ink-faint" style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}{!running && PRIO_LABEL[j.priority] && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ border: "1px solid var(--line)", color: j.priority === 0 ? "var(--accent)" : "var(--ink-faint)" }} title={PRIO_TITLE[j.priority]}>{PRIO_LABEL[j.priority]}</span>}</span>
-        {stopping ? <span className="font-mono text-[10.5px] text-ink-faint">stopping…</span>
-          : running && j.stage && <span className="truncate font-mono text-[10.5px] text-ink-faint">{j.stage}</span>}
-        {running && elapsed > 0 && <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtElapsed(elapsed)}{eta > 0 ? ` · ~${fmtElapsed(eta)} left` : ""}</span>}
-        {running && pct > 0 && <span className="w-[38px] flex-none text-right font-mono text-[10.5px] text-ink-dim">{pct}%</span>}
-        {running && pct === 0 && <span className="h-3 w-3 flex-none animate-spin rounded-full" style={{ border: "2px solid var(--line)", borderTopColor: "var(--accent)" }} />}
-        {/* Stop kills the running ffmpeg/whisper; Remove just drops a queued job. */}
-        {onCancel && (
-          <button type="button" onClick={onCancel} disabled={busy || stopping} title={running ? "Stop this job" : "Remove from the queue"}
-            className="flex-none rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50"
-            style={{ borderColor: "var(--line)", color: running ? "var(--reject)" : "var(--ink-dim)" }}>
-            {running ? "Stop" : "Remove"}
-          </button>
-        )}
-      </div>
-      {/* whisper reports progress in 5% steps; anything else finishes before a bar would help. */}
-      {running && pct > 0 && (
-        <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)", transition: "width 600ms linear" }} />
-        </div>
-      )}
-    </div>
-  );
-}
-function fmtElapsed(sec: number): string {
-  sec = Math.max(0, Math.round(sec));
-  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
-  return h ? `${h}h ${String(m).padStart(2, "0")}m` : m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
-}
+/* QUEUE: the Queue tab (and the rows the Overview shares) live in subtitles/queue.tsx. */
 // retryIn is how far off a backoff's next try is: "in 6 days", "in 3 h", "in 10 min", or
 // "soon" once it's due (the next sweep picks it up).
 function retryIn(at: number): string {
@@ -329,14 +234,6 @@ function retryIn(at: number): string {
   if (sec < 36 * 3600) return `in ${Math.round(sec / 3600)} h`;
   const d = Math.round(sec / 86400);
   return `in ${d} day${d === 1 ? "" : "s"}`;
-}
-function StateBadge({ state }: { state: string }) {
-  const s = state === "done" ? { bg: "var(--good-soft, rgba(127,176,105,.16))", fg: "var(--good)" }
-    : state === "failed" ? { bg: "var(--reject-soft)", fg: "var(--reject)" }
-    : state === "running" ? { bg: "var(--accent-soft)", fg: "var(--accent)" }
-    : state === "cancelled" ? { bg: "var(--panel-2)", fg: "var(--ink-dim)" }
-    : { bg: "var(--panel-2)", fg: "var(--ink-faint)" };
-  return <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: s.bg, color: s.fg }}>{state}</span>;
 }
 
 /* ============================= LIBRARY ============================= */

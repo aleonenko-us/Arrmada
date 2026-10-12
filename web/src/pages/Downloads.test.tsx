@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom";
 import { QueuePanel } from "./Downloads";
 import { api, type ActivityFeed } from "../lib/api";
+import { downloadClientApi } from "../lib/downloadClientApi";
 import { clearQueryCache } from "../lib/query";
 import { resetLiveForTests } from "../lib/live";
 import { ToastProvider } from "../ui";
@@ -26,7 +27,7 @@ beforeEach(() => {
   clearQueryCache();
   resetLiveForTests();
   vi.stubGlobal("WebSocket", class { close() {} });
-  vi.spyOn(api, "downloadClients").mockResolvedValue([]);
+  vi.spyOn(downloadClientApi, "downloadClients").mockResolvedValue([]);
   vi.spyOn(api, "activity").mockResolvedValue(feed);
   vi.spyOn(api, "wanted").mockResolvedValue({ searching: [], upcoming: [] } as unknown as Awaited<ReturnType<typeof api.wanted>>);
 });

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FitBadge } from "../../components/FitBadge";
 import { refreshSearches } from "../../components/LastSearch";
 import { api, type Episode, type FitItem, type SearchAttempt, type Series as SeriesT } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { stillThumb } from "../../lib/img";
 import { attemptLine, outcomeTone } from "../../lib/searchOutcome";
 import { libraryStatus } from "../../lib/status";
@@ -58,7 +59,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
   const canGrab = !ep.has_file && !dl && aired(ep);
 
   const toggleMonitored = async () => {
-    try { await api.setEpisodeMonitored(ep.id, !ep.monitored); onChange(); }
+    try { await seriesApi.setEpisodeMonitored(ep.id, !ep.monitored); onChange(); }
     catch (e) { flash((e as Error).message, true); }
   };
   const grab = async () => {
@@ -79,7 +80,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
       confirmLabel: "Replace",
     });
     if (!ok) return;
-    try { await api.regrabEpisode(series.id, ep.season_number, ep.episode_number); flash(`Replacing ${label} — blocklisted the current release, searching…`); }
+    try { await seriesApi.regrabEpisode(series.id, ep.season_number, ep.episode_number); flash(`Replacing ${label} — blocklisted the current release, searching…`); }
     catch (e) { flash((e as Error).message, true); }
   };
 

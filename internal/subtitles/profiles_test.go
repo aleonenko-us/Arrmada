@@ -536,6 +536,48 @@ func TestForcedImpossibleWaitsOnCreds(t *testing.T) {
 	}
 }
 
+// With the lanes on, a forced want is settled in the fast lane and only the full subtitle
+// goes on to whisper; the GPU part ends the job with both stories and parks the forced
+// want as its own variant.
+func TestForcedWantStaysInFastLane(t *testing.T) {
+	ctx := context.Background()
+	ai := &fakeAI{avail: true, transcribe: true}
+	s, videos := laneFixture(t, "en", ai)
+	def := s.Profiles(ctx)[0]
+	if _, err := s.UpdateProfile(ctx, def.ID, nil, items("en/both")); err != nil {
+		t.Fatal(err)
+	}
+	job := s.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Heat", Priority: PrioManual})
+	if s.popLane(LaneFast) != job {
+		t.Fatal("fast lane didn't hand out the job")
+	}
+	s.process(ctx, job)
+	if job.Lane != LaneGPU || !reflect.DeepEqual(job.Langs, []string{"en"}) {
+		t.Fatalf("after the fast lane: lane=%s langs=%v, want the GPU lane for en", job.Lane, job.Langs)
+	}
+	s.mu.Lock()
+	s.releaseLocked(job)
+	s.mu.Unlock()
+	if s.popLane(LaneGPU) != job {
+		t.Fatal("GPU lane didn't hand out the job")
+	}
+	s.process(ctx, job)
+	if job.State != StateDone || !strings.HasPrefix(job.Note, "en: AI-generated · en forced: ") {
+		t.Errorf("final: state=%s note=%q", job.State, job.Note)
+	}
+	if len(ai.calls) != 1 {
+		t.Errorf("whisper calls = %v, want just the full en", ai.calls)
+	}
+	assertSidecar(t, videos[1], "en")
+	bs, err := s.ledger.BackoffsFor(ctx, "m:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bs.BlockedV("m:1", "en", VariantForced, videos[1], time.Now()) || bs.Blocked("m:1", "en", videos[1], time.Now()) {
+		t.Errorf("backoff = %+v, want only the forced en parked", bs)
+	}
+}
+
 // The SDH preference: prefer takes the SDH track (and wins an upload tie), avoid never
 // uses one.
 func TestSDHPreference(t *testing.T) {

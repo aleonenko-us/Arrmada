@@ -923,6 +923,18 @@ func langsOf(ws []Want) []string {
 	return out
 }
 
+// forcedOutcomeLangs is the languages a run recorded forced-want outcomes for, first seen
+// first (a GPU-lane job settles the fast lane's forced backoff with them).
+func forcedOutcomeLangs(outs []Outcome) []string {
+	var out []string
+	for _, o := range outs {
+		if o.Variant == VariantForced {
+			out = unionLangs(out, []string{o.Lang})
+		}
+	}
+	return out
+}
+
 // wantLabel names a want in notes: "en", or "en forced".
 func wantLabel(lang, variant string) string {
 	if variant == VariantForced {

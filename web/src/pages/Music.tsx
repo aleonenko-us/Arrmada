@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Artist, type ArtistLookup } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
@@ -76,7 +77,7 @@ export function Music() {
       });
   useEffect(() => {
     load();
-    api.qualityProfiles("music")
+    qualityApi.qualityProfiles("music")
       .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name }))))
       .catch(() => {});
   }, []);

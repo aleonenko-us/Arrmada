@@ -6,7 +6,9 @@ import { ConnectionSection } from "../../components/connections/ConnectionSectio
 import { AddIndexerForm, IndexerEditor, indexerBody } from "../../components/connections/IndexerEditor";
 import { DiscoveryRegion, KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { ProwlarrPanel } from "../../components/connections/ProwlarrPanel";
-import { api, type DownloadClient, type Indexer } from "../../lib/api";
+import { type DownloadClient, type Indexer } from "../../lib/api";
+import { downloadClientApi } from "../../lib/downloadClientApi";
+import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery } from "../../lib/query";
@@ -54,8 +56,8 @@ export function ConnectionsSettings() {
   const confirm = useConfirm();
   const q = useQuery("connections", () => connectionsApi.list(), { staleMs: 0 });
   // The full rows the editors and the Disable/Delete actions need.
-  const ix = useQuery("indexers", () => api.indexers(), { staleMs: 0 });
-  const dl = useQuery("download-clients", () => api.downloadClientList(), { staleMs: 0 });
+  const ix = useQuery("indexers", () => indexerApi.indexers(), { staleMs: 0 });
+  const dl = useQuery("download-clients", () => downloadClientApi.downloadClientList(), { staleMs: 0 });
   const sections = q.data ?? NO_SECTIONS;
   const error = q.error?.message ?? null;
   const [tests, setTests] = useState<Record<string, CardTest>>({});
@@ -120,7 +122,7 @@ export function ConnectionsSettings() {
     setRestoring(true);
     setRestoreErr(null);
     try {
-      await api.restoreBundledClient();
+      await downloadClientApi.restoreBundledClient();
       await refreshAll();
     } catch (e) {
       setRestoreErr(`Couldn't restore it: ${(e as Error).message}`);
@@ -142,7 +144,7 @@ export function ConnectionsSettings() {
   const toggleIndexer = async (it: ConnectionItem, idx: Indexer) => {
     setNotice(it.card, null);
     try {
-      await api.updateIndexer(idx.id, indexerBody(idx, { enabled: !idx.enabled }));
+      await indexerApi.updateIndexer(idx.id, indexerBody(idx, { enabled: !idx.enabled }));
       await refreshAll();
     } catch (e) {
       setNotice(it.card, `Couldn't ${idx.enabled ? "disable" : "enable"} it: ${(e as Error).message}`);
@@ -151,7 +153,7 @@ export function ConnectionsSettings() {
   const toggleClient = async (it: ConnectionItem, c: DownloadClient) => {
     setNotice(it.card, null);
     try {
-      await api.updateDownloadClient(c.id, clientBody(c, { enabled: !c.enabled }));
+      await downloadClientApi.updateDownloadClient(c.id, clientBody(c, { enabled: !c.enabled }));
       await refreshAll();
     } catch (e) {
       setNotice(it.card, `Couldn't ${c.enabled ? "disable" : "enable"} it: ${(e as Error).message}`);
@@ -170,7 +172,7 @@ export function ConnectionsSettings() {
     if (!ok) return;
     setNotice(it.card, null);
     try {
-      await api.deleteIndexer(idx.id);
+      await indexerApi.deleteIndexer(idx.id);
       if (editing === it.card) setEditing(null);
       await refreshAll();
     } catch (e) {
@@ -189,7 +191,7 @@ export function ConnectionsSettings() {
     if (!ok) return;
     setNotice(it.card, null);
     try {
-      await api.deleteDownloadClient(c.id);
+      await downloadClientApi.deleteDownloadClient(c.id);
       if (editing === it.card) setEditing(null);
       await refreshAll();
     } catch (e) {

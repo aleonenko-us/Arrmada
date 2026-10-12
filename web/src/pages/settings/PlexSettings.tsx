@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { AutoNumber, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Note, Section } from "../../components/settings/ui";
-import { api, type Person, type PlexConfig, type PlexStatus } from "../../lib/api";
+import { type Person, type PlexConfig, type PlexStatus } from "../../lib/api";
+import { peopleApi } from "../../lib/peopleApi";
+import { insightsApi } from "../../lib/insightsApi";
 import { LINKS } from "../../lib/links";
 import { isAdmin, useMe } from "../../lib/me";
 import { ago } from "../../lib/taskTime";
@@ -35,7 +37,7 @@ function PlexPage({ admin }: { admin: boolean }) {
   // answers with the whole config, so the server card's status line follows it.
   const [cfg, setCfg] = useState<PlexConfig | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { api.insightsConfig().then(setCfg).catch((e: Error) => setErr(e.message)); }, []);
+  useEffect(() => { insightsApi.insightsConfig().then(setCfg).catch((e: Error) => setErr(e.message)); }, []);
   return (
     <div className="flex flex-col gap-6">
       <PlexServer cfg={cfg} err={err} />
@@ -100,8 +102,8 @@ function PlexMonitoring({ cfg, setCfg }: { cfg: PlexConfig; setCfg: (c: PlexConf
   const connected = cfg.status !== "unconfigured";
   // Until someone chooses, the server switches monitoring on when Plex is first connected,
   // so an unconnected install shows it on; a connected one that never chose isn't recording.
-  const on = useAutoSave(cfg.enabled_set ? cfg.enabled : !connected, (v) => api.updateInsightsConfig({ enabled: v }).then(setCfg));
-  const poll = useAutoSave(String(cfg.poll_seconds || 5), (v) => api.updateInsightsConfig({ poll_seconds: Number(v) }).then(setCfg), {
+  const on = useAutoSave(cfg.enabled_set ? cfg.enabled : !connected, (v) => insightsApi.updateInsightsConfig({ enabled: v }).then(setCfg));
+  const poll = useAutoSave(String(cfg.poll_seconds || 5), (v) => insightsApi.updateInsightsConfig({ poll_seconds: Number(v) }).then(setCfg), {
     validate: wholeNumber(2, 60, "The interval"),
   });
   return (
@@ -128,14 +130,14 @@ function PlexAccounts() {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
-  const load = useCallback(() => api.people().then((ps) => { setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message)), []);
+  const load = useCallback(() => peopleApi.people().then((ps) => { setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message)), []);
   useEffect(() => { void load(); }, [load]);
 
   const unlink = async (p: Person) => {
     if (!(await confirm(plexUnlinkConfirm(p)))) return;
     setBusy(p.id);
     try {
-      await api.updateUser(p.id, { plex_unlink: true });
+      await peopleApi.updateUser(p.id, { plex_unlink: true });
       toast(`${p.username} is no longer linked to Plex.`, { tone: "good" });
       await load();
     } catch (e) { toast((e as Error).message, { tone: "error" }); }

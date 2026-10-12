@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { inputStyle } from "../../components/settings/ui";
-import { api, type PlexConfig, type PlexTestResult } from "../../lib/api";
+import { type PlexConfig, type PlexTestResult } from "../../lib/api";
+import { insightsApi } from "../../lib/insightsApi";
 import { LINKS } from "../../lib/links";
 import { plexApi, type PlexConnectResult } from "../../lib/plexApi";
 import { usePlexPinSignIn, type PlexFlow } from "../../lib/plexSignIn";
@@ -24,7 +25,7 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
   const [test, setTest] = useState<PlexTestResult | null>(null);
   const [, setParams] = useSearchParams();
 
-  const load = useCallback(() => api.insightsConfig().then(setCfg).catch(() => toast("Could not load Plex settings", { tone: "error" })), [toast]);
+  const load = useCallback(() => insightsApi.insightsConfig().then(setCfg).catch(() => toast("Could not load Plex settings", { tone: "error" })), [toast]);
   useEffect(() => { void load(); }, [load]);
   const [choices, setChoices] = useState<NonNullable<PlexConnectResult["choices"]>>([]);
   useEffect(() => {
@@ -62,12 +63,12 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
   const body = (u = url) => ({ url: u.trim(), token: token.trim() || undefined });
   const save = async (u?: string) => {
     setBusy("save");
-    try { setCfg(await api.updateInsightsConfig(body(u))); setToken(""); setChoices([]); onChanged?.(); toast("Plex connection saved", { tone: "good" }); }
+    try { setCfg(await insightsApi.updateInsightsConfig(body(u))); setToken(""); setChoices([]); onChanged?.(); toast("Plex connection saved", { tone: "good" }); }
     catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
   };
   const runTest = async () => {
     setBusy("test"); setTest(null);
-    try { setTest(await api.testInsights({ url: url.trim() || undefined, token: token.trim() || undefined })); }
+    try { setTest(await insightsApi.testInsights({ url: url.trim() || undefined, token: token.trim() || undefined })); }
     catch (e) { setTest({ ok: false, error: (e as Error).message }); } finally { setBusy(null); }
   };
 
