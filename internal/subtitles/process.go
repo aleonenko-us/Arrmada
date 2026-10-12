@@ -99,7 +99,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if ref.MediaKey == "" {
 		ref.MediaKey = job.key()
 	}
-	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
+	s.markRunning(job)
 	if job.Mode == ModeRepairForced {
 		s.processRepair(ctx, job, ref)
 		return
@@ -131,16 +131,26 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	}
 	var remaining []string
 	for _, l := range langs {
-		if !present[strings.ToLower(l)] {
+		if !present[strings.ToLower(l)] && inLangs(job.Langs, l) {
 			remaining = append(remaining, l)
 		}
 	}
+	// prior is what the fast lane already did for a job now in the GPU lane (recorded then).
+	prior := job.Outcomes
 	if len(remaining) == 0 {
 		note := "all kept languages already have subtitles"
 		if orphaned > 0 {
 			note = fmt.Sprintf("%d language(s) covered only by orphaned subtitles — Ensure replaces them", orphaned)
 		}
-		s.finish(job, StateSkipped, note)
+		state := StateSkipped
+		if sum := outcomeNote(langs, prior); sum != "" {
+			note = sum + " · " + note
+			if madeIt(prior) {
+				state = StateDone
+				s.retireReplaced(context.WithoutCancel(ctx), job, ref, prior)
+			}
+		}
+		s.finishOutcomes(job, state, note, prior)
 		return
 	}
 
@@ -155,21 +165,32 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 	}
 
-	runID := NewRunID()
-	s.update(job, func(j *Job) { j.RunID = runID })
-	wanted := remaining
-	var outcomes []Outcome
-	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
-	inFlight := RungExtract
-	remaining, outs := s.rungExtract(ctx, job, ref, mi, remaining)
-	outcomes = append(outcomes, outs...)
-	if ctx.Err() == nil {
-		inFlight = RungOpenSubtitles
+	runID := job.RunID // a job in the GPU lane carries on its fast-lane run
+	if runID == "" {
+		runID = NewRunID()
+		s.update(job, func(j *Job) { j.RunID = runID })
 	}
-	remaining, outs = s.rungDownload(ctx, job, ref, remaining)
-	outcomes = append(outcomes, outs...)
-	if ctx.Err() == nil {
-		inFlight = RungAI
+	wanted := remaining
+	outcomes := append([]Outcome(nil), prior...)
+	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
+	inFlight := RungAI
+	if job.lane() != LaneGPU {
+		inFlight = RungExtract
+		var outs []Outcome
+		remaining, outs = s.rungExtract(ctx, job, ref, mi, remaining)
+		outcomes = append(outcomes, outs...)
+		if ctx.Err() == nil {
+			inFlight = RungOpenSubtitles
+		}
+		remaining, outs = s.rungDownload(ctx, job, ref, remaining)
+		outcomes = append(outcomes, outs...)
+		if ctx.Err() == nil {
+			inFlight = RungAI
+		}
+		// Whisper work waits in the GPU lane, so the next extraction doesn't wait for it.
+		if s.handOffAI(ctx, job, ref, mi, runID, remaining, outcomes) {
+			return
+		}
 	}
 	outcomes = append(outcomes, s.rungAI(ctx, job, ref, mi, remaining)...)
 
@@ -198,7 +219,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		for _, l := range without(wanted, got) {
 			outcomes = append(outcomes, mkOutcome(l, inFlight, ResultCancelled, "stopped"))
 		}
-		s.recordAttempts(ctx, runID, ref, outcomes)
+		s.recordAttempts(ctx, runID, ref, outcomes[len(prior):])
 		note := "stopped"
 		if summary != "" {
 			note = "stopped after " + summary
@@ -210,8 +231,8 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 		return
 	}
-	s.recordAttempts(ctx, runID, ref, outcomes)
-	s.updateBackoff(ctx, ref, wanted, outcomes)
+	s.recordAttempts(ctx, runID, ref, outcomes[len(prior):])
+	s.updateBackoff(ctx, ref, unionLangs(outcomeLangs(prior), wanted), outcomes)
 	if summary == "" {
 		summary = "no source could act" // every rung declined without a reason; shouldn't happen
 	}
@@ -586,6 +607,7 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 			// The number that says whether the GPU is pulling its weight.
 			dur := float64(mi.DurationSec)
 			msg += fmt.Sprintf(" — %s of audio, %.1f× realtime", fmtAudio(dur), dur/took.Seconds())
+			s.noteRTF(ctx, ai.Backend(), dur/took.Seconds()) // the AI backlog's ETA reads it
 		}
 		s.event("info", msg)
 	}

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { api, ApiError, type DeletePreview } from "../lib/api";
+import { ApiError, type DeletePreview } from "../lib/api";
+import { seriesApi } from "../lib/seriesApi";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -24,7 +25,7 @@ export function DeleteSeriesDialog({ series, onClose, onDeleted }: {
     setDeleteFiles(on);
     setErr(null);
     if (on && !preview) {
-      api.seriesDeletePreview(series.id).then(setPreview).catch((e: Error) => setErr(`Couldn't list the show's files: ${e.message}`));
+      seriesApi.seriesDeletePreview(series.id).then(setPreview).catch((e: Error) => setErr(`Couldn't list the show's files: ${e.message}`));
     }
   };
 
@@ -34,7 +35,7 @@ export function DeleteSeriesDialog({ series, onClose, onDeleted }: {
   const confirm = async () => {
     setBusy(true); setErr(null);
     try {
-      await api.deleteSeries(series.id, deleteFiles, big ? series.title : undefined);
+      await seriesApi.deleteSeries(series.id, deleteFiles, big ? series.title : undefined);
       onDeleted();
     } catch (e) {
       let msg = (e as Error).message;

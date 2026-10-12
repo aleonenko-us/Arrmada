@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MinAvailability, type MovieLookup } from "../../lib/api";
+import { qualityApi } from "../../lib/qualityApi";
 import { Button, Modal } from "../../ui";
 
 // AddMovieModal is the library's "+ Add movie" (MOV-23): search TMDB, see which films are already in the
@@ -29,7 +30,7 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.qualityProfiles("movie")
+    qualityApi.qualityProfiles("movie")
       .then((r) => {
         setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
         const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Section, input, inputStyle } from "../../components/settings/ui";
 import { api, type AlertCatalog, type AlertEvent, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
+import { alertsApi } from "../../lib/alertsApi";
 import { ago, until } from "../../lib/taskTime";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery, invalidate } from "../../lib/query";
@@ -27,9 +28,9 @@ const PUSH_NAME = "This device";
 export function AlertsSettings() {
   const { user, booksEnabled, musicEnabled } = useMe();
   const admin = isAdmin(user);
-  const { data: conns, error } = useQuery("notifications:list", api.notifications);
-  const { data: catalog, error: catalogError } = useQuery("notifications:catalog", api.alertCatalog, { staleMs: 5 * 60_000 });
-  const presetsQ = useQuery("notifications:presets", api.alertPresets, { staleMs: 10 * 60_000 });
+  const { data: conns, error } = useQuery("notifications:list", alertsApi.notifications);
+  const { data: catalog, error: catalogError } = useQuery("notifications:catalog", alertsApi.alertCatalog, { staleMs: 5 * 60_000 });
+  const presetsQ = useQuery("notifications:presets", alertsApi.alertPresets, { staleMs: 10 * 60_000 });
   // If the forms can't be loaded, a raw Apprise link still can be added.
   const presets = presetsQ.data ?? (presetsQ.error ? [CUSTOM_PRESET] : undefined);
   // null: not adding; "choose": the "Where should alerts go?" tiles; else the chosen form.
@@ -55,7 +56,7 @@ export function AlertsSettings() {
     try {
       await subscribeThisDevice();
       if (!myPush) {
-        await api.createNotification({ name: PUSH_NAME, kind: "webpush", enabled: true, events: blank().events });
+        await alertsApi.createNotification({ name: PUSH_NAME, kind: "webpush", enabled: true, events: blank().events });
         toast("Push alerts are on for this device", { tone: "good" });
       } else {
         toast(`This device now gets “${myPush.name}” alerts`, { tone: "good" });
@@ -203,8 +204,8 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     if (why) { toast(why, { tone: "error" }); return; }
     setBusy("save");
     try {
-      if (isNew) await api.createNotification(body());
-      else await api.updateNotification(c.id!, body());
+      if (isNew) await alertsApi.createNotification(body());
+      else await alertsApi.updateNotification(c.id!, body());
       setUrl("");
       if (fieldMode) {
         const secret = new Set(preset?.fields.filter((f) => f.secret).map((f) => f.name));
@@ -227,7 +228,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     }
     setBusy("test");
     try {
-      const r = saved ? await api.testSavedNotification(c.id!) : await api.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}) });
+      const r = saved ? await alertsApi.testSavedNotification(c.id!) : await alertsApi.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}) });
       toast(r.ok ? "Test sent" : `Test failed — ${r.error || "no reason given"}`, { tone: r.ok ? "good" : "error" });
       if (saved) onChange(); // the test is in the card's log and status now
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
@@ -236,7 +237,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     if (!c.id) return;
     const ok = await confirm({ title: `Delete “${c.name}”?`, body: "Alerts stop going there. You can add it again later.", confirmLabel: "Delete", tone: "danger" });
     if (!ok) return;
-    try { await api.deleteNotification(c.id); onChange(); } catch (e) { toast((e as Error).message, { tone: "error" }); }
+    try { await alertsApi.deleteNotification(c.id); onChange(); } catch (e) { toast((e as Error).message, { tone: "error" }); }
   };
 
   const placeholder = !isNew && conn.url_set ? `${conn.url_hint ?? "saved"} — saved, leave blank to keep` : "gotify://host/token";
@@ -405,7 +406,7 @@ function StatusDot({ conn }: { conn: NotificationConn }) {
 // It loads only when opened.
 function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
   const [open, setOpen] = useState(false);
-  const { data, error } = useQuery(`notifications:deliveries:${id}`, () => api.alertDeliveries(id), { enabled: open, staleMs: 0 });
+  const { data, error } = useQuery(`notifications:deliveries:${id}`, () => alertsApi.alertDeliveries(id), { enabled: open, staleMs: 0 });
   const label = (key: string) => key === "test" ? "Test" : catalog.events.find((e) => e.key === key)?.label ?? key;
   return (
     <div className="mt-3">

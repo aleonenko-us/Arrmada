@@ -9,6 +9,7 @@ import { UploadTorrentModal } from "../components/UploadTorrentModal";
 import { FileDetailsModal } from "../components/FileDetailsModal";
 import { AddAudioVersion, AudioVersionPanel } from "../components/AudioVersions";
 import { api, importListNotice, type BookSeriesEntry, type BookSource, type Book, type BookFile, type BookFileEntry, type BookImportCandidate, type BookLookup, type BookSeries, type MovieEvent } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { usePoll } from "../lib/usePoll";
 import { jobFailed, useJob } from "../lib/useJob";
@@ -562,7 +563,7 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
 
 function ProfileSelector({ book, onChange }: { book: Book; onChange: () => void }) {
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  useEffect(() => { api.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
+  useEffect(() => { qualityApi.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
   const change = async (p: string) => { if (p === book.quality_profile) return; await api.setBookProfile(book.id, p); onChange(); };
   const opts = [...profiles];
   if (book.quality_profile && !opts.some((o) => o.key === book.quality_profile)) opts.unshift({ key: book.quality_profile, name: book.quality_profile === "n/a" ? "Not set" : book.quality_profile });

@@ -2090,6 +2090,10 @@ export interface SubtitleJob {
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
   run_id?: string; // this run's rows in GET /subtitles/history?run_id=
   outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
+  lane?: "fast" | "gpu"; // fast: extract + download · gpu: whisper
+  langs?: string[]; // only these languages (a GPU job carries what the fast lane couldn't make)
+  audio_sec?: number; // the file's running time, once known
+  finished_at?: number; // unix seconds
 }
 // One rung's typed result for one language (internal/subtitles/ledger.go Outcome).
 export type SubtitleRung = "extract" | "opensubtitles" | "ai" | "upgrade" | "repair";
@@ -2417,63 +2421,6 @@ export const api = {
     req<{ user: AuthUser }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   setupAdmin: (username: string, password: string) =>
     req<{ user: AuthUser }>("/api/v1/auth/setup", { method: "POST", body: JSON.stringify({ username, password }) }),
-  users: () => req<{ users: AuthUser[] }>("/api/v1/users").then((r) => r.users),
-  people: () => req<{ people: Person[] }>("/api/v1/people").then((r) => r.people),
-  // auto_approve_<type> sets one type; the old auto_approve sets all three.
-  createUser: (body: { email: string; password: string; role: string } & AutoApproveFlags) =>
-    req<AuthUser>("/api/v1/users", { method: "POST", body: JSON.stringify(body) }),
-  // disabled: true turns off their sign-in and signs them out everywhere; nothing is deleted.
-  updateUser: (id: number, body: { role?: string; auto_approve?: boolean; password?: string; disabled?: boolean; quota?: UserQuota; plex_unlink?: boolean } & AutoApproveFlags) =>
-    req<{ id: number; role: UserRole; auto_approve: boolean; disabled: boolean } & Required<AutoApproveFlags>>(`/api/v1/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  userImpact: (id: number) => req<UserImpact>(`/api/v1/users/${id}/impact`),
-  // confirm is the username, required by the server when the user has listening data.
-  // blockPlex also blocks their Plex account, so they can't come straight back via Plex.
-  deleteUser: (id: number, confirm?: string, blockPlex?: boolean) => {
-    const q = new URLSearchParams();
-    if (confirm) q.set("confirm", confirm);
-    if (blockPlex) q.set("block_plex", "1");
-    const qs = q.toString();
-    return req<void>(`/api/v1/users/${id}${qs ? `?${qs}` : ""}`, { method: "DELETE" });
-  },
-  plexBlocks: () => req<{ blocks: PlexBlock[] }>("/api/v1/users/plex-blocks").then((r) => r.blocks),
-  blockUserPlex: (id: number) => req<{ blocks: PlexBlock[] }>(`/api/v1/users/${id}/block-plex`, { method: "POST" }).then((r) => r.blocks),
-  unblockPlex: (plexID: string) =>
-    req<{ blocks: PlexBlock[] }>(`/api/v1/users/plex-blocks/${encodeURIComponent(plexID)}`, { method: "DELETE" }).then((r) => r.blocks),
-  importOverseerr: (url: string, api_key: string) =>
-    req<{ status: string; found: number } & JobRef>("/api/v1/requests/import/overseerr", { method: "POST", body: JSON.stringify({ url, api_key }) }),
-  // before (epoch seconds) imports only plays that started earlier. An empty api_key uses
-  // the saved one, but only for the saved URL.
-  importTautulli: (url: string, api_key: string, before?: number) =>
-    req<{ status: string } & JobRef>("/api/v1/insights/import/tautulli", { method: "POST", body: JSON.stringify({ url, api_key, before }) }),
-  // Imported plays that double up plays Arrmada recorded live (admin), and removing them:
-  // a job that backs the database up first and deletes nothing unless `expected` still holds.
-  importOverlaps: () => req<ImportOverlaps>("/api/v1/insights/import/overlaps"),
-  removeImportOverlaps: (expected: number) =>
-    req<JobRef>("/api/v1/insights/import/overlaps/remove", { method: "POST", body: JSON.stringify({ expected }) }),
-  tautulliConfig: () => req<TautulliConfig>("/api/v1/insights/import/tautulli"),
-  importRuns: () => req<{ runs: ImportRun[] }>("/api/v1/insights/import/runs").then((r) => r.runs),
-  // Retry runs the import again from the saved connection (already-imported plays are skipped).
-  retryImportRun: (id: number) => req<JobRef>(`/api/v1/insights/import/runs/${id}/retry`, { method: "POST" }),
-  // Undo one import: a job that backs the database up, then deletes exactly that run's plays
-  // — nothing, if the count is no longer `expected`.
-  removeImportRun: (id: number, expected: number) =>
-    req<JobRef>(`/api/v1/insights/import/runs/${id}/rows?expected=${expected}`, { method: "DELETE" }),
-
-  indexers: () => req<{ indexers: Indexer[] }>("/api/v1/indexers").then((r) => r.indexers),
-  createIndexer: (body: NewIndexer) =>
-    req<Indexer>("/api/v1/indexers", { method: "POST", body: JSON.stringify(body) }),
-  updateIndexer: (id: number, body: NewIndexer) =>
-    req<void>(`/api/v1/indexers/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  deleteIndexer: (id: number) => req<void>(`/api/v1/indexers/${id}`, { method: "DELETE" }),
-  /** Tests settings without saving them; with id, a blank key or password means the saved one. */
-  testIndexerSettings: (body: NewIndexer & { id?: number }) =>
-    req<IndexerTestResult>("/api/v1/indexers/test", { method: "POST", body: JSON.stringify(body) }),
-  prowlarrInfo: () => req<ProwlarrInfo>("/api/v1/indexers/prowlarr"),
-  saveProwlarrUIURL: (ui_url: string) =>
-    req<{ ui_url: string }>("/api/v1/indexers/prowlarr", { method: "PUT", body: JSON.stringify({ ui_url }) }),
-  syncProwlarr: (body: { url: string; api_key: string; add_flaresolverr_proxy?: boolean }) =>
-    req<ProwlarrSyncResult>("/api/v1/indexers/prowlarr/sync", { method: "POST", body: JSON.stringify(body) }),
-
   activity: () => req<ActivityFeed>("/api/v1/downloads"),
   wanted: () => req<WantedLists>("/api/v1/wanted"),
   /** Search now from a Wanted row: clears the title's backoff and runs its search as a job. */
@@ -2525,75 +2472,6 @@ export const api = {
   clientSettings: (id: number) => req<ClientSettings>(`/api/v1/downloadclients/${id}/settings`),
   setClientSettings: (id: number, body: ClientSettings) =>
     req<{ status: string }>(`/api/v1/downloadclients/${id}/settings`, { method: "PUT", body: JSON.stringify(body) }),
-  qualityProfiles: (media: string) =>
-    req<{ profiles: QualityProfileInfo[]; formats: FormatInfo[]; music_ladder?: string[]; music_presets?: MusicPreset[] }>(`/api/v1/quality/profiles?media=${media}`),
-  libraryFitProfiles: (media: string) => req<{ profiles: Record<string, FitCounts> }>(`/api/v1/library/fit/profiles?media=${media}`),
-  libraryFitPreview: (profile: StoredProfile) =>
-    req<{ scope: "profile" | "library"; counts: FitCounts }>("/api/v1/library/fit/preview", { method: "POST", body: JSON.stringify({ profile }) }),
-  qualityTest: (body: { profile: StoredProfile; movie_id?: number; series_id?: number; season?: number }) =>
-    req<ReleaseList>("/api/v1/quality/test", { method: "POST", body: JSON.stringify(body) }),
-  setDefaultProfile: (media: string, profile: string) =>
-    req<{ media: string; profile: string }>("/api/v1/quality/default", { method: "POST", body: JSON.stringify({ media, profile }) }),
-  libraryFitMovies: () => req<{ items: FitItem[] }>("/api/v1/library/fit?media=movies"),
-  libraryFitSeries: () => req<{ items: SeriesFitSummary[] }>("/api/v1/library/fit?media=series"),
-  libraryFitEpisodes: (seriesID: number) => req<{ items: FitItem[] }>(`/api/v1/library/fit?media=series&series=${seriesID}`),
-  qualityProfile: (ref: string) => req<StoredProfile>(`/api/v1/quality/profiles/${encodeURIComponent(ref)}`),
-  createQualityProfile: (sp: StoredProfile) =>
-    req<StoredProfile>("/api/v1/quality/profiles", { method: "POST", body: JSON.stringify(sp) }),
-  updateQualityProfile: (id: number, sp: StoredProfile) =>
-    req<{ status: string }>(`/api/v1/quality/profiles/${id}`, { method: "PUT", body: JSON.stringify(sp) }),
-  // Deletes a profile and moves everything on it to moveTo ("" = the media's default).
-  deleteQualityProfile: (id: number, moveTo: string) =>
-    req<{ moved: ProfileMoveCounts; moved_to: string }>(
-      `/api/v1/quality/profiles/${id}?move_to=${encodeURIComponent(moveTo)}`, { method: "DELETE" }),
-  qualityPreviewSpec: (sp: StoredProfile) =>
-    req<QualityPreview>("/api/v1/quality/preview", { method: "POST", body: JSON.stringify(sp) }),
-  // The dry run before saving an edit to a saved profile: which files it would make eligible
-  // for replacement.
-  qualityImpact: (profile: StoredProfile) =>
-    req<ProfileImpact>("/api/v1/quality/impact", { method: "POST", body: JSON.stringify({ profile }) }),
-  // "Keep existing files": hold a profile's files out of upgrades — with onlyAffected, just the
-  // ones the edited profile would make eligible for replacement (call it before saving).
-  holdExistingFiles: (id: number, edited?: StoredProfile) =>
-    req<{ movies: number; versions: number; episodes: number; held: number }>(
-      `/api/v1/quality/profiles/${id}/hold-existing`, { method: "POST", body: JSON.stringify(edited ? { only_affected: true, profile: edited } : {}) }),
-  resumeMovieUpgrades: (id: number) =>
-    req<{ resumed: number }>(`/api/v1/movies/${id}/resume-upgrades`, { method: "POST" }),
-  resumeSeriesUpgrades: (id: number, season?: number) =>
-    req<{ resumed: number }>(`/api/v1/series/${id}/resume-upgrades${season != null ? `?season=${season}` : ""}`, { method: "POST" }),
-
-  downloadClients: () =>
-    req<DownloadClientList>("/api/v1/downloadclients").then((r) => r.clients),
-  downloadClientList: () => req<DownloadClientList>("/api/v1/downloadclients"),
-  createDownloadClient: (body: NewDownloadClient) =>
-    req<DownloadClient>("/api/v1/downloadclients", { method: "POST", body: JSON.stringify(body) }),
-  updateDownloadClient: (id: number, body: NewDownloadClient) =>
-    req<DownloadClient>(`/api/v1/downloadclients/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  restoreBundledClient: () =>
-    req<{ restored: boolean }>("/api/v1/downloadclients/restore-bundled", { method: "POST" }),
-  deleteDownloadClient: (id: number) =>
-    req<void>(`/api/v1/downloadclients/${id}`, { method: "DELETE" }),
-  downloadClientStatus: (id: number) =>
-    req<{ listen_port: number }>(`/api/v1/downloadclients/${id}/status`),
-
-  notifications: () =>
-    req<{ notifications: NotificationConn[] }>("/api/v1/notifications").then((r) => r.notifications),
-  alertCatalog: () => req<AlertCatalog>("/api/v1/notifications/catalog"),
-  alertPresets: () => req<{ presets: AlertPreset[] }>("/api/v1/notifications/presets").then((r) => r.presets),
-  alertDeliveries: (id: number, limit = 20) =>
-    req<{ deliveries: AlertDelivery[] }>(`/api/v1/notifications/${id}/deliveries?limit=${limit}`).then((r) => r.deliveries),
-  createNotification: (body: NotificationInput) =>
-    req<NotificationConn>("/api/v1/notifications", { method: "POST", body: JSON.stringify(body) }),
-  updateNotification: (id: number, body: NotificationInput) =>
-    req<{ status: string }>(`/api/v1/notifications/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  deleteNotification: (id: number) =>
-    req<void>(`/api/v1/notifications/${id}`, { method: "DELETE" }),
-  testNotification: (body: NotificationInput) =>
-    req<{ ok: boolean; error?: string }>("/api/v1/notifications/test", { method: "POST", body: JSON.stringify(body) }),
-  /** Test a saved connection through its stored URL. */
-  testSavedNotification: (id: number) =>
-    req<{ ok: boolean; error?: string }>(`/api/v1/notifications/${id}/test`, { method: "POST" }),
-
   // Per-user notifications (in-app inbox + personal Apprise URL)
   myNotifications: () => req<{ notifications: UserNotification[]; unread: number }>("/api/v1/me/notifications"),
   markNotificationRead: (id: number) => req<void>(`/api/v1/me/notifications/${id}/read`, { method: "POST" }),
@@ -2720,28 +2598,6 @@ export const api = {
   },
   // Recurring tasks (System → Status): staff can list them; Run now is admin-only and
   // answers 409 when the task is already running.
-  tasks: () => req<TaskStatus[]>("/api/v1/system/tasks"),
-  runTask: (name: string) =>
-    req<{ status: string; job_id: number; existing: boolean }>(`/api/v1/system/tasks/${encodeURIComponent(name)}/run`, {
-      method: "POST",
-    }),
-  // Database backups — admin only (a backup holds every secret the app has).
-  backups: () => req<BackupsState>("/api/v1/system/backups"),
-  // A manual database backup, taken synchronously.
-  backupNow: () => req<BackupFile>("/api/v1/system/backups", { method: "POST" }),
-  saveBackupSchedule: (p: Partial<BackupSchedule>) =>
-    req<BackupSchedule>("/api/v1/system/backups/settings", { method: "PUT", body: JSON.stringify(p) }),
-  deleteBackup: (name: string) =>
-    req<{ status: string }>(`/api/v1/system/backups/${encodeURIComponent(name)}`, { method: "DELETE" }),
-  // Stages a restore for the next start ("RESTORE" is the typed confirmation).
-  restoreBackup: (name: string) =>
-    req<RestoreStaged>(`/api/v1/system/backups/${encodeURIComponent(name)}/restore`, { method: "POST", body: JSON.stringify({ confirm: "RESTORE" }) }),
-  cancelRestore: () => req<{ cancelled: boolean }>("/api/v1/system/backups/restore-pending", { method: "DELETE" }),
-  recycleItems: () => req<{ items: RecycleItem[] }>("/api/v1/recycle/items").then((r) => r.items),
-  // bin: one bin's key; omitted empties every bin.
-  emptyRecycle: (bin?: string) => req<{ freed_bytes: number }>("/api/v1/recycle/empty", { method: "POST", body: JSON.stringify(bin ? { bin } : {}) }),
-  restoreRecycle: (id: string) => req<{ status: string }>("/api/v1/recycle/restore", { method: "POST", body: JSON.stringify({ id }) }),
-  deleteRecycleItem: (id: string) => req<{ status: string }>("/api/v1/recycle/delete", { method: "POST", body: JSON.stringify({ id }) }),
   // Catalog the movies folder: new films are added unmonitored on "n/a" unless monitor is
   // set (with a profile; "" = the default), and films already in the library without a
   // file get the one found. One scan at a time: a second answers 409 naming the running
@@ -2981,65 +2837,6 @@ export const api = {
   discoverBrowse: (query: string, page: number) =>
     req<DiscoverPage>(`/api/v1/discover/browse?${query}${query ? "&" : ""}page=${page}`),
 
-  seriesManualImportList: (id: number) =>
-    req<ManualImportList<SeriesImportCandidate>>(`/api/v1/series/${id}/manualimport`),
-  seriesManualImport: (id: number, path: string) =>
-    req<{ status: string; background?: boolean } & JobRef>(`/api/v1/series/${id}/manualimport`, { method: "POST", body: JSON.stringify({ path }) }),
-  seriesRenamePreview: (id: number) =>
-    req<{ items: SeriesRenameItem[]; matches: boolean }>(`/api/v1/series/${id}/rename`),
-  // Applies only the previewed items: anything that changed since the preview is skipped
-  // and reported, never moved blind.
-  renameSeries: (id: number, items: SeriesRenameItem[]) =>
-    req<{ renamed: number; skipped: RenameSkip[] }>(`/api/v1/series/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
-  // A numbering change waiting for review (pending: null when there's none).
-  seriesNumbering: (id: number) => req<SeriesNumbering>(`/api/v1/series/${id}/numbering`),
-  // Applies the reviewed plan as a job (its result is a NumberingApplied). A plan that
-  // changed since it was shown is refused with a 409 and nothing moves.
-  applySeriesNumbering: (id: number, plan_hash: string) =>
-    req<JobRef>(`/api/v1/series/${id}/numbering/apply`, { method: "POST", body: JSON.stringify({ plan_hash }) }),
-  dismissSeriesNumbering: (id: number) =>
-    req<void>(`/api/v1/series/${id}/numbering/pending`, { method: "DELETE" }),
-  // The series switch is a pause gate: season and episode choices are kept either way.
-  setSeriesMonitored: (id: number, monitored: boolean) =>
-    req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
-  // Applies a monitoring preset to the show's episodes (the pause switch is untouched).
-  applySeriesMonitorPreset: (id: number, preset: string) =>
-    req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ preset }) }),
-  setSeriesMonitorNewSeasons: (id: number, monitor_new_seasons: boolean) =>
-    req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitor_new_seasons }) }),
-  setSeriesProfile: (id: number, quality_profile: string) =>
-    req<{ quality_profile: string }>(`/api/v1/series/${id}/profile`, { method: "PUT", body: JSON.stringify({ quality_profile }) }),
-  setSeriesType: (id: number, series_type: string) =>
-    req<{ series_type: string }>(`/api/v1/series/${id}/type`, { method: "PUT", body: JSON.stringify({ series_type }) }),
-  // Manual scene-season mapping (anime whose broadcast cours don't match TMDB numbering).
-  sceneOverrides: (id: number) =>
-    req<{ overrides: SceneOverride[] }>(`/api/v1/series/${id}/scene-map`),
-  setSceneOverride: (id: number, o: SceneOverride) =>
-    req<SceneOverride>(`/api/v1/series/${id}/scene-map`, { method: "PUT", body: JSON.stringify(o) }),
-  deleteSceneOverride: (id: number, sceneSeason: number) =>
-    req<void>(`/api/v1/series/${id}/scene-map/${sceneSeason}`, { method: "DELETE" }),
-  setSeasonMonitored: (id: number, season: number, monitored: boolean) =>
-    req<{ monitored: boolean }>(`/api/v1/series/${id}/seasons/${season}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
-  setEpisodeMonitored: (eid: number, monitored: boolean) =>
-    req<{ monitored: boolean }>(`/api/v1/series/episodes/${eid}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
-  // confirm is the series title, required by the server when deleting files over its size
-  // threshold. A 409 (ApiError) carries body.moved / body.failed.
-  deleteSeries: (id: number, deleteFiles?: boolean, confirm?: string) => {
-    const q = new URLSearchParams();
-    if (deleteFiles) q.set("delete_files", "true");
-    if (deleteFiles && confirm) q.set("confirm", confirm);
-    const qs = q.toString();
-    return req<void>(`/api/v1/series/${id}${qs ? `?${qs}` : ""}`, { method: "DELETE" });
-  },
-  seriesDeletePreview: (id: number) => req<DeletePreview>(`/api/v1/series/${id}/delete-preview`),
-  seriesBlocklist: (id: number) => req<{ blocklist: BlockEntry[] }>(`/api/v1/series/${id}/blocklist`).then((r) => r.blocklist),
-  unblockSeries: (id: number, bid: number) => req<void>(`/api/v1/series/${id}/blocklist/${bid}`, { method: "DELETE" }),
-  regrabEpisode: (id: number, season: number, episode: number) =>
-    req<{ status: string } & JobRef>(`/api/v1/series/${id}/seasons/${season}/episodes/${episode}/regrab`, { method: "POST" }),
-  deleteEpisodeFile: (id: number, season: number, episode: number) =>
-    req<void>(`/api/v1/series/${id}/seasons/${season}/episodes/${episode}/file`, { method: "DELETE" }),
-
-  // Books
   books: () => req<{ books: Book[]; metadata_available: boolean; metadata_source?: BookSource; upgradable?: number }>("/api/v1/books"),
   startBookUpgrade: () => req<{ started: boolean; status: BookUpgradeStatus } & JobRef>("/api/v1/books/upgrade", { method: "POST" }),
   bookUpgradeStatus: () => req<BookUpgradeStatus>("/api/v1/books/upgrade"),
@@ -3171,84 +2968,6 @@ export const api = {
   subtitleModels: () => req<WhisperStatus>("/api/v1/subtitles/models"),
   subtitleDownloadModel: (name: string) => req<{ status: string }>(`/api/v1/subtitles/models/${encodeURIComponent(name)}`, { method: "POST" }),
 
-  // Convert
-  convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;
-    hold_check?: ConvertHoldCheck[]; hold?: ConvertHoldStats }>("/api/v1/convert/hardware"),
-  convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
-  convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
-  updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),
-  convertReindex: () => req<{ started: boolean; reason?: string } & JobRef>("/api/v1/convert/reindex", { method: "POST" }),
-  convertReindexStatus: () => req<{ running: boolean }>("/api/v1/convert/reindex"),
-  convertLibrary: (media: "movies" | "tv" = "movies", seriesID?: number, convertibleOnly = false) => {
-    const q = new URLSearchParams();
-    if (media === "tv") q.set("media", "tv");
-    if (seriesID) q.set("series", String(seriesID));
-    if (convertibleOnly) q.set("convertible", "1");
-    const qs = q.toString();
-    return req<{ items: ConvertCandidate[] }>(`/api/v1/convert/library${qs ? `?${qs}` : ""}`).then((r) => r.items);
-  },
-  convertStats: () => req<ConvertLibraryStats>("/api/v1/convert/stats"),
-  convertRequest: (key: string) => req<ConvertRequestResult>("/api/v1/convert/requests", { method: "POST", body: JSON.stringify({ key }) }),
-  convertCancelRequest: (key?: string) => req<{ cancelled: number }>(`/api/v1/convert/requests?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "DELETE" }),
-  convertCancel: (id: number) => req<{ cancelled: number }>(`/api/v1/convert/jobs/${id}/cancel`, { method: "POST" }),
-  convertBlocklist: () => req<{ items: ConvertBlocked[] }>("/api/v1/convert/blocklist").then((r) => r.items),
-  convertSkips: () => req<{ items: ConvertSkipped[] }>("/api/v1/convert/skips").then((r) => r.items),
-  convertSkipsClear: (key?: string) =>
-    req<{ cleared: boolean }>(`/api/v1/convert/skips/clear?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "POST" }),
-  convertBlocklistClear: (key?: string) =>
-    req<{ cleared: boolean }>(`/api/v1/convert/blocklist/clear?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "POST" }),
-  convertLibrarySeries: () => req<{ series: ConvertSeriesRollup[] }>("/api/v1/convert/library?media=tv").then((r) => r.series),
-  convertSeries: (seriesID: number, season?: number) =>
-    req<{ requested: number }>(`/api/v1/convert/series/${seriesID}${season === undefined ? "" : `?season=${season}`}`, { method: "POST" }),
-  convertJobs: () => req<{ jobs: ConvertJob[] }>("/api/v1/convert/jobs").then((r) => r.jobs),
-  convertLogs: () => req<{ lines: { at: number; level: string; msg: string }[] }>("/api/v1/convert/logs").then((r) => r.lines),
-  convertHistory: (f: { outcome?: ConvertHistoryOutcome; media?: "movie" | "episode"; q?: string; before?: string; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    if (f.outcome) q.set("outcome", f.outcome);
-    if (f.media) q.set("media", f.media);
-    if (f.q) q.set("q", f.q);
-    if (f.before) q.set("before", f.before);
-    if (f.limit) q.set("limit", String(f.limit));
-    const qs = q.toString();
-    return req<{ items: ConvertHistoryEntry[]; next: string }>(`/api/v1/convert/history${qs ? `?${qs}` : ""}`);
-  },
-  convertHistoryEntry: (id: number) => req<ConvertHistoryEntry>(`/api/v1/convert/history/${id}`),
-  convertCompare: (key: string) => req<ConvertCompareStatus>("/api/v1/convert/compare", { method: "POST", body: JSON.stringify({ key }) }),
-  convertCompareStatus: () => req<ConvertCompareStatus>("/api/v1/convert/compare"),
-  convertCompareFileURL: (name: string) => `/api/v1/convert/compare/files/${encodeURIComponent(name)}`,
-  convertPlan: (key: string) => req<ConvertPlan>(`/api/v1/convert/plan?key=${encodeURIComponent(key)}`),
-  convertAutoPreview: (seriesID?: number, season?: number) => {
-    const q = new URLSearchParams();
-    if (seriesID !== undefined) q.set("series", String(seriesID));
-    if (seriesID !== undefined && season !== undefined) q.set("season", String(season));
-    const qs = q.toString();
-    return req<ConvertAutoPreview>(`/api/v1/convert/auto-preview${qs ? `?${qs}` : ""}`);
-  },
-
-  // Insights (Plex)
-  insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),
-  // Each field is optional; a missing url or token keeps the saved one.
-  updateInsightsConfig: (body: { url?: string; token?: string; enabled?: boolean; poll_seconds?: number }) =>
-    req<PlexConfig>("/api/v1/insights/plex", { method: "PUT", body: JSON.stringify(body) }),
-  testInsights: (body: { url?: string; token?: string }) =>
-    req<PlexTestResult>("/api/v1/insights/plex/test", { method: "POST", body: JSON.stringify(body) }),
-  insightsActivity: () => req<InsightsActivity>("/api/v1/insights/activity"),
-  insightsHistory: (p: { type?: string; decision?: string; q?: string; page?: number; page_size?: number }) => {
-    const qs = new URLSearchParams();
-    if (p.type) qs.set("type", p.type);
-    if (p.decision) qs.set("decision", p.decision);
-    if (p.q) qs.set("q", p.q);
-    qs.set("page", String(p.page ?? 1));
-    qs.set("page_size", String(p.page_size ?? 50));
-    return req<InsightsHistory>(`/api/v1/insights/history?${qs.toString()}`);
-  },
-  insightsStats: (window = 30, metric?: "plays" | "duration") =>
-    req<InsightsStats>(`/api/v1/insights/stats?window=${window}${metric ? `&metric=${metric}` : ""}`),
-  insightsUsers: () => req<{ users: UserEntry[] }>("/api/v1/insights/users").then((r) => r.users),
-  insightsLibraries: () => req<{ libraries: LibraryStat[] }>("/api/v1/insights/libraries").then((r) => r.libraries),
-  insightsRecentlyAdded: (limit = 20) => req<{ items: RecentItem[] }>(`/api/v1/insights/recently-added?limit=${limit}`).then((r) => r.items),
-  insightsGraphs: (window = 30) => req<InsightsGraphs>(`/api/v1/insights/graphs?window=${window}`),
-  insightsReliability: (window = 30) => req<Reliability>(`/api/v1/insights/reliability?window=${window}`),
   scanSeries: () => req<{ status: string } & JobRef>("/api/v1/series/scan", { method: "POST" }),
   seriesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/series/unmatched").then((r) => r.unmatched),
   importSeriesFolder: (folder: string, tmdb_id: number) =>

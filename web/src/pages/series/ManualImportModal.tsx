@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, importListNotice, type Series as SeriesT, type SeriesImportCandidate } from "../../lib/api";
+import { importListNotice, type Series as SeriesT, type SeriesImportCandidate } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { fmtSize } from "./util";
 
 export function ManualImportModal({ series, onClose, onImported, onBackground }: { series: SeriesT; onClose: () => void; onImported: () => void; onBackground: (jobId?: number) => void }) {
@@ -9,7 +10,7 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    api.seriesManualImportList(series.id).then((r) => { setCands(r.candidates); setNotice(importListNotice(r)); }).catch((e: Error) => setError(e.message));
+    seriesApi.seriesManualImportList(series.id).then((r) => { setCands(r.candidates); setNotice(importListNotice(r)); }).catch((e: Error) => setError(e.message));
   }, [series.id]);
 
   // Whole-folder imports. A season pack is dozens of files and clicking each one is not a
@@ -35,7 +36,7 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
     setImporting(path);
     setError(null);
     try {
-      const res = await api.seriesManualImport(series.id, path);
+      const res = await seriesApi.seriesManualImport(series.id, path);
       // A whole folder runs detached — a season pack can take many minutes, so the
       // request returns immediately and the work continues. Say so, or the user sits on
       // a spinner wondering whether navigating away cancels it.
@@ -46,7 +47,7 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
       }
       onImported();
       // refresh the list so the imported file drops off
-      const r = await api.seriesManualImportList(series.id);
+      const r = await seriesApi.seriesManualImportList(series.id);
       setCands(r.candidates);
       setNotice(importListNotice(r));
     } catch (e) {

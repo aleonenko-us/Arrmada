@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, type AttentionItem, type ReviewKind, type UnmanagedDownload } from "../lib/api";
+import { downloadClientApi } from "../lib/downloadClientApi";
 import { formatAgo, formatBytes } from "../lib/format";
 import { LINKS, fixLink } from "../lib/links";
 import { loadAttention, refreshAttention, useAttention } from "../lib/useAttention";
@@ -199,7 +200,7 @@ function WrongCategoryCard({ it }: { it: AttentionItem }) {
   const hash = it.hash;
   // The TV category is the server's; ask for it when the button is used.
   const move = () => run(async () => {
-    const { categories } = await api.downloadClientList();
+    const { categories } = await downloadClientApi.downloadClientList();
     if (!categories?.tv) throw new Error("Couldn't read Arrmada's TV category — try again in a moment.");
     await api.setDownloadCategory(hash!, categories.tv);
   }, "Moved to TV — the next import check picks it up.");

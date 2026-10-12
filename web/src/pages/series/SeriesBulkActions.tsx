@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { api, type Series } from "../../lib/api";
+import { type Series } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { useToast } from "../../ui";
 import { bulkFailure, runBulk, type BulkResult } from "../../features/library/bulk";
 import type { LibrarySelection } from "../../features/library/types";
@@ -30,11 +31,11 @@ export function SeriesBulkActions({ sel, profiles, onDone }: {
   return (
     <>
       {/* The switch is a pause gate: season and episode choices are kept either way. */}
-      <button onClick={() => run((id) => api.setSeriesMonitored(id, true), (n) => `${n} resumed.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Resume searching. Season and episode choices are kept; a show with nothing monitored gets every regular season.">Monitor</button>
-      <button onClick={() => run((id) => api.setSeriesMonitored(id, false), (n) => `${n} paused.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }} title="Pause: nothing is searched. Season and episode choices are kept for when you resume.">Unmonitor</button>
+      <button onClick={() => run((id) => seriesApi.setSeriesMonitored(id, true), (n) => `${n} resumed.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Resume searching. Season and episode choices are kept; a show with nothing monitored gets every regular season.">Monitor</button>
+      <button onClick={() => run((id) => seriesApi.setSeriesMonitored(id, false), (n) => `${n} paused.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }} title="Pause: nothing is searched. Season and episode choices are kept for when you resume.">Unmonitor</button>
       <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
       <select value="" disabled={none} aria-label="Set the quality profile of the selected series" className={SELECT} style={SELECT_STYLE}
-        onChange={(e) => { const v = e.target.value; if (v) void run((id) => api.setSeriesProfile(id, v), (n) => `Quality profile set on ${n} series.`); }}>
+        onChange={(e) => { const v = e.target.value; if (v) void run((id) => seriesApi.setSeriesProfile(id, v), (n) => `Quality profile set on ${n} series.`); }}>
         <option value="">Set quality profile…</option>
         {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
       </select>
@@ -42,7 +43,7 @@ export function SeriesBulkActions({ sel, profiles, onDone }: {
         onChange={(e) => {
           const v = e.target.value;
           const label = MONITOR_PRESETS.find((p) => p.value === v)?.label ?? v;
-          if (v) void run((id) => api.applySeriesMonitorPreset(id, v), (n) => `Monitoring set to "${label}" on ${n} series.`);
+          if (v) void run((id) => seriesApi.applySeriesMonitorPreset(id, v), (n) => `Monitoring set to "${label}" on ${n} series.`);
         }}>
         <option value="">Monitoring preset…</option>
         {MONITOR_PRESETS.map((p) => <option key={p.value} value={p.value} title={p.help}>{p.label}</option>)}

@@ -5,6 +5,7 @@ import { useSearchParamState } from "../lib/useSearchState";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
 import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
+import { downloadClientApi } from "../lib/downloadClientApi";
 import { useMe } from "../lib/me";
 import { useLiveEvent } from "../lib/live";
 import { useLiveQuery, useLiveRefresh } from "../lib/useLiveQuery";
@@ -204,7 +205,7 @@ export function QueuePanel() {
   const showAll = () => setParams((p) => { const next = new URLSearchParams(p); next.delete("filter"); return next; }, { replace: true });
 
   useEffect(() => {
-    api.downloadClients().then((cs) => {
+    downloadClientApi.downloadClients().then((cs) => {
       // A switched-off client gets no downloads, so its settings aren't the ones in play.
       const on = cs.filter((c) => c.enabled);
       const qb = on.find((c) => c.kind === "qbittorrent") ?? on[0];

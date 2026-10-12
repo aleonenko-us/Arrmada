@@ -3,6 +3,9 @@ import { FileDetailsModal } from "../../components/FileDetailsModal";
 import { refreshSearches, useSearchAttempts } from "../../components/LastSearch";
 import { ReleaseSearchModal } from "../../components/ReleaseSearchModal";
 import { api, type FitItem, type Season, type Series as SeriesT } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
+import { qualityApi } from "../../lib/qualityApi";
+import { convertApi } from "../../lib/convertApi";
 import { disposalLine, useRecycleMode } from "../../lib/disposal";
 import { posterThumb } from "../../lib/img";
 import { attemptLine, outcomeTone } from "../../lib/searchOutcome";
@@ -113,12 +116,12 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
     flash(`Searching for ${name}'s missing episodes…`);
   });
   const resume = () => run("resume", async () => {
-    await api.resumeSeriesUpgrades(series.id, season.season_number);
+    await qualityApi.resumeSeriesUpgrades(series.id, season.season_number);
     flash(`Upgrades resumed for ${name}.`);
     onChange();
   });
   const monitor = () => run("monitor", async () => {
-    await api.setSeasonMonitored(series.id, season.season_number, !season.monitored);
+    await seriesApi.setSeasonMonitored(series.id, season.season_number, !season.monitored);
     onChange();
   });
   const searching = busy === "grab" || grabbing.running;
@@ -324,7 +327,7 @@ function EpisodeDialogs({ series, dialog, onClose, onChange, flash }: { series: 
         path={ep.file_path}
         title={`${series.title} — ${label}`}
         subtitle={ep.title || undefined}
-        onCleanTracks={async () => { await api.convertRequest(`episode:${series.id}:${ep.season_number}:${ep.episode_number}`); }}
+        onCleanTracks={async () => { await convertApi.convertRequest(`episode:${series.id}:${ep.season_number}:${ep.episode_number}`); }}
         onClose={done}
       />
     );
@@ -333,7 +336,7 @@ function EpisodeDialogs({ series, dialog, onClose, onChange, flash }: { series: 
     const del = async () => {
       setBusy(true);
       setErr(null);
-      try { await api.deleteEpisodeFile(series.id, ep.season_number, ep.episode_number); flash(`Deleted ${label} file`); onChange(); done(); }
+      try { await seriesApi.deleteEpisodeFile(series.id, ep.season_number, ep.episode_number); flash(`Deleted ${label} file`); onChange(); done(); }
       catch (e) { setErr((e as Error).message); }
       finally { setBusy(false); }
     };

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { api, type Indexer, type NewIndexer } from "../../lib/api";
+import { type Indexer, type NewIndexer } from "../../lib/api";
+import { indexerApi } from "../../lib/indexerApi";
 
 // The indexer forms, moved from the old Indexers page into the cards on Settings →
 // Connections: adding one, editing one (with its seed rules), testing settings before they
@@ -31,7 +32,7 @@ function TestSettings({ body }: { body: () => NewIndexer & { id?: number } }) {
   const run = async () => {
     setState({ loading: true });
     try {
-      const r = await api.testIndexerSettings(body());
+      const r = await indexerApi.testIndexerSettings(body());
       setState({ ok: r.ok, error: r.error, caps: r.caps_summary });
     } catch (e) {
       setState({ ok: false, error: (e as Error).message });
@@ -90,7 +91,7 @@ export function AddIndexerForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true);
     setError(null);
     try {
-      await api.createIndexer(body());
+      await indexerApi.createIndexer(body());
       onAdded();
     } catch (err) {
       setError((err as Error).message);
@@ -240,7 +241,7 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
     setSaving(true);
     setError(null);
     try {
-      await api.updateIndexer(idx.id, body());
+      await indexerApi.updateIndexer(idx.id, body());
       onSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -433,7 +434,7 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
     setError(null);
     setSaving(true);
     try {
-      await api.updateIndexer(idx.id, indexerBody(idx, { media_types }));
+      await indexerApi.updateIndexer(idx.id, indexerBody(idx, { media_types }));
       await onChange();
     } catch (e) {
       setError(`Couldn't save: ${(e as Error).message}`);

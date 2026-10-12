@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Field, Section, input, inputStyle } from "../../components/settings/ui";
-import { api } from "../../lib/api";
+
+import { importApi } from "../../lib/importApi";
 import { AudiobookshelfImport } from "./AudiobookshelfImport";
 import { TautulliImport } from "./TautulliImport";
 
@@ -31,7 +32,7 @@ function OverseerrImport() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api.importOverseerr(url.trim(), key.trim());
+      const r = await importApi.importOverseerr(url.trim(), key.trim());
       setMsg({ ok: true, text: `Found ${r.found} request${r.found === 1 ? "" : "s"} — importing in the background, quietly: nobody is notified about their old requests. Approved titles are added to your library and the regular searches pick them up. They appear on the Requests page as they process.` });
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });

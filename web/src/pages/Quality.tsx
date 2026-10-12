@@ -21,6 +21,7 @@ import {
   type TargetPref,
   type UpgradeTrigger,
 } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -257,7 +258,7 @@ export function Quality() {
   const [media, setMedia] = useTabParam(MEDIA_KEYS, "movie", "media");
   // One cache entry per media tab, so switching back to a tab (or Back from an
   // editor) shows its profiles at once while they revalidate.
-  const listQ = useQuery(`quality:${media}`, () => api.qualityProfiles(media), { staleMs: 0 });
+  const listQ = useQuery(`quality:${media}`, () => qualityApi.qualityProfiles(media), { staleMs: 0 });
   const profiles = listQ.data?.profiles ?? NO_PROFILES;
   const formats = listQ.data?.formats ?? NO_FORMATS;
   const ladder = listQ.data?.music_ladder ?? NO_LADDER;
@@ -275,7 +276,7 @@ export function Quality() {
 
   const loadFits = useCallback(() => {
     if (media === "movie" || media === "series") {
-      api.libraryFitProfiles(media).then((r) => setFits(r.profiles ?? {})).catch(() => setFits({}));
+      qualityApi.libraryFitProfiles(media).then((r) => setFits(r.profiles ?? {})).catch(() => setFits({}));
     } else {
       setFits({});
     }
@@ -290,9 +291,9 @@ export function Quality() {
   useEffect(() => setNotice(null), [media]);
 
   const openNew = () => (isVideo ? setPicking(true) : setEditing(emptyProfile(media)));
-  const editRef = async (info: QualityProfileInfo) => setEditing(await api.qualityProfile(info.key));
+  const editRef = async (info: QualityProfileInfo) => setEditing(await qualityApi.qualityProfile(info.key));
   const duplicate = async (info: QualityProfileInfo) => {
-    const sp = await api.qualityProfile(info.key);
+    const sp = await qualityApi.qualityProfile(info.key);
     setEditing({ ...sp, id: 0, name: `${sp.name} (copy)` });
   };
 
@@ -408,7 +409,7 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
   const del = async () => {
     if (!target) return;
     try {
-      const r = await api.deleteQualityProfile(Number(info.key.replace("custom:", "")), target.key);
+      const r = await qualityApi.deleteQualityProfile(Number(info.key.replace("custom:", "")), target.key);
       const what = movedSummary(r.moved);
       onDeleted(what ? `Deleted ${info.name}. Moved ${what} to ${target.name}.` : `Deleted ${info.name}.`);
     } catch (e) {
@@ -417,7 +418,7 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
     }
   };
   const makeDefault = async () => {
-    await api.setDefaultProfile(media, info.key);
+    await qualityApi.setDefaultProfile(media, info.key);
     onChange();
   };
   const titles = counts?.titles ?? 0;
@@ -561,7 +562,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
   useEffect(() => {
     let alive = true;
     const t = window.setTimeout(() => {
-      api.qualityPreviewSpec(sp).then((p) => {
+      qualityApi.qualityPreviewSpec(sp).then((p) => {
         if (!alive) return;
         // Go marshals empty slices as null — coalesce so .length/.map are safe.
         setDecision({ ...p.decision, eligible: p.decision.eligible ?? [], rejected: p.decision.rejected ?? [] });
@@ -584,8 +585,8 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
     setSaving(true);
     setError(null);
     try {
-      if (body.id > 0) await api.updateQualityProfile(body.id, body);
-      else await api.createQualityProfile(body);
+      if (body.id > 0) await qualityApi.updateQualityProfile(body.id, body);
+      else await qualityApi.createQualityProfile(body);
       startJSON.current = JSON.stringify(body);
       onSaved();
     } catch (e) {
@@ -601,7 +602,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
     setSaving(true);
     setError(null);
     try {
-      await api.holdExistingFiles(sp.id, sp);
+      await qualityApi.holdExistingFiles(sp.id, sp);
     } catch (e) {
       setError(`Couldn't keep the existing files, so nothing was saved: ${(e as Error).message}`);
       setSaving(false);
@@ -621,7 +622,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
       setSaving(true);
       setError(null);
       try {
-        const im = await api.qualityImpact(sp);
+        const im = await qualityApi.qualityImpact(sp);
         if (im.replace.files + im.search.files > 0) {
           setImpact({ impact: im });
           setSaving(false);
@@ -1128,7 +1129,7 @@ function LibraryFitPanel({ sp }: { sp: StoredProfile }) {
   const key = JSON.stringify({ i: sp.ideal, r: sp.allowed_resolutions, id: sp.id, m: sp.media_type });
   useEffect(() => {
     let alive = true;
-    const t = window.setTimeout(() => { api.libraryFitPreview(sp).then((r) => alive && setRes(r)).catch(() => {}); }, 400);
+    const t = window.setTimeout(() => { qualityApi.libraryFitPreview(sp).then((r) => alive && setRes(r)).catch(() => {}); }, 400);
     return () => { alive = false; window.clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -1192,7 +1193,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
     setResult(null);
     setShowAll(false);
     try {
-      setResult(await api.qualityTest(series ? { profile: sp, series_id: pick.id, season } : { profile: sp, movie_id: pick.id }));
+      setResult(await qualityApi.qualityTest(series ? { profile: sp, series_id: pick.id, season } : { profile: sp, movie_id: pick.id }));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -1402,8 +1403,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
     setSaving(true);
     setError(null);
     try {
-      if (sp.id > 0) await api.updateQualityProfile(sp.id, sp);
-      else await api.createQualityProfile(sp);
+      if (sp.id > 0) await qualityApi.updateQualityProfile(sp.id, sp);
+      else await qualityApi.createQualityProfile(sp);
       onSaved();
     } catch (e) { setError((e as Error).message); setSaving(false); }
   };
@@ -1497,8 +1498,8 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
     setSaving(true);
     setError(null);
     try {
-      if (sp.id > 0) await api.updateQualityProfile(sp.id, sp);
-      else await api.createQualityProfile(sp);
+      if (sp.id > 0) await qualityApi.updateQualityProfile(sp.id, sp);
+      else await qualityApi.createQualityProfile(sp);
       onSaved();
     } catch (e) { setError((e as Error).message); setSaving(false); }
   };

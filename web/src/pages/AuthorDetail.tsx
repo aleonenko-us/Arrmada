@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Book, type BookAuthor, type BookDiscoverCard } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
 import { TONE_HUE } from "../ui";
@@ -42,7 +43,7 @@ export function AuthorDetail() {
 
   useEffect(() => { loadLibrary(); loadCatalogue(); }, [loadLibrary, loadCatalogue]);
   useEffect(() => {
-    api.qualityProfiles("book").then((r) => {
+    qualityApi.qualityProfiles("book").then((r) => {
       setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
       const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
       if (def) setProfile(def.key);

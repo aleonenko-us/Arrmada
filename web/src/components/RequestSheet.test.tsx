@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { RequestSheet } from "./RequestSheet";
 import { api, type AuthUser, type MediaRequest } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { ConfirmProvider, ToastProvider } from "../ui";
 
 // REQ-04: the sheet offers each viewer exactly the actions they may take, as plain
@@ -35,7 +36,7 @@ function open(r: MediaRequest) {
 const has = (name: string) => screen.queryByRole("button", { name }) !== null;
 
 beforeEach(() => {
-  vi.spyOn(api, "qualityProfiles").mockResolvedValue({
+  vi.spyOn(qualityApi, "qualityProfiles").mockResolvedValue({
     profiles: [
       { key: "hd", name: "HD-1080p", media_type: "movie", built_in: true, is_default: true, summary: "" },
       { key: "uhd", name: "Ultra-HD 2160p", media_type: "movie", built_in: true, is_default: false, summary: "" },

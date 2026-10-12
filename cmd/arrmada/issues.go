@@ -9,34 +9,42 @@ import (
 )
 
 // subtitleOutcomes tells the issues service what became of the subtitle job a subtitles
-// fix queued, by reading the Subtitles queue's recent jobs (issues.Service.Sweep polls it
-// every minute). The job must be the one the fix queued: the same id and file, queued no
-// earlier than the fix (the queue is in memory and its ids restart with the app).
+// fix queued (issues.Service.Sweep polls it every minute). Job ids are the saved queue's
+// row ids, so they survive a restart and never repeat: the job found is the one the fix
+// queued — back in the queue if the app restarted under it. The file check only guards
+// against a mixed-up id.
 //
-// Once Subtitles has a job-completion callback, it can call issues.Service.OnSubtitleJobDone
-// directly and this poll can go.
-type subtitleOutcomes struct{ svc *subtitles.Service }
+// The job-done hook below settles a fix the moment its job ends; this poll is the
+// fallback for a job dropped from the queue before it ran.
+type subtitleOutcomes struct {
+	ctx context.Context
+	svc *subtitles.Service
+	log *slog.Logger
+}
 
-func (s subtitleOutcomes) Outcome(jobID int64, t issues.Target, since int64) issues.SubtitleOutcome {
-	for _, j := range s.svc.Jobs() {
-		if j.ID != jobID || j.At < since-60 || !jobIsFor(j, t) {
-			continue
-		}
-		switch j.State {
-		case subtitles.StateQueued, subtitles.StateRunning:
-			return issues.SubtitleOutcome{Found: true, Pending: true}
-		case subtitles.StateDone:
-			return issues.SubtitleOutcome{Found: true, Done: true, Note: j.Note}
-		default: // skipped, failed, cancelled: nothing was made
-			return issues.SubtitleOutcome{Found: true, Note: j.Note}
-		}
+func (s subtitleOutcomes) Outcome(jobID int64, t issues.Target, _ int64) issues.SubtitleOutcome {
+	j, ok, err := s.svc.Job(s.ctx, jobID)
+	if err != nil {
+		// Unreadable isn't gone: report it pending, so the next minute's poll asks again
+		// rather than reopening the problem over a database hiccup.
+		s.log.Warn("issues: could not read a subtitle job", "job_id", jobID, "err", err)
+		return issues.SubtitleOutcome{Found: true, Pending: true}
 	}
-	return issues.SubtitleOutcome{}
+	if !ok || !jobIsFor(j, t) {
+		return issues.SubtitleOutcome{}
+	}
+	switch j.State {
+	case subtitles.StateQueued, subtitles.StateRunning:
+		return issues.SubtitleOutcome{Found: true, Pending: true}
+	case subtitles.StateDone:
+		return issues.SubtitleOutcome{Found: true, Done: true, Note: j.Note}
+	default: // skipped, failed, cancelled: nothing was made
+		return issues.SubtitleOutcome{Found: true, Note: j.Note}
+	}
 }
 
 // subtitleJobDone settles a reported problem's subtitles fix the moment its job finishes
-// (Subtitles' job-done hook), instead of at the next minute's poll. The poll above stays
-// as the fallback for jobs dropped from the queue and for restarts.
+// (Subtitles' job-done hook), instead of at the next minute's poll.
 func subtitleJobDone(ctx context.Context, svc *issues.Service, log *slog.Logger) func(subtitles.Job) {
 	return func(j subtitles.Job) {
 		t := issues.Target{MediaType: issues.MediaMovie, LibraryID: j.MovieID}

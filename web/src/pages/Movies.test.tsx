@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom";
 import { Movies } from "./Movies";
 import { api, type MovieSummary } from "../lib/api";
+import { qualityApi } from "../lib/qualityApi";
 import { clearQueryCache } from "../lib/query";
 
 // The honest states FE-21 is about: before the first answer and after a failed one,
@@ -11,8 +12,8 @@ import { clearQueryCache } from "../lib/query";
 
 beforeEach(() => {
   clearQueryCache();
-  vi.spyOn(api, "qualityProfiles").mockResolvedValue({ profiles: [], formats: [] });
-  vi.spyOn(api, "libraryFitMovies").mockResolvedValue({ items: [] });
+  vi.spyOn(qualityApi, "qualityProfiles").mockResolvedValue({ profiles: [], formats: [] });
+  vi.spyOn(qualityApi, "libraryFitMovies").mockResolvedValue({ items: [] });
 });
 afterEach(() => {
   cleanup();

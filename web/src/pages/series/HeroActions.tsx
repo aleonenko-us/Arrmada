@@ -5,6 +5,7 @@ import { ReleaseSearchModal } from "../../components/ReleaseSearchModal";
 import { UploadTorrentModal } from "../../components/UploadTorrentModal";
 import { LastSearches, refreshSearches } from "../../components/LastSearch";
 import { api, type Series as SeriesT } from "../../lib/api";
+import { seriesApi } from "../../lib/seriesApi";
 import { jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { searchJobLine } from "../../lib/searchOutcome";
 import { Button, Menu, type MenuItem } from "../../ui";
@@ -23,7 +24,7 @@ export const MENU_ITEM = "py-2.5 sm:py-1.5";
 export async function switchNumbering(series: SeriesT, onChange: () => void, flash: Flash) {
   const next = series.series_type === "anime" ? "standard" : "anime";
   try {
-    await api.setSeriesType(series.id, next);
+    await seriesApi.setSeriesType(series.id, next);
     onChange();
     flash(next === "anime" ? "Anime numbering on — rescan to match absolute-numbered files." : "Standard numbering.");
   } catch (e) {
@@ -170,17 +171,17 @@ function MonitorMenu({ series, onChange, flash }: { series: SeriesT; onChange: (
   );
   const items: MenuItem[] = [
     series.monitored
-      ? { label: row("Pause", "Search nothing. Season and episode choices are kept."), busyLabel: "Pausing…", onSelect: act(() => api.setSeriesMonitored(series.id, false), "Paused — nothing is searched until you resume.") }
-      : { label: row("Resume", "Search again for the episodes chosen below."), busyLabel: "Resuming…", onSelect: act(() => api.setSeriesMonitored(series.id, true), "Resumed.") },
+      ? { label: row("Pause", "Search nothing. Season and episode choices are kept."), busyLabel: "Pausing…", onSelect: act(() => seriesApi.setSeriesMonitored(series.id, false), "Paused — nothing is searched until you resume.") }
+      : { label: row("Resume", "Search again for the episodes chosen below."), busyLabel: "Resuming…", onSelect: act(() => seriesApi.setSeriesMonitored(series.id, true), "Resumed.") },
     ...MONITOR_PRESETS.map((p): MenuItem => ({
       label: row(`Monitor: ${p.label}`, p.help),
       busyLabel: "Applying…",
-      onSelect: act(() => api.applySeriesMonitorPreset(series.id, p.value), `Monitoring: ${p.label}.`),
+      onSelect: act(() => seriesApi.applySeriesMonitorPreset(series.id, p.value), `Monitoring: ${p.label}.`),
     })),
     {
       label: row("Monitor new seasons", "When a refresh finds a season the show didn't have, monitor it.", !!series.monitor_new_seasons),
       busyLabel: "Saving…",
-      onSelect: act(() => api.setSeriesMonitorNewSeasons(series.id, !series.monitor_new_seasons), series.monitor_new_seasons ? "New seasons won't be monitored." : "New seasons will be monitored."),
+      onSelect: act(() => seriesApi.setSeriesMonitorNewSeasons(series.id, !series.monitor_new_seasons), series.monitor_new_seasons ? "New seasons won't be monitored." : "New seasons will be monitored."),
     },
   ];
   return (
