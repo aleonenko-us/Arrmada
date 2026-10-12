@@ -107,7 +107,6 @@ func (s *Service) List(ctx context.Context) ([]Book, error) {
 			list[i].AudioVersions = all[list[i].ID]
 		}
 	}
-	s.fillAuthorIDs(ctx, list)
 	return list, nil
 }
 
@@ -138,7 +137,6 @@ func (s *Service) Get(ctx context.Context, id int64) (Book, error) {
 		return b, err
 	}
 	b.AudioVersions, _ = s.repo.ListAudioVersions(ctx, id)
-	b.AuthorID, _ = bookAuthorID(ctx, s.repo.db, id)
 	return b, nil
 }
 

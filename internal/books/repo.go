@@ -182,7 +182,7 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	monitored, quality_profile, added_at, series_name, series_position, series_key, keep_catalogue,
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
-	last_search_at, search_misses`
+	last_search_at, search_misses, author_id`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
 	var (
@@ -196,14 +196,16 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 		abSize        int64
 		abFiles       int
 		lastSearch    sql.NullString
+		authorID      sql.NullInt64
 	)
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
-		&lastSearch, &b.SearchMisses)
+		&lastSearch, &b.SearchMisses, &authorID)
 	if err != nil {
 		return Book{}, err
 	}
+	b.AuthorID = authorID.Int64
 	if t := parseStamp(lastSearch.String); !t.IsZero() {
 		b.LastSearchAt = t.Format(time.RFC3339)
 	}

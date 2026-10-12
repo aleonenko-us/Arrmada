@@ -426,35 +426,6 @@ func (r *Repo) adoptKey(ctx context.Context, tx *sql.Tx, authorID int64, name, k
 	return err
 }
 
-// MergeAuthorTx is the author step of a book merge: the kept book takes the dropped
-// book's author when it has none of its own. Run it inside the merge's transaction,
-// before the dropped row is deleted (deleting it would not touch the author, but its
-// author_id is the thing being read).
-func MergeAuthorTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE books SET author_id = (SELECT author_id FROM books WHERE id = ?)
-		  WHERE id = ? AND author_id IS NULL`, dropID, keepID)
-	return err
-}
-
-// authorIDsByBook maps book id → author id for every linked book.
-func (r *Repo) authorIDsByBook(ctx context.Context) (map[int64]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, author_id FROM books WHERE author_id IS NOT NULL`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[int64]int64{}
-	for rows.Next() {
-		var b, a int64
-		if err := rows.Scan(&b, &a); err != nil {
-			return nil, err
-		}
-		out[b] = a
-	}
-	return out, rows.Err()
-}
-
 // --- service ---
 
 // ListAuthors returns the library's authors with owned and wanted counts.
@@ -602,17 +573,6 @@ func (s *Service) linkAuthor(ctx context.Context, bookID int64, name, key string
 		return 0
 	}
 	return id
-}
-
-// fillAuthorIDs sets AuthorID on a list of books.
-func (s *Service) fillAuthorIDs(ctx context.Context, list []Book) {
-	ids, err := s.repo.authorIDsByBook(ctx)
-	if err != nil {
-		return
-	}
-	for i := range list {
-		list[i].AuthorID = ids[list[i].ID]
-	}
 }
 
 // BackfillAuthors links every book that has an author string but no author row,

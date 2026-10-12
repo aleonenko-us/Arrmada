@@ -2,7 +2,6 @@ package books
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
@@ -58,9 +57,9 @@ func TestAuthorNameIdentity(t *testing.T) {
 	}{
 		{"J.K. Rowling", "J. K. Rowling", true},
 		{"J.K. Rowling", "Rowling, J.K.", true},
-		{"J.K. Rowling", "Rowling", true},       // a missing set of initials doesn't disagree
-		{"J. Rowling", "J.K. Rowling", true},    // nor does a shorter one
-		{"J. Smith", "K. Smith", false},         // different initials are different people
+		{"J.K. Rowling", "Rowling", true},    // a missing set of initials doesn't disagree
+		{"J. Rowling", "J.K. Rowling", true}, // nor does a shorter one
+		{"J. Smith", "K. Smith", false},      // different initials are different people
 		{"George R. R. Martin", "Martin, George R.R.", true},
 		{"Stephen King", "Tabitha King", false},
 		{"José Saramago", "Jose Saramago", true}, // accents fold
@@ -330,30 +329,39 @@ func TestSetCatalogueKey(t *testing.T) {
 
 // A merge carries the dropped book's author to a keeper that has none, and leaves a
 // keeper's own author alone.
-func TestMergeAuthorTx(t *testing.T) {
-	s, ctx := authorsService(t, nil)
-	keep := mustBook(t, s, ctx, "OL1W", "Dune", "")
-	drop := mustBook(t, s, ctx, "OL2W", "Dune", "Frank Herbert")
-	other := mustBook(t, s, ctx, "OL3W", "Dune Messiah", "Frank Herbert")
-	if _, _, err := s.BackfillAuthors(ctx); err != nil {
+func TestMergeCarriesAuthor(t *testing.T) {
+	f := newMergeFixture(t)
+	ctx := f.ctx
+	herbert, err := f.s.UpsertByName(ctx, "Frank Herbert")
+	if err != nil {
 		t.Fatal(err)
 	}
-	herbert := authorOf(t, s, ctx, drop.ID)
-	merge := func(k, d int64) {
-		t.Helper()
-		if err := store.WithTx(ctx, s.repo.db, func(tx *sql.Tx) error { return MergeAuthorTx(ctx, tx, k, d) }); err != nil {
-			t.Fatal(err)
-		}
-	}
-	merge(keep.ID, drop.ID)
-	if got := authorOf(t, s, ctx, keep.ID); got != herbert {
-		t.Errorf("keeper's author = %d, want %d", got, herbert)
-	}
-	if err := setBookAuthor(ctx, s.repo.db, other.ID, 0); err != nil {
+	other, err := f.s.UpsertByName(ctx, "Brian Herbert")
+	if err != nil {
 		t.Fatal(err)
 	}
-	merge(keep.ID, other.ID) // the keeper has one now; the dropped row has none
-	if got := authorOf(t, s, ctx, keep.ID); got != herbert {
-		t.Errorf("keeper's own author replaced: %d, want %d", got, herbert)
+	keep, drop := f.book("OL1W", "Dune"), f.book("hc:1", "Dune")
+	if err := setBookAuthor(ctx, f.s.repo.db, drop.ID, herbert); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Merge(ctx, keep.ID, drop.ID, MergeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.s.Get(ctx, keep.ID); got.AuthorID != herbert {
+		t.Errorf("keeper's author = %d, want the dropped book's %d", got.AuthorID, herbert)
+	}
+
+	keep2, drop2 := f.book("OL2W", "Dune Messiah"), f.book("hc:2", "Dune Messiah")
+	if err := setBookAuthor(ctx, f.s.repo.db, keep2.ID, herbert); err != nil {
+		t.Fatal(err)
+	}
+	if err := setBookAuthor(ctx, f.s.repo.db, drop2.ID, other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Merge(ctx, keep2.ID, drop2.ID, MergeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.s.Get(ctx, keep2.ID); got.AuthorID != herbert {
+		t.Errorf("keeper's own author replaced: %d, want %d", got.AuthorID, herbert)
 	}
 }
