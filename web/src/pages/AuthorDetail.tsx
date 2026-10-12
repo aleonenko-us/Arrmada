@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Book, type BookAuthor, type BookDiscoverCard } from "../lib/api";
 import { bookAuthorApi, type LibraryAuthor, type LibraryAuthorPatch } from "../lib/bookAuthorApi";
+import { followLine } from "../lib/authorFollow";
 import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
@@ -136,6 +137,9 @@ export function AuthorDetail() {
                   {catalogueName} author{" "}
                   <button type="button" onClick={() => setRepick(true)} className="underline hover:text-[var(--ink)]">Not this person?</button>
                 </div>
+              )}
+              {key && author?.monitored && author.monitor_new && (
+                <div className="mt-1 text-[11.5px] text-ink-faint">{followLine(author)}</div>
               )}
             </div>
           </div>

@@ -52,6 +52,10 @@ type Author struct {
 	AddedAt        string `json:"added_at,omitempty"`
 	CheckedAt      string `json:"checked_at,omitempty"`
 	WorksCheckedAt string `json:"works_checked_at,omitempty"`
+	// NewBooksFound is how many books the release check has added for this author.
+	NewBooksFound int `json:"new_books_found"`
+	// worksSeeded: the release check has had its first look (authorreleases.go).
+	worksSeeded bool
 	// Books is how many library books are linked to the author; Owned how many of those
 	// have a file; Wanted how many are monitored and have none yet.
 	Books  int `json:"books"`
@@ -118,17 +122,17 @@ func SameAuthorName(a, b string) bool { return authorNameOf(a).sameAs(authorName
 // --- repo ---
 
 const authorCols = `a.id, a.name, a.catalogue_key, a.image_url, a.bio, a.monitored, a.monitor_new,
-	a.quality_profile, a.added_at, a.checked_at, a.works_checked_at`
+	a.quality_profile, a.added_at, a.checked_at, a.works_checked_at, a.new_books_found, a.works_seeded`
 
 func scanAuthor(row interface{ Scan(...any) error }, extra ...any) (Author, error) {
 	var a Author
-	var mon, monNew int
+	var mon, monNew, seeded int
 	dest := append([]any{&a.ID, &a.Name, &a.CatalogueKey, &a.ImageURL, &a.Bio, &mon, &monNew,
-		&a.QualityProfile, &a.AddedAt, &a.CheckedAt, &a.WorksCheckedAt}, extra...)
+		&a.QualityProfile, &a.AddedAt, &a.CheckedAt, &a.WorksCheckedAt, &a.NewBooksFound, &seeded}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Author{}, err
 	}
-	a.Monitored, a.MonitorNew = mon != 0, monNew != 0
+	a.Monitored, a.MonitorNew, a.worksSeeded = mon != 0, monNew != 0, seeded != 0
 	return a, nil
 }
 
@@ -481,10 +485,17 @@ func (s *Service) UpsertByName(ctx context.Context, name string) (int64, error) 
 }
 
 // SetMonitoring sets whether an author is followed, whether their new books are added,
-// and the profile those books get.
+// and the profile those books get. Starting to add an author's new books (again) makes
+// the release check's next look a first look: what the catalogue lists by then is
+// recorded, not added, so books that came out while nobody was following aren't swept in.
 func (s *Service) SetMonitoring(ctx context.Context, id int64, monitored, monitorNew bool, profile string) error {
+	// SET expressions read the row as it was, so "not followed before" is the old flags.
+	restart := `?1 = 1 AND ?2 = 1 AND NOT (monitored = 1 AND monitor_new = 1)`
 	res, err := s.repo.db.ExecContext(ctx,
-		`UPDATE authors SET monitored = ?, monitor_new = ?, quality_profile = ? WHERE id = ?`,
+		`UPDATE authors SET monitored = ?1, monitor_new = ?2, quality_profile = ?3,
+			works_seeded = CASE WHEN `+restart+` THEN 0 ELSE works_seeded END,
+			works_checked_at = CASE WHEN `+restart+` THEN '' ELSE works_checked_at END
+		 WHERE id = ?4`,
 		b2i(monitored), b2i(monitorNew), strings.TrimSpace(profile), id)
 	err = affected(res, err)
 	if errors.Is(err, ErrNotFound) {
@@ -518,17 +529,29 @@ func (s *Service) SetCatalogueKey(ctx context.Context, id int64, key string) (in
 			}
 			n, _ := res.RowsAffected()
 			merged = int(n)
+			// The release check's record of this row's works goes with its books (the
+			// delete below would cascade it away), and the next check of the row that
+			// stays is a first look: its record now mixes two rows' catalogues.
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO author_works_seen (author_id, work_key, first_seen)
+				SELECT ?, work_key, first_seen FROM author_works_seen WHERE author_id = ?`, other, id); err != nil {
+				return err
+			}
 			// Following either row means following the person.
 			if _, err := tx.ExecContext(ctx, `UPDATE authors SET
 				monitored = MAX(monitored, ?), monitor_new = MAX(monitor_new, ?),
-				quality_profile = CASE WHEN quality_profile = '' THEN ? ELSE quality_profile END
-				WHERE id = ?`, b2i(cur.Monitored), b2i(cur.MonitorNew), cur.QualityProfile, other); err != nil {
+				quality_profile = CASE WHEN quality_profile = '' THEN ? ELSE quality_profile END,
+				new_books_found = new_books_found + ?, works_seeded = 0, works_checked_at = ''
+				WHERE id = ?`, b2i(cur.Monitored), b2i(cur.MonitorNew), cur.QualityProfile, cur.NewBooksFound, other); err != nil {
 				return err
 			}
 			_, err = tx.ExecContext(ctx, `DELETE FROM authors WHERE id = ?`, id)
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE authors SET catalogue_key = ?, checked_at = '' WHERE id = ?`, key, id)
+		// Another catalogue entry is another list of works: the release check's next look
+		// at it is a first look, so the new list's keys don't all read as new books.
+		_, err = tx.ExecContext(ctx, `UPDATE authors SET catalogue_key = ?1, checked_at = '',
+			works_seeded = CASE WHEN catalogue_key = ?1 THEN works_seeded ELSE 0 END,
+			works_checked_at = CASE WHEN catalogue_key = ?1 THEN works_checked_at ELSE '' END WHERE id = ?2`, key, id)
 		return err
 	})
 	if err != nil {

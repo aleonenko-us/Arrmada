@@ -35,6 +35,7 @@ var samples = map[string]map[string]any{
 	EventConvertFailed:      {"title": "Dune (2021)", "key": "movie:12", "note": "ffmpeg exited with status 1", "count": 3, "at": int64(1_800_000_000)},
 	EventConvertStalled:     {"count": 1, "title": "Convert is stuck: the scratch folder is full", "detail": "Dune (2021): needs ~91 GB of scratch", "link": "/convert?tab=problems"},
 	EventConvertSummary:     {"files": 7, "saved_bytes": int64(312) << 30, "problems": 2},
+	EventAuthorRelease:      {"author_id": int64(3), "author": "Brandon Sanderson", "count": 2, "titles": []string{"Wind and Truth", "Isles of the Emberdark"}},
 }
 
 // The Needs-you events write one item as its sentence and several as a summary, the
@@ -106,6 +107,14 @@ func TestCatalogFormat(t *testing.T) {
 	m, _ = mustLookup(t, "issue.reported").Format(samples["issue.reported"])
 	if m.Body != "Sam reported a problem with Severance S01E04: sound.\nNote: “no English audio”" || m.Link != "/requests?tab=issues&issue=5" {
 		t.Errorf("issue.reported = %+v", m)
+	}
+	m, _ = mustLookup(t, EventAuthorRelease).Format(samples[EventAuthorRelease])
+	if m.Title != "New books" || m.Body != "📚 2 new books from Brandon Sanderson: Wind and Truth, Isles of the Emberdark" || m.Link != "/books/authors/3" {
+		t.Errorf("book.author_release = %+v", m)
+	}
+	m, _ = mustLookup(t, EventAuthorRelease).Format(map[string]any{"author_id": float64(3), "author": "Brandon Sanderson", "count": float64(1), "titles": []any{"Wind and Truth"}})
+	if m.Title != "New book" || m.Body != "📚 New from Brandon Sanderson: Wind and Truth" {
+		t.Errorf("one new book = %+v", m)
 	}
 	if _, ok := mustLookup(t, "movie.imported").Format(map[string]any{"title": "Dune", "source": "scan"}); ok {
 		t.Error("a library scan adopting a file should not alert")
