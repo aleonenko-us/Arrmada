@@ -201,6 +201,11 @@ func TestFileHandlersRejectForeignPaths(t *testing.T) {
 	if _, err := f.s.ShiftSidecar(ctx, movieRef(1), "Heat (1995).es.ass", 500); !errors.Is(err, ErrNotShiftable) {
 		t.Errorf("shift .ass: err = %v", err)
 	}
+	// Dots in a title are a name, not a way out of the folder.
+	f.movie(t, 3, "And Then... (2001).mkv", "And Then... (2001).en.srt")
+	if _, err := f.s.ShiftSidecar(ctx, movieRef(3), "And Then... (2001).en.srt", 500); err != nil {
+		t.Errorf("a title with dots: %v", err)
+	}
 }
 
 // Delete moves the file into the recycle bin (never deletes it), supersedes its row,

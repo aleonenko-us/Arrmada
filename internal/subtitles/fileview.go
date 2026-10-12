@@ -290,8 +290,9 @@ type sidecarTarget struct {
 // validSidecarName is the first gate: a bare file name with a subtitle extension. The
 // second (pairing with this video) is in sidecarFor.
 func validSidecarName(name string) bool {
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\:`) || strings.Contains(name, "..") ||
-		filepath.Base(name) != name || strings.ContainsRune(name, 0) {
+	// Only what could reach outside the folder is refused here: a title may well have a
+	// colon or "..." in it, and the exact match against the folder listing does the rest.
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || filepath.Base(name) != name {
 		return false
 	}
 	return subExts[strings.ToLower(filepath.Ext(name))]
