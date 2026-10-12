@@ -289,12 +289,23 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 	rts := newRuntimeIndex(s)
 	torrents := grabbable(releases)
 	notes.dropped(releases, torrents, DropNotTorrent)
+	// Specials found by title rather than S00Exx, each grabbed under its own special's
+	// scope so the import knows where its unnumbered file goes.
+	byTitle := map[string]GrabScope{}
 	for _, rel := range bestByTitle(torrents) {
 		out.Found++
+		special := 0
+		if sc.Season == 0 {
+			special = specialByTitle(parser.Parse(rel.Title), rel.Title, s, sc.Episode)
+		}
 		switch {
 		case blocked[normTitle(rel.Title)]:
 			out.Blocklisted++
 			notes.mark(rel.Title, DropBlocklisted)
+		case special > 0:
+			byName[rel.Title] = rel
+			byTitle[rel.Title] = GrabScope{Season: 0, Episode: special}
+			cands = append(cands, c.specialCandidate(c.newSeriesCandidate(ctx, s, rts, rel), rts, special))
 		case !seriesTitleMatches(rel.Title, s):
 			out.WrongShow++
 			notes.mark(rel.Title, DropWrongTitle)
@@ -324,8 +335,9 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		return c.coveredByFor(ctx, s, r, needed)
 	}
 	if sc.Season == 0 {
-		// A special is filled only by a release tagged S00 — never through an alias,
-		// absolute or scene mapping, which know nothing of season 0.
+		// A special is filled only by a release tagged S00, or named by its title (read as
+		// S00Exx above) — never through an alias, absolute or scene mapping, which know
+		// nothing of season 0.
 		cover = func(r parser.Release, needed map[epKey]bool) []epKey {
 			if !isSpecialRelease(r, 0) {
 				return nil
@@ -334,6 +346,7 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		}
 	}
 	g := c.newSeriesGrabber(s, profile, byName, pending, sc.Replace, scope)
+	g.scopeOf = byTitle
 	left := planSeriesGrabs(planInput{
 		eligible:      decision.Eligible,
 		wanted:        wanted,

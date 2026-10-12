@@ -231,7 +231,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
       {choose && (
         <ReleaseSearchModal
           title={`${series.title} — ${name}`}
-          subtitle={season.season_number === 0 ? "Releases tagged S00 for this show." : "Season packs and episodes for this season."}
+          subtitle={season.season_number === 0 ? "Releases tagged S00, or named by a special's title, for this show." : "Season packs and episodes for this season."}
           fetchReleases={() => api.seriesReleases(series.id, season.season_number)}
           onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
           onClose={() => setChoose(false)}

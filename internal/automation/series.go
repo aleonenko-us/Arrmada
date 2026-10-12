@@ -1101,6 +1101,16 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 			if expected != nil && seriesTitleMatches(it.Name, *expected) {
 				s, matchOK = *expected, true
 			}
+			// A special grabbed by its title is named "Show The Christmas Special", which
+			// is the show only once the special's title is taken off.
+			// The library list carries no episodes, so the show is loaded for its specials.
+			if expected != nil && !matchOK {
+				if t := c.grabForce(ctx, it.Hash).Target; t.Season == 0 && t.Episode > 0 {
+					if full, err := c.series.Get(ctx, expected.ID); err == nil && grabbedSpecialByTitle(parsed, it.Name, full, t) {
+						s, matchOK = full, true
+					}
+				}
+			}
 		}
 		var ambiguous []series.Series
 		if !matchOK {
@@ -1137,6 +1147,10 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 			// blocklist entry.
 			if !matchOK || parsed.Kind() == parser.KindEpisode ||
 				!c.series.SeasonHasMissing(ctx, s.ID, parsed.Season) {
+				continue
+			}
+			// Nor can a special grabbed by its title: its one file went onto its special.
+			if t := c.grabForce(ctx, it.Hash).Target; t.Season == 0 && t.Episode > 0 {
 				continue
 			}
 			c.log.Info("series import: re-processing an already-imported pack to fill missing episodes",
