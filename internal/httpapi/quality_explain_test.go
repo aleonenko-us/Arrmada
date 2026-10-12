@@ -9,6 +9,28 @@ import (
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
 
+// The preview names its samples, and a series profile gets the episode set.
+func TestQualityPreviewLabelsItsSamples(t *testing.T) {
+	s := newRouteServer(t, func(d *Deps) { d.Quality = quality.NewService(d.Store.DB()) })
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	for media, want := range map[string]string{"series": "An episode of a 50-minute show", "movie": "Dune: Part Two (2024), 166 min"} {
+		rec := s.doJSON("POST", "/api/v1/quality/preview", mgr, `{"media_type":"`+media+`","name":"x"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: HTTP %d: %s", media, rec.Code, rec.Body)
+		}
+		var got struct {
+			SampleLabel string           `json:"sample_label"`
+			Decision    quality.Decision `json:"decision"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.SampleLabel != want || got.Decision.Winner == nil {
+			t.Errorf("%s: label %q, winner %v", media, got.SampleLabel, got.Decision.Winner)
+		}
+	}
+}
+
 // The "Test a release name" box judges a name against the profile as edited — never saved
 // here — and says what it parsed, the verdict and which formats matched. Managers only.
 func TestQualityExplainJudgesAnUnsavedProfile(t *testing.T) {

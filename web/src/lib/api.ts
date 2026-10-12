@@ -212,6 +212,8 @@ export interface QualityPreview {
   preset?: string;
   profile?: string;
   decision: Decision;
+  /** What the samples are: "Dune: Part Two (2024), 166 min" or "An episode of a 50-minute show". */
+  sample_label?: string;
 }
 
 export interface QualityProfileInfo {

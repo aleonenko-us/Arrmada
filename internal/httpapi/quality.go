@@ -29,9 +29,11 @@ func (a *api) handleQualityPreview(w http.ResponseWriter, r *http.Request) {
 		}
 		sp = s
 	}
+	_, label := quality.Samples(sp.MediaType)
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		"profile":  sp.Name,
-		"decision": a.deps.Quality.Preview(sp),
+		"profile":      sp.Name,
+		"decision":     a.deps.Quality.Preview(sp),
+		"sample_label": label, // what the samples are: a film, or an episode of a show
 	})
 }
 

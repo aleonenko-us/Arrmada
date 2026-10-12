@@ -630,11 +630,13 @@ func (s *Service) RepairDanglingRefs(ctx context.Context) (map[string]int, error
 	return out, nil
 }
 
-// Preview scores a (possibly unsaved) profile over the built-in sample set — the
-// live feedback behind the builder.
+// Preview scores a (possibly unsaved) profile over the built-in sample set for its media
+// type (Samples) — the live feedback behind the builder. A series profile is judged on
+// episode-length samples, so its bitrate window means what it will mean on a real grab.
 func (s *Service) Preview(sp StoredProfile) Decision {
 	normalize(&sp) // an edited target takes effect in the preview before it's saved
-	return sp.Engine().Decide(sp.ToProfile(), SampleCandidates())
+	cands, _ := Samples(sp.MediaType)
+	return sp.Engine().Decide(sp.ToProfile(), cands)
 }
 
 func normalize(sp *StoredProfile) {

@@ -550,6 +550,8 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
   const start = useMemo(() => withTarget(initial), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [decision, setDecision] = useState<DecisionView | null>(null);
+  // What the preview's samples are — a film, or an episode of a show for a series profile.
+  const [sampleLabel, setSampleLabel] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -567,6 +569,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
         if (!alive) return;
         // Go marshals empty slices as null — coalesce so .length/.map are safe.
         setDecision({ ...p.decision, eligible: p.decision.eligible ?? [], rejected: p.decision.rejected ?? [] });
+        setSampleLabel(p.sample_label ?? "");
       }).catch(() => {});
     }, 250);
     return () => { alive = false; window.clearTimeout(t); };
@@ -703,7 +706,9 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />
                 What you'll get
               </div>
-              <p className="mb-3 mt-1 text-[11.5px] text-ink-faint">Live on a sample set of real-world releases — change anything and it re-decides.</p>
+              <p className="mb-3 mt-1 text-[11.5px] text-ink-faint">
+                Live on sample releases{sampleLabel ? ` — ${sampleLabel}` : ""}. Change anything and it re-decides.
+              </p>
               {!winner ? (
                 <div className="rounded-xl p-7 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Nothing in the sample matches this profile. Loosen a Must or widen a bitrate window.</div>
               ) : (
