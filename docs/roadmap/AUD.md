@@ -433,7 +433,7 @@ _Every route accepts UUID-shaped ids. If the iOS verification shows a client nee
 _The warm-up and stats no longer walk the audiobook tree. Cover and title edits reach apps. Narrators show in apps and can be edited in Arrmada. The official app can open the EPUB of a book that also has an audiobook._
 
 <a id="aud-15"></a>
-- [ ] **AUD-15 · Warm-up, listings and library stats read probe state from the DB instead of walking every audiobook folder** — `P3` · `M` · Phase 13
+- [x] **AUD-15 · Warm-up, listings and library stats read probe state from the DB instead of walking every audiobook folder** — `P3` · `M` · Phase 13
   - **Problem:** audioserver-warm runs every 30 min while the server is on (cmd/arrmada/main.go:591-598). Warm calls probe.files(…, false) for every item (catalog.go:228-259). The file-list cache lasts 2 min (cache.go:16), so every run does an os.Stat, a WalkDir, a stat per file and a DB query per file (probe.go:66-120), even when nothing has changed. LibraryStats does the same on admin page loads and after toggles (httpapi/audioserver.go:70, 99, 118), as do ?include=stats, /stats and the itemMinified used by every list reply (handlers_library.go:24-36, handlers_compat.go:93-125, absjson.go:60-62). On Unraid this can keep array disks awake.
   - **Approach:** 1. probe.go: add `prober.knownUnder(ctx, root) (files int, seconds float64, bytes int64)`: `SELECT COUNT(*), COALESCE(SUM(duration),0), COALESCE(SUM(size),0) FROM audio_file_meta WHERE duration > 0 AND (path = ? OR (path >= ? AND path < ?))` with root, root+"/" and root+"0" ('/'+1). It uses the primary-key index and never touches the filesystem.
     2. Readiness: an item is ready when knownUnder.files > 0 and its book id isn't in the server's in-memory `dirty` set. Don't rely on Book.Audiobook.FileCount: imports record it inconsistently (automation/books.go:1110, 1256, 1550 pass 1).
@@ -454,7 +454,7 @@ _The warm-up and stats no longer walk the audiobook tree. Cover and title edits 
   - **Risk:** A stale readiness answer after an out-of-band file swap lasts until the daily verify or a 404 re-list. That's acceptable because playback re-lists on a missing file. Counts in list replies may include a just-deleted file for up to a day.
   - **Resolves:** audiobooks-8
 <a id="aud-16"></a>
-- [ ] **AUD-16 · Apps pick up cover and metadata edits: real updatedAt and cache-busted covers** — `P3` · `S` · Phase 13
+- [x] **AUD-16 · Apps pick up cover and metadata edits: real updatedAt and cache-busted covers** — `P3` · `S` · Phase 13
   - **Problem:** Every item reports `"updatedAt": it.AddedAt` (absjson.go:69-70, 121-122), so apps that add ?ts=updatedAt to cover URLs never refresh a cover. Covers are served at a fixed /api/items/{id}/cover with max-age=86400 for uploaded covers and 604800 for remote ones (media.go:126-130, 173). Title edits reach apps on their next fetch, but cover changes can take up to a week, or forever if an app keys its own image cache on updatedAt.
   - **Approach:** 1. New migration `books_meta_updated`:
        - `ALTER TABLE books ADD COLUMN meta_updated_at INTEGER NOT NULL DEFAULT 0` (unix ms).
@@ -472,7 +472,7 @@ _The warm-up and stats no longer walk the audiobook tree. Cover and title edits 
   - **Risk:** A changed updatedAt may make some apps re-download item metadata, which is cheap; downloaded audio isn't affected. Triggers are invisible in Go code, so add a comment in repo.go pointing at the migration.
   - **Resolves:** audiobooks-11
 <a id="aud-17"></a>
-- [ ] **AUD-17 · Narrators: read them from file tags, show them to apps and in Arrmada, and let them be edited** — `P3` · `M` · Phase 13
+- [x] **AUD-17 · Narrators: read them from file tags, show them to apps and in Arrmada, and let them be edited** — `P3` · `M` · Phase 13
   - **Problem:** narratorName is always "" and narrators always [] (absjson.go:33, 54). /narrators returns nothing (handlers_compat.go:79-84), and filterdata and search return empty narrator lists (handlers_library.go:95, 481). parseProbe keeps only the title tag (probe.go:297), even though the narrator is often in the composer or album_artist tag. Listeners can't browse by narrator or tell editions apart, and Audiobookshelf shows narrators.
   - **Approach:** 1. New migration `audio_narrator`:
        - `audio_file_meta ADD narrator TEXT NOT NULL DEFAULT ''` and `ADD meta_version INTEGER NOT NULL DEFAULT 1`
@@ -496,7 +496,7 @@ _The warm-up and stats no longer walk the audiobook tree. Cover and title edits 
   - **Risk:** The one-time re-probe reads every file's header once, which spins up disks once. It's paced and runs only while the server is on. BookDetail is also being regrouped by BOOK, so keep the field small and coordinate if both are in flight.
   - **Resolves:** audiobooks-11
 <a id="aud-18"></a>
-- [ ] **AUD-18 · Expose the ebook on the Audiobookshelf-compatible server for items that have one** — `P3` · `S` · Phase 13
+- [x] **AUD-18 · Expose the ebook on the Audiobookshelf-compatible server for items that have one** — `P3` · `S` · Phase 13
   - **Problem:** The ABS-compatible server always sends `media.ebookFile: nil` and `ebookFormat: nil` (internal/audioserver/absjson.go:75, 127), with `audiobooksOnly: true` (absjson.go:215). A client that can read ebooks, such as the official Audiobookshelf app, can't open the EPUB of a book the family is also listening to. Ebooks otherwise reach devices only as a browser download (httpapi/mybooks.go:136-171).
   - **Approach:** 1. For items whose book has an ebook edition (Book.Ebook.Path set and the file present via BOOK's shared ebook-file helper, today's httpapi `ebookFile()` moved into internal/books):
        - fill `media.ebookFormat` (minified and expanded) and `media.ebookFile` in the exact shape recorded by [AUD-09](#aud-09)'s fixture (ino, metadata{filename, ext, path, relPath, size, mtimeMs, ctimeMs, birthtimeMs}, ebookFormat, addedAt, updatedAt)

@@ -609,7 +609,7 @@ Each page has its own 'const flash' toast (Movies:73, MovieDetail:34, Series:53,
   - **Risk:** This touches many flows. Keep commits small and click through every flow after each page.
   - **Resolves:** frontend-2, frontend-11
 <a id="fe-12"></a>
-- [ ] **FE-12 · Move Books, Music and their modals onto the kit** — `P2` · `M` · Phase 13
+- [x] **FE-12 · Move Books, Music and their modals onto the kit** — `P2` · `M` · Phase 13
   - **Problem:** Books (3 overlays) and BookDetail (5) are built by hand, as are AuthorDetail, Music, ArtistDetail, AlbumDetail, MyBooks, BookReleaseModal and AudioVersions. Each has its own flash (ArtistDetail:21, AuthorDetail:22, BookDetail:24, Books:81, Music:49) and confirm (Music:239).
   - **Approach:** Apply the same mechanics as [FE-11](#fe-11) to Books, BookDetail, AuthorDetail, Music, ArtistDetail, AlbumDetail, MyBooks, components/BookReleaseModal and components/AudioVersions:
     - Modal, useToast, useConfirm, Button, StatusChip and lib/format.

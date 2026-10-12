@@ -415,7 +415,7 @@ _Every key a book has ever had resolves to it, so old Discover cards and second 
   - **Risk:** Historic duplicate rows may claim the same key. INSERT OR IGNORE keeps the first, and the review in BOOK-12 resolves the rest. Keys are namespaced (hc:, gb:, OL…W), so cross-catalogue collisions are not expected.
   - **Resolves:** books-1
 <a id="book-10"></a>
-- [ ] **BOOK-10 · listening: re-key item ids inside a transaction, with redirects for late reports from listening apps** — `P1` · `M` · Phase 13
+- [x] **BOOK-10 · listening: re-key item ids inside a transaction, with redirects for late reports from listening apps** — `P1` · `M` · Phase 13
   - **Problem:** Listening rows are keyed by item_key 'b<bookID>' or 'b<bookID>v<versionID>' (audioserver/catalog.go:35-40) in listen_progress (PK user_id,item_key), listen_history, listen_sessions and listen_bookmarks (0084). Nothing can move them: the only UPDATE on listen_progress changes the hidden flag (listening/store.go:240). Any merge therefore orphans everyone's place and bookmarks. Listening apps (Lissen) cache item ids, and offline uploads and progress PATCHes for the old id would 404 after a merge.
   - **Approach:** 1. New internal/listening/rekey.go: (s *Store) RekeyItemsTx(ctx, tx *sql.Tx, moves map[string]string) (RekeyCounts, error). For each old → new pair:
     - listen_progress: per (user_id, old) row, if a (user_id, new) row exists, keep the row with the larger updated_at by copying all of the winner's columns, pending_* included, into the new row. Otherwise UPDATE item_key. Then delete the old row.
@@ -440,7 +440,7 @@ _Every key a book has ever had resolves to it, so old Discover cards and second 
   - **Risk:** It touches the sync guard's pending_* columns, so the conflict copy must carry them intact or a guarded backwards jump could be applied. Test with Lissen after deploy: a re-keyed item shows up under the kept book's id on the next library refresh.
   - **Resolves:** backend-11
 <a id="book-11"></a>
-- [ ] **BOOK-11 · Lossless Service.Merge: one transaction that moves editions, versions, listening places, requests, aliases and history, and never deletes a file** — `P1` · `M` · Phase 13
+- [x] **BOOK-11 · Lossless Service.Merge: one transaction that moves editions, versions, listening places, requests, aliases and history, and never deletes a file** — `P1` · `M` · Phase 13
   - **Problem:** With automatic merging gone (BOOK-01), the library still needs a way to fold real duplicates, such as one novel under an Open Library key and a Hardcover key. The old foldInto:
 - dropped the duplicate's audio versions through the cascade;
 - orphaned listening rows;
@@ -483,7 +483,7 @@ _Every key a book has ever had resolves to it, so old Discover cards and second 
   - **Risk:** The transaction must cover every table, or a crash mid-merge leaves split state. Keep all statements on the tx. Two very large libraries could hold the write lock for a moment, which is acceptable for a manual action.
   - **Resolves:** books-2, backend-11
 <a id="book-12"></a>
-- [ ] **BOOK-12 · Possible duplicates review: preview, merge or dismiss, plus the list of earlier automatic merges** — `P1` · `M` · Phase 13
+- [x] **BOOK-12 · Possible duplicates review: preview, merge or dismiss, plus the list of earlier automatic merges** — `P1` · `M` · Phase 13
   - **Problem:** Book dedupe used to be an unconditional boot step, and the only manual action merged every detected group blind, with no preview and no way to say 'these are different books'. Books the old boot merge deleted are recorded only as 'merged' timeline events on the keeper, so the owner can't see what was lost.
   - **Approach:** 1. New migration NNNN_book_dupe_reviews.sql: CREATE TABLE book_dupe_reviews (a_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE, b_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE, reason TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open' /* open | ignored */, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (a_id, b_id), CHECK (a_id < b_id)).
     2. books.Service.PossibleDuplicates(ctx) ([]DupGroup, error). Pairs come from:
@@ -585,7 +585,7 @@ _Requesters choose Read, Listen or Both. A book that has only an ebook offers 'R
 _A release the admin picks by hand imports into the book it was picked for. Automatic grabs reject releases in a language the owner doesn't read._
 
 <a id="book-15"></a>
-- [ ] **BOOK-15 · Hand-picked book grabs import into the book they were grabbed for** — `P2` · `S` · Phase 13
+- [x] **BOOK-15 · Hand-picked book grabs import into the book they were grabbed for** — `P2` · `S` · Phase 13
   - **Problem:** recordBookGrab (automation/books.go:1652-1667) never sets grabs.manual, so interactive and uploaded-torrent book grabs look automatic. The import identity gate (automation/books.go:595-618) re-checks the release name. A release the admin picked by hand whose name doesn't contain the library title (an accent, an alternate title, a translated series name) therefore goes to Review instead of importing.
   - **Approach:** 1. recordBookGrab gains manual bool and writes grabs.manual (column from 0076).
     - GrabForBook (POST /books/{id}/grab), handleBookGrabTorrent (POST /books/{id}/grabtorrent) and the audio-version manual grab in books_versions.go pass true.
@@ -601,7 +601,7 @@ _A release the admin picks by hand imports into the book it was picked for. Auto
   - **Risk:** A mis-click imports the wrong content into a book. Movies already make this trade-off for manual grabs, and the timeline makes it visible.
   - **Resolves:** books-5
 <a id="book-16"></a>
-- [ ] **BOOK-16 · Preferred book languages: reject wrong-language releases in automatic grabs** — `P2` · `S` · Phase 13
+- [x] **BOOK-16 · Preferred book languages: reject wrong-language releases in automatic grabs** — `P2` · `S` · Phase 13
   - **Problem:** bookRelScore (automation/books.go:544-562) is format score plus keyword score, times 1e6, plus seeders. It never reads rel.Language, and the MAM search body has no language filter (myanonamouse.go:103-112, 186-197). A German or Spanish edition that keeps the original title ('Dune', 'Fourth Wing') can win on seeders and count as the book being done. For an audiobook that means hours in the wrong language. The only workaround is a reject term like 'Language: DEU', which nobody would find.
   - **Approach:** 1. Setting books_languages (comma list of ISO 639-1 codes, default 'en') in settings, editable under Settings → Books next to the module toggle (httpapi/settings.go, Settings.tsx).
     2. indexer/myanonamouse.go releaseFrom: normalise MAM's lang_code with normLang (ENG→en, GER/DEU→de, SPA→es, FRE/FRA→fr, ITA→it, DUT/NLD→nl, POR→pt, SWE→sv, …; unknown codes pass through lower-cased) into Release.Language. Keep 'Language: xx' in Description.
@@ -624,7 +624,7 @@ _A release the admin picks by hand imports into the book it was picked for. Auto
 _Books added in bulk get descriptions, genres and series within a day. Upcoming books show 'Out <date>', aren't searched before release, and are searched daily from release day._
 
 <a id="book-17"></a>
-- [ ] **BOOK-17 · Budget-aware scheduled book metadata refresh, and retire 'Find series' when Hardcover is the source** — `P2` · `S` · Phase 13
+- [x] **BOOK-17 · Budget-aware scheduled book metadata refresh, and retire 'Find series' when Hardcover is the source** — `P2` · `S` · Phase 13
   - **Problem:** Service.Refresh has a single caller, the manual 'Refresh & rescan' button (httpapi/books.go:202).
 - Books created by AddWorks ('Add author') have no description, genres or series key, despite the comment saying they 'fill in on the next refresh' (service.go:209-212).
 - 'Add missing in series' books do get a series key (catalogue.go:118-129) but no description or genres.
@@ -649,7 +649,7 @@ _Books added in bulk get descriptions, genres and series within a day. Upcoming 
   - **Risk:** Hardcover's daily budget is shared with Discover. The limits are conservative, and the 70% gate leaves headroom for interactive use.
   - **Resolves:** books-9
 <a id="book-18"></a>
-- [ ] **BOOK-18 · Store release dates, search on release day, and say 'Out <date>'** — `P2` · `M` · Phase 13
+- [x] **BOOK-18 · Store release dates, search on release day, and say 'Out <date>'** — `P2` · `M` · Phase 13
   - **Problem:** Books carry only a year. A book requested before release is searched at add time and then on the ladder, and nothing lines a search up with publication. Request progress hard-codes released: true for books (requests/service.go:289), so 'Not out yet' never shows and requesters see 'Searching' for a book that doesn't exist yet. Early searches against an unreleased book also burn ladder misses.
   - **Approach:** 1. metadata/hardcover.go:
     - Add release_date to hcBookFields and the hcBook struct (*string).
@@ -686,7 +686,7 @@ _Books added in bulk get descriptions, genres and series within a day. Upcoming 
 _Authors are real records with stable pages. Spelling variants are one author, and the page never shows the wrong person. Followed authors' new books are added automatically, with an admin alert._
 
 <a id="book-19"></a>
-- [ ] **BOOK-19 · Authors as entities (backend): authors table, books.author_id, catalogue author keys, /api/v1/book-authors** — `P2` · `M` · Phase 13
+- [x] **BOOK-19 · Authors as entities (backend): authors table, books.author_id, catalogue author keys, /api/v1/book-authors** — `P2` · `M` · Phase 13
   - **Problem:** Authors are just strings. book_authors (migration 0079) only caches name, key, photo and bio, with no monitoring. 'J.K. Rowling' and 'J. K. Rowling' are two authors in the library grouping, and nothing links a book to a catalogue author id. That leaves the author page guessing by name and makes author monitoring impossible.
   - **Approach:** 1. New migration NNNN_authors.sql:
     - CREATE TABLE authors (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, catalogue_key TEXT NOT NULL DEFAULT '', image_url TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', monitored INTEGER NOT NULL DEFAULT 0, monitor_new INTEGER NOT NULL DEFAULT 0, quality_profile TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL DEFAULT (datetime('now')), checked_at TEXT NOT NULL DEFAULT '', works_checked_at TEXT NOT NULL DEFAULT '').
@@ -718,7 +718,7 @@ _Authors are real records with stable pages. Spelling variants are one author, a
   - **Risk:** Merging two different people with the same normalised name. Merge by name only when no catalogue keys conflict, and keep books.author as the display string. Hardcover contribution ids are unverified live, so check the log after deploy.
   - **Resolves:** books-8
 <a id="book-20"></a>
-- [ ] **BOOK-20 · Author pages by id: stored catalogue author, a 'Which author is this?' picker, library grouping by author_id** — `P2` · `M` · Phase 13
+- [x] **BOOK-20 · Author pages by id: stored catalogue author, a 'Which author is this?' picker, library grouping by author_id** — `P2` · `M` · Phase 13
   - **Problem:** AuthorDetail runs searchBookAuthors(name) on every visit. Without an exact name match it silently picks the result with the most works (AuthorDetail.tsx:29-31), so an author page can show another person's catalogue. The owned list uses an exact author-string comparison (AuthorDetail.tsx:41), and the library groups by the raw string (Books.tsx:192-202).
   - **Approach:** 1. web/src/App.tsx: new route /books/authors/:id. The old /books/author/:name resolves via GET /api/v1/book-authors?name= and redirects, or shows the picker when it is ambiguous.
     2. AuthorDetail.tsx loads by id and uses the stored catalogue_key for works and detail (/api/v1/books/discover/authors/{key}…). When catalogue_key is empty, show 'Which author is this?' with the candidates from searchBookAuthors(name) (photo, work count, sample titles). Save the pick with PUT /api/v1/book-authors/{id}. There is no silent most-works fallback.
@@ -736,7 +736,7 @@ _Authors are real records with stable pages. Spelling variants are one author, a
   - **Risk:** Low. Front-end only, on top of BOOK-19's API.
   - **Resolves:** books-8
 <a id="book-21"></a>
-- [ ] **BOOK-21 · Monitored authors: detect and add new releases on a schedule** — `P2` · `M` · Phase 13
+- [x] **BOOK-21 · Monitored authors: detect and add new releases on a schedule** — `P2` · `M` · Phase 13
   - **Problem:** 'Add author' takes a one-time snapshot of AuthorWorks into book rows, and no job re-checks the author. main.go only registers search-missing, import and rss-sync book jobs. New books by followed authors never appear unless someone notices, and that was Readarr's core loop.
   - **Approach:** 1. New migration NNNN_author_works_seen.sql: CREATE TABLE author_works_seen (author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE, work_key TEXT NOT NULL, first_seen TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (author_id, work_key)).
     2. books.Service.CheckAuthorReleases(ctx, limit int):
@@ -765,7 +765,7 @@ _Authors are real records with stable pages. Spelling variants are one author, a
 _Family members add the server to KOReader, Moon+ or Thorium using their audiobook password. Kindle owners tap 'Send to Kindle'._
 
 <a id="book-22"></a>
-- [ ] **BOOK-22 · OPDS 1.2 catalogue for e-reader apps, authenticated with the per-user audiobook password** — `P2` · `M` · Phase 13
+- [x] **BOOK-22 · OPDS 1.2 catalogue for e-reader apps, authenticated with the per-user audiobook password** — `P2` · `M` · Phase 13
   - **Problem:** The only way an ebook reaches a device is handleBookEbook, a browser attachment download (httpapi/mybooks.go:136-171; My shelf offers only <a download>). A grep finds no OPDS anywhere. Family members on KOReader, Moon+, Librera or Thorium have to download on a computer or phone and sideload, which is worse than the Audiobookshelf setup Arrmada replaces.
   - **Approach:** 1. Move ebookFile, ebookContentType, ebookRank, downloadName and the RFC 2231 attachmentHeader logic from httpapi/mybooks.go into internal/books/ebookfile.go, so OPDS, My shelf and [BOOK-24](#book-24) share them.
     2. New package internal/opds with Handler(deps) http.Handler serving Atom (application/atom+xml;profile=opds-catalog):
@@ -801,7 +801,7 @@ _Family members add the server to KOReader, Moon+ or Thorium using their audiobo
   - **Risk:** Reusing the audiobook password broadens what it unlocks, so the UI says so. Basic auth must only travel over HTTPS outside the LAN; the tunnel provides TLS. OPDS support varies by reader, so don't promise Kobo or Apple Books.
   - **Resolves:** books-7, product-11
 <a id="book-23"></a>
-- [ ] **BOOK-23 · Outgoing email (SMTP) configured in Settings, with a mail package and a test button** — `P2` · `S` · Phase 13
+- [x] **BOOK-23 · Outgoing email (SMTP) configured in Settings, with a mail package and a test button** — `P2` · `S` · Phase 13
   - **Problem:** Nothing in the codebase sends email (a grep for smtp finds nothing). Notifications go through Apprise, which can't carry a per-user attachment cleanly. Send-to-Kindle (BOOK-24) needs a sender configured in the app UI, with the credentials never in env vars or chat.
   - **Approach:** 1. New internal/mail/smtp.go:
     - type Config {Host string; Port int; Security string /* starttls|tls|none */; Username, From string}.
@@ -825,7 +825,7 @@ _Family members add the server to KOReader, Moon+ or Thorium using their audiobo
   - **Risk:** Deliverability depends on the sender mailbox's SPF and DKIM, so recommend the owner's own provider with an app password. Credentials are only ever entered in the UI (standing rule).
   - **Resolves:** books-7, product-11
 <a id="book-24"></a>
-- [ ] **BOOK-24 · Send to Kindle: per-user Kindle address, a send button, and the result in the inbox** — `P2` · `M` · Phase 13
+- [x] **BOOK-24 · Send to Kindle: per-user Kindle address, a send button, and the result in the inbox** — `P2` · `M` · Phase 13
   - **Problem:** Kindle owners in the family can't use OPDS. The only way to get a book onto their Kindle is to download it and email it to themselves by hand. Audiobookshelf, which Arrmada replaces, had email-to-device.
   - **Approach:** 1. New migration NNNN_user_kindle.sql: ALTER TABLE users ADD COLUMN kindle_email TEXT NOT NULL DEFAULT ''. auth.Service gets KindleEmail and SetKindleEmail.
     2. GET/PUT /api/v1/me/kindle {kindle_email} (protected). The /api/v1/me/ prefix is already external-allowed.
@@ -862,7 +862,7 @@ _Family members add the server to KOReader, Moon+ or Thorium using their audiobo
 _The Books header and the detail toolbar fit a phone, card actions work on touch, the library can be sorted, and merged .m4b files carry proper tags and cover._
 
 <a id="book-25"></a>
-- [ ] **BOOK-25 · Admin Books screens: primary actions up front, a 'Library tools' menu, a grouped detail toolbar, touch-reachable card actions, sorting** — `P2` · `M` · Phase 13
+- [x] **BOOK-25 · Admin Books screens: primary actions up front, a 'Library tools' menu, a grouped detail toolbar, touch-reachable card actions, sorting** — `P2` · `M` · Phase 13
   - **Problem:** The Books header's inner action row is 'flex items-center gap-2' with no wrap (Books.tsx:236). It holds up to 9 controls (two segmented toggles, Re-match, Search missing, Find series, Scan library, Select, + Add author, + Add book) and overflows on phones. Elsewhere on the Books screens:
 - The BookDetail toolbar has 9 equal-weight buttons (BookDetail.tsx:318-333).
 - Card delete and 'Search now' are 'hidden … group-hover' (Books.tsx:486-496), so touch users never see them.
@@ -895,7 +895,7 @@ _The Books header and the detail toolbar fit a phone, card actions work on touch
   - **Risk:** Low; UI only. Keep the handlers unchanged to avoid regressions in the long-running jobs the buttons start.
   - **Resolves:** books-12
 <a id="book-26"></a>
-- [ ] **BOOK-26 · Merged .m4b keeps proper tags (title, author, series) and the source cover** — `P3` · `S` · Phase 13
+- [x] **BOOK-26 · Merged .m4b keeps proper tags (title, author, series) and the source cover** — `P3` · `S` · Phase 13
   - **Problem:** merge.go builds the ffmpeg command with '-map_metadata 1', where input 1 is the chapters-only ffmetadata file, and '-map 0:a' (merge.go:99-104). The merged file therefore has no title, artist or album tags, and any embedded cover in the sources is dropped. Players other than Arrmada's audio server see an untagged, coverless file. (The hard-delete of sources in the same finding belongs to SAFE.)
   - **Approach:** 1. internal/audiobook/merge.go: Merge(ctx, files, out, Tags{Title, Author, Series, Year, Narrator}).
     - Add the first source as input 2.

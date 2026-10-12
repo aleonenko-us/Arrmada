@@ -1258,6 +1258,9 @@ Family members can report a bad file, and the owner fixes it in one click.
 
 ### Phase 13 — Books and the audiobook library rebuilt
 
+> **Status: shipped 2026-10-13** — all 21 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget at 95.6/97 KB brotli, and Playwright e2e green; checked in a local instance: Books header and Tools menu, the author page's 'Which author is this?' picker, existing books linked to their author, OPDS asking for the e-reader password). Built as 5 lanes plus 3 in a second wave. Real ffmpeg checked the merged-.m4b tags on generated audio only. Owner to check: a real Kindle delivery once outgoing email is set up; an e-reader app (KOReader/Moon+) against /opds; Lissen unchanged; the official ABS app's Read opening the EPUB; a new cover reaching Lissen after a refresh; Hardcover's release-date field live. Gap noted: Send to Kindle lives on My shelf, which only requesters have, so staff accounts have no send button yet.
+
+
 **Theme:** Lossless merges, editions and languages, release dates, authors, OPDS and Send to Kindle, admin screens that fit, and audiobook library polish  
 **Goal:** Each book is one library row with stable aliases. Merges are reviewed and lose nothing; the merge re-keys listening ids, coordinated with AUD-03. Followed authors bring in new books automatically. Ebooks reach e-readers through OPDS and reach Kindles by email. The audiobook library stops walking disks and shows fresh covers and narrators.  
 **Why now:** Book identity and requests were fixed in Phases 1, 4 and 6. Lossless merge needs book_keys (Phase 6) and the listening-guard work (Phases 1 and 8). OPDS needs SEC-05's adult filter. My shelf needs the player core (Phase 8). Doing all book and audiobook-library rework in one window avoids repeated edits to internal/books and the audioserver handlers.  

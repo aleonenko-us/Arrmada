@@ -850,7 +850,7 @@ _The calendar reads well on a phone as an agenda. Busy days expand, items open t
 _The requester's shelf has a detail sheet, series grouping, a 'New this week' row, and request cards that show their real stage. It stops polling while hidden._
 
 <a id="app-19"></a>
-- [ ] **APP-19 · My shelf as a real shelf: detail sheet, series grouping, 'New this week', real request stages, no hidden polling** — `P2` · `M` · Phase 13
+- [x] **APP-19 · My shelf as a real shelf: detail sheet, series grouping, 'New this week', real request stages, no hidden polling** — `P2` · `M` · Phase 13
   - **Problem:** MyBooks (web/src/pages/MyBooks.tsx) is one grid of covers with download buttons, though it does have search, sort and an 'Ebooks only' filter.
 - There's no detail sheet or description.
 - Series appear only as a text line.
