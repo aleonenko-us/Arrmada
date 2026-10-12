@@ -687,6 +687,39 @@ func TestProfileChangesRecount(t *testing.T) {
 	}
 }
 
+// The per-file drawer's view follows the title's profile: its wants, its languages, and
+// which profile it is.
+func TestFileViewFollowsProfile(t *testing.T) {
+	ctx := context.Background()
+	f := newProfileFixture(t, "en")
+	p := video(t, "Heat (1995).mkv", "Heat (1995).ja.srt")
+	f.movie(t, 1, p)
+	anime, err := f.s.CreateProfile(ctx, "Anime", items("ja", "en/forced"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.s.FileView(ctx, MediaRef{Kind: "movie", MovieID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Profile.Name != "Default" || v.Profile.Override || !reflect.DeepEqual(v.Kept, []string{"en"}) || len(v.Languages) != 1 || v.Languages[0].Have {
+		t.Errorf("default view: profile %+v kept %v languages %+v", v.Profile, v.Kept, v.Languages)
+	}
+	if err := f.s.SetOverride(ctx, OverrideMovie, 1, anime.ID); err != nil {
+		t.Fatal(err)
+	}
+	v, err = f.s.FileView(ctx, MediaRef{Kind: "movie", MovieID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Profile.ID != anime.ID || !v.Profile.Override || !reflect.DeepEqual(v.Kept, []string{"ja"}) {
+		t.Errorf("pinned view: profile %+v kept %v", v.Profile, v.Kept)
+	}
+	if len(v.Languages) != 2 || !v.Languages[0].Have || v.Languages[1].Variant != VariantForced || v.Languages[1].Have {
+		t.Errorf("pinned view languages = %+v, want ja present and en forced missing", v.Languages)
+	}
+}
+
 // Convert's "Same as Subtitles" keeps every language any profile wants, the default's first.
 func TestKeepLanguagesUnion(t *testing.T) {
 	ctx := context.Background()

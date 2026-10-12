@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FitBadge } from "../../components/FitBadge";
 import { refreshSearches } from "../../components/LastSearch";
-import { api, type Episode, type FitItem, type SearchAttempt, type Series as SeriesT } from "../../lib/api";
+import { api, type Episode, type FitItem, type SearchAttempt, type Series as SeriesT, type SubFileEntry } from "../../lib/api";
 import { seriesApi } from "../../lib/seriesApi";
 import { stillThumb } from "../../lib/img";
 import { attemptLine, outcomeTone } from "../../lib/searchOutcome";
@@ -10,6 +10,7 @@ import { jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { Menu, StatusChip, useConfirm, type MenuItem, type Tone } from "../../ui";
 import { MENU_ITEM, type Flash } from "./HeroActions";
 import { aired, fmtAirDay, sxe } from "./util";
+import { EpisodeSubChip } from "./EpisodeSubs";
 
 // What a card asks its season to open. The dialogs live outside the cards: a card is
 // paint-contained (content-visibility) while off screen, which would clip a fixed overlay.
@@ -40,12 +41,16 @@ export interface EpisodeCardProps {
   selecting?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** The episode's subtitle state (SUB-29), once the season's cards have been seen. */
+  subs?: SubFileEntry;
+  /** Opens the episode's subtitle drawer. */
+  onSubs?: () => void;
 }
 
 // EpisodeCard is one episode: its still, number and title, air date and runtime, a
 // two-line overview that opens on a tap, the status and fit chips, the live download, and
 // one menu holding every action. The monitored dot is the monitor toggle.
-export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, selecting = false, selected = false, onToggleSelect }: EpisodeCardProps) {
+export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, selecting = false, selected = false, onToggleSelect, subs, onSubs }: EpisodeCardProps) {
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [grabJob, setGrabJob] = useState<number | null>(null);
@@ -167,6 +172,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
               {fit.facts.bitrate_mbps ? <span className="font-mono text-[10px]">{fit.facts.bitrate_mbps.toFixed(1)}</span> : null}
             </span>
           )}
+          {ep.has_file && subs && onSubs && !selecting && <EpisodeSubChip entry={subs} onOpen={onSubs} />}
         </div>
 
         {ep.overview && (

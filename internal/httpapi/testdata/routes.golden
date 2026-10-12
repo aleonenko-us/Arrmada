@@ -34,6 +34,7 @@ DELETE /api/v1/series/{id}/duplicates staff -
 DELETE /api/v1/series/{id}/numbering/pending staff -
 DELETE /api/v1/series/{id}/scene-map/{season} staff -
 DELETE /api/v1/series/{id}/seasons/{season}/episodes/{episode}/file staff -
+DELETE /api/v1/subtitles/file staff -
 DELETE /api/v1/subtitles/overrides/{kind}/{id} staff -
 DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
@@ -230,6 +231,7 @@ GET /api/v1/setup admin -
 GET /api/v1/status public ext
 GET /api/v1/subtitles/attention staff -
 GET /api/v1/subtitles/coverage staff -
+GET /api/v1/subtitles/file staff -
 GET /api/v1/subtitles/history staff -
 GET /api/v1/subtitles/jobs staff -
 GET /api/v1/subtitles/library staff -
@@ -395,6 +397,7 @@ POST /api/v1/series/{id}/resume-upgrades staff -
 POST /api/v1/series/{id}/search staff -
 POST /api/v1/series/{id}/seasons/{season}/episodes/{episode}/regrab staff -
 POST /api/v1/setup/complete admin -
+POST /api/v1/subtitles/file/shift staff -
 POST /api/v1/subtitles/jobs/clear staff -
 POST /api/v1/subtitles/jobs/{id}/cancel staff -
 POST /api/v1/subtitles/library/episodes/{series}/{season}/{episode} staff -
@@ -408,6 +411,7 @@ POST /api/v1/subtitles/orphans/bulk staff -
 POST /api/v1/subtitles/profiles staff -
 POST /api/v1/subtitles/redo staff -
 POST /api/v1/subtitles/retry staff -
+POST /api/v1/subtitles/search staff -
 POST /api/v1/subtitles/sweep staff -
 POST /api/v1/subtitles/sync-check staff -
 POST /api/v1/system/backups admin -

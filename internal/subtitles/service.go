@@ -104,6 +104,7 @@ type Service struct {
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
 
 	profiles profileStore // language profiles and per-title overrides, cached (profiles.go)
+	searches searchCache  // the drawer's interactive searches, reused for a few minutes (search.go)
 }
 
 // NewService wires the module over the shared Movies/Series catalogs + a subtitle provider. db is
