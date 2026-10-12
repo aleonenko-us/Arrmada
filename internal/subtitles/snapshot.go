@@ -83,6 +83,9 @@ func (s *Service) Rescan(ctx context.Context) bool {
 		s.snap.mu.Unlock()
 		s.log.Info("subtitles: library scanned", "movies", len(movies), "shows", len(groups),
 			"took", time.Since(started).Round(time.Second).String())
+		// The one-shot forced-track repair starts once a pass has completed (repair.go);
+		// later passes find its settings key set and leave it.
+		s.startForcedRepair(ctx)
 	}()
 	return true
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 	"github.com/tristenlammi/arrmada/internal/settings"
@@ -44,6 +45,10 @@ type Service struct {
 	cache    *probeCache
 	whisper  *whisperGen
 	log      *slog.Logger
+	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
+
+	// repair is the one-shot forced-track repair pass (repair.go).
+	repair forcedRepair
 
 	// Test seams for process(). Nil means the real code path: resolveFile, probeCached,
 	// the ffmpeg extraction, and s.whisper.

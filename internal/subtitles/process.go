@@ -96,6 +96,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		return
 	}
 	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
+	if job.Mode == ModeRepairForced {
+		s.processRepair(ctx, job, ref)
+		return
+	}
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
 	langs := s.languages(ctx)
@@ -454,7 +458,9 @@ func (s *Service) ffmpegExtract(ctx context.Context, path string, picks []extrac
 	}
 	args := []string{"-y", "-hide_banner", "-i", path}
 	for _, p := range picks {
-		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", p.Path)
+		// -f srt: the output name doesn't always end in .srt (a repair writes to a temp
+		// name first), so the format can't be left to ffmpeg's guess from the extension.
+		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", "-f", "srt", p.Path)
 	}
 	return toolrun.Command(ctx, toolrun.Background, s.ffmpeg, args...).Run()
 }
