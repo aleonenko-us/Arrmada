@@ -95,6 +95,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "GET", path: /^\/api\/v1\/media\/series\/(\d+)\/seasons$/, respond: ({ params }) => discover.seriesSeasons(Number(params[0])) },
     { method: "GET", path: "/api/v1/calendar", respond: ({ url }) => media.calendar(url) },
     get("/api/v1/me/books", media.myBooks),
+    get("/api/v1/me/kindle", media.myKindle),
 
     // Discover → Books
     get(/^\/api\/v1\/books\/discover\/browse\/[a-z_]+$/, books.browse),
@@ -222,5 +223,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "POST", path: "/api/v1/notifications", respond: ({ body }) => ({ id: 3, url_set: true, url_hint: "discord://••••", ...(body as object) }) },
     get(/^\/api\/v1\/notifications\/\d+\/deliveries$/, alerts.deliveries),
     { method: "POST", path: /^\/api\/v1\/notifications\/\d+\/test$/, body: { ok: true } },
+    // Settings → Alerts → Outgoing email (admin): not set up yet.
+    get("/api/v1/settings/smtp", { configured: false, host_set: false, port: 587, security: "starttls", from: "", username_set: false, password_set: false }),
   ];
 }
