@@ -71,7 +71,7 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
           </ul>
           <p className="m-0 text-[11.5px] text-ink-faint">
             {https
-              ? "The password travels with every request, so this works away from home over this secure (https) address."
+              ? "This is a secure (https) address, so it works away from home too."
               : "This address works on the home network. Away from home, use your https address instead — the password travels with every request, so never use plain http over the internet."}
             {" "}Stock Kobo software and Apple Books can't open OPDS catalogues; menu names vary between app versions.
           </p>
