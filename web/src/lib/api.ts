@@ -667,6 +667,8 @@ export interface AudioTrack { ino: string; index: number; start_offset: number; 
 export interface AudioBookmark { item_key: string; time: number; title: string; created_at: number }
 export interface AudioItemDetail extends AudioCard {
   description?: string; year?: number; genres: string[]; chapters: AudioChapter[]; tracks: AudioTrack[];
+  /** Who reads it: typed on the Books page, else from the audio files' tags. */
+  narrator?: string;
   /** Other audiobooks of the same book (full cast, another narrator). */
   versions: { key: string; title: string }[];
   bookmarks: AudioBookmark[];

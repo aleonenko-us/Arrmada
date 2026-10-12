@@ -66,7 +66,8 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
           <div className="min-w-0 flex-1">
             <h2 className="m-0 text-[17px] font-bold leading-snug">{d.title}</h2>
             {d.author && <div className="mt-0.5 text-[12.5px] text-ink-dim">{d.author}</div>}
-            {series && <div className="mt-0.5 text-[12px] text-ink-faint">{series}</div>}
+            {d.narrator && <div className="mt-0.5 text-[12px] text-ink-faint">Read by {d.narrator}</div>}
+            {series &&<div className="mt-0.5 text-[12px] text-ink-faint">{series}</div>}
             <div className="mt-1 text-[11.5px] text-ink-faint">{[fmtLength(d.duration), d.year ? String(d.year) : "", d.chapters.length ? `${d.chapters.length} chapters` : ""].filter(Boolean).join(" · ")}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
