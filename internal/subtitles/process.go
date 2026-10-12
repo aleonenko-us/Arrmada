@@ -99,7 +99,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if ref.MediaKey == "" {
 		ref.MediaKey = job.key()
 	}
-	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
+	s.markRunning(job)
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
 	if mi != nil {

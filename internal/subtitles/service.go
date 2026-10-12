@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/langs"
@@ -83,6 +84,9 @@ type Service struct {
 
 	onJobDone func(Job) // SetJobDoneHook; under mu
 
+	jobsDB    *jobStore   // the queue and its history, kept across restarts (jobstore.go); nil-safe
+	bootSwept atomic.Bool // the catch-up sweep after start has been scheduled (bootSweep)
+
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
 }
 
@@ -94,7 +98,12 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		movies: mv, series: sr, settings: set, provider: provider,
 		ffmpeg: ffmpeg, ffprobe: ffprobe, cache: &probeCache{db: db},
 		whisper: detectWhisper(whisperModelsDir), ledger: NewLedger(db), log: log,
-		wake: make(chan struct{}, 1),
+		wake: make(chan struct{}, 1), jobsDB: newJobStore(db),
+	}
+	// Before anything can be queued: the ids carry on from the saved ones.
+	if err := s.loadQueue(context.Background()); err != nil {
+		log.Warn("subtitles: could not restore the queue; starting with an empty one", "err", err)
+		s.jobsDB = nil // writing on top of an unread table would clash with its ids
 	}
 	s.blocklist = s.ledgerBlocklist
 	// A silent fall-back from the oneAPI build would hide a broken GPU setup behind a
@@ -433,6 +442,7 @@ func (s *Service) AutoGrab(ctx context.Context) {
 	} else if n > 0 {
 		s.log.Info("subtitles: pruned old attempts", "count", n)
 	}
+	s.PruneJobs(ctx)
 	set := s.GetSettings(ctx)
 	if set.MoviesAuto {
 		if n, _ := s.SweepMissing(ctx, "movies"); n > 0 {

@@ -26,12 +26,57 @@ func (a *api) handleSubtitleDownloadModel(w http.ResponseWriter, r *http.Request
 }
 
 // handleSubtitleJobs returns recent + active subtitle-ensure jobs (polled for the Queue tab).
+// With ?before=, ?state= or ?limit= it pages the saved history instead, newest first
+// (before is the next_before of the previous page; state is one job state).
 func (a *api) handleSubtitleJobs(w http.ResponseWriter, r *http.Request) {
-	jobs := a.deps.Subtitles.Jobs()
+	q := r.URL.Query()
+	if !q.Has("before") && !q.Has("state") && !q.Has("limit") {
+		jobs := a.deps.Subtitles.Jobs()
+		if jobs == nil {
+			jobs = []subtitles.Job{}
+		}
+		a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+		return
+	}
+	jq := subtitles.JobQuery{Limit: 50}
+	if v := q.Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			a.writeError(w, http.StatusBadRequest, "before must be a job id")
+			return
+		}
+		jq.Before = n
+	}
+	if v := q.Get("state"); v != "" {
+		switch st := subtitles.JobState(v); st {
+		case subtitles.StateQueued, subtitles.StateRunning, subtitles.StateDone, subtitles.StateSkipped, subtitles.StateFailed, subtitles.StateCancelled:
+			jq.State = st
+		default:
+			a.writeError(w, http.StatusBadRequest, "state must be queued, running, done, skipped, failed or cancelled")
+			return
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			a.writeError(w, http.StatusBadRequest, "limit must be a positive number")
+			return
+		}
+		jq.Limit = min(n, 500)
+	}
+	jobs, err := a.deps.Subtitles.JobHistory(r.Context(), jq)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the subtitle job history")
+		return
+	}
 	if jobs == nil {
 		jobs = []subtitles.Job{}
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+	var next int64
+	if len(jobs) == jq.Limit {
+		next = jobs[len(jobs)-1].ID
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "next_before": next})
 }
 
 // handleSubtitleCancelJob stops one job: drops it if queued, kills it if running.

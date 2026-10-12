@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,6 +60,37 @@ type Job struct {
 	// Outcomes is what each rung did for each language, in the order tried; the Note is
 	// generated from them.
 	Outcomes []Outcome `json:"outcomes,omitempty"`
+	// Lane is the worker line the job waits in: LaneFast (extract, download) or LaneGPU
+	// (whisper).
+	Lane string `json:"lane"`
+	// Langs limits the job to these languages; empty means every kept language.
+	Langs []string `json:"langs,omitempty"`
+	// AudioSec is the file's running time once known, for the AI backlog estimate.
+	AudioSec   int64 `json:"audio_sec,omitempty"`
+	FinishedAt int64 `json:"finished_at,omitempty"` // unix seconds it reached its final state
+}
+
+// Worker lanes.
+const (
+	LaneFast = "fast"
+	LaneGPU  = "gpu"
+)
+
+// lane is the job's lane, fast when unset.
+func (j *Job) lane() string {
+	if j.Lane == "" {
+		return LaneFast
+	}
+	return j.Lane
+}
+
+// activeKey identifies a live job: one per file and lane, the same rule the table's
+// unique index keeps.
+func (j *Job) activeKey() string { return j.key() + "|" + j.lane() }
+
+// sortJobsNewestFirst orders jobs by id, newest first.
+func sortJobsNewestFirst(list []*Job) {
+	sort.SliceStable(list, func(a, b int) bool { return list[a].ID > list[b].ID })
 }
 
 // Queue priorities, most urgent first. Each has its own FIFO line in Service.pending.
@@ -103,8 +135,9 @@ type LogLine struct {
 // import hook would block the import, for as long as it took the worker to drain. A
 // slice grows; the caller always returns immediately.
 func (s *Service) Run(ctx context.Context) {
-	s.log.Info("subtitles: worker started")
+	s.log.Info("subtitles: worker started", "queued", s.Pending())
 	s.Rescan(ctx) // first library pass, in the background; the pages read it
+	s.bootSweep(ctx)
 	for {
 		job := s.pop()
 		if job == nil {
@@ -123,6 +156,29 @@ func (s *Service) Run(ctx context.Context) {
 		}
 		done()
 	}
+}
+
+// bootSweepDelay is how long after start the catch-up sweep runs.
+const bootSweepDelay = 10 * time.Minute
+
+// bootSweep runs the auto sweep once, bootSweepDelay after the worker starts. The
+// scheduled sweep only comes round every six hours and keeps no last-run time, so after
+// an update nothing caught up on missed work for hours; waiting ten minutes keeps the
+// disks quiet while the app comes up, and backoff keeps the sweep cheap. A worker that
+// restarts after a panic doesn't sweep again.
+func (s *Service) bootSweep(ctx context.Context) {
+	if !s.bootSwept.CompareAndSwap(false, true) {
+		return
+	}
+	safego.Go(s.log, "subtitles: boot sweep", func() {
+		t := time.NewTimer(bootSweepDelay)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+		case <-t.C:
+			s.AutoGrab(ctx)
+		}
+	})
 }
 
 // startJob gives a job its own cancellable context and records it as the running job, so
@@ -166,8 +222,9 @@ func (s *Service) Cancel(id int64) error {
 		s.dropPendingLocked(job)
 		job.State = StateCancelled
 		job.Note = "removed from the queue"
+		job.FinishedAt = time.Now().Unix()
 		s.retireLocked(job)
-		s.mu.Unlock()
+		s.saveLocked("cancel", job)
 		s.event("info", "Removed "+job.Title+" from the queue")
 		return nil
 	case StateRunning:
@@ -188,17 +245,20 @@ func (s *Service) Cancel(id int64) error {
 // Returns how many were dropped.
 func (s *Service) ClearQueue() int {
 	s.mu.Lock()
-	n := 0
+	var cleared []*Job
+	now := time.Now().Unix()
 	for p := range s.pending {
 		for _, j := range s.pending[p] {
 			j.State = StateCancelled
 			j.Note = "queue cleared"
+			j.FinishedAt = now
 			s.retireLocked(j)
-			n++
+			cleared = append(cleared, j)
 		}
 		s.pending[p] = nil
 	}
-	s.mu.Unlock()
+	s.saveLocked("clear queue", cleared...)
+	n := len(cleared)
 	if n > 0 {
 		s.event("info", fmt.Sprintf("Cleared %d queued job(s)", n))
 	}
@@ -245,19 +305,42 @@ func (s *Service) pop() *Job {
 // same file is already queued or running: the 6-hourly sweep re-queues everything still
 // missing, and without this every file was in the queue several times over.
 func (s *Service) enqueue(job *Job) *Job {
+	out, added := s.enqueueJobs("enqueue", []*Job{job})
+	if added > 0 {
+		s.event("info", "Queued "+job.Title)
+	}
+	return out[0]
+}
+
+// enqueueJobs is enqueue for many jobs at once: each is deduped as enqueue does, and the
+// new and bumped rows are written in one transaction — a sweep's thousands of files cost
+// one commit. Returns each job's live job (itself, or the one already queued) and how
+// many were new.
+func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 	s.mu.Lock()
-	key := job.key()
 	// Looked up, not scanned: a sweep queues thousands, and walking the list for each
 	// one (with a key rendered per entry) was quadratic — slow enough under the race
 	// detector to fail the "never blocks" test.
 	if s.active == nil {
 		s.active = map[string]*Job{}
 	}
-	job.Priority = clampPrio(job.Priority)
-	if j, ok := s.active[key]; ok {
-		if j.State == StateQueued {
-			if job.Redo {
+	out := make([]*Job, len(jobs))
+	var inserts, saves []Job
+	var fresh []*Job
+	now := time.Now().Unix()
+	for i, job := range jobs {
+		job.Priority = clampPrio(job.Priority)
+		job.Lane = job.lane()
+		key := job.activeKey()
+		if j, ok := s.active[key]; ok {
+			out[i] = j
+			if j.State != StateQueued {
+				continue
+			}
+			changed := false
+			if job.Redo && !j.Redo {
 				j.Redo = true // the waiting job takes on the stronger intent
+				changed = true
 			}
 			// Pressing Ensure on a file the sweep already queued moves it up to the
 			// button's line rather than leaving it hours deep behind the sweep.
@@ -265,37 +348,62 @@ func (s *Service) enqueue(job *Job) *Job {
 				s.dropPendingLocked(j)
 				j.Priority = job.Priority
 				s.pending[j.Priority] = append(s.pending[j.Priority], j)
+				changed = true
 			}
+			if changed {
+				saves = append(saves, *j)
+			}
+			continue
 		}
-		s.mu.Unlock()
-		return j
+		s.nextID++
+		job.ID = s.nextID
+		job.State = StateQueued
+		job.At = now
+		s.active[key] = job
+		s.pending[job.Priority] = append(s.pending[job.Priority], job)
+		inserts = append(inserts, *job)
+		fresh = append(fresh, job)
+		out[i] = job
 	}
-	s.nextID++
-	job.ID = s.nextID
-	job.State = StateQueued
-	job.At = time.Now().Unix()
-	s.active[key] = job
-	s.jobs = append([]*Job{job}, s.jobs...)
+	if len(fresh) > 0 {
+		// Newest first: the new jobs in reverse, ahead of everything already listed.
+		list := make([]*Job, 0, len(fresh)+len(s.jobs))
+		for i := len(fresh) - 1; i >= 0; i-- {
+			list = append(list, fresh[i])
+		}
+		s.jobs = append(list, s.jobs...)
+	}
 	// Keep the visible history bounded, but never drop a job that hasn't run yet. The
 	// trim walks the whole list, so it runs once the finished tail has grown by a few
-	// hundred rather than on every enqueue.
-	if len(s.jobs) > 200+s.pendingLocked()+256 {
+	// hundred rather than on every enqueue. (The table keeps more: JobHistory pages it.)
+	if len(s.jobs) > jobMemoryKeep+s.pendingLocked()+256 {
 		kept := s.jobs[:0:0]
 		for i, j := range s.jobs {
-			if i < 200 || j.State == StateQueued || j.State == StateRunning {
+			if i < jobMemoryKeep || j.State == StateQueued || j.State == StateRunning {
 				kept = append(kept, j)
 			}
 		}
 		s.jobs = kept
 	}
-	s.pending[job.Priority] = append(s.pending[job.Priority], job)
-	s.mu.Unlock()
-	s.event("info", "Queued "+job.Title)
+	s.unlockAndPersist(what, func(ctx context.Context, st *jobStore) error {
+		skipped, err := st.write(ctx, inserts, saves)
+		if skipped > 0 {
+			s.log.Warn("subtitles: queued jobs already had a live row; kept in memory only", "count", skipped)
+		}
+		return err
+	})
+	if len(inserts) > 0 {
+		s.wakeWorker()
+	}
+	return out, len(inserts)
+}
+
+// wakeWorker nudges the worker; a nudge already waiting is enough.
+func (s *Service) wakeWorker() {
 	select {
 	case s.wake <- struct{}{}:
 	default: // worker already awake
 	}
-	return job
 }
 
 // QueueMovie enqueues a subtitle-ensure job for one movie. redo replaces the sidecars
@@ -329,16 +437,20 @@ func (s *Service) QueueEpisode(ctx context.Context, seriesID int64, season, epis
 // lacks a kept language — the middle ground between one episode and the whole library.
 // Returns how many were queued (already-queued episodes are deduped by enqueue).
 func (s *Service) QueueSeries(ctx context.Context, seriesID int64) (int, error) {
-	if _, err := s.series.Get(ctx, seriesID); err != nil {
+	sm, err := s.series.Get(ctx, seriesID)
+	if err != nil {
 		return 0, err
 	}
-	n := 0
+	var batch []*Job
 	for _, e := range s.missingEpisodes(ctx, seriesID, nil, time.Time{}) {
-		if _, err := s.QueueEpisode(ctx, seriesID, e.season, e.episode, false, PrioManual); err == nil {
-			n++
-		}
+		batch = append(batch, &Job{Kind: "episode", SeriesID: seriesID, Season: e.season, Episode: e.episode,
+			Title: fmt.Sprintf("%s - S%02dE%02d", sm.Title, e.season, e.episode), Priority: PrioManual})
 	}
-	return n, nil
+	if len(batch) > 0 {
+		s.enqueueJobs("queue series", batch)
+		s.event("info", fmt.Sprintf("Queued %d episode(s) of %s", len(batch), sm.Title))
+	}
+	return len(batch), nil
 }
 
 // OnMovieImported is the import hook: a movie that just landed gets its subtitles ensured
@@ -383,18 +495,19 @@ func (s *Service) OnMovieChanged(ctx context.Context, movieID int64) error {
 func (s *Service) OnMovieRemoved(_ context.Context, movieID int64) {
 	s.dropMovie(movieID)
 	s.mu.Lock()
-	n := 0
+	var dropped []*Job
 	for _, j := range s.jobs {
 		if j.Kind == "movie" && j.MovieID == movieID && j.State == StateQueued {
 			s.dropPendingLocked(j)
 			j.State = StateCancelled
 			j.Note = "the movie's file was removed"
+			j.FinishedAt = time.Now().Unix()
 			s.retireLocked(j)
-			n++
+			dropped = append(dropped, j)
 		}
 	}
-	s.mu.Unlock()
-	if n > 0 {
+	s.saveLocked("movie removed", dropped...)
+	if n := len(dropped); n > 0 {
 		s.log.Info("subtitles: dropped queued jobs for a removed movie file", "movie_id", movieID, "jobs", n)
 	}
 }
@@ -448,11 +561,19 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 			if ctx.Err() != nil {
 				return n, ctx.Err()
 			}
+			// One write per show: its episodes start queuing while the rest are scanned.
+			var batch []*Job
 			for _, e := range s.missingEpisodes(ctx, sm.ID, backoffs, now) {
-				if _, err := s.QueueEpisode(ctx, sm.ID, e.season, e.episode, false, PrioSweep); err == nil {
-					n++
-				}
+				batch = append(batch, &Job{Kind: "episode", SeriesID: sm.ID, Season: e.season, Episode: e.episode,
+					Title: fmt.Sprintf("%s - S%02dE%02d", sm.Title, e.season, e.episode), Priority: PrioSweep})
 			}
+			if len(batch) > 0 {
+				s.enqueueJobs("sweep", batch)
+				n += len(batch)
+			}
+		}
+		if n > 0 {
+			s.event("info", fmt.Sprintf("Sweep queued %d episode(s) missing subtitles", n))
 		}
 		return n, nil
 	}
@@ -461,9 +582,10 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 		return 0, err
 	}
 	langs := s.languages(ctx)
+	var batch []*Job
 	for _, m := range list {
 		if ctx.Err() != nil {
-			return n, ctx.Err()
+			return 0, ctx.Err()
 		}
 		if !m.HasFile || m.MovieFilePath == "" {
 			continue
@@ -478,11 +600,14 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 		if due == 0 {
 			continue
 		}
-		if _, err := s.QueueMovie(ctx, m.ID, false, PrioSweep); err == nil {
-			n++
-		}
+		batch = append(batch, &Job{Kind: "movie", MovieID: m.ID, Title: m.Title, Priority: PrioSweep})
 	}
-	return n, nil
+	// One transaction for the whole sweep, not one commit per film.
+	if len(batch) > 0 {
+		s.enqueueJobs("sweep", batch)
+		s.event("info", fmt.Sprintf("Sweep queued %d movie(s) missing subtitles", len(batch)))
+	}
+	return len(batch), nil
 }
 
 // movieNeedsSweep reports whether the sweep should queue a movie: some kept language has
@@ -534,7 +659,8 @@ func (s *Service) missingEpisodes(ctx context.Context, seriesID int64, backoffs 
 	return out
 }
 
-// Jobs returns a snapshot of recent jobs (newest first).
+// Jobs returns a snapshot of every queued and running job and the most recent finished
+// ones (newest first). Older history is JobHistory's.
 func (s *Service) Jobs() []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -543,6 +669,77 @@ func (s *Service) Jobs() []Job {
 		out[i] = *j
 	}
 	return out
+}
+
+// Job finds one job by id: the live queue first (it has the running job's stage and
+// progress), then the saved history. Ids are row ids, so they don't repeat after a restart.
+func (s *Service) Job(ctx context.Context, id int64) (Job, bool, error) {
+	s.mu.Lock()
+	for _, j := range s.jobs {
+		if j.ID == id {
+			out := *j
+			s.mu.Unlock()
+			return out, true, nil
+		}
+	}
+	s.mu.Unlock()
+	if !s.jobsDB.ok() {
+		return Job{}, false, nil
+	}
+	return s.jobsDB.get(ctx, id)
+}
+
+// JobHistory pages every job the table keeps (the last 500 finished, plus the queue),
+// newest first. A job still in the live queue reads from memory, with its stage and
+// progress. Without a database it pages the in-memory list.
+func (s *Service) JobHistory(ctx context.Context, q JobQuery) ([]Job, error) {
+	var rows []Job
+	if s.jobsDB.ok() {
+		var err error
+		if rows, err = s.jobsDB.page(ctx, q); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, j := range s.Jobs() {
+			if (q.Before == 0 || j.ID < q.Before) && (q.State == "" || j.State == q.State) {
+				rows = append(rows, j)
+				if len(rows) == q.limit() {
+					break
+				}
+			}
+		}
+		return rows, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	live := make(map[int64]*Job, len(s.jobs))
+	for _, j := range s.jobs {
+		if j.State == StateQueued || j.State == StateRunning {
+			live[j.ID] = j
+		}
+	}
+	for i := range rows {
+		if j, ok := live[rows[i].ID]; ok {
+			rows[i] = *j
+		}
+	}
+	return rows, nil
+}
+
+// PruneJobs trims the saved history to the newest 500 finished jobs.
+func (s *Service) PruneJobs(ctx context.Context) {
+	if n, err := s.jobsDB.prune(ctx); err != nil {
+		s.log.Warn("subtitles: could not prune the job history", "err", err)
+	} else if n > 0 {
+		s.log.Info("subtitles: pruned old jobs", "count", n)
+	}
+}
+
+// markRunning records that the worker has started a job.
+func (s *Service) markRunning(job *Job) {
+	s.mu.Lock()
+	job.State, job.StartedAt = StateRunning, time.Now().Unix()
+	s.saveLocked("start", job)
 }
 
 // Pending reports how many jobs are waiting in every line, for the status line.
@@ -569,9 +766,10 @@ func (s *Service) finishOutcomes(job *Job, state JobState, note string, outcomes
 	s.mu.Lock()
 	job.State, job.Note, job.Stage, job.Progress = state, note, "", 0
 	job.Outcomes = outcomes
+	job.FinishedAt = time.Now().Unix()
 	s.retireLocked(job)
 	done, snapshot := s.onJobDone, *job
-	s.mu.Unlock()
+	s.saveLocked("finish", job)
 	if done != nil {
 		done(snapshot)
 	}
@@ -591,7 +789,7 @@ func (s *Service) SetJobDoneHook(fn func(Job)) {
 // retireLocked forgets a job that is no longer queued or running, so its file can be
 // queued again. The mutex must be held.
 func (s *Service) retireLocked(job *Job) {
-	if k := job.key(); s.active[k] == job {
+	if k := job.activeKey(); s.active[k] == job {
 		delete(s.active, k)
 	}
 }

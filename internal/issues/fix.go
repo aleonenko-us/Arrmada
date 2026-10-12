@@ -49,8 +49,8 @@ type SubtitleOutcome struct {
 }
 
 // SubtitleJobs answers what became of a subtitle job, for the poll in Sweep. since is when
-// the fix queued it (unix seconds): a job with the same id from before then — the queue's
-// ids restart with the app — is not this one.
+// the fix queued it (unix seconds). Subtitle job ids are saved with the queue and never
+// repeat, so an implementation may ignore it.
 type SubtitleJobs interface {
 	Outcome(jobID int64, t Target, since int64) SubtitleOutcome
 }
@@ -172,7 +172,7 @@ func (s *Service) settleSubtitles(ctx context.Context, i Issue, o SubtitleOutcom
 	case o.Done:
 		s.autoResolve(ctx, i, ResolvedNewSubtitles)
 	case !o.Found:
-		s.reopen(ctx, i, "Couldn't tell whether the subtitle job finished (Arrmada may have restarted). Check the subtitles, then mark it fixed or try again.")
+		s.reopen(ctx, i, "Couldn't find the subtitle job any more, so it's unclear whether it finished. Check the subtitles, then mark it fixed or try again.")
 	default:
 		note := "The subtitle job didn't make any subtitles"
 		if o.Note != "" {

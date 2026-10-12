@@ -2089,6 +2089,10 @@ export interface SubtitleJob {
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
   run_id?: string; // this run's rows in GET /subtitles/history?run_id=
   outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
+  lane?: "fast" | "gpu"; // fast: extract + download · gpu: whisper
+  langs?: string[]; // only these languages (a GPU job carries what the fast lane couldn't make)
+  audio_sec?: number; // the file's running time, once known
+  finished_at?: number; // unix seconds
 }
 // One rung's typed result for one language (internal/subtitles/ledger.go Outcome).
 export type SubtitleRung = "extract" | "opensubtitles" | "ai" | "upgrade" | "repair";

@@ -172,7 +172,7 @@ func TestSubtitleCompletionResolves(t *testing.T) {
 	}
 	subs[7] = SubtitleOutcome{Found: true, Done: true}
 	subs[8] = SubtitleOutcome{Found: true, Note: "en: no OpenSubtitles match"}
-	delete(subs, 9) // gone from the queue (a restart)
+	delete(subs, 9) // gone (pruned from the job history)
 	if err := f.s.Sweep(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestSubtitleCompletionResolves(t *testing.T) {
 	if got := status(t, f, none.ID); got.Status != StatusOpen || !strings.Contains(got.ActionNote, "no OpenSubtitles match") || got.ActionJob != 0 {
 		t.Errorf("job made none: %+v", got)
 	}
-	if got := status(t, f, lost.ID); got.Status != StatusOpen || !strings.Contains(got.ActionNote, "Couldn't tell") {
+	if got := status(t, f, lost.ID); got.Status != StatusOpen || !strings.Contains(got.ActionNote, "Couldn't find the subtitle job") {
 		t.Errorf("job lost: %+v", got)
 	}
 	if got := f.told.list(); len(got) != 1 || !strings.HasSuffix(got[0], fmt.Sprintf("movie:603:issue:%d:resolved", made.ID)) {
