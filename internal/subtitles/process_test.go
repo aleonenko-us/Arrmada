@@ -272,7 +272,7 @@ func TestProcessTranslateNeedsLargeV3(t *testing.T) {
 	mi := &mediaInfo{AudioLangs: []string{"fre"}, Audio: []AudioTrack{{Index: 0, Lang: "fre"}}}
 	s, _ := ladderFixture(t, "en,es", mi, nil, ai)
 	job := runJob(s)
-	want := "en: needs large-v3 to translate · es: whisper can't translate into es"
+	want := "en: needs large-v3 to translate fr audio to English · es: whisper can't translate into es"
 	if job.State != StateSkipped || job.Note != want {
 		t.Errorf("state=%q note=%q, want %q", job.State, job.Note, want)
 	}

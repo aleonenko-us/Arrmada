@@ -226,6 +226,7 @@ GET /api/v1/series/{id}/watch-stats staff -
 GET /api/v1/settings staff -
 GET /api/v1/setup admin -
 GET /api/v1/status public ext
+GET /api/v1/subtitles/attention staff -
 GET /api/v1/subtitles/coverage staff -
 GET /api/v1/subtitles/history staff -
 GET /api/v1/subtitles/jobs staff -
@@ -401,7 +402,10 @@ POST /api/v1/subtitles/models/{name} staff -
 POST /api/v1/subtitles/movies/{id}/orphans/adopt staff -
 POST /api/v1/subtitles/movies/{id}/orphans/replace staff -
 POST /api/v1/subtitles/orphans/bulk staff -
+POST /api/v1/subtitles/redo staff -
+POST /api/v1/subtitles/retry staff -
 POST /api/v1/subtitles/sweep staff -
+POST /api/v1/subtitles/sync-check staff -
 POST /api/v1/system/backups admin -
 POST /api/v1/system/backups/upload admin -
 POST /api/v1/system/backups/{name}/restore admin -

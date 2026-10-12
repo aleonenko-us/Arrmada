@@ -8,6 +8,9 @@ import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
+import { HealthCell } from "./subtitles/health";
+import { RedoChip } from "./subtitles/redo";
+import { AttentionCard } from "./subtitles/attention";
 import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
@@ -109,7 +112,9 @@ function SubtitlesPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="subtitles" label="Subtitles sections" />
 
         <TabPanel idPrefix="subtitles" value={tab}>
-          {tab === "overview" && <Overview jobs={jobs} backlog={backlog} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)} />}
+          {tab === "overview" && <Overview jobs={jobs} backlog={backlog} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)}
+            onLibrary={() => { setTab("library"); flash("Pick the Orphaned filter to adopt or replace them."); }}
+            onQueued={() => { void loadJobs(); }} />}
           {tab === "queue" && <Queue jobs={jobs} backlog={backlog} onChange={loadJobs} flash={flash} />}
           {tab === "library" && <Library flash={flash} onQueued={loadJobs} />}
           {tab === "logs" && <LogsConsole />}
@@ -121,7 +126,10 @@ function SubtitlesPage() {
 }
 
 /* ============================= OVERVIEW ============================= */
-function Overview({ jobs, backlog, settings, flash, onSettings }: { jobs: SubtitleJob[]; backlog: SubtitleQueue | null; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void }) {
+function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQueued }: {
+  jobs: SubtitleJob[]; backlog: SubtitleQueue | null; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void;
+  onLibrary: () => void; onQueued: () => void;
+}) {
   // The totals come from the server's last library pass. This used to fetch the flat
   // list of every file — a directory listing per file, 25,000 of them — every time the
   // tab opened.
@@ -174,7 +182,7 @@ function Overview({ jobs, backlog, settings, flash, onSettings }: { jobs: Subtit
           <div className="mt-2 flex flex-col gap-1.5 text-[12px] text-ink-dim">
             <Row2 label="Embedded extract" state="on" />
             <Row2 label="OpenSubtitles download" state={providerRow(settings?.provider_state)} onClick={onSettings} />
-            <Row2 label="AI transcription" state={settings?.ai_ready ? "on" : "model"} onClick={onSettings} />
+            <Row2 label={`AI transcription${settings?.ai_ready && settings.ai_backend ? ` (${settings.ai_backend === "cpu" ? "CPU" : "GPU"})` : ""}`} state={settings?.ai_ready ? "on" : "model"} onClick={onSettings} />
             <Row2 label="Image-sub OCR" state="unsupported" />
           </div>
           <div className="mt-2.5 border-t pt-2.5 text-[11.5px] text-ink-faint" style={{ borderColor: "var(--line-soft)" }}>
@@ -182,6 +190,8 @@ function Overview({ jobs, backlog, settings, flash, onSettings }: { jobs: Subtit
           </div>
         </div>
       </div>
+
+      <AttentionCard flash={flash} onLibrary={onLibrary} onQueued={onQueued} />
 
       {active.length > 0 && (
         <div className={card} style={cardStyle}>
@@ -281,6 +291,8 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
     if (media === "tv") return;
     api.subtitleLibrary().then((r) => { setItems(r.items); setScanning(!!r.scanning); setStale(!!r.stale); }).catch(() => setItems([]));
   }, [media, refreshKey]);
+  // A finished sync check patched its movie on the server: reload in place.
+  const reloadMovies = useCallback(() => setRefreshKey((k) => k + 1), []);
   // While the list is from the old languages, wait for the recount and then reload.
   usePoll(async () => {
     const c = await api.subtitleCoverage().catch(() => null);
@@ -408,7 +420,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const filtering = filters.size > 0 || query.trim() !== "";
   const HEADERS: { label: string; key?: SortKey }[] = [
     { label: "Title", key: "title" }, { label: "Audio" }, { label: "Embedded", key: "embedded" },
-    { label: "Coverage" }, { label: "" },
+    { label: "Coverage" }, { label: "Health" }, { label: "" },
   ];
 
   return (
@@ -482,6 +494,9 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     queued={queued.has(rowKey(f))}
                     onEnsure={() => ensure(f)}
                     onRedo={() => ensure(f, true)}
+                    flash={flash}
+                    onChanged={reloadMovies}
+                    onQueued={onQueued}
                     onOrphan={(name, action) => orphanAction(f, name, action)}
                   />
                 ))}
@@ -677,13 +692,14 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
             <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
               <table className="w-full border-collapse text-[12.5px]" style={{ minWidth: 900 }}>
                 <thead><tr style={{ background: "var(--panel-2)" }}>
-                  {["Episode", "Audio", "Embedded", "Coverage", ""].map((h, i) => (
+                  {["Episode", "Audio", "Embedded", "Coverage", "Health", ""].map((h, i) => (
                     <th key={i} className="px-3 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
                   {eps.map((f, i) => (
-                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)} />
+                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)}
+                      flash={flash} onQueued={onQueued} onChanged={() => { api.subtitleSeriesEpisodes(g.series_id).then(setEps).catch(() => {}); }} />
                   ))}
                 </tbody>
               </table>
@@ -699,10 +715,13 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
 // episode table, so the two can't drift apart.
 // A redo overwrites the sidecars that are there, so it asks first.
 function confirmRedo(title: string) {
-  return window.confirm(`Redo subtitles for ${title}?\n\nThe existing .srt files for your kept languages will be replaced — use this when what's there is wrong (the AI transcribed the wrong audio track, a bad download).`);
+  return window.confirm(`Redo every language for ${title}?\n\nEach kept language is made again from the next-best source: never the same download, else another track or AI. The old files go to the recycle bin once their replacements are written. To redo one language, click its chip instead.`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void }) {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onQueued, onOrphan }: {
+  f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void;
+  flash: (m: string) => void; onChanged: () => void; onQueued: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void;
+}) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
   return (
@@ -723,7 +742,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: Sub
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang} l={l} />)}</div>
+        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => l.have ? <RedoChip key={l.lang} f={f} l={l} flash={flash} onQueued={onQueued} /> : <CoverChip key={l.lang} l={l} />)}</div>
         {onOrphan && (f.orphans ?? []).length > 0 && (
           <div className="mt-1 flex flex-col gap-0.5">
             {f.orphans!.map((o) => (
@@ -736,6 +755,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: Sub
           </div>
         )}
       </td>
+      <td className="px-3 py-2"><HealthCell f={f} flash={flash} onChanged={onChanged} /></td>
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2">
           {queued ? (
@@ -743,7 +763,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: Sub
           ) : f.missing === 0 ? (
             <>
               <span className="font-mono text-[10.5px]" style={{ color: "var(--good)" }}>complete</span>
-              <button onClick={onRedo} disabled={busy !== null} title="Make this file's subtitles again, replacing the ones there" className="rounded-md px-2 py-1 text-[10.5px] font-semibold text-ink-dim disabled:opacity-50" style={{ border: "1px solid var(--line)" }}>{busy === key ? "…" : "Redo"}</button>
+              <button onClick={onRedo} disabled={busy !== null} title="Make every language again; to redo one, click its chip" className="rounded-md px-2 py-1 text-[10.5px] font-semibold text-ink-dim disabled:opacity-50" style={{ border: "1px solid var(--line)" }}>{busy === key ? "…" : "Redo all languages…"}</button>
             </>
           ) : (
             <button onClick={onEnsure} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy === key ? "Queuing…" : "Ensure subs"}</button>

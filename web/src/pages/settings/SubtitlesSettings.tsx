@@ -188,14 +188,29 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
             ) : m.downloading ? (
               <span className="rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>downloading…</span>
             ) : (
-              <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
+              <div className="flex flex-none items-center gap-2">
+                {/* What this download would set going: files parked for want of a model. */}
+                {!!st?.waiting && waitingFor(st) === m.name && (
+                  <span className="text-[11px]" style={{ color: "var(--avoid-text)" }}>{st.waiting} file{st.waiting === 1 ? " is" : "s are"} waiting for {m.name.includes("turbo") ? "a model" : "large-v3"}</span>
+                )}
+                <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
+              </div>
             )}
           </div>
         ))}
       </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English.</div>
+      <div className="mt-2 text-[10.5px] text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
     </div>
   );
+}
+
+// waitingFor is the model the parked files wait on: large-v3 once any model is installed
+// (only translating needs more), otherwise the first model offered.
+function waitingFor(st: WhisperStatus): string | undefined {
+  const missing = st.models.filter((m) => !m.present);
+  if (missing.length === 0) return undefined;
+  if (missing.length < st.models.length) return missing.find((m) => !m.name.includes("turbo"))?.name ?? missing[0].name;
+  return missing[0].name;
 }
 
 function ToggleRow({ label, save }: { label: string; save: AutoSave<boolean> }) {

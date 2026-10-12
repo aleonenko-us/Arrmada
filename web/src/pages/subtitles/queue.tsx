@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { useConfirm } from "../../ui";
 import { card, cardStyle } from "./shared";
 import { queueApi, type SubtitleJobState, type SubtitleQueue } from "./queueApi";
+import { redoLabel } from "./redo";
 
 // The Subtitles Queue tab and the pieces the Overview shares with it: what's running and
 // waiting in each lane (extract/download, and the AI lane with its backlog estimate), and
@@ -51,6 +52,7 @@ export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: ()
         <span className="min-w-0 flex-1 truncate font-semibold">
           <TitleLink j={j} />
           {j.redo && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}
+          {redoLabel(j) && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Making one language again">{redoLabel(j)}</span>}
           {!running && PRIO_LABEL[j.priority] && <span className={chipCls} style={{ border: "1px solid var(--line)", color: j.priority === 0 ? "var(--accent)" : "var(--ink-faint)" }} title={PRIO_TITLE[j.priority]}>{PRIO_LABEL[j.priority]}</span>}
           {waitingAI && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Languages left for the AI">{(j.langs ?? []).join(" · ")}</span>}
         </span>
@@ -259,6 +261,7 @@ function HistoryRow({ j, open, onToggle, onRetry, retrying }: { j: SubtitleJob; 
         <span className="min-w-0 flex-1 truncate font-semibold">
           <TitleLink j={j} />
           {j.redo && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Replaced the subtitles already there">redo</span>}
+          {redoLabel(j) && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Made one language again">{redoLabel(j)}</span>}
         </span>
         {when > 0 && <span className="flex-none font-mono text-[10.5px] text-ink-faint" title={new Date(when * 1000).toLocaleString()}>{ago(when)}</span>}
         {outcomes.length > 0 && (

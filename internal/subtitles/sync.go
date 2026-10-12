@@ -144,11 +144,21 @@ func newSpeechTrack(env []float32) *speechTrack {
 
 // Check measures how an SRT lines up with this track's speech.
 func (t *speechTrack) Check(srt []byte) SyncResult {
+	res, _ := t.CheckJudged(srt)
+	return res
+}
+
+// CheckJudged is Check, plus whether there was enough to judge at all: a subtitle with
+// too few lines, or audio with no speech the envelope can find, comes back with
+// confidence 0 and judged false — "can't tell", not "out of sync".
+func (t *speechTrack) CheckJudged(srt []byte) (SyncResult, bool) {
 	cues := parseSRT(string(srt))
 	// Size the cue envelope to the audio (plus room for a slow frame rate and the largest
 	// offset), not to the last cue: a stray "99:59:59" cue mustn't allocate hours of frames.
 	frames := len(t.env) + len(t.env)/10 + int(syncMaxLag/syncFrame)
-	return t.align(cueEnvelope(cues, frames))
+	env := cueEnvelope(cues, frames)
+	judged := len(runsOf(env)) >= syncMinCues && len(t.env) > 0 && t.norm > 0
+	return t.align(env), judged
 }
 
 // checkSRTSync is the one-shot form: one WAV, one subtitle.

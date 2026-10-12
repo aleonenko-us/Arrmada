@@ -777,7 +777,7 @@ export interface SystemHealth {
 
 // The Needs-you feed (GET /api/v1/attention, staff only): what's waiting on a person.
 export type AttentionKind =
-  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert" | "issue";
+  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert" | "issue" | "subtitles";
 export interface AttentionCounts {
   requests: number;
   reviews: number;
@@ -788,6 +788,7 @@ export interface AttentionCounts {
   health_errors: number;
   convert?: number; // reasons Convert is stuck waiting for disk space
   issues?: number; // reported problems still open
+  subtitles?: number; // file languages waiting on a login, a model or a whisper fix
   total: number;
 }
 export interface AttentionItem {
@@ -2070,8 +2071,21 @@ export interface SubLangStatus {
   reason?: SubtitleResult;
   next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
   retry_on?: string; // CSV: creds | model | langs
+  health?: SubLangHealth; // present languages: how well it lines up with the speech
+  file?: string; // present languages: the sidecar's file name
 }
-export interface SubHealth { score: number; notes?: string[] }
+export type SubHealthState = "ok" | "uncertain" | "bad" | "unknown" | "unchecked";
+export interface SubLangHealth {
+  state: SubHealthState;
+  score?: number; // sync confidence 0-100, when checked
+  offset_ms?: number; // how late it ran when checked (+ = late)
+  shift_ms?: number; // the shift Arrmada applied
+  stretched?: boolean; // a frame-rate correction was applied too
+  checked_at?: number; // unix seconds
+  source?: string;
+  note: string; // "shifted −3.0 s · checked 2026-10-12", "not checked"
+}
+export interface SubHealth { state: SubHealthState; score?: number; notes?: string[] }
 export interface SubFileEntry {
   kind: "movie" | "episode";
   movie_id?: number; series_id?: number; season?: number; episode?: number;
@@ -2087,6 +2101,7 @@ export interface SubtitleJob {
   stage?: string;    // what a running job is doing
   started_at?: number; // unix seconds the worker picked it up
   redo?: boolean; // replacing the sidecars already there
+  mode?: string; // "next" | "ai" | "extract" for a one-language redo; "repair-forced"
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
   run_id?: string; // this run's rows in GET /subtitles/history?run_id=
   outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
@@ -2116,7 +2131,10 @@ export interface SubtitleCoverage {
   stale?: boolean; // counted for a different set of kept languages; a recount is under way
 }
 export interface WhisperModel { name: string; label: string; size_mb: number; present: boolean; downloading: boolean }
-export interface WhisperStatus { binary_ready: boolean; ready: boolean; models: WhisperModel[] }
+export interface WhisperStatus {
+  binary_ready: boolean; ready: boolean; models: WhisperModel[];
+  waiting?: number; // file languages parked until a model is downloaded (model_missing)
+}
 
 // --- Convert ---
 export interface ConvertEncoder { codec: string; name: string; kind: string; label: string; hardware: boolean; available: boolean }
