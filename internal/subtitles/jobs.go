@@ -333,7 +333,7 @@ func (s *Service) QueueSeries(ctx context.Context, seriesID int64) (int, error) 
 		return 0, err
 	}
 	n := 0
-	for _, e := range s.missingEpisodes(ctx, seriesID) {
+	for _, e := range s.missingEpisodes(ctx, seriesID, nil, time.Time{}) {
 		if _, err := s.QueueEpisode(ctx, seriesID, e.season, e.episode, false, PrioManual); err == nil {
 			n++
 		}
@@ -427,8 +427,18 @@ func (s *Service) OnSeriesImported(ctx context.Context, seriesID int64, episodes
 // Decides "missing" from the sidecars on disk alone. It used to go through Library(),
 // which probes every video file for embedded tracks — a full ffprobe pass over the whole
 // catalogue, every six hours, to answer a question a directory listing answers.
+//
+// A language still backing off for that file (backoff.go) doesn't count as missing: the
+// whole sweep reads every backoff row in one query up front.
 func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 	n := 0
+	backoffs, err := s.ledger.LoadBackoffs(ctx)
+	if err != nil {
+		// Backoff only saves API calls and GPU time; without it the sweep just asks again.
+		s.log.Warn("subtitles: could not read backoff, sweeping without it", "err", err)
+		backoffs = nil
+	}
+	now := time.Now()
 	if media == "tv" {
 		list, err := s.series.List(ctx)
 		if err != nil {
@@ -438,7 +448,7 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 			if ctx.Err() != nil {
 				return n, ctx.Err()
 			}
-			for _, e := range s.missingEpisodes(ctx, sm.ID) {
+			for _, e := range s.missingEpisodes(ctx, sm.ID, backoffs, now) {
 				if _, err := s.QueueEpisode(ctx, sm.ID, e.season, e.episode, false, PrioSweep); err == nil {
 					n++
 				}
@@ -458,7 +468,14 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 		if !m.HasFile || m.MovieFilePath == "" {
 			continue
 		}
-		if !movieNeedsSweep(m.MovieFilePath, langs) {
+		key := fmt.Sprintf("m:%d", m.ID)
+		due := 0
+		for _, l := range movieSweepLangs(m.MovieFilePath, langs) {
+			if !backoffs.Blocked(key, l, m.MovieFilePath, now) {
+				due++
+			}
+		}
+		if due == 0 {
 			continue
 		}
 		if _, err := s.QueueMovie(ctx, m.ID, false, PrioSweep); err == nil {
@@ -473,15 +490,23 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 // video — the owner's file under an old name, most likely) doesn't count: regenerating
 // those every six hours would bury what the owner chose. Ensure still replaces it.
 func movieNeedsSweep(path string, langs []string) bool {
+	return len(movieSweepLangs(path, langs)) > 0
+}
+
+// movieSweepLangs is the kept languages the sweep would make for a movie: missing, and
+// not covered by an orphaned subtitle.
+func movieSweepLangs(path string, langs []string) []string {
 	sc := scanSidecars(path, langs, "movie")
 	missing := missingOf(langs, sc.Present)
-	return len(without(missing, orphanCovered(langs, sc.Present, sc.Orphans))) > 0
+	return without(missing, orphanCovered(langs, sc.Present, sc.Orphans))
 }
 
 type epRef struct{ season, episode int }
 
 // missingEpisodes lists one show's episodes that have a file but lack a kept language.
-func (s *Service) missingEpisodes(ctx context.Context, seriesID int64) []epRef {
+// With backoffs (the sweep), a language still backing off for that file isn't lacking;
+// nil (a button press) counts every missing language.
+func (s *Service) missingEpisodes(ctx context.Context, seriesID int64, backoffs Backoffs, now time.Time) []epRef {
 	full, err := s.series.Get(ctx, seriesID)
 	if err != nil {
 		return nil
@@ -493,7 +518,14 @@ func (s *Service) missingEpisodes(ctx context.Context, seriesID int64) []epRef {
 			if !e.HasFile || e.FilePath == "" {
 				continue
 			}
-			if len(missingOf(langs, scanSidecars(e.FilePath, langs, "episode").Present)) == 0 {
+			key := fmt.Sprintf("e:%d:%d:%d", seriesID, e.SeasonNumber, e.EpisodeNumber)
+			due := 0
+			for _, l := range missingOf(langs, scanSidecars(e.FilePath, langs, "episode").Present) {
+				if !backoffs.Blocked(key, l, e.FilePath, now) {
+					due++
+				}
+			}
+			if due == 0 {
 				continue
 			}
 			out = append(out, epRef{e.SeasonNumber, e.EpisodeNumber})

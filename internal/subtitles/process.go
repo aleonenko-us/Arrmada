@@ -133,6 +133,17 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		return
 	}
 
+	// A sweep job leaves alone the languages still backing off (it may have been queued
+	// before the last run parked them). Import and manual jobs always try.
+	if job.Priority == PrioSweep && !job.Redo {
+		var parked []string
+		remaining, parked = s.dropBackedOff(ctx, ref, remaining)
+		if len(remaining) == 0 {
+			s.finish(job, StateSkipped, strings.Join(parked, " · "))
+			return
+		}
+	}
+
 	runID := NewRunID()
 	s.update(job, func(j *Job) { j.RunID = runID })
 	wanted := remaining
@@ -183,6 +194,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		return
 	}
 	s.recordAttempts(ctx, runID, ref, outcomes)
+	s.updateBackoff(ctx, ref, wanted, outcomes)
 	if summary == "" {
 		summary = "no source could act" // every rung declined without a reason; shouldn't happen
 	}
@@ -193,7 +205,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.event("info", fmt.Sprintf("✓ %s — %s", ref.Title, summary))
 	}
 	s.finishOutcomes(job, state, summary, outcomes)
-	if produced > 0 {
+	// A movie's Library chips show its next-try date, so it's patched even when nothing
+	// was written. (A show's roll-up has no per-language chips; re-listing every episode
+	// after each sweep job would be wasted disk work.)
+	if produced > 0 || job.Kind == "movie" {
 		s.refreshSnapshot(ctx, job)
 	}
 }

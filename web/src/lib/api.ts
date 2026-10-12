@@ -2055,7 +2055,13 @@ export interface SubtitleSettings {
   pending: number;
 }
 export interface SubTrack { index: number; codec: string; lang: string; text: boolean; title?: string; forced?: boolean; sdh?: boolean; default?: boolean }
-export interface SubLangStatus { lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean }
+export interface SubLangStatus {
+  lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean;
+  // Set when the sweep is leaving this missing language alone for now (backoff).
+  reason?: SubtitleResult;
+  next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
+  retry_on?: string; // CSV: creds | model | langs
+}
 export interface SubHealth { score: number; notes?: string[] }
 export interface SubFileEntry {
   kind: "movie" | "episode";

@@ -9,6 +9,7 @@ import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
 import { KeptTracksNote, card, cardStyle, langName } from "./subtitles/shared";
+import { until } from "../lib/taskTime";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
@@ -16,6 +17,14 @@ const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs"];
 const ACTIVE = new Set(["queued", "running"]);
 
 const SOURCE_LABEL: Record<string, string> = { extract: "extract", ocr: "OCR", download: "download", ai: "AI" };
+// Why a missing language is backing off, and what brings it back early.
+const REASON_LABEL: Record<string, string> = {
+  auth_failed: "OpenSubtitles login rejected", model_missing: "no whisper model for it", quota: "OpenSubtitles quota spent",
+  rate_limited: "OpenSubtitles rate limit", provider_error: "OpenSubtitles error", ai_failed: "AI failed",
+  out_of_sync: "only out-of-sync matches", below_score: "only poor matches", no_match: "no OpenSubtitles match",
+  impossible: "whisper can't make this language from the audio", no_audio: "no audio", ocr_needed: "needs OCR",
+};
+const RETRY_ON_LABEL: Record<string, string> = { creds: "login", model: "a model", langs: "a language change" };
 
 const lbl = "font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint";
 
@@ -700,6 +709,14 @@ function CoverChip({ l }: { l: SubLangStatus }) {
   if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }} title="External SRT present">✓ {l.lang}</span>;
   // A subtitle under another name covers it, but Plex won't pair it with this file.
   if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{l.lang} · orphaned</span>;
+  // Backing off: the last run couldn't make it, and the sweep leaves it alone until then.
+  if (l.reason) {
+    const why = REASON_LABEL[l.reason] ?? l.reason.replace(/_/g, " ");
+    const when = l.next_retry_at ? `next try ${until(l.next_retry_at)}`
+      : l.retry_on ? `waiting for ${l.retry_on.split(",").map((e) => RETRY_ON_LABEL[e] ?? e).join(" or ")}`
+      : "retry by hand";
+    return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{l.lang} · {when}</span>;
+  }
   // The ladder tries the first source, then falls back to AI when that comes up empty.
   const first = SOURCE_LABEL[l.source ?? "ai"] ?? l.source;
   const plan = l.fallback ? `${first} → ${SOURCE_LABEL[l.fallback] ?? l.fallback}` : first;

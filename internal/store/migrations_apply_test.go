@@ -44,4 +44,11 @@ func TestMigrationsApplyFresh(t *testing.T) {
 	if err := db.QueryRow(`SELECT variant FROM subtitle_attempts`).Scan(&variant); err != nil || variant != "full" {
 		t.Errorf("attempt variant = %q (%v), want the 'full' default", variant, err)
 	}
+	// 0223: subtitle backoff, one row per (file, language, variant); NULL next_retry_at.
+	if _, err := db.Exec(`INSERT INTO subtitle_backoff (media_key, lang, video_path, primary_reason, reasons_json, updated_at) VALUES ('m:1', 'en', '/v.mkv', 'auth_failed', '{}', 1)`); err != nil {
+		t.Fatalf("subtitle_backoff after 0223: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO subtitle_backoff (media_key, lang, video_path, primary_reason, reasons_json, updated_at) VALUES ('m:1', 'en', '/v.mkv', 'no_match', '{}', 2)`); err == nil {
+		t.Error("a second backoff row for the same file and language was accepted")
+	}
 }

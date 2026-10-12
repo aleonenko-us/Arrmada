@@ -159,11 +159,23 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 		if len(clean) == 0 {
 			clean = defaultLanguages
 		}
+		before := strings.Join(s.languages(ctx), ",")
 		if err := s.settings.Set(ctx, keyLanguages, strings.Join(clean, ",")); err != nil {
 			return err
 		}
+		// A language the AI couldn't make from that audio may be makeable now (or no
+		// longer wanted); let the next sweep look again.
+		if strings.Join(clean, ",") != before {
+			s.ClearBackoff(ctx, EventLangs)
+		}
 	}
 	return nil
+}
+
+// CredentialsChanged is called after an OpenSubtitles credential is saved or cleared:
+// files parked on a rejected login are tried again by the next sweep.
+func (s *Service) CredentialsChanged(ctx context.Context) {
+	s.ClearBackoff(ctx, EventCreds)
 }
 
 func (s *Service) languages(ctx context.Context) []string {
