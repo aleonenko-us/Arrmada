@@ -631,6 +631,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/adopt", a.requireRole(auth.RoleManager, a.handleSubtitleAdoptOrphan))
 	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/replace", a.requireRole(auth.RoleManager, a.handleSubtitleReplaceOrphan))
 	mux.HandleFunc("POST /api/v1/subtitles/orphans/bulk", a.requireRole(auth.RoleManager, a.handleSubtitleBulkOrphans))
+	mux.HandleFunc("GET /api/v1/subtitles/file", a.requireRole(auth.RoleManager, a.handleSubtitleFile))
+	mux.HandleFunc("POST /api/v1/subtitles/file/shift", a.requireRole(auth.RoleManager, a.handleSubtitleFileShift))
+	mux.HandleFunc("DELETE /api/v1/subtitles/file", a.requireRole(auth.RoleManager, a.handleSubtitleFileDelete))
 
 	// Books (Readarr replacement — Open Library metadata + ebook acquisition).
 	mux.HandleFunc("GET /api/v1/books", a.requireRole(auth.RoleManager, a.handleListBooks))
