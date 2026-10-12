@@ -22,6 +22,7 @@ import {
   type UpgradeTrigger,
 } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
+import { TestName } from "./quality/TestName";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -711,6 +712,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
             </div>
             <LibraryFitPanel sp={sp} />
             <TestPanel sp={sp} />
+            <TestName sp={sp} />
           </div>
         </aside>
       </div>

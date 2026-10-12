@@ -147,6 +147,36 @@ export interface ParsedRelease {
   audio?: string[];
   edition?: string;
   group?: string;
+  proper?: boolean;
+  repack?: boolean;
+  /** Read from the name's conventions rather than written in it (a fansub is a web capture). */
+  source_inferred?: boolean;
+  /** Read from an SD-era signal (DVD, HDTV, XviD) rather than written in the name. */
+  resolution_inferred?: boolean;
+  // The parser's newer detections, shown when the server sends them.
+  streaming?: string;
+  languages?: string[];
+  multi?: boolean;
+  full_disc?: boolean;
+  three_d?: boolean;
+  upscaled?: boolean;
+  extras?: boolean;
+}
+
+/** One format tested against a release name in the builder's "Test a release name". */
+export interface FormatCheck {
+  name: string;
+  matched: boolean;
+  score: number;
+  required?: boolean;
+  custom?: boolean;
+}
+
+/** A release name judged by a profile as edited (POST /api/v1/quality/explain). */
+export interface QualityExplain {
+  release: ParsedRelease;
+  evaluation: Evaluation;
+  formats: FormatCheck[] | null;
 }
 
 export interface Candidate {
@@ -154,6 +184,7 @@ export interface Candidate {
   release: ParsedRelease;
   size_gb: number;
   seeders: number;
+  runtime_min?: number;
 }
 
 export interface Evaluation {
