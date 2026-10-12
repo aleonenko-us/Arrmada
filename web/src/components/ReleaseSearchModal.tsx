@@ -3,6 +3,7 @@ import { releaseErrorMessage, type RankedRelease, type ReleaseList } from "../li
 import { formatReleaseAge } from "../lib/format";
 import { Button, IconButton, Modal, StatusChip } from "../ui";
 import { IndexerIssues, emptyReleasesMessage } from "./IndexerIssues";
+import { ReleaseExplain } from "./ReleaseExplain";
 
 // --- release metadata parsing (resolution + notable features live in summary/title) ---
 type SortKey = "best" | "size" | "bitrate" | "seeders" | "smallest" | "newest";
@@ -215,6 +216,7 @@ export function ReleaseSearchModal({
                   key={rel.title}
                   rel={rel}
                   why={rel.recommended ? list.why : undefined}
+                  chosenOver={rel.recommended ? list.chosen_over : undefined}
                   busy={busy === rel.title}
                   grabbed={grabbed.has(rel.title)}
                   disabled={busy !== null}
@@ -254,7 +256,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-function ReleaseRow({ rel, why, busy, grabbed, disabled, onGrab, onBlock }: { rel: RankedRelease; why?: string[]; busy: boolean; grabbed: boolean; disabled: boolean; onGrab: () => void; onBlock?: () => void }) {
+function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onBlock }: { rel: RankedRelease; why?: string[]; chosenOver?: string; busy: boolean; grabbed: boolean; disabled: boolean; onGrab: () => void; onBlock?: () => void }) {
   const blocked = rel.blocklisted;
   // A usenet release has no client to go to; its reject reason says so.
   const usenet = rel.transport === "usenet";
@@ -291,11 +293,15 @@ function ReleaseRow({ rel, why, busy, grabbed, disabled, onGrab, onBlock }: { re
             {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>view ↗</a>}
           </div>
           {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-[11px]" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
+          {rel.eligible && (
+            <ReleaseExplain className="mt-1.5" matched={rel.matched} avoided={rel.avoided} waived={rel.bonus_waived} lostOn={rel.recommended ? undefined : rel.lost_on} />
+          )}
           {why && why.length > 0 && (
             <ul className="mt-2 list-none space-y-0.5 p-0 text-[11.5px]" style={{ color: "var(--accent)" }}>
               {why.map((w, i) => <li key={i}>✓ {w}</li>)}
             </ul>
           )}
+          {chosenOver && <div className="mt-1 text-[11px] text-ink-dim">{chosenOver}</div>}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
           <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="px-3.5 text-[12px]" style={{ opacity: blocked || usenet ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>

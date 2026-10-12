@@ -92,4 +92,29 @@ test.describe("library pages", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
   });
+
+  // QUAL-15: every eligible row says what it matched, what it avoids and what it lost on, and
+  // the chips wrap rather than push the dialog sideways on a phone, in either theme.
+  for (const colorScheme of ["light", "dark"] as const) {
+    test(`release rows explain their rank at phone width (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("/movies");
+      await page.getByRole("button", { name: "table", exact: true }).click();
+      await page.getByRole("row", { name: /Anchor Point/ }).getByRole("button", { name: "Search" }).click();
+      await page.setViewportSize({ width: 375, height: 812 });
+      const dialog = page.getByRole("dialog", { name: "Search indexers — Anchor Point" });
+      await expect(dialog.getByText("Chosen over the 1080p WEB-DL — fewer seeders")).toBeVisible();
+      await expect(dialog.getByText("✓ HEVC").first()).toBeVisible();
+      await expect(dialog.getByText("ranked lower: fewer seeders").first()).toBeVisible();
+      await expect(dialog.getByText("⚠ Dolby Vision (avoided)")).toBeVisible();
+      await expect(dialog.getByText("⚠ a bitrate under your 5 Mbps floor")).toBeVisible();
+      await expect(dialog.getByText("preference ignored — bitrate too low")).toBeVisible();
+      const sideways = await dialog.evaluate((el) => {
+        const scroller = el.querySelector(".thin-scroll") ?? el;
+        return Math.max(el.scrollWidth - el.clientWidth, scroller.scrollWidth - scroller.clientWidth);
+      });
+      expect(sideways).toBeLessThanOrEqual(0);
+    });
+  }
 });

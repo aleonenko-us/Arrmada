@@ -150,7 +150,8 @@ func TestEpisodeUpgradeStaysUnderTheCeiling(t *testing.T) {
 		byName[r.Title] = r
 	}
 
-	cands := c.episodeUpgradeCandidates(ctx, s, newRuntimeIndex(s), byName, 1, 1)
+	idx := newRuntimeIndex(s)
+	cands := c.episodeUpgradeCandidates(ctx, s, idx, byName, c.episodeReleaseIndex(ctx, s, idx, byName)[epKey{1, 1}])
 	if len(cands) != 3 {
 		t.Fatalf("got %d candidates, want the three releases holding S01E01", len(cands))
 	}

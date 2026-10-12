@@ -610,6 +610,15 @@ type RankedRelease struct {
 	// words match the version's search terms); 0/"" is the standard audiobook.
 	VersionID int64  `json:"version_id,omitempty"`
 	Version   string `json:"version,omitempty"`
+
+	// Why an eligible row ranks where it does (explainRow): the formats it matched and the
+	// ones it has that the profile avoids, whether its preferences were waived because its
+	// bitrate collapsed, and what it lost on against the release ranked just above it.
+	Matched     []string `json:"matched,omitempty"`
+	Avoided     []string `json:"avoided,omitempty"`
+	BonusWaived bool     `json:"bonus_waived,omitempty"`
+	LostOn      string   `json:"lost_on,omitempty"`     // "lower resolution", "fewer seeders"…
+	LostOnKey   string   `json:"lost_on_key,omitempty"` // the quality.RankKey behind LostOn
 }
 
 // ReleaseList is the interactive-search response for one movie.
@@ -617,6 +626,8 @@ type ReleaseList struct {
 	Profile  string          `json:"profile"`
 	Why      []string        `json:"why,omitempty"` // why the recommended release won
 	Releases []RankedRelease `json:"releases"`
+	// ChosenOver names the runner-up and what the recommended release beat it on.
+	ChosenOver string `json:"chosen_over,omitempty"`
 	// IndexerIssues names the indexers that couldn't answer, so an empty list can say
 	// "every indexer failed" rather than "nothing found". Searched is how many indexers
 	// were asked.
@@ -768,7 +779,8 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		winnerName = decision.Winner.Candidate.Name
 	}
 	out := make([]RankedRelease, 0, len(byName))
-	appendEval := func(ev quality.Evaluation) {
+	// ranked: the release is in the main ranking (pool), so its place there can be explained.
+	appendEval := func(ev quality.Evaluation, ranked bool) {
 		rel := byName[ev.Candidate.Name]
 		rr := RankedRelease{
 			Title:        ev.Candidate.Name,
@@ -788,14 +800,17 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		if why := offReason[ev.Candidate.Name]; why != "" {
 			rr.Eligible, rr.Recommended, rr.RejectReason = false, false, why
 		}
-		out = append(out, withIndexerFacts(rr, rel))
+		out = append(out, explainRow(withIndexerFacts(rr, rel), ev, ranked))
 	}
-	for _, evs := range [][]quality.Evaluation{decision.Eligible, others.Eligible, off.Eligible, decision.Rejected, others.Rejected, off.Rejected} {
+	for _, ev := range decision.Eligible {
+		appendEval(ev, true)
+	}
+	for _, evs := range [][]quality.Evaluation{others.Eligible, off.Eligible, decision.Rejected, others.Rejected, off.Rejected} {
 		for _, ev := range evs {
-			appendEval(ev)
+			appendEval(ev, false)
 		}
 	}
-	return ReleaseList{Profile: profile, Why: decision.Why, Releases: out}.withIssues(notes), nil
+	return ReleaseList{Profile: profile, Why: decision.Why, ChosenOver: decision.ChosenOver, Releases: out}.withIssues(notes), nil
 }
 
 // usenetReject is why an interactive list can't grab a usenet release: the only download

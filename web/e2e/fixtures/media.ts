@@ -113,10 +113,16 @@ export const seriesFit: { items: SeriesFitSummary[] } = { items: [{ series_id: 1
 export const movieReleases: ReleaseList = {
   profile: "HD 1080p",
   why: ["1080p WEB-DL, inside the bitrate window"],
+  chosen_over: "Chosen over the 1080p WEB-DL — fewer seeders",
   searched: 2,
+  // Each row explains its place (QUAL-15): what it matched or avoids, and what it lost on.
   releases: Array.from({ length: 12 }, (_, i) => ({
     title: `Anchor.Point.2022.1080p.WEB-DL.H264-GRP${i}`, indexer: "Fixture Tracker", token: `tok-${i}`, size_gb: 4 + i / 2, bitrate_mbps: 5 + i / 4,
     seeders: 40 - i, peers: 5, summary: `1080p WEB-DL · group ${i}`, eligible: true, recommended: i === 0,
+    matched: i % 2 === 0 ? ["HEVC", "Atmos"] : undefined,
+    avoided: i === 3 ? ["Dolby Vision", "a bitrate under your 5 Mbps floor"] : undefined,
+    bonus_waived: i === 5 || undefined,
+    lost_on: i === 0 ? undefined : i === 3 ? "it has Dolby Vision, a bitrate under your 5 Mbps floor, which you avoid" : "fewer seeders",
   })),
 };
 

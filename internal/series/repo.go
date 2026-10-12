@@ -876,6 +876,20 @@ func (r *Repo) SetAbsoluteCursor(ctx context.Context, seriesID int64, cursor int
 		`UPDATE series SET search_abs_cursor = ? WHERE id = ?`, cursor, seriesID)
 }
 
+// UpgradeCursor is the season the next upgrade sweep's per-season queries start at.
+func (r *Repo) UpgradeCursor(ctx context.Context, seriesID int64) int {
+	var cursor int
+	_ = r.db.QueryRowContext(ctx,
+		`SELECT search_upgrade_cursor FROM series WHERE id = ?`, seriesID).Scan(&cursor)
+	return cursor
+}
+
+// SetUpgradeCursor records where the next upgrade sweep's per-season queries resume.
+func (r *Repo) SetUpgradeCursor(ctx context.Context, seriesID int64, cursor int) {
+	_, _ = r.db.ExecContext(ctx,
+		`UPDATE series SET search_upgrade_cursor = ? WHERE id = ?`, cursor, seriesID)
+}
+
 // HasWantedEpisodes reports whether a series has an episode the automation would
 // actually grab: monitored, aired, and with no file. Mirrors wantedEpisodes' filter so
 // the missing-sweep can skip a series without spending an indexer search on it.
