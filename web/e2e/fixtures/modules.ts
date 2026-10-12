@@ -4,6 +4,7 @@ import type {
 } from "../../src/lib/api";
 import { NOW } from "./clock";
 import type { PlexScanView } from "../../src/lib/plexLibraryApi";
+import type { Language } from "../../src/lib/languages";
 
 // The optional modules (Convert, Subtitles, Insights, Music), idle and empty: the
 // admin smoke only needs each page to load cleanly.
@@ -49,6 +50,16 @@ export const subtitleSettings: SubtitleSettings = {
 };
 
 export const subtitleJobs: { jobs: SubtitleJob[] } = { jobs: [] };
+
+// A slice of the shared language table (GET /api/v1/languages), regional variants included.
+export const languages: Language[] = [
+  { code: "en", name: "English", regional: false },
+  { code: "es", name: "Spanish", regional: false },
+  { code: "fr", name: "French", regional: false },
+  { code: "pt", name: "Portuguese", regional: false },
+  { code: "pt-br", name: "Portuguese (Brazil)", regional: true },
+  { code: "pt-pt", name: "Portuguese (Portugal)", regional: true },
+];
 
 // Settings → Subtitles & Convert: whisper is in the build, with no model downloaded yet.
 export const subtitleModels: WhisperStatus = {

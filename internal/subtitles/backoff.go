@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // Backoff: a language a run couldn't make isn't searched again by every six-hourly sweep.
@@ -49,7 +51,7 @@ type Backoffs map[string]Backoff
 
 // BackoffKey is a Backoffs key.
 func BackoffKey(mediaKey, lang, variant string) string {
-	return mediaKey + "|" + strings.ToLower(lang) + "|" + dbVariant(variant)
+	return mediaKey + "|" + langs.Canonical(lang) + "|" + dbVariant(variant)
 }
 
 // Blocked reports whether a (file, language) is backing off; a nil set blocks nothing.
@@ -156,7 +158,7 @@ func planBackoff(prev *Backoff, mediaKey, lang, videoPath string, outs []Outcome
 		}
 	}
 	b := Backoff{
-		MediaKey: mediaKey, Lang: strings.ToLower(lang), Variant: VariantFull, VideoPath: videoPath,
+		MediaKey: mediaKey, Lang: langs.Canonical(lang), Variant: VariantFull, VideoPath: videoPath,
 		PrimaryReason: primary, Reasons: reasons, Detail: detail, Count: count, UpdatedAt: now.Unix(),
 	}
 	if !next.IsZero() {
@@ -243,7 +245,7 @@ func (l *Ledger) SaveBackoff(ctx context.Context, b Backoff) error {
 		primary_reason = excluded.primary_reason, reasons_json = excluded.reasons_json, detail = excluded.detail,
 		count = excluded.count, next_retry_at = excluded.next_retry_at, clear_on = excluded.clear_on,
 		updated_at = excluded.updated_at`,
-		b.MediaKey, strings.ToLower(b.Lang), dbVariant(b.Variant), b.VideoPath, string(b.PrimaryReason), string(reasons),
+		b.MediaKey, langs.Canonical(b.Lang), dbVariant(b.Variant), b.VideoPath, string(b.PrimaryReason), string(reasons),
 		nullStr(b.Detail), b.Count, next, strings.Join(b.ClearOn, ","), b.UpdatedAt)
 	return err
 }
@@ -254,7 +256,7 @@ func (l *Ledger) DeleteBackoff(ctx context.Context, mediaKey, lang, variant stri
 		return nil
 	}
 	_, err := l.db.ExecContext(ctx, `DELETE FROM subtitle_backoff WHERE media_key = ? AND lang = ? AND variant = ?`,
-		mediaKey, strings.ToLower(lang), dbVariant(variant))
+		mediaKey, langs.Canonical(lang), dbVariant(variant))
 	return err
 }
 

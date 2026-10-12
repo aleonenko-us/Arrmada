@@ -80,6 +80,29 @@ func TestLedgerRecordAndSupersede(t *testing.T) {
 	}
 }
 
+// Every language column holds the canonical code, whatever spelling came in, so rows
+// written from a track tag ("eng") and from a kept language ("en") are one language.
+func TestLedgerStoresCanonicalLanguages(t *testing.T) {
+	l := ledgerFixture(t)
+	ctx := context.Background()
+	if _, err := l.RecordFile(ctx, SubtitleFile{MediaKey: "m:1", Kind: "movie", VideoPath: "/v.mkv", Path: "/v.pt-br.srt", Lang: "pt_BR", Source: SourceEmbedded}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RecordAttempts(ctx, "r", "m:1", "/v.mkv", []Outcome{{Lang: "eng", Rung: RungAI, Result: ResultOK}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.SaveBackoff(ctx, Backoff{MediaKey: "m:1", Lang: "fre", VideoPath: "/v.mkv", PrimaryReason: ResultNoMatch, Count: 1}); err != nil {
+		t.Fatal(err)
+	}
+	f, _, _ := l.LiveFile(ctx, "/v.pt-br.srt")
+	a, _ := l.Attempts(ctx, AttemptQuery{})
+	bs, _ := l.LoadBackoffs(ctx)
+	_, okFr := bs[BackoffKey("m:1", "fr", VariantFull)]
+	if f.Lang != "pt-br" || len(a) != 1 || a[0].Lang != "en" || !okFr {
+		t.Errorf("file lang %q, attempt %+v, backoff keys %v", f.Lang, a, keysOf(bs))
+	}
+}
+
 // Specials are season 0: an episode keeps it rather than reading back as "no season".
 func TestLedgerEpisodeSeasonZero(t *testing.T) {
 	l := ledgerFixture(t)

@@ -9,7 +9,8 @@ import { isAdmin, useMe } from "../../lib/me";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { usePoll } from "../../lib/usePoll";
 import { useToast } from "../../ui";
-import { KeptTracksNote, LANGS, card, cardStyle } from "../subtitles/shared";
+import { LanguagePicker } from "../../components/LanguagePicker";
+import { KeptTracksNote, card, cardStyle } from "../subtitles/shared";
 
 // Settings → Subtitles & Convert → Subtitles: which languages are kept, whether new files
 // get them automatically, the local AI models, and where OpenSubtitles stands. It used to
@@ -44,10 +45,6 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
   const minScore = useAutoSave(String(settings.min_score ?? 60), (v) => save({ min_score: Number(v) }), {
     validate: wholeNumber(0, 100, "The minimum match score"),
   });
-  const toggleLang = (code: string) => {
-    const has = langs.value.includes(code);
-    void langs.commit(has ? langs.value.filter((l) => l !== code) : [...langs.value, code]);
-  };
   return (
     <>
       <div className={card} style={cardStyle}>
@@ -55,12 +52,14 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
           <div className="text-[14px] font-bold">Kept languages</div>
           <SavedTick save={langs} />
         </div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">Arrmada keeps an external <code>.srt</code> for each of these. Click to toggle. <KeptTracksNote /></div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {LANGS.map((l) => {
-            const on = langs.value.includes(l.code);
-            return <button key={l.code} aria-pressed={on} onClick={() => toggleLang(l.code)} className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel-2)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>{l.name}</button>;
-          })}
+        <div className="mt-0.5 text-[11.5px] text-ink-faint">Arrmada keeps an external <code>.srt</code> for each of these, in this order. <KeptTracksNote /></div>
+        <div className="mt-3">
+          <LanguagePicker
+            value={langs.value}
+            onChange={(next) => void langs.commit(next)}
+            label="Add a kept language"
+            firstNote="A subtitle file with no language in its name counts as this one."
+          />
         </div>
       </div>
 
@@ -194,7 +193,7 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
           </div>
         ))}
       </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint">Get <b>turbo</b> for English, plus <b>large-v3</b> to translate foreign audio to English.</div>
+      <div className="mt-2 text-[10.5px] text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English.</div>
     </div>
   );
 }

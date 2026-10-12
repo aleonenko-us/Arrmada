@@ -16,12 +16,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/extract"
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -1649,27 +1651,10 @@ func isSampleName(path string) bool {
 // subtitleExts are external subtitle sidecar files worth importing with the video.
 var subtitleExts = map[string]bool{".srt": true, ".ass": true, ".ssa": true, ".sub": true, ".vtt": true, ".idx": true}
 
-// langNames maps common subtitle language tokens (codes + English names) to the
-// ISO 639-1 tag used by the Subtitles module's sidecar convention.
-var langNames = map[string]string{
-	"en": "en", "eng": "en", "english": "en",
-	"es": "es", "spa": "es", "spanish": "es",
-	"fr": "fr", "fre": "fr", "fra": "fr", "french": "fr",
-	"de": "de", "ger": "de", "deu": "de", "german": "de",
-	"it": "it", "ita": "it", "italian": "it",
-	"pt": "pt", "por": "pt", "portuguese": "pt",
-	"nl": "nl", "dut": "nl", "nld": "nl", "dutch": "nl",
-	"ru": "ru", "rus": "ru", "russian": "ru",
-	"ja": "ja", "jpn": "ja", "japanese": "ja",
-	"zh": "zh", "chi": "zh", "zho": "zh", "chinese": "zh",
-	"ko": "ko", "kor": "ko", "korean": "ko",
-	"ar": "ar", "ara": "ar", "arabic": "ar",
-}
-
 // importSidecarSubs links external subtitle files from a finished download next to
-// the imported video, following the Plex/Jellyfin "<base>.<lang>.<ext>" convention
-// so the Subtitles module and players pick them up. It only takes subtitles that
-// belong to this release: for a single-file torrent (contentPath is the file, in a
+// the imported video, following the Plex/Jellyfin "<base>.<lang>[.forced|.sdh].<ext>"
+// convention so the Subtitles module and players pick them up. It only takes subtitles
+// that belong to this release: for a single-file torrent (contentPath is the file, in a
 // shared save dir) it matches only the video's own base name, never a neighbor's.
 func (im *Importer) importSidecarSubs(contentPath, srcVideo, targetVideo string) {
 	info, err := os.Stat(contentPath)
@@ -1684,6 +1669,7 @@ func (im *Importer) importSidecarSubs(contentPath, srcVideo, targetVideo string)
 	srcBase := strings.ToLower(strings.TrimSuffix(filepath.Base(srcVideo), filepath.Ext(srcVideo)))
 	targetBase := strings.TrimSuffix(targetVideo, filepath.Ext(targetVideo))
 
+	var subs []subCandidate
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !subtitleExts[strings.ToLower(filepath.Ext(p))] {
 			return nil
@@ -1692,13 +1678,14 @@ func (im *Importer) importSidecarSubs(contentPath, srcVideo, targetVideo string)
 			return nil
 		}
 		stem := strings.ToLower(strings.TrimSuffix(filepath.Base(p), filepath.Ext(p)))
-		lang, ok := subLangFor(stem, srcBase, ownFolder)
+		lang, variant, ok := subLangFor(stem, srcBase, ownFolder)
 		if !ok {
 			return nil // a neighbor's subtitle in a shared save dir — skip
 		}
-		im.placeSub(p, targetBase, lang)
+		subs = append(subs, subCandidate{path: p, lang: lang, variant: variant})
 		return nil
 	})
+	im.placeSubs(subs, targetBase)
 }
 
 // importEpisodeSubs imports the subtitles belonging to one episode file: its own
@@ -1737,6 +1724,7 @@ func (im *Importer) importPackSubs(videoPath, targetVideo string) {
 		}
 	}
 	onlyVideo := videos == 1
+	var subs []subCandidate
 	for _, sd := range subDirs {
 		_ = filepath.WalkDir(sd, func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !subtitleExts[strings.ToLower(filepath.Ext(p))] || isSampleName(p) {
@@ -1748,31 +1736,75 @@ func (im *Importer) importPackSubs(videoPath, targetVideo string) {
 			if !belongs {
 				return nil
 			}
-			lang, _ := subLangFor(stem, videoStem, true) // ownFolder semantics: sniff the name for a language
-			im.placeSub(p, targetBase, lang)
+			lang, variant, _ := subLangFor(stem, videoStem, true) // ownFolder semantics: sniff the name for a language
+			subs = append(subs, subCandidate{path: p, lang: lang, variant: variant})
 			return nil
 		})
 	}
+	im.placeSubs(subs, targetBase)
 }
 
-// placeSub links a subtitle to "<targetBase>[.<lang>]<ext>". The already-imported
-// check runs BEFORE any uniqueness suffixing: if the natural target (or one of its
-// numbered variants) already holds this subtitle — same inode or same bytes — the
-// import is skipped, so re-imports don't stack "movie.en.2.srt" duplicates. A
+// subCandidate is one release subtitle on its way into the library.
+type subCandidate struct {
+	path, lang, variant string
+	size                int64
+}
+
+// placeSubs places one release's subtitles for one video. They are placed full first,
+// then SDH, then forced, so a forced file can never take the plain "<base>.en.srt" name
+// just because it sorted first in the folder.
+//
+// Releases often ship the forced track without saying so — "2_English.srt" beside
+// "3_English.srt" — so when one language has two or more unqualified subtitles and one is
+// under a quarter of the size of the largest, the small one is taken to be the forced
+// track: a full subtitle that short beside a much longer one in the same language is
+// signs and songs, not the dialogue.
+func (im *Importer) placeSubs(subs []subCandidate, targetBase string) {
+	largest := map[string]int64{}
+	unqualified := map[string]int{}
+	for i := range subs {
+		c := &subs[i]
+		if fi, err := os.Stat(c.path); err == nil {
+			c.size = fi.Size()
+		}
+		if c.lang != "" && c.variant == langs.VariantFull {
+			unqualified[c.lang]++
+			largest[c.lang] = max(largest[c.lang], c.size)
+		}
+	}
+	for i := range subs {
+		c := &subs[i]
+		if c.lang != "" && c.variant == langs.VariantFull && unqualified[c.lang] >= 2 && c.size*4 < largest[c.lang] {
+			c.variant = langs.VariantForced
+		}
+	}
+	rank := map[string]int{langs.VariantFull: 0, langs.VariantSDH: 1, langs.VariantForced: 2}
+	sort.SliceStable(subs, func(i, j int) bool { return rank[subs[i].variant] < rank[subs[j].variant] })
+	for _, c := range subs {
+		im.placeSub(c.path, targetBase, c.lang, c.variant)
+	}
+}
+
+// placeSub links a subtitle to "<targetBase>[.<lang>][.<variant>]<ext>". The
+// already-imported check runs BEFORE any uniqueness suffixing: if the natural target (or
+// one of its numbered variants) already holds this subtitle — same inode or same bytes —
+// the import is skipped, so re-imports don't stack "movie.en.2.srt" duplicates. A
 // genuinely different subtitle at the natural path still gets a numeric suffix, even
 // when it happens to be the same size.
-func (im *Importer) placeSub(src, targetBase, lang string) {
+func (im *Importer) placeSub(src, targetBase, lang, variant string) {
 	si, err := os.Stat(src)
 	if err != nil {
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(src))
-	natural := targetBase + ext
+	base := targetBase
 	if lang != "" {
-		natural = targetBase + "." + lang + ext
+		base += "." + lang
 	}
-	base := strings.TrimSuffix(natural, ext)
-	target := natural
+	if variant != langs.VariantFull {
+		base += "." + variant
+	}
+	target := base + ext
 	for i := 2; ; i++ {
 		di, err := os.Stat(target)
 		if os.IsNotExist(err) {
@@ -1790,44 +1822,81 @@ func (im *Importer) placeSub(src, targetBase, lang string) {
 		target = fmt.Sprintf("%s.%d%s", base, i, ext)
 	}
 	if method, err := linkOrCopy(src, target); err == nil {
-		im.log.Info("imported subtitle", "lang", lang, "target", target, "method", method)
+		im.log.Info("imported subtitle", "lang", lang, "variant", variant, "target", target, "method", method)
 	}
 }
 
-// subLangFor derives a subtitle's language tag and whether it belongs to this
-// release. A bare "<base>.srt" → no tag; "<base>.en.srt" → "en"; inside the
-// release's own folder, an unrelated name is language-sniffed; in a shared save
-// dir an unrelated name is rejected so single-file torrents don't grab neighbors.
-func subLangFor(stem, srcBase string, ownFolder bool) (lang string, ok bool) {
+// subLangFor derives a subtitle's language tag and variant, and whether it belongs to
+// this release. A bare "<base>.srt" → no tag; "<base>.en.srt" → "en" (any spelling the
+// shared language table knows, canonicalised: ".eng" → "en", ".pt-BR" → "pt-br"), with
+// its qualifier kept: ".en.forced" → en forced, ".en.sdh" and Bazarr's ".en.hi" → en SDH.
+// Inside the release's own folder, an unrelated name is sniffed for a language and for
+// the words forced/SDH; in a shared save dir an unrelated name is rejected so
+// single-file torrents don't grab neighbors.
+func subLangFor(stem, srcBase string, ownFolder bool) (lang, variant string, ok bool) {
 	switch {
 	case stem == srcBase:
-		return "", true
+		return "", langs.VariantFull, true
 	case strings.HasPrefix(stem, srcBase+"."):
 		rest := stem[len(srcBase)+1:]
-		if i := strings.IndexByte(rest, '.'); i >= 0 {
-			rest = rest[:i] // "en" from "en.forced"
+		n := langs.ParseSidecarTag(strings.Split(rest, "."))
+		if n.Lang != "" || n.Token == "" {
+			return langs.SidecarTag(n.Lang), n.Variant, true
 		}
-		if code, known := langNames[rest]; known {
-			return code, true
-		}
-		return rest, true
+		// Not a language: keep the tag as written so the file isn't placed under the
+		// bare name, which would claim the first wanted language.
+		return n.Token, n.Variant, true
 	case ownFolder:
-		return detectLang(stem), true
+		lang, variant := detectLang(stem)
+		return lang, variant, true
 	default:
-		return "", false
+		return "", langs.VariantFull, false
 	}
 }
 
-// detectLang finds a known language token anywhere in a subtitle filename.
-func detectLang(stem string) string {
+// detectLang finds a language and variant in a free-form subtitle filename. A dotted
+// name that ends in a two-letter or regional code is read the sidecar way
+// ("Other.Name.de.forced"). Otherwise the words are sniffed strictly — 3-letter codes and
+// full names only — because two-letter codes are everyday words: "Its.A.Trap" is not
+// Italian, but "2_English_Forced" is English forced and "Brazilian.Portuguese" is pt-br.
+// "hi" is an SDH marker only beside a language; alone it is Hindi.
+func detectLang(stem string) (lang, variant string) {
+	if n := langs.ParseSidecarTag(strings.Split(stem, ".")); n.Lang != "" &&
+		((len(n.Token) == 2 && !trailingWord[n.Token]) || langs.Base(n.Lang) != n.Lang) {
+		return langs.SidecarTag(n.Lang), n.Variant
+	}
+	forced, sdh := false, false
 	for _, tok := range strings.FieldsFunc(stem, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
-		if code, ok := langNames[tok]; ok {
-			return code
+		switch {
+		case tok == "forced":
+			forced = true
+		case tok == "sdh" || tok == "cc" || tok == "hi":
+			sdh = true
+		case langs.IsToken(tok, true):
+			// The first language word wins, unless a later one names a region of it
+			// ("Portuguese.Brazilian").
+			if t := langs.SidecarTag(tok); lang == "" || (langs.Base(t) == lang && t != lang) {
+				lang = t
+			}
 		}
 	}
-	return ""
+	switch {
+	case forced:
+		variant = langs.VariantForced
+	case sdh && lang != "":
+		variant = langs.VariantSDH
+	}
+	return lang, variant
+}
+
+// trailingWord are two-letter language codes that are far more often the last word of a
+// title ("Let.It.Be", "Born.To") than a tag. Italian (it), Norwegian (no) and Hebrew (he)
+// stay readable as tags: they are common subtitle languages.
+var trailingWord = map[string]bool{
+	"am": true, "an": true, "as": true, "be": true, "is": true, "la": true, "my": true,
+	"or": true, "so": true, "to": true,
 }
 
 // ErrReplacementRefused means an import would have replaced a library file whose old copy

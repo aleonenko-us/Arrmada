@@ -136,6 +136,7 @@ GET /api/v1/insights/stats staff -
 GET /api/v1/insights/users staff -
 GET /api/v1/jobs staff -
 GET /api/v1/jobs/{id} staff -
+GET /api/v1/languages user -
 GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
 GET /api/v1/logs admin -

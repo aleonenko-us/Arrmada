@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -279,7 +280,7 @@ func (l *Ledger) RecordFile(ctx context.Context, f SubtitleFile) (int64, error) 
 			 sync_offset_ms, sync_confidence, locked, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			f.MediaKey, f.Kind, nullID(f.MovieID), nullID(f.SeriesID), season, episode,
-			f.VideoPath, f.Path, strings.ToLower(f.Lang), dbVariant(f.Variant), f.Source,
+			f.VideoPath, f.Path, langs.Canonical(f.Lang), dbVariant(f.Variant), f.Source,
 			nullIntPtr(f.EmbeddedIndex), nullStr(f.Provider), nullStr(f.ProviderFileID), nullStr(f.ReleaseName),
 			boolInt(f.HashMatch), nullIntPtr(f.Score), nullStr(f.Model),
 			nullIntPtr(f.SyncOffsetMs), nullIntPtr(f.SyncConfidence), boolInt(f.Locked), f.CreatedAt)
@@ -404,7 +405,7 @@ func (l *Ledger) RecordAttempts(ctx context.Context, runID, mediaKey, videoPath 
 			if _, err := tx.ExecContext(ctx, `INSERT INTO subtitle_attempts
 				(run_id, media_key, video_path, lang, variant, rung, outcome, detail, at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				runID, mediaKey, videoPath, strings.ToLower(o.Lang), dbVariant(o.Variant), string(o.Rung), string(o.Result), nullStr(o.attemptDetail()), at); err != nil {
+				runID, mediaKey, videoPath, langs.Canonical(o.Lang), dbVariant(o.Variant), string(o.Rung), string(o.Result), nullStr(o.attemptDetail()), at); err != nil {
 				return err
 			}
 		}
@@ -490,7 +491,7 @@ func (l *Ledger) Block(ctx context.Context, e BlockEntry) error {
 	_, err := l.db.ExecContext(ctx, `INSERT INTO subtitle_blocklist (provider, file_id, media_key, lang, reason, at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(provider, file_id, media_key) DO UPDATE SET lang = excluded.lang, reason = excluded.reason, at = excluded.at`,
-		e.Provider, e.FileID, e.MediaKey, strings.ToLower(e.Lang), e.Reason, e.At)
+		e.Provider, e.FileID, e.MediaKey, langs.Canonical(e.Lang), e.Reason, e.At)
 	return err
 }
 

@@ -15,7 +15,7 @@ type SearchRequest struct {
 	Year     int
 	Season   int // 0 for movies
 	Episode  int
-	Language string // ISO 639-1 code, e.g. "en"
+	Language string // canonical internal/langs code ("en", "pt-br"); each provider maps it to its own
 	// MovieHash is the OpenSubtitles hash of the actual file (see osHash). Optional; when
 	// present, results uploaded against this exact release rank first — those are the
 	// ones that are genuinely in sync.
