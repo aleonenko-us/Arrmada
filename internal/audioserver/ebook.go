@@ -56,7 +56,8 @@ func ebookOf(it Item) (ebook, bool) {
 	if ebookFormatOf(it) == "" {
 		return ebook{}, false
 	}
-	path, err := books.EbookFile(it.Book.Ebook.Path)
+	// In a folder, a format the app's reader opens wins over one it doesn't (.azw).
+	path, err := books.EbookFileFor(it.Book.Ebook.Path, func(ext string) bool { return ebookFormatFor(ext) != "" })
 	if err != nil {
 		return ebook{}, false
 	}
@@ -104,16 +105,17 @@ func (s *Server) handleEbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Ebook not found")
 		return
 	}
-	s.sendEbook(w, r, e, false)
+	s.sendEbook(w, r, it, e, false)
 }
 
-func (s *Server) sendEbook(w http.ResponseWriter, r *http.Request, e ebook, attach bool) {
+func (s *Server) sendEbook(w http.ResponseWriter, r *http.Request, it Item, e ebook, attach bool) {
 	if ct := books.EbookContentType(e.Ext); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	if attach {
-		w.Header().Set("Content-Disposition", attachment(e.Name))
+		// Named as the shelf's download names it: "Title - Author.epub".
+		w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(it.Book, e.Ext)))
 	}
 	http.ServeFile(w, r, e.Path)
 }

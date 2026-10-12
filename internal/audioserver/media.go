@@ -52,7 +52,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 	f, ok := s.cachedFileByIno(ctx, it.Path, ino)
 	if !ok {
 		if e, isEbook := ebookOf(it); isEbook && e.Ino == ino {
-			s.sendEbook(w, r, e, attach)
+			s.sendEbook(w, r, it, e, attach)
 			return
 		}
 		s.probe.cache.drop(it.Path)

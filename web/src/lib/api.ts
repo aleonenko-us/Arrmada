@@ -1462,7 +1462,14 @@ export interface MyBook {
   cover_url?: string;
   added_at?: string;
   series?: string;
-  ebook?: { format: string; size_bytes: number };
+  /** The book sheet and series rows: the blurb (capped by the server), the series and the
+   *  place in it apart (0 = number unknown), and up to three subjects. */
+  description?: string;
+  series_name?: string;
+  series_position?: number;
+  subjects?: string[];
+  /** kindle: Send to Kindle's email takes this format (EPUB, PDF). */
+  ebook?: { format: string; size_bytes: number; kindle?: boolean };
   audiobook: boolean;
   mine: boolean; // the signed-in user requested it
   /** Downloadable audiobooks: the standard one (version_id 0) and any extra versions.
@@ -1472,6 +1479,7 @@ export interface MyBook {
 
 // MyRequest is one of the signed-in user's book requests that hasn't produced a file.
 export interface MyRequest {
+  id?: number;
   title: string;
   author?: string;
   year?: number;
@@ -1485,6 +1493,9 @@ export interface MyRequest {
   stage?: RequestStage;
   note?: string; // "Not found yet"
   next_check_at?: string; // RFC3339
+  /** The whole of where it's got to, as the Requests page reads it (lib/requestStage). */
+  tracking?: RequestTracking;
+  decline_reason?: string;
   release_date?: string; // the book isn't out yet: the day it is (YYYY-MM-DD)
 }
 
@@ -2783,7 +2794,7 @@ export const api = {
   refreshAllSeries: () => req<{ queued: number } & JobRef>(`/api/v1/series/refresh`, { method: "POST" }),
   // Requests
   /** listen: this person may play audiobooks in Arrmada (the audiobook server is on and they're allowed). */
-  myBooks: () => req<{ books: MyBook[]; requests: MyRequest[]; listen?: boolean }>("/api/v1/me/books"),
+  myBooks: () => req<{ books: MyBook[]; requests: MyRequest[]; listen?: boolean; queue_known?: boolean }>("/api/v1/me/books"),
   // A plain link, not a fetch: the browser saves the file with the server's filename.
   ebookDownloadURL: (bookId: number) => `/api/v1/books/${bookId}/ebook`,
   // Without a section: every request the viewer may see, newest first. With one: a page

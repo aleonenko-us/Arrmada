@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
@@ -52,21 +51,5 @@ func TestMyBooksAudiobookItemKey(t *testing.T) {
 	}
 	if only := myAudiobooks(books.Book{ID: 5, AudioVersions: b.AudioVersions[:1]}); len(only) != 1 || only[0].ItemKey != audioserver.ItemKey(5, 3) {
 		t.Errorf("a book with only an extra version = %+v", only)
-	}
-}
-
-// The saved filename is the title and author, minus anything a filesystem or the
-// header can't carry; a title of nothing but junk still yields a usable name.
-func TestDownloadNameIsSafe(t *testing.T) {
-	b := books.Book{Title: `Iron Lung: "Deep" / Dive?`, Author: "Mark Lawrence"}
-	if got, want := downloadName(b, ".epub"), "Iron Lung Deep Dive - Mark Lawrence.epub"; got != want {
-		t.Errorf("downloadName = %q, want %q", got, want)
-	}
-	if got := downloadName(books.Book{Title: "///"}, ".pdf"); got != "book.pdf" {
-		t.Errorf("junk title → %q, want book.pdf", got)
-	}
-	h := attachmentHeader("Les Misérables - Victor Hugo.epub")
-	if !strings.HasPrefix(h, "attachment;") || !strings.Contains(h, "filename") {
-		t.Errorf("non-ASCII name produced an unusable header: %q", h)
 	}
 }
