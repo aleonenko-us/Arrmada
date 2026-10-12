@@ -15,18 +15,20 @@ type Repo struct{ db *sql.DB }
 // NewRepo builds a repository over the given pool.
 func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
-const clientCols = `id, name, kind, url, username, password, category, enabled, priority, bundled`
+const clientCols = `id, name, kind, url, username, password, category, enabled, priority, bundled, path_maps`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (Client, error) {
 	var (
 		c       Client
 		en, bun int
+		maps    string
 	)
-	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.URL, &c.Username, &c.Password, &c.Category, &en, &c.Priority, &bun); err != nil {
+	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.URL, &c.Username, &c.Password, &c.Category, &en, &c.Priority, &bun, &maps); err != nil {
 		return Client{}, err
 	}
 	c.Enabled = en != 0
 	c.Bundled = bun != 0
+	c.PathMaps = decodePathMaps(maps)
 	return c, nil
 }
 
@@ -94,9 +96,9 @@ func (r *Repo) Create(ctx context.Context, c Client) (Client, error) {
 		c.Priority = DefaultPriority
 	}
 	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO download_clients (name, kind, url, username, password, category, enabled, priority, bundled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.Name, c.Kind, c.URL, c.Username, c.Password, c.Category, boolToInt(c.Enabled), c.Priority, boolToInt(c.Bundled))
+		`INSERT INTO download_clients (name, kind, url, username, password, category, enabled, priority, bundled, path_maps)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Kind, c.URL, c.Username, c.Password, c.Category, boolToInt(c.Enabled), c.Priority, boolToInt(c.Bundled), encodePathMaps(c.PathMaps))
 	if err != nil {
 		return Client{}, err
 	}
@@ -104,18 +106,20 @@ func (r *Repo) Create(ctx context.Context, c Client) (Client, error) {
 	return c, nil
 }
 
-// Update changes a client's name, URL, username, enabled flag and priority in place. The
-// password is replaced only when one is given — the browser never holds the stored one,
-// so a blank field means "keep it". Kind, category and the bundled flag are left alone,
-// and a zero priority keeps the stored one. ErrNotFound when the id doesn't exist.
+// Update changes a client's name, URL, username, enabled flag, priority and path mappings
+// in place. The password is replaced only when one is given — the browser never holds the
+// stored one, so a blank field means "keep it". Kind, category and the bundled flag are
+// left alone, and a zero priority keeps the stored one. ErrNotFound when the id doesn't
+// exist.
 func (r *Repo) Update(ctx context.Context, c Client) error {
+	maps := encodePathMaps(c.PathMaps)
 	q := `UPDATE download_clients SET name = ?, url = ?, username = ?, enabled = ?,
-		priority = CASE WHEN ? > 0 THEN ? ELSE priority END WHERE id = ?`
-	args := []any{c.Name, c.URL, c.Username, boolToInt(c.Enabled), c.Priority, c.Priority, c.ID}
+		priority = CASE WHEN ? > 0 THEN ? ELSE priority END, path_maps = ? WHERE id = ?`
+	args := []any{c.Name, c.URL, c.Username, boolToInt(c.Enabled), c.Priority, c.Priority, maps, c.ID}
 	if c.Password != "" {
 		q = `UPDATE download_clients SET name = ?, url = ?, username = ?, enabled = ?,
-			priority = CASE WHEN ? > 0 THEN ? ELSE priority END, password = ? WHERE id = ?`
-		args = []any{c.Name, c.URL, c.Username, boolToInt(c.Enabled), c.Priority, c.Priority, c.Password, c.ID}
+			priority = CASE WHEN ? > 0 THEN ? ELSE priority END, path_maps = ?, password = ? WHERE id = ?`
+		args = []any{c.Name, c.URL, c.Username, boolToInt(c.Enabled), c.Priority, c.Priority, maps, c.Password, c.ID}
 	}
 	res, err := r.db.ExecContext(ctx, q, args...)
 	if err != nil {

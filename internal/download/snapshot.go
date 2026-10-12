@@ -220,6 +220,9 @@ func (s *Service) readQueue(ctx context.Context) Snapshot {
 		listed = true
 		for i := range part {
 			part[i].ClientID = dc.ID
+			// Every reader of the queue (imports, stall checks, review, health) gets the
+			// path as Arrmada sees it. Without mappings this changes nothing.
+			part[i].ContentPath = dc.PathMaps.ToLocal(part[i].ContentPath)
 		}
 		snap.Items = append(snap.Items, part...)
 	}

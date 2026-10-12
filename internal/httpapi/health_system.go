@@ -129,6 +129,7 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			}
 			return len(all), download.EnabledStates(snap.Health), nil
 		}))
+		reg.Register(health.DownloadPathsCheck(a.unseenDownloads))
 	}
 
 	if a.deps.Insights != nil {

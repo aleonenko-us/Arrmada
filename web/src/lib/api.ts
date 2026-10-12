@@ -529,6 +529,14 @@ export interface DownloadClient {
   bundled?: boolean;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
+  /** Remote → local folder mappings for a client that sees its downloads under another path. */
+  path_maps?: PathMap[];
+}
+
+/** One remote path mapping: the folder as the download client names it, and inside Arrmada. */
+export interface PathMap {
+  remote: string;
+  local: string;
 }
 
 export interface DownloadClientStatus {
@@ -563,6 +571,8 @@ export interface NewDownloadClient {
   enabled?: boolean;
   /** 1..99; left out, a new client gets 25 and an edited one keeps its own. */
   priority?: number;
+  /** Replaces the path mappings; left out, an edited client keeps its own. */
+  path_maps?: PathMap[];
 }
 
 // An alert connection as the server shows it. The saved Apprise URL never comes back:

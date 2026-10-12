@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
+import { PathMappings } from "./PathMappings";
 
 // The download-client form, moved from the old Download clients page into the cards on
 // Settings → Connections. It adds a client, or edits one in place; the stored password is
@@ -102,9 +103,10 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
   );
 }
 
-// ClientEditor opens inside a client's card: the port to forward, then the form. A
-// switched-off client may not be running at all, so its port isn't asked.
-export function ClientEditor({ client, onSaved }: { client: DownloadClient; onSaved: (c: DownloadClient) => void }) {
+// ClientEditor opens inside a client's card: the port to forward, the form, then its path
+// mappings and path check. A switched-off client may not be running at all, so its port
+// isn't asked.
+export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadClient; onSaved: (c: DownloadClient) => void; onChanged?: () => void }) {
   const [port, setPort] = useState(0);
   useEffect(() => {
     if (client.kind !== "qbittorrent" || !client.enabled) return;
@@ -123,6 +125,7 @@ export function ClientEditor({ client, onSaved }: { client: DownloadClient; onSa
         </div>
       )}
       <ClientForm editing={client} onSaved={onSaved} />
+      <PathMappings client={client} body={(maps) => clientBody(client, { path_maps: maps })} onChanged={onChanged} />
     </div>
   );
 }

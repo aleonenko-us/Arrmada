@@ -65,6 +65,46 @@ func DownloadClientsCheck(states func(ctx context.Context) (configured int, st [
 	}
 }
 
+// UnseenDownloads is one client whose finished downloads Arrmada can't see on disk.
+type UnseenDownloads struct {
+	ClientID   int64
+	ClientName string
+	// Count is how many of the finished downloads looked at aren't there; Example is one.
+	Count   int
+	Example string
+}
+
+// DownloadPathsCheck warns about a download client whose finished downloads aren't where
+// Arrmada looks for them (after the client's path mappings): they download fine and never
+// import. unseen reads the shared queue snapshot and stats a few paths; it asks no client
+// anything itself.
+func DownloadPathsCheck(unseen func(ctx context.Context) ([]UnseenDownloads, error)) Check {
+	return Check{
+		Key: "downloads.paths", Name: "Download paths", Category: CategoryDownloads, Timeout: 10 * time.Second,
+		Run: func(ctx context.Context) []Finding {
+			list, err := unseen(ctx)
+			if err != nil {
+				return nil // no queue to judge; the client check reports an outage
+			}
+			var out []Finding
+			for _, u := range list {
+				what := "a finished download"
+				if u.Count > 1 {
+					what = fmt.Sprintf("%d finished downloads", u.Count)
+				}
+				out = append(out, Finding{
+					Key:   fmt.Sprintf("downloads.paths.%d", u.ClientID),
+					Level: LevelWarning,
+					Fix:   ConnectionFix(fmt.Sprintf("download_client-%d", u.ClientID), "Map paths for "+u.ClientName),
+					Message: fmt.Sprintf("%s has %s Arrmada can't see on disk (such as %s), so they won't import. Mount its download folder into Arrmada or add a path mapping, then Test it.",
+						u.ClientName, what, u.Example),
+				})
+			}
+			return out
+		},
+	}
+}
+
 // PlexState is the Plex connection as the check sees it (see insights.PlexHealth).
 type PlexState struct {
 	Configured   bool

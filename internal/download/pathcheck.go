@@ -1,0 +1,247 @@
+package download
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/diskspace"
+)
+
+// The path half of a download client's Test: where the client saves, whether Arrmada can
+// see that folder (after the client's path mappings), whether it can see the newest
+// finished download, and whether the save folder shares a filesystem with the libraries
+// (hardlinks need that). A client that downloads fine but whose paths Arrmada can't see
+// never imports anything, and nothing said so until now.
+
+// PathEnv is where Arrmada keeps things, for a path check.
+type PathEnv struct {
+	// Downloads is Arrmada's own downloads folder: where a missing mapping most likely points.
+	Downloads string
+	// Libraries are the library folders imports go to, for the same-filesystem check.
+	Libraries []string
+	// DataDir is the database folder; a suggested mapping never points there.
+	DataDir string
+}
+
+// PathCheck is one path the client reported and what Arrmada made of it.
+type PathCheck struct {
+	// What is "save_folder" (the client's default save path) or "newest_download" (the
+	// content of its most recently added finished torrent).
+	What    string `json:"what"`
+	Remote  string `json:"remote"`
+	Local   string `json:"local"`
+	Visible bool   `json:"visible"`
+	// Gone marks a newest download that's missing although its folder is visible through
+	// the same mapping: the files were moved or deleted, which no mapping would fix.
+	Gone bool `json:"gone,omitempty"`
+}
+
+// PathReport is the path check's answer.
+type PathReport struct {
+	Checks []PathCheck `json:"checks"`
+	// OtherDrive lists library folders on a different filesystem from the save folder:
+	// imports into them are copied, not hardlinked.
+	OtherDrive []string `json:"other_drive,omitempty"`
+	// Suggestion is a mapping that would make the unseen paths visible, when one can be
+	// worked out from what Arrmada can see.
+	Suggestion *PathMap `json:"suggestion,omitempty"`
+	// OK is true when every reported path is visible.
+	OK      bool   `json:"ok"`
+	Summary string `json:"summary"`
+}
+
+// savePathReader is a client that can say where it saves downloads.
+type savePathReader interface {
+	DefaultSavePath(ctx context.Context, dc Client) (string, error)
+}
+
+// ErrNoPathCheck: this kind of client can't report its paths.
+var ErrNoPathCheck = errors.New("this download client can't report where it saves")
+
+// TestPaths runs the path check against a stored client. It only reads: the client's
+// preferences and torrent list, and whether folders exist here.
+func (s *Service) TestPaths(ctx context.Context, id int64, env PathEnv) (PathReport, error) {
+	c, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return PathReport{}, err
+	}
+	impl, ok := s.registry.For(c.Kind)
+	if !ok {
+		return PathReport{}, ErrNoPathCheck
+	}
+	spr, ok := impl.(savePathReader)
+	if !ok {
+		return PathReport{}, ErrNoPathCheck
+	}
+	save, err := spr.DefaultSavePath(ctx, c)
+	if err != nil {
+		return PathReport{}, err
+	}
+	// The newest finished torrent shows whether real downloads land where Arrmada looks;
+	// a list that can't be read only costs the report that line.
+	var newest *Item
+	if items, err := impl.List(ctx, c); err == nil {
+		newest = newestFinished(items)
+	}
+	return checkPaths(c, save, newest, env), nil
+}
+
+// newestFinished is the most recently added complete torrent with a content path, leaving
+// out ones the client itself says have lost their files.
+func newestFinished(items []Item) *Item {
+	var best *Item
+	for i := range items {
+		it := &items[i]
+		if !it.Complete() || it.ContentPath == "" || it.RawState == "missingFiles" {
+			continue
+		}
+		if best == nil || it.AddedOn > best.AddedOn {
+			best = it
+		}
+	}
+	return best
+}
+
+// checkPaths builds the report from what the client said. Split from TestPaths so it can
+// be tested against folders in a temp dir.
+func checkPaths(c Client, save string, newest *Item, env PathEnv) PathReport {
+	var rep PathReport
+	saveLocal := c.PathMaps.ToLocal(save)
+	saveCheck := PathCheck{What: "save_folder", Remote: save, Local: saveLocal, Visible: isDir(saveLocal)}
+	rep.Checks = append(rep.Checks, saveCheck)
+	var dl *PathCheck
+	if newest != nil {
+		local := c.PathMaps.ToLocal(newest.ContentPath)
+		rep.Checks = append(rep.Checks, PathCheck{What: "newest_download", Remote: newest.ContentPath, Local: local, Visible: exists(local)})
+		dl = &rep.Checks[len(rep.Checks)-1]
+	}
+	if dl != nil && !dl.Visible && saveCheck.Visible {
+		if rp, ok := parseRemote(dl.Remote); ok {
+			if sp, ok := parseRemote(save); ok {
+				_, dl.Gone = rp.under(sp)
+			}
+		}
+	}
+	rep.OK = saveCheck.Visible && (dl == nil || dl.Visible || dl.Gone)
+
+	if saveCheck.Visible {
+		for _, root := range env.Libraries {
+			if root == "" || !isDir(root) {
+				continue
+			}
+			if same, ok := diskspace.SameDevice(saveLocal, root); ok && !same {
+				rep.OtherDrive = append(rep.OtherDrive, root)
+			}
+		}
+	}
+	if !rep.OK {
+		rep.Suggestion = suggestMapping(c, saveCheck, dl, env)
+	}
+	rep.Summary = summarise(c.Name, saveCheck, dl, rep)
+	return rep
+}
+
+// suggestMapping works out a mapping that would make the unseen paths visible. From the
+// newest download: the longest tail of its path that exists under Arrmada's downloads
+// folder ("/downloads/complete/Movie" with /media/downloads/complete/Movie present gives
+// /downloads → /media/downloads). Otherwise the save folder → Arrmada's downloads folder,
+// the usual shape of a seedbox mount. Nil when nothing fits or the mapping would be refused.
+func suggestMapping(c Client, save PathCheck, dl *PathCheck, env PathEnv) *PathMap {
+	if env.Downloads == "" || !isDir(env.Downloads) {
+		return nil
+	}
+	var sug *PathMap
+	if dl != nil && !dl.Visible {
+		if rp, ok := parseRemote(dl.Remote); ok {
+			parts := strings.Split(strings.Trim(rp.p, "/"), "/")
+			for k := len(parts) - 1; k >= 1 && sug == nil; k-- {
+				tail := path.Join(parts[len(parts)-k:]...)
+				if !exists(filepath.Join(env.Downloads, filepath.FromSlash(tail))) {
+					continue
+				}
+				prefix := rp
+				prefix.p = strings.TrimSuffix(rp.p, "/"+tail)
+				if pr, ok := parseRemote(prefix.String()); ok && prefix.p != rp.p && !pr.isRoot() {
+					sug = &PathMap{Remote: prefix.String(), Local: env.Downloads}
+				}
+			}
+		}
+	}
+	if sug == nil && !save.Visible {
+		sug = &PathMap{Remote: save.Remote, Local: env.Downloads}
+	}
+	if sug == nil {
+		return nil
+	}
+	// The suggestion must pass the same rules a saved mapping does, alongside the client's
+	// other mappings (one for the same remote folder is what it replaces).
+	others := make([]PathMap, 0, len(c.PathMaps)+1)
+	norm, _ := parseRemote(sug.Remote)
+	for _, pm := range c.PathMaps {
+		if pm.normRemote() != norm.p {
+			others = append(others, pm)
+		}
+	}
+	valid, err := ValidatePathMaps(append(others, *sug), env.DataDir)
+	if err != nil {
+		return nil
+	}
+	out := valid[len(valid)-1]
+	return &out
+}
+
+func summarise(name string, save PathCheck, dl *PathCheck, rep PathReport) string {
+	var b strings.Builder
+	switch {
+	case save.Visible && save.Local == save.Remote:
+		fmt.Fprintf(&b, "%s saves to %s, which Arrmada can see ✓", name, save.Remote)
+	case save.Visible:
+		fmt.Fprintf(&b, "%s saves to %s; Arrmada sees it as %s ✓", name, save.Remote, save.Local)
+	case save.Local != save.Remote:
+		fmt.Fprintf(&b, "%s saves to %s (mapped to %s), which Arrmada can't see", name, save.Remote, save.Local)
+	default:
+		fmt.Fprintf(&b, "%s saves to %s, which Arrmada can't see", name, save.Remote)
+	}
+	if dl != nil && !dl.Visible && !dl.Gone {
+		fmt.Fprintf(&b, ". Its newest finished download, %s, isn't visible either", dl.Local)
+		if save.Visible {
+			b.Reset()
+			fmt.Fprintf(&b, "%s's newest finished download is at %s, which Arrmada can't see", name, dl.Local)
+		}
+	}
+	if !rep.OK {
+		if rep.Suggestion != nil {
+			fmt.Fprintf(&b, ". Add the path mapping %s → %s", rep.Suggestion.Remote, rep.Suggestion.Local)
+		} else {
+			b.WriteString(". Mount that folder into the Arrmada container, or add a path mapping to where it's mounted")
+		}
+	}
+	if len(rep.OtherDrive) > 0 {
+		fmt.Fprintf(&b, ". %s is on a different drive, so imports there are copied rather than hardlinked", strings.Join(rep.OtherDrive, ", "))
+	}
+	if out := b.String(); !strings.HasSuffix(out, "✓") {
+		return out + "."
+	}
+	return b.String()
+}
+
+func exists(p string) bool {
+	if p == "" || !filepath.IsAbs(p) {
+		return false
+	}
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+func isDir(p string) bool {
+	if p == "" || !filepath.IsAbs(p) {
+		return false
+	}
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
