@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	netmail "net/mail"
 	"net/smtp"
@@ -239,10 +240,47 @@ func send(ctx context.Context, cfg Config, password string, msg Message, roots *
 	return nil
 }
 
-// ctxErr prefers the context's reason (a timeout, a shutdown) over the i/o error it caused.
+// ctxErr prefers the context's reason (a timeout, a shutdown) over the i/o error it caused,
+// and otherwise cleans the error of addresses (see clean).
 func ctxErr(ctx context.Context, err error) error {
 	if cerr := ctx.Err(); cerr != nil {
 		return cerr
+	}
+	return clean(err)
+}
+
+// clean keeps what went wrong and drops where: Go's network, TLS and file errors carry the
+// server's name or address ("dial tcp 10.0.0.5:587: connect: connection refused") or a
+// file's path, and Send's errors reach browsers — the settings card, and a requester's
+// inbox after a failed Send to Kindle. The mail server is a credential there, never shown
+// in full. A reply from the server itself is kept whole: it's what the person needs.
+func clean(err error) error {
+	var reply *textproto.Error
+	if err == nil || errors.As(err, &reply) {
+		return err
+	}
+	var dns *net.DNSError
+	var host x509.HostnameError
+	var authority x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var op *net.OpError
+	var path *fs.PathError
+	switch {
+	case errors.As(err, &dns):
+		return errors.New("the mail server's name couldn't be looked up")
+	case errors.As(err, &host):
+		return errors.New("the mail server's certificate is for a different name")
+	case errors.As(err, &authority):
+		return errors.New("the mail server's certificate isn't from a trusted authority")
+	case errors.As(err, &invalid):
+		return errors.New("the mail server's certificate is invalid or expired")
+	case errors.As(err, &op):
+		if op.Timeout() {
+			return errors.New("the mail server stopped answering")
+		}
+		return errors.New(op.Err.Error()) // "connect: connection refused", no address
+	case errors.As(err, &path):
+		return path.Err
 	}
 	return err
 }

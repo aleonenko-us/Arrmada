@@ -162,6 +162,9 @@ func TestSendToKindleFailureReachesTheInbox(t *testing.T) {
 	if len(inbox) != 1 || !strings.Contains(inbox[0].Body, "Couldn't send “Dune”") || !strings.Contains(inbox[0].Body, "550") {
 		t.Fatalf("inbox = %+v, want the failure with the 550 reply", inbox)
 	}
+	if strings.Contains(inbox[0].Body, refusing.Host) {
+		t.Errorf("the requester's inbox names the mail server: %q", inbox[0].Body)
+	}
 }
 
 // Every refusal the button can meet, each with its own status.

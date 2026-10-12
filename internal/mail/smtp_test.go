@@ -9,6 +9,9 @@ import (
 	"mime"
 	"mime/multipart"
 	netmail "net/mail"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +191,30 @@ func TestSendHonoursContext(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	if err := send(ctx, cfgFor(s, SecurityNone, ""), "", Message{To: "me@example.com", Subject: "x"}, nil); err == nil {
 		t.Error("an expired context must fail")
+	}
+}
+
+// Errors reach browsers (the Test button, a requester's inbox), so they name what went
+// wrong but never the mail server's address or a file's path.
+func TestErrorsCarryNoAddressOrPath(t *testing.T) {
+	s := startFake(t, mailtest.Options{})
+	cfg := cfgFor(s, SecurityNone, "")
+	s.Close() // nothing listening any more
+	err := send(context.Background(), cfg, "", Message{To: "me@example.com", Subject: "x"}, nil)
+	if err == nil {
+		t.Fatal("a closed port must fail")
+	}
+	port := strconv.Itoa(cfg.Port)
+	if strings.Contains(err.Error(), s.Host) || strings.Contains(err.Error(), port) {
+		t.Errorf("error names the server: %q", err)
+	}
+
+	live := startFake(t, mailtest.Options{})
+	missing := filepath.Join(t.TempDir(), "secret-library", "Dune.epub")
+	err = send(context.Background(), cfgFor(live, SecurityNone, ""), "", Message{To: "me@example.com", Subject: "x",
+		Attachment: &Attachment{Name: "Dune.epub", Open: func() (io.ReadCloser, error) { return os.Open(missing) }}}, nil)
+	if err == nil || strings.Contains(err.Error(), "secret-library") {
+		t.Errorf("a missing attachment: err = %v, want an error without the path", err)
 	}
 }
 
