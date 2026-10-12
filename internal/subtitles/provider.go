@@ -34,6 +34,16 @@ type SubtitleResult struct {
 	Downloads       int
 	HearingImpaired bool
 	HashMatch       bool // uploaded against this exact file — in sync by construction
+
+	// What scoring (scoring.go) compares against the file on disk.
+	FPS              float64 // frame rate the subtitle was timed for; 0 = not stated
+	Trusted          bool    // from a trusted uploader
+	FileName         string  // the uploaded file's name; a fallback when Release says nothing
+	UploaderRank     string  // e.g. "trusted", "administrator"
+	Season           int     // the episode it was uploaded for (0 for movies / not stated)
+	Episode          int
+	AITranslated     bool // machine or AI translation: never used
+	ForeignPartsOnly bool // forced subtitle: only for a forced want
 }
 
 // Provider searches for and downloads external subtitles. Providers sit behind this
