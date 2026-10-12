@@ -59,13 +59,49 @@ func airYear(date string) int {
 //     of fewer than two significant words ("Pilot", "Christmas") is too loose to find
 //     inside a name, so then the name must say exactly that title and nothing more.
 func specialTitleMatch(p parser.Release, name string, s series.Series, ep series.Episode) bool {
-	return specialTitleScore(p, name, s, ep) > 0
+	return !p.IsTV() && specialTitleScore(showSplits(p, name, s), s, ep) > 0
+}
+
+// showSplit is one way a name divides into the show and what follows it: rest is the
+// words after the show (and after a year straight after it, when year is set). plain is
+// whether the words before name the show; withYear whether they do with that year read as
+// the show's.
+type showSplit struct {
+	rest            []string
+	year            int
+	plain, withYear bool
+}
+
+// showSplits lists every way a name starts with the show. Worked out once per release —
+// the identity rule is the expensive part, and every special is weighed against it.
+func showSplits(p parser.Release, name string, s series.Series) []showSplit {
+	var out []showSplit
+	words := parser.NameWords(name)
+	for i := 1; i < len(words); i++ {
+		rest := words[i:]
+		if _, cc := parser.SplitCountry("x " + rest[0]); cc != "" {
+			continue // a country tag belongs to the show's name: "The.Office.US" isn't the UK show
+		}
+		q := p
+		q.Title, q.TitleYear = strings.Join(words[:i], " "), 0
+		sp := showSplit{rest: rest}
+		sp.plain, _ = seriesIdentity(q, s)
+		if y, ok := isYearWord(rest[0]); ok && len(rest) > 1 {
+			sp.year, sp.rest = y, rest[1:]
+			q.TitleYear = y // the show's year, or another show's
+			sp.withYear, _ = seriesIdentity(q, s)
+		}
+		if sp.plain || sp.withYear {
+			out = append(out, sp)
+		}
+	}
+	return out
 }
 
 // specialTitleScore is specialTitleMatch as how many significant words matched (0 for no
 // match), so the more specific of two specials that both match can win.
-func specialTitleScore(p parser.Release, name string, s series.Series, ep series.Episode) int {
-	if p.IsTV() || ep.SeasonNumber != 0 {
+func specialTitleScore(splits []showSplit, s series.Series, ep series.Episode) int {
+	if ep.SeasonNumber != 0 || len(splits) == 0 {
 		return 0
 	}
 	titles := [][]string{parser.TitleWords(ep.Title)}
@@ -75,25 +111,17 @@ func specialTitleScore(p parser.Release, name string, s series.Series, ep series
 		strings.Join(titles[0][:len(show)], " ") == strings.Join(show, " ") {
 		titles = append(titles, titles[0][len(show):])
 	}
-	words := parser.NameWords(name)
-	for i := 1; i < len(words); i++ {
-		rest := words[i:]
-		if _, cc := parser.SplitCountry("x " + rest[0]); cc != "" {
-			continue // a country tag belongs to the show's name: "The.Office.US" isn't the UK show
+	for _, sp := range splits {
+		// A year after the show is the show's own, or the year this special aired.
+		ok := sp.plain
+		if sp.year > 0 {
+			ok = sp.withYear || (sp.plain && sp.year == airYear(ep.AirDate))
 		}
-		q := p
-		q.Title, q.TitleYear = strings.Join(words[:i], " "), 0
-		if y, ok := isYearWord(rest[0]); ok && len(rest) > 1 {
-			if y != airYear(ep.AirDate) {
-				q.TitleYear = y // the show's year, or another show's
-			}
-			rest = rest[1:]
-		}
-		if ok, _ := seriesIdentity(q, s); !ok {
+		if !ok {
 			continue
 		}
 		for _, all := range titles {
-			if sig := significantWords(all); len(sig) > 0 && titleIn(rest, all, sig) {
+			if sig := significantWords(all); len(sig) > 0 && titleIn(sp.rest, all, sig) {
 				return len(sig)
 			}
 		}
@@ -139,13 +167,17 @@ func specialByTitle(p parser.Release, name string, s series.Series, want int) in
 	if p.IsTV() {
 		return 0
 	}
+	splits := showSplits(p, name, s)
+	if len(splits) == 0 {
+		return 0 // not this show
+	}
 	best, bestScore := []series.Episode(nil), 0
 	for _, sn := range s.Seasons {
 		if sn.SeasonNumber != 0 {
 			continue
 		}
 		for _, e := range sn.Episodes {
-			switch n := specialTitleScore(p, name, s, e); {
+			switch n := specialTitleScore(splits, s, e); {
 			case n > bestScore:
 				best, bestScore = []series.Episode{e}, n
 			case n > 0 && n == bestScore:

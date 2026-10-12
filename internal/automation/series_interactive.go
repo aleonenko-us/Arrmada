@@ -61,7 +61,12 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 		if season == 0 {
 			// A special named by its title: its name is the show plus that title, so the
 			// identity check below would read it as another show.
-			if n := specialByTitle(p, rel.Title, s, episode); n > 0 {
+			n := specialByTitle(p, rel.Title, s, 0)
+			if n > 0 && episode > 0 && n != episode {
+				droppedScope++ // another special
+				continue
+			}
+			if n > 0 {
 				byName[rel.Title] = rel
 				byTitle[rel.Title] = n
 				cand := c.specialCandidate(c.newSeriesCandidate(ctx, s, rts, rel), rts, n)
@@ -181,9 +186,8 @@ func (c *Coordinator) searchSeriesScope(ctx context.Context, s series.Series, se
 		result.Releases = c.addSeasonSearches(ctx, s, title, result.Releases)
 	}
 	// Specials: name each one, since the broad title query is one capped page of mostly
-	// regular episodes and there's no parameter that asks for season 0.
-	// Most specials are released by name rather than S00Exx, so each is also searched by
-	// its title.
+	// regular episodes and there's no parameter that asks for season 0. Most specials are
+	// released by name rather than S00Exx, so each is also searched by its title.
 	if season == 0 {
 		for _, sq := range specialQueries(s, title, episode) {
 			sres, serr := c.search(ctx, indexer.SearchQuery{Text: sq, MediaType: indexer.MediaSeries, Limit: 100})

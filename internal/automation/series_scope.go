@@ -296,12 +296,15 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		out.Found++
 		special := 0
 		if sc.Season == 0 {
-			special = specialByTitle(parser.Parse(rel.Title), rel.Title, s, sc.Episode)
+			special = specialByTitle(parser.Parse(rel.Title), rel.Title, s, 0)
 		}
 		switch {
 		case blocked[normTitle(rel.Title)]:
 			out.Blocklisted++
 			notes.mark(rel.Title, DropBlocklisted)
+		case special > 0 && sc.Episode > 0 && special != sc.Episode:
+			out.OutOfScope++ // another special, named by its title
+			notes.mark(rel.Title, DropOutOfScope)
 		case special > 0:
 			byName[rel.Title] = rel
 			byTitle[rel.Title] = GrabScope{Season: 0, Episode: special}

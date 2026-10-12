@@ -1095,8 +1095,8 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 				s, matchOK = *expected, true
 			}
 			// A special grabbed by its title is named "Show The Christmas Special", which
-			// is the show only once the special's title is taken off.
-			// The library list carries no episodes, so the show is loaded for its specials.
+			// is the show only once the special's title is taken off. The library list
+			// carries no episodes, so the show is loaded for its specials.
 			if expected != nil && !matchOK {
 				if t := c.grabForce(ctx, it.Hash).Target; t.Season == 0 && t.Episode > 0 {
 					if full, err := c.series.Get(ctx, expected.ID); err == nil && grabbedSpecialByTitle(parsed, it.Name, full, t) {
