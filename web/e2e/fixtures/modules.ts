@@ -85,7 +85,7 @@ export function subtitleFile(url: URL): SubFileView {
         { start_ms: 66_400, end_ms: 68_250, text: "Will I see you tonight?" },
       ],
       shiftable: true, owned: true, source: "opensubtitles", provider: "opensubtitles", provider_file_id: "991",
-      release: `${base}.1080p.BluRay.x264-GRP`, score: 84, sync_confidence: 92, created_at: Math.floor(NOW / 1000) - 86400,
+      release: `${base}.1080p.BluRay.x264-GRP`, score: 84, health: { state: "ok", score: 92, note: "in sync · checked 11 Oct 2026" }, created_at: Math.floor(NOW / 1000) - 86400,
     }],
     orphans: episode ? [] : [{ name: "Old.Name.eng.srt", lang: "en" }],
     backoffs: [],

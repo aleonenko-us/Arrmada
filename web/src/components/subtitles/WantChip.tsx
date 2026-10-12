@@ -38,11 +38,12 @@ export function wantLine(l: SubLangStatus, sidecar?: SubSidecar): { text: string
   const lang = l.lang.toLowerCase();
   if (l.have) {
     const parts = [`✓ ${lang}`];
-    if (sidecar) {
-      parts.push(SOURCE_LABEL[sidecar.source] ?? sidecar.source);
-      if (sidecar.sync_confidence != null) parts.push(`Health ${sidecar.sync_confidence}`);
-    }
-    return { text: parts.join(" · "), tone: "good", title: sidecar ? `${sidecar.name}${sidecar.variant === "sdh" ? " (SDH)" : ""}` : "A subtitle is beside the file" };
+    if (sidecar) parts.push(SOURCE_LABEL[sidecar.source] ?? sidecar.source);
+    const h = l.health ?? sidecar?.health;
+    if (h && h.score != null && h.state !== "unchecked" && h.state !== "unknown") parts.push(`Health ${h.score}`);
+    const name = sidecar?.name ?? l.file;
+    const tip = [name ? `${name}${sidecar?.variant === "sdh" ? " (SDH)" : ""}` : "A subtitle is beside the file", h?.note].filter(Boolean).join(" — ");
+    return { text: parts.join(" · "), tone: h?.state === "bad" ? "warn" : "good", title: tip };
   }
   if (l.orphan) {
     return { text: `${lang} · orphaned`, tone: "warn", title: "A subtitle in the folder is named for no video, so Plex won't show it with this file." };

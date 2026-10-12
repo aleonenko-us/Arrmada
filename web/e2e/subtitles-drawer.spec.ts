@@ -68,6 +68,52 @@ for (const scheme of ["dark", "light"] as const) {
   });
 }
 
+// SUB-28: the drawer's OpenSubtitles search and Use this; Generate with AI.
+const search: MockRoute = {
+  method: "POST", path: "/api/v1/subtitles/search",
+  respond: () => ({
+    lang: "es", min_score: 60, can_download: true, quota_remaining: 18, quota_reset_at: 0, provider_state: "ok", searched_at: 1,
+    candidates: [
+      { file_id: "501", language: "es", release: "Fixture.Film.2020.1080p.BluRay.x264-GRP", file_name: "Fixture.Film.2020.1080p.BluRay.x264-GRP.spa.srt", downloads: 4210, hearing_impaired: false, hash_match: true, score: 100, reasons: ["+100 hash match"] },
+      { file_id: "502", language: "es", release: "Fixture.Film.2020.720p.WEBRip-OTHER", downloads: 15_002, hearing_impaired: true, hash_match: false, fps: 25, score: 12, reasons: ["−15 WEBRip vs BluRay", "−40 25 vs 23.976 fps"] },
+      { file_id: "503", language: "es", release: "Fixture.Film.2020.BluRay-GRP", downloads: 80, hearing_impaired: false, hash_match: false, score: 55, reasons: ["+25 same group (GRP)", "+20 same source (BluRay)"], blocklisted: true },
+    ],
+  }),
+};
+const redo: MockRoute = { method: "POST", path: "/api/v1/subtitles/redo", status: 202, respond: ({ body }) => ({ id: 77, kind: "movie", movie_id: 1, title: "Fixture Film", state: "queued", at: 0, priority: 1, mode: (body as { mode: string }).mode }) };
+
+test.describe("search and pick", () => {
+  test.use({ persona: "admin" });
+
+  test("search one language, read the scores, use one; generate with AI", async ({ page, api, isMobile }) => {
+    await installExtra(page, api, [movieWithFile, search, redo]);
+    await page.goto("/movies/1");
+    await page.getByRole("button", { name: "Find subtitles" }).click();
+    const drawer = page.getByRole("dialog", { name: /Subtitles — Fixture Film/ });
+    await expect(drawer.getByText("Where were you last night?")).toBeVisible();
+
+    await drawer.getByRole("button", { name: "Search OpenSubtitles" }).nth(1).click(); // es
+    const results = drawer.getByRole("region", { name: /OpenSubtitles results for/ });
+    await expect(results.getByText("Fixture.Film.2020.1080p.BluRay.x264-GRP", { exact: true })).toBeVisible();
+    await expect(results.getByText("18 downloads left today. Searching is free.")).toBeVisible();
+    await expect(results.getByText("blocked for this file")).toBeVisible();
+    await expect(results.getByRole("button", { name: "Use this" }).nth(2)).toBeDisabled();
+    await fitsScreen(page);
+    await shot(page, `drawer-search-${isMobile ? "phone" : "desktop"}`);
+    expect(api.callsTo("POST", "/api/v1/subtitles/search")[0].body).toEqual({ kind: "movie", movie_id: 1, lang: "es", refresh: false });
+
+    await results.getByRole("button", { name: "Use this" }).first().click();
+    await page.getByRole("dialog", { name: /Use Fixture\.Film/ }).getByRole("button", { name: "Use this" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/subtitles/redo").length).toBe(1);
+    expect(api.callsTo("POST", "/api/v1/subtitles/redo")[0].body).toEqual({ kind: "movie", movie_id: 1, lang: "es", mode: "pick", file_id: "501" });
+
+    await drawer.getByRole("button", { name: "Generate with AI" }).first().click();
+    await page.getByRole("dialog", { name: /with AI\?/ }).getByRole("button", { name: "Queue it" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/subtitles/redo").length).toBe(2);
+    expect(api.callsTo("POST", "/api/v1/subtitles/redo")[1].body).toEqual({ kind: "movie", movie_id: 1, lang: "en", mode: "ai" });
+  });
+});
+
 test.describe("Subtitles Library", () => {
   test.use({ persona: "admin" });
 

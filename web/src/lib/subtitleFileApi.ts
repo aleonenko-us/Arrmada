@@ -1,6 +1,7 @@
-import { req, type SubLangStatus, type SubTrack, type SubtitleAttempt, type SubtitleJob, type SubtitleResult } from "./api";
+import { req, type SubLangHealth, type SubLangStatus, type SubTrack, type SubtitleAttempt, type SubtitleJob, type SubtitleProviderState, type SubtitleResult } from "./api";
 
-// The per-file subtitle drawer's calls (GET /subtitles/file, shift, delete). Staff-only,
+// The per-file subtitle drawer's calls (GET /subtitles/file, shift, delete, sync check,
+// redo, interactive search). Staff-only,
 // and only the drawer and the detail pages' subtitle status import this module, so it
 // rides in their lazy chunks rather than lib/api.ts, which every page (the requester's
 // first load included) pays for.
@@ -31,8 +32,8 @@ export interface SubSidecar {
   hash_match?: boolean;
   score?: number;
   model?: string;
-  sync_offset_ms?: number; // running total of shifts applied
-  sync_confidence?: number; // the Health score; absent = not checked
+  health: SubLangHealth; // the last sync check, in words
+  shift_ms?: number; // the shift applied to it (automatic or a nudge)
   locked?: boolean;
   embedded_index?: number;
   created_at?: number;
@@ -73,6 +74,48 @@ export function subMediaKey(m: SubMediaRef): string {
   return m.kind === "movie" ? `m:${m.movie_id}` : `e:${m.series_id}:${m.season}:${m.episode}`;
 }
 
+/** A redo of one language (POST /subtitles/redo): the drawer's Extract, Generate and Use this. */
+export interface SubRedo {
+  lang: string;
+  variant?: "" | "sdh";
+  mode: "next" | "ai" | "extract" | "pick";
+  track_index?: number; // extract: 0:s:N
+  audio_stream?: number; // ai: 0:a:N
+  file_id?: string; // pick: the OpenSubtitles file
+}
+
+/** One OpenSubtitles candidate, scored against the file (internal/subtitles/scoring.go). */
+export interface SubCandidate {
+  file_id: string;
+  language: string;
+  release: string;
+  file_name?: string;
+  downloads: number;
+  hearing_impaired: boolean;
+  hash_match: boolean;
+  fps?: number;
+  trusted?: boolean;
+  uploader_rank?: string;
+  score: number;
+  reasons: string[]; // "+25 same group (FLUX)", "−40 25 vs 23.976 fps"
+  rejected?: string; // why it can never be used for this want
+  blocklisted?: boolean;
+}
+
+/** POST /subtitles/search: the candidates and what a download would cost. */
+export interface SubSearchView {
+  lang: string;
+  variant?: string;
+  candidates: SubCandidate[];
+  current_file_id?: string;
+  min_score: number;
+  can_download: boolean;
+  quota_remaining: number; // -1 = unknown
+  quota_reset_at: number; // unix seconds; 0 = not paused
+  provider_state: SubtitleProviderState;
+  searched_at: number;
+}
+
 export const subtitleFileApi = {
   view: (m: SubMediaRef) => req<SubFileView>(`/api/v1/subtitles/file?${refQuery(m).toString()}`),
   // offsetMs > 0 moves every cue later.
@@ -84,4 +127,13 @@ export const subtitleFileApi = {
     q.set("name", name);
     return req<{ removed: string }>(`/api/v1/subtitles/file?${q.toString()}`, { method: "DELETE" });
   },
+  // Measures one language's sidecar against the audio, as a job (reading a soundtrack takes a while).
+  syncCheck: (m: SubMediaRef, lang: string, variant = "") =>
+    req<{ job_id?: number; file: string }>("/api/v1/subtitles/sync-check", { method: "POST", body: JSON.stringify({ ...m, lang, variant }) }),
+  // Queues a manual-priority job for one language; the old file goes to the bin only once the new one exists.
+  redo: (m: SubMediaRef, r: SubRedo) =>
+    req<SubtitleJob>("/api/v1/subtitles/redo", { method: "POST", body: JSON.stringify({ ...m, ...r }) }),
+  // No download quota is spent; refresh asks OpenSubtitles again instead of reusing the last answer.
+  search: (m: SubMediaRef, lang: string, refresh = false) =>
+    req<SubSearchView>("/api/v1/subtitles/search", { method: "POST", body: JSON.stringify({ ...m, lang, refresh }) }),
 };
