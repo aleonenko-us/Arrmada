@@ -253,6 +253,10 @@ type Profile struct {
 	// OwnerLanguages are the audio languages the household keeps (Convert's audio
 	// languages); a release in one of them is never foreign-only. Empty means English.
 	OwnerLanguages []string `json:"owner_languages,omitempty"`
+	// onDisk judges a file already in the library rather than a release on offer: an
+	// Unwanted item set to reject only avoids it, so a file the pack now refuses (a 3D
+	// copy) isn't treated as worthless and replaced by any release at all (current.go).
+	onDisk bool
 }
 
 // Candidate is a release under consideration (release + indexer metadata).
@@ -506,7 +510,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	// ceiling (a disc image is always "over the ceiling", which would hide why).
 	unwanted := p.unwantedHits(c)
 	for _, h := range unwanted {
-		if p.unwantedAction(h.item) == UnwantedReject {
+		if p.unwantedAction(h.item) == UnwantedReject && !p.onDisk {
 			ev.reject(RejectUnwanted, h.reject)
 			return ev
 		}
@@ -615,7 +619,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	// Unwanted items set to avoid join the avoided tier under their own names ("it has
 	// Low-quality group (YTS), which you avoid"), never as a hidden score.
 	for _, h := range unwanted {
-		if p.unwantedAction(h.item) == UnwantedAvoid {
+		if a := p.unwantedAction(h.item); a == UnwantedAvoid || (a == UnwantedReject && p.onDisk) {
 			ev.Avoided = true
 			ev.TargetAvoided = true
 			ev.lowGroup = ev.lowGroup || h.item == UnwantedLowQualityGroup

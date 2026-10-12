@@ -88,6 +88,7 @@ func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 	// No runtime on the file's own candidate: scored as it always was, so a file over a
 	// lowered ceiling isn't treated as worthless and replaced by anything at all.
 	curCand := c.candidate()
+	p.onDisk = true // the file and its original are judged as files, not releases on offer
 	cur := e.Evaluate(p, curCand)
 	b := upgradeBar{
 		total: cur.Total, avoided: cur.Avoided, resRank: resRank[curCand.Release.Resolution],
@@ -319,6 +320,7 @@ func judge(sp *StoredProfile, p Profile, e *Engine, cur CurrentFile) FileVerdict
 		v.Eligible = true
 		return v
 	}
+	p.onDisk = true
 	v.Current = e.Evaluate(p, cur.candidate().WithRuntime(cur.RuntimeMin))
 	v.Eligible = v.Current.Eligible
 	if sp != nil {

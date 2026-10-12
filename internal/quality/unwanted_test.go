@@ -334,6 +334,35 @@ func TestOwnerLanguagesHook(t *testing.T) {
 	}
 }
 
+// A file already in the library that the pack now refuses (a 3D copy) isn't treated as
+// worthless: it stays eligible (no downgrade prompt) and isn't replaced by anything at all —
+// only by a real upgrade.
+func TestUnwantedRejectsDontReachTheLibrary(t *testing.T) {
+	s, ctx := testService(t)
+	sp, err := s.Create(ctx, StoredProfile{MediaType: MediaMovie, Name: "lib", UpgradesEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "custom:" + strconv.FormatInt(sp.ID, 10)
+	cur := CurrentFile{Release: "Film.2010.1080p.BluRay.Half-SBS.x264-GRP", SizeGB: 9, RuntimeMin: 120}
+	if s.WouldReject(ctx, ref, cur) {
+		t.Error("a 3D file on disk reads as refused by the profile")
+	}
+	if v := s.JudgeFile(ctx, ref, cur); !v.Current.Avoided {
+		t.Errorf("a 3D file on disk should rank as avoided: %+v", v.Current)
+	}
+	if _, ok := s.UpgradeCandidate(ctx, ref, cur, []Candidate{NewCandidate("Film.2010.720p.WEB-DL.x264-LOW", 2, 50)}); ok {
+		t.Error("a 3D file was replaced by a lower-resolution release")
+	}
+	if _, ok := s.UpgradeCandidate(ctx, ref, cur, []Candidate{NewCandidate("Film.2010.1080p.BluRay.x264-GRP", 9, 50)}); ok {
+		t.Error("a 3D file was replaced by an equal-scoring release")
+	}
+	// As a release on offer it is still refused.
+	if ev := sp.Engine().Evaluate(sp.ToProfile(), NewCandidate(cur.Release, 9, 50)); ev.Eligible {
+		t.Error("a 3D release on offer should be refused")
+	}
+}
+
 // A low-quality group's file is still upgraded to a clean release that scores no worse
 // (it used to carry a hidden −180), under the "any" trigger only.
 func TestLowQualityGroupFileUpgrades(t *testing.T) {
