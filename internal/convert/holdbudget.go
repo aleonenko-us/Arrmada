@@ -119,9 +119,10 @@ func (s *Service) finishSkipUntil(job *Job, kind, note string, retryAt int64) {
 		s.finish(job, StateCancelled, "cancelled")
 		return
 	}
-	s.skips.recordAt(context.Background(), job.Key, kind, note, retryAt)
+	attempts := s.skips.recordAt(context.Background(), job.Key, kind, note, retryAt)
 	s.record(job).skipKind = kind
 	s.finish(job, StateSkipped, note)
+	s.skipRecorded(job, kind, note, attempts) // convert.stalled on the first in a row (events.go)
 }
 
 // ReleaseHoldsOlderThan releases every held original converted at least days ago (0 = all

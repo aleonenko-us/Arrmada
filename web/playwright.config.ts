@@ -29,7 +29,7 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testMatch: /(admin-smoke|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|alerts|seasons|users-autoapprove|insights|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert-hold)\.spec\.ts/,
+      testMatch: /(admin-smoke|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|alerts|seasons|users-autoapprove|insights|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert|convert-hold)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {

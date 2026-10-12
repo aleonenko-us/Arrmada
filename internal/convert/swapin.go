@@ -91,6 +91,7 @@ func (s *Service) swapIn(ctx context.Context, job *Job, src, dst string, mi *Med
 		if errors.Is(err, syscall.ENOSPC) {
 			// The library disk filled up. Retrying straight away would re-run the whole encode
 			// only to fail the same way, so wait for space to be freed.
+			s.noteStall(job, outSize, int64(freeBytesFn(filepath.Dir(part))))
 			s.finishSkip(job, SkipLibraryFull, fmt.Sprintf("the library disk had %s free; staging needed %s — the encode was discarded and the original kept",
 				humanBytes(int64(freeBytesFn(filepath.Dir(part)))), humanBytes(outSize)))
 			return
@@ -234,6 +235,9 @@ func (s *Service) holdRoom(ctx context.Context, job *Job, src string, mi *MediaI
 		return true // nothing is kept, so there's no budget to keep within
 	}
 	if ok, why, retryAt := s.holdFits(ctx, mi.SizeBytes); !ok {
+		if st := s.HoldStats(ctx); st.BudgetBytes > 0 {
+			s.noteStall(job, mi.SizeBytes, max(st.BudgetBytes-st.HeldBytes, 0)) // room left under the budget
+		}
 		s.finishSkipUntil(job, SkipHoldFull, why, retryAt)
 		return false
 	}

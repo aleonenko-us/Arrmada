@@ -36,6 +36,8 @@ type sessionRecord struct {
 	WatchedMS        int64 // actual time watched, when the source reports it; 0 = derive it
 	VideoSrc         string
 	VideoStream      string
+	VideoSrcBitDepth int    // 8, 10; 0 = not reported
+	VideoSrcProfile  string // "main 10", "high"; "" = not reported
 	AudioSrc         string
 	AudioStream      string
 	ContainerSrc     string
@@ -56,12 +58,14 @@ func (r *repo) insertSessionEx(ctx context.Context, ex execer, s sessionRecord) 
 		 (session_key,user_id,user_name,rating_key,media_type,title,grandparent_title,parent_title,
 		  media_index,parent_index,year,thumb,player,platform,product,ip_address,location,decision,
 		  started_at,stopped_at,paused_ms,view_offset_ms,duration_ms,watched_ms,
-		  video_src,video_stream,audio_src,audio_stream,container_src,container_stream,hw_transcode,buffer_count,import_run_id)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  video_src,video_stream,audio_src,audio_stream,container_src,container_stream,hw_transcode,buffer_count,import_run_id,
+		  video_src_bitdepth,video_src_profile)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		s.SessionKey, s.UserID, s.UserName, s.RatingKey, s.MediaType, s.Title, s.GrandparentTitle, s.ParentTitle,
 		s.MediaIndex, s.ParentIndex, s.Year, s.Thumb, s.Player, s.Platform, s.Product, s.IPAddress, s.Location, s.Decision,
 		s.StartedAt, s.StoppedAt, s.PausedMS, s.ViewOffsetMS, s.DurationMS, s.WatchedMS,
-		s.VideoSrc, s.VideoStream, s.AudioSrc, s.AudioStream, s.ContainerSrc, s.ContainerStream, b2i(s.HWTranscode), s.BufferCount, s.ImportRunID)
+		s.VideoSrc, s.VideoStream, s.AudioSrc, s.AudioStream, s.ContainerSrc, s.ContainerStream, b2i(s.HWTranscode), s.BufferCount, s.ImportRunID,
+		s.VideoSrcBitDepth, s.VideoSrcProfile)
 	if err != nil {
 		return 0, err
 	}

@@ -777,7 +777,7 @@ export interface SystemHealth {
 
 // The Needs-you feed (GET /api/v1/attention, staff only): what's waiting on a person.
 export type AttentionKind =
-  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health";
+  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert";
 export interface AttentionCounts {
   requests: number;
   reviews: number;
@@ -786,6 +786,7 @@ export interface AttentionCounts {
   searches: number; // titles whose searches keep coming up empty
   health: number;
   health_errors: number;
+  convert?: number; // reasons Convert is stuck waiting for disk space
   total: number;
 }
 export interface AttentionItem {
@@ -2188,12 +2189,28 @@ export interface ConvertHoldCheck { root: string; label: string; instant: boolea
 export interface ConvertHoldStats {
   held_bytes: number; held_saving_bytes: number; held_count: number; next_release_at?: number; budget_bytes: number; hold_days: number;
 }
-export interface ConvertUpNext { key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string; version_id?: number; version_label?: string }
+export interface ConvertUpNext {
+  key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string;
+  version_id?: number; version_label?: string;
+  eta_sec?: number; nights?: number; // the time forecast: seconds, and nights of the encode hours
+}
 export interface ConvertRequest { key: string; title: string; requested_at: number }
+// GET /api/v1/convert/devices: what each Plex player did with HEVC, HEVC 10-bit and AV1 in
+// the last 90 days of recorded plays (Insights). "yes" = played as it was at least once,
+// "no" = only ever had its video transcoded, "unknown" = never played that format.
+export interface ConvertDeviceCodec { state: "yes" | "no" | "unknown"; direct: number; transcoded: number }
+export interface ConvertDevice {
+  product: string; platform: string; player: string; last_seen: number; plays: number;
+  hevc: ConvertDeviceCodec; hevc10: ConvertDeviceCodec; av1: ConvertDeviceCodec;
+}
+export interface ConvertDevices { monitoring: boolean; since: number; devices: ConvertDevice[] }
 export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;
   auto: boolean; window?: string; watching: boolean;
   requests: ConvertRequest[]; up_next: ConvertUpNext[]; remaining: number;
+  // The time forecast: the remaining list's encoding time (spread over the conversions that
+  // run at once) and in nights of the hours; the encoding a restart now would lose.
+  backlog_sec?: number; backlog_nights?: number; in_flight_secs?: number;
 }
 export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
@@ -2202,6 +2219,8 @@ export interface ConvertSettings {
   hold_days: number; hold_max_gb: number;
   // Dolby Vision files: drop the layer and keep the HDR10/HLG base, or leave them alone.
   dolby_vision: "drop" | "skip";
+  /** 8-bit SDR sources: "always" written 10-bit, or "match_source" (kept 8-bit). */
+  ten_bit?: "always" | "match_source";
   scratch_dir: string; vaapi_device: string; cpu_cores: number; workers: number; scan_at: string;
   server_time: string; server_tz: string; plex_watching_known: boolean; can_pause: boolean;
   has_gpu: boolean; gpu_does_av1: boolean; hdr10plus_tool: boolean;

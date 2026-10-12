@@ -112,7 +112,9 @@ export function BulkConvertDialog({ seriesID, season, label, originals, onCancel
 // SwitchOnDialog is the first-run summary: what automatic conversion will do across the
 // library. Auto is switched on only by Confirm (switchOn, which rejects when the save fails;
 // the dialog then stays open with the error). Cancel changes nothing.
-export function SwitchOnDialog({ onCancel, switchOn }: { onCancel: () => void; switchOn: () => Promise<void> }) {
+// deviceWarnings are sentences naming the players that had the formats Convert will write
+// transcoded lately (the settings' devices panel, CONV-25); none = nothing to warn about.
+export function SwitchOnDialog({ onCancel, switchOn, deviceWarnings = [] }: { onCancel: () => void; switchOn: () => Promise<void>; deviceWarnings?: string[] }) {
   const { preview, error: loadError } = usePreview();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export function SwitchOnDialog({ onCancel, switchOn }: { onCancel: () => void; s
               <Lines lines={lines} />
             </>
           )}
+          {deviceWarnings.map((w) => <p key={w} className="m-0 mt-2 text-[11.5px]" style={{ color: "var(--avoid)" }}>⚠ {w}</p>)}
           <p className="m-0 mt-2.5 text-[11.5px] text-ink-faint">Counts are from the last library scan, so they can be a few minutes behind a settings change. Switching off again is one click.</p>
         </>
       }

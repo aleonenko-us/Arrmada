@@ -64,6 +64,11 @@ type Session struct {
 	SrcAudioCodec string
 	SrcContainer  string
 	SrcBitrate    int64
+	// The source video stream's bit depth (8, 10; 0 = not reported) and codec profile
+	// ("main 10", "high"), from Media[0].Part[0]'s video Stream: Convert's devices panel
+	// tells HEVC 10-bit from 8-bit with them.
+	SrcVideoBitDepth int
+	SrcVideoProfile  string
 
 	// Transcode target specs (from TranscodeSession; empty when direct playing).
 	StreamVideoCodec string
@@ -192,7 +197,17 @@ type rawSession struct {
 		Container       string  `json:"container"`
 		VideoCodec      string  `json:"videoCodec"`
 		AudioCodec      string  `json:"audioCodec"`
+		Part            []struct {
+			Stream []rawStream `json:"Stream"`
+		} `json:"Part"`
 	} `json:"Media"`
+}
+
+// rawStream is one stream of a session's media part. streamType 1 is video.
+type rawStream struct {
+	StreamType flexInt `json:"streamType"`
+	BitDepth   flexInt `json:"bitDepth"`
+	Profile    string  `json:"profile"`
 }
 
 func (m rawSession) flatten() Session {
@@ -229,6 +244,14 @@ func (m rawSession) flatten() Session {
 		md := m.Media[0]
 		s.SrcResolution, s.SrcVideoCodec, s.SrcAudioCodec = md.VideoResolution, md.VideoCodec, md.AudioCodec
 		s.SrcContainer, s.SrcBitrate = md.Container, int64(md.Bitrate)
+		if len(md.Part) > 0 {
+			for _, st := range md.Part[0].Stream {
+				if st.StreamType == 1 {
+					s.SrcVideoBitDepth, s.SrcVideoProfile = int(st.BitDepth), st.Profile
+					break
+				}
+			}
+		}
 	}
 	return s
 }

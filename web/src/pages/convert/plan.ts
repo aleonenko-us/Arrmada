@@ -1,4 +1,5 @@
 import type { ConvertAutoPreview, ConvertPlan, ConvertRequestResult, ConvertTrackDecision } from "../../lib/api";
+import { aboutTime } from "../../lib/convertForecast";
 
 // Asking is a Convert-now confirmation waiting for an answer.
 export interface Asking { key: string; title: string; tracksOnly: boolean }
@@ -60,6 +61,11 @@ export function sizeLine(p: ConvertPlan): string {
   return `${fmtSize(p.size_bytes)} → ~${fmtSize(p.video.est_bytes)} (${p.video.measured ? "measured by a test encode" : "estimated"})`;
 }
 
+// timeLine is the time forecast for the file: "~24 h of work" (CONV-22).
+export function timeLine(p: ConvertPlan): string {
+  return p.eta_sec && p.eta_sec > 0 ? `${aboutTime(p.eta_sec)} of work` : "";
+}
+
 function dropped(list: ConvertTrackDecision[]): ConvertTrackDecision[] {
   return list.filter((d) => !d.keep);
 }
@@ -70,6 +76,7 @@ export function planChanges(p: ConvertPlan): string[] {
   const out: string[] = [];
   if (p.video.to_codec) out.push(`Picture: ${videoLine(p)}`);
   out.push(`Size: ${sizeLine(p)}`);
+  if (p.eta_sec && p.eta_sec > 0 && p.needs.save > 0) out.push(`Time: ${timeLine(p)}`);
   const audio = dropped(p.audio);
   if (audio.length) {
     out.push(`Audio: ${audio.length} of ${p.audio.length} track${p.audio.length === 1 ? "" : "s"} removed — ${audio.map((d) => `${trackLabel(d)} (${d.reason ?? "removed"})`).join("; ")}`);

@@ -95,8 +95,8 @@ func TestPlanViewDVRemux(t *testing.T) {
 	if v.Video.CropNote != "black bars are kept (crop is off)" {
 		t.Errorf("crop note = %q", v.Video.CropNote)
 	}
-	if v.EtaSec != nil {
-		t.Error("no forecast yet: eta must be null")
+	if v.EtaSec == nil || *v.EtaSec <= 0 {
+		t.Error("the plan carries the time forecast")
 	}
 
 	// Crop on, and the forced PGS stays: the bars stay with it.
@@ -131,9 +131,11 @@ func TestPlanViewNothingToDo(t *testing.T) {
 	}
 }
 
-// An 8-bit source encoded on the CPU says it becomes 10-bit.
+// An 8-bit source encoded on the CPU says it becomes 10-bit — under "always 10-bit" only;
+// "match the source" keeps it 8-bit and says nothing (CONV-26).
 func TestPlanViewWarnsTenBit(t *testing.T) {
 	s := newTestService(t)
+	set(t, s, map[string]string{keyTenBit: TenBitAlways})
 	indexMovie(t, s, 4, "BluRay", film("h264", 1920, 1080, 30000, aud("ac3", "eng", 6)))
 	v, err := s.PlanView(context.Background(), movieKey(4))
 	if err != nil {
@@ -141,6 +143,14 @@ func TestPlanViewWarnsTenBit(t *testing.T) {
 	}
 	if v.Video.FromBits != 8 || v.Video.ToBits != 10 || !strings.Contains(strings.Join(v.Warnings, "|"), "8-bit picture is encoded as 10-bit") {
 		t.Errorf("bits %d → %d, warnings %v", v.Video.FromBits, v.Video.ToBits, v.Warnings)
+	}
+	set(t, s, map[string]string{keyTenBit: TenBitMatchSource})
+	v, err = s.PlanView(context.Background(), movieKey(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Video.ToBits != 8 || strings.Contains(strings.Join(v.Warnings, "|"), "10-bit") {
+		t.Errorf("match source: bits %d → %d, warnings %v", v.Video.FromBits, v.Video.ToBits, v.Warnings)
 	}
 }
 

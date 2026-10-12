@@ -7,6 +7,7 @@ import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
+import { backlogLine, fileForecast, restartLoss } from "../lib/convertForecast";
 import { groupVersions, nestedVersions } from "../lib/convertVersions";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
@@ -215,6 +216,10 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
   const cancelJob = async (id: number) => { try { await api.convertCancel(id); onChanged(); } catch (e) { flash((e as Error).message); } };
   const cancelRequest = async (key: string) => { try { await api.convertCancelRequest(key); onChanged(); } catch (e) { flash((e as Error).message); } };
   const [asking, setAsking] = useState<Asking | null>(null); // the Convert-now confirmation that's open
+  // The hours as the status reports them ("01:00–07:00"), for the time forecast.
+  const [winStart, winEnd] = status?.window ? status.window.split("–") : ["", ""];
+  const backlog = status && status.remaining > 0 ? backlogLine(status.backlog_sec, winStart, winEnd) : "";
+  const loss = restartLoss(status?.in_flight_secs);
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -233,6 +238,12 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
             {status.window ? ` · hours ${status.window}` : status.auto ? " · any time" : ""}
             {status.watching ? " · someone is watching Plex" : ""}
           </span>
+          {(backlog || loss) && (
+            <div className="flex w-full flex-wrap gap-x-3 gap-y-1 text-[11.5px]">
+              {backlog && <span className="text-ink-dim" title="Estimated from this machine's own conversion speed; pauses while someone watches Plex aren't counted">{backlog}</span>}
+              {loss && <span role="status" style={{ color: "var(--avoid)" }}>⚠ {loss}</span>}
+            </div>
+          )}
         </div>
       )}
 
@@ -311,6 +322,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
                 <span className="flex-1 truncate">{u.title}</span>
                 <span className="font-mono text-[11px] text-ink-faint">
                   {u.video ? `${u.current} → ${u.codec.toUpperCase()} · ~${fmtSize(u.saving)} saved` : u.tracks}
+                  {u.eta_sec ? ` · ${fileForecast(u.eta_sec, !!status.window, u.nights)}` : ""}
                 </span>
                 <button onClick={() => setAsking({ key: u.key, title: u.title, tracksOnly: !u.video })} title="Convert this one now, regardless of the hours" className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold text-ink-faint hover:text-[var(--accent)]">now</button>
               </div>

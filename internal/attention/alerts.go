@@ -98,6 +98,8 @@ func eventFor(it Item) string {
 		return notify.EventDownloadStalled
 	case KindHealth:
 		return notify.EventHealthProblem
+	case KindConvert:
+		return notify.EventConvertStalled
 	}
 	return ""
 }

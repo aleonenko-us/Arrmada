@@ -192,11 +192,16 @@ type autoCand struct {
 	// Title already carries the name.
 	VersionID    int64  `json:"version_id,omitempty"`
 	VersionLabel string `json:"version_label,omitempty"`
+	// ETASec and Nights are the time forecast, set on Status's Up next (throughput.go).
+	ETASec int64 `json:"eta_sec,omitempty"`
+	Nights int   `json:"nights,omitempty"`
 
 	// needScratch is the scratch space this file will need, for the Settings indicator.
 	needScratch int64
 	// effects is what converting it loses, for the Switch-on summary (autopreview.go).
 	effects candEffects
+	// facts are what the time forecast reads about the file.
+	facts forecastFacts
 }
 
 // candScratch is the scratch space a candidate will need, worked out the way the job will
@@ -287,7 +292,8 @@ func (s *Service) computeCandidates(ctx context.Context, p prefs) []autoCand {
 		c := autoCand{Key: ItemKey(mediaType, movieID, versionID, seriesID, season, episode),
 			Title: trackTitle(title, label, versionID), Kind: mediaType, VersionID: versionID, VersionLabel: label,
 			Video: n.Video, Size: size, Tracks: trackSummary(&mi, plan), Current: strings.ToUpper(mi.VideoCodec),
-			needScratch: candScratch(mi, plan, size), effects: effectsOf(&mi, plan, n, size, seriesID, season)}
+			needScratch: candScratch(mi, plan, size), effects: effectsOf(&mi, plan, n, size, seriesID, season),
+			facts: factsFor(&mi, plan, size)}
 		if n.Video {
 			c.Codec = plan.VideoCodec
 		}
@@ -420,6 +426,12 @@ type Status struct {
 	Requests  []Request  `json:"requests"`
 	UpNext    []autoCand `json:"up_next"`
 	Remaining int        `json:"remaining"` // files the runner would still convert
+	// The time forecast (throughput.go): the whole remaining list's encoding time, spread
+	// over the conversions that run at once, in seconds and in nights of the encode hours;
+	// and how much encoding the running conversions have done — what a restart would lose.
+	BacklogSec    int64 `json:"backlog_sec"`
+	BacklogNights int   `json:"backlog_nights"`
+	InFlightSecs  int64 `json:"in_flight_secs"`
 }
 
 // Status reports the runner's state and the next few files.
@@ -461,15 +473,18 @@ func (s *Service) Status(ctx context.Context) Status {
 	}
 	st.Requests = waitingReqs
 	st.UpNext = []autoCand{}
+	var remaining []autoCand
 	for _, c := range s.autoCandidates(ctx, p) {
 		if waiting[c.Key] || blocked[c.Key] || running[c.Key] || requested[c.Key] {
 			continue
 		}
 		st.Remaining++
+		remaining = append(remaining, c)
 		if len(st.UpNext) < 8 {
 			st.UpNext = append(st.UpNext, c)
 		}
 	}
+	s.forecastStatus(ctx, &st, p, remaining)
 	inHours := windowAllows(p.start, p.end)
 	watchBlock := p.pauseWatching && st.Watching
 	switch {

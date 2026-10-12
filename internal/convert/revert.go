@@ -263,8 +263,30 @@ func (s *Service) finishRevert(ctx context.Context, e HistoryEntry, w swapRow) e
 	s.reindexConverted(ctx, job)
 	s.swapped(job, e.SrcPath) // Plex rescans the folder (movies also go through movie.changed)
 	s.event("info", fmt.Sprintf("Reverted %s — the original (%s) is back", e.Title, humanBytes(e.SrcSize)))
+	s.publish(TopicReverted, RevertedEvent{Title: e.Title, Key: e.Key, Kind: e.Kind, MovieID: e.MovieID, VersionID: e.VersionID,
+		SeriesID: e.SeriesID, Season: e.Season, Episode: e.Episode, Path: e.SrcPath, OldPath: e.OutPath,
+		SrcBytes: e.SrcSize, OutBytes: e.OutSize, HistoryID: e.ID, At: time.Now().Unix()})
 	s.holdFreed(ctx)
 	return nil
+}
+
+// RevertedEvent is convert.reverted (events.go): a conversion was undone and its original
+// is back in the library. Path is the original, OldPath the converted file it replaced.
+type RevertedEvent struct {
+	Title     string `json:"title"`
+	Key       string `json:"key"`
+	Kind      string `json:"kind"` // "movie" | "episode"
+	MovieID   int64  `json:"movie_id,omitempty"`
+	VersionID int64  `json:"version_id,omitempty"`
+	SeriesID  int64  `json:"series_id,omitempty"`
+	Season    int    `json:"season"`
+	Episode   int    `json:"episode,omitempty"`
+	Path      string `json:"path"`
+	OldPath   string `json:"old_path"`
+	SrcBytes  int64  `json:"src_bytes"`
+	OutBytes  int64  `json:"out_bytes"`
+	HistoryID int64  `json:"history_id"`
+	At        int64  `json:"at"`
 }
 
 // convertedBefore reports whether the row's original was itself the output of an earlier

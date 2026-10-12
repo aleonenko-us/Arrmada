@@ -15,6 +15,9 @@ type Plan struct {
 	// Crop removes black bars (see crop.go); nil keeps the full frame. Set per file at
 	// conversion time, never by planFor — finding the bars means decoding the film.
 	Crop *Crop
+	// MatchSourceDepth keeps an 8-bit SDR source 8-bit on a CPU encode instead of writing
+	// 10-bit (the convert_ten_bit setting; see tenbit.go outputPixFmt). False = always 10-bit.
+	MatchSourceDepth bool
 
 	Audio AudioPlan
 	Subs  SubPlan

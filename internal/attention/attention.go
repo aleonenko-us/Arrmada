@@ -1,6 +1,7 @@
 // Package attention answers "what needs me?" in one place: pending requests, imports held
 // in Review, downloads that errored or stalled, imports that keep failing, downloads in the
-// wrong category, searches that keep coming up empty and health problems.
+// wrong category, searches that keep coming up empty, health problems and Convert stuck
+// waiting for disk space.
 //
 // It is pull-based on purpose. Badges and alerts built on bus events alone would be
 // unreliable, because the bus drops events when a subscriber falls behind; instead a
@@ -34,6 +35,7 @@ const (
 	KindWrongCat = "wrongcat" // a finished TV download in a category Arrmada doesn't import
 	KindSearch   = "search"   // titles whose searches keep coming up empty (one aggregate)
 	KindHealth   = "health"   // a health check finding
+	KindConvert  = "convert"  // conversions stuck waiting for disk space (one per reason)
 )
 
 // Levels, the same words the health registry uses.
@@ -45,7 +47,8 @@ const (
 // Item is one thing that needs someone.
 type Item struct {
 	// Key is "<kind>:<id>": request:12, review:4, download:<hash>, stalled:<hash>,
-	// import:<hash>, wrongcat:<hash>, search:stuck, health:<finding key>.
+	// import:<hash>, wrongcat:<hash>, search:stuck, health:<finding key>,
+	// convert:stalled:<reason>.
 	Key    string `json:"key"`
 	Kind   string `json:"kind"`
 	Level  string `json:"level"`
@@ -81,6 +84,7 @@ type Counts struct {
 	Searches     int `json:"searches"`  // titles whose searches keep coming up empty
 	Health       int `json:"health"`    // health findings, any level
 	HealthErrors int `json:"health_errors"`
+	Convert      int `json:"convert"` // reasons conversions are stuck
 	Total        int `json:"total"`
 }
 
@@ -397,7 +401,7 @@ func (s *Service) build(items []Item, now time.Time) (snap *Snapshot, all []Item
 // kindOrder is the order kinds are listed in: what blocks something first.
 var kindOrder = map[string]int{
 	KindHealth: 0, KindRequest: 1, KindReview: 2, KindImport: 3, KindDownload: 4,
-	KindWrongCat: 5, KindStalled: 6, KindSearch: 7,
+	KindWrongCat: 5, KindStalled: 6, KindConvert: 7, KindSearch: 8,
 }
 
 // sortItems: errors first, then by kind, then oldest first.
@@ -435,6 +439,8 @@ func countItems(items []Item) Counts {
 			c.Imports += n
 		case KindSearch:
 			c.Searches += n
+		case KindConvert:
+			c.Convert += n
 		case KindHealth:
 			c.Health += n
 			if it.Level == LevelError {
@@ -442,7 +448,7 @@ func countItems(items []Item) Counts {
 			}
 		}
 	}
-	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health
+	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health + c.Convert
 	return c
 }
 
@@ -509,6 +515,8 @@ func groupTitle(kind string, n int) string {
 		return num + pick(" title still hasn't found a release", " titles still haven't found a release")
 	case KindHealth:
 		return num + pick(" health problem", " health problems")
+	case KindConvert:
+		return "Convert is stuck waiting for disk space"
 	}
 	return num + " items"
 }
