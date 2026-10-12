@@ -59,6 +59,9 @@ export function wantLine(l: SubLangStatus, sidecar?: SubSidecar): { text: string
   if (l.variant === "forced" && !l.source) {
     return { text: `${lang} missing · no source`, tone: "bad", title: "No forced track in the file and no OpenSubtitles download set up — whisper can't make a forced subtitle" };
   }
+  if (!l.source) {
+    return { text: `${lang} missing · no source`, tone: "bad", title: "No text track in the file, no OpenSubtitles download set up, and no AI model that can make this language" };
+  }
   const first = PLAN_LABEL[l.source ?? "ai"] ?? l.source ?? "AI";
   const plan = l.fallback ? `${first} → ${PLAN_LABEL[l.fallback] ?? l.fallback}` : first;
   return { text: `${lang} missing · will try ${plan}`, tone: "bad", title: `Missing — the next run tries ${plan}` };

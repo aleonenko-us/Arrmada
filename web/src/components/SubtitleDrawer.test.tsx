@@ -85,6 +85,7 @@ describe("subtitle words", () => {
     expect(wantLine({ lang: "en", have: true }, en).text).toBe("✓ en · OpenSubtitles · Health 91");
     expect(wantLine({ lang: "fr", have: false, reason: "impossible", retry_on: "langs" }).text).toBe("fr missing · waiting for a language change");
     expect(wantLine({ lang: "de", have: false, source: "download", fallback: "ai" }).text).toBe("de missing · will try download → AI");
+    expect(wantLine({ lang: "de", have: false }).text).toBe("de missing · no source");
   });
   it("finds the sidecar that covers a language, full before SDH", () => {
     const sdh = { ...en, name: "x.en.sdh.srt", variant: "sdh" as const };

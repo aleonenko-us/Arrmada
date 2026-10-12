@@ -19,7 +19,7 @@ type LangStatus struct {
 	// forced want, which only a forced sidecar meets.
 	Variant string `json:"variant,omitempty"`
 	Have    bool   `json:"have"`             // an external .srt for this language sits next to the file
-	Source  string `json:"source,omitempty"` // when !Have: extract | ocr | download | ai
+	Source  string `json:"source,omitempty"` // when !Have: extract | ocr | download | ai; "" = nothing can make it yet
 	// Fallback is "ai" when the first source is extract or download and the local AI
 	// could still make this language if that source comes up empty.
 	Fallback string `json:"fallback,omitempty"`
@@ -187,6 +187,10 @@ func (s *Service) fillCoverageW(ctx context.Context, fs *FileSubs, wants []Want,
 		ls := LangStatus{Lang: l, Have: false, Source: bestSourcePref(fs.Embedded, l, w.SDH, canDownload), Orphan: cov.orphaned[strings.ToLower(l)]}
 		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, unknownAudio, l) {
 			ls.Fallback = "ai"
+		} else if ls.Source == "ai" && !s.aiCanMake(fs.AudioLangs, unknownAudio, l) {
+			// No track, no download set up and no model that can make it: there's nothing to
+			// try yet, so don't promise AI.
+			ls.Source = ""
 		}
 		fs.Languages = append(fs.Languages, ls)
 	}

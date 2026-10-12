@@ -225,3 +225,14 @@ func TestFillCoverageUnknownAudio(t *testing.T) {
 		t.Errorf("languages %+v", fs.Languages)
 	}
 }
+
+// With no text track, no download set up and no AI model, the Library mustn't promise AI:
+// the language has no source yet.
+func TestFillCoverageNoSource(t *testing.T) {
+	s, video := ladderFixture(t, "en", untaggedAudio(), &fakeProvider{canDownload: false}, &fakeAI{avail: false})
+	fs := FileSubs{Kind: "movie", Path: video}
+	s.fillCoverage(context.Background(), &fs, []string{"en"}, false)
+	if l := fs.Languages[0]; l.Have || l.Source != "" || l.Fallback != "" {
+		t.Errorf("languages %+v", fs.Languages)
+	}
+}

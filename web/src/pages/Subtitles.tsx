@@ -817,8 +817,9 @@ function CoverChip({ l }: { l: SubLangStatus }) {
     return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{name} · {when}</span>;
   }
   // The ladder tries the first source, then falls back to AI when that comes up empty.
-  // Whisper can't make a forced subtitle, so a forced want with no track or download has no source.
-  const first = l.variant === "forced" && !l.source ? "no source" : SOURCE_LABEL[l.source ?? "ai"] ?? l.source;
+  // No source means nothing can make it yet: no text track, no download set up, and no AI model
+  // that can (whisper never makes a forced subtitle).
+  const first = !l.source ? "no source" : SOURCE_LABEL[l.source] ?? l.source;
   const plan = l.fallback ? `${first} → ${SOURCE_LABEL[l.fallback] ?? l.fallback}` : first;
   return <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={`Missing — will try ${plan}`}>{name} · {plan}</span>;
 }
