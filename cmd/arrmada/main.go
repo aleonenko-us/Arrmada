@@ -43,6 +43,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/httpapi"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/libroots"
@@ -771,6 +772,27 @@ func main() {
 			log.Info("movies: read alternative titles", "movies", n)
 		}
 	})
+	// Reported problems (Requests → Issues): a requester reports a problem with a title in
+	// the library, staff are alerted the way a new request alerts them, and everyone who
+	// reported it is told through their own channels when it's closed.
+	issuesSvc := issues.NewService(st.DB(), issues.MediaLibrary(movieSvc, seriesSvc), log)
+	issuesSvc.SetPublisher(bus)
+	issuesSvc.SetNotifier(func(ctx context.Context, userIDs []int64, n issues.Notice) (int, error) {
+		return requestsSvc.NotifyUsers(ctx, userIDs, requests.UserNotice{Title: n.Title, Body: n.Body, Ref: n.Ref, Kind: n.Kind, MediaType: n.MediaType})
+	})
+	issuesSvc.SetStaffAlert(func(ctx context.Context, i issues.Issue, data map[string]any) {
+		requestsSvc.AlertStaff(ctx, requests.StaffNotice{
+			Event: notify.EventIssueReported, Dedupe: issues.StaffAlertDedupe(i.ID), Data: data,
+			Ref: fmt.Sprintf("issue:%d:new", i.ID), MediaType: i.MediaType,
+			Except: i.ReportedBy, Pref: requests.PrefNewRequest, What: "issue", ID: i.ID,
+		})
+	})
+	// Settles the problems being fixed (a finished subtitle job, a new file whose import
+	// signal was missed, a fix that brought nothing in a week) and re-sends a closed
+	// issue's notices to any reporter an inbox write missed.
+	sched.Register("issues-check", time.Minute, false, issuesSvc.Sweep,
+		scheduler.Label("Follow up reported problems"),
+		scheduler.Description("Resolves reported problems once their fix has landed, and tells the people who reported them."))
 	// Backstop for request-ready notifications: catches availability that arrived
 	// without an import (a library scan). Idempotent (unique inbox ref), so re-running
 	// never double-notifies.
@@ -783,6 +805,8 @@ func main() {
 	subsProvider := subtitles.NewOpenSubtitlesFunc(keyStore.Func("opensubtitles_api"), keyStore.Func("opensubtitles_username"), keyStore.Func("opensubtitles_password"))
 	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), log)
 	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
+	// A reported problem's subtitles fix resolves once its job has made subtitles.
+	issuesSvc.SetSubtitles(subtitleOutcomes{subtitlesSvc})
 	// The library pass behind the Subtitles Overview/Library pages. The worker runs the
 	// first one at startup; this keeps it from going stale.
 	sched.Register("subtitles-library-scan", 6*time.Hour, false, func(ctx context.Context) error {
@@ -1004,6 +1028,7 @@ func main() {
 		attention.WrongCategory(coordinator.WrongCategoryDownloads),
 		attention.Health(healthReg),
 		attention.Convert(convertSvc),
+		attention.Issues(issuesSvc),
 		attention.Searches(
 			func(ctx context.Context) (int, error) {
 				return movieSvc.CountSearchStuck(ctx, attention.SearchStuckAfter)
@@ -1025,6 +1050,7 @@ func main() {
 	healthReg.SetOnChange(needsYou.Kick)
 	coordinator.SetAttentionKick(needsYou.Kick)
 	requestsSvc.SetAttentionKick(needsYou.Kick)
+	issuesSvc.SetAttentionKick(needsYou.Kick)
 	grp.Loop("attention: refresh on change", needsYou.Run)
 	sched.Register("attention-refresh", 30*time.Second, true, needsYou.Refresh,
 		scheduler.Label("Update the Needs-you list"),
@@ -1036,7 +1062,7 @@ func main() {
 	// registered at that moment. Rows a previous run left unfinished run as soon as the
 	// dispatcher starts.
 	importConsumers{
-		convert: convertSvc, subtitles: subtitlesSvc, requests: requestsSvc, audio: audioSrv, grp: grp,
+		convert: convertSvc, subtitles: subtitlesSvc, requests: requestsSvc, issues: issuesSvc, audio: audioSrv, grp: grp,
 		plex: plexScanner, showFolder: seriesSvc.FolderPath,
 		// With scans switched off nothing calls OnRefreshed; Plex's own watcher adds the
 		// file in its own time, so look again a few minutes after the import.
@@ -1094,6 +1120,7 @@ func main() {
 		Notify:       notifySvc,
 		Series:       seriesSvc,
 		Requests:     requestsSvc,
+		Issues:       issuesSvc,
 		Discovery:    tmdb,
 		Ratings:      omdb,
 		Books:        booksSvc,

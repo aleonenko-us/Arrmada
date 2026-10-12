@@ -20,6 +20,7 @@ const BOOK_REF_SUFFIX = /(:(approved|declined):\d+|:(audiobook|ebook|ready))$/;
 //   series:1399, series:1399:r12:s3                → /discover/series/1399
 //   book:OL1W, book:hc:123:audiobook               → /discover?tab=books&work=hc%3A123
 //   request:40:new:1700000000                      → /requests?id=40
+//   issue:12:new                                   → /requests?tab=issues&issue=12
 //
 // Twin: RefPath in internal/requests/refpath.go (push links). Keep the two, and the test
 // vectors in refLink.test.ts and refpath_test.go, in step.
@@ -40,9 +41,10 @@ export function refToPath(ref: string | undefined | null): string | null {
       for (let i = 0; i < 2; i++) key = key.replace(BOOK_REF_SUFFIX, "");
       return key ? `/discover?tab=books&work=${encodeURIComponent(key)}` : null;
     }
-    case "request": {
+    case "request":
+    case "issue": {
       const id = rest.split(":")[0];
-      return /^[1-9]\d*$/.test(id) ? `/requests?id=${id}` : null;
+      return /^[1-9]\d*$/.test(id) ? (kind === "issue" ? "/requests?tab=issues&issue=" : "/requests?id=") + id : null;
     }
   }
   return null;

@@ -149,6 +149,11 @@ func (s *Service) MergePlexDuplicate(ctx context.Context, targetID, fromID int64
 			{"inbox", `DELETE FROM user_notifications WHERE user_id = ?`, []any{fromID}},
 			{"push devices", `UPDATE push_subscriptions SET user_id = ? WHERE user_id = ?`, []any{targetID, fromID}},
 			{"request limits", `UPDATE request_usage SET user_id = ? WHERE user_id = ?`, []any{targetID, fromID}},
+			// Reported problems: one row per issue and person; where both reported the same
+			// one, the target's own report stays.
+			{"reported problems", `UPDATE issues SET reported_by = ?, reported_by_name = ? WHERE reported_by = ?`, []any{targetID, to, fromID}},
+			{"reported problems", `UPDATE OR IGNORE issue_reporters SET user_id = ?, user_name = ? WHERE user_id = ?`, []any{targetID, to, fromID}},
+			{"reported problems", `DELETE FROM issue_reporters WHERE user_id = ?`, []any{fromID}},
 			// Audiobooks: places and bookmarks move unless the target has its own for that
 			// book; history, sessions and the listening log all move (they're keyed by
 			// session or row id, so nothing collides).

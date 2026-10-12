@@ -514,8 +514,7 @@ func appriseBody(n notice) string {
 
 // notifyParties is notifyPartiesCount for a whole notice.
 func (s *Service) notifyParties(ctx context.Context, req Request, n notice, skip map[int64]bool) (int, error) {
-	title, body, ref, kind := n.Title, n.Body, n.Ref, n.Kind
-	told := 0
+	kind := n.Kind
 	seen := map[int64]bool{}
 	for uid, ok := range skip {
 		seen[uid] = ok
@@ -537,12 +536,48 @@ func (s *Service) notifyParties(ctx context.Context, req Request, n notice, skip
 		s.log.Warn(kind+": could not list subscribers", "request", req.ID, "err", err)
 		errs = append(errs, fmt.Errorf("list subscribers of request %d: %w", req.ID, err))
 	}
+	// The request id, not the title: an audiobook's "ready" pairs a user with what they
+	// will listen to, and the log is staff-readable.
+	told, err := s.tellUsers(ctx, userIDs, req.MediaType, n, "request", req.ID)
+	return told, errors.Join(append(errs, err)...)
+}
+
+// UserNotice is one message for NotifyUsers: what other packages (Issues) send through the
+// requesters' own channels. Ref is the inbox reference, unique per user, so sending the
+// same notice twice reaches nobody twice; Kind names it in the log.
+type UserNotice struct {
+	Title, Body, Ref, Kind, MediaType string
+}
+
+// NotifyUsers tells each of userIDs one notice the way a request's people are told: the
+// in-app inbox always, then their personal Apprise and Web Push. It says how many heard it
+// for the first time, and returns an error when an inbox row couldn't be written (a retry
+// skips whoever already has it).
+func (s *Service) NotifyUsers(ctx context.Context, userIDs []int64, n UserNotice) (int, error) {
+	seen := map[int64]bool{}
+	var ids []int64
+	for _, uid := range userIDs {
+		if uid > 0 && !seen[uid] {
+			seen[uid] = true
+			ids = append(ids, uid)
+		}
+	}
+	return s.tellUsers(ctx, ids, n.MediaType, notice{Title: n.Title, Body: n.Body, Ref: n.Ref, Kind: n.Kind}, "ref", n.Ref)
+}
+
+// tellUsers is the per-person half of a notice: the inbox row, then (when the row is new
+// and their choices allow it) personal Apprise and Web Push. logKey/logVal name what it
+// was about in the log lines.
+func (s *Service) tellUsers(ctx context.Context, userIDs []int64, mediaType string, n notice, logKey string, logVal any) (int, error) {
+	title, body, ref, kind := n.Title, n.Body, n.Ref, n.Kind
+	told := 0
+	var errs []error
 	now := time.Now().Unix()
 	for _, uid := range userIDs {
-		inserted, err := s.repo.addUserNotificationLink(ctx, uid, title, body, req.MediaType, ref, n.PlexURL, now)
+		inserted, err := s.repo.addUserNotificationLink(ctx, uid, title, body, mediaType, ref, n.PlexURL, now)
 		if err != nil {
 			s.log.Warn(kind+": could not add inbox notification", "user", uid, "err", err)
-			errs = append(errs, fmt.Errorf("inbox notification for request %d: %w", req.ID, err))
+			errs = append(errs, fmt.Errorf("inbox notification (%s %v): %w", logKey, logVal, err))
 			continue
 		}
 		if !inserted {
@@ -552,7 +587,7 @@ func (s *Service) notifyParties(ctx context.Context, req Request, n notice, skip
 		// Their choice gates only the pushes: the inbox row above is the record (and the
 		// de-dupe a retry and the ready sweep rely on), so it's written whatever they chose.
 		if !s.wantsPush(ctx, uid, prefKey(kind)) {
-			s.log.Info(kind+" notified (inbox only, by their choice)", "request", req.ID, "user", uid)
+			s.log.Info(kind+" notified (inbox only, by their choice)", logKey, logVal, "user", uid)
 			continue
 		}
 		if url, err := s.repo.getUserApprise(ctx, uid); err == nil && url != "" {
@@ -571,9 +606,7 @@ func (s *Service) notifyParties(ctx context.Context, req Request, n notice, skip
 			// inbox insert above already deduped repeats, so this can't double-ping.
 			s.push.SendToUserAsync(uid, push.Message{Title: title, Body: body, URL: pushPath(ref), PlexURL: n.PlexURL})
 		}
-		// The request id, not the title: an audiobook's "ready" pairs a user with what they
-		// will listen to, and the log is staff-readable.
-		s.log.Info(kind+" notified", "request", req.ID, "user", uid)
+		s.log.Info(kind+" notified", logKey, logVal, "user", uid)
 	}
 	return told, errors.Join(errs...)
 }
