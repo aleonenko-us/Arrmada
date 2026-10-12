@@ -60,6 +60,8 @@ type Service struct {
 	ai      aiRunner
 	// ffprobeRun is probeCached's ffprobe call (probeSubs when nil).
 	ffprobeRun func(ctx context.Context, ffprobe, path string) (*mediaInfo, error)
+	// passFn is one library pass (Library + SeriesGroups when nil).
+	passFn func(ctx context.Context) ([]FileSubs, []SeriesGroup, error)
 
 	mu        sync.Mutex
 	jobs      []*Job           // recent subtitle-ensure jobs (newest first), for the Queue tab
@@ -107,6 +109,9 @@ type Settings struct {
 	QuotaRemaining int   `json:"quota_remaining"` // -1 = unknown
 	QuotaResetAt   int64 `json:"quota_reset_at"`  // unix seconds; 0 = not paused
 	Pending        int   `json:"pending"`         // jobs waiting for the worker
+	// Stale: the Library and Overview figures were counted for a different set of kept
+	// languages; a recount is running or about to.
+	Stale bool `json:"stale"`
 }
 
 // GetSettings returns the current configuration + provider status.
@@ -123,6 +128,9 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		QuotaRemaining: -1,
 		Pending:        s.Pending(),
 	}
+	s.snap.mu.Lock()
+	out.Stale = s.staleLocked(ctx)
+	s.snap.mu.Unlock()
 	if q, ok := s.provider.(quotaReporter); ok {
 		remaining, resetAt := q.Quota()
 		out.QuotaRemaining = remaining
@@ -142,6 +150,9 @@ type quotaReporter interface {
 
 // SetSettings updates whichever fields are provided (nil = leave unchanged).
 func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool, languages []string) error {
+	// A change of languages makes every count stale: recount now rather than at the next
+	// six-hourly pass. Saving the same list starts nothing.
+	defer s.recountIfLanguagesChanged(ctx, langsKey(s.languages(ctx)))
 	if moviesAuto != nil {
 		if err := s.settings.SetBool(ctx, keyMoviesAuto, *moviesAuto); err != nil {
 			return err

@@ -107,8 +107,8 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api.subtitleCoverage().then(setCov).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
-  // While a pass is running, keep asking until it lands.
-  usePoll(load, cov?.scanning ? 3000 : null, { immediate: false });
+  // While a pass is running (or a recount for new languages is due), keep asking until it lands.
+  usePoll(load, cov?.scanning || cov?.stale ? 3000 : null, { immediate: false });
   const rescan = async () => {
     setBusy(true);
     try { const r = await api.subtitleRescan(); flash(r.started ? "Rescanning the library…" : "A scan is already running."); await load(); }
@@ -117,6 +117,8 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
   };
   const active = sortActive(jobs);
   const scanned = !!cov && cov.scanned_at > 0;
+  // Figures counted for the old kept languages would be wrong, so they aren't shown.
+  const recounting = !!cov?.stale;
   const pct = scanned && cov.files ? Math.round((cov.covered / cov.files) * 100) : 0;
 
   return (
@@ -127,9 +129,11 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
             <div className={lbl}>Coverage</div>
             <RescanButton busy={busy || !!cov?.scanning} onClick={rescan} title={scanTitle(cov)} />
           </div>
-          <div className="mt-2 text-[30px] font-extrabold tracking-tight">{scanned ? `${pct}%` : "…"}</div>
-          <div className="mt-3 border-t pt-3 text-[12px] text-ink-dim" style={{ borderColor: "var(--line-soft)" }}>
-            {scanned
+          <div className="mt-2 text-[30px] font-extrabold tracking-tight">{scanned && !recounting ? `${pct}%` : "…"}</div>
+          <div className="mt-3 border-t pt-3 text-[12px] text-ink-dim" style={{ borderColor: "var(--line-soft)" }} role="status">
+            {recounting
+              ? "Recounting for your new languages…"
+              : scanned
               ? <><b style={{ color: "var(--good)" }}>{cov.covered.toLocaleString()}</b> fully subtitled · <b style={{ color: cov.missing ? "var(--avoid)" : "var(--ink)" }}>{cov.missing.toLocaleString()}</b> missing a language · {cov.files.toLocaleString()} files</>
               : "Scanning your library — the first pass after startup takes a few minutes."}
           </div>
@@ -318,6 +322,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const [media, setMedia] = useSearchParamState<"movies" | "tv">("media", "movies", { allowed: MEDIA_KINDS });
   const [items, setItems] = useState<SubFileEntry[] | null>(null);
   const [scanning, setScanning] = useState(false); // no pass has completed yet (just after startup)
+  const [stale, setStale] = useState(false); // counted for the old kept languages; a recount is under way
   const [refreshKey, setRefreshKey] = useState(0);
   const [rescanBusy, setRescanBusy] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -332,8 +337,13 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   useEffect(() => {
     // TV is rendered per show by TVLibrary, which fetches its own rolled-up list.
     if (media === "tv") return;
-    api.subtitleLibrary(media).then((r) => { setItems(r.items); setScanning(!!r.scanning); }).catch(() => setItems([]));
+    api.subtitleLibrary(media).then((r) => { setItems(r.items); setScanning(!!r.scanning); setStale(!!r.stale); }).catch(() => setItems([]));
   }, [media, refreshKey]);
+  // While the list is from the old languages, wait for the recount and then reload.
+  usePoll(async () => {
+    const c = await api.subtitleCoverage().catch(() => null);
+    if (c && !c.stale && !c.scanning) { setStale(false); setRefreshKey((k) => k + 1); }
+  }, stale && media === "movies" ? 3000 : null, { immediate: false });
 
   // Start a fresh pass and hold the spinner until it lands, then reload. Bounded so a
   // stalled pass can't pin the button.
@@ -470,6 +480,11 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
         <RescanButton busy={rescanBusy} onClick={rescan} title="Rescan the library for new files and subtitles" />
       </div>
 
+      {stale && media === "movies" && (
+        <div className="rounded-lg px-3 py-2 text-[12px] text-ink-dim" role="status" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+          Recounting for your new languages… this list updates when it finishes.
+        </div>
+      )}
       {media === "tv" ? (
         <TVLibrary key={refreshKey} flash={flash} onQueued={onQueued} />
       ) : items === null || (scanning && items.length === 0) ? (
@@ -534,13 +549,19 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
 function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: () => void }) {
   const [groups, setGroups] = useState<SubSeriesGroup[] | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [reload, setReload] = useState(0);
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [onlyGaps, setOnlyGaps] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
 
   useEffect(() => {
-    api.subtitleSeriesGroups().then((r) => { setGroups(r.groups); setScanning(!!r.scanning); }).catch(() => setGroups([]));
-  }, []);
+    api.subtitleSeriesGroups().then((r) => { setGroups(r.groups); setScanning(!!r.scanning); setStale(!!r.stale); }).catch(() => setGroups([]));
+  }, [reload]);
+  usePoll(async () => {
+    const c = await api.subtitleCoverage().catch(() => null);
+    if (c && !c.stale && !c.scanning) { setStale(false); setReload((k) => k + 1); }
+  }, stale ? 3000 : null, { immediate: false });
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -568,6 +589,11 @@ function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: 
 
   return (
     <div className="flex flex-col gap-2">
+      {stale && (
+        <div className="rounded-lg px-3 py-2 text-[12px] text-ink-dim" role="status" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+          Recounting for your new languages… this list updates when it finishes.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={query}

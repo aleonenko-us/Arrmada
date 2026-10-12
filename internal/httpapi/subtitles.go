@@ -157,7 +157,7 @@ func (a *api) handleSubtitleLibrary(w http.ResponseWriter, r *http.Request) {
 		if groups == nil {
 			groups = []subtitles.SeriesGroup{}
 		}
-		a.writeJSON(w, http.StatusOK, map[string]any{"groups": groups, "scanning": !scanned})
+		a.writeJSON(w, http.StatusOK, map[string]any{"groups": groups, "scanning": !scanned, "stale": a.deps.Subtitles.Stale()})
 		return
 	}
 	if media == "tv" && q.Get("series") != "" {
@@ -180,7 +180,7 @@ func (a *api) handleSubtitleLibrary(w http.ResponseWriter, r *http.Request) {
 		if list == nil {
 			list = []subtitles.FileSubs{}
 		}
-		a.writeJSON(w, http.StatusOK, map[string]any{"items": list, "scanning": !scanned})
+		a.writeJSON(w, http.StatusOK, map[string]any{"items": list, "scanning": !scanned, "stale": a.deps.Subtitles.Stale()})
 		return
 	}
 	list, err := a.deps.Subtitles.Library(r.Context(), media)
