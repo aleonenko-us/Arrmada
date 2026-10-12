@@ -12,6 +12,11 @@ export interface FormatProblem { format: string; index: number; condition: numbe
 // warnings never match, matches[i] is how many of `samples` releases format i matches.
 export interface FormatCheck { errors: FormatProblem[]; warnings: FormatProblem[]; matches: number[]; samples: number }
 
+// One TRaSH format converted for a profile (quality.TrashFormat), and what didn't carry over.
+export interface TrashFormat { format: QualityCustomFormat; trash_id?: string; suggested_score?: number; warnings: string[] }
+// An import's answer: formats to add, and formats (or input) that couldn't be imported.
+export interface TrashImport { formats: TrashFormat[]; warnings: string[] }
+
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
 export const qualityApi = {
@@ -19,6 +24,9 @@ export const qualityApi = {
     req<{ profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[] }>(`/api/v1/quality/profiles?media=${media}`),
   checkFormats: (formats: QualityCustomFormat[]) =>
     req<FormatCheck>("/api/v1/quality/formats/check", { method: "POST", body: JSON.stringify({ custom_formats: formats }) }),
+  // Converts pasted TRaSH custom-format JSON; saves nothing.
+  importTrash: (json: string, media: string) =>
+    req<TrashImport>("/api/v1/quality/import-trash", { method: "POST", body: JSON.stringify({ json, media }) }),
   libraryFitProfiles: (media: string) => req<{ profiles: Record<string, FitCounts> }>(`/api/v1/library/fit/profiles?media=${media}`),
   libraryFitPreview: (profile: StoredProfile) =>
     req<{ scope: "profile" | "library"; counts: FitCounts }>("/api/v1/library/fit/preview", { method: "POST", body: JSON.stringify({ profile }) }),

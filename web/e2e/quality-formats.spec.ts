@@ -38,6 +38,19 @@ async function mockBuilder(page: Page, api: MockedApi) {
             : []));
         return json({ errors, warnings: [], matches: formats.map(() => 1), samples: 7 });
       }
+      case "POST /api/v1/quality/import-trash":
+        api.calls.push({ method: "POST", path: url.pathname, body });
+        return json({
+          formats: [{
+            format: { name: "HD Bluray Tier 01", conditions: [
+              { type: "release_group", value: "BBQ|D-Z0N3|DON|EbP|HiDt|LoRD|NCmt|playHD|TayTO|VietHD|ZQ" },
+              { type: "source", value: "BluRay|Remux" }, { type: "source", value: "Remux", negate: true },
+            ] },
+            suggested_score: 1800,
+            warnings: ["The release-group pattern \"Weird group\" is matched against the whole release name, not just the group."],
+          }],
+          warnings: ["\"BR-DISK\" wasn't imported: its required specification \"BR-DISK\" uses a lookaround ((?= (?! (?<= (?<!), which Arrmada's regex engine can't run — without it the format would match far more than it should"],
+        });
     }
     return route.fallback();
   });
@@ -81,5 +94,28 @@ test.describe("custom-format editor at 375px", () => {
     await page.getByRole("button", { name: "Done" }).click();
     await expect(page.getByText(/AND NOT Source Remux/)).toBeVisible();
     expect(await sideways(page)).toBeLessThanOrEqual(0);
+  });
+
+  test("imports TRaSH JSON with its warnings, saving nothing", async ({ page, api }) => {
+    await mockBuilder(page, api);
+    await page.goto("/quality");
+    await page.getByRole("button", { name: "+ New profile" }).click();
+    await page.getByRole("button", { name: /Start from scratch/ }).click();
+    await page.getByRole("button", { name: /^Advanced/ }).click();
+    await page.getByRole("button", { name: "Import from TRaSH" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import from TRaSH" });
+    await dialog.getByLabel("TRaSH custom-format JSON").fill('[{"name":"HD Bluray Tier 01","specifications":[]}]');
+    await dialog.getByRole("button", { name: "Convert" }).click();
+    await expect(dialog.getByText("Not imported")).toBeVisible();
+    await expect(dialog.getByText("TRaSH suggests +1800")).toBeVisible();
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+    const box = await dialog.boundingBox();
+    expect(box && box.x >= 0 && box.x + box.width <= 375).toBeTruthy();
+
+    await dialog.getByRole("button", { name: "Add 1 format" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText("HD Bluray Tier 01")).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/quality/profiles")).toHaveLength(0);
+    expect(api.callsTo("PUT", "/api/v1/quality/profiles")).toHaveLength(0);
   });
 });

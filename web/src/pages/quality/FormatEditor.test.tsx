@@ -131,6 +131,37 @@ describe("CustomFormatsEditor", () => {
     expect(latest.custom_formats ?? []).toEqual([]);
   });
 
+  it("imports TRaSH formats with their warnings, adding the chosen ones unscored", async () => {
+    const importTrash = vi.spyOn(qualityApi, "importTrash").mockResolvedValue({
+      formats: [
+        { format: { name: "x265 (HD)", conditions: [{ type: "release_title", value: "[xh][ ._-]?265" }, { type: "resolution", value: "2160p", negate: true }] }, suggested_score: -10000, warnings: [] },
+        { format: { name: "Remaster", conditions: [{ type: "release_title", value: "\\bRemaster(ed)?\\b" }] }, warnings: ["Matches less than the original: skipped \"Restored\"."] },
+        { format: { name: "Groups", conditions: [{ type: "release_group", value: "FLUX|NTb" }] }, warnings: [] },
+      ],
+      warnings: ['"BR-DISK" wasn\'t imported: it uses a lookaround'],
+    });
+    const sp: StoredProfile = { ...base, custom_formats: [{ name: "Groups", conditions: [{ type: "release_group", value: "FLUX" }] }], format_scores: { Groups: 40 } };
+    render(<Host initial={sp} />);
+    await settle();
+    fireEvent.click(screen.getByText("Import from TRaSH"));
+    fireEvent.change(screen.getByLabelText("TRaSH custom-format JSON"), { target: { value: '{"name":"x"}' } });
+    await act(async () => { fireEvent.click(screen.getByText("Convert")); });
+    expect(importTrash).toHaveBeenCalledWith('{"name":"x"}', "movie");
+    expect(screen.getByText(/BR-DISK" wasn't imported/)).toBeTruthy();
+    expect(screen.getByText(/Matches less than the original/)).toBeTruthy();
+    expect(screen.getByText("TRaSH suggests -10000")).toBeTruthy();
+    expect(screen.getByText("replaces the one in this profile")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Remaster/ }));
+    fireEvent.click(screen.getByText("Add 2 formats"));
+    expect(latest.custom_formats).toEqual([
+      { name: "Groups", conditions: [{ type: "release_group", value: "FLUX|NTb" }] },
+      { name: "x265 (HD)", conditions: [{ type: "release_title", value: "[xh][ ._-]?265" }, { type: "resolution", value: "2160p", negate: true }] },
+    ]);
+    expect(latest.format_scores).toEqual({ Groups: 40 });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("refuses a name another format has, and removes a format with its score", async () => {
     const sp: StoredProfile = { ...base, custom_formats: [{ name: "Groups", conditions: [{ type: "release_group", value: "FLUX" }] }], format_scores: { Groups: 5 } };
     render(<Host initial={sp} />);

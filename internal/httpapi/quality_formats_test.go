@@ -42,6 +42,37 @@ func TestSaveQualityProfileRefusesInvalidFormat(t *testing.T) {
 	}
 }
 
+// Importing TRaSH JSON answers the converted formats and saves nothing; JSON that isn't a
+// custom format is a 400.
+func TestImportTrash(t *testing.T) {
+	s := newRouteServer(t, func(d *Deps) { d.Quality = quality.NewService(d.Store.DB()) })
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	before, err := s.deps.Quality.ListStored(context.Background(), quality.MediaMovie)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cf := `{"name":"x265 (HD)","trash_scores":{"default":-10000},"specifications":[{"name":"x265","implementation":"ReleaseTitleSpecification","negate":false,"required":true,"fields":{"value":"[xh][ ._-]?265"}}]}`
+	body, _ := json.Marshal(map[string]string{"json": cf, "media": "movie"})
+	rec := s.doBody("POST", "/api/v1/quality/import-trash", string(body), mgr)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
+	}
+	var got quality.TrashImport
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Formats) != 1 || got.Formats[0].Format.Name != "x265 (HD)" || got.Formats[0].SuggestedScore == nil {
+		t.Errorf("import = %+v", got)
+	}
+	after, _ := s.deps.Quality.ListStored(context.Background(), quality.MediaMovie)
+	if len(after) != len(before) {
+		t.Error("an import saved a profile")
+	}
+	if rec := s.doBody("POST", "/api/v1/quality/import-trash", `{"json":"not json","media":"movie"}`, mgr); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad json: HTTP %d", rec.Code)
+	}
+}
+
 // The editor's live check answers per-format errors and sample matches; the profile list
 // carries the vocabulary the editor's dropdowns are built from.
 func TestCheckFormatsAndVocabulary(t *testing.T) {

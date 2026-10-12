@@ -1,0 +1,55 @@
+{
+  "trash_id": "fixture-web-tier-01",
+  "trash_scores": {
+    "default": 1700
+  },
+  "name": "WEB Tier 01",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "FLUX",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(FLUX)$"
+      }
+    },
+    {
+      "name": "NTb",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(NTb)$"
+      }
+    },
+    {
+      "name": "NOSiViD or playWEB",
+      "implementation": "ReleaseGroupSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "^(NOSiViD|playWEB)$"
+      }
+    },
+    {
+      "name": "WEB",
+      "implementation": "SourceSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": 3
+      }
+    },
+    {
+      "name": "WEBRIP",
+      "implementation": "SourceSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": 4
+      }
+    }
+  ]
+}

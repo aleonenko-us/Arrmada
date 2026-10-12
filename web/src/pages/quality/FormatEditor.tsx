@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { QualityCondition, QualityCustomFormat, StoredProfile } from "../../lib/api";
 import { qualityApi, type FormatCheck, type FormatProblem, type VocabValue } from "../../lib/qualityApi";
 import { useQuery } from "../../lib/query";
+import { CONDITION_TYPES, TYPE_LABEL, formatSummary } from "./formatText";
+import { TrashImportDialog } from "./TrashImport";
 
 // The custom-format editor in the builder's Advanced area: one card per format, each with
 // several conditions (NOT, match all/any), a score, and an edit form that changes the
@@ -9,20 +11,6 @@ import { useQuery } from "../../lib/query";
 // profile being edited.
 
 const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
-
-export const CONDITION_TYPES: { v: string; l: string }[] = [
-  { v: "source", l: "Source" },
-  { v: "resolution", l: "Resolution" },
-  { v: "codec", l: "Codec" },
-  { v: "dynamic_range", l: "Dynamic range" },
-  { v: "audio", l: "Audio" },
-  { v: "edition", l: "Edition" },
-  { v: "release_group", l: "Release group" },
-  { v: "release_title", l: "Name matches (regex)" },
-  { v: "lossless", l: "Lossless audio" },
-];
-
-const TYPE_LABEL: Record<string, string> = Object.fromEntries(CONDITION_TYPES.map((t) => [t.v, t.l]));
 
 // What a free-text value looks like, per type. The enumerable types are dropdowns.
 const PLACEHOLDER: Record<string, string> = {
@@ -37,14 +25,6 @@ type Draft = { index: number; original: string; format: QualityCustomFormat; sco
 
 function emptyCondition(type: string, vocab: Record<string, VocabValue[]>): QualityCondition {
   return { type, value: vocab[type]?.[0]?.value ?? "" };
-}
-
-// summary reads a format back as one line: "Source BluRay AND NOT Release group YTS".
-function summary(f: QualityCustomFormat): string {
-  const join = f.match === "any" ? " OR " : " AND ";
-  return f.conditions
-    .map((c) => `${c.negate ? "NOT " : ""}${TYPE_LABEL[c.type] ?? c.type}${c.type === "lossless" ? "" : ` ${c.value}`}`)
-    .join(join);
 }
 
 // tidy is a format as it's stored: names and values trimmed (a pattern is kept exactly),
@@ -69,6 +49,7 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
   const formats = sp.custom_formats ?? NO_FORMATS;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [check, setCheck] = useState<FormatCheck | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // What's checked is the formats as they'd be with the open edit applied, so a bad
   // pattern is flagged while it's typed, before Done.
@@ -110,7 +91,6 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
       format_scores: next,
       required_formats: (sp.required_formats ?? []).filter((n) => n !== name),
     });
-    if (draft && draft.index === index) setDraft(null);
   };
   const startNew = () => setDraft({ index: -1, original: "", score: 50, format: { name: "", match: "all", conditions: [emptyCondition("release_group", vocab)] } });
   const startEdit = (index: number) => {
@@ -134,6 +114,19 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
     const list = draft.index < 0 ? [...formats, f] : formats.map((x, i) => (i === draft.index ? f : x));
     patch({ custom_formats: list, format_scores: scores, required_formats: required });
     setDraft(null);
+  };
+
+  // Imported formats join the profile with no score (the user sets one); one with the name
+  // of a format already here replaces its conditions and keeps its score.
+  const addImported = (imported: QualityCustomFormat[]) => {
+    const list = [...formats];
+    for (const f of imported) {
+      const i = list.findIndex((x) => x.name.toLowerCase() === f.name.toLowerCase());
+      if (i >= 0) list[i] = { ...f, name: list[i].name };
+      else list.push(f);
+    }
+    patch({ custom_formats: list });
+    setImporting(false);
   };
 
   const draftIndex = draft ? (draft.index < 0 ? formats.length : draft.index) : -1;
@@ -163,7 +156,11 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
       {!draft && (
         <div className="mt-2 flex flex-wrap gap-2">
           <button onClick={startNew} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>+ New custom format</button>
+          <button onClick={() => setImporting(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Import from TRaSH</button>
         </div>
+      )}
+      {importing && (
+        <TrashImportDialog media={sp.media_type} existing={formats.map((f) => f.name)} onAdd={addImported} onClose={() => setImporting(false)} />
       )}
     </div>
   );
@@ -194,10 +191,10 @@ function FormatCard({ format, score, required, matches, samples, problems, editi
           <input type="number" aria-label={`${format.name} score`} value={score} onChange={(e) => onScore(Number(e.target.value))}
             className="w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-[11.5px]" style={{ ...fieldStyle, color: score >= 0 ? "var(--good)" : "var(--reject)" }} />
           <button onClick={onEdit} disabled={editing} className="text-[11px] font-semibold text-ink-dim hover:text-[var(--ink)] disabled:opacity-40">Edit</button>
-          <button onClick={onRemove} aria-label={`Remove ${format.name}`} className="text-ink-faint hover:text-[var(--reject)]">✕</button>
+          <button onClick={onRemove} disabled={editing} aria-label={`Remove ${format.name}`} className="text-ink-faint hover:text-[var(--reject)] disabled:opacity-40">✕</button>
         </span>
       </div>
-      <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{summary(format)}</div>
+      <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{formatSummary(format)}</div>
       {matches != null && samples != null && (
         <div className="mt-1 text-[10.5px] text-ink-faint">Matches {matches} of the {samples} sample releases</div>
       )}
