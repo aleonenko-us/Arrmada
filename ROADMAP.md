@@ -1113,6 +1113,9 @@ The library pages move onto the kit and fit a phone.
 
 ### Phase 11 — Convert rebuilt
 
+> **Status: wave 1 shipped 2026-10-12** — 17 of 19 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget and Playwright e2e green; checked in a local instance: Overview, History, the Undo settings with the per-library hold self-check, and Your devices). Built as 5 lanes. Fixed in merge: a movie version's plan could show another version's plan. Owner decisions: black-bar crop stays off by default (confirmed); CONV-27 resumable pieces approved, behind a setting that stays off, and in progress. CONV-28 (resumable on by default) waits for a week of green CI and the owner's own check on a non-library 4K sample. Owner to check: the 500 GB hold budget fits the array; the Your devices 10-bit column against real Plex plays. Requester first-load bundle is exactly at budget (346.0 KB / 97.0 KB brotli).
+
+
 **Theme:** A durable ledger, an originals hold with Revert, plan-first confirmation, a stricter quality gate, events, forecasts, device awareness and resumable encodes  
 **Goal:** Every conversion is planned and confirmed before it runs, checked by a gate that earns 'looks the same', recorded in a durable ledger, and reversible from an originals hold that never purges anything. The hold sits on the same filesystem, reusing SAFE-17's per-root helper, and pauses conversions instead of deleting. Hand requests never wait behind a frozen auto job.  
 **Why now:** Phases 0–1 stopped Convert's damage (backoff, cap guard, forced subtitles), and Phase 4 recorded baselines so upgrades can't undo conversions. The rebuild needs four things that now exist: per-root recycle bins (Phase 3), the kit for its dialogs (Phase 3), Insights monitoring and session parsing (Phase 7), and movie versions (Phase 10). Its settings already live in the hub (Phase 9).  

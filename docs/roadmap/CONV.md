@@ -291,7 +291,7 @@ _A durable ledger of every conversion. Originals sit in a same-disk hold outside
   - **Risk:** Row size: info_json for files with 30+ subtitle tracks is a few KB, which is fine. Keep DB writes outside s.mu. The trackDecisions refactor must be behaviour-neutral, so run the whole convert test suite. File paths in the ledger make the endpoints manager-only.
   - **Resolves:** convert-5, convert-2
 <a id="conv-07"></a>
-- [ ] **CONV-07 · Swap journal hardening: journal before staging, safer recovery, orphan .arrpart sweep, guarded same-stem retire** — `P1` · `S` · Phase 11
+- [x] **CONV-07 · Swap journal hardening: journal before staging, safer recovery, orphan .arrpart sweep, guarded same-stem retire** — `P1` · `S` · Phase 11
   - **Problem:** Four weaknesses in the swap:
 - The swap journal row is written only after the cross-device copy to .arrpart (process.go:606-611). A crash mid-copy leaves a multi-GB orphan .arrpart in the movie folder until that file next reaches the swap.
 - A failed journal write is only logged, and the swap proceeds (swaps.go:20-26).
@@ -317,7 +317,7 @@ The originals hold (CONV-08) and Revert (CONV-10) build on this journal, so it h
   - **Risk:** Low. The sweep must never touch a part belonging to a running job, so check s.pending under s.mu and the journal. FileOwner queries must handle Windows path case in tests only; production is Linux.
   - **Resolves:** convert-13
 <a id="conv-08"></a>
-- [ ] **CONV-08 · Originals hold: keep converted originals on the same filesystem with retention, outside the recycle bin** — `P1` · `L` · Phase 11
+- [x] **CONV-08 · Originals hold: keep converted originals on the same filesystem with retention, outside the recycle bin** — `P1` · `L` · Phase 11
   - **Problem:** retire() (service.go:730) moves originals into the shared recycle bin. Its default 50 GB cap is enforced hourly oldest-first (recyclebin/service.go:244, 322-341), so a 60-110 GB 4K original pushes out everything older and is then deleted itself. Restore refuses when the original path is occupied (recyclebin 139-141), which is always true for MKV sources (finalPath == src, process.go:603). With the bin off the original is hard-deleted (service.go:733-738). Convert needs its own same-filesystem hold, outside the bin cap, with its own retention.
   - **Approach:** hold.go:
     - SetLibraryRoots(roots ...string) and SetDataDir(dir), called from main.go with cfg.MoviesDir, cfg.TVDir and cfg.LibraryDir (fallback), plus the DB dir. holdRoot(src) = the longest configured root containing src (filepath.Rel with no '..'). Fallback: walk up from filepath.Dir(src) while sameDevice() holds ([CONV-01](#conv-01)). A root under the data dir is refused with finishSkip temporary 'no_hold' and a reason, because media must never be at /data.
@@ -361,7 +361,7 @@ The originals hold (CONV-08) and Revert (CONV-10) build on this journal, so it h
   - **Risk:** On Unraid user shares, a rename inside one /mnt/user mount stays on the file's disk and is instant; the self-check proves this per root, and EXDEV falls back to a slow copy. Per-library mounts mean one hold per root. The hold must never sit under /data. Until CONV-09 there is no budget, but held originals occupy only the space they already used, and CONV-01's library-volume check covers the new output. Coordinate with SAFE's per-filesystem bins so both use one holdRoot/sameDevice helper.
   - **Resolves:** convert-2
 <a id="conv-09"></a>
-- [ ] **CONV-09 · Hold budget that pauses conversions, Release now, and freed vs held space** — `P1` · `M` · Phase 11
+- [x] **CONV-09 · Hold budget that pauses conversions, Release now, and freed vs held space** — `P1` · `M` · Phase 11
   - **Problem:** Even with a hold (CONV-08), the owner needs a visible budget and a way to free space early. Conversions must pause, not delete originals, when the hold is full. 'Space saved' counted savings at swap time even while the original still occupied the disk (process.go addReclaimed), and the Overview card can't show what is freed and what is merely held.
   - **Approach:** - Setting convert_hold_max_gb (default 500; 0 = no limit).
     - [CONV-01](#conv-01)'s spaceCheck adds a budget check: if heldBytes (SELECT SUM(src_size) FROM convert_history WHERE hold_state='held') + mi.SizeBytes > budget, call finishSkip(SkipHoldFull='hold_full', temporary). Its retryAt is the earliest hold_until, via skipStore.record's override. Reason: 'the originals hold is full (480 of 500 GB) — this converts after the next original is released on 14 Oct, or raise the budget / release some in History'.
@@ -382,7 +382,7 @@ The originals hold (CONV-08) and Revert (CONV-10) build on this journal, so it h
   - **Risk:** Low. The 500 GB default is a guess for the owner's array, so state it in the release notes and let the owner set it. Bulk release is irreversible, so it needs a confirm dialog.
   - **Resolves:** convert-2, convert-15
 <a id="conv-10"></a>
-- [ ] **CONV-10 · One-click Revert of a conversion from the hold** — `P1` · `M` · Phase 11
+- [x] **CONV-10 · One-click Revert of a conversion from the hold** — `P1` · `M` · Phase 11
   - **Problem:** No code in internal/convert can undo a conversion. Recycle-bin Restore refuses when a file exists at the original path, which is always the case for MKV sources (finalPath == src). For MP4 sources, a restore leaves a duplicate while the DB still points at the .mkv. The owner believes every conversion can be undone.
   - **Approach:** revert.go adds Service.Revert(ctx, historyID) error.
     1) Load the ledger row. Require outcome done, hold_state 'held', the held file present at src_size, and the library record still at out_path with out_size (resolveSource for the row's item; version-aware once [CONV-24](#conv-24) lands). Otherwise return a typed error shown verbatim: 'the library file has changed since (an upgrade or re-import), so reverting would undo that'.
@@ -405,7 +405,7 @@ The originals hold (CONV-08) and Revert (CONV-10) build on this journal, so it h
   - **Risk:** Must not race with an import landing on the same item. The pending claim plus the path/size precondition covers it. Restoring source_release must not re-trigger the upgrade loop: with CONV-20, the restored name is the true original, which is correct.
   - **Resolves:** convert-2
 <a id="conv-11"></a>
-- [ ] **CONV-11 · History tab backed by the ledger, replacing the in-memory Recent card** — `P1` · `M` · Phase 11
+- [x] **CONV-11 · History tab backed by the ledger, replacing the in-memory Recent card** — `P1` · `M` · Phase 11
   - **Problem:** The Overview 'Recent' card (Convert.tsx:286-310) reads in-memory jobs and is empty after every restart. There is no place to answer 'what did Convert do to The Two Towers last week?', or to act on it with Revert or Release.
   - **Approach:** Add a 'History' tab between Problems and Activity (TABS at Convert.tsx:120). It lists /convert/history rows newest first. Each row shows:
     - a 32px poster (the handler fills poster_url from convert_library by movie_id/series_id);
@@ -430,7 +430,7 @@ The originals hold (CONV-08) and Revert (CONV-10) build on this journal, so it h
 _Each file shows its conversion plan before anything runs: tracks kept or removed and the warnings. Convert now and Switch on ask for confirmation with real counts. A hand request starts within seconds, even with a frozen auto job. Dolby Vision and black-bar crop become explicit, safe choices._
 
 <a id="conv-12"></a>
-- [ ] **CONV-12 · Conversion plan view: per-file plan API, expandable plan card, posters** — `P1` · `M` · Phase 11
+- [x] **CONV-12 · Conversion plan view: per-file plan API, expandable plan card, posters** — `P1` · `M` · Phase 11
   - **Problem:** A Library row shows only codec/res/HDR/bitrate/size/Saves plus a 'tracks' tag whose details are in a hover title. The backend already knows which tracks go (keptAudio/keptSubs), the warnings (planWarnings: CC, DV) and the container change. None of it is shown before an in-place replacement. poster_url is returned (index.go:223) but unused.
   - **Approach:** Backend (plan.go/decide.go): Service.PlanView(ctx, key) builds from the index row's info_json, prefs.planFor and trackDecisions ([CONV-06](#conv-06)). There is no probing; the only I/O is the sidecar ReadDir. It returns {video: {from_codec, from_res, from_hdr, from_bits, to_codec, to_bits, crf, est_bytes, measured, crop_note, hdr_note}, audio: [TrackDecision], subs: [TrackDecision], container: {from, to}, warnings: [], eta_sec: null}; [CONV-22](#conv-22) fills eta_sec. It uses the same code path as the runner and adds no decision logic of its own.
     Extend planWarnings (preset.go:478):
@@ -453,7 +453,7 @@ _Each file shows its conversion plan before anything runs: tracks kept or remove
   - **Risk:** PlanView must reuse planFor/trackDecisions, or the plan and the real result could disagree. Crop and the HEVC/AV1 pick are decided at conversion time, so the card says 'checked at conversion time' rather than guessing.
   - **Resolves:** convert-5, convert-4
 <a id="conv-13"></a>
-- [ ] **CONV-13 · Confirm before converting: Convert-now dialog and a Switch-on summary with library-wide counts** — `P1` · `S` · Phase 11
+- [x] **CONV-13 · Confirm before converting: Convert-now dialog and a Switch-on summary with library-wide counts** — `P1` · `S` · Phase 11
   - **Problem:** 'Convert now', 'Fix tracks' and 'Switch on' fire on one click with no confirmation (Convert.tsx:110-118, 454-462). The overhaul and the archived plan doc call for a first-run summary: N files, X TB → ~Y TB, how many lose DV or CC. Switching auto on starts irreversible in-place replacements across the whole library.
   - **Approach:** GET /api/v1/convert/auto-preview[?series=&season=] aggregates computeCandidates (the cached candCache). Add per-candidate flags to autoCand where plan and mi are at hand in computeCandidates: dv, cc, imageSubsDropped, audioDropped, containerChange, forcedDropped, estBytes. Response: {files, bytes, est_bytes, dv_files, cc_files, image_sub_tracks, filtered_audio_tracks, container_changes, forced_tracks}.
     'Convert now' / 'Fix tracks' (Convert.tsx:454-462) opens a confirm dialog with one line per change, taken from PlanView, and the queue position once [CONV-14](#conv-14) is in. Bulk season/show convert (Convert.tsx:464) shows auto-preview counts filtered by series/season. 'Switch on' (toggleAuto in the header) opens a modal: 'N files, X TB → ~Y TB; N lose Dolby Vision; N lose closed captions; N image-subtitle tracks removed; N audio tracks filtered', with a Confirm button. Auto is enabled only on Confirm, and Switch off stays one click. [CONV-25](#conv-25) adds 'devices that may transcode' to this modal. Replace window.confirm with the FE kit's ConfirmDialog if it exists; otherwise build a local dialog on the existing tokens.
@@ -467,7 +467,7 @@ _Each file shows its conversion plan before anything runs: tracks kept or remove
   - **Risk:** Low. Counts come from the cached candidates, so they can be minutes stale after a settings change; say 'about'.
   - **Resolves:** convert-5
 <a id="conv-14"></a>
-- [ ] **CONV-14 · Requested files never wait behind a frozen auto job (request lane, broadcast wake)** — `P1` · `S` · Phase 11
+- [x] **CONV-14 · Requested files never wait behind a frozen auto job (request lane, broadcast wake)** — `P1` · `S` · Phase 11
   - **Problem:** Workers only pick when free, and only those with idx < workerCount (default 1; runner.go:61). Outside the hours an auto job is SIGSTOPped in place, so worker 0 sits in cmd.Wait(). A hand-picked request then waits in 'Up next' until the auto job finishes, possibly nights later, while the UI says it 'starts right away, whatever the hours' (Convert.tsx:459). Status meanwhile reads 'Paused — outside your encode hours'. The wake channel has capacity 1 (service.go wake), so only one idle worker is nudged.
   - **Approach:** runner.go: Run starts maxWorkers+1 goroutines. Worker idx == maxWorkers is the request lane. Its nextJob calls only a new pickRequest(ctx), which claims from s.requests, and only when every normal slot is busy and no other job is on the lane. That way requests never queue behind auto jobs, and at most one extra encode runs.
     pauseReason(job, p, watching, laneBusy): while the lane is in use, an auto (non-requested) job returns 'waiting for your requested file to finish'. The frozen auto job stays SIGSTOPped and resumes afterwards, if the hours allow. applyPauses computes laneBusy under s.mu, and waitAllowed uses a locked helper.
@@ -483,7 +483,7 @@ _Each file shows its conversion plan before anything runs: tracks kept or remove
   - **Risk:** Two encodes' working sets sit in RAM, because the frozen auto job keeps its memory. That is acceptable on the owner's 285K but should be documented. Watch for deadlock between s.mu and wakeMu: never take wakeMu while holding s.mu.
   - **Resolves:** convert-6
 <a id="conv-15"></a>
-- [ ] **CONV-15 · Dolby Vision as an explicit, counted choice: leave alone or convert and drop the DV layer** — `P2` · `M` · Phase 11
+- [x] **CONV-15 · Dolby Vision as an explicit, counted choice: leave alone or convert and drop the DV layer** — `P2` · `M` · Phase 11
   - **Problem:** Every DV file is converted with its DV layer dropped. That was the owner's deliberate Oct-1 choice, but there is no way to protect DV titles for a DV-capable TV short of not converting at all. Once converted, Facts reports DolbyVision=false (facts.go:68), so profiles that prefer DV mark the file as not fitting.
   - **Approach:** New setting convert_dolby_vision: 'drop' (today's behaviour, and the default so nothing changes silently) or 'skip' (leave DV files alone). The 'keep' value is reserved and added by [CONV-29](#conv-29).
     decide.go: add dvPolicy to prefs and to cacheKey. In needsOf/videoWorth, when mi.HDR == 'Dolby Vision' and the policy is skip: Video=false, Why='Dolby Vision — left alone (Convert → Settings → Format)'. Track-only tidies still apply.
@@ -536,7 +536,7 @@ _Verification uses independent windows with a per-window floor and fails closed.
   - **Risk:** A higher bar means lower CRF, bigger outputs and more quality_gate skips; expect some files to move from 'convert' to 'kept original'. Measure the impact on synthetic or sample clips, never the owner's library. Ten windows add a few minutes of decode per 4K film.
   - **Resolves:** convert-8
 <a id="conv-18"></a>
-- [ ] **CONV-18 · One tool runner for every ffmpeg/tool call: nice, idle I/O, process group, pause** — `P2` · `M` · Phase 11
+- [x] **CONV-18 · One tool runner for every ffmpeg/tool call: nice, idle I/O, process group, pause** — `P2` · `M` · Phase 11
   - **Problem:** Only runWithProgress and encodeClip get lowPriority/applyNice/trackProc. SSIM verification, crop detection (40+ seeks), the HDR10+ extraction pipe, the hdr10plus inject and the final remux all use bare exec.CommandContext. They run at normal priority and ignore pause-while-watching. Verification isn't gated by waitAllowed (process.go:172). Nothing sets I/O priority, so Plex viewers can buffer while these steps hammer the array.
   - **Approach:** New exec.go: s.runTool(ctx, job, bin string, args []string, opt toolOpts) ([]byte, error). It runs exec.CommandContext, then lowPriority (Setpgid), applyNice(pid, encodeNice) and ioIdle(pid), then trackProc/untrackProc so pauseLoop freezes it, with an optional waitAllowed before start. toolOpts{IOClass: idle|besteffort7, Combined bool, Stdout io.Writer}.
     ioIdle is Linux-only, in priority_linux.go: ioprio_set(IOPRIO_WHO_PGRP, pid, IOPRIO_CLASS_IDLE) via golang.org/x/sys/unix, which is already in go.mod as indirect; make it direct. No-op stubs go in priority_other.go.
@@ -550,7 +550,7 @@ _Verification uses independent windows with a per-window floor and fails closed.
   - **Risk:** The idle I/O class can starve verification on a busy array and lengthen jobs. That is acceptable, and the class is per call, so a step can move to best-effort 7 if starvation shows up. A frozen SSIM step holds its 25-minute timeout context, so extend or pause the timeout while the job is paused.
   - **Resolves:** convert-13
 <a id="conv-19"></a>
-- [ ] **CONV-19 · Full-decode integrity check before the swap, plus VMAF when the ffmpeg build has it** — `P1` · `M` · Phase 11
+- [x] **CONV-19 · Full-decode integrity check before the swap, plus VMAF when the ffmpeg build has it** — `P1` · `M` · Phase 11
   - **Problem:** verifyOutput checks only duration ±2 s, track counts and size (process.go:527-558). ffmpeg exits 0 on most mid-stream decode errors, so a corrupted or truncated stretch outside the sampled SSIM windows passes, and then the original leaves the library. The quality.go:12-14 comment claims libvmaf is unavailable, which predates jellyfin-ffmpeg7 and was never re-checked.
   - **Approach:** After verifyOutput passes and before the swap, run a full decode of the output's video through runTool ([CONV-18](#conv-18)), after waitAllowed: `ffmpeg -v error -xerror -i out -map 0:v:0 -f null -`. On the Arc, add -hwaccel vaapi -hwaccel_device <vaapiDev> when the output codec decodes in hardware. If hardware init itself fails, retry on the CPU before judging, because a driver hiccup is not corruption.
     Count the decoded frames (parse -progress / the final frame=) and compare with the source's frame count. Take the source count from stream tags (Matroska NUMBER_OF_FRAMES / nb_frames), or, when absent, duration × r_frame_rate; never do a second full read of the source. Tolerance is 0.1%; VFRToCFR plans compare against duration × output fps.
@@ -589,7 +589,7 @@ _Verification uses independent windows with a per-window floor and fails closed.
 _Convert publishes lifecycle events for notifications and Plex. Up next and the Overview show per-file ETAs and a backlog forecast in nights. Small honesty and settings gaps are closed._
 
 <a id="conv-21"></a>
-- [ ] **CONV-21 · Publish Convert lifecycle events on the eventbus** — `P2` · `S` · Phase 11
+- [x] **CONV-21 · Publish Convert lifecycle events on the eventbus** — `P2` · `S` · Phase 11
   - **Problem:** internal/convert publishes nothing on the bus. Plex can't be told about swapped files. Failures, blocklists and 'scratch full' only surface if the admin opens the Convert page, and notify subscribes to five unrelated topics (notify.go:148-152).
   - **Approach:** Pass the *eventbus.Bus into convert via a new SetBus(bus), called in main.go next to SetWatching. Publish after the DB updates, using eventbus.Publish, which is non-blocking:
     - convert.done: {title, key, kind, movie_id, version_id, series_id, season, episode, path, old_path, src_bytes, out_bytes, codec, history_id}
@@ -608,7 +608,7 @@ _Convert publishes lifecycle events for notifications and Plex. Up next and the 
   - **Risk:** Low. Publishing must never block the worker; eventbus.Publish drops messages when a subscriber is slow, which is acceptable for notifications. Payloads carry file paths, so keep them off requester-facing channels.
   - **Resolves:** convert-11
 <a id="conv-22"></a>
-- [ ] **CONV-22 · Time forecast: per-file ETA in Up next, backlog in nights, and in-flight hours** — `P2` · `M` · Phase 11
+- [x] **CONV-22 · Time forecast: per-file ETA in Up next, backlog in nights, and in-flight hours** — `P2` · `M` · Phase 11
   - **Problem:** Up next shows bytes saved but never time. A 4K CPU encode at ~3.8 fps takes about 24 h, which is about four nights at the default 01:00-07:00 window. Nothing tells the owner the backlog is months of nights, or that an update right now throws away 20 hours of encoding. The plan's promised 'About 3 weeks at your current speed' was never built.
   - **Approach:** throughput.go: a speed model from convert_history done rows. Throughput = pixel-seconds per wall second = (duration × width × height) / encode_secs, grouped by encoder class (cpu-hevc, cpu-av1, cpu-hevc-hdr10plus, gpu-hevc, gpu-av1) and resolution bucket (SD/HD/4K), taking the median of the last 20 rows. With no history, seed from defaults (cpu-hevc 4K ≈ 3.8 fps, scaled per pixel and by the configured core count).
     estimateSeconds(cand) adds preflight and verification overheads. nights(sec, start, end) handles windows that wrap past midnight; 'any time' means 24 h. Ignore watch pauses but label results 'about'.
@@ -645,7 +645,7 @@ _Convert publishes lifecycle events for notifications and Plex. Up next and the 
 _Non-default movie versions (often the biggest remuxes) are converted. A 'Your devices' panel built from Insights warns before AV1 or 10-bit output would cause transcodes. 10-bit output for 8-bit sources is a stated choice._
 
 <a id="conv-24"></a>
-- [ ] **CONV-24 · Index and convert non-default movie versions** — `P2` · `M` · Phase 11
+- [x] **CONV-24 · Index and convert non-default movie versions** — `P2` · `M` · Phase 11
   - **Problem:** IndexAll and IndexMovie index only m.MovieFilePath, the default version (index.go:210-235, 257-272), and IndexMovie deletes any other row for the movie. resolveSource converts only the default (process.go:226-230). A 4K remux kept as an extra version, often the largest file, never appears in Convert's lists, stats or reclaimable figure. It is also invisible to the ideal-file check, which reads IndexedFiles.
   - **Approach:** Migration: ALTER TABLE convert_library ADD COLUMN version_id INTEGER NOT NULL DEFAULT 0.
     Keys: 'movie:ID' stays for the default; versions use 'movie:ID:v:VID'. Update parseKey/item.key/ItemKey (requests.go:72-100), movieKey/jobKey and parseItemKey (failures.go), and add Job.VersionID. The ledger already has version_id ([CONV-06](#conv-06)).
@@ -663,7 +663,7 @@ _Non-default movie versions (often the biggest remuxes) are converted. A 'Your d
   - **Risk:** Old 'movie:ID' keys in convert_requests, skips and failures keep meaning the default version, so no key migration is needed. Coordinate with MOV's versions/editions work so labels and the version model match.
   - **Resolves:** convert-10
 <a id="conv-25"></a>
-- [ ] **CONV-25 · 'Your devices' panel from Insights: who direct-plays HEVC, HEVC 10-bit and AV1** — `P2` · `M` · Phase 11
+- [x] **CONV-25 · 'Your devices' panel from Insights: who direct-plays HEVC, HEVC 10-bit and AV1** — `P2` · `M` · Phase 11
   - **Problem:** Format says HEVC 'plays everywhere' (Convert.tsx:951), and the AV1 toggle asks the admin to vouch for every device. CPU encodes always output 10-bit Main10 (preset.go:695, 718), which can turn direct play into transcodes on older Rokus, browsers and 1080p sticks. Insights already records player, platform, product, source video codec and the decision for every session (insights/repo.go:25-43), but nothing uses it to warn before converting.
   - **Approach:** Insights capture: plex/sessions.go parses the source video Stream's bitDepth and profile. A new migration adds stream_sessions.video_src_bitdepth INTEGER DEFAULT 0 and video_src_profile TEXT DEFAULT '', and the poller's record() fills them.
     insights.Service.DeviceCodecSupport(ctx, since) groups the last 90 days by (product, platform, player) into buckets h264 / hevc8 / hevc10 / av1, with direct-play and transcode counts by video decision. Where Insights records a transcode reason, a bandwidth-driven transcode counts as capable.
@@ -681,7 +681,7 @@ _Non-default movie versions (often the biggest remuxes) are converted. A 'Your d
   - **Risk:** Historic sessions lack bit depth, so the hevc10 column shows '?' until new sessions accrue. Plex 'transcode' can be bandwidth-driven, so word warnings as 'transcoded', not 'can't play'. Needs Insights monitoring on (insights-3: off by default), so the panel says so when it has no data. Device names are household data, so the endpoint is manager-only.
   - **Resolves:** convert-12
 <a id="conv-26"></a>
-- [ ] **CONV-26 · Make 10-bit output for 8-bit SDR sources a stated choice** — `P2` · `S` · Phase 11
+- [x] **CONV-26 · Make 10-bit output for 8-bit SDR sources a stated choice** — `P2` · `S` · Phase 11
   - **Problem:** cpuVideoArgs always outputs yuv420p10le (preset.go:695, 718), including for 8-bit SDR H.264 sources. The plan's own self-critique dropped that default (CONVERT-QUALITY-PLAN.md:283-286) because Main10 can turn direct-play files into transcodes. The hardware paths already follow the source bit depth (preset.go:392-394, 413-414).
   - **Approach:** New setting convert_ten_bit: 'always' (current) or 'match_source'. The owner chooses the default. Propose 'match_source' for new installs and keep 'always' for the existing one unless changed.
     cpuVideoArgs/compileOutputArgs take pixFmt: yuv420p10le when mi.TenBit || isHDR(EncodeHDR) || setting == always, else yuv420p (x265 main / SVT-AV1 8-bit). Add it to prefs.cacheKey, to estimate.go's efficiency factor if that assumes 10-bit, and to the trial/preflight, which share the args path. Record pix_fmt in the ledger, and include it in [CONV-27](#conv-27)'s resume fingerprint.

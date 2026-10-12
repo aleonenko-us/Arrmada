@@ -716,7 +716,7 @@ _Non-technical setup through Discord/Telegram/ntfy/Pushover/email presets with m
   - **Risk:** Suppression state is in memory and resets on restart, which is acceptable once PLEX's restart fix lands. Plex events are the owner's watch monitoring of their own server; none of this touches audiobook listening.
   - **Resolves:** insights-7
 <a id="obs-18"></a>
-- [ ] **OBS-18 · Convert alerts: immediate problems (gave up, stuck) and one daily summary** — `P2` · `S` · Phase 11
+- [x] **OBS-18 · Convert alerts: immediate problems (gave up, stuck) and one daily summary** — `P2` · `S` · Phase 11
   - **Problem:** Convert publishes nothing on the bus, and notify subscribes to none of its outcomes. A file blocklisted after repeated failures, or a queue stuck for lack of scratch space or hold space, is visible only on the Convert page.
   - **Approach:** 1. Catalog defs:
        - group convert (Needs-you styling):
