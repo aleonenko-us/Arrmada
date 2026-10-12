@@ -88,11 +88,15 @@ func (g GrabScope) Covers(ref series.EpisodeRef) bool {
 type forceRule struct {
 	On    bool
 	Scope GrabScope
+	// Target is the scope the grab was made for, whether or not the user chose it. It
+	// never skips the gate; it only says where a file that can't say for itself belongs
+	// (see grabTargetSpecial). The zero value names no single episode.
+	Target GrabScope
 }
 
 // forceAll skips the gate for every file: the user's own file (an upload, a folder they
 // pointed manual import at, a review they approved).
-var forceAll = forceRule{On: true, Scope: WholeShow}
+var forceAll = forceRule{On: true, Scope: WholeShow, Target: WholeShow}
 
 // forces reports whether the rule skips the gate for this episode.
 func (f forceRule) forces(ref series.EpisodeRef) bool {
