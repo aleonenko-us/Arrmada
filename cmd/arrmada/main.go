@@ -319,6 +319,8 @@ func main() {
 	hardcover.SetDiskCache(diskCache)
 	openlib := metadata.NewBookSources(hardcover, metadata.NewBooksWithFallback(olProvider, metadata.NewGoogleBooks()))
 	qualitySvc := quality.NewServiceWith(st.DB(), settingsSvc)
+	// Ranking v2's shadow-mode disagreements are logged as well as recorded.
+	qualitySvc.SetLogger(log)
 	// Titles left on a profile deleted before deletes reassigned them already run on the
 	// default; point their stored ref there too, so the UI and the database agree. Only
 	// refs naming a missing profile are touched.

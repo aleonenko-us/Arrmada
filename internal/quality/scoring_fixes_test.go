@@ -17,14 +17,21 @@ import (
 // Before sourceBonus was wired into qualityScore, both scored the bare 1080p
 // base and the bigger cam won the higher-bitrate tiebreak.
 func TestHDCAMLosesToWebDLDespiteSize(t *testing.T) {
-	cands := []Candidate{
-		NewCandidate("Movie.2024.1080p.HDCAM.x264-BAD", 9, 500),
-		NewCandidate("Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GOOD", 8, 500),
-	}
-	d := NewDefaultEngine().Decide(fallbackProfile(), cands)
-	if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, "WEB-DL") {
-		t.Fatalf("expected the WEB-DL to beat the bigger HDCAM, winner = %+v", d.Winner)
-	}
+	forEachRanking(t, func(t *testing.T, mode string) {
+		cands := []Candidate{
+			NewCandidate("Movie.2024.1080p.HDCAM.x264-BAD", 9, 500),
+			NewCandidate("Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GOOD", 8, 500),
+		}
+		d := engineIn(mode).Decide(fallbackProfile(), cands)
+		if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, "WEB-DL") {
+			t.Fatalf("expected the WEB-DL to beat the bigger HDCAM, winner = %+v", d.Winner)
+		}
+		// And where a profile allows pre-release copies, the cam is still the lowest source.
+		d = engineIn(mode).Decide(Profile{}, cands)
+		if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, "WEB-DL") {
+			t.Fatalf("a cam allowed by the profile still loses to the WEB-DL, winner = %+v", d.Winner)
+		}
+	})
 }
 
 // TestSourceBonusInvariants pins the ordering the bonus table promises and the
@@ -71,23 +78,27 @@ func TestMildSmallBiasNudges(t *testing.T) {
 	}
 
 	// Tiebreak: identical scores (int truncation eats the tiny penalty at these
-	// sizes) → the smaller file wins instead of the bigger one.
-	d := e.Decide(p, []Candidate{
-		NewCandidate("Movie.2024.1080p.WEB-DL.H.264-LRG", 4.5, 100),
-		NewCandidate("Movie.2024.1080p.WEB-DL.H.264-TDY", 4.0, 100),
-	})
-	if d.Winner == nil || d.Winner.Candidate.SizeGB != 4.0 {
-		t.Fatalf("bias 0.15 tie should go to the smaller file, winner = %+v", d.Winner)
-	}
+	// sizes) → the smaller file wins instead of the bigger one. Under v2 any lean at all
+	// turns the size key toward the smaller file, so both rankings agree.
+	forEachRanking(t, func(t *testing.T, mode string) {
+		e := engineIn(mode)
+		d := e.Decide(p, []Candidate{
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-LRG", 4.5, 100),
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-TDY", 4.0, 100),
+		})
+		if d.Winner == nil || d.Winner.Candidate.SizeGB != 4.0 {
+			t.Fatalf("bias 0.15 tie should go to the smaller file, winner = %+v", d.Winner)
+		}
 
-	// SmallBias == 0 keeps today's bigger-wins tiebreak.
-	d = e.Decide(Profile{Name: "plain"}, []Candidate{
-		NewCandidate("Movie.2024.1080p.WEB-DL.H.264-LRG", 4.5, 100),
-		NewCandidate("Movie.2024.1080p.WEB-DL.H.264-TDY", 4.0, 100),
+		// SmallBias == 0 keeps today's bigger-wins tiebreak.
+		d = e.Decide(Profile{Name: "plain"}, []Candidate{
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-LRG", 4.5, 100),
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-TDY", 4.0, 100),
+		})
+		if d.Winner == nil || d.Winner.Candidate.SizeGB != 4.5 {
+			t.Fatalf("bias 0 tie should go to the bigger file, winner = %+v", d.Winner)
+		}
 	})
-	if d.Winner == nil || d.Winner.Candidate.SizeGB != 4.5 {
-		t.Fatalf("bias 0 tie should go to the bigger file, winner = %+v", d.Winner)
-	}
 }
 
 // --- Fix 3: keyword matching is token-bounded like reject terms -------------
@@ -135,25 +146,41 @@ func TestKeywordMatchingIsTokenBounded(t *testing.T) {
 // --- Fix 4: PROPER/REPACK strictly win ties ---------------------------------
 
 func TestProperBeatsTheSameRelease(t *testing.T) {
-	base := "Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GRP"
-	proper := "Movie.2024.1080p.WEB-DL.DDP5.1.PROPER.H.264-GRP"
-	d := NewDefaultEngine().Decide(Profile{Name: "any"}, []Candidate{
-		NewCandidate(base, 8, 100),
-		NewCandidate(proper, 8, 100),
-	})
-	if d.Winner == nil || d.Winner.Candidate.Name != proper {
-		t.Fatalf("the PROPER should win over the identical non-proper, winner = %+v", d.Winner)
-	}
+	forEachRanking(t, func(t *testing.T, mode string) {
+		base := "Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GRP"
+		proper := "Movie.2024.1080p.WEB-DL.DDP5.1.PROPER.H.264-GRP"
+		d := engineIn(mode).Decide(Profile{Name: "any"}, []Candidate{
+			NewCandidate(base, 8, 100),
+			NewCandidate(proper, 8, 100),
+		})
+		if d.Winner == nil || d.Winner.Candidate.Name != proper || d.DecidedBy != KeyProper {
+			t.Fatalf("the PROPER should win over the identical non-proper, winner = %+v (decided by %q)", d.Winner, d.DecidedBy)
+		}
 
-	// But the bonus must stay below every source gap: a PROPER WEBRip still
-	// loses to a plain WEB-DL of the same resolution and size.
-	d = NewDefaultEngine().Decide(Profile{Name: "any"}, []Candidate{
-		NewCandidate("Movie.2024.1080p.WEBRip.PROPER.H.264-GRP", 8, 100),
-		NewCandidate("Movie.2024.1080p.WEB-DL.H.264-GRP", 8, 100),
+		// But the bonus must stay below every source gap: a PROPER never jumps a source
+		// tier. Classic ranking keeps WEB-DL and WEBRip apart, so a PROPER WEBRip still
+		// loses to a plain WEB-DL. Intended difference: v2 merges them into one WEB tier,
+		// where the PROPER is the next key — the PROPER WEBRip wins there.
+		d = engineIn(mode).Decide(Profile{Name: "any"}, []Candidate{
+			NewCandidate("Movie.2024.1080p.WEBRip.PROPER.H.264-GRP", 8, 100),
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-GRP", 8, 100),
+		})
+		want := "WEB-DL"
+		if mode == RankingV2 {
+			want = "WEBRip.PROPER"
+		}
+		if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, want) {
+			t.Fatalf("PROPER WEBRip vs WEB-DL: winner = %+v, want the %s", d.Winner, want)
+		}
+		// A PROPER of a lower tier never beats a higher one in either ranking.
+		d = engineIn(mode).Decide(Profile{Name: "any"}, []Candidate{
+			NewCandidate("Movie.2024.1080p.HDTV.PROPER.H.264-GRP", 8, 100),
+			NewCandidate("Movie.2024.1080p.WEB-DL.H.264-GRP", 8, 100),
+		})
+		if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, "WEB-DL") {
+			t.Fatalf("a PROPER must not jump a source tier, winner = %+v", d.Winner)
+		}
 	})
-	if d.Winner == nil || !strings.Contains(d.Winner.Candidate.Name, "WEB-DL") {
-		t.Fatalf("a PROPER must not jump a source tier, winner = %+v", d.Winner)
-	}
 }
 
 // --- Service-level pins (DB-backed): PROPER upgrade + WouldReject runtime ---
@@ -204,26 +231,29 @@ func testService(t *testing.T) (*Service, context.Context) {
 // A PROPER of the very release we imported must be accepted as an upgrade —
 // that's the whole point of a proper (the original was broken).
 func TestProperIsAnUpgradeOfTheSameRelease(t *testing.T) {
-	svc, ctx := testService(t)
-	sp, err := svc.Create(ctx, StoredProfile{MediaType: MediaMovie, Name: "up", UpgradesEnabled: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref := "custom:" + strconv.FormatInt(sp.ID, 10)
+	forEachRanking(t, func(t *testing.T, mode string) {
+		svc, ctx := testService(t)
+		setRanking(t, svc, mode)
+		sp, err := svc.Create(ctx, StoredProfile{MediaType: MediaMovie, Name: "up", UpgradesEnabled: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := "custom:" + strconv.FormatInt(sp.ID, 10)
 
-	current := "Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GRP"
-	proper := NewCandidate("Movie.2024.1080p.WEB-DL.DDP5.1.PROPER.H.264-GRP", 8, 50)
+		current := "Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GRP"
+		proper := NewCandidate("Movie.2024.1080p.WEB-DL.DDP5.1.PROPER.H.264-GRP", 8, 50)
 
-	got, ok := svc.UpgradeCandidate(ctx, ref, cf(current, 8, 0), []Candidate{proper})
-	if !ok || got.Name != proper.Name {
-		t.Fatalf("the PROPER of the imported release should be an upgrade, got ok=%v cand=%+v", ok, got)
-	}
+		got, ok := svc.UpgradeCandidate(ctx, ref, cf(current, 8, 0), []Candidate{proper})
+		if !ok || got.Name != proper.Name {
+			t.Fatalf("the PROPER of the imported release should be an upgrade, got ok=%v cand=%+v", ok, got)
+		}
 
-	// Sanity: the identical non-proper release is NOT an upgrade.
-	same := NewCandidate(current, 8, 50)
-	if _, ok := svc.UpgradeCandidate(ctx, ref, cf(current, 8, 0), []Candidate{same}); ok {
-		t.Error("the release we already have must not count as an upgrade")
-	}
+		// Sanity: the identical non-proper release is NOT an upgrade.
+		same := NewCandidate(current, 8, 50)
+		if _, ok := svc.UpgradeCandidate(ctx, ref, cf(current, 8, 0), []Candidate{same}); ok {
+			t.Error("the release we already have must not count as an upgrade")
+		}
+	})
 }
 
 // WouldReject must apply the profile's bitrate ceiling when the caller can

@@ -1598,7 +1598,7 @@ func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, wan
 		cur := c.currentMovieFile(ctx, m, v)
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
 		// Only releases this track may take: its edition, never another track's file.
-		if pick, ok := c.quality.UpgradeCandidate(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
+		if pick, ok := c.upgradePick(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
 			picks = append(picks, movieUpgrade{v: v, profile: profile, from: cur.Release, pick: pick})
 		}
 	}

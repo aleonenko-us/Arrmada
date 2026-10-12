@@ -68,6 +68,22 @@ func (b upgradeBar) qualityGain(trigger string, cand Evaluation) bool {
 	return cand.Total > b.total && qualityGain(trigger, cand, b.ev)
 }
 
+// gainKey names the gain qualityGain accepted cand for: the most significant improvement
+// (improvementKey), else a same-group PROPER, leaving a low-quality group's file
+// (KeyAvoid), or — for a gain only the size lean scores — KeySize.
+func (b upgradeBar) gainKey(cand Evaluation) RankKey {
+	if k := improvementKey(cand, b.ev); k != "" {
+		return k
+	}
+	switch {
+	case sameGroupProper(cand, b.ev):
+		return KeyProper
+	case b.ev.lowGroup && !cand.Avoided:
+		return KeyAvoid
+	}
+	return KeySize
+}
+
 func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 	// No runtime on the file's own candidate: scored as it always was, so a file over a
 	// lowered ceiling isn't treated as worthless and replaced by anything at all.

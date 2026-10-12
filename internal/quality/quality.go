@@ -401,6 +401,9 @@ type Evaluation struct {
 	// InWindow says it is inside the resolution's window (or there is none to judge).
 	EffBitrate float64 `json:"eff_bitrate,omitempty"`
 	InWindow   bool    `json:"in_window,omitempty"`
+	// LostOn is the key this release ranked below the one just above it on (Decide fills
+	// it for every eligible release after the first, in either ranking mode).
+	LostOn RankKey `json:"lost_on,omitempty"`
 	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
 	// out of it can be told apart (current.go).
 	lowGroup bool
@@ -417,6 +420,14 @@ type Decision struct {
 	ChosenOver string       `json:"chosen_over,omitempty"`
 	Eligible   []Evaluation `json:"eligible"`
 	Rejected   []Evaluation `json:"rejected"`
+	// Ranking is the mode that ordered Eligible (RankingV1 or RankingV2), and DecidedBy
+	// the key the winner beat the runner-up on (KeyOnly for a lone release) — every pick
+	// records what decided it.
+	Ranking   string  `json:"ranking,omitempty"`
+	DecidedBy RankKey `json:"decided_by,omitempty"`
+	// Shadow is what ranking v2 would have picked while classic ranking decides (shadow
+	// mode, shadow.go); nil under v2 or with nothing eligible.
+	Shadow *ShadowPick `json:"shadow,omitempty"`
 }
 
 // Why a profile turned a release down: the stable codes behind Evaluation.RejectReason.
@@ -448,6 +459,9 @@ func (ev *Evaluation) reject(code, reason string) {
 // Engine scores releases using a catalog of custom formats.
 type Engine struct {
 	formats map[string]CustomFormat
+	// Ranking is how Decide orders eligible releases: RankingV1 (classic, also "") or
+	// RankingV2 (ordered keys, rankv2.go). The service sets it from "quality_ranking".
+	Ranking string
 }
 
 // NewEngine builds an engine over the given custom-format catalog.
@@ -664,12 +678,51 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 		}
 	}
 	waiveCollapsedBonuses(d.Eligible)
+	d.Ranking = NormalizeRanking(e.Ranking)
+	if d.Ranking == RankingV2 {
+		sortV2(p, d.Eligible)
+	} else {
+		sortV1(p, d.Eligible)
+	}
+	d.DecidedBy = decidedBy(d.Eligible)
+	if len(d.Eligible) > 0 {
+		d.Winner = &d.Eligible[0]
+		d.Why = whyReasons(p, *d.Winner, d.Eligible)
+		// Every eligible release carries a format you avoid — say so, so a Dolby Vision
+		// recommendation doesn't look like the avoid was ignored when it's simply all
+		// there was. Under v2 only the avoids that are a tier count: a negative custom
+		// score there is a score.
+		avoided := d.Winner.Avoided
+		if d.Ranking == RankingV2 {
+			avoided = d.Winner.TargetAvoided
+		}
+		if avoided {
+			d.Why = append([]string{"Only releases with a format you avoid were available"}, d.Why...)
+		}
+		if len(d.Eligible) > 1 {
+			ru := d.Eligible[1]
+			var reason string
+			if d.Ranking == RankingV2 {
+				reason = v2Reason(p, ru.LostOn, *d.Winner, ru)
+			} else {
+				_, reason = decidingFactor(p, *d.Winner, ru)
+			}
+			d.ChosenOver = fmt.Sprintf("Chosen over the %s — %s", releaseLabel(ru.Candidate.Release), reason)
+		}
+	}
+	return d
+}
+
+// sortV1 is classic ranking: the avoided tier, dead torrents last, then the summed score,
+// then magnitude (seeders deciding within 10%), source and seeders. It fills each release's
+// LostOn from decidingFactor, which walks the same steps.
+func sortV1(p Profile, evs []Evaluation) {
 	// Rank by score, then by bitrate. For one movie every candidate is the same
 	// runtime, so a larger file = higher bitrate = better — unless the profile
 	// expresses any small-size preference, in which case smaller wins the tie.
 	preferSmaller := p.SmallBias > 0
-	sort.SliceStable(d.Eligible, func(i, j int) bool {
-		a, b := d.Eligible[i], d.Eligible[j]
+	sort.SliceStable(evs, func(i, j int) bool {
+		a, b := evs[i], evs[j]
 		// Avoided releases are a strictly lower tier: a release carrying an avoided format
 		// never out-ranks one that doesn't, no matter how much better its resolution,
 		// source or bitrate is. This is what makes "Avoid" mean "don't pick it while there's
@@ -704,22 +757,12 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 		}
 		return a.Candidate.Seeders > b.Candidate.Seeders
 	})
-	if len(d.Eligible) > 0 {
-		d.Winner = &d.Eligible[0]
-		d.Why = whyReasons(p, *d.Winner, d.Eligible)
-		// Every eligible release carries a format you avoid — say so, so a Dolby Vision
-		// recommendation doesn't look like the avoid was ignored when it's simply all
-		// there was.
-		if d.Winner.Avoided {
-			d.Why = append([]string{"Only releases with a format you avoid were available"}, d.Why...)
+	fillLostOn(evs, func(above, ev *Evaluation) RankKey {
+		if k, _ := decidingFactor(p, *above, *ev); k != "" {
+			return k
 		}
-		if len(d.Eligible) > 1 {
-			ru := d.Eligible[1]
-			_, reason := decidingFactor(p, *d.Winner, ru)
-			d.ChosenOver = fmt.Sprintf("Chosen over the %s — %s", releaseLabel(ru.Candidate.Release), reason)
-		}
-	}
-	return d
+		return KeyTie
+	})
 }
 
 // nearEqualBand is how close two magnitudes must be for seeders to decide between them.

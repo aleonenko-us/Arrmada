@@ -229,10 +229,11 @@ func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionI
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	c.noteHashless("movie", title, infoHash)
 	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
+	decidedBy, decidedMode := pickOf(ctx, title) // what decided the pick (pickkey.go)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath)
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path, decided_by, decided_mode)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath, decidedBy, decidedMode)
 	if err != nil {
 		c.log.Warn("automation: record grab failed", "err", err)
 		return

@@ -333,6 +333,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/quality/preview", a.requireRole(auth.RoleManager, a.handleQualityPreview))
 	mux.HandleFunc("POST /api/v1/quality/test", a.requireRole(auth.RoleManager, a.handleQualityTest))
 	mux.HandleFunc("POST /api/v1/quality/impact", a.requireRole(auth.RoleManager, a.handleQualityImpact))
+	mux.HandleFunc("GET /api/v1/quality/ranking-shadow", a.requireRole(auth.RoleAdmin, a.handleRankingShadow))
 	mux.HandleFunc("GET /api/v1/quality/profiles", a.requireRole(auth.RoleManager, a.handleListQualityProfiles))
 	mux.HandleFunc("POST /api/v1/quality/profiles", a.requireRole(auth.RoleManager, a.handleCreateQualityProfile))
 	mux.HandleFunc("POST /api/v1/quality/default", a.requireRole(auth.RoleManager, a.handleSetDefaultProfile))

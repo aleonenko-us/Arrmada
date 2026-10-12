@@ -106,7 +106,15 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 		// The languages automatic book grabs accept, canonical codes in order; [] = any.
 		"books_languages": a.bookLanguages(ctx),
+		// How releases are ranked: v1 (classic, the default) or v2 (ordered keys, preview).
+		// Under v1, v2 runs in the shadow and its disagreements are recorded for review.
+		"quality_ranking": a.qualityRanking(ctx),
 	})
+}
+
+// qualityRanking is the ranking mode in effect (quality_ranking: v1 unless set to v2).
+func (a *api) qualityRanking(ctx context.Context) string {
+	return quality.NormalizeRanking(a.deps.Settings.Get(ctx, quality.KeyRanking, quality.RankingV1))
 }
 
 // bookLanguages is the saved book languages list (default English).
@@ -169,6 +177,7 @@ type settingsUpdate struct {
 	QuotaBooks                *int      `json:"request_quota_books"`
 	DefaultCategories         *bool     `json:"indexer_default_categories"`
 	BookLanguages             *[]string `json:"books_languages"`
+	QualityRanking            *string   `json:"quality_ranking"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -210,6 +219,8 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 		return "the disk guard's thresholds"
 	case quotaChanged(req, requests.GlobalLimits(func(key string) string { return st.Get(ctx, key, "") })):
 		return "the request limits"
+	case req.QualityRanking != nil && strings.TrimSpace(*req.QualityRanking) != a.qualityRanking(ctx):
+		return "how releases are ranked"
 	}
 	return ""
 }
@@ -265,6 +276,10 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	if req.StallMinutes != nil && (*req.StallMinutes < 0 || *req.StallMinutes > quality.StallMaxMinutes) {
 		a.writeError(w, http.StatusBadRequest, "the stall timeout must be between 0 (never) and 10080 minutes (a week)")
+		return
+	}
+	if req.QualityRanking != nil && !quality.ValidRanking(strings.TrimSpace(*req.QualityRanking)) {
+		a.writeError(w, http.StatusBadRequest, "quality_ranking must be v1 (classic) or v2 (ordered)")
 		return
 	}
 	if req.UpgradeBudget != nil && (*req.UpgradeBudget < 0 || *req.UpgradeBudget > maxUpgradeBudget) {
@@ -406,6 +421,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.BookLanguages != nil && !save(a.deps.Settings.Set(ctx, automation.KeyBookLanguages, bookLangs)) {
+		return
+	}
+	if req.QualityRanking != nil && !save(a.deps.Settings.Set(ctx, quality.KeyRanking, strings.TrimSpace(*req.QualityRanking))) {
 		return
 	}
 	a.handleGetSettings(w, r)

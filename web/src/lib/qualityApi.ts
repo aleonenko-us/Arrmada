@@ -2,7 +2,21 @@ import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, t
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
+// RankingShadowReport mirrors quality.ShadowReport: what ranking v2 would have picked
+// differently while classic ranking decides (GET /api/v1/quality/ranking-shadow, admin).
+export interface RankingShadowReport {
+  mode: "v1" | "v2";
+  decisions: number;
+  disagreements: number;
+  days: { day: string; decisions: number; disagreements: number }[];
+  disagreement_rows: {
+    id: number; profile: string; v1_winner: string; v1_key: string; v2_winner: string; v2_key: string;
+    candidates: number; first_seen: string; last_seen: string; seen: number;
+  }[];
+}
+
 export const qualityApi = {
+  rankingShadow: (limit = 500) => req<RankingShadowReport>(`/api/v1/quality/ranking-shadow?limit=${limit}`),
   qualityProfiles: (media: string) =>
     req<{
       profiles: QualityProfileInfo[]; formats: FormatInfo[]; music_ladder?: string[]; music_presets?: MusicPreset[];

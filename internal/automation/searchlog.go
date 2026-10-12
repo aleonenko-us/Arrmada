@@ -182,6 +182,7 @@ func (n *searchNotes) decided(d quality.Decision) {
 	for _, ev := range d.Eligible {
 		n.mark(ev.Candidate.Name, classEligible)
 	}
+	n.notePick(d)
 }
 
 // grabbed records a release sent to the download client. Every record*Grab calls it, so

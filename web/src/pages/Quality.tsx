@@ -24,6 +24,7 @@ import {
 } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
 import { UnwantedRules, unwantedSummary } from "./quality/UnwantedRules";
+import { RankingCard } from "./quality/RankingCard";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -351,6 +352,7 @@ export function Quality() {
             ))}
           </div>
         )}
+        {isVideo && <RankingCard />}
       </div>
       {picking && (
         <TemplatePicker onClose={() => setPicking(false)} onPick={(sp) => { setPicking(false); setEditing(sp); }} media={media} />

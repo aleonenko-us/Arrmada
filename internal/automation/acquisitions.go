@@ -65,19 +65,23 @@ type Acquisition struct {
 	// Replaces: the grab is to replace a file the track already has (an upgrade, a
 	// re-grab), not to fill a missing one (grabs.replaces_path, MOV-09).
 	Replaces bool `json:"replaces,omitempty"`
+	// DecidedBy is the ranking key the release was picked on and DecidedMode how (v1, v2
+	// or upgrade) — grabs.decided_by/decided_mode; "" for a grab no ranking chose.
+	DecidedBy   string `json:"decided_by,omitempty"`
+	DecidedMode string `json:"decided_mode,omitempty"`
 }
 
 // acqCols is the column list scanAcq reads, in its order.
 const acqCols = `id, media_type, movie_id, version_id, title, info_hash, status, phase, progress,
 	acq_scope, client_id, quality_profile, grabbed_at, progress_at, last_seen_at, completed_at,
-	updated_at, last_error, replaces_path != ''`
+	updated_at, last_error, replaces_path != '', decided_by, decided_mode`
 
 func scanAcq(row interface{ Scan(...any) error }) (Acquisition, error) {
 	var a Acquisition
 	var progressAt, seenAt, doneAt, updAt int64
 	err := row.Scan(&a.GrabID, &a.MediaType, &a.ItemID, &a.VersionID, &a.Title, &a.InfoHash, &a.Status,
 		&a.Phase, &a.Progress, &a.Scope, &a.ClientID, &a.Profile, &a.GrabbedAt, &progressAt, &seenAt,
-		&doneAt, &updAt, &a.LastError, &a.Replaces)
+		&doneAt, &updAt, &a.LastError, &a.Replaces, &a.DecidedBy, &a.DecidedMode)
 	a.ProgressAt, a.LastSeenAt, a.CompletedAt, a.UpdatedAt = msTime(progressAt), msTime(seenAt), msTime(doneAt), msTime(updAt)
 	if a.Scope == "" {
 		a.Scope = derivedScope(a)

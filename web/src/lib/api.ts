@@ -513,6 +513,17 @@ export interface Evaluation {
   group_tier?: number;
   eff_bitrate?: number; // H.264-equivalent Mb/s, 0 without a runtime
   in_window?: boolean;
+  lost_on?: RankKey; // the key it ranked below the release above it on
+}
+
+// RankKey names a ranking step (quality.RankKey); "only" = the one eligible release.
+export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "source" | "proper" | "group" | "bitrate" | "health" | "size" | "only" | "tie";
+
+// Decision fields from ranking v2 (shadow mode): merged into Decision.
+export interface Decision {
+  ranking?: "v1" | "v2"; // the mode that ordered it
+  decided_by?: RankKey; // what the winner beat the runner-up on
+  shadow?: { winner: string; decided_by: RankKey; differs: boolean; over_key?: RankKey; v1_key?: RankKey }; // v2's pick while v1 decides
 }
 
 export type UpgradeTrigger = "any" | "source" | "format" | "resolution";
@@ -998,6 +1009,8 @@ export interface AppSettings {
   upgrade_max_grabs_per_sweep: number;
   /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
   books_languages: string[];
+  /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
+  quality_ranking?: "v1" | "v2";
 }
 
 export interface TorrentPreview {
