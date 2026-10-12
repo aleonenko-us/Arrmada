@@ -34,6 +34,7 @@ DELETE /api/v1/series/{id}/duplicates staff -
 DELETE /api/v1/series/{id}/numbering/pending staff -
 DELETE /api/v1/series/{id}/scene-map/{season} staff -
 DELETE /api/v1/series/{id}/seasons/{season}/episodes/{episode}/file staff -
+DELETE /api/v1/settings/smtp admin -
 DELETE /api/v1/subtitles/file staff -
 DELETE /api/v1/subtitles/overrides/{kind}/{id} staff -
 DELETE /api/v1/subtitles/profiles/{id} staff -
@@ -227,6 +228,7 @@ GET /api/v1/series/{id}/rename staff -
 GET /api/v1/series/{id}/scene-map staff -
 GET /api/v1/series/{id}/watch-stats staff -
 GET /api/v1/settings staff -
+GET /api/v1/settings/smtp admin -
 GET /api/v1/setup admin -
 GET /api/v1/status public ext
 GET /api/v1/subtitles/attention staff -
@@ -396,6 +398,7 @@ POST /api/v1/series/{id}/rename staff -
 POST /api/v1/series/{id}/resume-upgrades staff -
 POST /api/v1/series/{id}/search staff -
 POST /api/v1/series/{id}/seasons/{season}/episodes/{episode}/regrab staff -
+POST /api/v1/settings/smtp/test admin -
 POST /api/v1/setup/complete admin -
 POST /api/v1/subtitles/file/shift staff -
 POST /api/v1/subtitles/jobs/clear staff -
@@ -461,6 +464,7 @@ PUT /api/v1/series/{id}/scene-map staff -
 PUT /api/v1/series/{id}/seasons/{season}/monitor staff -
 PUT /api/v1/series/{id}/type staff -
 PUT /api/v1/settings staff -
+PUT /api/v1/settings/smtp admin -
 PUT /api/v1/subtitles/overrides/{kind}/{id} staff -
 PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -

@@ -201,6 +201,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/apikeys/{id}/test", a.requireRole(auth.RoleAdmin, a.handleTestAPIKey))
 	mux.HandleFunc("GET /api/v1/settings", a.requireRole(auth.RoleManager, a.handleGetSettings))
 	mux.HandleFunc("PUT /api/v1/settings", a.requireRole(auth.RoleManager, a.handleUpdateSettings))
+	// Outgoing email (Send to Kindle): a mail login, so admin-only like the API keys.
+	mux.HandleFunc("GET /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleGetSMTP))
+	mux.HandleFunc("PUT /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleSetSMTP))
+	mux.HandleFunc("DELETE /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleClearSMTP))
+	mux.HandleFunc("POST /api/v1/settings/smtp/test", a.requireRole(auth.RoleAdmin, a.handleTestSMTP))
 	// Library folders + filesystem browser (in-app folder picker). Managers can read the
 	// folders (Settings → Library shows them, and they scan from there) but only an admin
 	// may move a library or walk the host's filesystem.
