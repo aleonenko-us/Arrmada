@@ -834,6 +834,8 @@ func main() {
 	// Converted originals wait in a hidden hold on their own library folder (same drive, a
 	// rename) for the undo window — never in the recycle bin, whose cap would purge them.
 	convertSvc.SetHoldRoots(func() []libroots.Root { return roots.Libraries(context.Background()) }, cfg.DataDir)
+	// "Same as Subtitles" for the subtitle tracks Convert keeps reads the Subtitles list.
+	convertSvc.SetSubtitleLangs(subtitlesSvc.Languages)
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)

@@ -106,6 +106,10 @@ type Service struct {
 	settings *settings.Service
 	log      *slog.Logger
 
+	// subtitleLangs reads the Subtitles module's kept languages, for the SameAsSubtitles
+	// keep-list (sublangs.go). Nil until main wires it.
+	subtitleLangs func(ctx context.Context) []string
+
 	ffmpeg, ffprobe        string
 	scratchDir, recycleDir string
 	hdr10plusTool          string // HDR10+ metadata tool (empty if not bundled)

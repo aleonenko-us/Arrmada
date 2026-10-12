@@ -24,7 +24,7 @@ const (
 	keyKeepAudioLangs  = "convert_keep_audio_langs"   // CSV; empty = keep all audio
 	keyKeepOrigLang    = "convert_keep_original_lang" // also keep the title's original-language audio
 	keyDropCommentary  = "convert_drop_commentary"    // remove commentary audio tracks
-	keyKeepSubLangs    = "convert_keep_sub_langs"     // CSV; empty = keep all subtitles
+	keyKeepSubLangs    = "convert_keep_sub_langs"     // CSV; empty = keep all subtitles; may hold SameAsSubtitles
 	keyImageSubs       = "convert_image_subs"         // keep | when_text | remove
 	keyTidyTracks      = "convert_tidy_tracks"        // also rewrite files whose only gap is their tracks
 	keyCrop            = "convert_crop"               // remove black bars from re-encoded films
@@ -66,7 +66,8 @@ type prefs struct {
 	start, end                            string
 	keepAudio                             []string
 	keepOriginal, dropCommentary          bool
-	keepSubs                              []string
+	keepSubs                              []string // resolved: SameAsSubtitles expanded (sublangs.go)
+	keepSubsSaved                         string   // as saved, sentinel and all, for the settings page
 	imageSubs                             string
 	tidyTracks                            bool
 	// crop is off unless you turned it on: a brief wider shot between the samples could
@@ -94,7 +95,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		keepAudio:      splitCSV(g.Get(ctx, keyKeepAudioLangs, "")),
 		keepOriginal:   g.GetBool(ctx, keyKeepOrigLang, true),
 		dropCommentary: g.GetBool(ctx, keyDropCommentary, false),
-		keepSubs:       splitCSV(g.Get(ctx, keyKeepSubLangs, "")),
+		keepSubsSaved:  g.Get(ctx, keyKeepSubLangs, ""),
 		imageSubs:      g.Get(ctx, keyImageSubs, ""),
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
 		crop:           g.GetBool(ctx, keyCrop, false),
@@ -103,6 +104,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		measured:       s.measured.all(ctx),
 		dolbyVision:    dvPolicy(g.Get(ctx, keyDolbyVision, "")),
 	}
+	p.keepSubs = s.keepSubLangs(ctx, p.keepSubsSaved)
 	switch p.imageSubs {
 	case ImageSubsKeep, ImageSubsWhenText, ImageSubsRemove:
 	default:

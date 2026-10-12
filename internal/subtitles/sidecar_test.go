@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -86,35 +85,8 @@ func TestPresentLanguages(t *testing.T) {
 	}
 }
 
-func TestParseSidecarTag(t *testing.T) {
-	cases := []struct {
-		segs          string
-		lang, variant string
-	}{
-		{"en", "en", VariantFull},
-		{"eng", "eng", VariantFull},
-		{"english", "en", VariantFull},
-		{"en.forced", "en", VariantForced},
-		{"en.sdh", "en", VariantSDH},
-		{"en.cc", "en", VariantSDH},
-		{"en.hi", "en", VariantSDH}, // Bazarr's hearing-impaired
-		{"hi", "hi", VariantFull},   // on its own, Hindi
-		{"hindi.hi", "hi", VariantSDH},
-		{"en.default", "en", VariantFull},
-		{"en.default.forced", "en", VariantForced},
-		{"en.sdh.forced", "en", VariantForced}, // forced wins: never the full track
-		{"en.forced.sdh", "en", VariantForced},
-		{"forced", "", VariantForced},
-		{"anchorman the legend of ron burgundy", "", VariantFull},
-		{"", "", VariantFull},
-	}
-	for _, c := range cases {
-		lang, variant := parseSidecarTag(strings.Split(c.segs, "."), isKnownLang)
-		if lang != c.lang || variant != c.variant {
-			t.Errorf("%q: got (%q, %q), want (%q, %q)", c.segs, lang, variant, c.lang, c.variant)
-		}
-	}
-}
+// The sidecar-name parser itself lives in internal/langs (TestParseSidecarTag there);
+// the cases below check how a scan credits what it parses.
 
 func TestPresentVariants(t *testing.T) {
 	_, video := mkFiles(t, "Movie.mkv", "Movie.en.srt", "Movie.en.forced.srt", "Movie.es.sdh.srt", "Other.fr.srt")
