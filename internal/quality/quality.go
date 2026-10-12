@@ -410,6 +410,11 @@ type Evaluation struct {
 	// there's an alternative" — not merely a score penalty a better source could overcome.
 	Avoided        bool     `json:"avoided,omitempty"`
 	AvoidedFormats []string `json:"avoided_formats,omitempty"`
+	// LostOn and LostOnText say why an eligible release ranked below the one just above it
+	// in Decide's order (explainRanks): the deciding RankKey and the plain-language reason
+	// ("lower resolution", "fewer seeders"). Empty for the winner and for rejected releases.
+	LostOn     RankKey `json:"lost_on,omitempty"`
+	LostOnText string  `json:"lost_on_text,omitempty"`
 	// ceiling names the profile ceiling a rejected release is above ("40 Mb/s", "BluRay"),
 	// "" for every other outcome. It lets a downgrade prompt tell "too big for this
 	// profile" from "not what this profile wants" without parsing the reason text.
@@ -423,6 +428,9 @@ type Decision struct {
 	ChosenOver string       `json:"chosen_over,omitempty"`
 	Eligible   []Evaluation `json:"eligible"`
 	Rejected   []Evaluation `json:"rejected"`
+	// DecidedBy is what put the winner above the runner-up ("" with one eligible release,
+	// or when the two were an equal match).
+	DecidedBy RankKey `json:"decided_by,omitempty"`
 }
 
 // Why a profile turned a release down: the stable codes behind Evaluation.RejectReason.
@@ -701,6 +709,7 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 		}
 		return a.Candidate.Seeders > b.Candidate.Seeders
 	})
+	d.DecidedBy = explainRanks(p, d.Eligible)
 	if len(d.Eligible) > 0 {
 		d.Winner = &d.Eligible[0]
 		d.Why = whyReasons(p, *d.Winner, d.Eligible)

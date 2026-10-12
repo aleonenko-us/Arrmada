@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { QualityCondition, QualityCustomFormat, StoredProfile } from "../../lib/api";
-import { qualityApi, type FormatCheck, type FormatProblem, type VocabValue } from "../../lib/qualityApi";
+import { qualityApi, type FormatProblem, type FormatReport, type VocabValue } from "../../lib/qualityApi";
 import { useQuery } from "../../lib/query";
 import { CONDITION_TYPES, TYPE_LABEL, formatSummary } from "./formatText";
 import { TrashImportDialog } from "./TrashImport";
@@ -48,7 +48,7 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
   const vocab = listQ.data?.vocabulary ?? NO_VOCAB;
   const formats = sp.custom_formats ?? NO_FORMATS;
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [check, setCheck] = useState<FormatCheck | null>(null);
+  const [check, setCheck] = useState<FormatReport | null>(null);
   const [importing, setImporting] = useState(false);
 
   // What's checked is the formats as they'd be with the open edit applied, so a bad

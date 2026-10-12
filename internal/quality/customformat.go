@@ -421,9 +421,9 @@ func conditionNoun(t ConditionType) string {
 	return string(t)
 }
 
-// FormatCheck is the editor's live read on a profile's custom formats: what would block a
+// FormatReport is the editor's live read on a profile's custom formats: what would block a
 // save, what can never match, and how many of the sample releases each format matches.
-type FormatCheck struct {
+type FormatReport struct {
 	Errors   []FormatProblem `json:"errors"`
 	Warnings []FormatProblem `json:"warnings"`
 	// Matches is, per format (by position), how many of the Samples releases it matches.
@@ -432,9 +432,9 @@ type FormatCheck struct {
 }
 
 // CheckFormats validates formats and counts their matches over the sample releases.
-func CheckFormats(formats []CustomFormat) FormatCheck {
+func CheckFormats(formats []CustomFormat) FormatReport {
 	samples := SampleCandidates()
-	out := FormatCheck{
+	out := FormatReport{
 		Errors:   ValidateFormats(formats),
 		Warnings: FormatWarnings(formats),
 		Matches:  make([]int, len(formats)),

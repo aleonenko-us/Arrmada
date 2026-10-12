@@ -497,6 +497,57 @@ func (s *Service) DecideSpec(sp StoredProfile, cands []Candidate) Decision {
 	return sp.Engine().Decide(sp.ToProfile(), cands)
 }
 
+// FormatCheck is one format tested against a release name: whether the name matches it, and
+// how the profile treats it.
+type FormatCheck struct {
+	Name     string `json:"name"`
+	Matched  bool   `json:"matched"`
+	Score    int    `json:"score"`              // the profile's score for it (0 = no opinion)
+	Required bool   `json:"required,omitempty"` // a Must: never grabbed without it
+	Custom   bool   `json:"custom,omitempty"`   // one of the profile's own custom formats
+}
+
+// Explanation is one release name judged by a profile: what the name parses to, the
+// verdict, and every format the profile knows with whether the name has it.
+type Explanation struct {
+	Release    parser.Release `json:"release"`
+	Evaluation Evaluation     `json:"evaluation"`
+	Formats    []FormatCheck  `json:"formats"`
+}
+
+// Explain judges one release name against a profile that may not be saved yet — the
+// builder's "Test a release name". sizeGB and runtimeMin are optional (0 = unknown); with
+// both, the bitrate window applies just as it does to a real search.
+//
+// A pasted name has no seeders, so it's judged as though it had the profile's minimum:
+// the box answers "would this release fit?", not "is this torrent alive?".
+func (s *Service) Explain(sp StoredProfile, name string, sizeGB float64, runtimeMin int) Explanation {
+	normalize(&sp)
+	p, e := sp.ToProfile(), sp.Engine()
+	c := NewCandidate(name, max(sizeGB, 0), max(p.MinSeeders, 1)).WithRuntime(max(runtimeMin, 0))
+	out := Explanation{Release: c.Release, Evaluation: e.Evaluate(p, c)}
+	custom := map[string]bool{}
+	for _, f := range sp.CustomFormats {
+		custom[f.Name] = true
+	}
+	seen := map[string]bool{}
+	for _, f := range append(DefaultFormats(), sp.CustomFormats...) {
+		if seen[f.Name] {
+			continue // a custom format named like a built-in replaces it in the engine
+		}
+		seen[f.Name] = true
+		ef := e.formats[f.Name]
+		out.Formats = append(out.Formats, FormatCheck{
+			Name:     f.Name,
+			Matched:  e.match(ef, c.Name, c.Release), // with the name, so release_title formats count
+			Score:    p.FormatScores[f.Name],
+			Required: containsStr(p.Required, f.Name),
+			Custom:   custom[f.Name],
+		})
+	}
+	return out
+}
+
 // Delete removes a profile and moves every title, pending request and in-flight grab
 // on it to moveTo, returning the counts and the ref they moved to. An empty moveTo means
 // the media type's default, or the first other profile when the default is the one
@@ -594,11 +645,13 @@ func (s *Service) RepairDanglingRefs(ctx context.Context) (map[string]int, error
 	return out, nil
 }
 
-// Preview scores a (possibly unsaved) profile over the built-in sample set — the
-// live feedback behind the builder.
+// Preview scores a (possibly unsaved) profile over the built-in sample set for its media
+// type (Samples) — the live feedback behind the builder. A series profile is judged on
+// episode-length samples, so its bitrate window means what it will mean on a real grab.
 func (s *Service) Preview(sp StoredProfile) Decision {
 	normalize(&sp) // an edited target takes effect in the preview before it's saved
-	return sp.Engine().Decide(sp.ToProfile(), SampleCandidates())
+	cands, _ := Samples(sp.MediaType)
+	return sp.Engine().Decide(sp.ToProfile(), cands)
 }
 
 func normalize(sp *StoredProfile) {

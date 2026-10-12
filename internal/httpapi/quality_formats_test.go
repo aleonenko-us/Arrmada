@@ -87,7 +87,7 @@ func TestCheckFormatsAndVocabulary(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
 	}
-	var got quality.FormatCheck
+	var got quality.FormatReport
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}

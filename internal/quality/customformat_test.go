@@ -208,6 +208,24 @@ func TestEvaluateScoresReleaseTitleFormat(t *testing.T) {
 	}
 }
 
+// "Test a release name" reports a release_title format as matched: it's judged with the
+// name, not just the parsed release.
+func TestExplainMatchesReleaseTitleFormats(t *testing.T) {
+	sp := StoredProfile{MediaType: MediaMovie, Name: "x", CustomFormats: []CustomFormat{
+		{Name: "Tier 1", Conditions: []Condition{{Type: CondReleaseTitle, Value: `-FLUX$`}}},
+	}}
+	out := (&Service{}).Explain(sp, "Movie.2020.1080p.WEB-DL.H.264-FLUX", 0, 0)
+	for _, f := range out.Formats {
+		if f.Name == "Tier 1" {
+			if !f.Matched {
+				t.Error("Tier 1 should be matched")
+			}
+			return
+		}
+	}
+	t.Error("Tier 1 not listed")
+}
+
 func TestValidateFormats(t *testing.T) {
 	ok := []CustomFormat{
 		{Name: "Tier 1", Match: "any", Conditions: []Condition{{Type: CondReleaseGroup, Value: "FLUX"}, {Type: CondReleaseTitle, Value: `\bNTb\b`}}},

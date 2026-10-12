@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { useState } from "react";
 import { CustomFormatsEditor } from "./FormatEditor";
 import type { StoredProfile } from "../../lib/api";
-import { qualityApi, type FormatCheck } from "../../lib/qualityApi";
+import { qualityApi, type FormatReport } from "../../lib/qualityApi";
 import { clearQueryCache } from "../../lib/query";
 
 const vocabulary = {
@@ -26,7 +26,7 @@ function Host({ initial }: { initial: StoredProfile }) {
   return <CustomFormatsEditor sp={sp} patch={(p) => setSp((s) => ({ ...s, ...p }))} />;
 }
 
-let check: (formats: unknown[]) => FormatCheck;
+let check: (formats: unknown[]) => FormatReport;
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
