@@ -33,6 +33,10 @@ export async function mockLibrary(page: Page, opts: { source?: BookSource; upgra
   await page.route((u) => u.pathname === "/api/v1/books/13", (route) => json(route, DETAIL));
   await page.route((u) => u.pathname === "/api/v1/books/13/series", (route) => json(route, { name: "", entries: [], gaps: 0 }));
   await page.route((u) => u.pathname === "/api/v1/books/13/history", (route) => json(route, { events: [] }));
+  await page.route((u) => u.pathname === "/api/v1/books/13/releases", (route) => json(route, { profile: "ebook", releases: [], searched: 2 }));
+  await page.route((u) => u.pathname === "/api/v1/books/lookup", (route) => json(route, { results: [], source: opts.source ?? "openlibrary" }));
+  await page.route((u) => u.pathname === "/api/v1/books/13/manualimport", (route) => json(route, { path: "/downloads", candidates: [] }));
+  await page.route((u) => u.pathname === "/api/v1/books/13/covers", (route) => json(route, { covers: [] }));
   await page.route((u) => u.pathname === "/api/v1/books/13/search", (route) => { state.searches++; return json(route, { status: "started" }); });
   if (opts.dupes) {
     await page.route((u) => u.pathname === "/api/v1/books/duplicates", (route) =>

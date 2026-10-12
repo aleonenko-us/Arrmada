@@ -87,4 +87,34 @@ test.describe("Books library (desktop)", () => {
     await expect.poll(() => state.searches).toBe(1);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
   });
+
+  // FE-12: the book page's dialogs are the kit's Modal — named, Escape closes them, and
+  // focus goes back to where it was.
+  test("the book page's dialogs close on Escape", async ({ page }) => {
+    await mockLibrary(page);
+    await page.goto("/books/13");
+    const open = async (menu: string, item: string) => {
+      await page.getByRole("button", { name: menu, exact: true }).click();
+      await page.getByRole("menuitem", { name: item }).click();
+    };
+    for (const [menu, item, dialog] of [
+      ["Fix", "Edit metadata…", "Edit metadata"],
+      ["Fix", "Change match…", "Change match — Children of Dune"],
+      ["Search", "Interactive search…", "Search indexers — Children of Dune"],
+      ["Add files", "Manual import…", "Manual import"],
+    ]) {
+      await open(menu, item);
+      const d = page.getByRole("dialog", { name: dialog });
+      await expect(d).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(d).toHaveCount(0);
+    }
+    // With a mouse the cover's Edit button appears on hover or keyboard focus.
+    await page.getByRole("button", { name: "Edit cover" }).focus();
+    await page.keyboard.press("Enter");
+    const covers = page.getByRole("dialog", { name: "Choose a cover" });
+    await expect(covers.getByText("No alternate covers found", { exact: false })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(covers).toHaveCount(0);
+  });
 });
