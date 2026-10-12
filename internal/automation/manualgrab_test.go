@@ -77,11 +77,11 @@ func TestMarkGrabRecordsScope(t *testing.T) {
 		wantRow   string
 		wantForce forceRule
 	}{
-		{"quick season Grab", false, GrabScope{Season: 3}, "0/S03", forceRule{}},
-		{"quick episode Grab", false, GrabScope{Season: 3, Episode: 4}, "0/S03E04", forceRule{}},
-		{"Replace", true, GrabScope{Season: 3, Episode: 4}, "1/S03E04", forceRule{On: true, Scope: GrabScope{Season: 3, Episode: 4}}},
-		{"season-modal pick", true, GrabScope{Season: 3}, "1/S03", forceRule{On: true, Scope: GrabScope{Season: 3}}},
-		{"specials-modal pick", true, GrabScope{Season: 0}, "1/S00", forceRule{On: true, Scope: GrabScope{Season: 0}}},
+		{"quick season Grab", false, GrabScope{Season: 3}, "0/S03", forceRule{Target: GrabScope{Season: 3}}},
+		{"quick episode Grab", false, GrabScope{Season: 3, Episode: 4}, "0/S03E04", forceRule{Target: GrabScope{Season: 3, Episode: 4}}},
+		{"Replace", true, GrabScope{Season: 3, Episode: 4}, "1/S03E04", forceRule{On: true, Scope: GrabScope{Season: 3, Episode: 4}, Target: GrabScope{Season: 3, Episode: 4}}},
+		{"season-modal pick", true, GrabScope{Season: 3}, "1/S03", forceRule{On: true, Scope: GrabScope{Season: 3}, Target: GrabScope{Season: 3}}},
+		{"specials-modal pick", true, GrabScope{Season: 0}, "1/S00", forceRule{On: true, Scope: GrabScope{Season: 0}, Target: GrabScope{Season: 0}}},
 		{"whole-show modal pick", true, WholeShow, "1/", forceAll},
 	}
 	for i, tc := range cases {

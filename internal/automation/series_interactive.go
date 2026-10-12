@@ -55,8 +55,29 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	var sampleDropped, sampleScope []string
 	rts := newRuntimeIndex(s)
 	torrents, nzbs := splitTransport(releases)
+	byTitle := map[string]int{} // specials found by their title rather than S00Exx
 	for _, rel := range append(torrents, nzbs...) {
 		p := parser.Parse(rel.Title)
+		if season == 0 {
+			// A special named by its title: its name is the show plus that title, so the
+			// identity check below would read it as another show.
+			n := specialByTitle(p, rel.Title, s, 0)
+			if n > 0 && episode > 0 && n != episode {
+				droppedScope++ // another special
+				continue
+			}
+			if n > 0 {
+				byName[rel.Title] = rel
+				byTitle[rel.Title] = n
+				cand := c.specialCandidate(c.newSeriesCandidate(ctx, s, rts, rel), rts, n)
+				if rel.Transport == indexer.TransportUsenet {
+					usenet = append(usenet, cand)
+				} else {
+					cands = append(cands, cand)
+				}
+				continue
+			}
+		}
 		if ok, why := seriesIdentity(p, s); !ok {
 			droppedTitle++
 			if len(sampleDropped) < 8 {
@@ -113,6 +134,10 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	// packs and multi-episode files show a real bitrate too, not only single episodes.
 	appendEval := func(ev quality.Evaluation) {
 		rel := byName[ev.Candidate.Name]
+		resolves := c.resolvesLabel(ctx, s, ev.Candidate.Release)
+		if n := byTitle[ev.Candidate.Name]; n > 0 {
+			resolves = specialLabel(n)
+		}
 		out = append(out, withIndexerFacts(RankedRelease{
 			Title:        ev.Candidate.Name,
 			Indexer:      rel.Indexer,
@@ -127,7 +152,7 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 			RejectReason: ev.RejectReason,
 			Recommended:  ev.Candidate.Name == winnerName,
 			Blocklisted:  blocked[normTitle(ev.Candidate.Name)],
-			Resolves:     c.resolvesLabel(ctx, s, ev.Candidate.Release),
+			Resolves:     resolves,
 		}, rel))
 	}
 	for _, evs := range [][]quality.Evaluation{decision.Eligible, decision.Rejected, others.Eligible, others.Rejected} {
@@ -161,10 +186,10 @@ func (c *Coordinator) searchSeriesScope(ctx context.Context, s series.Series, se
 		result.Releases = c.addSeasonSearches(ctx, s, title, result.Releases)
 	}
 	// Specials: name each one, since the broad title query is one capped page of mostly
-	// regular episodes and there's no parameter that asks for season 0.
+	// regular episodes and there's no parameter that asks for season 0. Most specials are
+	// released by name rather than S00Exx, so each is also searched by its title.
 	if season == 0 {
-		for _, n := range specialsToQuery(s, episode) {
-			sq := fmt.Sprintf("%s S00E%02d", title, n)
+		for _, sq := range specialQueries(s, title, episode) {
 			sres, serr := c.search(ctx, indexer.SearchQuery{Text: sq, MediaType: indexer.MediaSeries, Limit: 100})
 			if serr != nil {
 				c.log.Warn("series: specials search failed", "series", s.Title, "query", sq, "err", serr)
@@ -263,6 +288,27 @@ func specialsToQuery(s series.Series, episode int) []int {
 			if len(out) < maxSpecialQueries && !e.HasFile && aired(e.AirDate) {
 				out = append(out, e.EpisodeNumber)
 			}
+		}
+	}
+	return out
+}
+
+// specialQueries are a Specials search's per-special queries: "Title S00E05" for each
+// special specialsToQuery names, and "Title Its Special Title" for those whose title is
+// worth searching. Duplicates are dropped.
+func specialQueries(s series.Series, title string, episode int) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(q string) {
+		if q != "" && !seen[q] {
+			seen[q] = true
+			out = append(out, q)
+		}
+	}
+	for _, n := range specialsToQuery(s, episode) {
+		add(fmt.Sprintf("%s S00E%02d", title, n))
+		if ep, ok := specialEpisode(s, n); ok {
+			add(specialTitleQuery(title, ep))
 		}
 	}
 	return out
@@ -405,6 +451,9 @@ func joinSeasons(seasons []int) string {
 // scope is the modal it was picked from — the whole show, a season or an episode — and
 // limits which episodes skip the import gate.
 func (c *Coordinator) GrabForSeries(ctx context.Context, seriesID int64, indexerName, downloadURL, title string, scope GrabScope) error {
+	// A pick from the Specials list that names one special by title is for that special:
+	// its file carries no numbering, and the import places it by this scope.
+	scope = c.narrowSpecialScope(ctx, seriesID, title, scope)
 	return c.grabForSeries(ctx, seriesID, indexerName, downloadURL, title, true, scope)
 }
 
