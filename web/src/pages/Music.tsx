@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Artist, type ArtistLookup } from "../lib/api";
@@ -6,7 +6,7 @@ import { qualityApi } from "../lib/qualityApi";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
-import { FilterBar, LibraryToolbar, TONE_HUE } from "../ui";
+import { Button, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -49,23 +49,19 @@ export function Music() {
   const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [adding, setAdding] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
 
-  const [toastErr, setToastErr] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
   // err shows the toast in the error colour: a scan that failed says so plainly.
-  const flash = (m: string, err = false) => {
-    setToast(m);
-    setToastErr(err);
-    window.setTimeout(() => setToast(null), 3500);
-  };
+  const say = (m: string, err = false) => toast(m, { tone: err ? "error" : "info", ms: 3500 });
   // The scan runs as a job; when it ends the toast says what it found.
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); load(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
+    onDone: (j) => { setScanJob(null); load(); say(jobToast(j, "Scan finished."), jobFailed(j)); },
   });
   const load = () =>
     api
@@ -104,8 +100,8 @@ export function Music() {
     try {
       const results = await Promise.allSettled(ids.map(fn));
       const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed === 0) flash(`${label} ${ids.length} artist${ids.length === 1 ? "" : "s"}.`);
-      else flash(`${label} ${ids.length - failed} of ${ids.length}; ${failed} failed.`);
+      if (failed === 0) say(`${label} ${ids.length} artist${ids.length === 1 ? "" : "s"}.`);
+      else say(`${label} ${ids.length - failed} of ${ids.length}; ${failed} failed.`, true);
       clearSelect();
       load();
     } finally {
@@ -138,7 +134,7 @@ export function Music() {
                 if (r.job_id) setScanJob(r.job_id);
                 // The scan runs in the background — one MusicBrainz lookup per unknown
                 // artist at a request per second — so say so rather than implying it's done.
-                flash("Scanning your music folder… this runs in the background.");
+                say("Scanning your music folder… this runs in the background.");
               } catch (e) {
                 setError((e as Error).message);
               }
@@ -221,9 +217,14 @@ export function Music() {
               </select>
               <button
                 disabled={selected.size === 0 || bulkBusy}
-                onClick={() => {
-                  if (!window.confirm(`Remove ${selected.size} artist${selected.size === 1 ? "" : "s"} from Arrmada? Files on disk are kept.`)) return;
-                  void runBulk("Removed", (id) => api.deleteArtist(id));
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Remove ${selected.size} artist${selected.size === 1 ? "" : "s"} from Arrmada?`,
+                    body: "Files on disk are kept.",
+                    confirmLabel: "Remove",
+                    tone: "danger",
+                  });
+                  if (ok) void runBulk("Removed", (id) => api.deleteArtist(id));
                 }}
                 className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-40"
                 style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}
@@ -235,7 +236,7 @@ export function Music() {
         )}
 
         {artists === null ? (
-          <p className="text-[12.5px] text-ink-dim">Loading…</p>
+          <Skeleton variant="list" />
         ) : shown.length === 0 ? (
           <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             {artists.length === 0 ? "No artists yet. Add one to get started." : "No artists match this filter."}
@@ -260,17 +261,9 @@ export function Music() {
           onClose={() => setAdding(false)}
           onAdded={(name) => {
             load();
-            flash(`Added ${name}.`);
+            say(`Added ${name}.`);
           }}
         />
-      )}
-      {toast && (
-        <div
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium"
-          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}
-        >
-          {toast}
-        </div>
       )}
     </>
   );
@@ -317,9 +310,9 @@ function ArtistCard({
             </div>
           </div>
         </div>
-        <span className="flex-none rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase" style={{ background: "var(--panel-2)", color: st.color }}>
+        <StatusChip tone={st.tone} className="flex-none">
           {st.label}
-        </span>
+        </StatusChip>
       </div>
       <div className="flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
@@ -362,6 +355,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const search = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -392,17 +386,12 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div
-        className="mt-10 w-full max-w-[680px] rounded-2xl p-5"
-        style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} labelledBy="add-artist-title" size="lg" initialFocus={inputRef} dismissible={saving === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Add an artist</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">
+          <h2 id="add-artist-title" className="m-0 text-[15px] font-bold">Add an artist</h2>
+          <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">
             ✕
-          </button>
+          </IconButton>
         </div>
         <p className="mb-3 text-[12px] text-ink-dim">
           Searches MusicBrainz. Adding an artist brings in their albums; track listings fill in when you open an album.
@@ -410,21 +399,17 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
 
         <form className="mb-3 flex gap-2" onSubmit={search}>
           <input
-            autoFocus
+            ref={inputRef}
+            aria-label="Artist name"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Artist name…"
-            className="flex-1 rounded-lg px-3 py-2 text-[13px]"
+            className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
           />
-          <button
-            type="submit"
-            disabled={searching}
-            className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50"
-            style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}
-          >
-            {searching ? "Searching…" : "Search"}
-          </button>
+          <Button type="submit" variant="primary" busy={searching} busyLabel="Searching…" className="disabled:opacity-50">
+            Search
+          </Button>
         </form>
 
         {error && (
@@ -439,7 +424,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
               No artists found.
             </div>
           ) : (
-            <div className="flex max-h-[420px] flex-col overflow-y-auto">
+            <div className="thin-scroll flex max-h-[52vh] flex-col overflow-y-auto">
               {results.map((r) => (
                 <div key={r.mbid} className="flex items-center gap-3 border-b py-2.5" style={{ borderColor: "var(--line)" }}>
                   <div className="min-w-0 flex-1">
@@ -464,7 +449,6 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
             </div>
           )
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
