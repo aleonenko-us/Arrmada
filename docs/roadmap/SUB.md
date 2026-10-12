@@ -346,7 +346,7 @@ The seams must not change production behaviour: every default func points at the
 _Whisper translates with the right source language. Files that were already mis-extracted get repaired. One shared language table stops unknown sidecars from being credited to English. Release forced and SDH subtitles keep their qualifiers. The owner can adopt or replace orphaned movie subtitles, one at a time or in bulk._
 
 <a id="sub-06"></a>
-- [ ] **SUB-06 · Whisper translate mode passes the audio's source language (-l src|auto)** — `P1` · `S` · Phase 12
+- [x] **SUB-06 · Whisper translate mode passes the audio's source language (-l src|auto)** — `P1` · `S` · Phase 12
   - **Problem:** In translate mode, args() adds --translate with no -l (whisper.go:451-457), and whisper-cli then defaults to 'en'. Foreign audio is decoded under an English language token. The aiPlan comment claims an 'auto-detect + translate' that doesn't exist (whisper.go:545-561). SUB-01 makes this path run much more often.
   - **Approach:** 1) generate() gains a srcLang parameter: the chosen audio track's language, which process.go already has as track.Lang from audioStreamFor.
     - args(model, wav, out, lang, srcLang, translate, dtw): in translate mode append `-l <iso1(srcLang)>` when the language is known, and `-l auto` otherwise. Transcribe mode is unchanged.
@@ -367,7 +367,7 @@ _Whisper translates with the right source language. Files that were already mis-
   - **Risk:** Check `-l xx --translate` against the pinned whisper.cpp build (≥1.9.2). Don't introduce -ml, -sow or --vad (known to break output).
   - **Resolves:** subtitles-6
 <a id="sub-07"></a>
-- [ ] **SUB-07 · One-shot repair of sidecars that were extracted from a forced track** — `P1` · `S` · Phase 12
+- [x] **SUB-07 · One-shot repair of sidecars that were extracted from a forced track** — `P1` · `S` · Phase 12
   - **Problem:** Before SUB-03, extractForLangs wrote the first matching text track as <base>.<lang>.srt even when that track was forced. Files already processed carry a few-line forced subtitle as their 'full' English, and the module considers them covered.
   - **Approach:** 1) Guard the pass with the settings key subs_forced_repair_done. It starts after the first library pass completes following deploy.
     
@@ -392,7 +392,7 @@ _Whisper translates with the right source language. Files that were already mis-
   - **Risk:** It reads whole video files from the spinning array for confirmed suspects only. It rewrites sidecars, so it must write to a temp file and rename. A downloaded subtitle that happens to be short, next to a forced-first file, could be swapped; the one-third cue ratio and the probe confirmation make that unlikely, and the old file is kept as .forced.srt rather than deleted.
   - **Resolves:** subtitles-2
 <a id="sub-08"></a>
-- [ ] **SUB-08 · One shared language table (internal/langs) for Subtitles, the importer and Convert** — `P1` · `M` · Phase 12
+- [x] **SUB-08 · One shared language table (internal/langs) for Subtitles, the importer and Convert** — `P1` · `M` · Phase 12
   - **Problem:** Language matching is split across three hard-coded tables that disagree.
 - Subtitles' twoToThree has 16 languages with B-codes only (library.go:146-162), so the MP4 tags 'fra', 'deu', 'zho' and 'nld' never match fr/de/zh/nl.
 - knownLangs is built from that table (sidecar.go:18-36). Sidecars such as X.da.srt or X.pt-br.srt are therefore unrecognised and credited to wanted[0] (sidecar.go:113-114), which marks English as covered.
@@ -427,7 +427,7 @@ _Whisper translates with the right source language. Files that were already mis-
   - **Risk:** Plex's recognition of regional sidecar tags varies. Test with a file in a test folder; if .pt-br.srt isn't picked up, write .pt.srt and keep the region only in subtitle_files. Importer naming changes for languages that were previously unknown. Coordinate with CONV so convert/preset.go edits don't collide.
   - **Resolves:** subtitles-10
 <a id="sub-09"></a>
-- [ ] **SUB-09 · Keep .forced/.sdh/.hi qualifiers when importing release subtitles** — `P1` · `S` · Phase 12
+- [x] **SUB-09 · Keep .forced/.sdh/.hi qualifiers when importing release subtitles** — `P1` · `S` · Phase 12
   - **Problem:** The importer drops subtitle qualifiers. subLangFor cuts 'en.forced' to 'en' (internal/library/importer.go:1396-1406), and placeSub writes <base>.en<ext>. WalkDir runs in lexical order, so with both Movie.en.forced.srt and Movie.en.srt in a release, the forced file takes <base>.en.srt and the full one is pushed to <base>.en.2.srt. Plex and the module then treat the forced file as the main English subtitle.
   - **Approach:** 1) subLangFor(stem, srcBase, ownFolder) returns (lang, variant, ok), using langs.ParseSidecarTag on the segments after the base.
     - For own-folder names, also sniff the words 'forced' and 'sdh'/'hi'/'cc' (e.g. '2_English_Forced.srt' → en/forced).
@@ -448,7 +448,7 @@ _Whisper translates with the right source language. Files that were already mis-
   - **Risk:** The size heuristic could misclassify a short special's full subtitle. It applies only when a much larger subtitle in the same language sits beside it.
   - **Resolves:** subtitles-2, subtitles-10
 <a id="sub-10"></a>
-- [ ] **SUB-10 · Adopt or replace orphaned movie subtitles (single and bulk)** — `P1` · `S` · Phase 12
+- [x] **SUB-10 · Adopt or replace orphaned movie subtitles (single and bulk)** — `P1` · `S` · Phase 12
   - **Problem:** After SUB-05, subtitles left under an old name are correctly treated as orphans: not coverage, and skipped by the sweep. The owner still needs a way to decide for each one, either keep it (rename it to pair with the video) or replace it with a fresh subtitle, without renaming files by hand.
   - **Approach:** 1) The subtitles Service gains SetRecycleDir(dir), wired in cmd/arrmada/main.go next to seriesSvc.SetRecycleDir.
     - Add a helper retireSidecar(path) error: library.RecycleFile. On ErrRecycleDisabled, follow SAFE's policy (today: delete). On any other error, return it and keep the file.
@@ -484,7 +484,7 @@ _Whisper translates with the right source language. Files that were already mis-
 _Each sidecar has a recorded source and each attempt a typed outcome. Jobs end as failed with a real reason, and no-match or impossible files back off instead of being searched every 6h. The OpenSubtitles pill reflects a real login, and a 429 means seconds, not a day. The Overview lists what needs attention with one-click fixes. Coverage recounts as soon as the languages change, and the legacy endpoints are gone._
 
 <a id="sub-11"></a>
-- [ ] **SUB-11 · Provenance and attempt ledger: subtitle_files, subtitle_attempts, blocklist, honest job outcomes** — `P1` · `M` · Phase 12
+- [x] **SUB-11 · Provenance and attempt ledger: subtitle_files, subtitle_attempts, blocklist, honest job outcomes** — `P1` · `M` · Phase 12
   - **Problem:** Nothing records where a sidecar came from: no provider file_id, release, score or source.
 - Failures (download errors, 401 logins, whisper crashes) only emit console lines, and the job ends StateSkipped. StateFailed is used only for 'file is gone' (process.go:19, 197-207).
 - A spent quota shows as 'N pending (OCR/AI)'.
@@ -534,7 +534,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
   - **Risk:** Migration numbers can collide with other epics working in parallel, so take the next free number when implementing. media_key 'm:<id>' covers only the movie's default file; extra versions are out of scope, and rows carry video_path so they never mix.
   - **Resolves:** subtitles-8, subtitles-5, subtitles-4
 <a id="sub-12"></a>
-- [ ] **SUB-12 · Back off per file and language instead of re-searching every 6 hours** — `P1` · `S` · Phase 12
+- [x] **SUB-12 · Back off per file and language instead of re-searching every 6 hours** — `P1` · `S` · Phase 12
   - **Problem:** SweepMissing decides 'missing' from the sidecars on disk alone (jobs.go:321-360) and runs every 6 hours (cmd/arrmada/main.go:455). Files with no match, an impossible AI plan, a failed login or a missing model are queued again every 6 hours forever, each time spending a search API call. enqueue only dedupes active jobs (jobs.go:196-211).
   - **Approach:** 1) New migration: subtitle_backoff(media_key TEXT NOT NULL, lang TEXT NOT NULL, variant TEXT NOT NULL DEFAULT 'full', video_path TEXT NOT NULL, primary_reason TEXT NOT NULL, reasons_json TEXT NOT NULL, detail TEXT, count INTEGER NOT NULL DEFAULT 1, next_retry_at INTEGER /* NULL = only an event clears it */, clear_on TEXT NOT NULL DEFAULT '' /* CSV: creds|model|langs */, updated_at INTEGER NOT NULL, PRIMARY KEY(media_key, lang, variant)).
     
@@ -573,7 +573,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
   - **Risk:** Long backoffs hide subtitles that are uploaded later. The 90-day cap, manual Retry (SUB-14) and the upgrade loop (SUB-22) cover that.
   - **Resolves:** subtitles-1
 <a id="sub-13"></a>
-- [ ] **SUB-13 · Truthful OpenSubtitles status: credential test, token refresh, short 429 backoff, inline credentials** — `P1` · `M` · Phase 12
+- [x] **SUB-13 · Truthful OpenSubtitles status: credential test, token refresh, short 429 backoff, inline credentials** — `P1` · `M` · Phase 12
   - **Problem:** The green 'OpenSubtitles ready' pill comes from CanDownload(), which only checks that three strings are non-empty (opensubtitles.go:105-111).
 - The OpenSubtitles keys aren't Testable (internal/apikeys/apikeys.go:60-73), so a wrong password fails every job silently.
 - login() reuses the cached token until a 401 (opensubtitles.go:142-171), so changed credentials are ignored.
@@ -615,7 +615,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
   - **Risk:** OpenSubtitles limits logins (about 1 per second), so debounce Test and never log in per job while a valid token exists. Don't log the fingerprint or any credential.
   - **Resolves:** subtitles-11, subtitles-9
 <a id="sub-14"></a>
-- [ ] **SUB-14 · Needs-attention board with one-click fixes and retry on the Overview** — `P1` · `M` · Phase 12
+- [x] **SUB-14 · Needs-attention board with one-click fixes and retry on the Overview** — `P1` · `M` · Phase 12
   - **Problem:** Without reading a scrolling 500-line in-memory console, the owner can't tell 'OpenSubtitles has nothing' from 'your password is wrong' from 'whisper crashed on the GPU'. The Overview's 'Sources & automation' card is static on/off rows with 'soon' pills (Subtitles.tsx:152-181). There is no list of what needs attention and no one-click fix.
   - **Approach:** 1) GET /api/v1/subtitles/attention (RoleManager), built in internal/subtitles/attention.go from subtitle_backoff rows plus the snapshot's orphans. Cheap: one query, no window functions.
     - Buckets by primary_reason: auth_failed, quota (with reset time), rate_limited, provider_error, no_match, below_score, out_of_sync, model_missing, ai_failed, impossible, orphaned.
@@ -647,7 +647,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
   - **Risk:** The Overview copy overlaps COPY's Subtitles copy cleanup (draft subtitles.t26), so coordinate to avoid editing the same lines twice.
   - **Resolves:** subtitles-8
 <a id="sub-15"></a>
-- [ ] **SUB-15 · Recount coverage as soon as the kept languages change** — `P2` · `S` · Phase 12
+- [x] **SUB-15 · Recount coverage as soon as the kept languages change** — `P2` · `S` · Phase 12
   - **Problem:** SetSettings only writes the languages CSV (service.go:128-154), and handleUpdateSubtitleSettings returns without calling Rescan (internal/httpapi/subtitles.go:120-138). The snapshot's Missing counts and chips were computed against the old list (snapshot.go:50-86), so adding Spanish leaves the Overview at 100% for up to 6 hours.
   - **Approach:** 1) librarySnapshot records langsKey, the canonical joined list it was computed with. SetSettings compares the old and new canonical lists; if they differ, it calls s.Rescan(context.WithoutCancel(ctx)). [SUB-33](#sub-33) later calls the same hook on profile changes.
     
@@ -665,7 +665,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
   - **Risk:** A full pass takes minutes on the array; that's acceptable with the honest 'recounting' state.
   - **Resolves:** subtitles-15
 <a id="sub-16"></a>
-- [ ] **SUB-16 · Remove legacy subtitle endpoints and the flat TV walk; make Subtitles reads staff-only** — `P2` · `S` · Phase 12
+- [x] **SUB-16 · Remove legacy subtitle endpoints and the flat TV walk; make Subtitles reads staff-only** — `P2` · `S` · Phase 12
   - **Problem:** MovieStatuses, SeriesStatuses, GrabMovie and GrabSeries (service.go:170-304), their handlers (internal/httpapi/subtitles.go:221-287) and routes (server.go:368-371) are dead code. The api.ts wrappers at 1540-1543 are unused.
 - GrabMovie and GrabSeries run in detached goroutines outside the queue, with no extract, AI, logging or dedupe.
 - GET /subtitles/library?media=tv without group still runs Library(ctx,'tv'), which probes every episode (subtitles.go:183).
@@ -698,7 +698,7 @@ Redo, blocklisting, Health, backoff, upgrades and the attention board all need t
 _Downloads are scored on release, source, edition and fps, and weak matches are refused. Non-hash downloads are sync-checked and auto-shifted, and Health shows real scores. Redo works per language and never returns the same file. Untagged audio is detected, so turbo-only installs work. AI and weak downloads are upgraded once a hash-matched subtitle appears._
 
 <a id="sub-17"></a>
-- [ ] **SUB-17 · Score OpenSubtitles candidates by release match and refuse weak non-hash picks** — `P1` · `M` · Phase 12
+- [x] **SUB-17 · Score OpenSubtitles candidates by release match and refuse weak non-hash picks** — `P1` · `M` · Phase 12
   - **Problem:** Candidates are ranked only by hash match, then non-HI, then download count (opensubtitles.go:242-250), and grabOne downloads results[0] regardless (service.go:336). Release name, source, edition and fps are never compared, and there is no minimum score or trusted filtering. On WEB-DLs, remuxes and repacks without a hash match, the most-downloaded subtitle (often a different cut or frame rate) is saved and marked covered.
   - **Approach:** 1) opensubtitles.go: parse fps, from_trusted, uploader.rank, votes, files[0].file_name and feature_details.season_number/episode_number. SubtitleResult gains FPS, Trusted, FileName, UploaderRank, Season and Episode.
     
@@ -737,7 +737,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
   - **Risk:** A threshold that's too strict sends most WEB-DLs to AI. Log the score distribution for a couple of weeks and tune the default.
   - **Resolves:** subtitles-4
 <a id="sub-18"></a>
-- [ ] **SUB-18 · Subtitle-to-speech sync checker (offset and frame-rate drift) in pure Go** — `P1` · `M` · Phase 12
+- [x] **SUB-18 · Subtitle-to-speech sync checker (offset and frame-rate drift) in pure Go** — `P1` · `M` · Phase 12
   - **Problem:** Nothing checks whether a non-hash download, or any existing sidecar, lines up with the audio. SubHealth is declared but never assigned (library.go:18-41). The module already extracts 16 kHz mono audio and runs silencedetect for whisper (whisper.go:323-341, chunks.go), but nothing reuses that for timing checks.
   - **Approach:** 1) Factor the audio extraction out of whisperGen.generate into extractWAV(ctx, ffmpeg, video string, audioStream int, dst string) error, so whisper and sync share it. Whisper's output stays byte-identical.
     
@@ -761,7 +761,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
   - **Risk:** Sparse-dialogue or music-heavy films give weak envelopes. Report low confidence as 'unknown' rather than 'bad' for existing files.
   - **Resolves:** subtitles-4
 <a id="sub-19"></a>
-- [ ] **SUB-19 · Sync-check non-hash downloads automatically and show a real Health score** — `P1` · `M` · Phase 12
+- [x] **SUB-19 · Sync-check non-hash downloads automatically and show a real Health score** — `P1` · `M` · Phase 12
   - **Problem:** Downloads that aren't hash-matched are saved without any timing check. The Library 'Health' column is a permanent '—' (Subtitles.tsx:674) next to copy saying 'Health scoring lands with the sync phase' (Subtitles.tsx:434). An out-of-sync subtitle is marked covered with no remedy.
   - **Approach:** 1) Download rung: after downloading a candidate with no hash match, run [SUB-18](#sub-18)'s checker against the audio track audioStreamFor would pick for that language. Extract the WAV at most once per job, share it across languages, and delete it when the job ends.
     - Confidence ≥ 70, |offset| ≤ 300 ms, scale 1: keep as is.
@@ -789,7 +789,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
   - **Risk:** Audio extraction reads the whole video from the spinning array (about 1 minute for a remux). That's acceptable per non-hash download in the fast lane, but not as a library-wide pass.
   - **Resolves:** subtitles-4
 <a id="sub-20"></a>
-- [ ] **SUB-20 · Per-language Redo that never hands back the same bad subtitle** — `P1` · `M` · Phase 12
+- [x] **SUB-20 · Per-language Redo that never hands back the same bad subtitle** — `P1` · `M` · Phase 12
   - **Problem:** Redo has three problems.
 - It clears 'present' for every kept language (process.go:31-38), so languages that were fine are redone too, including a full AI re-run for a 2-hour film.
 - The download path takes results[0] from a deterministic sort (service.go:336, opensubtitles.go:242-250), so Redo fetches the same out-of-sync file again and spends a daily download, while the confirm dialog promises it fixes 'a bad download' (Subtitles.tsx:651-653).
@@ -824,7 +824,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
   - **Risk:** The retired sidecar must actually leave the folder, or it would pair again; the retireSidecar contract covers this. Free-tier quota: each 'next download' redo spends one download, so the confirm text says so.
   - **Resolves:** subtitles-5
 <a id="sub-21"></a>
-- [ ] **SUB-21 · Detect untagged audio language before AI; record model_missing instead of failing** — `P1` · `M` · Phase 12
+- [x] **SUB-21 · Detect untagged audio language before AI; record model_missing instead of failing** — `P1` · `M` · Phase 12
   - **Problem:** Untagged audio ('und', common on WEB-DLs) is dropped from AudioLangs (probe.go:83), so aiPlan routes it to 'translate', which needs large-v3 (modelPath(true), whisper.go:253-259). The UI tells people to 'get turbo for English', so turbo-only installs fail on every untagged English file, and before SUB-12 those were retried every 6 hours.
   - **Approach:** 1) detectAudioLang(ctx, wav):
     - cut a 30 s sample from the first speech chunk after 10% of the runtime, using planChunks output;
@@ -887,7 +887,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
 _Queued work and history survive Unraid updates, and the Queue tab shows filterable history with retry. Extractions and downloads run in a fast lane while whisper works through the GPU lane, with a backlog ETA._
 
 <a id="sub-23"></a>
-- [ ] **SUB-23 · Persist the subtitle queue and job history across restarts** — `P1` · `M` · Phase 12
+- [x] **SUB-23 · Persist the subtitle queue and job history across restarts** — `P1` · `M` · Phase 12
   - **Problem:** pending and jobs are in-memory slices (service.go:48-57). A restart, which happens on every Unraid update, drops every queued job and the visible history. The sweep is registered with runAtStart=false (main.go:455), and the scheduler keeps no last-run state, so nothing re-queues for up to 6 hours.
   - **Approach:** 1) New migration: subtitle_jobs(id INTEGER PRIMARY KEY, media_key TEXT NOT NULL, kind TEXT NOT NULL, movie_id INTEGER, series_id INTEGER, season INTEGER, episode INTEGER, title TEXT NOT NULL, priority INTEGER NOT NULL, lane TEXT NOT NULL DEFAULT 'fast', state TEXT NOT NULL, mode TEXT, langs TEXT, redo INTEGER NOT NULL DEFAULT 0, note TEXT, outcomes_json TEXT, queued_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER).
     - INDEX (state, lane, priority, queued_at).
@@ -918,7 +918,7 @@ _Queued work and history survive Unraid updates, and the Queue tab shows filtera
   - **Risk:** Writing to the DB on every enqueue during a 25k-file sweep; batch the sweep's inserts in one transaction. The unique index must match the in-memory dedupe exactly, or enqueue can fail with a constraint error; treat a conflict as 'already queued'.
   - **Resolves:** subtitles-7
 <a id="sub-24"></a>
-- [ ] **SUB-24 · Queue tab history: filters, per-row retry, title links, per-language outcomes** — `P1` · `S` · Phase 12
+- [x] **SUB-24 · Queue tab history: filters, per-row retry, title links, per-language outcomes** — `P1` · `S` · Phase 12
   - **Problem:** The Queue tab's Recent list shows 30 rows with no filter, no retry and no link to the title (Subtitles.tsx:222-235). Per-language reasons exist only in the console.
   - **Approach:** 1) Recent list:
     - filter pills: failed / skipped / done / cancelled;
@@ -940,7 +940,7 @@ _Queued work and history survive Unraid updates, and the Queue tab shows filtera
   - **Risk:** Low.
   - **Resolves:** subtitles-8
 <a id="sub-25"></a>
-- [ ] **SUB-25 · Split the queue into a fast lane and a GPU lane, with an AI backlog ETA** — `P2` · `M` · Phase 12
+- [x] **SUB-25 · Split the queue into a fast lane and a GPU lane, with an AI backlog ETA** — `P2` · `M` · Phase 12
   - **Problem:** There is one worker, so a one-second extraction or download waits behind hour-long whisper runs. The UI can't say how long the AI backlog will take, even though the realtime factor is measured on every run (process.go:166-170).
   - **Approach:** 1) Run two worker loops over subtitle_jobs:
     - lane 'fast': extract, download and sync check; concurrency from subs_fast_lane_workers (default 1, max 2);
@@ -971,7 +971,7 @@ _Queued work and history survive Unraid updates, and the Queue tab shows filtera
 _The movie Library has search and posters. A per-file drawer lists, previews, nudges, deletes and extracts subtitles. Interactive OpenSubtitles search lets the owner pick a release. Movie and Series pages show subtitle status. Plex refreshes the folder after every sidecar change._
 
 <a id="sub-26"></a>
-- [ ] **SUB-26 · Movie Library: text search, poster thumbnails and paged rendering** — `P2` · `S` · Phase 12
+- [x] **SUB-26 · Movie Library: text search, poster thumbnails and paged rendering** — `P2` · `S` · Phase 12
   - **Problem:** The movie Library tab has no text search, unlike TV (Subtitles.tsx:508-514), and renders every row at once. poster_url is sent for every row (library.go:34) but never rendered, by either the movie or the TV rows.
   - **Approach:** 1) Movie Library: a search input like TVLibrary's, filtering on title and year client-side, debounced.
     
@@ -990,7 +990,7 @@ _The movie Library has search and posters. A per-file drawer lists, previews, nu
   - **Risk:** Low. Use lazy image loading so the first render doesn't fetch 5,000 posters.
   - **Resolves:** subtitles-12
 <a id="sub-27"></a>
-- [ ] **SUB-27 · Per-file subtitle drawer: list, preview, nudge timing, delete, extract, generate** — `P2` · `M` · Phase 12
+- [x] **SUB-27 · Per-file subtitle drawer: list, preview, nudge timing, delete, extract, generate** — `P2` · `M` · Phase 12
   - **Problem:** Library row actions are only 'Ensure subs' and 'Redo' (Subtitles.tsx:655-691). The owner can't see which sidecars exist, where they came from or what they say, and can't delete one or nudge its timing without editing files by hand.
   - **Approach:** 1) GET /api/v1/subtitles/file?kind=movie&id=… or kind=episode&series=…&season=…&episode=… (RoleManager). It returns:
     - the video path, audio tracks (with detected language), and embedded subtitle tracks (title, forced, SDH);
@@ -1024,7 +1024,7 @@ _The movie Library has search and posters. A per-file drawer lists, previews, nu
   - **Risk:** Path validation is a security boundary: resolve the video from the DB, never trust a client path. Plex may read a file mid-write, which the temp-file-and-rename write avoids.
   - **Resolves:** subtitles-12
 <a id="sub-28"></a>
-- [ ] **SUB-28 · Interactive OpenSubtitles search and manual pick in the drawer** — `P2` · `M` · Phase 12
+- [x] **SUB-28 · Interactive OpenSubtitles search and manual pick in the drawer** — `P2` · `M` · Phase 12
   - **Problem:** Bazarr's core workflow doesn't exist: open a title, search manually, pick the right release. The only recovery is Redo, which can't choose a particular candidate.
   - **Approach:** 1) POST /api/v1/subtitles/search {media ref, lang, variant} (RoleManager). It returns candidates with score and reasons ([SUB-17](#sub-17)): release, file name, uploader, HI, hash match, fps, downloads, the AI and foreign flags, and a blocklisted flag. It uses no download quota and is refused while provider_state is auth_failed or not_configured.
     
@@ -1048,7 +1048,7 @@ _The movie Library has search and posters. A per-file drawer lists, previews, nu
   - **Risk:** Manual search spends API calls (rate-limited by OpenSubtitles), so debounce it. Manual picks bypass the score threshold by design; the sync warning keeps that honest.
   - **Resolves:** subtitles-12, subtitles-5
 <a id="sub-29"></a>
-- [ ] **SUB-29 · Subtitle status and 'Find subtitles' on Movie and Series detail pages** — `P2` · `M` · Phase 12
+- [x] **SUB-29 · Subtitle status and 'Find subtitles' on Movie and Series detail pages** — `P2` · `M` · Phase 12
   - **Problem:** MovieDetail lists sidecar filenames with no actions (MovieDetail.tsx:770-777), and SeriesDetail shows no subtitle state at all. The owner has to go to the Subtitles page and find the title again.
   - **Approach:** 1) MovieDetail.tsx: replace the filename-only Subs row with per-want chips from GET /api/v1/subtitles/file, e.g. '✓ en · OpenSubtitles · Health 92' or 'es missing · next try in 6d'. Add a 'Find subtitles' button that opens SubtitleDrawer. Orphans keep their Adopt button from [SUB-10](#sub-10).
     
@@ -1065,7 +1065,7 @@ _The movie Library has search and posters. A per-file drawer lists, previews, nu
   - **Risk:** SeriesEpisodes probes a show's episodes when called, so keep it lazy on SeriesDetail so the page load doesn't trigger ffprobe. Coordinate with any FE/SER work that reshapes these pages.
   - **Resolves:** subtitles-12
 <a id="sub-30"></a>
-- [ ] **SUB-30 · Tell Plex when a subtitle is written, shifted, removed or adopted** — `P2` · `S` · Phase 12
+- [x] **SUB-30 · Tell Plex when a subtitle is written, shifted, removed or adopted** — `P2` · `S` · Phase 12
   - **Problem:** After writing a sidecar, process() only patches Arrmada's own snapshot (process.go:202-204, snapshot.go:136). The Plex client has no refresh call (internal/plex/client.go), so a subtitle generated tonight may not be selectable on the TV until Plex's next scan. FUSE change detection on Unraid is unreliable.
   - **Approach:** 1) Give subtitles.Service the event bus: SetBus(*eventbus.Bus), wired in cmd/arrmada/main.go:446-448, where bus already exists at line 139.
     
@@ -1096,7 +1096,7 @@ _The movie Library has search and posters. A per-file drawer lists, previews, nu
 _A searchable language picker supports regional variants, and Convert can keep the same languages as Subtitles. Language profiles (forced and full variants, SDH preference, 'only when the audio differs') come with per-title overrides and an editor. Chinese and Japanese AI subtitles are laid out by characters._
 
 <a id="sub-31"></a>
-- [ ] **SUB-31 · Searchable language picker with regional variants (GET /api/v1/languages)** — `P2` · `S` · Phase 12
+- [x] **SUB-31 · Searchable language picker with regional variants (GET /api/v1/languages)** — `P2` · `S` · Phase 12
   - **Problem:** The UI offers 16 hard-coded chips with no regional variants (Subtitles.tsx:10-18). pt-br, zh-tw and es-419 can't be chosen, and chips elsewhere show upper-cased codes for languages missing from the list.
   - **Approach:** 1) GET /api/v1/languages (protected; read-only static data) returns the internal/langs table: code, name and regional flag.
     
@@ -1116,7 +1116,7 @@ _A searchable language picker supports regional variants, and Convert can keep t
   - **Risk:** Low.
   - **Resolves:** subtitles-10
 <a id="sub-32"></a>
-- [ ] **SUB-32 · Convert can keep the same subtitle languages as Subtitles ('Same as Subtitles')** — `P2` · `S` · Phase 12
+- [x] **SUB-32 · Convert can keep the same subtitle languages as Subtitles ('Same as Subtitles')** — `P2` · `S` · Phase 12
   - **Problem:** The Subtitles page claims its kept languages control stripping ('everything else is stripped from the video (once stripping ships)', Subtitles.tsx:152 and 755). Convert actually uses a separate convert_keep_sub_langs setting (internal/convert/decide.go:27, 84), so the two can disagree and the copy is false.
   - **Approach:** 1) convert_keep_sub_langs accepts the sentinel '@subtitles', meaning 'same languages as Subtitles'. Before [SUB-33](#sub-33) that's the subs_languages list; afterwards, the Default profile's languages.
     - Convert reads the list through a small interface `SubtitleLangs(ctx) []string` injected in cmd/arrmada/main.go (convert must not import subtitles).
@@ -1138,7 +1138,7 @@ _A searchable language picker supports regional variants, and Convert can keep t
   - **Risk:** An empty list from the sentinel must mean keep-all, never keep-nothing. Coordinate with CONV so its rebuild work doesn't overwrite the sentinel handling.
   - **Resolves:** subtitles-9
 <a id="sub-33"></a>
-- [ ] **SUB-33 · Language profiles: forced/full variants, SDH preference, 'only when audio differs', per-title overrides** — `P2` · `M` · Phase 12
+- [x] **SUB-33 · Language profiles: forced/full variants, SDH preference, 'only when audio differs', per-title overrides** — `P2` · `M` · Phase 12
   - **Problem:** Wanted languages are a flat CSV (service.go:21, 156-168). There's no way to:
 - ask for forced subtitles specifically;
 - prefer or avoid SDH;

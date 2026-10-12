@@ -871,7 +871,7 @@ _Requesters get the payoff: Recently added and Ready for you rows. 'See all' ope
 _Family members can report a bad file from the title sheet. The owner sees it under Requests → Issues and fixes it with one click (blocklist and re-search, or a subtitle job). The issue resolves itself when the new file lands, and the reporters are told._
 
 <a id="req-22"></a>
-- [ ] **REQ-22 · 'Report a problem' for requesters, routed into an Issues tab on /requests** — `P2` · `M` · Phase 12
+- [x] **REQ-22 · 'Report a problem' for requesters, routed into an Issues tab on /requests** — `P2` · `M` · Phase 12
   - **Problem:** There is no issue or report concept anywhere in internal/, web/src or the migrations. For an in-library item the Discover sheet shows only the status badge and a trailer link (Discover.tsx:1306-1331). Family members text the owner something like 'episode 4 has no English audio', and the owner has to find the item and the file by hand.
   - **Approach:** 1. Migration NNNN_issues.sql:
        - issues(id INTEGER PRIMARY KEY, media_type TEXT NOT NULL, library_id INTEGER NOT NULL, tmdb_id INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, season INTEGER NOT NULL DEFAULT 0, episode INTEGER NOT NULL DEFAULT 0, category TEXT NOT NULL CHECK(category IN ('video','audio','subtitles','wrong_file','other')), note TEXT NOT NULL DEFAULT '', reported_by INTEGER NOT NULL, reported_by_name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open', resolution TEXT NOT NULL DEFAULT '', action TEXT NOT NULL DEFAULT '', action_file TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, resolved_at INTEGER NOT NULL DEFAULT 0, resolved_by INTEGER NOT NULL DEFAULT 0)
@@ -906,7 +906,7 @@ _Family members can report a bad file from the title sheet. The owner sees it un
   - **Risk:** Reporters must only reference items they're allowed to see, so validate on the server. Free-text notes are shown to staff only and rendered as text.
   - **Resolves:** product-14
 <a id="req-23"></a>
-- [ ] **REQ-23 · One-click fixes for reported problems, with auto-resolve when a new file lands** — `P2` · `M` · Phase 12
+- [x] **REQ-23 · One-click fixes for reported problems, with auto-resolve when a new file lands** — `P2` · `M` · Phase 12
   - **Problem:** Recording an issue only helps if the owner can act on it in place. The fixes already exist but are spread across other pages: blocklist plus re-search (POST /api/v1/movies/{id}/blocklist, /series/{id}/blocklist, /movies/{id}/search, /series/{id}/search), subtitle actions (/subtitles/library/movies/{id}, /subtitles/library/episodes/{series}/{season}/{episode}) and file details. Overseerr records issues but can't fix anything itself.
   - **Approach:** 1. The staff issue sheet (new web/src/components/IssueSheet.tsx, opened from Requests → Issues):
        - shows the current file through FileDetailsModal (movie or episode)

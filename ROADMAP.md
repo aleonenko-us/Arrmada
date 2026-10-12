@@ -1174,6 +1174,9 @@ The library pages move onto the kit and fit a phone.
 
 ### Phase 12 — Subtitles rebuilt
 
+> **Status: shipped 2026-10-13** — all 29 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget and Playwright e2e green; checked in a local instance: Overview, Library, the per-file drawer with its language profile, and the Library chips). Built as 5 lanes, then 3 in a second wave and a drawer lane. The requester first load was freed to 95.3/97 KB brotli by moving staff-only API groups into lazy modules. Fixed in passing: the Library promised AI for languages no source could make. Sync-check thresholds (keep ≥70, refuse <50) were calibrated on synthetic speech-like media: matching subtitles scored ≥59, unrelated ≤29; under wall-to-wall loud music correct subtitles land in 'uncertain' (kept, not shifted). Owner to check: that Plex shows regional sidecars such as .pt-br.srt; whisper's language-detection line against a real model; coverage may drop after updating because unknown-tag sidecars no longer count as English.
+
+
 **Theme:** Provenance and attempt ledgers, honest provider status, scored and sync-checked downloads, a persistent two-lane queue, per-file control, language profiles, and fixing problems that family members report  
 **Goal:** Subtitles becomes a Bazarr replacement the owner can trust:
 - every attempt is recorded and nothing is retried forever
