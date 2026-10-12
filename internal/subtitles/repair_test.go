@@ -236,3 +236,33 @@ func TestRepairJobNotDedupedWithEnsure(t *testing.T) {
 		t.Error("the repair job was folded into the ensure job")
 	}
 }
+
+// A sidecar the cue counter can't read (UTF-16 here) wasn't written by ffmpeg, and a
+// file whose first track is no longer forced (upgraded since) isn't the bug: neither is
+// touched.
+func TestForcedRepairLeavesUnreadableAndChangedFiles(t *testing.T) {
+	s, video, picks := repairFixture(t)
+	utf16 := []byte{0xFF, 0xFE, '1', 0, '\n', 0}
+	if err := os.WriteFile(sidecarPath(video, "en"), utf16, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if job := runRepairJob(s, "en"); job.State == StateDone || len(*picks) != 0 {
+		t.Errorf("repaired an unreadable sidecar: state=%q note=%q", job.State, job.Note)
+	}
+
+	s2, video2, picks2 := repairFixture(t)
+	s2.probe = func(context.Context, string) (*mediaInfo, error) {
+		mi := englishAudio()
+		mi.Subs = []SubTrack{{Index: 0, Codec: "subrip", Lang: "eng", Text: true}, {Index: 1, Codec: "subrip", Lang: "eng", Text: true, Forced: true}}
+		return mi, nil
+	}
+	if err := os.WriteFile(sidecarPath(video2, "en"), []byte(srtOf(12)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if job := runRepairJob(s2, "en"); job.State == StateDone || len(*picks2) != 0 {
+		t.Errorf("repaired a file whose first track isn't forced: state=%q note=%q", job.State, job.Note)
+	}
+	if n := cuesIn(t, sidecarPath(video2, "en")); n != 12 {
+		t.Errorf("en.srt changed (%d cues)", n)
+	}
+}

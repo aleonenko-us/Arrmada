@@ -89,7 +89,7 @@ func (s *Service) forcedRepairPass(ctx context.Context) {
 		}
 		var sus []string
 		for _, l := range langs {
-			if n, ok := sidecarCues(sidecarPath(f.path, strings.ToLower(l))); ok && n < repairSuspectCues {
+			if n, ok := sidecarCues(sidecarPath(f.path, strings.ToLower(l))); ok && suspectCues(n) {
 				sus = append(sus, l)
 			}
 		}
@@ -197,6 +197,11 @@ func (s *Service) repairFiles(ctx context.Context) []repairFile {
 	return out
 }
 
+// suspectCues reports whether a sidecar with n cues could be a forced track's: a few, but
+// some. ffmpeg writes UTF-8 SRT, so a sidecar with no cues parseSRT can read (UTF-16, ASS
+// renamed to .srt) wasn't extracted by Arrmada and is left alone.
+func suspectCues(n int) bool { return n > 0 && n < repairSuspectCues }
+
 // sidecarCues counts a sidecar's cues; ok is false when there's no such file. A file too
 // big to be a forced subtitle isn't read: it reports the suspect threshold.
 func sidecarCues(path string) (int, bool) {
@@ -287,8 +292,12 @@ func (s *Service) repairLang(ctx context.Context, ref fileRef, mi *mediaInfo, la
 	switch {
 	case !ok:
 		return false, "the subtitle is gone", nil
-	case oldCues >= repairSuspectCues:
+	case !suspectCues(oldCues):
 		return false, "already a full subtitle", nil
+	case !forcedFirst(mi.Subs, lang):
+		// The file changed since the pass looked (an upgrade): this sidecar wasn't taken
+		// from a forced track of it.
+		return false, "not taken from a forced track", nil
 	}
 	t, ok := pickFullTrack(mi.Subs, lang)
 	if !ok {
