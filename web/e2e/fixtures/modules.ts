@@ -5,6 +5,7 @@ import type {
 import { NOW } from "./clock";
 import type { PlexScanView } from "../../src/lib/plexLibraryApi";
 import type { Language } from "../../src/lib/languages";
+import type { ProfileList } from "../../src/pages/subtitles/profileApi";
 
 // The optional modules (Convert, Subtitles, Insights, Music), idle and empty: the
 // admin smoke only needs each page to load cleanly.
@@ -50,6 +51,12 @@ export const subtitleSettings: SubtitleSettings = {
 };
 
 export const subtitleJobs: { jobs: SubtitleJob[] } = { jobs: [] };
+
+// Language profiles: just Default, the kept languages above.
+export const subtitleProfiles: ProfileList = {
+  profiles: [{ id: 1, name: "Default", is_default: true, titles: 0, items: [{ lang: "en", variant: "full", sdh: "any", only_if_audio_differs: false }] }],
+  overrides: [],
+};
 
 // A slice of the shared language table (GET /api/v1/languages), regional variants included.
 export const languages: Language[] = [
