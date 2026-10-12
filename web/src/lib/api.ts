@@ -1456,7 +1456,8 @@ export interface MyBook {
   cover_url?: string;
   added_at?: string;
   series?: string;
-  ebook?: { format: string; size_bytes: number };
+  /** kindle: Send to Kindle's email takes this format (EPUB, PDF). */
+  ebook?: { format: string; size_bytes: number; kindle?: boolean };
   audiobook: boolean;
   mine: boolean; // the signed-in user requested it
   /** Downloadable audiobooks: the standard one (version_id 0) and any extra versions.

@@ -2,11 +2,8 @@ package httpapi
 
 import (
 	"fmt"
-	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
@@ -87,10 +84,13 @@ type MyRequest struct {
 	NextCheckAt string `json:"next_check_at,omitempty"`
 }
 
-// MyEbook is what the download button needs to know.
+// MyEbook is what the download and Send to Kindle buttons need to know.
 type MyEbook struct {
 	Format    string `json:"format"`
 	SizeBytes int64  `json:"size_bytes"`
+	// Kindle: Amazon's Send to Kindle email takes this format (books.KindleAccepts), so the
+	// button is offered; otherwise it's shown disabled with the format named.
+	Kindle bool `json:"kindle"`
 }
 
 // handleMyBooks lists the library's books that have a file, plus the caller's own
@@ -140,7 +140,7 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		mb := MyBook{BookID: b.ID, Title: b.Title, Author: b.Author, Year: b.Year, CoverURL: b.CoverURL,
 			AddedAt: b.AddedAt, Audiobook: audio, Audiobooks: audiobooks, Mine: mineID[b.ID] || mine[b.OLKey]}
 		if ebook {
-			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes}
+			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes, Kindle: books.KindleAccepts(b.Ebook.Format)}
 		}
 		if b.SeriesName != "" {
 			mb.Series = b.SeriesName
@@ -226,17 +226,17 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusNotFound, "no ebook has arrived for this book yet")
 		return
 	}
-	path, err := ebookFile(b.Ebook.Path)
+	path, err := books.EbookFile(b.Ebook.Path)
 	if err != nil {
 		a.deps.Log.Warn("ebook download: file missing", "book", b.Title, "path", b.Ebook.Path, "err", err)
 		a.writeError(w, http.StatusNotFound, "the ebook file is missing on disk")
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(path))
-	if ct := ebookContentType(ext); ct != "" {
+	if ct := books.EbookContentType(ext); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Header().Set("Content-Disposition", attachmentHeader(downloadName(b, ext)))
+	w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(b, ext)))
 	w.Header().Set("Cache-Control", "private, no-store")
 	http.ServeFile(w, r, path)
 }
@@ -246,96 +246,4 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 func (a *api) mayDownloadBook(r *http.Request, _ books.Book) bool {
 	u, ok := userFrom(r)
 	return ok && u != nil && !u.Disabled && u.Role.AtLeast(auth.RoleRequester)
-}
-
-// ebookFile resolves the stored ebook path to the file to send. An ebook edition is
-// one file, but should it ever be a folder, the best-known format inside wins.
-func ebookFile(stored string) (string, error) {
-	st, err := os.Stat(stored)
-	if err != nil {
-		return "", err
-	}
-	if !st.IsDir() {
-		return stored, nil
-	}
-	entries, err := os.ReadDir(stored)
-	if err != nil {
-		return "", err
-	}
-	var found []string
-	for _, e := range entries {
-		if !e.IsDir() && ebookContentType(strings.ToLower(filepath.Ext(e.Name()))) != "" {
-			found = append(found, e.Name())
-		}
-	}
-	if len(found) == 0 {
-		return "", os.ErrNotExist
-	}
-	sort.SliceStable(found, func(i, j int) bool {
-		return ebookRank(found[i]) < ebookRank(found[j])
-	})
-	return filepath.Join(stored, found[0]), nil
-}
-
-// ebookRank orders formats for the pick above: the ones most readers open first.
-func ebookRank(name string) int {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".epub":
-		return 0
-	case ".azw3", ".kepub":
-		return 1
-	case ".mobi", ".azw":
-		return 2
-	case ".pdf":
-		return 3
-	}
-	return 4
-}
-
-// ebookContentType maps an ebook extension to its media type ("" = not an ebook).
-func ebookContentType(ext string) string {
-	switch ext {
-	case ".epub", ".kepub":
-		return "application/epub+zip"
-	case ".mobi":
-		return "application/x-mobipocket-ebook"
-	case ".azw", ".azw3":
-		return "application/vnd.amazon.mobi8-ebook"
-	case ".pdf":
-		return "application/pdf"
-	}
-	return ""
-}
-
-// downloadName is "Title - Author.ext" with anything a filesystem or header would
-// choke on removed.
-func downloadName(b books.Book, ext string) string {
-	name := b.Title
-	if b.Author != "" {
-		name += " - " + b.Author
-	}
-	name = strings.Map(func(r rune) rune {
-		switch {
-		case r < 0x20, r == 0x7f:
-			return -1
-		case strings.ContainsRune(`/\:*?"<>|`, r):
-			return -1
-		}
-		return r
-	}, name)
-	name = strings.TrimSpace(strings.Join(strings.Fields(name), " "))
-	if name == "" {
-		name = "book"
-	}
-	return name + ext
-}
-
-// attachmentHeader builds a Content-Disposition that survives non-ASCII titles: Go
-// encodes those per RFC 2231, and a name it still can't express falls back to the
-// bare extension rather than a broken header.
-func attachmentHeader(name string) string {
-	if h := mime.FormatMediaType("attachment", map[string]string{"filename": name}); h != "" {
-		return h
-	}
-	return `attachment; filename="book` + filepath.Ext(name) + `"`
 }

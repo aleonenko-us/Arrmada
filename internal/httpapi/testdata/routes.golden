@@ -158,6 +158,7 @@ GET /api/v1/me/audio/library user ext
 GET /api/v1/me/audio/listening user ext
 GET /api/v1/me/audio/shelves user ext
 GET /api/v1/me/books user ext
+GET /api/v1/me/kindle user ext
 GET /api/v1/me/notifications user ext
 GET /api/v1/me/notify-prefs user ext
 GET /api/v1/me/plex user ext
@@ -322,6 +323,7 @@ POST /api/v1/me/audio/restore user ext
 POST /api/v1/me/audio/sessions/{sid}/close user ext
 POST /api/v1/me/audio/sessions/{sid}/sync user ext
 POST /api/v1/me/audio/undiscard user ext
+POST /api/v1/me/books/{id}/send-to-kindle user ext
 POST /api/v1/me/notifications/read-all user ext
 POST /api/v1/me/notifications/{id}/read user ext
 POST /api/v1/me/password user ext
@@ -445,6 +447,7 @@ PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -
 PUT /api/v1/me/apprise user ext
 PUT /api/v1/me/audio/password user ext
+PUT /api/v1/me/kindle user ext
 PUT /api/v1/me/notify-prefs user ext
 PUT /api/v1/movies/bulk staff -
 PUT /api/v1/movies/{id}/availability staff -

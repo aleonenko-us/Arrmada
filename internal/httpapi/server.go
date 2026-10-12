@@ -150,6 +150,8 @@ type api struct {
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
 	wanted wantedCache
+	// kindle counts each person's Send to Kindle emails today (kindle.go).
+	kindle kindleQuota
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
@@ -286,6 +288,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/me/plex/link", a.signedIn(a.handlePlexUnlink).ext())
 	mux.HandleFunc("GET /api/v1/me/apprise", a.signedIn(a.handleGetMyApprise).ext())
 	mux.HandleFunc("GET /api/v1/me/books", a.signedIn(a.handleMyBooks).ext())
+	// Send to Kindle: the person's own Kindle address, and the send (an email only ever goes
+	// out when its person presses the button).
+	mux.HandleFunc("GET /api/v1/me/kindle", a.signedIn(a.handleGetKindle).ext())
+	mux.HandleFunc("PUT /api/v1/me/kindle", a.signedIn(a.handleSetKindle).ext())
+	mux.HandleFunc("POST /api/v1/me/books/{id}/send-to-kindle", a.signedIn(a.handleSendToKindle).ext())
 	mux.HandleFunc("GET /api/v1/me/quota", a.signedIn(a.handleMyQuota).ext())
 	mux.HandleFunc("PUT /api/v1/me/apprise", a.signedIn(a.handleSetMyApprise).ext())
 	// Which of your notices reach your phones and Apprise link (the inbox keeps them all).
