@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { releaseErrorMessage, type RankedRelease, type ReleaseList } from "../lib/api";
 import { formatReleaseAge } from "../lib/format";
 import { IndexerIssues, emptyReleasesMessage } from "./IndexerIssues";
+import { Button, IconButton, Modal } from "../ui";
 
 // BookReleaseModal is the book-specific interactive search: results split into
 // Audiobooks / Ebooks tabs, each showing the raw release title (so the narrator
@@ -34,6 +35,7 @@ export function BookReleaseModal({
   const [busy, setBusy] = useState<string | null>(null);
   const [grabbed, setGrabbed] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"audiobook" | "ebook">("audiobook");
+  const titleId = useId();
 
   const run = async () => {
     setLoading(true);
@@ -88,16 +90,15 @@ export function BookReleaseModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[760px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} labelledBy={titleId} size="lg">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="m-0 truncate text-[15px] font-bold">{title}</h2>
+            <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{title}</h2>
             <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">Best match for your quality profile is marked ★ Recommended.</p>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <button onClick={run} disabled={loading} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{loading ? "Searching…" : "Search again"}</button>
-            <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+            <Button size="sm" onClick={run} busy={loading} busyLabel="Searching…">Search again</Button>
+            <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
           </div>
         </div>
         {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
@@ -121,8 +122,7 @@ export function BookReleaseModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -183,14 +183,17 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             {targets.map((t) => <option key={t.id} value={t.id}>as {t.label}</option>)}
           </select>
         )}
-        <button
+        <Button
+          variant="primary"
           onClick={() => onGrab(target)}
-          disabled={busy || grabbed || usenet || !rel.token}
-          className="flex-none rounded-lg px-3.5 py-2 text-[12px] font-semibold disabled:opacity-60"
-          style={{ background: grabbed ? "var(--good)" : "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}
+          disabled={grabbed || usenet || !rel.token}
+          busy={busy}
+          busyLabel="Grabbing…"
+          className="flex-none disabled:opacity-60"
+          style={grabbed ? { background: "var(--good)" } : undefined}
         >
-          {grabbed ? "Grabbed ✓" : busy ? "Grabbing…" : "Grab"}
-        </button>
+          {grabbed ? "Grabbed ✓" : "Grab"}
+        </Button>
         </div>
       </div>
     </div>

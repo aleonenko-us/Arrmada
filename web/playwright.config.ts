@@ -29,14 +29,14 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testMatch: /(admin-smoke|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|alerts|seasons|users-autoapprove|insights|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert|convert-hold|issues-staff|subtitles-library|subtitles-queue|subtitles-drawer|book-duplicates)\.spec\.ts/,
+      testMatch: /(admin-smoke|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|alerts|seasons|users-autoapprove|insights|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert|convert-hold|issues-staff|subtitles-library|subtitles-queue|subtitles-drawer|book-duplicates|books-library|music-library)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
       // A phone: touch only, so (hover: hover) is false and hover-revealed controls
       // must not exist. Chromium on purpose (Pixel, not iPhone) to keep CI to one browser.
       name: "phone",
-      testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|my-shelf|book-authors)\.spec\.ts/,
+      testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|my-shelf|book-authors|books-phone)\.spec\.ts/,
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } },
     },
   ],

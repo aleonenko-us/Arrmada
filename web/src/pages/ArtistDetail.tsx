@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Artist, type MusicAlbum, type MovieEvent } from "../lib/api";
+import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
-
-function fmtBytes(n?: number): string {
-  if (!n || n <= 0) return "";
-  const gb = n / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(n / 1024 ** 2).toFixed(0)} MB`;
-}
+import { Button, StatusChip, useConfirm, useToast } from "../ui";
 
 export function ArtistDetail() {
   const { id } = useParams();
@@ -16,13 +12,8 @@ export function ArtistDetail() {
   const [a, setA] = useState<Artist | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-
-  const flash = (m: string) => {
-    setToast(m);
-    window.setTimeout(() => setToast(null), 3500);
-  };
+  const toast = useToast();
   const load = useCallback(() => {
     api
       .artistDetail(aid)
@@ -86,15 +77,12 @@ export function ArtistDetail() {
         </Link>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <span
-            className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase"
-            style={{ background: "var(--panel-2)", color: st.color }}
-          >
+          <StatusChip tone={st.tone} size="md">
             {st.label}
-          </span>
+          </StatusChip>
           <span className="font-mono text-[11px] text-ink-faint">
             {a.stats?.albums ?? 0} albums · {done}/{all} tracks
-            {a.stats?.size_bytes ? ` · ${fmtBytes(a.stats.size_bytes)}` : ""}
+            {a.stats?.size_bytes ? ` · ${formatBytes(a.stats.size_bytes)}` : ""}
           </span>
           <a
             href={`https://musicbrainz.org/artist/${a.mbid}`}
@@ -129,24 +117,25 @@ export function ArtistDetail() {
             </span>
             <span style={{ color: a.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{a.monitored ? "Monitored" : "Monitor"}</span>
           </button>
-          <button
-            className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold"
-            style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
+          <Button
+            size="sm"
             disabled={busy !== null}
-            onClick={() => run("refresh", async () => { await api.refreshArtist(a.id); load(); flash("Refreshed from MusicBrainz."); })}
+            busy={busy === "refresh"}
+            busyLabel="Refreshing…"
+            onClick={() => run("refresh", async () => { await api.refreshArtist(a.id); load(); toast("Refreshed from MusicBrainz."); })}
           >
-            {busy === "refresh" ? "Refreshing…" : "Refresh"}
-          </button>
+            Refresh
+          </Button>
           {mostlyMissing && (
-            <button
-              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold"
-              style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}
+            <Button
+              size="sm"
+              style={{ border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)" }}
               disabled={busy !== null}
               title="Grab one torrent covering this artist's whole catalogue. Best when you own little or nothing by them — for topping up, per-album grabs keep upgrades and seeding clean."
-              onClick={() => run("disco", async () => { await api.grabDiscography(a.id); flash("Looking for a discography — check Downloads."); })}
+              onClick={() => run("disco", async () => { await api.grabDiscography(a.id); toast("Looking for a discography — check Downloads."); })}
             >
               {busy === "disco" ? "Searching…" : "Grab discography"}
-            </button>
+            </Button>
           )}
           <DeleteArtistButton artist={a} />
         </div>
@@ -173,14 +162,6 @@ export function ArtistDetail() {
         <HistoryPanel artistId={a.id} refreshKey={a.stats?.have_tracks} />
       </div>
 
-      {toast && (
-        <div
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium"
-          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}
-        >
-          {toast}
-        </div>
-      )}
     </>
   );
 }
@@ -222,35 +203,26 @@ function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
   );
 }
 
+// DeleteArtistButton asks the same question it always did, now in the shared confirm. A
+// failed delete says so instead of leaving the page as if nothing happened.
 function DeleteArtistButton({ artist }: { artist: Artist }) {
-  const [confirming, setConfirming] = useState(false);
-  if (!confirming)
-    return (
-      <button
-        onClick={() => setConfirming(true)}
-        className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold"
-        style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}
-      >
-        Delete
-      </button>
-    );
+  const confirm = useConfirm();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const remove = async () => {
+    const ok = await confirm({ title: `Remove ${artist.name} and its albums?`, confirmLabel: "Delete", tone: "danger" });
+    if (!ok) return;
+    try {
+      await api.deleteArtist(artist.id);
+      navigate("/music");
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    }
+  };
   return (
-    <span className="inline-flex items-center gap-2 text-[11.5px]">
-      <span className="text-ink-dim">Remove {artist.name} and its albums?</span>
-      <button
-        onClick={async () => {
-          await api.deleteArtist(artist.id);
-          window.location.href = "/music";
-        }}
-        className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
-        style={{ background: "var(--reject)", color: "#fff" }}
-      >
-        Delete
-      </button>
-      <button onClick={() => setConfirming(false)} className="text-[11px] text-ink-faint">
-        Cancel
-      </button>
-    </span>
+    <Button size="sm" onClick={remove} style={{ border: "1px solid var(--reject)", background: "transparent", color: "var(--reject)" }}>
+      Delete
+    </Button>
   );
 }
 

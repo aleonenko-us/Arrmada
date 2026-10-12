@@ -8,7 +8,7 @@ import { formatReleaseDay } from "../lib/format";
 import { stillComingLine } from "../lib/bookFormats";
 import { playAudiobook } from "../lib/playerStub";
 import { requestStage } from "../lib/requestStage";
-import { StatusChip } from "../ui";
+import { Button, ErrorState, Skeleton, StaleBanner, StatusChip, type Tone } from "../ui";
 import { PAGE, asRequest, fmtSize, newThisWeek, seriesGroups, seriesLabel } from "./myshelf/shelf";
 
 // MyBooks ("My shelf") is the requester's view of the book library: every book that has a
@@ -34,7 +34,7 @@ const SHELF_TOPICS = ["user.*.request.updated", "user.*.inbox.updated"] as const
 type Sort = "newest" | "title" | "author";
 
 export function MyBooks() {
-  const { data, error } = useLiveQuery("me:books", api.myBooks, { topics: SHELF_TOPICS, fallbackMs: 60_000, debounceMs: 1000, staleMs: 10_000 });
+  const { data, error, loading, refetch } = useLiveQuery("me:books", api.myBooks, { topics: SHELF_TOPICS, fallbackMs: 60_000, debounceMs: 1000, staleMs: 10_000 });
   const books = data?.books ?? null;
   const requests = data?.requests ?? [];
   const listen = !!data?.listen;
@@ -88,7 +88,9 @@ export function MyBooks() {
         </p>
       </div>
 
-      {error && <div className="mb-3 text-[12.5px]" style={{ color: "var(--reject)" }}>{error.message}</div>}
+      {/* A refresh that failed keeps the shelf it had; a first load that failed says so
+          rather than showing an empty library. */}
+      {error && books && <StaleBanner message={error.message} onRetry={refetch} />}
 
       <Link to="/audiobooks" className="mb-5 flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[12.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         <span><b>Listen</b> <span className="text-ink-dim">— in your browser or a listening app, with your place kept in sync.</span></span>
@@ -136,7 +138,9 @@ export function MyBooks() {
         </div>
       </div>
 
-      {books === null && !error && <div className="text-[13px] text-ink-dim">Loading…</div>}
+      {books === null && (error
+        ? <ErrorState what="the shelf" message={error.message} onRetry={refetch} busy={loading} />
+        : <Skeleton variant="grid" minWidth={140} />)}
       {books && books.length === 0 && (
         <div className="rounded-xl p-6 text-center text-[13px] text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
           The library is empty so far. Request a book from Discover and it will show up here once it arrives.
@@ -155,9 +159,9 @@ export function MyBooks() {
       )}
       {shown.length > limit && (
         <div className="mt-4 flex justify-center">
-          <button onClick={() => setLimit(limit + PAGE)} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>
+          <Button onClick={() => setLimit(limit + PAGE)}>
             Show more ({shown.length - limit} left)
-          </button>
+          </Button>
         </div>
       )}
 
@@ -200,8 +204,9 @@ function CoverBox({ url, title, children }: { url?: string; title: string; child
   );
 }
 
-function Badge({ label, tone }: { label: string; tone: string }) {
-  return <span className="absolute right-1.5 top-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide" style={{ background: "rgba(20,12,7,.72)", color: tone, border: `1px solid ${tone}` }}>{label}</span>;
+// Badge is the chip over a cover's corner (a series number, "Yours"): the kit's poster chip.
+function Badge({ label, tone }: { label: string; tone: Tone }) {
+  return <StatusChip tone={tone} surface="poster" className="absolute right-1.5 top-1.5">{label}</StatusChip>;
 }
 
 // CoverTile is a book in a row: its cover and title, opening its sheet.
@@ -209,7 +214,7 @@ function CoverTile({ b, onOpen, label }: { b: MyBook; onOpen: (id: number) => vo
   return (
     <button onClick={() => onOpen(b.book_id)} className="w-[112px] flex-none overflow-hidden rounded-xl text-left" style={{ border: "1px solid var(--line)", background: "var(--panel)" }} aria-label={`${b.title}${b.author ? ` by ${b.author}` : ""}`}>
       <CoverBox url={b.cover_url} title={b.title}>
-        {label && <Badge label={label} tone="var(--ink)" />}
+        {label && <Badge label={label} tone="faint" />}
       </CoverBox>
       <div className="p-2">
         <div className="truncate text-[11.5px] font-semibold" title={b.title}>{b.title}</div>
@@ -227,7 +232,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
     <div className="flex flex-col overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <button onClick={() => onOpen(b.book_id)} className="flex flex-col text-left" aria-label={`${b.title}${b.author ? ` by ${b.author}` : ""} — details`}>
         <CoverBox url={b.cover_url} title={b.title}>
-          {b.mine && <Badge label="Yours" tone="var(--accent)" />}
+          {b.mine && <Badge label="Yours" tone="accent" />}
         </CoverBox>
         <div className="flex flex-col gap-0.5 px-2.5 pt-2.5">
           <div className="truncate text-[12.5px] font-semibold" title={b.title}>{b.title}</div>
