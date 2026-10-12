@@ -132,13 +132,14 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	out := make([]RankedRelease, 0, len(cands))
 	// Each candidate carries the runtime it covers — summed across a pack's episodes — so
 	// packs and multi-episode files show a real bitrate too, not only single episodes.
-	appendEval := func(ev quality.Evaluation) {
+	// ranked: the release is in the main ranking (torrents), so its place there can be explained.
+	appendEval := func(ev quality.Evaluation, ranked bool) {
 		rel := byName[ev.Candidate.Name]
 		resolves := c.resolvesLabel(ctx, s, ev.Candidate.Release)
 		if n := byTitle[ev.Candidate.Name]; n > 0 {
 			resolves = specialLabel(n)
 		}
-		out = append(out, withIndexerFacts(RankedRelease{
+		out = append(out, explainRow(withIndexerFacts(RankedRelease{
 			Title:        ev.Candidate.Name,
 			Indexer:      rel.Indexer,
 			DownloadURL:  rel.DownloadURL,
@@ -153,14 +154,17 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 			Recommended:  ev.Candidate.Name == winnerName,
 			Blocklisted:  blocked[normTitle(ev.Candidate.Name)],
 			Resolves:     resolves,
-		}, rel))
+		}, rel), ev, ranked))
 	}
-	for _, evs := range [][]quality.Evaluation{decision.Eligible, decision.Rejected, others.Eligible, others.Rejected} {
+	for _, ev := range decision.Eligible {
+		appendEval(ev, true)
+	}
+	for _, evs := range [][]quality.Evaluation{decision.Rejected, others.Eligible, others.Rejected} {
 		for _, ev := range evs {
-			appendEval(ev)
+			appendEval(ev, false)
 		}
 	}
-	return ReleaseList{Profile: profile, Why: decision.Why, Releases: out}.withIssues(notes), nil
+	return ReleaseList{Profile: profile, Why: decision.Why, ChosenOver: decision.ChosenOver, Releases: out}.withIssues(notes), nil
 }
 
 // searchSeriesScope runs the indexer queries for a season/episode scope (a negative season
