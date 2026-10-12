@@ -91,7 +91,11 @@ test.describe("manager", () => {
     await expect(dc.getByText("DTS-HD MA 5.1")).toBeVisible();
     await expect(dc.getByText(dcFile.subtitles![0])).toBeVisible();
     await expect(dc.getByRole("button", { name: dcFile.path })).toBeVisible();
-    await expect(cards.first().getByText(theatrical.subtitles![0])).toBeVisible();
+    // The default version's file is the one Subtitles works on: its kept languages' state
+    // and Find subtitles (SUB-29) stand in for the bare file names.
+    await expect(cards.first().getByRole("button", { name: "Find subtitles" })).toBeVisible();
+    await expect(cards.first().getByRole("button", { name: /✓ en · OpenSubtitles/ })).toBeVisible();
+    await expect(dc.getByRole("button", { name: "Find subtitles" })).toHaveCount(0);
 
     // Search from the DC version ranks for it and grabs into it.
     await dc.getByRole("button", { name: "Search", exact: true }).click();

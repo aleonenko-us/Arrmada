@@ -1,0 +1,48 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { subtitleFileApi, type SubFileView } from "../../lib/subtitleFileApi";
+import { LazySubtitleDrawer } from "./LazySubtitleDrawer";
+import { WantChip, sidecarForLang } from "./WantChip";
+
+// MovieSubtitles is the Movie page's subtitle line for the file Subtitles works on (SUB-29):
+// one chip per kept language ("✓ en · OpenSubtitles · Health 92", "es missing · next try in
+// 6 days"), any forced extras, and Find subtitles, which opens the per-file drawer. When the
+// state can't be read it shows fallback (the file names), as the page did before.
+export function MovieSubtitles({ movieId, fallback, onChanged }: { movieId: number; fallback: ReactNode; onChanged?: () => void }) {
+  const [view, setView] = useState<SubFileView | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(() => subtitleFileApi.view({ kind: "movie", movie_id: movieId }).then((v) => { setView(v); setFailed(false); }).catch(() => setFailed(true)), [movieId]);
+  useEffect(() => { void load(); }, [load]);
+
+  if (failed && !view) return <>{fallback}</>;
+  if (!view) return null;
+  const forced = view.sidecars.filter((s) => s.variant === "forced");
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className="font-mono uppercase text-ink-faint">Subs</span>
+      {view.languages.map((l, i) => (
+        <WantChip key={l.lang} l={l} sidecar={sidecarForLang(l.lang, view.sidecars, i === 0)} onClick={() => setOpen(true)} />
+      ))}
+      {forced.map((s) => (
+        <span key={s.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-ink-dim" style={{ background: "var(--panel-2)" }} title={`${s.name} — the foreign-language lines only`}>{s.lang} forced</span>
+      ))}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+        style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+        title="See this file's subtitles: previews, where each came from, timing and delete"
+      >
+        Find subtitles
+      </button>
+      {open && (
+        <LazySubtitleDrawer
+          media={{ kind: "movie", movie_id: movieId }}
+          title={view.title}
+          onClose={() => setOpen(false)}
+          onChanged={() => { void load(); onChanged?.(); }}
+        />
+      )}
+    </div>
+  );
+}

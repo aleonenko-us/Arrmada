@@ -184,6 +184,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/subtitles/settings", mod.subtitleSettings),
     get("/api/v1/subtitles/models", mod.subtitleModels),
     get("/api/v1/subtitles/jobs", mod.subtitleJobs),
+    // The per-file drawer and the detail pages' subtitle chips.
+    { method: "GET", path: "/api/v1/subtitles/file", respond: ({ url }) => mod.subtitleFile(url) },
+    get("/api/v1/subtitles/library", { items: [], groups: [], scanning: false, stale: false }),
     get("/api/v1/languages", mod.languages),
     get("/api/v1/insights/plex", mod.plexConfig),
     get("/api/v1/insights/plex/scan", mod.plexScan),

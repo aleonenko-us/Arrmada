@@ -5,6 +5,7 @@ import type {
 import { NOW } from "./clock";
 import type { PlexScanView } from "../../src/lib/plexLibraryApi";
 import type { Language } from "../../src/lib/languages";
+import type { SubFileView } from "../../src/lib/subtitleFileApi";
 
 // The optional modules (Convert, Subtitles, Insights, Music), idle and empty: the
 // admin smoke only needs each page to load cleanly.
@@ -52,6 +53,43 @@ export const subtitleSettings: SubtitleSettings = {
 // GET /subtitles/jobs: the live list plus the AI backlog (none here).
 export const subtitleJobs: { jobs: SubtitleJob[]; gpu_backlog: number; gpu_backlog_audio_sec: number; gpu_eta_sec: number; rtf: number; next_before: number } =
   { jobs: [], gpu_backlog: 0, gpu_backlog_audio_sec: 0, gpu_eta_sec: 0, rtf: 0, next_before: 0 };
+
+// GET /subtitles/file: one video as the per-file drawer sees it — an English SRT from
+// OpenSubtitles beside it, Spanish missing and parked, and one image track inside.
+export function subtitleFile(url: URL): SubFileView {
+  const episode = url.searchParams.get("kind") === "episode";
+  const base = episode ? "Show - S01E01" : "Fixture Film (2020)";
+  return {
+    kind: episode ? "episode" : "movie",
+    ...(episode
+      ? { series_id: Number(url.searchParams.get("series")), season: Number(url.searchParams.get("season")), episode: Number(url.searchParams.get("episode")) }
+      : { movie_id: Number(url.searchParams.get("id")) }),
+    media_key: episode ? "e:1:1:1" : `m:${url.searchParams.get("id")}`,
+    title: episode ? "Show - S01E01" : "Fixture Film",
+    video_path: `/media/${base}/${base}.mkv`,
+    kept: ["en", "es"],
+    languages: [
+      { lang: "en", have: true },
+      { lang: "es", have: false, reason: "no_match", next_retry_at: Math.floor(NOW / 1000) + 6 * 86400 },
+    ],
+    audio: [{ index: 0, lang: "eng", default: true }],
+    embedded: [{ index: 0, codec: "hdmv_pgs_subtitle", lang: "eng", text: false }],
+    sidecars: [{
+      name: `${base}.en.srt`, lang: "en", ext: ".srt", size: 48_213, modified_at: Math.floor(NOW / 1000) - 86400, cue_count: 812,
+      first_cues: [
+        { start_ms: 61_200, end_ms: 63_900, text: "Where were you last night?" },
+        { start_ms: 64_100, end_ms: 66_000, text: "That's so long ago, I don't remember." },
+        { start_ms: 66_400, end_ms: 68_250, text: "Will I see you tonight?" },
+      ],
+      shiftable: true, owned: true, source: "opensubtitles", provider: "opensubtitles", provider_file_id: "991",
+      release: `${base}.1080p.BluRay.x264-GRP`, score: 84, sync_confidence: 92, created_at: Math.floor(NOW / 1000) - 86400,
+    }],
+    orphans: episode ? [] : [{ name: "Old.Name.eng.srt", lang: "en" }],
+    backoffs: [],
+    attempts: [{ id: 3, run_id: "r1", media_key: "m:1", video_path: "", lang: "es", rung: "opensubtitles", outcome: "no_match", detail: "no OpenSubtitles match", at: Math.floor(NOW / 1000) - 3600 }],
+    jobs: [],
+  };
+}
 
 // A slice of the shared language table (GET /api/v1/languages), regional variants included.
 export const languages: Language[] = [
