@@ -367,6 +367,24 @@ func (l *Ledger) RecordSync(ctx context.Context, path string, c SyncCheck) (bool
 	return n > 0, nil
 }
 
+// AddShift records a manual timing nudge on a path's live row: sync_shift_ms is the total
+// shift applied to the file (NULL once it nets to zero), and a checked offset (how late it
+// ran) moves with the cues. The check's confidence stands: a constant shift doesn't change
+// how well the cues fit the speech, only where. Reports whether a live row was there.
+func (l *Ledger) AddShift(ctx context.Context, path string, shiftMs int) (bool, error) {
+	if !l.ok() {
+		return false, nil
+	}
+	res, err := l.db.ExecContext(ctx, `UPDATE subtitle_files SET sync_shift_ms = NULLIF(COALESCE(sync_shift_ms, 0) + ?, 0),
+		sync_offset_ms = CASE WHEN sync_offset_ms IS NULL THEN NULL ELSE sync_offset_ms + ? END
+		WHERE path = ? AND superseded_at IS NULL`, shiftMs, shiftMs, path)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 const fileCols = `id, media_key, kind, movie_id, series_id, season, episode, video_path, path, lang, variant, source,
 	embedded_index, provider, provider_file_id, release_name, hash_match, score, model,
 	sync_offset_ms, sync_confidence, sync_shift_ms, sync_scale, sync_checked_at, locked, created_at, superseded_at`

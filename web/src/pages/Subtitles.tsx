@@ -17,6 +17,8 @@ import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
 import { useConfirm } from "../ui";
 import { ACTIVE, ActiveRow, Queue, backlogText, sortActive } from "./subtitles/queue";
 import { queueApi, type SubtitleQueue } from "./subtitles/queueApi";
+import { LazySubtitleDrawer } from "../components/subtitles/LazySubtitleDrawer";
+import type { SubMediaRef } from "../lib/subtitleFileApi";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
@@ -250,6 +252,12 @@ type SortKey = "title" | "missing" | "embedded";
 function rowKey(f: SubFileEntry): string {
   return f.kind === "episode" ? `e:${f.series_id}:${f.season}:${f.episode}` : `m:${f.movie_id}`;
 }
+// refOf names a row's file for the per-file drawer.
+function refOf(f: SubFileEntry): SubMediaRef {
+  return f.kind === "episode"
+    ? { kind: "episode", series_id: f.series_id!, season: f.season!, episode: f.episode! }
+    : { kind: "movie", movie_id: f.movie_id! };
+}
 function embeddedKinds(f: SubFileEntry): { txt: boolean; pgs: boolean; vob: boolean } {
   let txt = false, pgs = false, vob = false;
   for (const t of f.embedded ?? []) {
@@ -281,6 +289,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   // Rows are rendered a page at a time: a library of thousands stays quick to type into.
   const [shown, setShown] = useState(PAGE_ROWS);
+  const [drawer, setDrawer] = useState<SubFileEntry | null>(null); // the file whose drawer is open
 
   const confirm = useConfirm();
   useEffect(() => { setItems(null); setQueued(new Set()); setFilters(new Set()); }, [media]);
@@ -498,6 +507,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     onChanged={reloadMovies}
                     onQueued={onQueued}
                     onOrphan={(name, action) => orphanAction(f, name, action)}
+                    onOpen={() => setDrawer(f)}
                   />
                 ))}
               </tbody>
@@ -511,6 +521,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
           )}
         </>
       )}
+      {drawer && <LazySubtitleDrawer media={refOf(drawer)} title={drawer.title} onClose={() => setDrawer(null)} onChanged={() => setRefreshKey((k) => k + 1)} />}
     </div>
   );
 }
@@ -615,6 +626,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
   const [eps, setEps] = useState<SubFileEntry[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [queued, setQueued] = useState<Set<string>>(new Set());
+  const [drawer, setDrawer] = useState<SubFileEntry | null>(null);
 
   useEffect(() => {
     if (!open || eps !== null) return;
@@ -698,7 +710,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
                 </tr></thead>
                 <tbody>
                   {eps.map((f, i) => (
-                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)}
+                    <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)} onOpen={() => setDrawer(f)}
                       flash={flash} onQueued={onQueued} onChanged={() => { api.subtitleSeriesEpisodes(g.series_id).then(setEps).catch(() => {}); }} />
                   ))}
                 </tbody>
@@ -707,6 +719,8 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
           )}
         </div>
       )}
+      {/* A change in the drawer re-reads the show's episodes (the effect above refetches on null). */}
+      {drawer && <LazySubtitleDrawer media={refOf(drawer)} title={drawer.title} onClose={() => setDrawer(null)} onChanged={() => setEps(null)} />}
     </div>
   );
 }
@@ -718,18 +732,20 @@ function confirmRedo(title: string) {
   return window.confirm(`Redo every language for ${title}?\n\nEach kept language is made again from the next-best source: never the same download, else another track or AI. The old files go to the recycle bin once their replacements are written. To redo one language, click its chip instead.`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onQueued, onOrphan }: {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onQueued, onOrphan, onOpen }: {
   f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void;
-  flash: (m: string) => void; onChanged: () => void; onQueued: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void;
+  flash: (m: string) => void; onChanged: () => void; onQueued: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void; onOpen: () => void;
 }) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
+  // The title opens the file's drawer: its subtitle files, previews, timing and delete.
+  const name = <button type="button" onClick={onOpen} className="text-left hover:underline" title="Open this file's subtitles">{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></button>;
   return (
     <tr style={{ borderTop: first ? "none" : "1px solid var(--line-soft)" }}>
       <td className="px-3 py-2 font-semibold">
         {f.kind === "movie" ? (
-          <span className="flex items-center gap-2.5"><RowPoster url={f.poster_url} /><span>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></span></span>
-        ) : <>{f.title} <span className="font-normal text-ink-faint">{f.year || ""}</span></>}
+          <span className="flex items-center gap-2.5"><RowPoster url={f.poster_url} />{name}</span>
+        ) : name}
       </td>
       <td className="px-3 py-2 font-mono text-[10.5px] text-ink-dim">{(f.audio_langs ?? []).map((l) => l.toUpperCase()).join(" ") || "—"}</td>
       <td className="px-3 py-2">

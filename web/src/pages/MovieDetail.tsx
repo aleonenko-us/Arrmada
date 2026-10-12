@@ -35,6 +35,7 @@ import { attemptLine, searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
 import { Button, Menu, Modal, StatusChip, useToast } from "../ui";
 import { orphanApi } from "./subtitles/orphanApi";
+import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 
 const AVAILABILITY_LABELS: Record<string, string> = {
@@ -1338,6 +1339,14 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
       onAdopted?.();
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setAdopting(null); }
   };
+  const subNames = file.subtitles && file.subtitles.length > 0 && (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
+      <span className="font-mono uppercase text-ink-faint">Subs</span>
+      {file.subtitles.map((s) => (
+        <span key={s} className="rounded px-1.5 py-0.5" style={{ background: "var(--panel-2)" }}>{s}</span>
+      ))}
+    </div>
+  );
   const chips: string[] = [];
   if (file.codec) chips.push(file.codec);
   if (file.audio) chips.push(...file.audio);
@@ -1362,14 +1371,9 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
       >
         {file.path}
       </button>
-      {file.subtitles && file.subtitles.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
-          <span className="font-mono uppercase text-ink-faint">Subs</span>
-          {file.subtitles.map((s) => (
-            <span key={s} className="rounded px-1.5 py-0.5" style={{ background: "var(--panel-2)" }}>{s}</span>
-          ))}
-        </div>
-      )}
+      {/* The file Subtitles works on shows each kept language's state and Find subtitles;
+          another version's file lists its sidecars by name. */}
+      {onAdopted && !file.missing ? <MovieSubtitles movieId={movieId} fallback={subNames} onChanged={onAdopted} /> : subNames}
       {/* Subtitles named for no video in the folder: Plex won't show them with this file. */}
       {file.orphan_subtitles && file.orphan_subtitles.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
