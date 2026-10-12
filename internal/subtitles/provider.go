@@ -26,24 +26,25 @@ type SearchRequest struct {
 	ForeignParts string
 }
 
-// SubtitleResult is one candidate subtitle from a provider.
+// SubtitleResult is one candidate subtitle from a provider. The JSON is what the drawer's
+// interactive search shows (SUB-28).
 type SubtitleResult struct {
-	FileID          string
-	Language        string
-	Release         string
-	Downloads       int
-	HearingImpaired bool
-	HashMatch       bool // uploaded against this exact file — in sync by construction
+	FileID          string `json:"file_id"`
+	Language        string `json:"language"`
+	Release         string `json:"release"`
+	Downloads       int    `json:"downloads"`
+	HearingImpaired bool   `json:"hearing_impaired"`
+	HashMatch       bool   `json:"hash_match"` // uploaded against this exact file — in sync by construction
 
 	// What scoring (scoring.go) compares against the file on disk.
-	FPS              float64 // frame rate the subtitle was timed for; 0 = not stated
-	Trusted          bool    // from a trusted uploader
-	FileName         string  // the uploaded file's name; a fallback when Release says nothing
-	UploaderRank     string  // e.g. "trusted", "administrator"
-	Season           int     // the episode it was uploaded for (0 for movies / not stated)
-	Episode          int
-	AITranslated     bool // machine or AI translation: never used
-	ForeignPartsOnly bool // forced subtitle: only for a forced want
+	FPS              float64 `json:"fps,omitempty"`           // frame rate the subtitle was timed for; 0 = not stated
+	Trusted          bool    `json:"trusted,omitempty"`       // from a trusted uploader
+	FileName         string  `json:"file_name,omitempty"`     // the uploaded file's name; a fallback when Release says nothing
+	UploaderRank     string  `json:"uploader_rank,omitempty"` // e.g. "trusted", "administrator"
+	Season           int     `json:"season,omitempty"`        // the episode it was uploaded for (0 for movies / not stated)
+	Episode          int     `json:"episode,omitempty"`
+	AITranslated     bool    `json:"ai_translated,omitempty"`      // machine or AI translation: never used
+	ForeignPartsOnly bool    `json:"foreign_parts_only,omitempty"` // forced subtitle: only for a forced want
 }
 
 // Provider searches for and downloads external subtitles. Providers sit behind this

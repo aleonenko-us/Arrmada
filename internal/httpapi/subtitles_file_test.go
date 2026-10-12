@@ -109,3 +109,28 @@ func TestSubtitleFileRoutesRoundTrip(t *testing.T) {
 		t.Errorf("the sidecar is still there: %v", err)
 	}
 }
+
+// The interactive search's refusals: a bad language is a 400, an unknown title a 404, and
+// with no OpenSubtitles key a 409 that says so — no request goes out. (Scoring and the
+// blocklist flags are tested with a fake provider in the subtitles package.)
+func TestSubtitleSearchRefusals(t *testing.T) {
+	s, _ := subtitleFileServer(t)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	_, viewer := s.user(t, "viewer@example.com", auth.RoleRequester)
+	for _, c := range []struct {
+		body string
+		code int
+	}{
+		{`{"kind":"movie","movie_id":1,"lang":"klingonese"}`, http.StatusBadRequest},
+		{`{"kind":"movie","movie_id":1,"lang":"en","variant":"director"}`, http.StatusBadRequest},
+		{`{"kind":"movie","movie_id":9,"lang":"en"}`, http.StatusNotFound},
+		{`{"kind":"movie","movie_id":1,"lang":"en"}`, http.StatusConflict},
+	} {
+		if rec := s.doBody("POST", "/api/v1/subtitles/search", c.body, mgr); rec.Code != c.code {
+			t.Errorf("%s: HTTP %d %s, want %d", c.body, rec.Code, rec.Body, c.code)
+		}
+	}
+	if rec := s.doBody("POST", "/api/v1/subtitles/search", `{"kind":"movie","movie_id":1,"lang":"en"}`, viewer); rec.Code != http.StatusForbidden {
+		t.Errorf("requester: HTTP %d, want 403", rec.Code)
+	}
+}

@@ -404,6 +404,7 @@ POST /api/v1/subtitles/models/{name} staff -
 POST /api/v1/subtitles/movies/{id}/orphans/adopt staff -
 POST /api/v1/subtitles/movies/{id}/orphans/replace staff -
 POST /api/v1/subtitles/orphans/bulk staff -
+POST /api/v1/subtitles/search staff -
 POST /api/v1/subtitles/sweep staff -
 POST /api/v1/system/backups admin -
 POST /api/v1/system/backups/upload admin -

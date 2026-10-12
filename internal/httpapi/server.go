@@ -634,6 +634,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/subtitles/file", a.requireRole(auth.RoleManager, a.handleSubtitleFile))
 	mux.HandleFunc("POST /api/v1/subtitles/file/shift", a.requireRole(auth.RoleManager, a.handleSubtitleFileShift))
 	mux.HandleFunc("DELETE /api/v1/subtitles/file", a.requireRole(auth.RoleManager, a.handleSubtitleFileDelete))
+	mux.HandleFunc("POST /api/v1/subtitles/search", a.requireRole(auth.RoleManager, a.handleSubtitleSearch))
 
 	// Books (Readarr replacement — Open Library metadata + ebook acquisition).
 	mux.HandleFunc("GET /api/v1/books", a.requireRole(auth.RoleManager, a.handleListBooks))

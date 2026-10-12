@@ -86,6 +86,45 @@ func (a *api) handleSubtitleFileShift(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, sv)
 }
 
+// handleSubtitleSearch is POST /subtitles/search {kind, movie_id | series_id + season +
+// episode, lang, variant, refresh}: OpenSubtitles' candidates for one video's language,
+// scored and flagged (SUB-28). No download quota is spent; a recent answer is reused
+// unless refresh is set.
+func (a *api) handleSubtitleSearch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		subtitles.MediaRef
+		Lang    string `json:"lang"`
+		Variant string `json:"variant"`
+		Refresh bool   `json:"refresh"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	v, err := a.deps.Subtitles.SearchCandidates(r.Context(), req.MediaRef, req.Lang, req.Variant, req.Refresh)
+	var rl *subtitles.RateLimitError
+	switch {
+	case err == nil:
+		if v.Candidates == nil {
+			v.Candidates = []subtitles.ScoredCandidate{}
+		}
+		a.writeJSON(w, http.StatusOK, v)
+	case errors.Is(err, subtitles.ErrBadWant):
+		a.writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, subtitles.ErrSearchUnavailable):
+		a.writeError(w, http.StatusConflict, err.Error())
+	case errors.As(err, &rl):
+		w.Header().Set("Retry-After", strconv.Itoa(int(rl.RetryAfter.Seconds())+1))
+		a.writeError(w, http.StatusTooManyRequests, rl.Error())
+	case errors.Is(err, subtitles.ErrMediaNotFound), errors.Is(err, subtitles.ErrBadMediaRef):
+		a.subtitleFileError(w, err)
+	case errors.Is(err, subtitles.ErrAuthFailed), errors.Is(err, subtitles.ErrRateLimited), errors.Is(err, subtitles.ErrNotConfigured):
+		a.writeError(w, http.StatusBadGateway, err.Error())
+	default:
+		a.deps.Log.Warn("subtitles: interactive search failed", "err", err)
+		a.writeError(w, http.StatusBadGateway, "OpenSubtitles search failed — see the Subtitles log")
+	}
+}
+
 // handleSubtitleFileDelete is DELETE /subtitles/file?kind=…&…&name=…: one subtitle (paired
 // or orphaned) to the recycle bin. A bin failure keeps the file and answers 500.
 func (a *api) handleSubtitleFileDelete(w http.ResponseWriter, r *http.Request) {

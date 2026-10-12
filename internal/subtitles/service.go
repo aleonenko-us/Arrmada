@@ -100,6 +100,8 @@ type Service struct {
 	bootSwept atomic.Bool // the catch-up sweep after start has been scheduled (bootSweep)
 
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
+
+	searches searchCache // the drawer's interactive searches, reused for a few minutes (search.go)
 }
 
 // NewService wires the module over the shared Movies/Series catalogs + a subtitle provider. db is
