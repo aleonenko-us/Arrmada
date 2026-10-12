@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/series"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -153,5 +156,65 @@ func TestLegacyManualGrabForcesAll(t *testing.T) {
 	c.markGrabManual(ctx, movie)
 	if f := c.grabForce(ctx, movie); f != forceAll {
 		t.Errorf("markGrabManual = %+v, want force all", f)
+	}
+}
+
+// A book release the admin picked by hand imports into the book it was picked for, even
+// when its name doesn't spell the library title (an accent, a translated series name).
+// An automatic grab with the same mismatch still goes to Review. [BOOK-15]
+func TestHandPickedBookGrabSkipsTheNameGate(t *testing.T) {
+	h := newLifecycleHarness(t)
+	ctx := h.ctx
+	h.c.books = books.NewService(h.c.db, nil, h.c.log)
+	added, _ := h.c.books.AddWorks(ctx, []metadata.BookResult{
+		{Key: "OL1W", Title: "Pokémon Adventures", Author: "Hidenori Kusaka"},
+		{Key: "OL2W", Title: "Dune", Author: "Frank Herbert"},
+	}, "", true)
+	if len(added) != 2 {
+		t.Fatalf("seeded %d books", len(added))
+	}
+	poke, dune := added[0], added[1]
+
+	// Hand-picked: the release name matches no library book at all.
+	picked := "Kusaka - Pocket Monsters Special Vol 1 [EPUB]"
+	pickedDL := h.download(t, picked, "Pocket Monsters Special 1.epub")
+	pHash := h.completedTorrent(picked, bookCategory, pickedDL)
+	addGrab(t, h.c, "book", poke.ID, picked, pHash)
+	h.c.markGrabManual(ctx, pHash)
+
+	// Automatic: grabbed for Dune, but the download is something else.
+	auto := "Somebody - Another Book Entirely [EPUB]"
+	autoDL := h.download(t, auto, "Another Book Entirely.epub")
+	aHash := h.completedTorrent(auto, bookCategory, autoDL)
+	addGrab(t, h.c, "book", dune.ID, auto, aHash)
+
+	h.c.ImportBookDownloads(ctx)
+
+	got, err := h.c.books.Get(ctx, poke.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Ebook == nil {
+		t.Fatalf("hand-picked release didn't import into %q: %+v", poke.Title, got)
+	}
+	if h.c.hasReview(ctx, pHash) {
+		t.Error("hand-picked release went to Review")
+	}
+	evs, _ := h.c.books.Events(ctx, poke.ID, 10)
+	var saw bool
+	for _, e := range evs {
+		if e.Event == "imported" && strings.Contains(e.Detail, "(hand-picked)") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Errorf("timeline doesn't say the import was hand-picked: %+v", evs)
+	}
+
+	if r := reviewFor(t, h.c, aHash); r.ReasonCode != ReasonMismatch || r.ExpectedID != dune.ID {
+		t.Errorf("automatic mismatch review = %+v", r)
+	}
+	if d, _ := h.c.books.Get(ctx, dune.ID); d.Ebook != nil {
+		t.Error("an automatic mismatched grab imported into Dune")
 	}
 }

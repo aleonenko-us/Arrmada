@@ -58,3 +58,22 @@ func TestParseHumanSize(t *testing.T) {
 		}
 	}
 }
+
+// MAM's lang_code is a 639-2 code; releases carry the canonical code the book language
+// filter compares, with the tracker's own spelling kept in the description. [BOOK-16]
+func TestMAMReleaseLanguage(t *testing.T) {
+	m := &MAMSearcher{}
+	cases := map[string]string{
+		"ENG": "en", "GER": "de", "DEU": "de", "SPA": "es", "FRE": "fr", "FRA": "fr",
+		"ITA": "it", "DUT": "nl", "NLD": "nl", "POR": "pt", "SWE": "sv", "": "", "XYZ": "xyz",
+	}
+	for code, want := range cases {
+		rel := m.releaseFrom(Indexer{Name: "MAM"}, mamItem{ID: "1", Title: "Dune", LangCode: code})
+		if rel.Language != want {
+			t.Errorf("lang_code %q → %q, want %q", code, rel.Language, want)
+		}
+		if code != "" && !strings.Contains(rel.Description, "Language: "+code) {
+			t.Errorf("lang_code %q: description %q lost the tracker's language", code, rel.Description)
+		}
+	}
+}

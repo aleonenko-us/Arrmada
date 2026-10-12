@@ -176,6 +176,8 @@ export const myBooks: { books: MyBook[]; requests: MyRequest[]; listen: boolean;
     { id: 43, title: "A Field Guide to Tides", author: "Marina Coves", status: "approved", requested_at: "2026-09-10T10:00:00Z", formats: "both", waiting: "audiobook", stage: "partial", note: "Ebook ready · audiobook on the way", tracking: { stage: "partial", note: "Ebook ready · audiobook on the way" } },
     // On its way: "Downloading · 40%".
     { id: 44, title: "Rope Work", author: "Hal Yard", status: "approved", requested_at: "2026-10-05T10:00:00Z", stage: "downloading", tracking: { stage: "downloading", progress: 0.4 } },
+    // Not out yet: "Not out yet" and the day it is.
+    { id: 45, title: "The Moon's Pull", author: "Marina Coves", status: "approved", requested_at: "2026-10-06T10:00:00Z", stage: "searching", note: "Not out yet", release_date: "2026-11-02", tracking: { stage: "searching", note: "Not out yet", release_date: "2026-11-02" } },
   ],
 };
 

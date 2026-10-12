@@ -1244,10 +1244,16 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 				b, ok = bookByKey[reqs[i].OLKey]
 			}
 			if ok {
-				l = lib{id: b.ID, have: bookReady(reqs[i].Formats, b), released: true, misses: b.SearchMisses, lastSearch: b.LastSearchAt}
+				now := time.Now()
+				l = lib{id: b.ID, have: bookReady(reqs[i].Formats, b), released: books.Released(b.ReleaseDate, now),
+					misses: b.SearchMisses, lastSearch: b.LastSearchAt}
 				// Only a monitored book has a next check: the sweep never looks at the others.
-				if next := books.NextSearchAt(b.LastSearchAt, b.SearchMisses); b.Monitored && !next.IsZero() {
+				// An upcoming book's next check is its release day.
+				if next := books.NextSearchAtFor(b.LastSearchAt, b.SearchMisses, b.ReleaseDate, now); b.Monitored && !next.IsZero() {
 					l.nextCheck = next.UTC().Format(time.RFC3339)
+				}
+				if !l.released {
+					reqs[i].releaseDate = b.ReleaseDate
 				}
 				reqs[i].partNote = partialNote(reqs[i].Formats, b)
 			}

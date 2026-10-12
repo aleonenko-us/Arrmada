@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type ApiError, type BookSource, type BookAuthor, type BookDiscoverCard, type BookMeta, type BookRecommendedRow } from "../lib/api";
 import { usePoll } from "../lib/usePoll";
 import { useCanHover } from "../lib/useCanHover";
+import { formatReleaseDay, isUpcoming } from "../lib/format";
 import { coversFormat, editionState, initialBookFormats, lastBookFormats, rememberBookFormats, type BookFormats } from "../lib/bookFormats";
 import { FormatChoice } from "../components/BookFormats";
 import { QuotaHint } from "../components/QuotaHint";
@@ -662,6 +663,8 @@ function BookRequestModal({ b, ctx, authorName, onClose }: { b: BookDiscoverCard
               <div className="mt-1 text-[13px] font-semibold text-ink-dim">{author}</div>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px] text-ink-faint">
                 {shown.year > 0 && <span>{shown.year}</span>}
+                {/* An upcoming book: a request now is grabbed on the day. */}
+                {detail?.release_date && isUpcoming(detail.release_date) && <span className="font-semibold" style={{ color: "var(--accent)" }}>· Out {formatReleaseDay(detail.release_date)}</span>}
                 {(detail?.series_name || b.series_name) && <span>· {detail?.series_name || b.series_name}{(detail?.series_position || b.series_position) ? ` #${detail?.series_position || b.series_position}` : ""}</span>}
                 {!!detail?.pages && <span>· {detail.pages} pages</span>}
               </div>

@@ -10,6 +10,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/recyclebin"
@@ -103,7 +104,33 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// Search indexers that name no categories of their own in the media type's usual
 		// ones (movies 2000, TV 5000, books 7000/7020, audiobooks 3030, music 3000).
 		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
+		// The languages automatic book grabs accept, canonical codes in order; [] = any.
+		"books_languages": a.bookLanguages(ctx),
 	})
+}
+
+// bookLanguages is the saved book languages list (default English).
+func (a *api) bookLanguages(ctx context.Context) []string {
+	return automation.ParseBookLanguages(a.deps.Settings.Get(ctx, automation.KeyBookLanguages, automation.DefaultBookLanguages))
+}
+
+// parseBookLanguagesUpdate turns a PUT's list into the stored comma list, or says which
+// entry isn't a language. Nothing unknown is stored: one bad code would reject every
+// release that states its language.
+func parseBookLanguagesUpdate(in []string) (string, string) {
+	codes := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, tok := range in {
+		l, ok := langs.Lookup(tok)
+		if !ok {
+			return "", "unknown language " + strconv.Quote(strings.TrimSpace(tok))
+		}
+		if !seen[l.Code] {
+			seen[l.Code] = true
+			codes = append(codes, l.Code)
+		}
+	}
+	return strings.Join(codes, ","), ""
 }
 
 // maxUpgradeBudget bounds the per-sweep upgrade limit. Anything near it is effectively
@@ -128,19 +155,20 @@ type settingsUpdate struct {
 	TMDBRegion           *string `json:"tmdb_region"`
 	PlexLoginAutoApprove *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
 	// PlexLoginAutoApproveTypes wins over the legacy bool when both are sent.
-	PlexLoginAutoApproveTypes *string `json:"plex_login_auto_approve_types"`
-	RecycleMaxGB              *string `json:"recycle_max_gb"`
-	RecycleRetentionDays      *string `json:"recycle_retention_days"`
-	DiskGuard                 *bool   `json:"downloads_disk_guard"`
-	DiskGuardPausePct         *string `json:"downloads_disk_guard_pause_pct"`
-	DiskGuardResumePct        *string `json:"downloads_disk_guard_resume_pct"`
-	StallMinutes              *int    `json:"downloads_stall_minutes"`
-	UpgradeBudget             *int    `json:"upgrade_max_grabs_per_sweep"`
-	QuotaDays                 *int    `json:"request_quota_days"`
-	QuotaMovies               *int    `json:"request_quota_movies"`
-	QuotaSeasons              *int    `json:"request_quota_seasons"`
-	QuotaBooks                *int    `json:"request_quota_books"`
-	DefaultCategories         *bool   `json:"indexer_default_categories"`
+	PlexLoginAutoApproveTypes *string   `json:"plex_login_auto_approve_types"`
+	RecycleMaxGB              *string   `json:"recycle_max_gb"`
+	RecycleRetentionDays      *string   `json:"recycle_retention_days"`
+	DiskGuard                 *bool     `json:"downloads_disk_guard"`
+	DiskGuardPausePct         *string   `json:"downloads_disk_guard_pause_pct"`
+	DiskGuardResumePct        *string   `json:"downloads_disk_guard_resume_pct"`
+	StallMinutes              *int      `json:"downloads_stall_minutes"`
+	UpgradeBudget             *int      `json:"upgrade_max_grabs_per_sweep"`
+	QuotaDays                 *int      `json:"request_quota_days"`
+	QuotaMovies               *int      `json:"request_quota_movies"`
+	QuotaSeasons              *int      `json:"request_quota_seasons"`
+	QuotaBooks                *int      `json:"request_quota_books"`
+	DefaultCategories         *bool     `json:"indexer_default_categories"`
+	BookLanguages             *[]string `json:"books_languages"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -265,6 +293,14 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	var bookLangs string
+	if req.BookLanguages != nil {
+		var msg string
+		if bookLangs, msg = parseBookLanguagesUpdate(*req.BookLanguages); msg != "" {
+			a.writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+	}
 	// ISO 3166-1 alpha-2 ("AU"), or empty to go back to TMDB's global lists. Checked up
 	// here with the rest, so a bad region doesn't leave the keys before it saved.
 	var region string
@@ -367,6 +403,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UpgradeBudget != nil && !save(a.deps.Settings.Set(ctx, automation.KeyUpgradeBudget, strconv.Itoa(*req.UpgradeBudget))) {
+		return
+	}
+	if req.BookLanguages != nil && !save(a.deps.Settings.Set(ctx, automation.KeyBookLanguages, bookLangs)) {
 		return
 	}
 	a.handleGetSettings(w, r)

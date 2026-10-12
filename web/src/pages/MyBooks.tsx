@@ -4,6 +4,7 @@ import { api, type MyBook, type MyRequest } from "../lib/api";
 import { useLiveQuery } from "../lib/useLiveQuery";
 import { lazyPage } from "../lib/lazyPage";
 import { posterThumb } from "../lib/img";
+import { formatReleaseDay } from "../lib/format";
 import { stillComingLine } from "../lib/bookFormats";
 import { playAudiobook } from "../lib/playerStub";
 import { requestStage } from "../lib/requestStage";
@@ -278,11 +279,17 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
 
 // RequestCard is one of their requests still on the way, worded by lib/requestStage — the
 // same badge and line the Requests page and Discover show ("Downloading · 40% · 2h left",
-// "Searching · Not found yet — next check Tue 14 Oct"). It opens the request.
+// "Searching · Not found yet — next check Tue 14 Oct"). A book that isn't out yet says so,
+// with the day it is ("Not out yet · Out 12 Mar"), which is when it's first searched for.
+// It opens the request.
 function RequestCard({ r, queueKnown }: { r: MyRequest; queueKnown: boolean }) {
-  const st = requestStage(asRequest(r), queueKnown);
+  let st = requestStage(asRequest(r), queueKnown);
+  const notOut = !!r.release_date && r.status !== "declined";
+  if (notOut && r.status === "approved" && !st.unknown && (r.tracking?.stage ?? "searching") === "searching") {
+    st = { ...st, badge: "Not out yet", tone: "faint", detail: "" };
+  }
   // Which format is still coming ("Audiobook on the way"), once it's approved.
-  const coming = r.status === "approved" ? stillComingLine(r.waiting) : "";
+  const coming = r.status === "approved" && !notOut ? stillComingLine(r.waiting) : "";
   const body = (
     <>
       <CoverBox url={r.cover_url} title={r.title}>
@@ -291,6 +298,7 @@ function RequestCard({ r, queueKnown }: { r: MyRequest; queueKnown: boolean }) {
       <div className="p-2">
         <div className="truncate text-[11.5px] font-semibold" title={r.title}>{r.title}</div>
         {r.author && <div className="truncate text-[10.5px] text-ink-dim" title={r.author}>{r.author}</div>}
+        {notOut && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date!)}</div>}
         {st.detail && <div className="mt-0.5 line-clamp-2 text-[10.5px]" style={{ color: st.detailTone ?? "var(--ink-faint)" }} title={st.detail}>{st.detail}</div>}
         {coming && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
       </div>

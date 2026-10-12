@@ -292,6 +292,33 @@ func TestMergeMovesMissingEditions(t *testing.T) {
 	}
 }
 
+// The release day carries over: the kept book's when it has one, else the dropped one's.
+// [BOOK-18]
+func TestMergeCarriesReleaseDate(t *testing.T) {
+	f := newMergeFixture(t)
+	ctx := f.ctx
+	keep := f.book("OL1W", "Warbreaker")
+	drop := f.book("hc:8", "Warbreaker")
+	f.exec(`UPDATE books SET release_date = '2027-03-12' WHERE id = ?`, drop.ID)
+	if _, err := f.s.Merge(ctx, keep.ID, drop.ID, MergeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.s.Get(ctx, keep.ID); got.ReleaseDate != "2027-03-12" {
+		t.Errorf("kept book's release date = %q, want the dropped one's", got.ReleaseDate)
+	}
+
+	keep2 := f.book("OL2W", "Elantris")
+	drop2 := f.book("hc:9", "Elantris")
+	f.exec(`UPDATE books SET release_date = '2026-01-01' WHERE id = ?`, keep2.ID)
+	f.exec(`UPDATE books SET release_date = '2027-05-05' WHERE id = ?`, drop2.ID)
+	if _, err := f.s.Merge(ctx, keep2.ID, drop2.ID, MergeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.s.Get(ctx, keep2.ID); got.ReleaseDate != "2026-01-01" {
+		t.Errorf("kept book's own date = %q, want it kept", got.ReleaseDate)
+	}
+}
+
 // A failure part-way through — here the listening move — leaves both books, every
 // version and every listening row exactly as they were.
 func TestMergeRollsBackOnFailure(t *testing.T) {

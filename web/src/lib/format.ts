@@ -72,6 +72,27 @@ export function formatCheckDay(iso: string | null | undefined, now = Date.now(),
   return new Date(ms).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" }).replace(/,/g, "");
 }
 
+// A book's release day ("2027-03-12") is a calendar day, not an instant, so it is read as
+// the viewer's own midnight: everyone sees the same day whatever their time zone.
+function releaseDay(date?: string | null): Date | null {
+  const [y, m, d] = (date ?? "").split("-").map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : null;
+}
+
+// isUpcoming: the release day hasn't come yet.
+export function isUpcoming(date?: string | null, now = Date.now()): boolean {
+  const day = releaseDay(date);
+  return !!day && day.getTime() > now;
+}
+
+// formatReleaseDay is "12 Mar", or "12 Mar 2027" when it isn't this year.
+export function formatReleaseDay(date: string, now = Date.now(), locale?: string): string {
+  const day = releaseDay(date);
+  if (!day) return date;
+  const year = day.getFullYear() !== new Date(now).getFullYear() ? "numeric" : undefined;
+  return day.toLocaleDateString(locale, { day: "numeric", month: "short", year }).replace(/,/g, "");
+}
+
 // notFoundYet is the line for a wanted book the searches keep missing: "Not found yet ·
 // next check Tue 14 Oct", or "Not found yet — last checked 3d ago, next check Tue 14 Oct"
 // when the last check is passed in.

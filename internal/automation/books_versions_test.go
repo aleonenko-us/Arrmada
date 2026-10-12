@@ -50,10 +50,10 @@ func TestVersionProfile(t *testing.T) {
 		t.Errorf("rejects = %q, want only abridged", vp.Rejected)
 	}
 	rel := indexer.Release{Title: "Empire of the Vampire [M4B]", Narrator: "GraphicAudio"}
-	if _, ok := bookRelScore(vp, rel); !ok {
+	if _, ok := bookRelScore(vp, nil, rel); !ok {
 		t.Error("the version's own release must be eligible under its profile")
 	}
-	if _, ok := bookRelScore(sp, rel); ok {
+	if _, ok := bookRelScore(sp, nil, rel); ok {
 		t.Error("the book's profile alone would have refused it")
 	}
 }

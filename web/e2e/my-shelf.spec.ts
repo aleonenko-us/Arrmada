@@ -20,6 +20,9 @@ test.describe("My shelf at 375px", () => {
     const reqs = page.getByRole("region", { name: "Your requests" });
     await expect(reqs).toContainText("Not found yet");
     await expect(reqs).toContainText("40%");
+    const notOut = reqs.getByRole("link", { name: /The Moon's Pull/ });
+    await expect(notOut).toContainText("Not out yet");
+    await expect(notOut).toContainText(/Out .*Nov/);
     await expect(reqs.getByRole("link", { name: /Charts of the Lesser Sounds/ })).toHaveAttribute("href", "/requests?id=42");
 
     await fresh.getByRole("button", { name: /A Field Guide to Tides/ }).tap();

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
 	"github.com/tristenlammi/arrmada/internal/auth"
@@ -97,6 +98,8 @@ type MyRequest struct {
 	Tracking *requests.Tracking `json:"tracking,omitempty"`
 	// DeclineReason is what staff said when they turned it down (it's the caller's own).
 	DeclineReason string `json:"decline_reason,omitempty"`
+	// ReleaseDate: the book isn't out yet; the day it is (YYYY-MM-DD), for "Out 12 Mar".
+	ReleaseDate string `json:"release_date,omitempty"`
 }
 
 // shelfDescriptionMax caps a description on the shelf: the whole shelf comes in one
@@ -232,6 +235,9 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		mr.Waiting = requests.StillComing(rq.Formats, b)
 		if t := rq.Tracking; tracked && t != nil {
 			mr.Stage, mr.Note, mr.NextCheckAt = t.Stage, t.Note, t.NextCheckAt
+		}
+		if b.ID > 0 && !books.Released(b.ReleaseDate, time.Now()) {
+			mr.ReleaseDate = b.ReleaseDate
 		}
 		pending = append(pending, mr)
 	}

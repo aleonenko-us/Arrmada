@@ -28,4 +28,11 @@ describe("searchingDetail", () => {
   it("passes the server's own note through", () => {
     expect(searchingDetail({ stage: "searching", note: "Not out yet" }, "", now)).toBe("Not out yet");
   });
+
+  it("says when a book that isn't out yet comes out, as a calendar day", () => {
+    const line = searchingDetail({ stage: "searching", note: "Not out yet", next_check_at: "2026-11-11T13:00:00Z", release_date: "2026-11-12" }, "", now);
+    expect(line).toMatch(/^Out .*12.* — we'll grab it then$/);
+    expect(line).toMatch(/Nov/);
+    expect(line).not.toMatch(/2026/); // this year: no year
+  });
 });
