@@ -30,7 +30,7 @@ func TestFileViewJoinsDiskAndLedger(t *testing.T) {
 	score, conf := 88, 91
 	if _, err := f.s.ledger.RecordFile(ctx, SubtitleFile{MediaKey: "m:1", Kind: "movie", MovieID: 1, VideoPath: video,
 		Path: filepath.Join(dir, "Heat (1995).en.srt"), Lang: "en", Source: SourceOpenSubtitles, Provider: providerOpenSubtitles,
-		ProviderFileID: "777", ReleaseName: "Heat.1995.BluRay-GRP", Score: &score, SyncConfidence: &conf}); err != nil {
+		ProviderFileID: "777", ReleaseName: "Heat.1995.BluRay-GRP", Score: &score, SyncConfidence: &conf, SyncCheckedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.s.ledger.SaveBackoff(ctx, Backoff{MediaKey: "m:1", Lang: "fr", VideoPath: video, PrimaryReason: ResultImpossible,
@@ -65,7 +65,7 @@ func TestFileViewJoinsDiskAndLedger(t *testing.T) {
 	}
 	en := byName["Heat (1995).en.srt"]
 	if !en.Owned || en.Source != SourceOpenSubtitles || en.ProviderFileID != "777" || en.Release != "Heat.1995.BluRay-GRP" ||
-		en.Score == nil || *en.Score != 88 || en.SyncConfidence == nil || *en.SyncConfidence != 91 || !en.Shiftable {
+		en.Score == nil || *en.Score != 88 || en.Health.Score != 91 || en.Health.State != HealthOK || !en.Shiftable {
 		t.Errorf("en sidecar = %+v", en)
 	}
 	if en.CueCount != 4 || len(en.FirstCues) != 3 || en.FirstCues[0].Text != "Hello there." || en.FirstCues[0].StartMs != 1000 ||
@@ -73,7 +73,7 @@ func TestFileViewJoinsDiskAndLedger(t *testing.T) {
 		t.Errorf("en preview = %d %+v", en.CueCount, en.FirstCues)
 	}
 	es := byName["Heat (1995).es.sdh.srt"]
-	if es.Owned || es.Source != SourceUnknown || es.Lang != "es" || es.Variant != VariantSDH || es.Size == 0 {
+	if es.Owned || es.Source != SourceUnknown || es.Lang != "es" || es.Variant != VariantSDH || es.Size == 0 || es.Health.State != HealthUnchecked {
 		t.Errorf("es sidecar = %+v, want an unowned SDH es file", es)
 	}
 	if len(v.Orphans) != 1 || v.Orphans[0].Name != "Old Heat.eng.srt" {
@@ -129,24 +129,30 @@ func TestShiftRoundTrip(t *testing.T) {
 		t.Errorf("rewritten file:\n%q", raw)
 	}
 	row, ok, err := f.s.Ledger().LiveFile(ctx, sub)
-	if err != nil || !ok || row.Source != SourceUnknown || row.SyncOffsetMs == nil || *row.SyncOffsetMs != 1000 || row.Lang != "en" {
+	if err != nil || !ok || row.Source != SourceUnknown || row.SyncShiftMs == nil || *row.SyncShiftMs != 1000 || row.SyncOffsetMs != nil || row.Lang != "en" {
 		t.Fatalf("ledger row after the first shift = %+v ok=%v err=%v", row, ok, err)
 	}
-	conf := 80
-	if _, err := f.s.Ledger().SetSync(ctx, sub, 1000, conf); err != nil {
+	// A check then finds it 200 ms early; the next nudge moves that measurement with it.
+	if _, err := f.s.Ledger().RecordSync(ctx, sub, SyncCheck{OffsetMs: -200, Confidence: 80, ShiftMs: 1000}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.ShiftSidecar(ctx, movieRef(1), "Heat (1995).en.srt", -500); err != nil {
 		t.Fatal(err)
 	}
 	row, _, _ = f.s.Ledger().LiveFile(ctx, sub)
-	if row.SyncOffsetMs == nil || *row.SyncOffsetMs != 500 || row.SyncConfidence != nil {
-		t.Errorf("after −0.5 s: offset %v confidence %v, want 500 (+1000 − 500) and cleared", deref(row.SyncOffsetMs), row.SyncConfidence)
+	if row.SyncShiftMs == nil || *row.SyncShiftMs != 500 || deref(row.SyncOffsetMs) != -700 || deref(row.SyncConfidence) != 80 {
+		t.Errorf("after −0.5 s: shift %v offset %v confidence %v, want 500, −700, 80", deref(row.SyncShiftMs), deref(row.SyncOffsetMs), deref(row.SyncConfidence))
 	}
-	if n, cues := previewCues(sub, 1); n != 4 || cues[0].StartMs != 1500 {
+	if _, err := f.s.ShiftSidecar(ctx, movieRef(1), "Heat (1995).en.srt", -500); err != nil {
+		t.Fatal(err)
+	}
+	if row, _, _ = f.s.Ledger().LiveFile(ctx, sub); row.SyncShiftMs != nil {
+		t.Errorf("shifted back to where it was: shift %v, want none", deref(row.SyncShiftMs))
+	}
+	if n, cues := previewCues(sub, 1); n != 4 || cues[0].StartMs != 1000 {
 		t.Errorf("after both shifts: %d cues, first %+v", n, cues)
 	}
-	if len(told) != 2 || told[0] != "movie:"+filepath.Dir(video) {
+	if len(told) != 3 || told[0] != "movie:"+filepath.Dir(video) {
 		t.Errorf("Plex was told %v", told)
 	}
 

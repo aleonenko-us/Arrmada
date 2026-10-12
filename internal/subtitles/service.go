@@ -67,6 +67,8 @@ type Service struct {
 	rateWait time.Duration
 	// ffprobeRun is probeCached's ffprobe call (probeSubs when nil).
 	ffprobeRun func(ctx context.Context, ffprobe, path string) (*mediaInfo, error)
+	// extractAudio is jobAudio's WAV extraction (extractWAV with s.ffmpeg when nil).
+	extractAudio func(ctx context.Context, video string, stream int, dst string) error
 	// passFn is one library pass (Library + SeriesGroups when nil).
 	passFn func(ctx context.Context) ([]FileSubs, []SeriesGroup, error)
 
@@ -75,9 +77,9 @@ type Service struct {
 	// the download rung for that language (fail closed).
 	blocklist func(ctx context.Context, mediaKey string) (map[string]bool, error)
 	// syncGate checks a downloaded non-hash candidate against the file's audio before it
-	// is saved, returning the bytes to save (shifted into sync if need be). SUB-19 sets
-	// it. While it's nil, candidates at or above the minimum score are saved as they
-	// come, and the band between scoreFloor and the minimum is refused.
+	// is saved, returning the bytes to save (shifted into sync if need be): gateSync
+	// (syncgate.go). While it's nil (tests), candidates at or above the minimum score are
+	// saved as they come, and the band between scoreFloor and the minimum is refused.
 	syncGate func(ctx context.Context, ref fileRef, lang string, c ScoredCandidate, srt []byte) (out []byte, ok bool, detail string)
 
 	mu      sync.Mutex
@@ -120,6 +122,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		s.jobsDB = nil // writing on top of an unread table would clash with its ids
 	}
 	s.blocklist = s.ledgerBlocklist
+	s.syncGate = s.gateSync
 	// A silent fall-back from the oneAPI build would hide a broken GPU setup behind a
 	// slow run; surface it as a warning event the first time it happens.
 	s.whisper.note = func(level, msg string) { s.event(level, msg) }
@@ -397,7 +400,14 @@ func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (
 			break
 		}
 		if !c.HashMatch && c.Score < need && s.syncGate == nil {
-			break // SUB-19: this band is accepted only when a sync check passes
+			break // this band is accepted only when a sync check passes
+		}
+		if !c.HashMatch && c.Score < need {
+			// Don't spend a download on a weak match whose sync can't be checked.
+			if err := s.syncReady(ctx, ref, lang); err != nil {
+				refusal = "a weak match whose sync couldn't be checked: " + shortErr(err, 100)
+				break
+			}
 		}
 		data, err := s.provider.Download(ctx, c.FileID)
 		if err != nil {

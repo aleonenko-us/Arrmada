@@ -28,6 +28,7 @@ var groupLinks = map[string]*health.Fix{
 	KindHealth:   health.FixStatus,
 	KindConvert:  health.FixConvertProblems,
 	KindIssue:    health.FixIssues,
+	KindSubs:     health.FixSubtitles,
 }
 
 func linkTo(it *Item, f *health.Fix) {

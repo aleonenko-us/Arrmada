@@ -44,7 +44,7 @@ func (st *jobStore) ok() bool { return st != nil && st.db != nil }
 
 const jobCols = `id, media_key, kind, movie_id, series_id, season, episode, title, priority, lane, state,
 	langs, redo, note, run_id, outcomes_json, audio_sec, queued_at, started_at, finished_at,
-	mode, repair_langs, retire_json`
+	mode, repair_langs, retire_json, audio_stream, track_index, pick_file_id`
 
 // jobArgs is a job's row in jobCols order.
 func jobArgs(j Job) ([]any, error) {
@@ -72,7 +72,7 @@ func jobArgs(j Job) ([]any, error) {
 		nullInt(j.Episode, j.Kind == "episode"), j.Title, j.Priority, j.lane(), string(j.State),
 		strings.Join(j.Langs, ","), boolInt(j.Redo), nullStr(j.Note), nullStr(j.RunID), outcomes, j.AudioSec,
 		j.At, nullTime(j.StartedAt), nullTime(j.FinishedAt),
-		j.Mode, strings.Join(j.repairLangs, ","), retire}, nil
+		j.Mode, strings.Join(j.repairLangs, ","), retire, nullIntPtr(j.AudioStream), nullIntPtr(j.TrackIndex), nullStr(j.PickFileID)}, nil
 }
 
 // savedRetire is an orphanRetire as the table stores it.
@@ -102,18 +102,21 @@ func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 		langs, note, runID, outcomes, state sql.NullString
 		repairLangs, retire                 sql.NullString
 		startedAt, finishedAt               sql.NullInt64
+		audioStream, trackIndex             sql.NullInt64
+		pickFileID                          sql.NullString
 		redo                                int
 		mediaKey                            string
 	)
 	if err := sc.Scan(&j.ID, &mediaKey, &j.Kind, &movieID, &seriesID, &season, &episode, &j.Title, &j.Priority,
 		&j.Lane, &state, &langs, &redo, &note, &runID, &outcomes, &j.AudioSec, &j.At, &startedAt, &finishedAt,
-		&j.Mode, &repairLangs, &retire); err != nil {
+		&j.Mode, &repairLangs, &retire, &audioStream, &trackIndex, &pickFileID); err != nil {
 		return Job{}, err
 	}
 	j.MovieID, j.SeriesID = movieID.Int64, seriesID.Int64
 	j.Season, j.Episode = int(season.Int64), int(episode.Int64)
 	j.State, j.Redo, j.Note, j.RunID = JobState(state.String), redo != 0, note.String, runID.String
 	j.StartedAt, j.FinishedAt = startedAt.Int64, finishedAt.Int64
+	j.AudioStream, j.TrackIndex, j.PickFileID = intPtr(audioStream), intPtr(trackIndex), pickFileID.String
 	if langs.String != "" {
 		j.Langs = strings.Split(langs.String, ",")
 	}
@@ -149,7 +152,7 @@ func (st *jobStore) write(ctx context.Context, inserts, saves []Job) (skipped in
 		skipped = 0
 		if len(inserts) > 0 {
 			ins, err := tx.PrepareContext(ctx, `INSERT INTO subtitle_jobs (`+jobCols+`)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
 			if err != nil {
 				return err
 			}

@@ -23,14 +23,23 @@ func (s *Service) SetBin(b library.Bin) { s.bin = b }
 // so the caller must abort whatever it was replacing. A file that is already gone is not
 // an error. Once the file has gone, the ledger's live row for the path is superseded.
 func (s *Service) retireSidecar(ctx context.Context, path string) error {
+	_, err := s.retireSidecarTo(ctx, path)
+	return err
+}
+
+// retireSidecarTo is retireSidecar, also saying where in the bin the file went ("" when
+// the bin is switched off and the app-wide policy deleted it), so a redo that makes
+// nothing can put it back.
+func (s *Service) retireSidecarTo(ctx context.Context, path string) (string, error) {
 	if s.bin == nil {
-		return errNoBin
+		return "", errNoBin
 	}
-	if _, err := library.RemoveToBin(s.bin, path); err != nil {
-		return err
+	at, err := library.RemoveToBin(s.bin, path)
+	if err != nil {
+		return "", err
 	}
 	if err := s.ledger.SupersedeFile(context.WithoutCancel(ctx), path); err != nil {
 		s.log.Warn("subtitles: couldn't record a retired subtitle", "path", path, "err", err)
 	}
-	return nil
+	return at, nil
 }

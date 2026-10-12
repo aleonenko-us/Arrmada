@@ -35,6 +35,8 @@ var (
 	FixConvertProblems = &Fix{Path: "/convert?tab=problems", Label: "Convert problems"}
 	// Problems requesters reported: Requests → Issues. No LINKS key, for the same reason.
 	FixIssues = &Fix{Path: "/requests?tab=issues", Label: "Issues"}
+	// The Subtitles Overview's needs-attention board. No LINKS key, for the same reason.
+	FixSubtitles = &Fix{Path: "/subtitles", Label: "Subtitles"}
 )
 
 // connectionsPath is Settings → Connections, where every integration has a card.

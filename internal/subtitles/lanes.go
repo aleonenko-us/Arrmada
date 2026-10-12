@@ -94,7 +94,14 @@ func (s *Service) aiWouldRun(mi *mediaInfo, langs []string) bool {
 	}
 	var audio []string
 	if mi != nil {
-		audio = mi.AudioLangs
+		audio = mi.withDetected().AudioLangs
+		for _, t := range mi.Audio {
+			// Untagged audio nobody has listened to may be any language: detection runs
+			// with the AI, and turbo may well transcribe it.
+			if _, heard := mi.Detected[t.Index]; t.untagged() && !heard && ai.canRun(false) {
+				return true
+			}
+		}
 	}
 	for _, l := range langs {
 		if plan := aiPlan(audio, l); plan != "" && ai.canRun(plan == "translate") {

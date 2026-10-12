@@ -54,20 +54,7 @@ const maxPreviewBytes = 4 << 20
 // utf8BOM opens many uploaded SRTs; it isn't part of the first cue.
 const utf8BOM = "\xef\xbb\xbf"
 
-// MediaRef names one video from the client: a movie, or one episode of a show.
-type MediaRef struct {
-	Kind     string `json:"kind"` // "movie" | "episode"
-	MovieID  int64  `json:"movie_id,omitempty"`
-	SeriesID int64  `json:"series_id,omitempty"`
-	Season   int    `json:"season,omitempty"`
-	Episode  int    `json:"episode,omitempty"`
-}
-
-// job is the ref as a Job, which carries the key and identity helpers the queue uses.
-func (r MediaRef) job() *Job {
-	return &Job{Kind: r.Kind, MovieID: r.MovieID, SeriesID: r.SeriesID, Season: r.Season, Episode: r.Episode}
-}
-
+// valid reports whether a ref (syncgate.go) names a movie or an episode at all.
 func (r MediaRef) valid() bool {
 	switch r.Kind {
 	case "movie":
@@ -106,8 +93,8 @@ type SidecarView struct {
 	HashMatch      bool         `json:"hash_match,omitempty"`
 	Score          *int         `json:"score,omitempty"`
 	Model          string       `json:"model,omitempty"`
-	SyncOffsetMs   *int         `json:"sync_offset_ms,omitempty"`
-	SyncConfidence *int         `json:"sync_confidence,omitempty"` // the Health score; nil = not checked
+	Health         LangHealth   `json:"health"`             // the last sync check, in words (health.go)
+	ShiftMs        int          `json:"shift_ms,omitempty"` // the shift Arrmada (or the owner) applied to it
 	Locked         bool         `json:"locked,omitempty"`
 	EmbeddedIndex  *int         `json:"embedded_index,omitempty"`
 	CreatedAt      int64        `json:"created_at,omitempty"` // when the ledger recorded it
@@ -222,6 +209,7 @@ func (s *Service) FileView(ctx context.Context, r MediaRef) (FileView, error) {
 	for i, name := range sc.Names {
 		p := filepath.Join(dir, name)
 		sv := SidecarView{Name: name, Lang: sc.Variants[i].Lang, Variant: sc.Variants[i].Variant, Ext: strings.ToLower(filepath.Ext(name)), Source: SourceUnknown, FirstCues: []CuePreview{}}
+		sv.Health = healthOf(SubtitleFile{Source: SourceUnknown})
 		sv.Shiftable = sv.Ext == ".srt"
 		if fi, err := os.Stat(p); err == nil {
 			sv.Size, sv.ModifiedAt = fi.Size(), fi.ModTime().Unix()
@@ -230,7 +218,10 @@ func (s *Service) FileView(ctx context.Context, r MediaRef) (FileView, error) {
 		if f, ok := byPath[p]; ok {
 			sv.Owned, sv.Source, sv.Provider, sv.ProviderFileID = true, f.Source, f.Provider, f.ProviderFileID
 			sv.Release, sv.HashMatch, sv.Score, sv.Model = f.ReleaseName, f.HashMatch, f.Score, f.Model
-			sv.SyncOffsetMs, sv.SyncConfidence, sv.Locked, sv.EmbeddedIndex, sv.CreatedAt = f.SyncOffsetMs, f.SyncConfidence, f.Locked, f.EmbeddedIndex, f.CreatedAt
+			sv.Health, sv.Locked, sv.EmbeddedIndex, sv.CreatedAt = healthOf(f), f.Locked, f.EmbeddedIndex, f.CreatedAt
+			if f.SyncShiftMs != nil {
+				sv.ShiftMs = *f.SyncShiftMs
+			}
 		}
 		v.Sidecars = append(v.Sidecars, sv)
 	}
@@ -342,10 +333,9 @@ func (s *Service) fileBusy(key string) bool {
 }
 
 // ShiftSidecar moves a paired SRT's timing by offsetMs (+ = later), rewriting it through a
-// temp file renamed into place so a player never reads half of it. The ledger keeps the
-// running total of manual shifts on the file's row (one with source "unknown" is created
-// for a file Arrmada didn't write), and clears the last sync check's confidence: it
-// measured the file as it was.
+// temp file renamed into place so a player never reads half of it. The ledger adds it to
+// the shift on the file's row (one with source "unknown" is created for a file Arrmada
+// didn't write), and moves the last check's measured offset with it.
 func (s *Service) ShiftSidecar(ctx context.Context, r MediaRef, name string, offsetMs int) (SidecarView, error) {
 	if offsetMs == 0 || offsetMs > maxShiftMs || offsetMs < -maxShiftMs {
 		return SidecarView{}, ErrBadShift
@@ -392,7 +382,7 @@ func (s *Service) noteShift(ctx context.Context, r MediaRef, t sidecarTarget, of
 		off := offsetMs
 		_, err = s.ledger.RecordFile(ctx, SubtitleFile{
 			MediaKey: t.ref.MediaKey, Kind: r.Kind, MovieID: r.MovieID, SeriesID: r.SeriesID, Season: r.Season, Episode: r.Episode,
-			VideoPath: t.ref.Path, Path: t.path, Lang: lang, Variant: t.variant, Source: SourceUnknown, SyncOffsetMs: &off,
+			VideoPath: t.ref.Path, Path: t.path, Lang: lang, Variant: t.variant, Source: SourceUnknown, SyncShiftMs: &off,
 		})
 	}
 	if err != nil {

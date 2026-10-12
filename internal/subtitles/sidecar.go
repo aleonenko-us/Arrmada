@@ -66,7 +66,7 @@ type Orphan struct {
 type sidecarScan struct {
 	Present  []string      // wanted languages with a full (or SDH) sidecar paired with the video
 	Variants []LangVariant // every paired sidecar's language and variant
-	Names    []string      // each paired sidecar's file name, in Variants' order
+	Names    []string      // the file name of each, in step with Variants
 	Orphans  []Orphan      // movies only: subtitles in the folder that pair with no video
 }
 
