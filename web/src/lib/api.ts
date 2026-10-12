@@ -2155,7 +2155,8 @@ export interface ConvertSeriesRollup {
 export interface ConvertNeeds { video: boolean; subs: boolean; audio: boolean; why?: string; save: number; worth: boolean; measured?: boolean }
 // version_id/version_label: an extra version track of the movie (absent = its default file);
 // title stays the film's own.
-export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string; version_id?: number; version_label?: string }
+export interface ConvertCandidate { kind: "movie" | "episode"; key: string; movie_id?: number; series_id?: number; season?: number; episode?: number; title: string; year?: number; poster_url?: string; path: string; info?: ConvertMediaInfo; candidate: boolean; worth: boolean; save_bytes: number; needs: ConvertNeeds; est_bytes: number; tracks?: string; version_id?: number; version_label?: string;
+  revert_history_id?: number /* its conversion can still be reverted (the original is in the hold) */ }
 export interface ConvertJob {
   id: number; key: string; kind?: string; movie_id?: number; version_id?: number; series_id?: number; season?: number; episode?: number; title: string;
   state: "preparing" | "testing" | "encoding" | "verifying" | "replacing" | "done" | "failed" | "skipped" | "cancelled";
@@ -2176,8 +2177,17 @@ export interface ConvertHistoryEntry {
   out_path?: string; out_size: number; out_spec?: string; codec?: string; crf?: number; encoder?: string; crop?: string;
   ssim_mean?: number; ssim_min?: number; ssim_windows?: number[]; vmaf_mean?: number; // vmaf_mean: advisory, only with a libvmaf ffmpeg
   kept_tracks?: ConvertTrackDecision[]; dropped_tracks?: ConvertTrackDecision[]; warnings?: string[]; reclaim_deferred?: boolean;
-  started_at: number; finished_at?: number; encode_secs?: number;
+  started_at: number; finished_at?: number; encode_secs?: number; repeats?: number; poster_url?: string;
+  // The originals hold: where the original waits and until when, and what became of it.
+  hold_path?: string; hold_until?: number; hold_state?: ConvertHoldState; released_at?: number; reverted_at?: number;
   src_info?: ConvertMediaInfo; out_info?: ConvertMediaInfo;
+}
+export type ConvertHoldState = "" | "held" | "released" | "reverted" | "missing";
+// What the startup self-check found for one library folder's originals hold.
+export interface ConvertHoldCheck { root: string; label: string; instant: boolean; err?: string }
+// What the originals hold keeps (GET /convert/hardware → hold). budget_bytes 0 = no limit.
+export interface ConvertHoldStats {
+  held_bytes: number; held_saving_bytes: number; held_count: number; next_release_at?: number; budget_bytes: number; hold_days: number;
 }
 export interface ConvertUpNext {
   key: string; title: string; kind: string; video: boolean; saving: number; size: number; tracks: string; reason: string; codec: string; current: string;
@@ -2206,6 +2216,7 @@ export interface ConvertSettings {
   auto: boolean; hours_start: string; hours_end: string; allow_av1: boolean; use_gpu: boolean; pause_watching: boolean;
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
+  hold_days: number; hold_max_gb: number;
   // Dolby Vision files: drop the layer and keep the HDR10/HLG base, or leave them alone.
   dolby_vision: "drop" | "skip";
   /** 8-bit SDR sources: "always" written 10-bit, or "match_source" (kept 8-bit). */
@@ -3160,7 +3171,8 @@ export const api = {
   searchSeriesSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/series/${id}/search`, { method: "POST" }),
 
   // Convert
-  convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string }>("/api/v1/convert/hardware"),
+  convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;
+    hold_check?: ConvertHoldCheck[]; hold?: ConvertHoldStats }>("/api/v1/convert/hardware"),
   convertStatus: () => req<ConvertStatus>("/api/v1/convert/status"),
   convertSettings: () => req<ConvertSettings>("/api/v1/convert/settings"),
   updateConvertSettings: (patch: Partial<ConvertSettings>) => req<ConvertSettings>("/api/v1/convert/settings", { method: "PUT", body: JSON.stringify(patch) }),

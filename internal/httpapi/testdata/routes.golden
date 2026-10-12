@@ -274,6 +274,9 @@ POST /api/v1/connections/apikey/{ref}/test admin -
 POST /api/v1/connections/{kind}/{ref}/test staff -
 POST /api/v1/convert/blocklist/clear staff -
 POST /api/v1/convert/compare staff -
+POST /api/v1/convert/history/release staff -
+POST /api/v1/convert/history/{id}/release staff -
+POST /api/v1/convert/history/{id}/revert staff -
 POST /api/v1/convert/jobs/{id}/cancel staff -
 POST /api/v1/convert/reindex staff -
 POST /api/v1/convert/requests staff -

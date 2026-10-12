@@ -51,3 +51,16 @@ func TestManualImportCandidatesCapped(t *testing.T) {
 		t.Errorf("under the cap: %d, truncated %v, err %v", len(got), truncated, err)
 	}
 }
+
+// A manual import of a library folder never offers what Arrmada keeps out of the library
+// on purpose: Convert's held originals and the recycle bin.
+func TestManualImportCandidatesSkipHiddenFolders(t *testing.T) {
+	dir := t.TempDir()
+	sparseVideo(t, filepath.Join(dir, "Film (2020)", "Film.2020.mkv"))
+	sparseVideo(t, filepath.Join(dir, ".arrmada-hold", "7", "Held.2019.mkv"))
+	sparseVideo(t, filepath.Join(dir, ".arrmada-recycle", "Gone.2018.mkv"))
+	got, _, err := (&Service{}).ManualImportCandidates(context.Background(), dir, 500)
+	if err != nil || len(got) != 1 || filepath.Base(got[0].Path) != "Film.2020.mkv" {
+		t.Fatalf("candidates %+v, err %v — want only the library film", got, err)
+	}
+}

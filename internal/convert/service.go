@@ -7,7 +7,6 @@ package convert
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 	"github.com/tristenlammi/arrmada/internal/settings"
@@ -110,8 +108,7 @@ type Service struct {
 
 	ffmpeg, ffprobe        string
 	scratchDir, recycleDir string
-	bin                    library.Bin // where originals go (SetBin); nil = the single bin at recycleDir
-	hdr10plusTool          string      // HDR10+ metadata tool (empty if not bundled)
+	hdr10plusTool          string // HDR10+ metadata tool (empty if not bundled)
 
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
@@ -133,11 +130,12 @@ type Service struct {
 	// watching reports whether someone is watching Plex right now, and whether that answer
 	// means anything (Insights monitoring is on) — see SetWatching.
 	watching atomic.Pointer[plexWatch]
-	// binHeadroom reports the recycle bin's room under its cap (see SetBinHeadroom). binMu
-	// makes "does it fit" and the move into the bin one step, so two workers finishing
-	// together can't both fit into the same room.
-	binHeadroom atomic.Pointer[binHeadroomFunc]
-	binMu       sync.Mutex
+	// The originals hold (hold.go): where it may go, the startup self-check's findings, and
+	// holdMu, which makes every release and revert one step against the others — a held
+	// original is never deleted while it is being put back.
+	holdCfg   atomic.Pointer[holdConfig]
+	holdCheck holdChecks
+	holdMu    sync.Mutex
 	// libraryChanged hears about the folder of each swapped-in file (Plex's scanner).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
 	// bus is where lifecycle events go (see events.go, SetBus); nil = nowhere.
@@ -335,37 +333,6 @@ func (s *Service) swapped(job *Job, finalPath string) {
 	(*fn)(kind, filepath.Dir(finalPath))
 }
 
-// binHeadroomFunc reports how many more bytes the recycle bin takes before its cap purges
-// anything; capped is false with no cap, enabled false when recycling is off.
-type binHeadroomFunc func(ctx context.Context) (free int64, capped, enabled bool)
-
-// SetBinHeadroom tells Convert how to ask the recycle bin for its room under the cap.
-func (s *Service) SetBinHeadroom(fn func(ctx context.Context) (free int64, capped, enabled bool)) {
-	if fn == nil {
-		s.binHeadroom.Store(nil)
-		return
-	}
-	f := binHeadroomFunc(fn)
-	s.binHeadroom.Store(&f)
-}
-
-// binRoomFor reports whether an original of size bytes can go to the recycle bin without
-// the bin's cap purging it — and everything older — within the hour. A bin that's off or
-// uncapped always has room (off means the original is deleted once the result is
-// verified, which is what the owner chose). On false, reason says why for Problems.
-func (s *Service) binRoomFor(ctx context.Context, size int64) (ok bool, reason string) {
-	fn := s.binHeadroom.Load()
-	if fn == nil {
-		return true, ""
-	}
-	free, capped, enabled := (*fn)(ctx)
-	if !enabled || !capped || size <= free {
-		return true, ""
-	}
-	return false, fmt.Sprintf("the original (%s) doesn't fit in the recycle bin's free room (%s left under its size cap), "+
-		"so it would be permanently deleted within the hour. Raise the cap in Settings → Recycle bin", humanBytes(size), humanBytes(free))
-}
-
 // cleanScratch removes leftover per-job scratch files (partial encodes, test clips, HDR10+
 // sidecars) at startup — the debris of any conversion cut short by a restart. Only runs
 // before the workers start, so nothing live is touched.
@@ -487,6 +454,10 @@ type Candidate struct {
 	// An extra version track of the movie (0 = its default file) and that track's name.
 	VersionID    int64  `json:"version_id,omitempty"`
 	VersionLabel string `json:"version_label,omitempty"`
+
+	// The ledger row whose original is still in the hold, so this file's conversion can be
+	// reverted (0 = none). Filled by WithRevert.
+	RevertHistoryID int64 `json:"revert_history_id,omitempty"`
 }
 
 // Library returns every movie with its spec and what it needs, from the index.
@@ -554,9 +525,9 @@ func (s *Service) ClearSkip(ctx context.Context, key string) error {
 	return nil
 }
 
-// BinSettingsChanged is told when the recycle bin's cap or retention is saved. Files waiting
-// for room in the bin are tried again straight away rather than up to a day later: raising
-// the cap is exactly what their Problems entry asks for.
+// BinSettingsChanged is told when the recycle bin's cap or retention is saved. Originals no
+// longer go to the bin (they wait in the originals hold), so this only clears bin_full
+// skips an older version left behind, should any still be waiting.
 func (s *Service) BinSettingsChanged(ctx context.Context) {
 	if s.skips.clearKind(ctx, SkipBinFull) > 0 {
 		s.invalidateLibraryCache()
@@ -895,30 +866,6 @@ func humanBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
-}
-
-// SetBin points retired originals at bin (the per-library bins in the app). Call it at
-// startup, before the runner starts.
-func (s *Service) SetBin(b library.Bin) { s.bin = b }
-
-// retire moves a library file out of the way before it's replaced: into the recycle bin, or
-// deleted outright if the admin switched the bin off. It never silently relocates a file.
-func (s *Service) retire(path string) error {
-	bin := s.bin
-	if bin == nil {
-		bin = library.SingleBin(s.recycleDir)
-	}
-	_, offErr := bin.For(path)
-	dst, err := library.RemoveToBin(bin, path)
-	switch {
-	case err != nil:
-		return err
-	case errors.Is(offErr, library.ErrRecycleDisabled):
-		s.log.Info("convert: original deleted (recycle bin is off)", "path", path)
-	case dst != "":
-		s.log.Info("convert: original recycled", "to", dst)
-	}
-	return nil
 }
 
 // moveFile moves src to dst, falling back to copy+remove across filesystems (scratch is

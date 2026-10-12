@@ -7,14 +7,15 @@ import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
-import { useMe, isAdmin } from "../lib/me";
 import { backlogLine, fileForecast, restartLoss } from "../lib/convertForecast";
 import { groupVersions, nestedVersions } from "../lib/convertVersions";
 import {
   api, type ConvertCandidate, type ConvertSeriesRollup, type ConvertLibraryStats, type ConvertBlocked, type ConvertSkipped,
-  type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus, type RecycleStats,
-  type ConvertHistoryEntry, type ConvertHistoryOutcome, type ConvertTrackDecision,
+  type ConvertJob, type ConvertStatus, type ConvertSettings, type ConvertCompareStatus,
+  type ConvertHoldStats,
 } from "../lib/api";
+import { HeldSummary, RevertButton } from "./convert/hold";
+import { HistoryTab, RecentCard } from "./convert/History";
 import { PlanCard, PlanToggle, Poster } from "./convert/PlanCard";
 import { BulkConvertDialog, ConvertNowDialog, SwitchOnDialog } from "./convert/ConfirmConvert";
 import { requestedToast, type Asking } from "./convert/plan";
@@ -24,8 +25,8 @@ import { requestedToast, type Asking } from "./convert/plan";
 // while someone watches Plex. There's no queue to manage — the Overview shows what it's
 // doing, what's next and what it did; the Library lets you pick a file to do right now.
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
-type Tab = "overview" | "library" | "problems" | "activity";
-const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "activity"];
+type Tab = "overview" | "library" | "problems" | "history" | "activity";
+const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "history", "activity"];
 const ACTIVE = new Set(["preparing", "testing", "encoding", "verifying", "replacing"]);
 
 const card = "rounded-xl p-4";
@@ -47,10 +48,6 @@ function fmtSize(b?: number): string {
   return mb >= 1 ? `${mb.toFixed(0)} MB` : `${(b / 1024).toFixed(0)} KB`;
 }
 
-function savedPct(j: ConvertJob): number | null {
-  if (!j.src_bytes || j.src_bytes <= 0 || !j.out_bytes || j.out_bytes <= 0) return null;
-  return Math.round((1 - j.out_bytes / j.src_bytes) * 100);
-}
 
 function fmtEta(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "—";
@@ -62,13 +59,12 @@ function fmtEta(sec: number): string {
 }
 
 // originalsCopy says, literally, what happens to an original once its conversion is
-// verified. null = the bin's settings couldn't be read, so it stays general.
-function originalsCopy(bin: RecycleStats | null): string {
-  if (bin && !bin.enabled) return "The recycle bin is off, so originals are deleted once the conversion is verified — there is no undo";
-  const days = bin && bin.retention_days > 0 ? ` for ${bin.retention_days} days` : "";
-  const cap = bin ? (bin.max_gb > 0 ? `its ${bin.max_gb} GB cap` : "") : "its size cap";
-  return `Originals go to the recycle bin${days}${cap ? `, within ${cap} — a file whose original wouldn't fit isn't started` : ""}. ` +
-    "To restore one, delete the converted file first";
+// verified: it waits in the originals hold, on the same disk, for the undo window (Convert's
+// settings, Undo). null = the settings couldn't be read, so it stays general.
+function originalsCopy(holdDays: number | null): string {
+  if (holdDays === 0) return "Originals are deleted once the conversion is verified — there is no undo (change this under Undo in Convert's settings)";
+  const days = holdDays ? `${holdDays} day${holdDays === 1 ? "" : "s"}` : "a while";
+  return `Originals are kept for ${days} on the same disk, so a conversion can be undone`;
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -87,7 +83,7 @@ function ConvertPage() {
   const [status, setStatus] = useState<ConvertStatus | null>(null);
   const [jobs, setJobs] = useState<ConvertJob[]>([]);
   const [stats, setStats] = useState<ConvertLibraryStats | null>(null);
-  const [hw, setHw] = useState<{ using: string; reclaimed_bytes: number } | null>(null);
+  const [hw, setHw] = useState<{ using: string; reclaimed_bytes: number; hold?: ConvertHoldStats } | null>(null);
   const [settings, setSettings] = useState<ConvertSettings | null>(null);
   const [compareKey, setCompareKey] = useState<string | null>(null);
   const [libReload, setLibReload] = useState(0); // bumped when Compare closes: it may have measured a file
@@ -104,11 +100,11 @@ function ConvertPage() {
   const loadHw = useCallback(() => api.convertHardware().then(setHw).catch(() => {}), []);
   const loadSettings = useCallback(() => api.convertSettings().then(setSettings).catch(() => {}), []);
   useEffect(() => { loadStats(); loadHw(); loadSettings(); }, [loadStats, loadHw, loadSettings]);
-  const [bin, setBin] = useState<RecycleStats | null>(null);
-  useEffect(() => { api.recycleStats().then(setBin).catch(() => {}); }, []);
-  const originals = originalsCopy(bin);
+  const originals = originalsCopy(settings ? settings.hold_days : null);
 
   const anyActive = jobs.some((j) => ACTIVE.has(j.state));
+  // Bumps as jobs finish, so the ledger views re-read what was just recorded.
+  const finished = jobs.filter((j) => !ACTIVE.has(j.state)).length;
   usePoll(() => Promise.all([
     api.convertJobs().then(setJobs).catch(() => {}),
     api.convertStatus().then(setStatus).catch(() => {}),
@@ -119,7 +115,8 @@ function ConvertPage() {
     api.convertJobs().then(setJobs).catch(() => {});
     api.convertStatus().then(setStatus).catch(() => {});
     loadStats();
-  }, [loadStats]);
+    loadHw(); // freed and held space (a release moves bytes from one to the other)
+  }, [loadStats, loadHw]);
 
   const rescanLibrary = useCallback(async (): Promise<boolean> => {
     const r = await api.convertReindex();
@@ -154,6 +151,7 @@ function ConvertPage() {
     { key: "overview", label: "Overview" },
     { key: "library", label: "Library" },
     { key: "problems", label: "Problems" },
+    { key: "history", label: "History" },
     { key: "activity", label: "Activity" },
   ];
 
@@ -184,15 +182,11 @@ function ConvertPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="convert" label="Convert sections" />
 
         <TabPanel idPrefix="convert" value={tab}>
-          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={flash} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} />}
+          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={flash} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} onShowHistory={() => setTab("history")} />}
           {tab === "library" && <Library flash={flash} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} />}
           {tab === "problems" && <Problems flash={flash} />}
-          {tab === "activity" && (
-            <div className="flex flex-col gap-3.5">
-              <HistoryLedger reload={jobs.filter((j) => !ACTIVE.has(j.state)).length} />
-              <LogsConsole />
-            </div>
-          )}
+          {tab === "history" && <HistoryTab reload={finished} flash={(m) => { flash(m); refresh(); }} />}
+          {tab === "activity" && <LogsConsole />}
         </TabPanel>
       </div>
       {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await api.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
@@ -208,13 +202,13 @@ const STATUS_TONE: Record<string, string> = {
   working: "var(--good)", starting: "var(--good)", paused: "var(--avoid)", waiting: "var(--ink-faint)", off: "var(--ink-faint)", done: "var(--good)",
 };
 
-function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onRescan, onShowProblems }: {
-  status: ConvertStatus | null; jobs: ConvertJob[]; stats: ConvertLibraryStats | null; hw: { using: string; reclaimed_bytes: number } | null; originals: string;
-  flash: (m: string) => void; onChanged: () => void; onRescan: () => Promise<boolean>; onShowProblems: () => void;
+function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onRescan, onShowProblems, onShowHistory }: {
+  status: ConvertStatus | null; jobs: ConvertJob[]; stats: ConvertLibraryStats | null; hw: { using: string; reclaimed_bytes: number; hold?: ConvertHoldStats } | null; originals: string;
+  flash: (m: string) => void; onChanged: () => void; onRescan: () => Promise<boolean>; onShowProblems: () => void; onShowHistory: () => void;
 }) {
   const [rescanning, setRescanning] = useState(false);
   const running = jobs.filter((j) => ACTIVE.has(j.state));
-  const recent = jobs.filter((j) => !ACTIVE.has(j.state)).slice(0, 12);
+  const finished = jobs.length - running.length;
   const t = stats?.total;
   const n = t?.files ?? 0;
   const pct = (x: number) => (n ? Math.round((x / n) * 100) : 0);
@@ -260,7 +254,11 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
             <RescanButton busy={rescanning} title={stats?.as_of ? `Rescan the library · figures as of ${ago(stats.as_of)}` : "Rescan the library"}
               onClick={async () => { setRescanning(true); try { await onRescan(); } catch { /* flashed */ } finally { setRescanning(false); } }} />
           </div>
-          <div className="mt-2 text-[30px] font-extrabold tracking-tight">{fmtSize(hw?.reclaimed_bytes)}</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-[30px] font-extrabold tracking-tight">{fmtSize(hw?.reclaimed_bytes)}</span>
+            <span className="text-[12px] text-ink-faint">freed</span>
+          </div>
+          <HeldSummary hold={hw?.hold} flash={flash} onChanged={onChanged} />
           <div className="mt-3 border-t pt-3 text-[12px] text-ink-dim" style={{ borderColor: "var(--line-soft)" }}>
             <span style={{ color: "var(--good)" }}>~{fmtSize(t?.reclaimable)}</span> more to save ·{" "}
             <b style={{ color: "var(--ink)" }}>{(t?.convertible ?? 0).toLocaleString()}</b> of {n.toLocaleString()} files worth converting
@@ -334,31 +332,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
         </div>
       )}
 
-      {recent.length > 0 && (
-        <div className={card} style={cardStyle}>
-          <div className="text-[14px] font-bold">Recent</div>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {recent.map((j) => {
-              const p = savedPct(j);
-              const tone = j.state === "done" ? "var(--good)" : j.state === "failed" ? "var(--reject)" : "var(--ink-faint)";
-              return (
-                <div key={j.id} className="flex items-center gap-2.5 text-[12px]">
-                  <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: tone }}>{j.state}</span>
-                  <span className="min-w-0 flex-1 truncate font-semibold">{j.title}</span>
-                  {j.state === "done" && p !== null && j.codec ? (
-                    <span className="font-mono text-ink-dim">
-                      {fmtSize(j.src_bytes)} → {fmtSize(j.out_bytes)} <span style={{ color: "var(--good)" }}>−{p}%</span>
-                      <span className="ml-1.5 text-[10.5px] text-ink-faint">{j.codec.toUpperCase()}{j.ssim ? ` · SSIM ${j.ssim.toFixed(3)}` : ""}</span>
-                    </span>
-                  ) : (
-                    <span className="max-w-[55%] truncate text-[11.5px] text-ink-faint" title={j.note}>{j.note || j.state}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <RecentCard reload={finished} onSeeAll={onShowHistory} />
     </div>
   );
 }
@@ -727,7 +701,12 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                             {requested.has(c.key) ? <span className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good)" }}>Next ✓</span>
                               : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
                           </div>
-                        ) : <div className="text-right"><span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span></div>}
+                        ) : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="font-mono text-[10.5px] text-ink-faint">{c.needs?.why || "on target"}</span>
+                            {c.revert_history_id ? <RevertButton id={c.revert_history_id} flash={flash} onDone={() => { setRefreshKey((n) => n + 1); onRequested(); }} /> : null}
+                          </div>
+                        )}
                       </td>
                     </tr>
                     {planOpen && <tr><td colSpan={HEADERS.length} className="px-3 pb-3"><PlanCard itemKey={c.key} /></td></tr>}
@@ -823,7 +802,10 @@ const SKIP_LABEL: Record<string, string> = {
   library_full: "The library disk hasn't room for the converted file next to the original. The originals were kept; each is tried again after an hour, then six, then once a day",
   source_gone: "The library file was missing when Convert went to read it — usually mid-import or mid-upgrade. Checked again later",
   transient: "These hit a problem that usually clears on its own (often a full disk). Each is tried again after an hour, then six, then once a day",
-  bin_full: "Their originals are bigger than the room left in the recycle bin under its size cap. Keeping one there would make the bin delete it — and older deletions — within the hour, so these aren't converted until the cap is raised. Large 4K remuxes wait here; checked again daily, and straight away when the cap changes",
+  reverted: "You reverted their conversions, so Convert leaves them alone. Converting one by hand from the Library still works",
+  hold_full: "The originals hold is full: each converted file's original is kept for the undo window, and the hold has reached the size you set. Nothing is deleted to make room — these convert after the next original is released (its window ends, or you release some from History), or once you raise the hold's size in Convert's settings",
+  name_taken: "The converted file would take the name of a file another library record points at (a second version, say), so it was left alone and the originals kept. Each is tried again after an hour, then six, then once a day",
+  no_hold: "There's nowhere on the file's own disk to keep the original while the conversion can be undone — usually the file is outside your library folders, or a library folder isn't mounted. The originals were kept; each is tried again after an hour, then six, then once a day",
 };
 
 // retryIn says when a temporary skip is next tried, or "" when it isn't waiting.
@@ -836,7 +818,6 @@ function retryIn(unix: number): string {
 }
 
 function Problems({ flash }: { flash: (m: string) => void }) {
-  const admin = isAdmin(useMe().user); // the recycle bin's cap is an admin setting
   const [skips, setSkips] = useState<ConvertSkipped[] | null>(null);
   const [blocked, setBlocked] = useState<ConvertBlocked[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -875,9 +856,6 @@ function Problems({ flash }: { flash: (m: string) => void }) {
             <div>
               <div className="text-[14px] font-bold">{list.length.toLocaleString()} file{list.length === 1 ? "" : "s"}{list[0].permanent ? null : <span className="ml-2 font-mono text-[10px] font-normal text-ink-faint">TEMPORARY</span>}</div>
               <p className="mt-0.5 text-[12px] text-ink-dim">{SKIP_LABEL[kind] ?? list[0].reason}</p>
-              {kind === "bin_full" && (admin
-                ? <Link to={LINKS.recycleBin} className="mt-1 inline-block text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Raise the cap in Settings → Recycle bin</Link>
-                : <p className="mt-1 text-[12px] text-ink-faint">Ask an admin to raise the recycle bin's cap</p>)}
             </div>
             <button onClick={() => retrySkips(kind)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{busy === kind ? "…" : "Try these again"}</button>
           </div>
@@ -919,134 +897,6 @@ function Problems({ flash }: { flash: (m: string) => void }) {
 }
 
 /* ============================= ACTIVITY ============================= */
-
-// The ledger: every conversion outcome, kept across restarts. Converted files stay listed
-// for good; kept-original, failed and cancelled rows for 90 days.
-const OUTCOME_LABEL: Record<ConvertHistoryOutcome, string> = {
-  done: "converted", skipped: "kept original", failed: "failed", cancelled: "cancelled", in_progress: "running",
-};
-const OUTCOME_TONE: Record<ConvertHistoryOutcome, string> = {
-  done: "var(--good)", skipped: "var(--avoid)", failed: "var(--reject)", cancelled: "var(--ink-faint)", in_progress: "var(--accent)",
-};
-const HISTORY_FILTERS: { key: ConvertHistoryOutcome | ""; label: string }[] = [
-  { key: "", label: "All" }, { key: "done", label: "Converted" }, { key: "skipped", label: "Kept original" },
-  { key: "failed", label: "Failed" }, { key: "cancelled", label: "Cancelled" },
-];
-
-function fmtWhen(unix?: number): string {
-  if (!unix) return "—";
-  return new Date(unix * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-// cropLabel turns the recorded ffmpeg crop ("crop=3840:1600:0:280") into "bars removed → 3840×1600".
-function cropLabel(crop?: string): string {
-  const m = /^crop=(\d+):(\d+):/.exec(crop ?? "");
-  return m ? `bars removed → ${m[1]}×${m[2]}` : "";
-}
-
-function HistoryLedger({ reload }: { reload: number }) {
-  const [outcome, setOutcome] = useState<ConvertHistoryOutcome | "">("");
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<ConvertHistoryEntry[] | null>(null);
-  const [next, setNext] = useState("");
-  const [open, setOpen] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const t = window.setTimeout(() => {
-      api.convertHistory({ outcome: outcome || undefined, q: q.trim() || undefined, limit: 30 })
-        .then((r) => { if (alive) { setItems(r.items); setNext(r.next); } })
-        .catch(() => { if (alive) { setItems([]); setNext(""); } });
-    }, q ? 250 : 0);
-    return () => { alive = false; window.clearTimeout(t); };
-  }, [outcome, q, reload]);
-  const more = async () => {
-    setBusy(true);
-    try {
-      const r = await api.convertHistory({ outcome: outcome || undefined, q: q.trim() || undefined, before: next, limit: 30 });
-      setItems((cur) => [...(cur ?? []), ...r.items]);
-      setNext(r.next);
-    } catch { /* the button stays for another try */ } finally { setBusy(false); }
-  };
-
-  return (
-    <div className={card} style={cardStyle}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[14px] font-bold">History</div>
-          <p className="mt-0.5 text-[11.5px] text-ink-faint">Every conversion and what came of it. Converted files stay listed; the rest for 90 days.</p>
-        </div>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles" aria-label="Search titles" className={`${inp} w-[180px]`} style={inpStyle} />
-      </div>
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {HISTORY_FILTERS.map((f) => <Pill key={f.key || "all"} active={outcome === f.key} onClick={() => setOutcome(f.key)}>{f.label}</Pill>)}
-      </div>
-      <div className="mt-3 flex flex-col">
-        {items === null ? <div className="text-[12px] text-ink-faint">Loading…</div>
-          : items.length === 0 ? <div className="text-[12px] text-ink-faint">Nothing recorded yet{outcome || q ? " that matches" : ""}.</div>
-          : items.map((e) => <HistoryRow key={e.id} e={e} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)} />)}
-      </div>
-      {next && (
-        <button onClick={more} disabled={busy} className="mt-2.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={ghostBtn}>
-          {busy ? "…" : "Load more"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function HistoryRow({ e, open, onToggle }: { e: ConvertHistoryEntry; open: boolean; onToggle: () => void }) {
-  const pct = e.outcome === "done" && e.src_size > 0 && e.out_size > 0 ? Math.round((1 - e.out_size / e.src_size) * 100) : null;
-  const windows = e.ssim_windows ?? [];
-  const track = (d: ConvertTrackDecision) =>
-    [d.type === "audio" ? "Audio" : d.image ? "Image subtitle" : "Subtitle", d.lang || "und", d.title, d.codec, d.channels ? `${d.channels} ch` : "", d.forced ? "forced" : ""]
-      .filter(Boolean).join(" · ");
-  return (
-    <div className="border-t py-1.5 first:border-t-0" style={{ borderColor: "var(--line-soft)" }}>
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 text-left text-[12px]">
-        <span className="w-[86px] flex-none rounded px-1.5 py-0.5 text-center font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">{e.title}</span>
-        {pct !== null ? (
-          <span className="hidden font-mono text-ink-dim sm:inline">
-            {fmtSize(e.src_size)} → {fmtSize(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
-            {e.codec && <span className="ml-1.5 text-[10.5px] text-ink-faint">{e.codec.toUpperCase()}{e.ssim_mean ? ` · SSIM ${e.ssim_mean.toFixed(3)}` : ""}</span>}
-          </span>
-        ) : (
-          <span className="hidden max-w-[45%] truncate text-[11px] text-ink-faint sm:inline" title={e.note}>{e.note}</span>
-        )}
-        <span className="flex-none font-mono text-[10px] text-ink-faint">{fmtWhen(e.finished_at)}</span>
-      </button>
-      {open && (
-        <div className="mt-2 flex flex-col gap-1.5 rounded-lg p-3 text-[11.5px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          {e.note && <div>{e.note}</div>}
-          {e.src_spec && <div><span className={lbl}>Before</span> <span className="font-mono">{e.src_spec} · {fmtSize(e.src_size)}</span></div>}
-          {e.out_spec && <div><span className={lbl}>After</span> <span className="font-mono">{e.out_spec} · {fmtSize(e.out_size)}</span></div>}
-          {e.src_release && <div><span className={lbl}>Release</span> <span className="font-mono">{e.src_release}</span></div>}
-          {(e.codec || e.encoder) && (
-            <div><span className={lbl}>Encode</span> <span className="font-mono">
-              {[e.codec?.toUpperCase(), e.crf ? `CRF ${e.crf}` : "", e.encoder, cropLabel(e.crop),
-                e.encode_secs ? `${fmtEta(e.encode_secs)} encoding` : ""].filter(Boolean).join(" · ")}
-            </span></div>
-          )}
-          {windows.length > 0 && (
-            <div><span className={lbl}>Quality</span> <span className="font-mono">
-              SSIM {e.ssim_mean?.toFixed(4)} average, {e.ssim_min?.toFixed(4)} lowest · scenes {windows.map((w) => w.toFixed(3)).join(" ")}
-              {e.vmaf_mean ? ` · VMAF ${e.vmaf_mean.toFixed(1)} (for reference)` : ""}
-            </span></div>
-          )}
-          {(e.dropped_tracks ?? []).length > 0 && (
-            <div><span className={lbl}>Removed</span>
-              {e.dropped_tracks!.map((d) => <div key={`${d.type}-${d.index}`} className="ml-2">{track(d)} <span className="text-ink-faint">— {d.reason}</span></div>)}
-            </div>
-          )}
-          {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid)" }}>{w}</div>)}
-          {e.reclaim_deferred && <div className="text-ink-faint">Space not freed yet — the download client still holds a hardlinked copy of the original.</div>}
-          {e.out_path && <div className="truncate font-mono text-[10.5px] text-ink-faint" title={e.out_path}>{e.out_path}</div>}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function LogsConsole() {
   const [lines, setLines] = useState<{ at: number; level: string; msg: string }[]>([]);

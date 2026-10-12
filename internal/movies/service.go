@@ -1581,6 +1581,11 @@ func (s *Service) ManualImportCandidates(ctx context.Context, dir string, maxRes
 			truncated = true
 			return fs.SkipAll
 		}
+		// Arrmada's own hidden folders (the recycle bins, Convert's originals hold) hold
+		// files that are deliberately out of the library — never offer them for import.
+		if err == nil && d.IsDir() && p != dir && library.SkipScanDir(d.Name()) {
+			return fs.SkipDir
+		}
 		if err != nil || d.IsDir() {
 			return nil
 		}

@@ -15,7 +15,7 @@ import (
 //	convert.failed   FailedEvent   a job ended in failure (transient ones included)
 //	convert.blocked  BlockedEvent  a file reached maxFailures and is left alone from now on
 //	convert.stalled  StalledEvent  a file waits for room (scratch, library disk, bin/hold)
-//	convert.reverted —             reserved for the Revert of a conversion (CONV-10)
+//	convert.reverted RevertedEvent a conversion was undone from the originals hold (revert.go)
 //
 // Who hears them: every topic here is a plain topic, which the realtime policy sends to
 // staff only, and they carry library paths for that reason — never republish them on a
@@ -31,9 +31,10 @@ import (
 //     convert.blocked when that failure was the file's maxFailures-th.
 //   - finishAfterEncode (service.go): convert.blocked when its counted failure was the
 //     maxFailures-th.
-//   - finishSkip (service.go): convert.stalled on the FIRST skip in a row of a space kind
-//     (attempts == 1), so a scratch disk full for a week says so once per file, not on
-//     every retry.
+//   - finishSkip (service.go) and finishSkipUntil (holdbudget.go, a full originals hold):
+//     convert.stalled on the FIRST skip in a row of a space kind (attempts == 1), so a
+//     scratch disk full for a week says so once per file, not on every retry.
+//   - finishRevert (revert.go): convert.reverted once the original is back and recorded.
 const (
 	TopicDone     = "convert.done"
 	TopicFailed   = "convert.failed"

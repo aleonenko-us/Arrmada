@@ -29,6 +29,11 @@ type Settings struct {
 	DolbyVision      string `json:"dolby_vision"`   // drop (keep the HDR10/HLG base) | skip (leave them alone)
 	TenBit           string `json:"ten_bit"`        // 8-bit SDR sources: "always" 10-bit | "match_source"
 
+	// Undo: how long a converted original is kept in the originals hold (0 = no undo), and
+	// how much the hold may keep before conversions pause (GB; 0 = no limit).
+	HoldDays  int `json:"hold_days"`
+	HoldMaxGB int `json:"hold_max_gb"`
+
 	// Advanced.
 	ScratchDir  string `json:"scratch_dir"`
 	VaapiDevice string `json:"vaapi_device"`
@@ -60,6 +65,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		KeepAudioLangs:   strings.Join(p.keepAudio, ", "),
 		KeepOriginalLang: p.keepOriginal, DropCommentary: p.dropCommentary,
 		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision, TenBit: p.tenBit,
+		HoldDays: s.holdDays(ctx), HoldMaxGB: s.holdMaxGB(ctx),
 		ScratchDir: g.Get(ctx, keyScratchDir, ""), VaapiDevice: g.Get(ctx, keyVaapiDevice, ""),
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),
 		ServerTime: time.Now().Format("15:04"), ServerTZ: zone,
@@ -85,6 +91,8 @@ type SettingsPatch struct {
 	Crop             *bool   `json:"crop"`
 	DolbyVision      *string `json:"dolby_vision"`
 	TenBit           *string `json:"ten_bit"`
+	HoldDays         *int    `json:"hold_days"`
+	HoldMaxGB        *int    `json:"hold_max_gb"`
 	ScratchDir       *string `json:"scratch_dir"`
 	VaapiDevice      *string `json:"vaapi_device"`
 	CPUCores         *int    `json:"cpu_cores"`
@@ -126,6 +134,12 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 	}
 	if p.CPUCores != nil && *p.CPUCores < 0 {
 		return Settings{}, fmt.Errorf("CPU cores can't be negative")
+	}
+	if p.HoldDays != nil && (*p.HoldDays < 0 || *p.HoldDays > maxHoldDays) {
+		return Settings{}, fmt.Errorf("keep originals for 0–%d days", maxHoldDays)
+	}
+	if p.HoldMaxGB != nil && (*p.HoldMaxGB < 0 || *p.HoldMaxGB > maxHoldGB) {
+		return Settings{}, fmt.Errorf("the originals hold can be 0–%d GB", maxHoldGB)
 	}
 
 	g := s.settings
@@ -173,6 +187,19 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 		if err := g.Set(ctx, keyWorkers, strconv.Itoa(*p.Workers)); err != nil {
 			errs = append(errs, keyWorkers)
 		}
+	}
+	if p.HoldDays != nil {
+		if err := g.Set(ctx, keyHoldDays, strconv.Itoa(*p.HoldDays)); err != nil {
+			errs = append(errs, keyHoldDays)
+		}
+	}
+	if p.HoldMaxGB != nil {
+		if err := g.Set(ctx, keyHoldMaxGB, strconv.Itoa(*p.HoldMaxGB)); err != nil {
+			errs = append(errs, keyHoldMaxGB)
+		}
+	}
+	if p.HoldDays != nil || p.HoldMaxGB != nil {
+		s.holdFreed(ctx) // files paused on a full hold may fit now
 	}
 	if len(errs) > 0 {
 		return Settings{}, fmt.Errorf("could not save %s", strings.Join(errs, ", "))

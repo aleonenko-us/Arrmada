@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
-import { api, type ConvertDevice, type ConvertSettings as Settings } from "../../lib/api";
+import { api, type ConvertDevice, type ConvertHoldCheck, type ConvertSettings as Settings } from "../../lib/api";
 import { backlogLine } from "../../lib/convertForecast";
 import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices } from "../../components/convert/DevicesPanel";
 import { useConfirm } from "../../ui";
@@ -119,10 +119,16 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
   const workers = useAutoSave(String(s.workers), (v) => commit({ workers: Number(v) }), {
     validate: (v) => (/^[1-4]$/.test(v.trim()) ? null : "Conversions at once must be 1–4."),
   });
+  const holdDays = useAutoSave(String(s.hold_days), (v) => commit({ hold_days: Number(v) }), {
+    validate: (v) => (/^\d{1,3}$/.test(v.trim()) && Number(v) <= 365 ? null : "Keep originals for 0 to 365 days."),
+  });
+  const holdMax = useAutoSave(String(s.hold_max_gb), (v) => commit({ hold_max_gb: Number(v) }), {
+    validate: (v) => (/^\d{1,7}$/.test(v.trim()) ? null : "The hold's size is a number of GB (0 = no limit)."),
+  });
 
-  const [hw, setHw] = useState<{ dir: string; free: number; need: number; needTitle: string; devices: { path: string; pci: string; vendor: string }[] } | null>(null);
+  const [hw, setHw] = useState<{ dir: string; free: number; need: number; needTitle: string; devices: { path: string; pci: string; vendor: string }[]; holdCheck: ConvertHoldCheck[] } | null>(null);
   const loadHw = useCallback(() => {
-    api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [] })).catch(() => {});
+    api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [], holdCheck: h.hold_check ?? [] })).catch(() => {});
   }, []);
   useEffect(loadHw, [loadHw]);
   // The backlog's encoding time, so the hours show what they mean before they're saved.
@@ -244,6 +250,35 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <Toggle save={tidy} label="Tidy tracks even when that's all a file needs"
           hint="Off: a file whose picture is already fine is only rewritten when dropping tracks frees at least 10% (a big foreign-language audio track does). Its other track changes happen when it's re-encoded, or with Fix tracks. On: every file is tidied — which rewrites it end to end, often to shed a few small subtitle tracks." />
         <p className="m-0 text-[11px] text-ink-faint">Untagged tracks are kept. A language filter that would remove every audio track or every subtitle removes none — the tags are wrong.</p>
+      </Section>
+
+      <Section title="Undo" desc="A converted file's original isn't deleted straight away: it waits in a hidden folder on the same disk (.arrmada-hold in each library folder, which Plex ignores) so the conversion can be undone. It's never put in the recycle bin, and nothing in the hold is deleted until its time is up or you release it (Convert, History).">
+        <Field label="Keep originals for" hint="days · 0 = delete each original once its conversion is verified · applies to conversions from now on" save={holdDays}>
+          <span className="flex items-center gap-1.5 text-[12px]">
+            <input aria-label="Keep originals for (days)" inputMode="numeric" className={`${inp} w-[70px]`} {...textProps(holdDays)} onChange={(e) => holdDays.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} />
+            <span className="text-ink-faint">days</span>
+          </span>
+        </Field>
+        {holdDays.value.trim() === "0" && <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
+        <Field label="Hold up to" hint="GB · when the next original wouldn't fit, conversions pause until one is released — nothing is deleted to make room · 0 = no limit" save={holdMax}>
+          <span className="flex items-center gap-1.5 text-[12px]">
+            <input aria-label="Hold up to (GB)" inputMode="numeric" className={`${inp} w-[90px]`} {...textProps(holdMax)} onChange={(e) => holdMax.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))} />
+            <span className="text-ink-faint">GB</span>
+          </span>
+        </Field>
+        {hw && hw.holdCheck.length > 0 && (
+          <div className="flex flex-col gap-1 text-[11.5px]">
+            {hw.holdCheck.map((c) => (
+              <div key={c.root} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-semibold">{c.label}</span>
+                <span className="font-mono text-[10.5px] text-ink-faint">{c.root}</span>
+                {c.err ? <span style={{ color: "var(--reject)" }}>✗ {c.err}</span>
+                  : c.instant ? <span style={{ color: "var(--good)" }}>instant move ✓</span>
+                  : <span style={{ color: "var(--avoid)" }}>would copy ⚠ — this folder spans more than one disk, so keeping an original is a full copy</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </Section>
 
       <details className="rounded-xl p-4" style={cardStyle}>

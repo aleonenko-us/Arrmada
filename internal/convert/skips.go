@@ -22,17 +22,23 @@ const (
 	SkipLibraryFull = "library_full" // the library disk hasn't room for the converted file
 	SkipSourceGone  = "source_gone"  // the library file is missing
 	SkipTransient   = "transient"    // any other failure that should clear on its own
+	// The converted file's .mkv name is a file another library record points at (a second
+	// version, an episode filed under that name). Never moved aside; looked at again later.
+	SkipNameTaken = "name_taken"
+	// There's nowhere to keep the original: the file is outside every library folder, the
+	// folder is inside the app's data folder, or its hold can't be made. Looked at again later.
+	SkipNoHold = "no_hold"
 
-	// The original wouldn't fit in the recycle bin under its cap, so retiring it would make
-	// the bin purge it within the hour. Waits for the owner to raise the cap (saving the
-	// bin's settings clears these) or for the bin to empty; checked daily.
+	// Retired: originals went to the recycle bin and one that didn't fit under its cap
+	// waited here. They now go to the originals hold, so these are cleared at startup; the
+	// kind stays so a row an older version wrote still reads.
 	SkipBinFull = "bin_full"
 )
 
 // backoffSkip reports whether a skip kind waits longer each time it repeats.
 func backoffSkip(kind string) bool {
 	switch kind {
-	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient:
+	case SkipNoScratch, SkipLibraryFull, SkipSourceGone, SkipTransient, SkipNameTaken, SkipNoHold:
 		return true
 	}
 	return false
@@ -49,7 +55,7 @@ func retryDelay(kind string, attempts int) time.Duration {
 		return 12 * time.Hour
 	case SkipCancelled:
 		return 30 * 24 * time.Hour
-	case SkipBinFull:
+	case SkipBinFull, SkipHoldFull:
 		return 24 * time.Hour
 	}
 	if backoffSkip(kind) {
@@ -72,7 +78,7 @@ func retryDelay(kind string, attempts int) time.Duration {
 // Overview keeps promising space that will never arrive.
 func permanentSkip(kind string) bool {
 	switch kind {
-	case SkipHDRUnsupported, SkipNotSmaller, SkipQualityGate:
+	case SkipHDRUnsupported, SkipNotSmaller, SkipQualityGate, SkipReverted:
 		return true
 	}
 	return false
@@ -108,6 +114,12 @@ type Skipped struct {
 // this kind (1 for a new or different kind), which sets how long a backing-off skip waits.
 // Only one job runs per item at a time, so the read and the write can't interleave.
 func (st *skipStore) record(ctx context.Context, key, kind, reason string) int {
+	return st.recordAt(ctx, key, kind, reason, 0)
+}
+
+// recordAt is record with the retry time given (unix seconds) instead of worked out from
+// the kind; 0 works it out as record does.
+func (st *skipStore) recordAt(ctx context.Context, key, kind, reason string, retryAt int64) int {
 	if key == "" || kind == "" || kind == SkipAlreadyTarget {
 		return 0 // "already the target codec" isn't a problem, it's success
 	}
@@ -122,8 +134,8 @@ func (st *skipStore) record(ctx context.Context, key, kind, reason string) int {
 		Scan(&prevKind, &prevAttempts) == nil && prevKind == kind {
 		attempts = prevAttempts + 1
 	}
-	var retry int64
-	if d := retryDelay(kind, attempts); d > 0 {
+	retry := retryAt
+	if d := retryDelay(kind, attempts); retry == 0 && d > 0 {
 		retry = time.Now().Add(d).Unix()
 	}
 	_, _ = st.db.ExecContext(ctx,

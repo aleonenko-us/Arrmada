@@ -319,15 +319,13 @@ func (s *Service) hdr10PlusReadFailed(job *Job, err error) {
 }
 
 // spaceCheck makes sure there's room for this file before any heavy work, and skips it with
-// a wait when there isn't. The original goes to the recycle bin, and one that doesn't fit
-// under the bin's cap would be purged within the hour, taking older deletions with it. The
+// a wait when there isn't. The original will be kept in the originals hold (holdRoom). The
 // scratch folder holds the encode, and the finished file is then put next to the original.
 // The library disk is always checked too: two mounts of one share (Unraid's /mnt/user, say)
 // can't rename into each other, so the hand-in is a full copy even when both report the
 // same disk — and on a genuinely shared disk this is the figure scratch already passed.
 func (s *Service) spaceCheck(ctx context.Context, job *Job, src string, mi *MediaInfo, plan Plan, scratch string) bool {
-	if ok, reason := s.binRoomFor(ctx, mi.SizeBytes); !ok {
-		s.finishSkip(job, SkipBinFull, reason)
+	if !s.holdRoom(ctx, job, src, mi) {
 		return false
 	}
 	need := scratchNeeded(mi, plan, false)
@@ -740,118 +738,8 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 	}
 	s.event("info", fmt.Sprintf("%s — output: %s · %s (%d%% smaller)", job.Title, mediaSpec(outInfo), humanBytes(outSize), pct))
 
-	// Safe replace. The original stays on disk, intact, until the converted file is
-	// completely written next to it: copy to a sibling .arrpart, journal the swap, retire
-	// the original, then an atomic same-directory rename.
-	s.update(job, func(j *Job) { j.State = StateReplacing })
-	// The encode may have taken hours: make sure the library file is still the one we
-	// converted. An import or upgrade landing mid-encode must not be undone.
-	if cur, _, _, ok := s.resolveSource(ctx, job); !ok || cur != src {
-		s.finish(job, StateSkipped, "the library file changed during the conversion — left the new file alone")
-		return
-	}
-	if fi, err := os.Stat(src); err != nil || fi.Size() != mi.SizeBytes {
-		s.finish(job, StateSkipped, "the source file changed during the conversion — left it alone")
-		return
-	}
-	reclaimDeferred := fileLinks(src) > 1
-	rec.reclaimDeferred = reclaimDeferred
-	finalPath := strings.TrimSuffix(src, filepath.Ext(src)) + ".mkv"
-	part := finalPath + ".arrpart"
-	_ = os.Remove(part) // a leftover from an interrupted job
-	// A quick look at the bin before staging: from another filesystem staging is a full
-	// copy onto the library disk, wasted if the original then has nowhere to go. The check
-	// under binMu below is the one that counts.
-	if ok, reason := s.binRoomFor(ctx, mi.SizeBytes); !ok {
-		s.finishSkip(job, SkipBinFull, reason+" — the encode was discarded and the original kept")
-		return
-	}
-	if err := moveFileFn(dst, part); err != nil {
-		_ = os.Remove(part)
-		if errors.Is(err, syscall.ENOSPC) {
-			// The library disk filled up. Retrying straight away would re-run the whole encode
-			// only to fail the same way, so wait for space to be freed.
-			s.noteStall(job, outSize, int64(freeBytesFn(filepath.Dir(part))))
-			s.finishSkip(job, SkipLibraryFull, fmt.Sprintf("the library disk had %s free; staging needed %s — the encode was discarded and the original kept",
-				humanBytes(int64(freeBytesFn(filepath.Dir(part)))), humanBytes(outSize)))
-			return
-		}
-		s.finish(job, StateFailed, "could not stage the converted file: "+err.Error()+" — kept the original")
-		return
-	}
-	// The bin may have filled during the encode. Ask again right before the original goes
-	// in, and hold the answer until it has: if it no longer fits, the encode is lost but
-	// nothing is destroyed.
-	s.binMu.Lock()
-	if ok, reason := s.binRoomFor(ctx, mi.SizeBytes); !ok {
-		s.binMu.Unlock()
-		_ = os.Remove(part)
-		s.finishSkip(job, SkipBinFull, reason+" — the encode was discarded and the original kept")
-		return
-	}
-	// A different file already at the .mkv name goes to the bin before the original does:
-	// the rename below would otherwise overwrite it, and if the bin refuses it the
-	// original must still be in place to keep.
-	if finalPath != src {
-		// Never another version's file of this film, nor a path its record holds (either
-		// may have arrived mid-encode).
-		if s.otherTrackOwns(ctx, job, finalPath) {
-			s.binMu.Unlock()
-			_ = os.Remove(part)
-			s.finishSkip(job, SkipTransient, otherTrackNote(finalPath))
-			return
-		}
-		if _, e := os.Stat(finalPath); e == nil {
-			if err := s.retire(finalPath); err != nil {
-				s.binMu.Unlock()
-				_ = os.Remove(part)
-				s.finish(job, StateFailed, "could not move the file already at "+filepath.Base(finalPath)+" to the recycle bin: "+err.Error()+" — kept the original")
-				return
-			}
-		}
-	}
-	s.recordSwap(job, part, finalPath, src)
-	err = s.retire(src)
-	s.binMu.Unlock()
-	if err != nil {
-		_ = os.Remove(part)
-		s.clearSwap(part)
-		s.finish(job, StateFailed, "could not move the original to the recycle bin: "+err.Error()+" — kept the original")
-		return
-	}
-	if err := os.Rename(part, finalPath); err != nil {
-		s.log.Error("convert: converted file is staged but could not be swapped in", "part", part, "final", finalPath, "err", err)
-		s.finish(job, StateFailed, "converted file is staged at "+filepath.Base(part)+
-			" but could not replace the original — it will be reconciled at the next startup")
-		return
-	}
-	rec.outPath = finalPath
-	if err := s.markConverted(ctx, job, src, finalPath, plan.VideoCodec, mi.SizeBytes); err != nil {
-		s.log.Error("convert: library record update failed after the swap", "title", job.Title, "err", err)
-		s.finish(job, StateFailed, "converted, but the library record could not be updated: "+err.Error()+
-			" — it will be reconciled at the next startup")
-		return
-	}
-	s.clearSwap(part)
-	s.swapped(job, finalPath)
-	s.measured.forget(ctx, src)
-	s.reindexConverted(ctx, job)
-	s.update(job, func(j *Job) { j.OutBytes = outSize })
-	if reclaimDeferred {
-		s.event("info", job.Title+": space reclaim deferred — the download client still holds a hardlinked copy of the original")
-	} else {
-		s.addReclaimed(ctx, mi.SizeBytes-outSize)
-	}
-	notes := []string{}
-	if t := trackSummary(mi, plan); t != "" {
-		notes = append(notes, t)
-	}
-	for _, w := range planWarnings(mi, plan) {
-		s.event("warn", job.Title+": "+w)
-		notes = append(notes, w)
-	}
-	s.finish(job, StateDone, strings.Join(notes, " · "))
-	s.log.Info("convert: done", "title", job.Title, "src_mb", mi.SizeBytes>>20, "out_mb", outSize>>20)
+	// The swap itself — journalled, with the original kept in the hold — is swapin.go.
+	s.swapIn(ctx, job, src, dst, mi, plan, outSize)
 }
 
 // markConverted repoints the library record (movie or episode) at the converted file —

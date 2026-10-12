@@ -18,6 +18,12 @@ import (
 // share also keeps the file on the disk it was already on.
 const RecycleDirName = ".arrmada-recycle"
 
+// HoldDirName is Convert's originals hold at the top of each library folder: converted
+// originals wait there, on the drive they were already on, until their undo window ends.
+// Hidden like the bins (dot folder plus .plexignore) and skipped by every scan
+// (SkipScanDir). It is not a recycle bin: nothing in it is purged by a size cap.
+const HoldDirName = ".arrmada-hold"
+
 // plexignoreName is the file that keeps Plex from listing a bin's contents as library
 // items. "*" ignores everything under the folder it sits in.
 const plexignoreName = ".plexignore"
@@ -56,7 +62,7 @@ func (b *RootBins) For(path string) (string, error) {
 	}
 	if root := b.rootOf(path); root != "" {
 		dir := filepath.Join(root, RecycleDirName)
-		if err := prepareBin(dir); err != nil {
+		if err := PrepareHiddenDir(dir); err != nil {
 			return "", err
 		}
 		return dir, nil
@@ -74,12 +80,19 @@ func (b *RootBins) rootOf(path string) string {
 	if b.Roots == nil {
 		return ""
 	}
+	return RootOf(b.Roots(), path)
+}
+
+// RootOf is the longest of roots holding path ("" when none does) — the library folder a
+// file belongs to, for anything Arrmada keeps beside it on the same drive (the recycle
+// bins, Convert's originals hold). The folder itself doesn't count as inside it.
+func RootOf(roots []libroots.Root, path string) string {
 	p, err := filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
 	best := ""
-	for _, r := range b.Roots() {
+	for _, r := range roots {
 		if strings.TrimSpace(r.Path) == "" {
 			continue
 		}
@@ -127,13 +140,14 @@ func topDir(path string) string {
 	return "/" + strings.Join(parts, "/")
 }
 
-// prepareBin makes a library folder's bin and its .plexignore. Without the .plexignore
-// Plex would list every recycled film as a library item, so a bin that can't have one
-// refuses the delete like any other broken bin.
+// PrepareHiddenDir makes one of Arrmada's hidden folders at the top of a library folder (a
+// recycle bin, Convert's originals hold) and its .plexignore. Without the .plexignore Plex
+// would list every file in it as a library item, so a folder that can't have one is an
+// error like any other.
 //
 // The library folder itself must already be there: MkdirAll on a share that isn't
 // mounted would quietly build it on the container's own disk and fill that instead.
-func prepareBin(dir string) error {
+func PrepareHiddenDir(dir string) error {
 	if fi, err := os.Stat(filepath.Dir(dir)); err != nil {
 		return fmt.Errorf("the library folder isn't there (%w)", err)
 	} else if !fi.IsDir() {

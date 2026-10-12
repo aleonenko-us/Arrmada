@@ -11,8 +11,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
-// The TV library scan never offers a show from the recycle bin: every folder it looks at
-// is searched for, and nothing in .arrmada-recycle may be.
+// The TV library scan never offers a show from the recycle bin or Convert's originals hold:
+// every folder it looks at is searched for, and nothing in .arrmada-recycle or
+// .arrmada-hold may be.
 func TestSeriesScanSkipsRecycleDir(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -23,6 +24,8 @@ func TestSeriesScanSkipsRecycleDir(t *testing.T) {
 	for _, p := range []string{
 		filepath.Join(root, "Kept Show (2020)", "Season 01", "Kept Show - S01E01.mkv"),
 		filepath.Join(root, ".arrmada-recycle", "Gone Show (2019)", "Gone Show - S01E01.mkv"),
+		// Convert's originals hold: an original kept for undo is not a show.
+		filepath.Join(root, ".arrmada-hold", "12", "Held Show - S01E01.mkv"),
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -42,6 +45,6 @@ func TestSeriesScanSkipsRecycleDir(t *testing.T) {
 	}
 	// fakeMeta finds nothing, so every folder scanned ends up unmatched.
 	if len(res.Unmatched) != 1 || res.Unmatched[0].Folder != "Kept Show (2020)" {
-		t.Fatalf("unmatched = %+v, want only the kept show (the bin must not be scanned)", res.Unmatched)
+		t.Fatalf("unmatched = %+v, want only the kept show (the bin and the hold must not be scanned)", res.Unmatched)
 	}
 }
