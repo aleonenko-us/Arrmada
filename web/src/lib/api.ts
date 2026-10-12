@@ -198,6 +198,11 @@ export interface Evaluation {
   matched?: string[];
   avoided?: boolean; // ranked in the lower tier (an avoided format, or under the bitrate floor)
   avoided_formats?: string[];
+  /** Its preferred formats stopped counting: its bitrate collapsed against the best on offer. */
+  bonus_waived?: boolean;
+  /** Why it ranks below the release just above it: the deciding key and the words for it. */
+  lost_on?: string;
+  lost_on_text?: string;
 }
 
 export interface Decision {
@@ -206,6 +211,8 @@ export interface Decision {
   chosen_over?: string;
   eligible: Evaluation[];
   rejected: Evaluation[];
+  /** What put the winner above the runner-up (a rank key: resolution, preferences…). */
+  decided_by?: string;
 }
 
 export interface QualityPreview {
@@ -3324,6 +3331,13 @@ export interface RankedRelease {
   /** The extra audiobook version this release belongs to (0/absent = standard). */
   version_id?: number;
   version?: string;
+  // Why an eligible row ranks where it does (video searches):
+  matched?: string[];
+  avoided?: string[];
+  bonus_waived?: boolean;
+  /** "lower resolution", "fewer seeders"… — against the release ranked just above it. */
+  lost_on?: string;
+  lost_on_key?: string;
 }
 
 export interface BlockEntry {
@@ -3346,6 +3360,8 @@ export interface ReleaseList {
   profile: string;
   why?: string[];
   releases: RankedRelease[];
+  /** The runner-up and what the recommended release beat it on. */
+  chosen_over?: string;
   indexer_issues?: IndexerIssue[];
   /** How many indexers were asked. */
   searched?: number;

@@ -25,6 +25,7 @@ import {
 import { qualityApi } from "../lib/qualityApi";
 import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
+import { ReleaseExplain } from "../components/ReleaseExplain";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -1269,6 +1270,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
               {(result.why ?? []).map((w) => <li key={w}>✓ {w}</li>)}
             </ul>
           )}
+          {winner && result.chosen_over && <div className="mt-1 text-[11px] text-ink-faint">{result.chosen_over}</div>}
           {releases.length > 0 && (
             <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
               {showAll ? "Hide the others" : `${eligible.length} other eligible · ${skipped.length} skipped`}
@@ -1277,10 +1279,13 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
           {showAll && (
             <div className="mt-2 max-h-[280px] overflow-y-auto rounded-lg thin-scroll" style={{ border: "1px solid var(--line)" }}>
               {[...eligible, ...skipped].map((r) => (
-                <div key={r.title} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
-                  <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
-                  <span className="font-mono text-[10.5px] text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
-                  {!r.eligible && <span className="max-w-[45%] truncate text-right text-[10.5px]" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                <div key={r.title} className="px-3 py-1.5 text-[11.5px]" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
+                    <span className="font-mono text-[10.5px] text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
+                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-[10.5px]" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                  </div>
+                  {r.eligible && <ReleaseExplain className="mt-1" matched={r.matched} avoided={r.avoided} waived={r.bonus_waived} lostOn={r.lost_on} />}
                 </div>
               ))}
             </div>
@@ -1746,16 +1751,22 @@ function CmpLabel({ children }: { children: React.ReactNode }) {
   return <div className="px-3.5 pb-1 pt-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel)" }}>{children}</div>;
 }
 
+// CmpRow is one sample in the compare list. A skipped one says why it was refused; an
+// eligible one says what it matched, what it has that you avoid, and what it lost on against
+// the sample ranked just above it — the same explanation interactive search gives.
 function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
   const r = ev.candidate.release;
-  const note = skip ? ev.reject_reason
-    : ev.avoided_formats?.length ? `ranked down — ${ev.avoided_formats.join(", ")}`
-      : ev.matched?.length ? ev.matched.join(", ") : "eligible";
+  const plain = !ev.matched?.length && !ev.avoided_formats?.length && !ev.bonus_waived && !ev.lost_on_text;
   return (
-    <div className="flex items-center gap-3 px-3.5 py-2.5" style={{ background: "var(--panel)", opacity: skip ? 0.6 : 1 }}>
-      <span className="min-w-[108px] text-[12.5px] font-semibold">{r.resolution} {r.source}</span>
-      <span className="min-w-[50px] font-mono text-[11.5px] text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
-      <span className="ml-auto text-right text-[12px]" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{note}</span>
+    <div className="px-3.5 py-2.5" style={{ background: "var(--panel)", opacity: skip ? 0.6 : 1 }}>
+      <div className="flex items-center gap-3">
+        <span className="min-w-[108px] text-[12.5px] font-semibold">{r.resolution} {r.source}</span>
+        <span className="min-w-[50px] font-mono text-[11.5px] text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
+        {(skip || plain) && (
+          <span className="ml-auto text-right text-[12px]" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
+        )}
+      </div>
+      {!skip && <ReleaseExplain className="mt-1.5" matched={ev.matched} avoided={ev.avoided_formats} waived={ev.bonus_waived} lostOn={ev.lost_on_text} />}
     </div>
   );
 }
