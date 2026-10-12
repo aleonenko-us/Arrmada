@@ -1,0 +1,37 @@
+{
+  "trash_id": "fixture-remaster",
+  "trash_scores": {
+    "default": 25
+  },
+  "name": "Remaster",
+  "includeCustomFormatWhenRenaming": true,
+  "specifications": [
+    {
+      "name": "Remaster",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "\\bRemaster(ed)?\\b"
+      }
+    },
+    {
+      "name": "Restored after 4K",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "(?<=\\b4K\\b.*)\\bRestored\\b"
+      }
+    },
+    {
+      "name": "Not 4K Remaster",
+      "implementation": "EditionSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "\\b4K[ ._-]Remaster(ed)?\\b"
+      }
+    }
+  ]
+}

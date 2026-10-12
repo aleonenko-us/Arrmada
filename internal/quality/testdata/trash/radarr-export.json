@@ -1,0 +1,89 @@
+[
+  {
+    "name": "Repack/Proper",
+    "includeCustomFormatWhenRenaming": true,
+    "specifications": [
+      {
+        "name": "Repack",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": false,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Regular Expression", "value": "\\bRepack\\b", "type": "textbox", "advanced": false }
+        ]
+      },
+      {
+        "name": "Proper",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": false,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Regular Expression", "value": "\\bProper\\b", "type": "textbox", "advanced": false }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "French Audio",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "French",
+        "implementation": "LanguageSpecification",
+        "negate": false,
+        "required": true,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Language", "value": 2, "type": "select", "advanced": false }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "AV1",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "AV1",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Regular Expression", "value": "\\bAV1\\b", "type": "textbox", "advanced": false }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Not Scene, not small",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Scene",
+        "implementation": "IndexerFlagSpecification",
+        "negate": true,
+        "required": true,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Flag", "value": 8, "type": "select", "advanced": false }
+        ]
+      },
+      {
+        "name": "Remux or WEB",
+        "implementation": "SourceSpecification",
+        "negate": false,
+        "required": false,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Source", "value": "7", "type": "select", "advanced": false }
+        ]
+      },
+      {
+        "name": "Not CAM",
+        "implementation": "SourceSpecification",
+        "negate": true,
+        "required": false,
+        "fields": [
+          { "order": 0, "name": "value", "label": "Source", "value": 1, "type": "select", "advanced": false }
+        ]
+      }
+    ]
+  }
+]
