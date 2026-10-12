@@ -150,21 +150,39 @@ export const books: { books: Book[]; metadata_available: boolean; upgradable?: n
 export const bookUpgrade: BookUpgradeStatus = { running: false, total: 0, done: 0, upgraded: 0, flagged: 0, unmatched: 0 };
 export const bookSweep: BookSweepStatus = { running: false, total: 0, done: 0, grabbed: 0, skipped: 0 };
 
-export const myBooks: { books: MyBook[]; requests: MyRequest[]; listen: boolean } = {
+export const myBooks: { books: MyBook[]; requests: MyRequest[]; listen: boolean; queue_known: boolean } = {
   // The audiobook server is on and this person may use it: audiobooks offer Listen.
   listen: true,
+  queue_known: true,
   books: [
-    { book_id: 1, title: "A Field Guide to Tides", author: "Marina Coves", year: 2019, series: "Coastlines", ebook: { format: "epub", size_bytes: 2_400_000 }, audiobook: false, mine: true, added_at: "2026-09-12T10:00:00Z" },
-    { book_id: 2, title: "The Lighthouse Keeper's Very Long and Winding Account of Thirty Winters", author: "Elias Rook", audiobook: true, mine: false, audiobooks: [{ version_id: 7, item_key: "b2v7", format: "m4b", size_bytes: 310_000_000, files: 1 }] },
+    // Arrived yesterday ("New this week"), the first of a two-book series on the shelf.
+    {
+      book_id: 1, title: "A Field Guide to Tides", author: "Marina Coves", year: 2019, series: "Coastlines #1", series_name: "Coastlines", series_position: 1,
+      description: "A walk along the shore, tide by tide: what the moon pulls, what the sea leaves behind, and how to read the line it draws.",
+      subjects: ["Nature", "Oceans"], ebook: { format: "epub", size_bytes: 2_400_000, kindle: true }, audiobook: false, mine: true, added_at: "2026-10-08 10:00:00",
+    },
+    { book_id: 2, title: "The Lighthouse Keeper's Very Long and Winding Account of Thirty Winters", author: "Elias Rook", audiobook: true, mine: false, added_at: "2026-08-01 10:00:00", audiobooks: [{ version_id: 7, item_key: "b2v7", format: "m4b", size_bytes: 310_000_000, files: 1 }] },
+    // An AZW3: Send to Kindle is shown disabled with the reason.
+    { book_id: 3, title: "Tide Tables", author: "Marina Coves", series: "Coastlines #2", series_name: "Coastlines", series_position: 2, ebook: { format: "azw3", size_bytes: 900_000, kindle: false }, audiobook: false, mine: false, added_at: "2026-07-01 10:00:00" },
   ],
   requests: [
-    { title: "Knots and Splices", author: "Hal Yard", status: "pending", requested_at: "2026-10-02T10:00:00Z", stage: "pending" },
+    { id: 41, title: "Knots and Splices", author: "Hal Yard", status: "pending", requested_at: "2026-10-02T10:00:00Z", stage: "pending", tracking: { stage: "pending" } },
     // Searched three times and missed: the card says "Not found yet" and the next check.
-    { title: "Charts of the Lesser Sounds", author: "Ada Fenwick", status: "approved", requested_at: "2026-09-20T10:00:00Z", stage: "searching", note: "Not found yet", next_check_at: "2026-10-14T09:00:00Z" },
+    {
+      id: 42, title: "Charts of the Lesser Sounds", author: "Ada Fenwick", status: "approved", requested_at: "2026-09-20T10:00:00Z", stage: "searching", note: "Not found yet", next_check_at: "2026-10-14T09:00:00Z",
+      tracking: { stage: "searching", note: "Not found yet", next_check_at: "2026-10-14T09:00:00Z", last_search_at: "2026-10-07T09:00:00Z", misses: 3 },
+    },
     // Asked for both formats; the ebook is here, the card says the audiobook is coming.
-    { title: "A Field Guide to Tides", author: "Marina Coves", status: "approved", requested_at: "2026-09-10T10:00:00Z", formats: "both", waiting: "audiobook", stage: "partial", note: "Ebook ready · audiobook on the way" },
+    { id: 43, title: "A Field Guide to Tides", author: "Marina Coves", status: "approved", requested_at: "2026-09-10T10:00:00Z", formats: "both", waiting: "audiobook", stage: "partial", note: "Ebook ready · audiobook on the way", tracking: { stage: "partial", note: "Ebook ready · audiobook on the way" } },
+    // On its way: "Downloading · 40%".
+    { id: 44, title: "Rope Work", author: "Hal Yard", status: "approved", requested_at: "2026-10-05T10:00:00Z", stage: "downloading", tracking: { stage: "downloading", progress: 0.4 } },
+    // Not out yet: "Not out yet" and the day it is.
+    { id: 45, title: "The Moon's Pull", author: "Marina Coves", status: "approved", requested_at: "2026-10-06T10:00:00Z", stage: "searching", note: "Not out yet", release_date: "2026-11-02", tracking: { stage: "searching", note: "Not out yet", release_date: "2026-11-02" } },
   ],
 };
+
+// Send to Kindle: outgoing mail is set up, and this person hasn't saved an address yet.
+export const myKindle = { kindle_email: "", from_address: "books@example.com", smtp_configured: true };
 
 export const qualityProfiles: { profiles: QualityProfileInfo[]; formats: FormatInfo[] } = {
   profiles: [
