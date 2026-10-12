@@ -119,6 +119,11 @@ func (s *Service) handOffAI(ctx context.Context, job *Job, ref fileRef, mi *medi
 		return false
 	}
 	s.recordAttempts(ctx, runID, ref, outcomes)
+	if madeIt(outcomes) {
+		// Plex picks up what the fast lane made now, not after the AI backlog. Orphans
+		// a replace retires wait for the end of the job, when every language is settled.
+		s.sidecarChanged(job.Kind, ref.Path, "", SidecarWritten)
+	}
 	s.event("info", fmt.Sprintf("%s: waiting for AI (%s)", ref.Title, strings.Join(langs, ", ")))
 	return true
 }
@@ -133,7 +138,7 @@ func (s *Service) toGPU(ctx context.Context, job *Job, langs []string, outcomes 
 		s.mu.Unlock()
 		return false
 	}
-	gpuKey := job.key() + "|" + LaneGPU
+	gpuKey := job.dedupeKey() + "|" + LaneGPU
 	var replaced *Job
 	if old := s.active[gpuKey]; old != nil && old != job && old.State == StateQueued {
 		s.dropPendingLocked(old)

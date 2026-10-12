@@ -26,6 +26,13 @@ type librarySnapshot struct {
 	groups   []SeriesGroup
 	at       time.Time // zero until the first pass completes
 	scanning bool
+	// langsKey is the kept-language list (langsKey()) the snapshot was counted against;
+	// when it differs from the current list the figures are stale. passKey is the list
+	// the running pass counts against, and followUp asks for one more pass after it
+	// because the languages changed while it ran.
+	langsKey string
+	passKey  string
+	followUp bool
 }
 
 // Coverage is the Overview's summary, straight from the snapshot.
@@ -37,6 +44,9 @@ type Coverage struct {
 	TV        CoverageCounts `json:"tv"`
 	ScannedAt int64          `json:"scanned_at"` // unix seconds; 0 = no pass has finished yet
 	Scanning  bool           `json:"scanning"`
+	// Stale: the figures were counted against a different set of kept languages. A pass
+	// to recount them is running or about to.
+	Stale bool `json:"stale"`
 }
 
 // CoverageCounts is one media type's share of the totals.
@@ -46,52 +56,111 @@ type CoverageCounts struct {
 	Missing int `json:"missing"`
 }
 
+// langsKey is the kept-language list as one comparable string. Order matters: the first
+// language is the one an untagged sidecar counts for.
+func langsKey(langs []string) string { return strings.Join(langs, ",") }
+
 // Rescan starts a full pass in the background, unless one is already running (then it
-// reports false and the running one stands). ctx should outlive the caller — a pass that
-// an HTTP request started must not stop when the response goes out.
+// reports false and the running one stands — except that a pass counting against
+// languages that have since changed gets exactly one more pass after it). ctx should
+// outlive the caller: a pass that an HTTP request started must not stop when the
+// response goes out.
 func (s *Service) Rescan(ctx context.Context) bool {
-	if s.movies == nil || s.series == nil {
+	if s.passFn == nil && (s.movies == nil || s.series == nil) {
 		return false
 	}
 	s.snap.mu.Lock()
 	if s.snap.scanning {
+		if s.snap.passKey != langsKey(s.languages(ctx)) {
+			s.snap.followUp = true
+		}
 		s.snap.mu.Unlock()
 		return false
 	}
 	s.snap.scanning = true
 	s.snap.mu.Unlock()
 	go func() {
-		defer func() {
+		for {
+			key := langsKey(s.languages(ctx))
 			s.snap.mu.Lock()
-			s.snap.scanning = false
+			s.snap.passKey, s.snap.followUp = key, false
 			s.snap.mu.Unlock()
-		}()
-		started := time.Now()
-		movies, merr := s.Library(ctx, "movies")
-		groups, gerr := s.SeriesGroups(ctx)
-		if ctx.Err() != nil {
-			return // shutting down — a half-finished pass is worse than the last complete one
+			ok := s.libraryPass(ctx, key)
+			s.snap.mu.Lock()
+			// The follow-up is decided and scanning cleared under one lock: a Rescan
+			// between the two would otherwise ask for a pass nobody runs.
+			again := ok && s.snap.followUp
+			if !again {
+				s.snap.scanning = false
+			}
+			s.snap.mu.Unlock()
+			if !ok {
+				return
+			}
+			if !again {
+				break
+			}
 		}
-		if merr != nil || gerr != nil {
-			s.log.Warn("subtitles: library scan failed", "movies_err", merr, "tv_err", gerr)
-			return
-		}
-		s.snap.mu.Lock()
-		s.snap.movies = movies
-		s.snap.groups = groups
-		s.snap.at = time.Now()
-		s.snap.mu.Unlock()
-		s.log.Info("subtitles: library scanned", "movies", len(movies), "shows", len(groups),
-			"took", time.Since(started).Round(time.Second).String())
+		// The one-shot forced-track repair starts once a pass has completed (repair.go);
+		// later passes find its settings key set and leave it.
+		s.startForcedRepair(ctx)
 	}()
 	return true
+}
+
+// libraryPass is one full pass: it counts every file against the kept languages (key)
+// and replaces the snapshot. false when it didn't finish.
+func (s *Service) libraryPass(ctx context.Context, key string) bool {
+	started := time.Now()
+	var movies []FileSubs
+	var groups []SeriesGroup
+	var merr, gerr error
+	if s.passFn != nil {
+		movies, groups, merr = s.passFn(ctx)
+	} else {
+		movies, merr = s.Library(ctx, "movies")
+		groups, gerr = s.SeriesGroups(ctx)
+	}
+	if ctx.Err() != nil {
+		return false // shutting down — a half-finished pass is worse than the last complete one
+	}
+	if merr != nil || gerr != nil {
+		s.log.Warn("subtitles: library scan failed", "movies_err", merr, "tv_err", gerr)
+		return false
+	}
+	s.snap.mu.Lock()
+	s.snap.movies = movies
+	s.snap.groups = groups
+	s.snap.at = time.Now()
+	s.snap.langsKey = key
+	s.snap.mu.Unlock()
+	s.log.Info("subtitles: library scanned", "movies", len(movies), "shows", len(groups),
+		"took", time.Since(started).Round(time.Second).String())
+	return true
+}
+
+// recountIfLanguagesChanged starts a pass when the kept languages are no longer the ones
+// in before — the Overview shows "Recounting…" meanwhile instead of a percentage for
+// the old list. A pass already running gets one more after it (Rescan).
+func (s *Service) recountIfLanguagesChanged(ctx context.Context, before string) {
+	if langsKey(s.languages(ctx)) == before {
+		return
+	}
+	s.Rescan(context.WithoutCancel(ctx))
+}
+
+// staleLocked reports whether the snapshot was counted against other languages than the
+// kept ones now. Settings reads are in memory, so this is cheap. s.snap.mu must be held.
+func (s *Service) staleLocked(ctx context.Context) bool {
+	return !s.snap.at.IsZero() && s.settings != nil && s.snap.langsKey != langsKey(s.languages(ctx))
 }
 
 // Coverage summarises the snapshot for the Overview.
 func (s *Service) Coverage() Coverage {
 	s.snap.mu.Lock()
 	defer s.snap.mu.Unlock()
-	c := Coverage{Scanning: s.snap.scanning}
+	// Background: the settings read behind Stale is in memory and takes no context.
+	c := Coverage{Scanning: s.snap.scanning, Stale: s.staleLocked(context.Background())}
 	if !s.snap.at.IsZero() {
 		c.ScannedAt = s.snap.at.Unix()
 	}
@@ -251,4 +320,12 @@ func fmtAudio(sec float64) string {
 		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
 	}
 	return fmt.Sprintf("%dm", int(d.Minutes()))
+}
+
+// Stale reports whether the snapshot's figures were counted for other kept languages than
+// today's (a recount is running or about to), for the Library tab's notice.
+func (s *Service) Stale() bool {
+	s.snap.mu.Lock()
+	defer s.snap.mu.Unlock()
+	return s.staleLocked(context.Background())
 }

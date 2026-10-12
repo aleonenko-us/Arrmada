@@ -7,7 +7,9 @@
 --
 -- lane is 'fast' (extract, download) or 'gpu' (whisper). langs is the CSV of languages a
 -- job is limited to (a gpu job carries only what the fast lane couldn't make), empty for
--- every kept language. outcomes_json is what each rung did so far ([]Outcome); audio_sec
+-- every kept language. mode is '' for an ordinary job ('repair-forced' for the forced-track
+-- repair, with repair_langs); retire_json the orphaned subtitles a replace job retires once
+-- their language is made. outcomes_json is what each rung did so far ([]Outcome); audio_sec
 -- is the file's running time, for the AI backlog estimate. Stage and progress ticks stay
 -- in memory: only state changes are written. Finished rows are pruned to the newest 500.
 --
@@ -26,6 +28,9 @@ CREATE TABLE IF NOT EXISTS subtitle_jobs (
     state         TEXT NOT NULL,
     langs         TEXT NOT NULL DEFAULT '',
     redo          INTEGER NOT NULL DEFAULT 0,
+    mode          TEXT NOT NULL DEFAULT '',
+    repair_langs  TEXT NOT NULL DEFAULT '',
+    retire_json   TEXT,
     note          TEXT,
     run_id        TEXT,
     outcomes_json TEXT,
@@ -35,5 +40,5 @@ CREATE TABLE IF NOT EXISTS subtitle_jobs (
     finished_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_subtitle_jobs_queue ON subtitle_jobs(state, lane, priority, queued_at);
--- One live job per file and lane, the same rule enqueue's in-memory dedupe keeps.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_subtitle_jobs_live ON subtitle_jobs(media_key, lane) WHERE state IN ('queued', 'running');
+-- One live job per file, mode and lane, the same rule enqueue's in-memory dedupe keeps.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subtitle_jobs_live ON subtitle_jobs(media_key, mode, lane) WHERE state IN ('queued', 'running');

@@ -164,6 +164,37 @@ func TestFinishedJobsSurviveRestart(t *testing.T) {
 	}
 }
 
+// A forced-track repair and a replace job for the same file are separate jobs, and both
+// come back from a restart with what they carry.
+func TestRepairAndReplaceJobsSurviveRestart(t *testing.T) {
+	db := queueDB(t)
+	a := bootQueue(t, db)
+	repair := a.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Heat", Mode: ModeRepairForced, Priority: PrioSweep, repairLangs: []string{"en"}})
+	replace := a.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Heat", Priority: PrioManual, retire: []orphanRetire{{Name: "Heat.eng.srt", Lang: "en"}}})
+	if repair == replace {
+		t.Fatal("the replace job was folded into the repair")
+	}
+	// A second replace for the same movie joins the queued one, and that is saved too.
+	a.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Heat", Priority: PrioManual, retire: []orphanRetire{{Name: "Heat.srt", Lang: "en"}}})
+
+	b := bootQueue(t, db)
+	got := map[int64]Job{}
+	for _, j := range b.Jobs() {
+		got[j.ID] = j
+	}
+	if r := got[repair.ID]; r.Mode != ModeRepairForced || !reflect.DeepEqual(r.repairLangs, []string{"en"}) {
+		t.Errorf("restored repair job = %+v", r)
+	}
+	want := []orphanRetire{{Name: "Heat.eng.srt", Lang: "en"}, {Name: "Heat.srt", Lang: "en"}}
+	if r := got[replace.ID]; r.Mode != "" || !reflect.DeepEqual(r.retire, want) {
+		t.Errorf("restored replace job retires %+v, want %+v", r.retire, want)
+	}
+	// Still deduped on file plus mode after the restart.
+	if j := b.enqueue(&Job{Kind: "movie", MovieID: 1, Title: "Heat", Mode: ModeRepairForced, Priority: PrioSweep}); j.ID != repair.ID {
+		t.Errorf("re-queued repair = job %d, want %d", j.ID, repair.ID)
+	}
+}
+
 // The table keeps the newest 500 finished jobs and every queued one.
 func TestHistoryPrunedTo500(t *testing.T) {
 	db := queueDB(t)

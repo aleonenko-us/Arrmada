@@ -33,7 +33,8 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "
 import { jobFailed, useJob } from "../lib/useJob";
 import { attemptLine, searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
-import { Button, Menu, Modal, StatusChip } from "../ui";
+import { Button, Menu, Modal, StatusChip, useToast } from "../ui";
+import { orphanApi } from "./subtitles/orphanApi";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 
 const AVAILABILITY_LABELS: Record<string, string> = {
@@ -395,7 +396,7 @@ function VersionCard({ movie, version, onChange, onCleared, flash, profileName }
         <StatusChip tone={status.tone}>{status.label}</StatusChip>
       </div>
       {line && <div className="mt-1.5 text-[12px] text-ink-dim" role="status">{line}</div>}
-      {f && <FileBody movieId={movieId} versionId={version.id} file={f} />}
+      {f && <FileBody movieId={movieId} versionId={version.id} file={f} onAdopted={version.is_default ? onChange : undefined} />}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <button onClick={toggleMonitor} disabled={busy} className={small} style={ghost} aria-pressed={version.monitored}>{version.monitored ? "Monitored" : "Monitor"}</button>
         <button onClick={() => setPanel("search")} disabled={busy} className={small} style={ghost}>Search</button>
@@ -1290,7 +1291,7 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="font-mono text-[10.5px] uppercase" style={{ color: tone }}>{file.missing ? "File missing from disk" : "On disk"}</div>
-          <FileBody movieId={movieId} versionId={0} file={file} />
+          <FileBody movieId={movieId} versionId={0} file={file} onAdopted={onChange} />
         </div>
         <div className="flex-none">
           <button onClick={() => setConfirming(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={file.missing ? { border: "1px solid var(--line)", color: "var(--ink)" } : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{file.missing ? "Clear record" : "Delete file"}</button>
@@ -1322,9 +1323,21 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
 
 // FileBody is what every track's file shows, whichever track it is: quality and media
 // chips, size and runtime, the path (opening the file's details), its subtitles, the ones
-// that pair with no video, and the missing-from-disk note.
-function FileBody({ movieId, versionId, file }: { movieId: number; versionId: number; file: MovieFile }) {
+// that pair with no video (with Adopt, on the file Subtitles works on), and the
+// missing-from-disk note.
+function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; versionId: number; file: MovieFile; onAdopted?: () => void }) {
   const [showFile, setShowFile] = useState(false);
+  const [adopting, setAdopting] = useState<string | null>(null);
+  const toast = useToast();
+  // Adopt renames the orphan to pair with this file, so Plex shows it.
+  const adopt = async (name: string) => {
+    setAdopting(name);
+    try {
+      const r = await orphanApi.adopt(movieId, name);
+      toast(`Adopted — now ${r.name}`);
+      onAdopted?.();
+    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setAdopting(null); }
+  };
   const chips: string[] = [];
   if (file.codec) chips.push(file.codec);
   if (file.audio) chips.push(...file.audio);
@@ -1362,7 +1375,16 @@ function FileBody({ movieId, versionId, file }: { movieId: number; versionId: nu
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
           <span className="font-mono uppercase">Not linked to this file</span>
           {file.orphan_subtitles.map((s) => (
-            <span key={s} className="rounded px-1.5 py-0.5 opacity-60" style={{ border: "1px dashed var(--line)" }}>{s}</span>
+            <span key={s} className="inline-flex items-center gap-1">
+              <span className="rounded px-1.5 py-0.5 opacity-60" style={{ border: "1px dashed var(--line)" }}>{s}</span>
+              {onAdopted && (
+                <button type="button" onClick={() => adopt(s)} disabled={adopting !== null}
+                  title="Rename it to pair with this file, so Plex shows it"
+                  className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                  {adopting === s ? "…" : "Adopt"}
+                </button>
+              )}
+            </span>
           ))}
         </div>
       )}

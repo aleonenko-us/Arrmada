@@ -43,7 +43,8 @@ func newJobStore(db *sql.DB) *jobStore { return &jobStore{db: db} }
 func (st *jobStore) ok() bool { return st != nil && st.db != nil }
 
 const jobCols = `id, media_key, kind, movie_id, series_id, season, episode, title, priority, lane, state,
-	langs, redo, note, run_id, outcomes_json, audio_sec, queued_at, started_at, finished_at`
+	langs, redo, note, run_id, outcomes_json, audio_sec, queued_at, started_at, finished_at,
+	mode, repair_langs, retire_json`
 
 // jobArgs is a job's row in jobCols order.
 func jobArgs(j Job) ([]any, error) {
@@ -55,10 +56,29 @@ func jobArgs(j Job) ([]any, error) {
 		}
 		outcomes = string(b)
 	}
+	var retire any
+	if len(j.retire) > 0 {
+		rs := make([]savedRetire, len(j.retire))
+		for i, r := range j.retire {
+			rs[i] = savedRetire(r)
+		}
+		b, err := json.Marshal(rs)
+		if err != nil {
+			return nil, err
+		}
+		retire = string(b)
+	}
 	return []any{j.ID, j.key(), j.Kind, nullID(j.MovieID), nullID(j.SeriesID), nullInt(j.Season, j.Kind == "episode"),
 		nullInt(j.Episode, j.Kind == "episode"), j.Title, j.Priority, j.lane(), string(j.State),
 		strings.Join(j.Langs, ","), boolInt(j.Redo), nullStr(j.Note), nullStr(j.RunID), outcomes, j.AudioSec,
-		j.At, nullTime(j.StartedAt), nullTime(j.FinishedAt)}, nil
+		j.At, nullTime(j.StartedAt), nullTime(j.FinishedAt),
+		j.Mode, strings.Join(j.repairLangs, ","), retire}, nil
+}
+
+// savedRetire is an orphanRetire as the table stores it.
+type savedRetire struct {
+	Name string `json:"name"`
+	Lang string `json:"lang"`
 }
 
 func nullInt(n int, valid bool) any {
@@ -80,12 +100,14 @@ func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 		j                                   Job
 		movieID, seriesID, season, episode  sql.NullInt64
 		langs, note, runID, outcomes, state sql.NullString
+		repairLangs, retire                 sql.NullString
 		startedAt, finishedAt               sql.NullInt64
 		redo                                int
 		mediaKey                            string
 	)
 	if err := sc.Scan(&j.ID, &mediaKey, &j.Kind, &movieID, &seriesID, &season, &episode, &j.Title, &j.Priority,
-		&j.Lane, &state, &langs, &redo, &note, &runID, &outcomes, &j.AudioSec, &j.At, &startedAt, &finishedAt); err != nil {
+		&j.Lane, &state, &langs, &redo, &note, &runID, &outcomes, &j.AudioSec, &j.At, &startedAt, &finishedAt,
+		&j.Mode, &repairLangs, &retire); err != nil {
 		return Job{}, err
 	}
 	j.MovieID, j.SeriesID = movieID.Int64, seriesID.Int64
@@ -98,6 +120,18 @@ func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 	if outcomes.String != "" {
 		if err := json.Unmarshal([]byte(outcomes.String), &j.Outcomes); err != nil {
 			return Job{}, fmt.Errorf("job %d outcomes: %w", j.ID, err)
+		}
+	}
+	if repairLangs.String != "" {
+		j.repairLangs = strings.Split(repairLangs.String, ",")
+	}
+	if retire.String != "" {
+		var rs []savedRetire
+		if err := json.Unmarshal([]byte(retire.String), &rs); err != nil {
+			return Job{}, fmt.Errorf("job %d retire list: %w", j.ID, err)
+		}
+		for _, r := range rs {
+			j.retire = append(j.retire, orphanRetire(r))
 		}
 	}
 	return j, nil
@@ -115,7 +149,7 @@ func (st *jobStore) write(ctx context.Context, inserts, saves []Job) (skipped in
 		skipped = 0
 		if len(inserts) > 0 {
 			ins, err := tx.PrepareContext(ctx, `INSERT INTO subtitle_jobs (`+jobCols+`)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
 			if err != nil {
 				return err
 			}
@@ -150,10 +184,10 @@ func saveJob(ctx context.Context, db store.Execer, j Job) error {
 	if err != nil {
 		return err
 	}
-	// args[0] is the id; the rest follow jobCols. media_key, kind and the ids never change.
+	// args[0] is the id; the rest follow jobCols. media_key, kind, mode and the ids never change.
 	_, err = db.ExecContext(ctx, `UPDATE subtitle_jobs SET title = ?, priority = ?, lane = ?, state = ?, langs = ?,
-		redo = ?, note = ?, run_id = ?, outcomes_json = ?, audio_sec = ?, started_at = ?, finished_at = ? WHERE id = ?`,
-		args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[18], args[19], j.ID)
+		redo = ?, note = ?, run_id = ?, outcomes_json = ?, audio_sec = ?, started_at = ?, finished_at = ?, repair_langs = ?, retire_json = ? WHERE id = ?`,
+		args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15], args[16], args[18], args[19], args[21], args[22], j.ID)
 	return err
 }
 

@@ -56,6 +56,14 @@ type Job struct {
 	// worker always takes the lowest non-empty line first, so tonight's import isn't stuck
 	// behind a sweep's worth of hour-long AI runs.
 	Priority int `json:"priority"`
+	// Mode is "" for an ordinary ensure job. ModeRepairForced is the one-shot repair of a
+	// sidecar that was extracted from a forced track (repair.go).
+	Mode string `json:"mode,omitempty"`
+
+	repairLangs []string // ModeRepairForced: the kept languages whose sidecar is suspect
+	// retire lists orphaned subtitles this job replaces: each goes to the recycle bin once
+	// its language has been made (orphans.go), and stays if it wasn't.
+	retire []orphanRetire
 	// RunID names this run's rows in the attempt ledger (GET /subtitles/history?run_id=).
 	RunID string `json:"run_id,omitempty"`
 	// Outcomes is what each rung did for each language, in the order tried; the Note is
@@ -87,11 +95,21 @@ func (j *Job) lane() string {
 
 // activeKey identifies a live job: one per file and lane, the same rule the table's
 // unique index keeps.
-func (j *Job) activeKey() string { return j.key() + "|" + j.lane() }
+func (j *Job) activeKey() string { return j.dedupeKey() + "|" + j.lane() }
 
 // sortJobsNewestFirst orders jobs by id, newest first.
 func sortJobsNewestFirst(list []*Job) {
 	sort.SliceStable(list, func(a, b int) bool { return list[a].ID > list[b].ID })
+}
+
+// dedupeKey is what enqueue dedupes on: the file, plus the mode for a special job. A
+// forced-track repair is a different piece of work from ensuring the file's languages, so
+// one must not swallow the other.
+func (j *Job) dedupeKey() string {
+	if j.Mode != "" {
+		return j.key() + "#" + j.Mode
+	}
+	return j.key()
 }
 
 // Queue priorities, most urgent first. Each has its own FIFO line in Service.pending.
@@ -430,6 +448,10 @@ func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 			changed := false
 			if job.Redo && !j.Redo {
 				j.Redo = true // the waiting job takes on the stronger intent
+				changed = true
+			}
+			if merged := mergeRetire(j.retire, job.retire); len(merged) != len(j.retire) {
+				j.retire = merged
 				changed = true
 			}
 			// Pressing Ensure on a file the sweep already queued moves it up to the
@@ -882,6 +904,9 @@ func (s *Service) retireLocked(job *Job) {
 		delete(s.active, k)
 	}
 	s.releaseLocked(job)
+	if job.Mode == ModeRepairForced {
+		s.repairNudge() // the repair pass waits for its jobs, however they end
+	}
 }
 
 // event appends a line to the activity console (kept to the last 500) and mirrors it to the log.

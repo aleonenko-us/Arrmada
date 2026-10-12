@@ -100,6 +100,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		ref.MediaKey = job.key()
 	}
 	s.markRunning(job)
+	if job.Mode == ModeRepairForced {
+		s.processRepair(ctx, job, ref)
+		return
+	}
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
 	if mi != nil {
@@ -143,6 +147,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			note = sum + " · " + note
 			if madeIt(prior) {
 				state = StateDone
+				s.retireReplaced(context.WithoutCancel(ctx), job, ref, prior)
 			}
 		}
 		s.finishOutcomes(job, state, note, prior)
@@ -196,6 +201,12 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 	}
 	summary := outcomeNote(langs, outcomes)
+	if produced > 0 {
+		// Plex rescans the folder so the new subtitle is selectable without a full scan.
+		s.sidecarChanged(job.Kind, ref.Path, "", SidecarWritten)
+		// A replace: the orphans whose language was just made go to the recycle bin.
+		s.retireReplaced(context.WithoutCancel(ctx), job, ref, outcomes)
+	}
 	if ctx.Err() != nil {
 		// Every language the stop left without a subtitle gets a cancelled attempt, so
 		// the history says the run was cut short rather than that nothing was tried.
@@ -662,7 +673,9 @@ func (s *Service) ffmpegExtract(ctx context.Context, path string, picks []extrac
 	}
 	args := []string{"-y", "-hide_banner", "-i", path}
 	for _, p := range picks {
-		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", p.Path)
+		// -f srt: the output name doesn't always end in .srt (a repair writes to a temp
+		// name first), so the format can't be left to ffmpeg's guess from the extension.
+		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", "-f", "srt", p.Path)
 	}
 	return toolrun.Command(ctx, toolrun.Background, s.ffmpeg, args...).Run()
 }
