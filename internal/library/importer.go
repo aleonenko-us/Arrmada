@@ -22,6 +22,7 @@ import (
 	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/extract"
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -1649,23 +1650,6 @@ func isSampleName(path string) bool {
 // subtitleExts are external subtitle sidecar files worth importing with the video.
 var subtitleExts = map[string]bool{".srt": true, ".ass": true, ".ssa": true, ".sub": true, ".vtt": true, ".idx": true}
 
-// langNames maps common subtitle language tokens (codes + English names) to the
-// ISO 639-1 tag used by the Subtitles module's sidecar convention.
-var langNames = map[string]string{
-	"en": "en", "eng": "en", "english": "en",
-	"es": "es", "spa": "es", "spanish": "es",
-	"fr": "fr", "fre": "fr", "fra": "fr", "french": "fr",
-	"de": "de", "ger": "de", "deu": "de", "german": "de",
-	"it": "it", "ita": "it", "italian": "it",
-	"pt": "pt", "por": "pt", "portuguese": "pt",
-	"nl": "nl", "dut": "nl", "nld": "nl", "dutch": "nl",
-	"ru": "ru", "rus": "ru", "russian": "ru",
-	"ja": "ja", "jpn": "ja", "japanese": "ja",
-	"zh": "zh", "chi": "zh", "zho": "zh", "chinese": "zh",
-	"ko": "ko", "kor": "ko", "korean": "ko",
-	"ar": "ar", "ara": "ar", "arabic": "ar",
-}
-
 // importSidecarSubs links external subtitle files from a finished download next to
 // the imported video, following the Plex/Jellyfin "<base>.<lang>.<ext>" convention
 // so the Subtitles module and players pick them up. It only takes subtitles that
@@ -1795,20 +1779,23 @@ func (im *Importer) placeSub(src, targetBase, lang string) {
 }
 
 // subLangFor derives a subtitle's language tag and whether it belongs to this
-// release. A bare "<base>.srt" → no tag; "<base>.en.srt" → "en"; inside the
-// release's own folder, an unrelated name is language-sniffed; in a shared save
-// dir an unrelated name is rejected so single-file torrents don't grab neighbors.
+// release. A bare "<base>.srt" → no tag; "<base>.en.srt" → "en" (any spelling the
+// shared language table knows, canonicalised: ".eng" → "en", ".pt-BR" → "pt-br");
+// inside the release's own folder, an unrelated name is language-sniffed; in a shared
+// save dir an unrelated name is rejected so single-file torrents don't grab neighbors.
 func subLangFor(stem, srcBase string, ownFolder bool) (lang string, ok bool) {
 	switch {
 	case stem == srcBase:
 		return "", true
 	case strings.HasPrefix(stem, srcBase+"."):
 		rest := stem[len(srcBase)+1:]
-		if i := strings.IndexByte(rest, '.'); i >= 0 {
-			rest = rest[:i] // "en" from "en.forced"
+		if n := langs.ParseSidecarTag(strings.Split(rest, ".")); n.Lang != "" {
+			return langs.SidecarTag(n.Lang), true
 		}
-		if code, known := langNames[rest]; known {
-			return code, true
+		// Not a language: keep the tag as written so the file isn't placed under the
+		// bare name, which would claim the first wanted language.
+		if i := strings.IndexByte(rest, '.'); i >= 0 {
+			rest = rest[:i]
 		}
 		return rest, true
 	case ownFolder:
@@ -1818,13 +1805,19 @@ func subLangFor(stem, srcBase string, ownFolder bool) (lang string, ok bool) {
 	}
 }
 
-// detectLang finds a known language token anywhere in a subtitle filename.
+// detectLang finds a language in a free-form subtitle filename ("2_English",
+// "Brazilian.Portuguese"). Words are matched strictly — 3-letter codes and full names
+// only — because two-letter codes are everyday words: "Its.A.Trap" is not Italian. A
+// name that is nothing but a tag ("en", "pt-BR") is read as one.
 func detectLang(stem string) string {
+	if langs.IsToken(stem, false) {
+		return langs.SidecarTag(stem)
+	}
 	for _, tok := range strings.FieldsFunc(stem, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
-		if code, ok := langNames[tok]; ok {
-			return code
+		if langs.IsToken(tok, true) {
+			return langs.SidecarTag(tok)
 		}
 	}
 	return ""

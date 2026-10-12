@@ -8,53 +8,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // subExts are the external subtitle extensions we recognize as already-present.
 var subExts = map[string]bool{".srt": true, ".ass": true, ".ssa": true, ".sub": true, ".vtt": true}
 
-// langAliases maps full language names to their ISO 639-1 code, so a "<name>.english.srt" sidecar
-// is recognised as English.
-var langAliases = map[string]string{
-	"english": "en", "spanish": "es", "french": "fr", "german": "de", "italian": "it",
-	"portuguese": "pt", "dutch": "nl", "swedish": "sv", "polish": "pl", "russian": "ru",
-	"turkish": "tr", "arabic": "ar", "hindi": "hi", "japanese": "ja", "korean": "ko", "chinese": "zh",
-}
-
-// knownLangs is the set of tokens we accept as a language tag (2- and 3-letter codes + full names),
-// used to tell a real language segment ("eng") from a title word ("burgundy").
-var knownLangs = func() map[string]bool {
-	m := map[string]bool{}
-	for two, three := range twoToThree {
-		m[two] = true
-		m[three] = true
-	}
-	for full := range langAliases {
-		m[full] = true
-	}
-	return m
-}()
-
-// normLang folds a full language name to its code; codes pass through unchanged.
-func normLang(tok string) string {
-	if c, ok := langAliases[tok]; ok {
-		return c
-	}
-	return tok
-}
-
 // Subtitle variants. A forced track holds only the foreign-language parts (signs, a line of
 // Klingon) and is never the full subtitle; SDH is the full dialogue plus sound cues, so it
 // covers the language, just as a second choice.
 const (
-	VariantFull   = ""
-	VariantForced = "forced"
-	VariantSDH    = "sdh"
+	VariantFull   = langs.VariantFull
+	VariantForced = langs.VariantForced
+	VariantSDH    = langs.VariantSDH
 )
 
 // LangVariant is one sidecar's language and variant.
 type LangVariant struct {
-	Lang    string `json:"lang"`              // "" = no recognisable language tag
+	// Lang is the canonical language ("en", "pt-br"). A tag that is not a language keeps
+	// its raw spelling ("proper") so it is never credited to one; "" = an untagged sidecar.
+	Lang    string `json:"lang"`
 	Variant string `json:"variant,omitempty"` // "" (full) | forced | sdh
 }
 
@@ -69,53 +43,11 @@ func sidecarPath(mediaPath, lang string) string {
 func sidecarPathV(mediaPath, lang, variant string) string {
 	dir := filepath.Dir(mediaPath)
 	base := strings.TrimSuffix(filepath.Base(mediaPath), filepath.Ext(mediaPath))
-	name := base + "." + lang
+	name := base + "." + langs.SidecarTag(lang)
 	if variant != VariantFull {
 		name += "." + variant
 	}
 	return filepath.Join(dir, name+".srt")
-}
-
-// sidecarQualifiers are the trailing name segments that describe a track rather than name
-// its language, mapped to the variant they mean ("default" says nothing about it).
-var sidecarQualifiers = map[string]string{
-	"forced": VariantForced, "sdh": VariantSDH, "hi": VariantSDH, "cc": VariantSDH, "default": VariantFull,
-}
-
-// isKnownLang reports whether a name segment is a language tag we recognise.
-func isKnownLang(tok string) bool { return knownLangs[strings.ToLower(tok)] }
-
-// parseSidecarTag reads the language and variant from the dotted segments after a sidecar's
-// base name: ["en"] → en, ["en","forced"] → en forced, ["en","hi"] → en SDH (Bazarr writes
-// hearing-impaired that way), ["hi"] → Hindi. Trailing qualifiers are peeled off first; "hi"
-// only counts as one when a language sits before it, since on its own it is Hindi. The
-// segment left at the end is the language when isLang accepts it, else lang is "".
-//
-// This is the shared sidecar-naming rule. Convert's sidecarLangs (internal/convert/preset.go)
-// applies the same rule; keep the two in step until both live in one place.
-func parseSidecarTag(segs []string, isLang func(string) bool) (lang, variant string) {
-	i := len(segs) - 1
-	for ; i >= 0; i-- {
-		seg := strings.ToLower(segs[i])
-		v, ok := sidecarQualifiers[seg]
-		if !ok {
-			break
-		}
-		if seg == "hi" && (i == 0 || !isLang(segs[i-1])) {
-			break // a bare "hi" is the language, Hindi
-		}
-		// Forced wins over SDH: a forced track is never the full subtitle, whatever else it is.
-		switch {
-		case v == VariantForced:
-			variant = VariantForced
-		case v == VariantSDH && variant == VariantFull:
-			variant = VariantSDH
-		}
-	}
-	if i >= 0 && isLang(segs[i]) {
-		lang = normLang(strings.ToLower(segs[i]))
-	}
-	return lang, variant
 }
 
 // coversFull reports whether a sidecar of this variant counts as the language's full subtitle.
@@ -141,13 +73,15 @@ type sidecarScan struct {
 // video only when it is named for it ("<base>.srt", "<base>.en.srt", "<base>.en.forced.srt"),
 // which is how Plex pairs them — for movies and TV alike. Present counts only full and SDH
 // sidecars: a forced one is a few lines, not coverage. An untagged paired sidecar is credited
-// to the first wanted language.
+// to the first wanted language; one tagged with something that isn't a language
+// ("<base>.proper.srt") is credited to none.
 //
 // For movies (kind "movie"), subtitles that pair with no video in the folder at all are
 // reported as Orphans; in a multi-version folder one version's sidecars pair with that
 // version, so they are neither the other's coverage nor orphans.
 //
-// Language matching tolerates 2- vs 3-letter codes and full names (en ≡ eng ≡ english).
+// Language matching goes through internal/langs: 2- and 3-letter codes, full names and
+// regional tags (en ≡ eng ≡ english; a "pt" want is covered by ".pt-br.srt").
 func scanSidecars(videoPath string, wanted []string, kind string) sidecarScan {
 	var sc sidecarScan
 	if videoPath == "" {
@@ -183,7 +117,13 @@ func scanSidecars(videoPath string, wanted []string, kind string) sidecarScan {
 		switch {
 		case stem == baseLower: // bare "<base>.srt" for exactly this file: untagged, full
 		case strings.HasPrefix(stem, prefix) && !pairsWith(stem, longer): // "<base>.<lang>[.forced].srt"
-			lv.Lang, lv.Variant = parseSidecarTag(strings.Split(stem[len(prefix):], "."), isKnownLang)
+			n := langs.ParseSidecarTag(strings.Split(stem[len(prefix):], "."))
+			lv.Lang, lv.Variant = n.Lang, n.Variant
+			if lv.Lang == "" {
+				// "<base>.proper.srt": tagged, but not with a language. Only a bare
+				// "<base>.srt" is the untagged sidecar the first wanted language may claim.
+				lv.Lang = n.Token
+			}
 		default:
 			unpaired = append(unpaired, name)
 			continue
@@ -200,7 +140,8 @@ func scanSidecars(videoPath string, wanted []string, kind string) sidecarScan {
 			continue // another video's (another version's) sidecar
 		}
 		o := Orphan{Name: name}
-		o.Lang, o.Variant = parseSidecarTag(strings.Split(stem, "."), isKnownLang)
+		n := langs.ParseSidecarTag(strings.Split(stem, "."))
+		o.Lang, o.Variant = n.Lang, n.Variant
 		sc.Orphans = append(sc.Orphans, o)
 	}
 	return sc

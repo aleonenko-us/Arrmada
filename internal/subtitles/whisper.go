@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
@@ -282,7 +283,7 @@ func audioStreamFor(mi *mediaInfo, lang string, translate bool) (int, AudioTrack
 	if !translate {
 		pick := -1
 		for _, t := range mi.Audio {
-			if !langMatches(t.Lang, lang) {
+			if !langMatches(t.Lang, langs.Base(lang)) { // whisper hears languages, not regions
 				continue
 			}
 			if strings.Contains(strings.ToLower(t.Title), "commentary") {
@@ -555,7 +556,7 @@ func tailStr(out []byte, n int) string {
 //	""           — impossible: Whisper can't translate into a non-English language.
 func aiPlan(audioLangs []string, wanted string) string {
 	for _, a := range audioLangs {
-		if langMatches(a, wanted) {
+		if langMatches(a, langs.Base(wanted)) { // Brazilian audio transcribes to pt-br just fine
 			return "transcribe"
 		}
 	}
@@ -565,10 +566,7 @@ func aiPlan(audioLangs []string, wanted string) string {
 	return ""
 }
 
-func isEnglish(l string) bool {
-	l = strings.ToLower(strings.TrimSpace(l))
-	return l == "en" || l == "eng" || l == "english"
-}
+func isEnglish(l string) bool { return langs.Base(l) == "en" }
 
 func ifElse(c bool, a, b string) string {
 	if c {

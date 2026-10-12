@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -132,6 +133,10 @@ func (a *api) handleUpdateSubtitleSettings(w http.ResponseWriter, r *http.Reques
 		langs = *req.Languages
 	}
 	if err := a.deps.Subtitles.SetSettings(r.Context(), req.MoviesAuto, req.SeriesAuto, langs); err != nil {
+		if errors.Is(err, subtitles.ErrUnknownLanguage) {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		a.writeError(w, http.StatusInternalServerError, "could not save subtitle settings")
 		return
 	}
