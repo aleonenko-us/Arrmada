@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type Book, type BookAuthor, type BookDiscoverCard } from "../lib/api";
+import { bookAuthorApi, type LibraryAuthor, type LibraryAuthorPatch } from "../lib/bookAuthorApi";
 import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
@@ -11,134 +12,319 @@ import { TONE_HUE } from "../ui";
 // full book detail page for grab / auto-grab / etc.) plus the rest of their official
 // catalogue (from Hardcover when a key is set, else Open Library; bundle-filtered) that you
 // can add in a click.
+//
+// The page is the author row (/books/authors/:id). Its catalogue is the catalogue author
+// stored on that row, never a guess from the name: an author with none stored asks
+// "Which author is this?" and the pick is saved.
 export function AuthorDetail() {
-  const { name: raw } = useParams();
-  const name = decodeURIComponent(raw ?? "");
+  const { id: raw } = useParams();
+  const id = Number(raw);
+  const navigate = useNavigate();
 
+  const [author, setAuthor] = useState<LibraryAuthor | null>(null);
+  const [missingAuthor, setMissingAuthor] = useState(false);
   const [library, setLibrary] = useState<Book[] | null>(null);
-  const [author, setAuthor] = useState<BookAuthor | null>(null);
   const [detail, setDetail] = useState<BookAuthor | null>(null); // photo + bio, when the catalogue has them
   const [works, setWorks] = useState<BookDiscoverCard[] | null>(null);
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
-  const [profile, setProfile] = useState("");
+  const [repick, setRepick] = useState(false);
+  const [profiles, setProfiles] = useState<{ key: string; name: string; isDefault: boolean }[]>([]);
+  const [saving, setSaving] = useState(false);
   const [addingKey, setAddingKey] = useState<string | null>(null);
   const [addingAll, setAddingAll] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); };
 
   const loadLibrary = useCallback(() => api.books().then((r) => setLibrary(r.books)).catch(() => setLibrary([])), []);
+  const loadAuthor = useCallback(() => bookAuthorApi.get(id).then((a) => { setAuthor(a); setMissingAuthor(false); }).catch(() => setMissingAuthor(true)), [id]);
 
-  // Resolve the author's catalogue key from the name, then pull their catalogue.
-  const loadCatalogue = useCallback(() => {
-    setWorks(null);
-    api.searchBookAuthors(name).then((authors) => {
-      const exact = authors.find((a) => a.name.toLowerCase() === name.toLowerCase());
-      const best = exact ?? authors.slice().sort((a, b) => b.work_count - a.work_count)[0];
-      if (!best) { setAuthor(null); setWorks([]); return; }
-      setAuthor(best);
-      api.bookAuthorWorks(best.key).then(setWorks).catch(() => setWorks([]));
-      if (best.key.startsWith("hc:a:")) api.bookAuthorDetail(best.key).then(setDetail).catch(() => setDetail(null));
-    }).catch(() => { setAuthor(null); setWorks([]); });
-  }, [name]);
-
-  useEffect(() => { loadLibrary(); loadCatalogue(); }, [loadLibrary, loadCatalogue]);
+  useEffect(() => { setAuthor(null); setRepick(false); void loadAuthor(); void loadLibrary(); }, [loadAuthor, loadLibrary]);
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => {
-      setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })));
-      const def = r.profiles.find((p) => p.is_default) ?? r.profiles[0];
-      if (def) setProfile(def.key);
+      setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name, isDefault: !!p.is_default })));
     }).catch(() => {});
   }, []);
 
-  const owned = useMemo(() => (library ?? []).filter((b) => (b.author || "Unknown author") === name), [library, name]);
+  // The catalogue answers for the stored author only.
+  const key = author?.catalogue_key ?? "";
+  useEffect(() => {
+    setWorks(null);
+    setDetail(null);
+    if (!key) return;
+    api.bookAuthorWorks(key).then(setWorks).catch(() => setWorks([]));
+    if (key.startsWith("hc:a:")) api.bookAuthorDetail(key).then(setDetail).catch(() => setDetail(null));
+  }, [key]);
+
+  const owned = useMemo(() => (library ?? []).filter((b) => b.author_id === id), [library, id]);
   const ownedKeys = useMemo(() => new Set(owned.map((b) => b.ol_key)), [owned]);
   const missing = useMemo(() => (works ?? []).filter((w) => !w.in_library && !ownedKeys.has(w.key)), [works, ownedKeys]);
-  // Which catalogue answered for this author: Hardcover author keys start "hc:a:", and the
-  // fallback is Open Library. Unknown while no author matched.
-  const catalogueName = author ? (author.key.startsWith("hc:a:") ? "Hardcover" : "Open Library") : null;
+  const catalogueName = key ? (key.startsWith("hc:a:") ? "Hardcover" : "Open Library") : null;
+  const defaultProfile = profiles.find((p) => p.isDefault)?.key ?? profiles[0]?.key ?? "";
+  const profile = author?.quality_profile || defaultProfile;
+
+  const save = async (patch: LibraryAuthorPatch, done?: string) => {
+    if (!author) return;
+    setSaving(true);
+    try {
+      const next = await bookAuthorApi.update(author.id, patch);
+      if (next.id !== author.id) {
+        // The pick was an author already in the library under another spelling: the two
+        // are one now, and this page moves to the one that stayed.
+        flash(`Joined with ${next.name}`);
+        navigate(`/books/authors/${next.id}`, { replace: true });
+        return;
+      }
+      setAuthor(next);
+      setRepick(false);
+      if (done) flash(done);
+    } catch (e) { flash((e as Error).message); } finally { setSaving(false); }
+  };
 
   const add = async (w: BookDiscoverCard) => {
+    if (!author) return;
     setAddingKey(w.key);
     try {
-      await api.addBook({ ol_key: w.key, quality_profile: profile, monitored: true, title: w.title, author: name, year: w.year, cover_url: w.cover_url });
-      await loadLibrary();
+      await api.addBook({ ol_key: w.key, quality_profile: profile, monitored: true, title: w.title, author: author.name, year: w.year, cover_url: w.cover_url });
+      await Promise.all([loadLibrary(), loadAuthor()]);
       flash(`Added “${w.title}”`);
     } catch (e) { flash((e as Error).message); } finally { setAddingKey(null); }
   };
 
   const addAll = async () => {
-    if (!author) return;
+    if (!author || !key) return;
     setAddingAll(true);
     try {
-      const r = await api.addAuthor({ author_key: author.key, quality_profile: profile });
-      await loadLibrary();
+      const r = await api.addAuthor({ author_key: key, name: author.name, quality_profile: profile });
+      await Promise.all([loadLibrary(), loadAuthor()]);
       flash(`Added ${r.added} book${r.added === 1 ? "" : "s"}${r.skipped ? ` · ${r.skipped} already in library` : ""}`);
     } catch (e) { flash((e as Error).message); } finally { setAddingAll(false); }
   };
+
+  if (missingAuthor) {
+    return (
+      <>
+        <PageHeader title="Author" tail="Books" />
+        <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+          <BackLink />
+          <Empty>This author isn’t in your library any more.</Empty>
+        </div>
+      </>
+    );
+  }
+
+  const name = author?.name ?? "";
+  const image = detail?.image_url || author?.image_url;
+  return (
+    <>
+      <PageHeader title={name || "Author"} tail="Author" />
+      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+        <BackLink />
+
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-4">
+            {image && (
+              <img src={image} alt={name} className="h-[72px] w-[72px] flex-none rounded-full object-cover sm:h-[88px] sm:w-[88px]" style={{ border: "1px solid var(--line)" }} />
+            )}
+            <div className="min-w-0">
+              <h1 className="m-0 break-words text-[22px] font-bold">{name || "…"}</h1>
+              <div className="mt-1 text-[12px] text-ink-faint">
+                {owned.length} in library{detail?.work_count ? ` · ${detail.work_count.toLocaleString()} works in the catalogue` : ""}{detail?.birth_date ? ` · ${detail.birth_date}` : ""}
+                {author && author.names && author.names.length > 1 && <> · also filed as {author.names.filter((n) => n !== name).join(", ")}</>}
+              </div>
+              {(detail?.bio || author?.bio) && <p className="m-0 mt-2 max-w-[70ch] text-[12.5px] leading-relaxed text-ink-dim" style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{detail?.bio || author?.bio}</p>}
+              {key && !repick && (
+                <div className="mt-1.5 text-[11.5px] text-ink-faint">
+                  {catalogueName} author{" "}
+                  <button type="button" onClick={() => setRepick(true)} className="underline hover:text-[var(--ink)]">Not this person?</button>
+                </div>
+              )}
+            </div>
+          </div>
+          {author && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+              <Switch label="Monitor" on={author.monitored} disabled={saving}
+                onToggle={() => save({ monitored: !author.monitored }, author.monitored ? "No longer following this author" : "Following this author")} />
+              <Switch label="Add new books automatically" on={author.monitor_new} disabled={saving}
+                onToggle={() => save({ monitor_new: !author.monitor_new })} />
+              <label className="flex items-center gap-2">
+                <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
+                <select aria-label="Format" value={profile} disabled={saving} onChange={(e) => save({ quality_profile: e.target.value })} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+                  {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+                </select>
+              </label>
+              {missing.length > 0 && (
+                <button onClick={addAll} disabled={addingAll} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
+                  {addingAll ? "Adding…" : `+ Add all ${missing.length} missing`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {author && (!key || repick) && (
+          <WhichAuthor name={name} current={key} busy={saving}
+            onPick={(a) => save({ catalogue_key: a.key }, `Saved: ${a.name}`)}
+            onCancel={key ? () => setRepick(false) : undefined} />
+        )}
+
+        {/* In your library */}
+        <SectionTitle count={library === null ? undefined : owned.length}>In your library</SectionTitle>
+        {library === null ? (
+          <Grid>{Array.from({ length: 4 }).map((_, i) => <div key={i} className="rounded-xl" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }} />)}</Grid>
+        ) : owned.length === 0 ? (
+          <Empty>No books by {name || "this author"} in your library yet{key ? " — add some from their catalogue below" : ""}.</Empty>
+        ) : (
+          <div className="mb-8"><Grid>{owned.map((b) => <OwnedCard key={b.id} b={b} />)}</Grid></div>
+        )}
+
+        {/* Rest of the catalogue: only once we know who the author is. */}
+        {key && (
+          <>
+            <SectionTitle count={works === null ? undefined : missing.length}>More by {name}</SectionTitle>
+            {works === null ? (
+              <Grid>{Array.from({ length: 8 }).map((_, i) => <div key={i} className="rounded-xl" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }} />)}</Grid>
+            ) : missing.length === 0 ? (
+              <Empty>{owned.length > 0 ? "You have this author's whole catalogue. 🎉" : `Couldn't find more books for this author on ${catalogueName}.`}</Empty>
+            ) : (
+              <Grid>{missing.map((w) => <CatalogueCard key={w.key} w={w} onAdd={() => add(w)} busy={addingKey === w.key} disabled={addingKey !== null} />)}</Grid>
+            )}
+          </>
+        )}
+      </div>
+
+      {toast && <div role="status" className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
+    </>
+  );
+}
+
+// WhichAuthor is the "Which author is this?" picker: the catalogue's authors by this
+// name, each with a photo, how many works they have and one of them, so a person can
+// tell namesakes apart. There is no silent fallback — nothing is shown as this author's
+// catalogue until someone picks.
+function WhichAuthor({ name, current, busy, onPick, onCancel }: { name: string; current: string; busy: boolean; onPick: (a: BookAuthor) => void; onCancel?: () => void }) {
+  const [q, setQ] = useState(name);
+  const [results, setResults] = useState<BookAuthor[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const search = useCallback((text: string) => {
+    setResults(null);
+    setError(null);
+    api.searchBookAuthors(text).then(setResults).catch((e) => { setResults([]); setError((e as Error).message); });
+  }, []);
+  useEffect(() => { if (name) search(name); }, [name, search]);
+
+  return (
+    <section aria-labelledby="which-author" className="mb-8 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <h2 id="which-author" className="m-0 text-[15px] font-bold">Which author is this?</h2>
+        {onCancel && <button type="button" onClick={onCancel} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">Cancel</button>}
+      </div>
+      <p className="m-0 mb-3 text-[12px] text-ink-dim">Pick the person in the catalogue, so this page shows their books and nobody else’s. Arrmada remembers the choice.</p>
+      <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (q.trim()) search(q.trim()); }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Author name" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+        <button type="submit" className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Search</button>
+      </form>
+      {results === null ? (
+        <div className="p-4 text-center text-[12.5px] text-ink-dim">Searching the catalogue…</div>
+      ) : results.length === 0 ? (
+        <div className="p-4 text-center text-[12.5px] text-ink-dim">{error ? `The catalogue didn’t answer: ${error}` : "No authors by that name in the catalogue. Try another spelling."}</div>
+      ) : (
+        <ul className="m-0 grid list-none gap-2 p-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
+          {results.map((a) => (
+            <li key={a.key}>
+              <button type="button" disabled={busy || a.key === current} onClick={() => onPick(a)}
+                className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)] disabled:opacity-60"
+                style={{ border: "1px solid var(--line)", minHeight: 44 }}>
+                {a.image_url ? (
+                  <img src={a.image_url} alt="" className="h-11 w-11 flex-none rounded-full object-cover" loading="lazy" />
+                ) : (
+                  <span aria-hidden className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[16px] font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{a.name.charAt(0).toUpperCase()}</span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold">{a.name}{a.key === current ? " · current" : ""}</span>
+                  <span className="block truncate text-[11.5px] text-ink-faint">
+                    {a.work_count > 0 ? `${a.work_count.toLocaleString()} works` : "Author"}{a.top_work ? ` · ${a.top_work}` : ""}{a.birth_date ? ` · b. ${a.birth_date}` : ""}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// AuthorByName serves links from before authors had ids (/books/author/<name>): the name
+// resolves to its author's page, or — when it could be more than one author in the
+// library — a person picks which.
+export function AuthorByName() {
+  const { name: raw } = useParams();
+  const name = decodeURIComponent(raw ?? "");
+  const navigate = useNavigate();
+  const [candidates, setCandidates] = useState<LibraryAuthor[] | null>(null);
+
+  useEffect(() => {
+    setCandidates(null);
+    bookAuthorApi.named(name).then((list) => {
+      if (list.length === 1) navigate(`/books/authors/${list[0].id}`, { replace: true });
+      else setCandidates(list);
+    }).catch(() => setCandidates([]));
+  }, [name, navigate]);
 
   return (
     <>
       <PageHeader title={name} tail="Author" />
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
-        <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          All books
-        </Link>
-
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-4">
-            {(detail?.image_url || author?.image_url) && (
-              <img src={detail?.image_url || author?.image_url} alt={name} className="h-[88px] w-[88px] flex-none rounded-full object-cover" style={{ border: "1px solid var(--line)" }} />
-            )}
-            <div className="min-w-0">
-              <h1 className="m-0 text-[22px] font-bold">{name}</h1>
-              <div className="mt-1 text-[12px] text-ink-faint">
-                {owned.length} in library{author && author.work_count > 0 ? ` · ${author.work_count.toLocaleString()} works in the catalogue` : ""}{(detail?.birth_date || author?.birth_date) ? ` · ${detail?.birth_date || author?.birth_date}` : ""}
-              </div>
-              {detail?.bio && <p className="m-0 mt-2 max-w-[70ch] text-[12.5px] leading-relaxed text-ink-dim" style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{detail.bio}</p>}
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
-            <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-              {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-            </select>
-            {missing.length > 0 && (
-              <button onClick={addAll} disabled={addingAll} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-                {addingAll ? "Adding…" : `+ Add all ${missing.length} missing`}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* In your library */}
-        <SectionTitle count={owned.length}>In your library</SectionTitle>
-        {owned.length === 0 ? (
-          <Empty>No books by {name} in your library yet — add some from their catalogue below.</Empty>
+        <BackLink />
+        {candidates === null ? (
+          <div className="p-8 text-center text-[12.5px] text-ink-dim">Finding {name}…</div>
+        ) : candidates.length === 0 ? (
+          <Empty>No author in your library goes by “{name}”. Their books may be filed under another spelling — try <Link to="/books" className="underline">All books</Link>.</Empty>
         ) : (
-          <div className="mb-8 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
-            {owned.map((b) => <OwnedCard key={b.id} b={b} />)}
-          </div>
-        )}
-
-        {/* Rest of the catalogue */}
-        <SectionTitle count={works === null ? undefined : missing.length}>More by {name}</SectionTitle>
-        {works === null ? (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
-            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="rounded-xl" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }} />)}
-          </div>
-        ) : missing.length === 0 ? (
-          <Empty>{owned.length > 0 ? "You have this author's whole catalogue. 🎉" : `Couldn't find more books for this author ${catalogueName ? `on ${catalogueName}` : "in the catalogue"}.`}</Empty>
-        ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
-            {missing.map((w) => <CatalogueCard key={w.key} w={w} onAdd={() => add(w)} busy={addingKey === w.key} disabled={addingKey !== null} />)}
-          </div>
+          <section aria-labelledby="which-library-author">
+            <h2 id="which-library-author" className="m-0 mb-1 text-[15px] font-bold">Which author is this?</h2>
+            <p className="m-0 mb-3 text-[12px] text-ink-dim">“{name}” could be any of these authors in your library.</p>
+            <ul className="m-0 grid list-none gap-2 p-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
+              {candidates.map((a) => (
+                <li key={a.id}>
+                  <Link to={`/books/authors/${a.id}`} className="flex items-center gap-3 rounded-lg p-2.5 hover:bg-[var(--panel-2)]" style={{ border: "1px solid var(--line)", minHeight: 44 }}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold">{a.name}</span>
+                      <span className="block truncate text-[11.5px] text-ink-faint">{a.books} book{a.books === 1 ? "" : "s"}{a.names && a.names.length > 1 ? ` · also ${a.names.filter((n) => n !== a.name).join(", ")}` : ""}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </div>
-
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
+}
+
+function BackLink() {
+  return (
+    <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      All books
+    </Link>
+  );
+}
+
+// Switch is the Books pages' on/off control (the book page's Monitor switch).
+function Switch({ label, on, onToggle, disabled }: { label: string; on: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={onToggle} className="inline-flex min-h-[32px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
+      <span className="relative inline-block h-[22px] w-[38px] flex-none rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--line)" }}>
+        <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: on ? "19px" : "3px" }} />
+      </span>
+      <span style={{ color: on ? "var(--ink)" : "var(--ink-dim)" }}>{label}</span>
+    </button>
+  );
+}
+
+function Grid({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>{children}</div>;
 }
 
 // The chip sits over the cover, so it takes the plain hue (TONE_HUE), as poster chips do.

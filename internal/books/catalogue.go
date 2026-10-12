@@ -163,6 +163,7 @@ const (
 func (s *Service) KnownAuthorImages(ctx context.Context) map[string]string {
 	out := map[string]string{}
 	known, err := s.repo.authorImages(ctx)
+	s.repo.overlayAuthorRows(ctx, known)
 	if err != nil {
 		return out
 	}
@@ -174,7 +175,8 @@ func (s *Service) KnownAuthorImages(ctx context.Context) map[string]string {
 	return out
 }
 
-// AuthorImages returns a photo URL per library author, from the book_authors table.
+// AuthorImages returns a photo URL per library author, from the author rows and the
+// book_authors cache.
 // Authors not yet looked up are resolved through the current catalogue a few per call
 // (the Books page polls until nothing is pending), so a first visit costs a handful of
 // requests and later ones none.
@@ -190,6 +192,7 @@ func (s *Service) AuthorImages(ctx context.Context) (map[string]string, int, err
 		}
 	}
 	known, err := s.repo.authorImages(ctx)
+	s.repo.overlayAuthorRows(ctx, known)
 	if err != nil {
 		return nil, 0, err
 	}

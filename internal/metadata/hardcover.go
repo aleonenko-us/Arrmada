@@ -252,6 +252,7 @@ func (b hcBook) result() BookResult {
 		r.CoverURL = b.Image.URL
 	}
 	r.Author = b.mainAuthor()
+	r.AuthorKey = b.mainAuthorKey()
 	if b.Rating != nil && *b.Rating > 0 {
 		r.Rating = *b.Rating
 	}
@@ -451,6 +452,7 @@ func (d hcSearchDoc) bookResult() (BookResult, bool) {
 	r := BookResult{Key: hcKeyPrefix + strconv.Itoa(id), Title: strings.TrimSpace(d.Title), Year: rawInt(d.ReleaseYear), CoverURL: rawImageURL(d.Image),
 		Rating: rawFloat(d.Rating), Ratings: rawInt(d.RatingsCnt), Readers: rawInt(d.UsersCount)}
 	r.Author = d.mainAuthor()
+	r.AuthorKey = d.mainAuthorKey()
 	if len(d.Genres) > 3 {
 		r.Genres = d.Genres[:3]
 	} else if len(d.Genres) > 0 {
