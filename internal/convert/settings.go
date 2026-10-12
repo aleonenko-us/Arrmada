@@ -22,7 +22,7 @@ type Settings struct {
 	KeepAudioLangs   string `json:"keep_audio_langs"`   // CSV; empty = keep all
 	KeepOriginalLang bool   `json:"keep_original_lang"` // also keep the title's original language
 	DropCommentary   bool   `json:"drop_commentary"`
-	KeepSubLangs     string `json:"keep_sub_langs"` // CSV; empty = keep all
+	KeepSubLangs     string `json:"keep_sub_langs"` // CSV; empty = keep all; "@subtitles" = same as Subtitles
 	ImageSubs        string `json:"image_subs"`     // keep | when_text | remove
 	TidyTracks       bool   `json:"tidy_tracks"`    // rewrite files whose only gap is a few tracks
 	Crop             bool   `json:"crop"`           // remove black bars from re-encoded films
@@ -65,7 +65,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		AllowAV1: p.allowAV1, UseGPU: p.useGPU, PauseWatching: p.pauseWatching,
 		KeepAudioLangs:   strings.Join(p.keepAudio, ", "),
 		KeepOriginalLang: p.keepOriginal, DropCommentary: p.dropCommentary,
-		KeepSubLangs: strings.Join(p.keepSubs, ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision, TenBit: p.tenBit, Resumable: p.resumable,
+		KeepSubLangs: strings.Join(splitCSV(p.keepSubsSaved), ", "), ImageSubs: p.imageSubs, TidyTracks: p.tidyTracks, Crop: p.crop, DolbyVision: p.dolbyVision, TenBit: p.tenBit, Resumable: p.resumable,
 		HoldDays: s.holdDays(ctx), HoldMaxGB: s.holdMaxGB(ctx),
 		ScratchDir: g.Get(ctx, keyScratchDir, ""), VaapiDevice: g.Get(ctx, keyVaapiDevice, ""),
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),

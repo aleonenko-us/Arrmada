@@ -72,6 +72,18 @@ test.describe("admin", () => {
     await expect.poll(() => api.callsTo("PUT", "/api/v1/subtitles/settings").map((c) => c.body).slice(-1)[0]).toEqual({ languages: ["pt-br", "en"] });
     await expect(page.getByText("A subtitle file with no language in its name counts as this one.")).toBeVisible();
   });
+
+  // SUB-32: Convert can keep the same subtitle languages as Subtitles.
+  test("Convert's subtitle keep-list can follow Subtitles", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools");
+    await page.getByRole("radiogroup", { name: "Keep subtitles in" }).getByRole("radio", { name: /Same as Subtitles/ }).check();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ keep_sub_langs: "@subtitles" }]);
+    await expect(page.getByText("Same as Subtitles — English")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Keep subtitles in" })).toHaveCount(0);
+  });
 });
 
 // installExtra puts fixtures in front of the defaults for one test.

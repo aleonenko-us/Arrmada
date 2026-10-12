@@ -194,6 +194,9 @@ func canonicalLanguages(in []string) ([]string, error) {
 	return out, nil
 }
 
+// Languages is the kept-language list (what Convert's "Same as Subtitles" keeps).
+func (s *Service) Languages(ctx context.Context) []string { return s.languages(ctx) }
+
 // languages is the kept-language list, canonical and in the owner's order. A value saved
 // before the shared table existed ("eng") reads back canonical ("en"); a code the table
 // doesn't know is kept as written rather than silently dropped.
