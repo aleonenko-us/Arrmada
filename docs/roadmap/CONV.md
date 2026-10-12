@@ -700,7 +700,7 @@ _Non-default movie versions (often the biggest remuxes) are converted. A 'Your d
 _Restarts and updates cost at most one encoded piece instead of days of 4K encoding. Dolby Vision files can be converted while keeping DV as profile 8.1._
 
 <a id="conv-27"></a>
-- [ ] **CONV-27 · Revive the parked resumable pieced encode behind a setting (off by default)** — `P2` · `L` · Phase 11
+- [x] **CONV-27 · Revive the parked resumable pieced encode behind a setting (off by default)** — `P2` · `L` · Phase 11
   - **Problem:** Run() starts with cleanScratch, and runJob marks in-flight jobs 'stopped by a restart' (runner.go:138-141). Every ./update.sh during a multi-night 4K CPU encode (~3.8 fps, ~24 h per film) throws away all progress, so the biggest remuxes, where the space is, may rarely finish. A resumable implementation is parked as stash@{0} ('resumable pieced encoding (unverified — integration run never reported)'), plus chunk.go and chunk_test.go in stash@{0}^3, based on 3e99fc9. Only two commits have touched internal/convert since. The owner parked it deliberately, so reviving it is a priority call.
   - **Approach:** 1) Recover onto current main. Apply the stash diff: analyze.go VideoStartSec, hdr.go, process.go, the runner.go resumable-first pick, service.go dropResume in finish, and the integration_test.go scenario. Restore chunk.go and chunk_test.go from stash@{0}^3. Resolve against crop, measured and preflight, and against [CONV-01](#conv-01), [CONV-17](#conv-17) and [CONV-19](#conv-19).
     2) Keep the stash's design; it is better than a DB table, so the draft's convert_resume table is dropped:
