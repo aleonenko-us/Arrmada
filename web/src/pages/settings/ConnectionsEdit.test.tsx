@@ -64,22 +64,114 @@ const menuPick = async (card: HTMLElement, name: string, item: string) => {
 };
 
 describe("adding an indexer", () => {
-  it("names a new indexer after its kind until the user types a name, in one column on a phone", async () => {
+  // INT-18: a catalogue of presets, each showing only what its tracker needs, with a Test
+  // before any row exists.
+  const openCatalogue = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "+ Add indexer" }));
+    return screen.findByRole("dialog", { name: "Add an indexer" });
+  };
+  const pick = async (label: RegExp) => {
+    const dialog = await openCatalogue();
+    fireEvent.click(within(dialog).getByRole("button", { name: label }));
+    return screen.getByRole("form", { name: "Add an indexer" });
+  };
+
+  it("offers the presets as monogram tiles, with no Newznab", async () => {
     serve({});
     page();
-    fireEvent.click(await screen.findByRole("button", { name: "+ Add indexer" }));
-    const form = screen.getByRole("form", { name: "Add an indexer" });
-    const name = within(form).getByDisplayValue("1337x") as HTMLInputElement;
-    const kind = within(form).getByRole("combobox") as HTMLSelectElement;
-    fireEvent.change(kind, { target: { value: "torrentleech" } });
-    expect(name.value).toBe("TorrentLeech");
-    fireEvent.change(name, { target: { value: "My tracker" } });
-    fireEvent.change(kind, { target: { value: "torznab" } });
-    expect(name.value).toBe("My tracker");
-    const grid = kind.closest(".grid") as HTMLElement;
-    expect(grid.className).toContain("grid-cols-1");
-    expect(grid.className).toContain("sm:grid-cols-2");
-    expect(within(form).getByText(/Only breaks ties/)).toBeTruthy();
+    const dialog = await openCatalogue();
+    const tiles = within(dialog).getAllByRole("button").map((b) => b.textContent ?? "");
+    for (const t of ["TorrentLeech", "MyAnonaMouse", "1337x", "Prowlarr", "Jackett / other Torznab"]) {
+      expect(tiles.some((x) => x.includes(t))).toBe(true);
+    }
+    expect(tiles.some((x) => /newznab|usenet/i.test(x))).toBe(false);
+    expect(dialog.querySelector("img")).toBeNull();
+    // Two tiles a row from 400px, one on a 375px phone.
+    expect((dialog.querySelector("ul") as HTMLElement).className).toMatch(/grid-cols-1 .*min-\[400px\]:grid-cols-2/);
+  });
+
+  it("TorrentLeech asks only for its login and seed rules, tests it, then saves it named TorrentLeech", async () => {
+    serve({});
+    const test = vi.spyOn(indexerApi, "testIndexerSettings").mockResolvedValue({ ok: true });
+    const create = vi.spyOn(indexerApi, "createIndexer").mockResolvedValue(idx({ id: 9 }));
+    page();
+    const form = await pick(/TorrentLeech/);
+    expect(within(form).queryByLabelText("Feed URL")).toBeNull();
+    expect(within(form).queryByLabelText("API key")).toBeNull();
+    expect(within(form).queryByLabelText(/Site URL/)).toBeNull();
+    expect(within(form).getByText("Seed rules")).toBeTruthy();
+    expect(within(form).getByText(/private tracker counts how long you seed/)).toBeTruthy();
+    // Nothing to test until the login is filled in.
+    expect((within(form).getByRole("button", { name: "Test" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "me" } });
+    fireEvent.change(within(form).getByLabelText("Password"), { target: { value: "pw" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Test" })); });
+    expect(test).toHaveBeenCalledWith(expect.objectContaining({ kind: "torrentleech", name: "TorrentLeech", username: "me", password: "pw", seed_enabled: true, seed_hours: 14 * 24, media_types: [] }));
+    expect(test.mock.calls[0][0].url).toBeUndefined();
+    expect(within(form).getByText(/Connected/)).toBeTruthy();
+    expect(create).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Save indexer" })); });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ kind: "torrentleech", name: "TorrentLeech", username: "me" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a Torznab feed with a bad URL fails the test with the reason, and nothing is saved", async () => {
+    serve({});
+    vi.spyOn(indexerApi, "testIndexerSettings").mockResolvedValue({ ok: false, error: "That's a web page, not a Torznab feed" });
+    const create = vi.spyOn(indexerApi, "createIndexer");
+    page();
+    const form = await pick(/Jackett/);
+    fireEvent.change(within(form).getByLabelText("Feed URL"), { target: { value: "http://jackett:9117/" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Test" })); });
+    expect(within(form).getByText(/web page, not a Torznab feed/)).toBeTruthy();
+    expect(within(form).queryByRole("button", { name: "Save indexer" })).toBeNull();
+    expect(within(form).getByRole("button", { name: "Save without testing" })).toBeTruthy();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("a passing test goes stale when the form changes", async () => {
+    serve({});
+    vi.spyOn(indexerApi, "testIndexerSettings").mockResolvedValue({ ok: true, caps_summary: "Movies (imdbid)" });
+    page();
+    const form = await pick(/Jackett/);
+    const url = within(form).getByLabelText("Feed URL");
+    fireEvent.change(url, { target: { value: "http://jackett/api" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Test" })); });
+    expect(within(form).getByText(/Movies \(imdbid\)/)).toBeTruthy();
+    fireEvent.change(url, { target: { value: "http://jackett/other" } });
+    expect(within(form).queryByText(/Connected/)).toBeNull();
+    expect(within(form).queryByRole("button", { name: "Save indexer" })).toBeNull();
+  });
+
+  it("can still save without testing", async () => {
+    serve({});
+    const test = vi.spyOn(indexerApi, "testIndexerSettings");
+    const create = vi.spyOn(indexerApi, "createIndexer").mockResolvedValue(idx({ id: 9, kind: "1337x", name: "1337x" }));
+    page();
+    const form = await pick(/1337x/);
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Save without testing" })); });
+    expect(test).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ kind: "1337x", name: "1337x", url: "", media_types: ["movie", "series"] }));
+  });
+
+  it("MyAnonaMouse defaults to Books only", async () => {
+    serve({});
+    page();
+    const form = await pick(/MyAnonaMouse/);
+    const scope = within(form).getByRole("group", { name: "Used for" });
+    const pressed = within(scope).getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
+    expect(pressed).toEqual(["Books"]);
+    expect(within(form).getByLabelText("mam_id session")).toBeTruthy();
+  });
+
+  it("the Prowlarr tile opens the Prowlarr card instead of a form", async () => {
+    serve({});
+    page();
+    const dialog = await openCatalogue();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Prowlarr/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const card = document.getElementById("prowlarr") as HTMLElement;
+    expect(await within(card).findByText(/Pull your Prowlarr indexers in/)).toBeTruthy();
   });
 });
 
