@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { wantedCopy, wantedTitle } from "./bookSearch";
+import { editionsHeld, wantedCopy, wantedTitle } from "./bookSearch";
+
+describe("editionsHeld", () => {
+  it("names the editions on disk in full", () => {
+    expect(editionsHeld({ ebook: {}, audiobook: {} })).toBe("Ebook · Audiobook");
+    expect(editionsHeld({ ebook: {} })).toBe("Ebook");
+    expect(editionsHeld({ audiobook: {} })).toBe("Audiobook");
+    expect(editionsHeld({})).toBe("");
+  });
+});
 
 describe("wantedCopy", () => {
   const now = Date.parse("2026-10-09T12:00:00Z");
