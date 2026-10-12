@@ -485,6 +485,11 @@ func (s *Service) applyUpgrade(ctx context.Context, b Book, d *metadata.BookDeta
 	if d.SeriesName != "" {
 		_ = s.repo.SetSeriesRef(ctx, b.ID, d.SeriesName, d.SeriesPosition, d.SeriesKey)
 	}
+	authorKey := ""
+	if d.Author != "" {
+		authorKey = d.AuthorKey
+	}
+	s.linkAuthor(ctx, b.ID, nb.Author, authorKey, !strings.EqualFold(b.Author, nb.Author))
 	s.repo.AddEvent(ctx, b.ID, "upgraded", "Re-matched to Hardcover ("+d.Key+")")
 	return nil
 }

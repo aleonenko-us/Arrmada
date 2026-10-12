@@ -250,6 +250,10 @@ type BookResult struct {
 	Author   string `json:"author"`
 	Year     int    `json:"year"`
 	CoverURL string `json:"cover_url,omitempty"`
+	// AuthorKey is the catalogue's id for the person in Author (Open Library "OL23919A",
+	// Hardcover "hc:a:123"), when the answer carried one. It links a library book to its
+	// author row by identity rather than by spelling.
+	AuthorKey string `json:"author_key,omitempty"`
 	// Set on entries of a series listing (SeriesInfo); zero elsewhere.
 	SeriesName     string  `json:"series_name,omitempty"`
 	SeriesPosition float64 `json:"series_position,omitempty"`

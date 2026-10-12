@@ -41,6 +41,7 @@ type Book struct {
 	OLKey          string    `json:"ol_key"`
 	Title          string    `json:"title"`
 	Author         string    `json:"author"`
+	AuthorID       int64     `json:"author_id,omitempty"` // the author row Author means; 0 = not linked (none, or ambiguous)
 	Year           int       `json:"year"`
 	CoverURL       string    `json:"cover_url,omitempty"`
 	Description    string    `json:"description,omitempty"`
