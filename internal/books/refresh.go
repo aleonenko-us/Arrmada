@@ -61,7 +61,7 @@ func (s *Service) HardcoverBudgetLow() bool {
 // failure or the context ending. Each book that was looked up is stamped, found or not,
 // so one key the catalogue no longer knows can't hold the front of the queue forever.
 func (s *Service) RefreshDue(ctx context.Context, limit int) (refreshed int, skipped string, err error) {
-	if limit <= 0 {
+	if limit <= 0 || s.meta == nil {
 		return 0, "", nil
 	}
 	if s.HardcoverBudgetLow() {
@@ -98,6 +98,9 @@ func (s *Service) RefreshDue(ctx context.Context, limit int) (refreshed int, ski
 // refreshed. It is budget-aware: when the Hardcover gate closes it stops, and the books
 // it didn't reach are searched as they are and refreshed later by the job.
 func (s *Service) RefreshBooks(ctx context.Context, ids []int64) int {
+	if s.meta == nil {
+		return 0 // no catalogue wired (tools, tests): nothing to refresh from
+	}
 	n := 0
 	for _, id := range ids {
 		if ctx.Err() != nil || s.HardcoverBudgetLow() {
