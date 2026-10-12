@@ -166,6 +166,7 @@ func (s *Service) Add(ctx context.Context, olKey, qualityProfile string, monitor
 		OLKey: d.Key, Title: orStr(d.Title, fallback.Title), Author: orStr(d.Author, fallback.Author),
 		Year: d.Year, CoverURL: orStr(d.CoverURL, fallback.CoverURL),
 		Description: d.Description, Subjects: d.Subjects, Monitored: monitored, QualityProfile: qualityProfile,
+		ReleaseDate: orStr(d.ReleaseDate, fallback.ReleaseDate),
 	}
 	if b.Year == 0 {
 		b.Year = fallback.Year
@@ -247,7 +248,7 @@ func (s *Service) AddWorks(ctx context.Context, works []metadata.BookResult, pro
 		}
 		created, err := s.repo.Create(ctx, Book{
 			OLKey: wk.Key, Title: wk.Title, Author: wk.Author, Year: wk.Year,
-			CoverURL: wk.CoverURL, Monitored: monitored, QualityProfile: profile,
+			CoverURL: wk.CoverURL, Monitored: monitored, QualityProfile: profile, ReleaseDate: wk.ReleaseDate,
 		})
 		if errors.Is(err, ErrExists) {
 			skipped++
@@ -352,6 +353,9 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 			b.Subjects = d.Subjects
 		}
 		_ = s.repo.UpdateMeta(ctx, b.ID, b.Description, b.CoverURL, b.Subjects)
+		// Existing books pick up their release date here (and through the refresh-books
+		// job); a catalogue that doesn't know one leaves the stored date alone.
+		_ = s.repo.SetReleaseDate(ctx, b.ID, d.ReleaseDate)
 		// The catalogue's author wins over the one on file: a book filed under its
 		// illustrator (the catalogue once listed that contributor first) is put right
 		// here, and every indexer search from then on carries the right name.
@@ -519,6 +523,7 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 		CoverURL:    orStr(d.CoverURL, fallback.CoverURL),
 		Description: d.Description,
 		Subjects:    d.Subjects,
+		ReleaseDate: d.ReleaseDate,
 	}
 	if next.Year == 0 {
 		next.Year = fallback.Year
@@ -531,6 +536,9 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 	// the old key was a wrong identification, and keeping it would make that other book
 	// read as owned — and refuse to be added.
 	keepOld := SameBook(before.Title, before.Author, next.Title, next.Author)
+	if next.ReleaseDate == "" && keepOld {
+		next.ReleaseDate = before.ReleaseDate // the same book; this catalogue just doesn't say
+	}
 	if err := s.repo.Rematch(ctx, id, next, keepOld); err != nil {
 		return Book{}, err
 	}

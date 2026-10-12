@@ -467,6 +467,7 @@ func (s *Service) applyUpgrade(ctx context.Context, b Book, d *metadata.BookDeta
 	nb := Book{
 		OLKey: d.Key, Title: orStr(d.Title, b.Title), Author: orStr(d.Author, b.Author), Year: d.Year,
 		CoverURL: orStr(d.CoverURL, b.CoverURL), Description: orStr(d.Description, b.Description), Subjects: d.Subjects,
+		ReleaseDate: orStr(d.ReleaseDate, b.ReleaseDate),
 	}
 	if nb.Year == 0 {
 		nb.Year = b.Year

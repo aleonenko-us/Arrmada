@@ -80,11 +80,19 @@ func (c *Coordinator) searchBooksMissing(ctx context.Context, maxSearches int) {
 			continue
 		}
 		st := states[b.ID]
-		if next := books.NextSearchAt(st.LastAt, st.Misses); !next.IsZero() && now.Before(next) {
+		// An upcoming book isn't searched before its release day; from that day it is
+		// searched at least daily for two weeks (books.NextSearchAtFor).
+		if next := books.NextSearchAtFor(st.LastAt, st.Misses, b.ReleaseDate, now); !next.IsZero() && now.Before(next) {
 			continue
 		}
 		if downloading[b.ID] {
 			continue // already downloading for this book — let it finish
+		}
+		if st.Misses > 0 && books.ReleasedSinceLastSearch(st.LastAt, b.ReleaseDate, now) {
+			// Out since the last look: the empty searches from before it existed don't
+			// count against it.
+			c.books.ResetForRelease(ctx, b.ID)
+			st.Misses = 0
 		}
 		due = append(due, dueBook{b, st})
 	}
