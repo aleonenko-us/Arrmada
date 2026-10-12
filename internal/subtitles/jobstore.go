@@ -318,7 +318,7 @@ func (s *Service) loadQueue(ctx context.Context) error {
 		j := &queued[i]
 		j.Priority = clampPrio(j.Priority)
 		s.active[j.activeKey()] = j
-		s.pending[j.Priority] = append(s.pending[j.Priority], j)
+		s.pushLocked(j)
 		list = append(list, j)
 	}
 	for i := range recent {

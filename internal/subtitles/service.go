@@ -71,16 +71,19 @@ type Service struct {
 	// come, and the band between scoreFloor and the minimum is refused.
 	syncGate func(ctx context.Context, ref fileRef, lang string, c ScoredCandidate, srt []byte) (out []byte, ok bool, detail string)
 
-	mu        sync.Mutex
-	jobs      []*Job           // recent subtitle-ensure jobs (newest first), for the Queue tab
-	pending   [numPrios][]*Job // waiting for the worker, one oldest-first line per priority — unbounded, see Run
-	active    map[string]*Job  // queued or running jobs by file key, for enqueue's dedupe
-	wake      chan struct{}    // nudges the worker when pending gains a job
-	nextID    int64
-	running   *Job               // the job the worker is on, if any
-	cancelRun context.CancelFunc // cancels the running job's context (Stop button)
-	logMu     sync.Mutex
-	logBuf    []LogLine // recent activity console lines, for the Logs tab
+	mu      sync.Mutex
+	jobs    []*Job                     // recent subtitle-ensure jobs (newest first), for the Queue tab
+	pending [numLanes][numPrios][]*Job // waiting per lane, one oldest-first line per priority — unbounded, see Run
+	active  map[string]*Job            // queued or running jobs by file and lane, for enqueue's dedupe
+	wake    chan struct{}              // nudges the fast lane's workers when it gains a job
+	wakeGPU chan struct{}              // the same for the GPU lane (made on first use)
+	nextID  int64
+	runs    map[int64]*runHandle // running jobs' stop levers, by job id (Stop button)
+	busy    map[string]*Job      // files a job is working on (Job.key()); no second job may start on one
+	lanes   bool                 // Run's GPU worker is up: a job's AI part moves to the GPU lane
+	rtfMu   sync.Mutex           // serialises updates of the measured AI speed (noteRTF)
+	logMu   sync.Mutex
+	logBuf  []LogLine // recent activity console lines, for the Logs tab
 
 	onJobDone func(Job) // SetJobDoneHook; under mu
 

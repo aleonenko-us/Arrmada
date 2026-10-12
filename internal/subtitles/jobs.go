@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/movies"
@@ -127,24 +128,52 @@ type LogLine struct {
 	Msg   string `json:"msg"`
 }
 
-// Run drains the queue in a single worker until ctx is cancelled (start it in a goroutine).
+// Run works the queue until ctx is cancelled (start it in a goroutine): fast-lane workers
+// (extract, download; subs_fast_lane_workers, 1 or 2) and one GPU-lane worker (whisper).
+// A one-second extraction no longer waits behind an hour of whisper: a job whose leftover
+// languages need AI moves to the GPU lane, and the fast lane carries on.
 //
-// The queue is a slice under the mutex rather than a channel. A channel send blocks once
-// the buffer is full, and the one worker can be inside a whisper run for many minutes —
-// so a sweep that queued a few hundred files would block the scheduler goroutine, and an
+// The queue is slices under the mutex rather than channels. A channel send blocks once
+// the buffer is full, and a worker can be inside a whisper run for many minutes — so a
+// sweep that queued a few hundred files would block the scheduler goroutine, and an
 // import hook would block the import, for as long as it took the worker to drain. A
 // slice grows; the caller always returns immediately.
 func (s *Service) Run(ctx context.Context) {
-	s.log.Info("subtitles: worker started", "queued", s.Pending())
+	fast := s.fastWorkers(ctx)
+	s.log.Info("subtitles: workers started", "queued", s.Pending(), "fast_workers", fast)
 	s.Rescan(ctx) // first library pass, in the background; the pages read it
 	s.bootSweep(ctx)
+	s.mu.Lock()
+	s.lanes = true // the GPU worker below takes the AI part of every job from here on
+	s.mu.Unlock()
+	var wg sync.WaitGroup
+	start := func(name, lane string) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			safego.Loop(ctx, s.log, name, func(ctx context.Context) { s.work(ctx, lane) })
+		}()
+	}
+	for i := 0; i < fast; i++ {
+		start(fmt.Sprintf("subtitles: fast worker %d", i+1), LaneFast)
+	}
+	start("subtitles: GPU worker", LaneGPU)
+	wg.Wait()
+}
+
+// work is one worker: it takes the next job from its lane, runs it, and sleeps when there
+// is nothing it may take.
+func (s *Service) work(ctx context.Context, lane string) {
+	s.mu.Lock()
+	wake := s.laneWakeLocked(laneIndex(lane))
+	s.mu.Unlock()
 	for {
-		job := s.pop()
+		job := s.popLane(lane)
 		if job == nil {
 			select {
 			case <-ctx.Done():
 				return
-			case <-s.wake:
+			case <-wake:
 			}
 			continue
 		}
@@ -181,29 +210,39 @@ func (s *Service) bootSweep(ctx context.Context) {
 	})
 }
 
-// startJob gives a job its own cancellable context and records it as the running job, so
-// Cancel can reach it. The returned func releases both; call it when process returns.
+// runHandle is one running job's stop lever.
+type runHandle struct{ cancel context.CancelFunc }
+
+// startJob gives a job its own cancellable context and records it as running, so Cancel
+// can reach it. The returned func releases both, and the job's file for the other lane;
+// call it when process returns.
 func (s *Service) startJob(ctx context.Context, job *Job) (context.Context, func()) {
 	jctx, cancel := context.WithCancel(ctx)
+	h := &runHandle{cancel: cancel}
 	s.mu.Lock()
-	s.running = job
-	s.cancelRun = cancel
+	if s.runs == nil {
+		s.runs = map[int64]*runHandle{}
+	}
+	s.runs[job.ID] = h
 	s.mu.Unlock()
 	return jctx, func() {
 		cancel()
 		s.mu.Lock()
-		if s.running == job {
-			s.running = nil
-			s.cancelRun = nil
+		// A job handed to the GPU lane may already be running there under its own handle.
+		if s.runs[job.ID] == h {
+			delete(s.runs, job.ID)
 		}
+		s.releaseLocked(job)
 		s.mu.Unlock()
+		s.wakeWorkers() // a job waiting on this file can go now
 	}
 }
 
-// Cancel stops one job. A queued job is dropped from the queue on the spot; the running
+// Cancel stops one job. A queued job is dropped from the queue on the spot; a running
 // job has its context cancelled, which kills the ffmpeg/whisper child process, and the
 // worker then records it as cancelled — whisper writes its SRT to a temp path and only
-// moves it next to the video on success, so nothing half-written is left behind.
+// moves it next to the video on success, so nothing half-written is left behind. Only
+// that job stops: the other lane carries on.
 func (s *Service) Cancel(id int64) error {
 	s.mu.Lock()
 	var job *Job
@@ -228,8 +267,8 @@ func (s *Service) Cancel(id int64) error {
 		s.event("info", "Removed "+job.Title+" from the queue")
 		return nil
 	case StateRunning:
-		if s.running == job && s.cancelRun != nil {
-			s.cancelRun()
+		if h := s.runs[job.ID]; h != nil {
+			h.cancel()
 		}
 		job.Note = "stopping…"
 		s.mu.Unlock()
@@ -241,37 +280,55 @@ func (s *Service) Cancel(id int64) error {
 	}
 }
 
-// ClearQueue drops every queued job (the running one is left alone — use Cancel for it).
-// Returns how many were dropped.
-func (s *Service) ClearQueue() int {
+// ClearQueue drops every queued job in both lanes (running ones are left alone — use
+// Cancel for those). Returns how many were dropped.
+func (s *Service) ClearQueue() int { return s.ClearLane("") }
+
+// ClearLane drops the queued jobs of one lane (LaneFast or LaneGPU; "" = both): "Clear AI
+// backlog" empties the GPU lane without touching extractions and downloads.
+func (s *Service) ClearLane(lane string) int {
 	s.mu.Lock()
 	var cleared []*Job
 	now := time.Now().Unix()
-	for p := range s.pending {
-		for _, j := range s.pending[p] {
-			j.State = StateCancelled
-			j.Note = "queue cleared"
-			j.FinishedAt = now
-			s.retireLocked(j)
-			cleared = append(cleared, j)
+	for li := range s.pending {
+		if lane != "" && li != laneIndex(lane) {
+			continue
 		}
-		s.pending[p] = nil
+		for p := range s.pending[li] {
+			for _, j := range s.pending[li][p] {
+				j.State = StateCancelled
+				j.Note = "queue cleared"
+				if li == laneIndex(LaneGPU) {
+					j.Note = "AI backlog cleared"
+				}
+				j.FinishedAt = now
+				s.retireLocked(j)
+				cleared = append(cleared, j)
+			}
+			s.pending[li][p] = nil
+		}
 	}
 	s.saveLocked("clear queue", cleared...)
 	n := len(cleared)
 	if n > 0 {
-		s.event("info", fmt.Sprintf("Cleared %d queued job(s)", n))
+		what := "queued job(s)"
+		if lane == LaneGPU {
+			what = "job(s) from the AI backlog"
+		}
+		s.event("info", fmt.Sprintf("Cleared %d %s", n, what))
 	}
 	return n
 }
 
 // dropPendingLocked removes a job from whichever pending line holds it; the mutex must be held.
 func (s *Service) dropPendingLocked(job *Job) {
-	for p := range s.pending {
-		for i, j := range s.pending[p] {
-			if j == job {
-				s.pending[p] = append(s.pending[p][:i], s.pending[p][i+1:]...)
-				return
+	for li := range s.pending {
+		for p := range s.pending[li] {
+			for i, j := range s.pending[li][p] {
+				if j == job {
+					s.pending[li][p] = append(s.pending[li][p][:i], s.pending[li][p][i+1:]...)
+					return
+				}
 			}
 		}
 	}
@@ -280,25 +337,58 @@ func (s *Service) dropPendingLocked(job *Job) {
 // pendingLocked is the total number of waiting jobs across every line; the mutex must be held.
 func (s *Service) pendingLocked() int {
 	n := 0
-	for p := range s.pending {
-		n += len(s.pending[p])
+	for li := range s.pending {
+		for p := range s.pending[li] {
+			n += len(s.pending[li][p])
+		}
 	}
 	return n
 }
 
-// pop takes the oldest job from the most urgent non-empty line, or nil.
-func (s *Service) pop() *Job {
+// pop takes the next fast-lane job (popLane).
+func (s *Service) pop() *Job { return s.popLane(LaneFast) }
+
+// popLane takes the oldest job from the lane's most urgent non-empty line, or nil. A job
+// whose file another job is working on (in either lane) waits its turn, so a redo can't
+// race an AI run on the same file; the next job in line goes instead.
+func (s *Service) popLane(lane string) *Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for p := range s.pending {
-		if len(s.pending[p]) == 0 {
-			continue
+	li := laneIndex(lane)
+	for p := range s.pending[li] {
+		line := s.pending[li][p]
+		for i, job := range line {
+			k := job.key()
+			if s.busy[k] != nil {
+				continue
+			}
+			if i == 0 {
+				s.pending[li][p] = line[1:]
+			} else {
+				s.pending[li][p] = append(line[:i:i], line[i+1:]...)
+			}
+			if s.busy == nil {
+				s.busy = map[string]*Job{}
+			}
+			s.busy[k] = job
+			// Another worker of this lane may be asleep with work still waiting.
+			for _, l := range s.pending[li] {
+				if len(l) > 0 {
+					nudge(s.laneWakeLocked(li))
+					break
+				}
+			}
+			return job
 		}
-		job := s.pending[p][0]
-		s.pending[p] = s.pending[p][1:]
-		return job
 	}
 	return nil
+}
+
+// releaseLocked frees a job's file for the next job on it; the mutex must be held.
+func (s *Service) releaseLocked(job *Job) {
+	if k := job.key(); s.busy[k] == job {
+		delete(s.busy, k)
+	}
 }
 
 // enqueue registers a job and wakes the worker. Returns the existing job instead when the
@@ -347,7 +437,7 @@ func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 			if job.Priority < j.Priority {
 				s.dropPendingLocked(j)
 				j.Priority = job.Priority
-				s.pending[j.Priority] = append(s.pending[j.Priority], j)
+				s.pushLocked(j)
 				changed = true
 			}
 			if changed {
@@ -360,7 +450,7 @@ func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 		job.State = StateQueued
 		job.At = now
 		s.active[key] = job
-		s.pending[job.Priority] = append(s.pending[job.Priority], job)
+		s.pushLocked(job)
 		inserts = append(inserts, *job)
 		fresh = append(fresh, job)
 		out[i] = job
@@ -393,17 +483,16 @@ func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 		return err
 	})
 	if len(inserts) > 0 {
-		s.wakeWorker()
+		s.wakeWorkers()
 	}
 	return out, len(inserts)
 }
 
-// wakeWorker nudges the worker; a nudge already waiting is enough.
-func (s *Service) wakeWorker() {
-	select {
-	case s.wake <- struct{}{}:
-	default: // worker already awake
-	}
+// pushLocked puts a job at the back of its lane's line for its priority; the mutex must
+// be held.
+func (s *Service) pushLocked(j *Job) {
+	li := laneIndex(j.lane())
+	s.pending[li][j.Priority] = append(s.pending[li][j.Priority], j)
 }
 
 // QueueMovie enqueues a subtitle-ensure job for one movie. redo replaces the sidecars
@@ -792,6 +881,7 @@ func (s *Service) retireLocked(job *Job) {
 	if k := job.activeKey(); s.active[k] == job {
 		delete(s.active, k)
 	}
+	s.releaseLocked(job)
 }
 
 // event appends a line to the activity console (kept to the last 500) and mirrors it to the log.
