@@ -21,3 +21,9 @@ export function wantedTitle(b: SearchState, now = Date.now()): string | undefine
   if ((b.search_misses ?? 0) > 0) return `Not found yet — next check ${formatCheckDay(b.next_search_at, now)}`;
   return "Searching";
 }
+
+// editionsHeld spells out which editions a book has on disk, for its "downloaded" status
+// word: "Ebook · Audiobook", "Ebook" or "Audiobook". The old "E+A ✓" needed a legend.
+export function editionsHeld(b: { ebook?: unknown; audiobook?: unknown }): string {
+  return [b.ebook && "Ebook", b.audiobook && "Audiobook"].filter(Boolean).join(" · ");
+}

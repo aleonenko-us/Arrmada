@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type MusicAlbum } from "../lib/api";
+import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
+import { Button, StatusChip } from "../ui";
 
 function fmtDuration(sec?: number): string {
   if (!sec || sec <= 0) return "";
@@ -11,11 +13,6 @@ function fmtDuration(sec?: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function fmtBytes(n?: number): string {
-  if (!n || n <= 0) return "";
-  const mb = n / 1024 ** 2;
-  return mb >= 1000 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
-}
 
 export function AlbumDetail() {
   const { id } = useParams();
@@ -90,12 +87,9 @@ export function AlbumDetail() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <span
-                className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase"
-                style={{ background: "var(--panel-2)", color: st.color }}
-              >
+              <StatusChip tone={st.tone} size="md">
                 {st.label}
-              </span>
+              </StatusChip>
               {al.year ? <span className="font-mono text-[11px] text-ink-faint">{al.year}</span> : null}
               {al.album_type ? <span className="font-mono text-[11px] text-ink-faint">{al.album_type}</span> : null}
               <a
@@ -109,10 +103,11 @@ export function AlbumDetail() {
               </a>
             </div>
             <div className="mt-2 font-mono text-[11.5px] text-ink-faint">
-              {al.have_tracks}/{al.track_count} tracks{al.size_bytes ? ` · ${fmtBytes(al.size_bytes)}` : ""}
+              {al.have_tracks}/{al.track_count} tracks{al.size_bytes ? ` · ${formatBytes(al.size_bytes)}` : ""}
             </div>
             <div className="mt-4">
-              <button
+              <Button
+                size="sm"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -123,11 +118,11 @@ export function AlbumDetail() {
                     setBusy(false);
                   }
                 }}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-                style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, color: al.monitored ? "var(--accent)" : "var(--ink-dim)" }}
+                className="disabled:opacity-50"
+                style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, background: "transparent", color: al.monitored ? "var(--accent)" : "var(--ink-dim)" }}
               >
                 {al.monitored ? "Monitored" : "Monitor"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -29,6 +29,9 @@ export interface ToolbarAction {
   onClick: () => void;
   disabled?: boolean;
   title?: string;
+  /** Running: disabled, aria-busy, and busyLabel (if given) in place of the label. */
+  busy?: boolean;
+  busyLabel?: string;
 }
 
 export interface LibraryToolbarProps {
@@ -37,10 +40,16 @@ export interface LibraryToolbarProps {
   /** Beside the count: a page switch, a queue chip. */
   lead?: ReactNode;
   segments?: ToolbarSegment[];
+  /** Dropdown pickers ("View: Books · grid"), for a choice too long for a segmented toggle. */
+  pickers?: ToolbarSegment[];
   /** A sort picker ("Sort: Recently added"), for views without sortable columns. */
   sort?: ToolbarSegment;
   select?: { active: boolean; onToggle: () => void };
   tools?: LibraryTool[];
+  /** A small count on the tools button: something in the menu wants a look (possible duplicates). */
+  toolsBadge?: number;
+  /** Everyday buttons between the tools menu and the add buttons ("Search missing (4)"). */
+  actions?: ToolbarAction[];
   /** A second add button before the primary ("+ Add author"). */
   secondary?: ToolbarAction;
   primary?: ToolbarAction;
@@ -53,7 +62,7 @@ const PANEL = { background: "var(--panel-2)", border: "1px solid var(--line)" };
 // tools" menu for the occasional jobs (Scan library, sweeps) and the "+ Add …" buttons.
 // It wraps rather than squeezing: below sm the count takes its own line, and no button
 // ever shrinks into a narrow column.
-export function LibraryToolbar({ count, lead, segments = [], sort, select, tools = [], secondary, primary }: LibraryToolbarProps) {
+export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort, select, tools = [], toolsBadge = 0, actions = [], secondary, primary }: LibraryToolbarProps) {
   const shown = tools.filter((t) => !t.hidden);
   const running = shown.filter((t) => t.progress);
   const items: MenuItem[] = shown.map((t) => ({
@@ -82,14 +91,14 @@ export function LibraryToolbar({ count, lead, segments = [], sort, select, tools
             })}
           </div>
         ))}
-        {sort && (
-          <label className="inline-flex shrink-0 items-center gap-1.5 rounded-lg py-0.5 pl-2.5 pr-1" style={PANEL}>
-            <span className="font-mono text-[10px] uppercase text-ink-faint">{sort.label}</span>
-            <select value={sort.value} onChange={(e) => sort.onChange(e.target.value)} aria-label={sort.label} className="rounded-md bg-transparent py-1 pr-1 text-[12px] font-semibold" style={{ color: "var(--ink)" }}>
-              {sort.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {[...pickers, ...(sort ? [sort] : [])].map((p) => (
+          <label key={p.label} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg py-0.5 pl-2.5 pr-1" style={PANEL}>
+            <span className="font-mono text-[10px] uppercase text-ink-faint">{p.label}</span>
+            <select value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-label={p.label} className="rounded-md bg-transparent py-1 pr-1 text-[12px] font-semibold" style={{ color: "var(--ink)" }}>
+              {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
-        )}
+        ))}
         {select && (
           <button
             onClick={select.onToggle}
@@ -103,13 +112,24 @@ export function LibraryToolbar({ count, lead, segments = [], sort, select, tools
         {items.length > 0 && (
           <Menu
             label="Library tools"
-            trigger={<><span aria-hidden="true">⋯</span> Tools</>}
+            trigger={<>
+              <span aria-hidden="true">⋯</span> Tools
+              {toolsBadge > 0 && <span aria-hidden="true" className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{toolsBadge}</span>}
+            </>}
             items={items}
             triggerClassName="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold"
             triggerStyle={{ ...PANEL, color: "var(--ink)" }}
             itemClassName="min-h-[40px]"
+            // Portalled so the list is kept on screen: on a phone the button wraps to the
+            // left edge, where a right-aligned list would open off the side.
+            portal
           />
         )}
+        {actions.map((a) => (
+          <button key={a.label} onClick={a.onClick} disabled={a.disabled || a.busy} aria-busy={a.busy || undefined} title={a.title} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ ...PANEL, color: "var(--ink)" }}>
+            {a.busy && a.busyLabel ? a.busyLabel : a.label}
+          </button>
+        ))}
         {secondary && (
           <button onClick={secondary.onClick} disabled={secondary.disabled} title={secondary.title} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
             {secondary.label}

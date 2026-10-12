@@ -1,7 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import { test, expect } from "./mockApi";
 
-// BOOK-12: Books → Possible duplicates. The header says how many groups there are; the
+// BOOK-12: Books → Possible duplicates. The tools menu says how many groups there are; the
 // review shows the rows side by side, merges only after a confirm and lists what was
 // left on disk, and "Not the same" makes a pair go away for good. At phone and desktop
 // width, with nothing scrolling sideways.
@@ -41,6 +41,12 @@ async function mockDupes(page: Page) {
   return state;
 }
 
+// The review opens from the Library tools menu (BOOK-25), which names the count.
+async function openDupes(page: Page) {
+  await page.getByRole("button", { name: "Library tools" }).click();
+  await page.getByRole("menuitem", { name: "Possible duplicates (1)" }).click();
+}
+
 const sideways = (page: Page) => page.locator("main").evaluate((el) => el.scrollWidth - el.clientWidth);
 
 for (const size of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
@@ -51,7 +57,7 @@ for (const size of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) 
       await page.setViewportSize(size);
       const state = await mockDupes(page);
       await page.goto("/books");
-      await page.getByRole("button", { name: "Possible duplicates (1)" }).click();
+      await openDupes(page);
       const dialog = page.getByRole("dialog", { name: "Possible duplicates" });
       await expect(dialog.getByText("No files are deleted.", { exact: false })).toBeVisible();
       await expect(dialog.getByRole("radio", { name: "Keep “The Long Quiet”" }).nth(1)).toBeChecked();
@@ -73,7 +79,7 @@ for (const size of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) 
       await page.setViewportSize(size);
       const state = await mockDupes(page);
       await page.goto("/books");
-      await page.getByRole("button", { name: "Possible duplicates (1)" }).click();
+      await openDupes(page);
       const dialog = page.getByRole("dialog", { name: "Possible duplicates" });
       await dialog.getByRole("button", { name: "Not the same" }).click();
       await expect(dialog.getByText("Mara Ellis", { exact: false })).toHaveCount(0);
@@ -81,7 +87,9 @@ for (const size of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) 
 
       await page.reload();
       await api.quiet();
-      await expect(page.getByRole("button", { name: /^Possible duplicates \(/ })).toHaveCount(0);
+      await page.getByRole("button", { name: "Library tools" }).click();
+      await expect(page.getByRole("menuitem", { name: "Possible duplicates", exact: true })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^Possible duplicates \(/ })).toHaveCount(0);
     });
   });
 }
