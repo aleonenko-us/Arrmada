@@ -807,6 +807,7 @@ func main() {
 	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
 	// A reported problem's subtitles fix resolves once its job has made subtitles.
 	issuesSvc.SetSubtitles(subtitleOutcomes{subtitlesSvc})
+	subtitlesSvc.SetJobDoneHook(subtitleJobDone(runCtx, issuesSvc, log))
 	// The library pass behind the Subtitles Overview/Library pages. The worker runs the
 	// first one at startup; this keeps it from going stale.
 	sched.Register("subtitles-library-scan", 6*time.Hour, false, func(ctx context.Context) error {

@@ -81,6 +81,8 @@ type Service struct {
 	logMu     sync.Mutex
 	logBuf    []LogLine // recent activity console lines, for the Logs tab
 
+	onJobDone func(Job) // SetJobDoneHook; under mu
+
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
 }
 

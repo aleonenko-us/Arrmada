@@ -570,6 +570,21 @@ func (s *Service) finishOutcomes(job *Job, state JobState, note string, outcomes
 	job.State, job.Note, job.Stage, job.Progress = state, note, "", 0
 	job.Outcomes = outcomes
 	s.retireLocked(job)
+	done, snapshot := s.onJobDone, *job
+	s.mu.Unlock()
+	if done != nil {
+		done(snapshot)
+	}
+}
+
+// SetJobDoneHook registers fn to hear about every job the worker finishes (done, skipped,
+// failed or stopped), with its final state, note and outcomes — so another module (a
+// reported problem's subtitles fix) settles when the job does instead of polling Jobs().
+// fn runs on the worker; keep it short. Jobs dropped from the queue before they ran don't
+// call it.
+func (s *Service) SetJobDoneHook(fn func(Job)) {
+	s.mu.Lock()
+	s.onJobDone = fn
 	s.mu.Unlock()
 }
 

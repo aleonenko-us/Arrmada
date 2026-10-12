@@ -398,3 +398,14 @@ func TestDownloadUsesLedgerBlocklistAndRecordsScore(t *testing.T) {
 		t.Errorf("attempts = %+v", rows)
 	}
 }
+
+// The job-done hook hears each finished job once, with its final state and outcomes.
+func TestJobDoneHook(t *testing.T) {
+	s, _ := ladderFixture(t, "en", englishAudio(), nil, &fakeAI{avail: true, transcribe: true})
+	var got []Job
+	s.SetJobDoneHook(func(j Job) { got = append(got, j) })
+	job := runJob(s)
+	if len(got) != 1 || got[0].ID != job.ID || got[0].State != StateDone || len(got[0].Outcomes) != 1 || got[0].RunID == "" {
+		t.Errorf("hook saw %+v", got)
+	}
+}
