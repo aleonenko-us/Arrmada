@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { BookReleaseModal } from "../components/BookReleaseModal";
@@ -16,8 +15,9 @@ import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { LastSearches, refreshSearches } from "../components/LastSearch";
 import { wantedCopy } from "../lib/bookSearch";
-import { formatReleaseDay, isUpcoming } from "../lib/format";
+import { formatBytes, formatReleaseDay, isUpcoming } from "../lib/format";
 import { libraryStatus } from "../lib/status";
+import { Button, ConfirmDialog, IconButton, Menu, Modal, StatusChip, useToast, type MenuItem, type ToastFn } from "../ui";
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -27,21 +27,13 @@ const ALIAS_SOURCE: Record<string, string> = {
   request: "from a request",
 };
 
-function fmtSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return "";
-  const mb = bytes / 1024 ** 2;
-  return mb >= 1000 ? `${(mb / 1024).toFixed(2)} GB` : mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
-}
-
 export function BookDetail() {
   const { id } = useParams();
   const bid = Number(id);
   const [b, setB] = useState<Book | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); };
+  const toast = useToast();
   const load = useCallback(() => {
     api.bookDetail(bid).then(setB).catch((e: Error) => {
       if (e.message.toLowerCase().includes("not found")) setNotFound(true);
@@ -58,7 +50,7 @@ export function BookDetail() {
       setSearchJob(null);
       const text = searchJobLine(j);
       setSearchResult({ text, failed: jobFailed(j) });
-      flash(text);
+      toast(text, { tone: jobFailed(j) ? "error" : "info" });
       refreshSearches("book", bid);
       load();
     },
@@ -72,8 +64,8 @@ export function BookDetail() {
       setSearchResult(null);
       const r = await api.searchBook(b.id);
       if (r.job_id) setSearchJob(r.job_id);
-      flash(`Searching for “${b.title}”…`);
-    } catch (e) { flash((e as Error).message); }
+      toast(`Searching for “${b.title}”…`);
+    } catch (e) { toast((e as Error).message, { tone: "error" }); }
   };
   const wantedLine = { book: b, searching: searchJob !== null, onSearch: searchNow };
 
@@ -97,10 +89,10 @@ export function BookDetail() {
             All books
           </Link>
           <div className="flex flex-col gap-6 sm:flex-row">
-            <Poster book={b} onChange={load} flash={flash} />
+            <Poster book={b} onChange={load} toast={toast} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
+                <StatusChip tone={st.tone} size="md">{st.label}</StatusChip>
                 {b.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{b.year}</span>}
                 {/* Not out yet: searches start on this day. */}
                 {b.release_date && isUpcoming(b.release_date) && (
@@ -132,7 +124,7 @@ export function BookDetail() {
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <ProfileSelector book={b} onChange={load} />
               </div>
-              <Toolbar book={b} onChange={load} flash={flash} />
+              <Toolbar book={b} onChange={load} toast={toast} onSearch={searchNow} searching={searchJob !== null} />
               {(searchJob !== null || searchResult) && (
                 <div className="mt-2 text-[12px]" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
                   {searchJob !== null ? "Searching…" : searchResult?.text}
@@ -147,22 +139,20 @@ export function BookDetail() {
       <div className="mx-auto w-full max-w-[1100px] px-4 pb-10 sm:px-6">
         <h2 className="m-0 mb-3 text-[14px] font-bold">Editions</h2>
         <div className="flex flex-col gap-2.5">
-          <EditionPanel label="Ebook" file={b.ebook} wanted={b.want_ebook} bookId={b.id} kind="ebook" onChange={load} flash={flash} search={wantedLine} />
-          <EditionPanel label={b.audio_versions && b.audio_versions.length > 0 ? "Audiobook · Standard" : "Audiobook"} file={b.audiobook} wanted={b.want_audiobook} bookId={b.id} kind="audiobook" onChange={load} flash={flash} search={wantedLine} />
-          {(b.audio_versions ?? []).map((v) => <AudioVersionPanel key={v.id} book={b} v={v} onChange={load} flash={flash} />)}
-          <AddAudioVersion book={b} onAdded={load} flash={flash} />
+          <EditionPanel label="Ebook" file={b.ebook} wanted={b.want_ebook} bookId={b.id} kind="ebook" onChange={load} toast={toast} search={wantedLine} />
+          <EditionPanel label={b.audio_versions && b.audio_versions.length > 0 ? "Audiobook · Standard" : "Audiobook"} file={b.audiobook} wanted={b.want_audiobook} bookId={b.id} kind="audiobook" onChange={load} toast={toast} search={wantedLine} />
+          {(b.audio_versions ?? []).map((v) => <AudioVersionPanel key={v.id} book={b} v={v} onChange={load} />)}
+          <AddAudioVersion book={b} onAdded={load} />
         </div>
         <HistoryPanel bookId={b.id} refreshKey={b} />
       </div>
-
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
 
 // Poster shows the cover with a hover "Edit cover" affordance that opens the picker.
 // Touch can't hover, so there it's a plain button under the cover instead.
-function Poster({ book, onChange, flash }: { book: Book; onChange: () => void; flash: (m: string) => void }) {
+function Poster({ book, onChange, toast }: { book: Book; onChange: () => void; toast: ToastFn }) {
   const [picking, setPicking] = useState(false);
   const canHover = useCanHover();
   const pencil = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -189,14 +179,14 @@ function Poster({ book, onChange, flash }: { book: Book; onChange: () => void; f
           Edit cover
         </button>
       )}
-      {picking && <CoverPickerModal book={book} onClose={() => setPicking(false)} onChange={onChange} flash={flash} />}
+      {picking && <CoverPickerModal book={book} onClose={() => setPicking(false)} onChange={onChange} toast={toast} />}
     </div>
   );
 }
 
 // CoverPickerModal lets the user pick from searched covers (the book's own catalogue:
 // Hardcover editions, or Open Library editions + Google Books) or upload a custom image.
-function CoverPickerModal({ book, onClose, onChange, flash }: { book: Book; onClose: () => void; onChange: () => void; flash: (m: string) => void }) {
+function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onClose: () => void; onChange: () => void; toast: ToastFn }) {
   const [covers, setCovers] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -208,29 +198,28 @@ function CoverPickerModal({ book, onClose, onChange, flash }: { book: Book; onCl
 
   const choose = async (url: string) => {
     setSaving(url); setError(null);
-    try { await api.setBookCover(book.id, url); onChange(); onClose(); flash("Cover updated."); }
+    try { await api.setBookCover(book.id, url); onChange(); onClose(); toast("Cover updated."); }
     catch (e) { setError((e as Error).message); setSaving(null); }
   };
   const upload = async (file: File) => {
     setSaving("upload"); setError(null);
-    try { await api.uploadBookCover(book.id, file); onChange(); onClose(); flash("Custom cover uploaded."); }
+    try { await api.uploadBookCover(book.id, file); onChange(); onClose(); toast("Custom cover uploaded."); }
     catch (e) { setError((e as Error).message); setSaving(null); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[760px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} labelledBy="cover-picker-title" size="lg" dismissible={saving === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Choose a cover</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+          <h2 id="cover-picker-title" className="m-0 text-[15px] font-bold">Choose a cover</h2>
+          <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-[12px] text-ink-dim">{book.catalogue?.name === "Hardcover" ? "Covers from Hardcover editions" : "Covers from Open Library editions and Google Books"} — or upload your own.</p>
         {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="mb-3">
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
-          <button onClick={() => fileRef.current?.click()} disabled={saving !== null} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
-            {saving === "upload" ? "Uploading…" : "⭱ Upload custom cover"}
-          </button>
+          <Button onClick={() => fileRef.current?.click()} disabled={saving !== null} busy={saving === "upload"} busyLabel="Uploading…" className="disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "transparent", color: "var(--accent)" }}>
+            ⭱ Upload custom cover
+          </Button>
         </div>
         <div className="thin-scroll max-h-[58vh] overflow-y-auto">
           {covers === null ? (
@@ -242,7 +231,7 @@ function CoverPickerModal({ book, onClose, onChange, flash }: { book: Book; onCl
               {covers.map((url) => {
                 const current = url === book.cover_url;
                 return (
-                  <button key={url} onClick={() => choose(url)} disabled={saving !== null} className="relative overflow-hidden rounded-lg disabled:opacity-60" style={{ border: current ? "2px solid var(--accent)" : "1px solid var(--line)", aspectRatio: "2/3", background: "var(--panel-2)" }}>
+                  <button key={url} onClick={() => choose(url)} disabled={saving !== null} aria-label={current ? "The current cover" : "Use this cover"} className="relative overflow-hidden rounded-lg disabled:opacity-60" style={{ border: current ? "2px solid var(--accent)" : "1px solid var(--line)", aspectRatio: "2/3", background: "var(--panel-2)" }}>
                     <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => { const btn = e.currentTarget.closest("button"); if (btn) (btn as HTMLElement).style.display = "none"; }} />
                     {saving === url && <div className="absolute inset-0 grid place-items-center text-[11px] font-semibold text-white" style={{ background: "rgba(0,0,0,.5)" }}>Saving…</div>}
                     {current && <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: "var(--accent)" }}>Current</span>}
@@ -252,14 +241,13 @@ function CoverPickerModal({ book, onClose, onChange, flash }: { book: Book; onCl
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 interface WantedSearch { book: Book; searching: boolean; onSearch: () => void }
 
-function EditionPanel({ label, file, wanted, bookId, kind, onChange, flash, search }: { label: string; file?: BookFile; wanted: boolean; bookId: number; kind: "ebook" | "audiobook"; onChange: () => void; flash: (m: string) => void; search: WantedSearch }) {
+function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, search }: { label: string; file?: BookFile; wanted: boolean; bookId: number; kind: "ebook" | "audiobook"; onChange: () => void; toast: ToastFn; search: WantedSearch }) {
   const [showFile, setShowFile] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -296,7 +284,7 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, flash, sear
             <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>{label}</span>
             <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.format}</span>
             {multi && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{file.file_count} files</span>}
-            <span className="font-mono text-[12px] text-ink-dim">{fmtSize(file.size_bytes)}</span>
+            <span className="font-mono text-[12px] text-ink-dim">{formatBytes(file.size_bytes)}</span>
           </div>
           <button
             onClick={() => setShowFile(true)}
@@ -308,7 +296,7 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, flash, sear
           {multi && <FileList bookId={bookId} kind={kind} count={file.file_count} />}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
-          {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} flash={flash} />}
+          {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}
           <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{multi ? "Delete all" : "Delete file"}</button>
         </div>
       </div>
@@ -363,7 +351,7 @@ function FileList({ bookId, kind, count }: { bookId: number; kind: "ebook" | "au
             files.map((f, i) => (
               <div key={i} className="flex items-center justify-between gap-3 px-3 py-1.5 text-[11.5px]" style={{ borderBottom: i < files.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
                 <span className="min-w-0 flex-1 truncate font-mono text-ink-dim" title={f.name}>{f.name}</span>
-                <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtSize(f.size_bytes)}</span>
+                <span className="flex-none font-mono text-[10.5px] text-ink-faint">{formatBytes(f.size_bytes)}</span>
               </div>
             ))
           )}
@@ -382,7 +370,7 @@ const eventKey = (e?: MovieEvent) => (e ? `${e.event}|${e.created_at}|${e.detail
 // MergeButton asks before combining, then watches the book's history for the outcome the
 // server records ('merged' or 'merge-failed') instead of guessing from a timer. The wording
 // is the same for everyone and never says who is listening.
-function MergeButton({ bookId, fileCount, onDone, flash }: { bookId: number; fileCount: number; onDone: () => void; flash: (m: string) => void }) {
+function MergeButton({ bookId, fileCount, onDone, toast }: { bookId: number; fileCount: number; onDone: () => void; toast: ToastFn }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   // While a merge runs: the history entry it started from, and when to give up.
@@ -402,12 +390,12 @@ function MergeButton({ bookId, fileCount, onDone, flash }: { bookId: number; fil
     onDone();
     if (changed && ev?.event === "merge-failed") {
       setFailure(ev.detail ?? "unknown reason");
-      flash(`Merge failed: ${ev.detail ?? "unknown reason"} — the original files are untouched.`);
+      toast(`Merge failed: ${ev.detail ?? "unknown reason"} — the original files are untouched.`, { tone: "error" });
     } else if (changed && ev?.event === "merged") {
-      flash("Combined into one .m4b.");
+      toast("Combined into one .m4b.");
     } else {
       // Only a server restart mid-merge leaves no outcome; say so rather than nothing.
-      flash("The merge didn't report back — check the book's history before trying again.");
+      toast("The merge didn't report back — check the book's history before trying again.");
     }
   }, watch ? 5000 : null, { immediate: false });
 
@@ -418,7 +406,7 @@ function MergeButton({ bookId, fileCount, onDone, flash }: { bookId: number; fil
       await api.mergeAudiobook(bookId);
       setAsking(false);
       setWatch({ baseline, until: Date.now() + 400 * 5000 });
-      flash("Combining into a single chapterized .m4b — this runs in the background and may take a while.");
+      toast("Combining into a single chapterized .m4b — this runs in the background and may take a while.");
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
@@ -445,7 +433,10 @@ function MergeButton({ bookId, fileCount, onDone, flash }: { bookId: number; fil
   );
 }
 
-function Toolbar({ book, onChange, flash }: { book: Book; onChange: () => void; flash: (m: string) => void }) {
+// Toolbar groups the book's controls instead of nine equal buttons: the Monitor switch,
+// Search ▾, Add files ▾, Fix ▾ and a separate Delete. Each menu item does what its old
+// button did; the menus are the kit's (keyboard, Escape, focus back to the trigger).
+function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; onChange: () => void; toast: ToastFn; onSearch: () => Promise<void>; searching: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -453,36 +444,53 @@ function Toolbar({ book, onChange, flash }: { book: Book; onChange: () => void; 
   const [showEdit, setShowEdit] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
 
-  const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy(null); } };
-  const btn = "rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50";
+  const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); try { await fn(); } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); } };
+  const trigger = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold";
   const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
+  const caret = <span aria-hidden="true" className="text-[10px] opacity-70">▾</span>;
+  const missing = (book.want_ebook && !book.ebook) || (book.want_audiobook && !book.audiobook);
 
   const rename = async () => {
     const res = await api.renameBook(book.id);
-    flash(res.renamed > 0 ? `Renamed ${res.renamed} file${res.renamed === 1 ? "" : "s"}.` : "Files already named correctly.");
+    toast(res.renamed > 0 ? `Renamed ${res.renamed} file${res.renamed === 1 ? "" : "s"}.` : "Files already named correctly.");
     onChange();
   };
+  const group = (label: string, items: MenuItem[]) => (
+    <Menu label={label} trigger={<>{label} {caret}</>} items={items} align="left" portal triggerClassName={trigger} triggerStyle={ghost} itemClassName="min-h-[40px]" />
+  );
 
   return (
     <>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button role="switch" aria-checked={book.monitored} disabled={busy !== null} onClick={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })} className="inline-flex items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
+      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        <button role="switch" aria-checked={book.monitored} disabled={busy !== null} onClick={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })} className="mr-1 inline-flex min-h-[36px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
           <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: book.monitored ? "var(--accent)" : "var(--line)" }}>
             <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: book.monitored ? "19px" : "3px" }} />
           </span>
           <span style={{ color: book.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{book.monitored ? "Monitored" : "Monitor"}</span>
         </button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("refresh", async () => { await api.refreshBook(book.id); onChange(); flash("Refreshed metadata and rescanned disk."); })}>{busy === "refresh" ? "Refreshing…" : "Refresh & rescan"}</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowPaste(true)} title="Found the release yourself? Drop the .torrent here and Arrmada will grab and import it">Upload torrent</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowImport(true)}>Manual import</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("rename", rename)}>{busy === "rename" ? "Renaming…" : "Rename"}</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowEdit(true)} title="Manually fix title/author/year when the metadata providers got it wrong">Edit metadata</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowMatch(true)} title="This is the wrong book — search the catalogue and re-link it to the right one, keeping your files">Change match</button>
+        {group("Search", [
+          {
+            label: searching ? "Searching…" : "Automatic search",
+            disabled: !missing || searching,
+            title: missing ? "Search your indexers for this book's missing editions and grab the best match" : "Nothing to search for: every edition the format profile wants is here",
+            onSelect: onSearch,
+          },
+          { label: "Interactive search…", title: "Browse every release your indexers have for this book and pick one", onSelect: () => setShowSearch(true) },
+        ])}
+        {group("Add files", [
+          { label: "Upload torrent…", title: "Found the release yourself? Drop the .torrent here and Arrmada will grab and import it", onSelect: () => setShowPaste(true) },
+          { label: "Manual import…", title: "Import a book file that's already in the downloads folder", onSelect: () => setShowImport(true) },
+        ])}
+        {group("Fix", [
+          { label: "Edit metadata…", title: "Manually fix title/author/year when the metadata providers got it wrong", onSelect: () => setShowEdit(true) },
+          { label: "Change match…", title: "This is the wrong book — search the catalogue and re-link it to the right one, keeping your files", onSelect: () => setShowMatch(true) },
+          { label: "Rename files", busyLabel: "Renaming…", disabled: busy !== null, title: "Rename the files on disk to the library's naming", onSelect: () => run("rename", rename) },
+          { label: "Refresh & rescan", busyLabel: "Refreshing…", disabled: busy !== null, title: "Fetch the metadata again and rescan the files on disk", onSelect: () => run("refresh", async () => { await api.refreshBook(book.id); onChange(); toast("Refreshed metadata and rescanned disk."); }) },
+        ])}
         <DeleteButton book={book} />
       </div>
-      {showEdit && <EditMetadataModal book={book} onClose={() => setShowEdit(false)} onSaved={() => { onChange(); flash("Metadata updated."); }} />}
-      {showMatch && <RematchModal book={book} onClose={() => setShowMatch(false)} onMatched={() => { onChange(); flash("Re-matched to the chosen work."); }} />}
+      {showEdit && <EditMetadataModal book={book} onClose={() => setShowEdit(false)} onSaved={() => { onChange(); toast("Metadata updated."); }} />}
+      {showMatch && <RematchModal book={book} onClose={() => setShowMatch(false)} onMatched={() => { onChange(); toast("Re-matched to the chosen work."); }} />}
       {showSearch && (
         <BookReleaseModal
           title={`Search indexers — ${book.title}`}
@@ -502,7 +510,7 @@ function Toolbar({ book, onChange, flash }: { book: Book; onChange: () => void; 
           onClose={() => setShowPaste(false)}
         />
       )}
-      {showImport && <ManualImportModal book={book} onClose={() => setShowImport(false)} onImported={() => { onChange(); flash("Imported."); }} />}
+      {showImport && <ManualImportModal book={book} onClose={() => setShowImport(false)} onImported={() => { onChange(); toast("Imported."); }} />}
     </>
   );
 }
@@ -524,11 +532,10 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[680px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} labelledBy="book-import-title" size="lg" dismissible={importing === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Manual import</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+          <h2 id="book-import-title" className="m-0 text-[15px] font-bold">Manual import</h2>
+          <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-[12px] text-ink-dim">Pick a book file on disk to import as <b>{book.title}</b>. Ebook and audiobook files are assigned to the right edition automatically.</p>
         {versions.length > 0 && (
@@ -555,7 +562,7 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
                   <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
                     <span className="uppercase" style={{ color: c.edition === "audiobook" ? "var(--accent)" : "var(--good)" }}>{c.edition}</span>
                     <span>{c.format}</span>
-                    <span>{fmtSize(c.size_bytes)}</span>
+                    <span>{formatBytes(c.size_bytes)}</span>
                   </div>
                 </div>
                 <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
@@ -563,8 +570,7 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
             ))
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -623,26 +629,28 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-6" style={{ background: "rgba(0,0,0,.6)" }} onClick={onClose}>
-      <div className="w-full max-w-[480px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="m-0 text-[15px] font-bold">Edit metadata</h2>
+    <Modal
+      onClose={onClose}
+      title="Edit metadata"
+      size="sm"
+      dismissible={!busy}
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={busy} style={{ border: "1px solid var(--line)" }}>Cancel</Button>
+        <Button variant="primary" onClick={save} busy={busy} busyLabel="Saving…">Save</Button>
+      </>}
+    >
         <p className="mt-1 mb-3 text-[11.5px] text-ink-dim">Manually fix the details when a provider got them wrong. This overrides what was fetched.</p>
         <div className="flex flex-col gap-3">
-          <div><span className={lbl}>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} className={inp} style={inpStyle} /></div>
+          <label className="block"><span className={lbl}>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} className={inp} style={inpStyle} /></label>
           <div className="flex gap-3">
-            <div className="flex-1"><span className={lbl}>Author</span><input value={author} onChange={(e) => setAuthor(e.target.value)} className={inp} style={inpStyle} /></div>
-            <div className="w-[88px]"><span className={lbl}>Year</span><input type="number" value={year} onChange={(e) => setYear(e.target.value)} className={inp} style={inpStyle} /></div>
+            <label className="block flex-1"><span className={lbl}>Author</span><input value={author} onChange={(e) => setAuthor(e.target.value)} className={inp} style={inpStyle} /></label>
+            <label className="block w-[88px]"><span className={lbl}>Year</span><input type="number" value={year} onChange={(e) => setYear(e.target.value)} className={inp} style={inpStyle} /></label>
           </div>
-          <div><span className={lbl}>Cover URL</span><input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://…" className={inp} style={inpStyle} /></div>
-          <div><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></div>
+          <label className="block"><span className={lbl}>Cover URL</span><input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://…" className={inp} style={inpStyle} /></label>
+          <label className="block"><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></label>
         </div>
-        {err && <p className="mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}
-        <div className="mt-4 flex justify-end gap-2.5">
-          <button onClick={onClose} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
-          <button onClick={save} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy ? "Saving…" : "Save"}</button>
-        </div>
-      </div>
-    </div>
+        {err && <p role="alert" className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}
+    </Modal>
   );
 }
 
@@ -713,6 +721,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
   const [saving, setSaving] = useState<string | null>(null);
   const [source, setSource] = useState<BookSource>("openlibrary");
   const [olResults, setOlResults] = useState<BookLookup[] | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) return;
@@ -742,17 +751,16 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[720px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">Change match — {book.title}</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+    <Modal onClose={onClose} labelledBy="book-rematch-title" size="lg" dismissible={saving === null} initialFocus={inputRef}>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h2 id="book-rematch-title" className="m-0 min-w-0 truncate text-[15px] font-bold">Change match — {book.title}</h2>
+          <IconButton label="Close" onClick={onClose} className="h-7 w-7 flex-none rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-[12px] text-ink-dim">Pick the correct catalogue entry. Your files, monitoring and quality profile are kept — only the metadata changes.</p>
 
         <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void search(query); }}>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={source === "hardcover" ? "Search Hardcover…" : "Search Open Library…"} className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <button type="submit" disabled={searching} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{searching ? "Searching…" : "Search"}</button>
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the catalogue" placeholder={source === "hardcover" ? "Search Hardcover…" : "Search Open Library…"} className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <Button type="submit" variant="primary" busy={searching} busyLabel="Searching…" className="disabled:opacity-50">Search</Button>
         </form>
 
         {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
@@ -762,7 +770,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
         ) : results.length === 0 ? (
           <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No works found. Try a different search.</div>
         ) : (
-          <div className="flex max-h-[440px] flex-col overflow-y-auto">
+          <div className="thin-scroll flex max-h-[52vh] flex-col overflow-y-auto">
             {source === "hardcover" && olResults === null && (
               <button type="button" onClick={searchOpenLibrary} className="mb-1 self-end text-[11.5px] font-semibold underline-offset-2 hover:underline" style={{ color: "var(--ink-dim)" }}>
                 Show Open Library results too
@@ -788,8 +796,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
             })}
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

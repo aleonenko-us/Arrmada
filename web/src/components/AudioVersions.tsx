@@ -1,22 +1,15 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { api, type AudioVersion, type Book } from "../lib/api";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
+import { formatBytes } from "../lib/format";
+import { Button, ConfirmDialog, IconButton, Modal, useToast } from "../ui";
 import { BookReleaseModal } from "./BookReleaseModal";
-import { ConfirmDialog } from "./ConfirmDialog";
 
 // Extra audiobook versions of a book: a full-cast GraphicAudio production beside the
 // standard narration, a second narrator, anything the user names. Each version has
 // the words a release must mention to count as it; Arrmada searches for it, files it
 // as "<Title> (<Label>)" next to the standard audiobook, and keeps the standard one
 // from taking its releases.
-
-function fmtSize(bytes?: number): string {
-  if (!bytes) return "";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0, n = bytes;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
-}
 
 // Presets fill the form; everything stays editable. The terms are matched against a
 // release's name, narrator, series and description, as whole words.
@@ -28,8 +21,9 @@ const PRESETS: { label: string; terms: string[]; hint: string }[] = [
 
 const parseTerms = (s: string) => s.split(",").map((t) => t.trim()).filter(Boolean);
 
-export function AddAudioVersion({ book, onAdded, flash }: { book: Book; onAdded: () => void; flash: (m: string) => void }) {
+export function AddAudioVersion({ book, onAdded }: { book: Book; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
+  const toast = useToast();
   return (
     <>
       <button
@@ -48,7 +42,7 @@ export function AddAudioVersion({ book, onAdded, flash }: { book: Book; onAdded:
           onSaved={(v) => {
             setOpen(false);
             onAdded();
-            flash(v.monitored && v.terms.length > 0 ? `Added “${v.label}” — searching for it now.` : `Added “${v.label}”.`);
+            toast(v.monitored && v.terms.length > 0 ? `Added “${v.label}” — searching for it now.` : `Added “${v.label}”.`);
           }}
         />
       )}
@@ -73,13 +67,22 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
   };
   const input = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
   const noTerms = parseTerms(terms).length === 0;
+  const titleId = useId();
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-16 w-full max-w-[560px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      size="md"
+      dismissible={!busy}
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={busy} style={{ border: "1px solid var(--line)" }}>Cancel</Button>
+        <Button variant="primary" onClick={save} disabled={!label.trim()} busy={busy} busyLabel="Saving…" className="disabled:opacity-50">{existing ? "Save" : "Add version"}</Button>
+      </>}
+    >
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="m-0 text-[15px] font-bold">{existing ? `Edit “${existing.label}”` : "Add an audiobook version"}</h2>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+          <h2 id={titleId} className="m-0 text-[15px] font-bold">{existing ? `Edit “${existing.label}”` : "Add an audiobook version"}</h2>
+          <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-[12px] text-ink-dim">
           Another audiobook of <b>{book.title}</b>, kept next to the standard one. It's filed as <span className="font-mono">{book.title} ({label.trim() || "Name"})</span>, which Audiobookshelf shows as its own book.
@@ -107,24 +110,20 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
           Matched as whole words against the release name, narrator, series and description. While this version exists, the standard audiobook won't take releases that match these words.
           {noTerms && <span style={{ color: "var(--avoid)" }}> With no words, this version is only filled by hand — pick it when you grab, upload or import.</span>}
         </p>
-        <label className="mb-4 flex items-center gap-2 text-[12.5px]">
+        <label className="mb-1 flex items-center gap-2 text-[12.5px]">
           <input type="checkbox" checked={monitored} onChange={(e) => setMonitored(e.target.checked)} />
           Search for it automatically
         </label>
         {existing && label.trim() !== existing.label && existing.file && (
           <p className="mb-3 text-[11px]" style={{ color: "var(--avoid)" }}>Renaming doesn't move the files already on disk.</p>
         )}
-        {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[12.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
-          <button onClick={save} disabled={busy || !label.trim()} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{busy ? "Saving…" : existing ? "Save" : "Add version"}</button>
-        </div>
-      </div>
-    </div>
+        {error && <div role="alert" className="text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+    </Modal>
   );
 }
 
-export function AudioVersionPanel({ book, v, onChange, flash }: { book: Book; v: AudioVersion; onChange: () => void; flash: (m: string) => void }) {
+export function AudioVersionPanel({ book, v, onChange }: { book: Book; v: AudioVersion; onChange: () => void }) {
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [confirm, setConfirm] = useState<null | "file" | "remove">(null);
@@ -134,13 +133,13 @@ export function AudioVersionPanel({ book, v, onChange, flash }: { book: Book; v:
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
-    try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
+    try { await fn(); } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
   };
   const search = () => run("search", async () => {
     const r = await api.searchAudioVersion(book.id, v.id);
     // The server says what the search actually found ("12 releases found, none for this
     // version"); older answers only had grabbed.
-    flash(r.message ? `“${v.label}”: ${r.message}` : r.grabbed ? `Grabbed a release for “${v.label}”.` : `Nothing found for “${v.label}” right now.`);
+    toast(r.message ? `“${v.label}”: ${r.message}` : r.grabbed ? `Grabbed a release for “${v.label}”.` : `Nothing found for “${v.label}” right now.`);
     onChange();
   });
   const toggleMonitor = () => run("monitor", async () => { await api.updateAudioVersion(book.id, v.id, { monitored: !v.monitored }); onChange(); });
@@ -161,7 +160,7 @@ export function AudioVersionPanel({ book, v, onChange, flash }: { book: Book; v:
               <>
                 <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{v.file.format}</span>
                 {v.file.file_count > 1 && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{v.file.file_count} files</span>}
-                <span className="font-mono text-[12px] text-ink-dim">{fmtSize(v.file.size_bytes)}</span>
+                <span className="font-mono text-[12px] text-ink-dim">{formatBytes(v.file.size_bytes)}</span>
               </>
             )}
           </div>
@@ -231,7 +230,7 @@ export function AudioVersionPanel({ book, v, onChange, flash }: { book: Book; v:
           onClose={() => setBrowsing(false)}
         />
       )}
-      {editing && <VersionForm book={book} existing={v} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChange(); flash("Version updated."); }} />}
+      {editing && <VersionForm book={book} existing={v} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChange(); toast("Version updated."); }} />}
     </div>
   );
 }

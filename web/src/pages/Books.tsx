@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
@@ -10,12 +10,15 @@ import { PHONE, useMediaQuery } from "../lib/useMediaQuery";
 import { isWanted, libraryStatus } from "../lib/status";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { posterThumb } from "../lib/img";
-import { wantedTitle } from "../lib/bookSearch";
+import { editionsHeld, wantedTitle } from "../lib/bookSearch";
 import { LINKS } from "../lib/links";
 import { useMe, isAdmin } from "../lib/me";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { useQuery } from "../lib/query";
-import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner } from "../ui";
+import { Button, ErrorState, FilterBar, LibraryToolbar, Modal, Skeleton, StaleBanner, useToast, type LibraryTool, type MenuItem } from "../ui";
+import { LibraryCard } from "../features/library/LibraryCard";
+import type { LibraryConfig } from "../features/library/types";
+import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -50,9 +53,9 @@ const DuplicatesModal = lazy(() => import("../components/DuplicatesModal"));
 function statusOf(b: Book): { label: string; color: string; title?: string } {
   const st = libraryStatus({ hasFile: b.has_file, monitored: b.monitored });
   if (st.label === "Downloaded") {
-    // Show which editions are present (E / A) so the grid conveys ebook vs audiobook.
-    const tags = [b.ebook && "E", b.audiobook && "A"].filter(Boolean).join("+");
-    return { label: tags ? `${tags} ✓` : st.label, color: st.color };
+    // Say which editions are present, so the grid tells ebook from audiobook.
+    const held = editionsHeld(b);
+    return { label: held ? `${held} ✓` : st.label, color: st.color };
   }
   // The tooltip says whether it has been looked for and missed, and when it is looked for next.
   return { label: st.label, color: st.color, title: st.label === "Wanted" ? wantedTitle(b) : undefined };
@@ -67,10 +70,11 @@ export function Books() {
   const error = booksQ.error?.message ?? null;
   const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
+  // The order lives in the address too (?sort=added), so it survives a reload and Back.
+  const [sortKey, setSortKey] = useSearchParamState<BookSort>("sort", DEFAULT_SORT, { allowed: SORT_KEYS });
   const [adding, setAdding] = useState(false);
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [savedView, setView] = usePersisted("books.view", "grid", ["grid", "table"] as const);
   // A phone always gets the grid (the table doesn't fit); the saved choice is kept for the desktop.
   const phone = useMediaQuery(PHONE);
@@ -116,16 +120,16 @@ export function Books() {
   const loaded = !!booksQ.data;
   useEffect(() => { if (loaded) countDupes(); }, [loaded, list.length]);
 
-  const [toastErr, setToastErr] = useState(false);
+  const toast = useToast();
   // err shows the toast in the error colour: a search or scan that failed says so plainly.
-  const flash = (m: string, err = false) => { setToast(m); setToastErr(err); window.setTimeout(() => setToast(null), 3500); };
+  const say = (m: string, err = false) => toast(m, { tone: err ? "error" : "info", ms: 3500 });
   const refresh = booksQ.refetch;
   // Poll the upgrade while it runs, then reload the library once it lands.
   usePoll(() => api.bookUpgradeStatus().then((st) => {
     setUpgrade(st);
     if (!st.running) {
       refresh();
-      flash(st.error ? `Upgrade stopped: ${st.error}` : `Upgraded ${st.upgraded}, flagged ${st.flagged} as possible duplicates, no match for ${st.unmatched}.${st.notes?.length ? ` E.g. ${st.notes[0]}` : ""}`);
+      say(st.error ? `Upgrade stopped: ${st.error}` : `Upgraded ${st.upgraded}, flagged ${st.flagged} as possible duplicates, no match for ${st.unmatched}.${st.notes?.length ? ` E.g. ${st.notes[0]}` : ""}`);
     }
   }).catch(() => {}), upgrade?.running ? 2000 : null, { immediate: false });
   // Poll the missing-editions sweep while it runs, then reload once it lands.
@@ -133,15 +137,15 @@ export function Books() {
     setSweep(st);
     if (!st.running) {
       refresh();
-      flash(`Searched ${st.done} book${st.done === 1 ? "" : "s"}: ${st.grabbed} edition${st.grabbed === 1 ? "" : "s"} grabbed${st.skipped ? `, ${st.skipped} already downloading` : ""}.`);
+      say(`Searched ${st.done} book${st.done === 1 ? "" : "s"}: ${st.grabbed} edition${st.grabbed === 1 ? "" : "s"} grabbed${st.skipped ? `, ${st.skipped} already downloading` : ""}.`);
     }
   }).catch(() => {}), sweep?.running ? 2000 : null, { immediate: false });
   const startSweep = async () => {
     try {
       const r = await api.startBookSweep();
       setSweep(r.status);
-      flash(r.started ? "Searching for every missing edition — this takes a while, one book at a time." : "A sweep is already running.");
-    } catch (e) { flash((e as Error).message); }
+      say(r.started ? "Searching for every missing edition — this takes a while, one book at a time." : "A sweep is already running.");
+    } catch (e) { say((e as Error).message, true); }
   };
   // Books the sweep would search: any lacking an edition its profile wants. Monitoring
   // only governs the automatic sweep; a library catalogued from disk is mostly unmonitored.
@@ -166,19 +170,19 @@ export function Books() {
       setKept((s) => new Set(s).add(id));
       const cur = booksQ.data;
       if (cur) booksQ.mutate((r) => ({ ...(r ?? cur), upgradable: Math.max(0, ((r ?? cur).upgradable ?? 0) - 1) }));
-    } catch (e) { flash((e as Error).message); }
+    } catch (e) { say((e as Error).message, true); }
   };
   const keepAll = async () => {
     const ids = (upgrade?.left ?? []).map((l) => l.id).filter((id) => !kept.has(id));
     for (const id of ids) await keepOne(id);
-    flash(`Ignoring ${ids.length} book${ids.length === 1 ? "" : "s"} — the re-match leaves them alone from now on.`);
+    say(`Ignoring ${ids.length} book${ids.length === 1 ? "" : "s"} — the re-match leaves them alone from now on.`);
   };
   const startUpgrade = async () => {
     try {
       const r = await api.startBookUpgrade();
       setUpgrade(r.status);
-      flash(r.started ? "Re-matching your books to Hardcover…" : "An upgrade is already running.");
-    } catch (e) { flash((e as Error).message); }
+      say(r.started ? "Re-matching your books to Hardcover…" : "An upgrade is already running.");
+    } catch (e) { say((e as Error).message, true); }
   };
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
@@ -194,7 +198,7 @@ export function Books() {
     setBulkBusy(true);
     try {
       await Promise.all([...selected].map((id) => api.setBookMonitored(id, mon)));
-      flash(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
+      say(`${selected.size} ${mon ? "monitored" : "unmonitored"}.`);
       clearSelect();
       refresh();
     } finally { setBulkBusy(false); }
@@ -203,21 +207,25 @@ export function Books() {
     setBulkBusy(true);
     try {
       await Promise.all([...selected].map((id) => api.setBookProfile(id, profile)));
-      flash(`Quality profile set on ${selected.size} books.`);
+      say(`Quality profile set on ${selected.size} books.`);
       clearSelect();
       refresh();
     } finally { setBulkBusy(false); }
   };
 
   const q = query.trim().toLowerCase();
+  const sort = sortFor(mode, sortKey);
   const filtered = useMemo(
     () =>
-      list
-        .filter((b) => matches(b, filter))
-        .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
-    [list, filter, q],
+      sortBooks(
+        list
+          .filter((b) => matches(b, filter))
+          .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
+        sort,
+      ),
+    [list, filter, q, sort],
   );
-  const authors = useMemo(() => groupByAuthor(filtered, authorImages), [filtered, authorImages]);
+  const authors = useMemo(() => sortAuthors(groupByAuthor(filtered, authorImages), sort), [filtered, authorImages, sort]);
 
   // A search runs as a job; when the latest one ends the toast says what it found.
   const [searchJob, setSearchJob] = useState<{ id: number; title: string } | null>(null);
@@ -225,7 +233,7 @@ export function Books() {
     onDone: (j) => {
       const title = searchJob?.title;
       setSearchJob(null);
-      flash(title ? `“${title}”: ${jobToast(j, "search finished.")}` : jobToast(j, "Search finished."), jobFailed(j));
+      say(title ? `“${title}”: ${jobToast(j, "search finished.")}` : jobToast(j, "Search finished."), jobFailed(j));
       refresh();
     },
   });
@@ -233,8 +241,8 @@ export function Books() {
     try {
       const r = await api.searchBook(b.id);
       if (r.job_id) setSearchJob({ id: r.job_id, title: b.title });
-      flash(`Searching for “${b.title}”…`);
-    } catch (e) { flash((e as Error).message); }
+      say(`Searching for “${b.title}”…`);
+    } catch (e) { say((e as Error).message, true); }
   };
   // One-off: a series is normally learned from the release that matched a book, so a
   // library assembled before that existed knows nothing — and a book you already own is
@@ -244,8 +252,8 @@ export function Books() {
     setBackfilling(true);
     try {
       await api.backfillBookSeries();
-      flash("Looking up series for your books — this takes a few minutes.");
-    } catch (e) { flash((e as Error).message); }
+      say("Looking up series for your books — this takes a few minutes.");
+    } catch (e) { say((e as Error).message, true); }
     finally { setBackfilling(false); }
   };
   // After a scan starts, refresh the grid a dozen times as books land.
@@ -253,16 +261,67 @@ export function Books() {
   // The scan runs as a job; when it ends the toast says what it added.
   const [scanJob, setScanJob] = useState<number | null>(null);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); refresh(); flash(jobToast(j, "Scan finished."), jobFailed(j)); },
+    onDone: (j) => { setScanJob(null); refresh(); say(jobToast(j, "Scan finished."), jobFailed(j)); },
   });
   const scanLibrary = async () => {
     setScanning(true);
     try {
       const r = await api.scanBooks();
       if (r.job_id) setScanJob(r.job_id);
-      flash("Scanning your library — books will appear shortly.");
+      say("Scanning your library — books will appear shortly.");
       watchScan();
-    } catch (e) { flash((e as Error).message); setScanning(false); }
+    } catch (e) { say((e as Error).message, true); setScanning(false); }
+  };
+
+  // The header keeps the everyday actions in sight (+ Add book, + Add author, Search
+  // missing) and the occasional jobs in the Library tools menu. On a phone the two
+  // secondary buttons fold into the menu too, so + Add book always fits on the line.
+  const sweepProgress = sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : undefined;
+  const showSweep = missingEditions > 0 || !!sweep?.running;
+  const sweepTitle = `Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`;
+  const addAuthor = { label: "+ Add author", onClick: () => setAddingAuthor(true), disabled: !metaOK, title: "Add an author's entire catalogue of official books" };
+  const tools: LibraryTool[] = [
+    { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
+    {
+      label: `Re-match ${upgradable} to Hardcover`,
+      hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
+      busy: !!upgrade?.running,
+      progress: upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : undefined,
+      onClick: startUpgrade,
+      title: `${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`,
+    },
+    { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
+    // Hardcover hands over the series with each book (the refresh-books job fills it
+    // in), so this indexer-search fallback is for Open Library setups only.
+    { label: "Find series", hidden: source === "hardcover", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "Open Library doesn't say which series a book is in, so this searches your indexers once per book to read the series off release names. Downloads nothing." },
+    ...(phone ? [
+      { label: `Search missing (${missingEditions})`, hidden: !showSweep, busy: !!sweep?.running, progress: sweepProgress, onClick: startSweep, title: sweepTitle },
+      addAuthor,
+    ] : []),
+  ];
+  // One View control for both choices: authors or books, as tiles or a table (a phone
+  // always gets tiles).
+  const viewOptions = phone
+    ? [{ value: "author-grid", label: "Authors" }, { value: "book-grid", label: "Books" }]
+    : [{ value: "author-grid", label: "Authors · grid" }, { value: "author-table", label: "Authors · table" }, { value: "book-grid", label: "Books · grid" }, { value: "book-table", label: "Books · table" }];
+
+  // The grid's cards are the shared library card: its ⋯ menu (Search now, Remove) shows
+  // on hover with a mouse and always on a touch screen. Only the card reads this config.
+  const cardConfig: LibraryConfig<BookItem> = {
+    noun: { one: "book", many: "books" },
+    storageKey: "books",
+    detailPath: (b) => `/books/${b.id}`,
+    filters: [],
+    searchText: (b) => `${b.title} ${b.author}`,
+    compare: (a, b) => a.title.localeCompare(b.title),
+    columns: [],
+    tableMinWidth: 780,
+    sorts: [],
+    card: { meta: (b) => b.author || "—", status: statusOf },
+    actions: (b): MenuItem[] => [
+      ...(b.monitored && !b.has_file ? [{ label: "Search now", busyLabel: "Searching…", onSelect: () => search(b) }] : []),
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(b) },
+    ],
   };
 
   return (
@@ -271,42 +330,15 @@ export function Books() {
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
         <LibraryToolbar
           count={booksQ.data ? list.length : null}
-          lead={dupeCount > 0 && !multiSelect ? (
-            <button onClick={() => setDupesOpen(true)} title="Rows that may be the same book: merge them or mark them as different"
-              className="whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
-              Possible duplicates ({dupeCount})
-            </button>
-          ) : undefined}
-          segments={multiSelect ? [] : [
-            { label: "Group by", value: mode, options: [{ value: "author", label: "author" }, { value: "book", label: "book" }], onChange: (v) => setMode(v as "author" | "book") },
-            ...(phone ? [] : [{ label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v: string) => setView(v as "grid" | "table") }]),
+          pickers={multiSelect ? [] : [
+            { label: "View", value: `${mode}-${view}`, options: viewOptions, onChange: (v) => { const [m, vw] = v.split("-"); setMode(m as "author" | "book"); if (!phone) setView(vw as "grid" | "table"); } },
           ]}
+          sort={{ label: "Sort", value: sort, options: mode === "author" ? AUTHOR_SORTS : BOOK_SORTS, onChange: (v) => setSortKey(v as BookSort) }}
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
-          tools={[
-            { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
-            // Hardcover hands over the series with each book (the refresh-books job fills it
-            // in), so this indexer-search fallback is for Open Library setups only.
-            { label: "Find series", hidden: source === "hardcover", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "Open Library doesn't say which series a book is in, so this searches your indexers once per book to read the series off release names. Downloads nothing." },
-            { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
-            {
-              label: `Re-match ${upgradable} to Hardcover`,
-              hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
-              busy: !!upgrade?.running,
-              progress: upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : undefined,
-              onClick: startUpgrade,
-              title: `${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`,
-            },
-            {
-              label: `Search missing (${missingEditions})`,
-              hidden: !(missingEditions > 0 || sweep?.running),
-              busy: !!sweep?.running,
-              progress: sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : undefined,
-              onClick: startSweep,
-              title: `Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`,
-            },
-          ]}
-          secondary={{ label: "+ Add author", onClick: () => setAddingAuthor(true), disabled: !metaOK, title: "Add an author's entire catalogue of official books" }}
+          tools={tools}
+          toolsBadge={dupeCount}
+          actions={!phone && showSweep ? [{ label: `Search missing (${missingEditions})`, busy: !!sweep?.running, busyLabel: sweepProgress, onClick: startSweep, title: sweepTitle }] : []}
+          secondary={phone ? undefined : addAuthor}
           primary={{ label: "+ Add book", onClick: () => setAdding(true), disabled: !metaOK }}
         />
         <FilterBar
@@ -402,23 +434,21 @@ export function Books() {
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
             {filtered.map((b) => (
-              <Card
+              <LibraryCard
                 key={b.id}
-                b={b}
-                onDelete={() => setConfirmDelete(b)}
-                onSearch={() => search(b)}
+                item={{ ...b, poster_url: b.cover_url }}
+                config={cardConfig}
                 selectable={multiSelect}
                 selected={selected.has(b.id)}
-                onToggleSelect={() => toggleSelect(b.id)}
+                onToggle={() => toggleSelect(b.id)}
               />
             ))}
           </div>
         )}
 
-        {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>{toast}</div>}
       </div>
       {adding && <AddBookModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
-      {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); flash(msg); }} />}
+      {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); say(msg); }} />}
       {dupesOpen && (
         <Suspense fallback={null}>
           <DuplicatesModal onClose={() => setDupesOpen(false)} onChanged={() => { refresh(); countDupes(); }} />
@@ -488,64 +518,8 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
   );
 }
 
-function Cover({ url, title }: { url?: string; title: string }) {
-  if (url) return <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
-  return (
-    <div className="flex h-full w-full items-center justify-center p-3 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>
-      <span className="text-[12px] font-bold text-white">{title}</span>
-    </div>
-  );
-}
-
-function Card({ b, onDelete, onSearch, selectable, selected, onToggleSelect }: { b: Book; onDelete: () => void; onSearch: () => void; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void }) {
-  const st = statusOf(b);
-  const [searching, setSearching] = useState(false);
-  const doSearch = async () => { setSearching(true); try { await onSearch(); } finally { window.setTimeout(() => setSearching(false), 1500); } };
-  const meta = (
-    <>
-      <div className="truncate text-[12.5px] font-semibold" title={b.title}>{b.title}</div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink-faint" title={b.author}>{b.author || "—"}</span>
-        <span className="flex-none font-mono text-[9.5px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
-      </div>
-    </>
-  );
-  return (
-    <div className="group relative overflow-hidden rounded-xl" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`, background: "var(--panel)", boxShadow: selected ? "0 0 0 1px var(--accent)" : "none" }}>
-      <div className="relative" style={{ aspectRatio: "2/3" }}>
-        {selectable ? (
-          <button onClick={onToggleSelect} className="block h-full w-full text-left">
-            <Cover url={b.cover_url} title={b.title} />
-            {selected && <div className="absolute inset-0" style={{ background: "var(--accent-soft)" }} />}
-          </button>
-        ) : (
-          <Link to={`/books/${b.id}`} className="block h-full w-full"><Cover url={b.cover_url} title={b.title} /></Link>
-        )}
-        {selectable && (
-          <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background: selected ? "var(--accent)" : "rgba(20,12,7,.65)", border: `1.5px solid ${selected ? "var(--accent)" : "rgba(255,255,255,.6)"}` }}>
-            {selected && <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12l5 5L20 6" stroke="var(--accent-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-          </span>
-        )}
-        {!selectable && (
-          <button onClick={onDelete} title="Remove" className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-full group-hover:grid" style={{ background: "rgba(20,12,7,.75)", color: "#fff" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        )}
-        {!selectable && b.monitored && !b.has_file && (
-          <button onClick={doSearch} disabled={searching} title="Search now" className="absolute inset-x-1.5 bottom-1.5 hidden items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold group-hover:flex" style={{ background: "rgba(20,12,7,.82)", color: "#fff" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {searching ? "Searching…" : "Search now"}
-          </button>
-        )}
-      </div>
-      {selectable ? (
-        <button onClick={onToggleSelect} className="block w-full p-2.5 text-left">{meta}</button>
-      ) : (
-        <Link to={`/books/${b.id}`} className="block p-2.5">{meta}</Link>
-      )}
-    </div>
-  );
-}
+// A library row as the shared card wants it: the cover is its poster.
+type BookItem = Book & { poster_url?: string };
 
 function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [q, setQ] = useState("");
@@ -559,6 +533,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   const [source, setSource] = useState<BookSource>("openlibrary");
   const [olResults, setOlResults] = useState<BookLookup[] | null>(null);
   const [olLoading, setOlLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => {
@@ -603,20 +578,19 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add a book</h2>
-          <div className="flex items-center gap-2">
+    <Modal onClose={onClose} labelledBy="add-book-title" size="lg" initialFocus={inputRef}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="add-book-title" className="m-0 text-[15px] font-bold">Add a book</h2>
+          <label className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
             <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
-          </div>
+          </label>
         </div>
         <form onSubmit={search} className="mb-3 flex gap-2">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or author — e.g. Dune Herbert" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-          <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{loading ? "…" : "Search"}</button>
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by title or author" placeholder="Search by title or author — e.g. Dune Herbert" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+          <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
         {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="thin-scroll max-h-[56vh] overflow-y-auto">
@@ -633,8 +607,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -754,6 +727,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     qualityApi.qualityProfiles("book").then((r) => {
@@ -787,16 +761,15 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[640px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="m-0 text-[15px] font-bold">Add an author</h2>
-          <div className="flex items-center gap-2">
+    <Modal onClose={onClose} labelledBy="add-author-title" size="lg" initialFocus={inputRef}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="add-author-title" className="m-0 text-[15px] font-bold">Add an author</h2>
+          <label className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
             <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
@@ -805,8 +778,8 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
           <>
             <p className="mb-3 text-[12px] text-ink-dim">Search for an author and add their entire catalogue of official individual books (box sets and collections are excluded).</p>
             <form onSubmit={search} className="mb-3 flex gap-2">
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by author — e.g. Brandon Sanderson" className="flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-              <button type="submit" disabled={loading} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{loading ? "…" : "Search"}</button>
+              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by author" placeholder="Search by author — e.g. Brandon Sanderson" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+              <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
             </form>
             <div className="thin-scroll max-h-[52vh] overflow-y-auto">
               {authors === null ? null : authors.length === 0 ? (
@@ -834,9 +807,9 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
                 <div className="text-[15px] font-bold">{selected.name}</div>
                 <div className="text-[11.5px] text-ink-faint">{works === null ? "Loading catalogue…" : `${works.length} official book${works.length === 1 ? "" : "s"}`}</div>
               </div>
-              <button onClick={add} disabled={busy || works === null || works.length === 0} className="flex-none rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-                {busy ? "Adding…" : works ? `Add all ${works.length} books` : "Add all"}
-              </button>
+              <Button variant="primary" onClick={add} disabled={works === null || works.length === 0} busy={busy} busyLabel="Adding…" className="flex-none disabled:opacity-50">
+                {works ? `Add all ${works.length} books` : "Add all"}
+              </Button>
             </div>
             <div className="thin-scroll max-h-[48vh] overflow-y-auto">
               {works === null ? (
@@ -855,8 +828,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

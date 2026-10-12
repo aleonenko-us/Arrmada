@@ -6,7 +6,8 @@ import { bookAuthorApi, type LibraryAuthor, type LibraryAuthorPatch } from "../l
 import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
-import { TONE_HUE } from "../ui";
+import { editionsHeld } from "../lib/bookSearch";
+import { Button, StatusChip, useToast, type Tone } from "../ui";
 
 // AuthorDetail unifies an author's shelf: the books you already own (link through to the
 // full book detail page for grab / auto-grab / etc.) plus the rest of their official
@@ -31,8 +32,7 @@ export function AuthorDetail() {
   const [saving, setSaving] = useState(false);
   const [addingKey, setAddingKey] = useState<string | null>(null);
   const [addingAll, setAddingAll] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); };
+  const toast = useToast();
 
   const loadLibrary = useCallback(() => api.books().then((r) => setLibrary(r.books)).catch(() => setLibrary([])), []);
   const loadAuthor = useCallback(() => bookAuthorApi.get(id).then((a) => { setAuthor(a); setMissingAuthor(false); }).catch(() => setMissingAuthor(true)), [id]);
@@ -69,14 +69,14 @@ export function AuthorDetail() {
       if (next.id !== author.id) {
         // The pick was an author already in the library under another spelling: the two
         // are one now, and this page moves to the one that stayed.
-        flash(`Joined with ${next.name}`);
+        toast(`Joined with ${next.name}`);
         navigate(`/books/authors/${next.id}`, { replace: true });
         return;
       }
       setAuthor(next);
       setRepick(false);
-      if (done) flash(done);
-    } catch (e) { flash((e as Error).message); } finally { setSaving(false); }
+      if (done) toast(done);
+    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setSaving(false); }
   };
 
   const add = async (w: BookDiscoverCard) => {
@@ -85,8 +85,8 @@ export function AuthorDetail() {
     try {
       await api.addBook({ ol_key: w.key, quality_profile: profile, monitored: true, title: w.title, author: author.name, year: w.year, cover_url: w.cover_url });
       await Promise.all([loadLibrary(), loadAuthor()]);
-      flash(`Added “${w.title}”`);
-    } catch (e) { flash((e as Error).message); } finally { setAddingKey(null); }
+      toast(`Added “${w.title}”`);
+    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setAddingKey(null); }
   };
 
   const addAll = async () => {
@@ -95,8 +95,8 @@ export function AuthorDetail() {
     try {
       const r = await api.addAuthor({ author_key: key, name: author.name, quality_profile: profile });
       await Promise.all([loadLibrary(), loadAuthor()]);
-      flash(`Added ${r.added} book${r.added === 1 ? "" : "s"}${r.skipped ? ` · ${r.skipped} already in library` : ""}`);
-    } catch (e) { flash((e as Error).message); } finally { setAddingAll(false); }
+      toast(`Added ${r.added} book${r.added === 1 ? "" : "s"}${r.skipped ? ` · ${r.skipped} already in library` : ""}`);
+    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setAddingAll(false); }
   };
 
   if (missingAuthor) {
@@ -152,9 +152,9 @@ export function AuthorDetail() {
                 </select>
               </label>
               {missing.length > 0 && (
-                <button onClick={addAll} disabled={addingAll} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-                  {addingAll ? "Adding…" : `+ Add all ${missing.length} missing`}
-                </button>
+                <Button variant="primary" onClick={addAll} busy={addingAll} busyLabel="Adding…" className="disabled:opacity-50">
+                  + Add all {missing.length} missing
+                </Button>
               )}
             </div>
           )}
@@ -191,7 +191,6 @@ export function AuthorDetail() {
         )}
       </div>
 
-      {toast && <div role="status" className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
@@ -327,11 +326,11 @@ function Grid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>{children}</div>;
 }
 
-// The chip sits over the cover, so it takes the plain hue (TONE_HUE), as poster chips do.
-function statusOf(b: Book): { label: string; tone: string } {
+// The chip names the editions on disk ("Ebook · Audiobook ✓") rather than "E+A".
+function statusOf(b: Book): { label: string; tone: Tone } {
   const st = libraryStatus({ hasFile: b.has_file, monitored: b.monitored });
-  const tags = st.label === "Downloaded" ? [b.ebook && "E", b.audiobook && "A"].filter(Boolean).join("+") : "";
-  return { label: tags ? `${tags} ✓` : st.label, tone: TONE_HUE[st.tone] };
+  const held = st.label === "Downloaded" ? editionsHeld(b) : "";
+  return { label: held ? `${held} ✓` : st.label, tone: st.tone };
 }
 
 // BookCover renders a cover, falling back to a clean title placeholder when the
@@ -351,7 +350,7 @@ function OwnedCard({ b }: { b: Book }) {
   return (
     <Link to={`/books/${b.id}`} className="group relative block overflow-hidden rounded-xl" style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <BookCover url={b.cover_url} title={b.title} />
-      <span className="absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 font-mono text-[8.5px] font-bold uppercase" style={{ background: "rgba(20,12,7,.72)", color: st.tone }}>{st.label}</span>
+      <StatusChip tone={st.tone} surface="poster" size="xs" className="absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] truncate">{st.label}</StatusChip>
       {/* Decorative caption only, so it never eats the tap meant for the card link. Touch
           can't hover to reveal it, and many Open Library covers carry no printed title, so
           there it always shows. */}
@@ -370,9 +369,9 @@ function CatalogueCard({ w, onAdd, busy, disabled }: { w: BookDiscoverCard; onAd
       <div className="absolute inset-0 flex flex-col justify-end p-2" style={{ background: "linear-gradient(to top, rgba(0,0,0,.92), transparent 55%)" }}>
         <div className="truncate text-[11.5px] font-semibold text-white" title={w.title}>{w.title}</div>
         {w.year > 0 && <div className="mb-1.5 text-[10px]" style={{ color: "rgba(255,255,255,.7)" }}>{w.year}</div>}
-        <button onClick={onAdd} disabled={disabled} className="rounded-lg py-1.5 text-[11.5px] font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-          {busy ? "Adding…" : "+ Add"}
-        </button>
+        <Button variant="primary" size="sm" onClick={onAdd} disabled={disabled} busy={busy} busyLabel="Adding…" className="py-1.5 disabled:opacity-60" aria-label={`Add “${w.title}”`}>
+          + Add
+        </Button>
       </div>
     </div>
   );
