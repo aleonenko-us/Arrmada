@@ -9,6 +9,7 @@ import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
 import { HealthCell } from "./subtitles/health";
+import { RedoChip, redoLabel } from "./subtitles/redo";
 import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
@@ -258,7 +259,7 @@ function Queue({ jobs, onChange, flash }: { jobs: SubtitleJob[]; onChange: () =>
             {done.slice(0, 30).map((j) => (
               <div key={j.id} className="flex items-center gap-2.5 text-[12px]">
                 <StateBadge state={j.state} />
-                <span className="flex-1 truncate font-semibold">{j.title}{j.redo && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-ink-faint" style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}</span>
+                <span className="flex-1 truncate font-semibold">{j.title}{redoLabel(j) && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-ink-faint" style={{ border: "1px solid var(--line)" }} title="Making one language again">{redoLabel(j)}</span>}{j.redo && <span className="ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-ink-faint" style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}</span>
                 <span className="text-[11.5px] text-ink-faint">{j.note}</span>
               </div>
             ))}
@@ -590,6 +591,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     onRedo={() => ensure(f, true)}
                     flash={flash}
                     onChanged={reloadMovies}
+                    onQueued={onQueued}
                     onOrphan={(name, action) => orphanAction(f, name, action)}
                   />
                 ))}
@@ -792,7 +794,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
                 <tbody>
                   {eps.map((f, i) => (
                     <SubRow key={rowKey(f)} f={f} first={i === 0} busy={busy} queued={queued.has(rowKey(f))} onEnsure={() => ensure(f)} onRedo={() => ensure(f, true)}
-                      flash={flash} onChanged={() => { api.subtitleSeriesEpisodes(g.series_id).then(setEps).catch(() => {}); }} />
+                      flash={flash} onQueued={onQueued} onChanged={() => { api.subtitleSeriesEpisodes(g.series_id).then(setEps).catch(() => {}); }} />
                   ))}
                 </tbody>
               </table>
@@ -808,12 +810,12 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued }: {
 // episode table, so the two can't drift apart.
 // A redo overwrites the sidecars that are there, so it asks first.
 function confirmRedo(title: string) {
-  return window.confirm(`Redo subtitles for ${title}?\n\nThe existing .srt files for your kept languages will be replaced — use this when what's there is wrong (the AI transcribed the wrong audio track, a bad download).`);
+  return window.confirm(`Redo every language for ${title}?\n\nEach kept language is made again from the next-best source: never the same download, else another track or AI. The old files go to the recycle bin once their replacements are written. To redo one language, click its chip instead.`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onOrphan }: {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onQueued, onOrphan }: {
   f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void;
-  flash: (m: string) => void; onChanged: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void;
+  flash: (m: string) => void; onChanged: () => void; onQueued: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void;
 }) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
@@ -835,7 +837,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, on
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang} l={l} />)}</div>
+        <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => l.have ? <RedoChip key={l.lang} f={f} l={l} flash={flash} onQueued={onQueued} /> : <CoverChip key={l.lang} l={l} />)}</div>
         {onOrphan && (f.orphans ?? []).length > 0 && (
           <div className="mt-1 flex flex-col gap-0.5">
             {f.orphans!.map((o) => (
@@ -856,7 +858,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, on
           ) : f.missing === 0 ? (
             <>
               <span className="font-mono text-[10.5px]" style={{ color: "var(--good)" }}>complete</span>
-              <button onClick={onRedo} disabled={busy !== null} title="Make this file's subtitles again, replacing the ones there" className="rounded-md px-2 py-1 text-[10.5px] font-semibold text-ink-dim disabled:opacity-50" style={{ border: "1px solid var(--line)" }}>{busy === key ? "…" : "Redo"}</button>
+              <button onClick={onRedo} disabled={busy !== null} title="Make every language again; to redo one, click its chip" className="rounded-md px-2 py-1 text-[10.5px] font-semibold text-ink-dim disabled:opacity-50" style={{ border: "1px solid var(--line)" }}>{busy === key ? "…" : "Redo all languages…"}</button>
             </>
           ) : (
             <button onClick={onEnsure} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy === key ? "Queuing…" : "Ensure subs"}</button>

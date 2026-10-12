@@ -623,6 +623,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/subtitles/logs", a.requireRole(auth.RoleManager, a.handleSubtitleLogs))
 	mux.HandleFunc("GET /api/v1/subtitles/history", a.requireRole(auth.RoleManager, a.handleSubtitleHistory))
 	mux.HandleFunc("POST /api/v1/subtitles/sync-check", a.requireRole(auth.RoleManager, a.handleSubtitleSyncCheck))
+	mux.HandleFunc("POST /api/v1/subtitles/redo", a.requireRole(auth.RoleManager, a.handleSubtitleRedo))
 	mux.HandleFunc("POST /api/v1/subtitles/sweep", a.requireRole(auth.RoleManager, a.handleSubtitleSweep))
 	mux.HandleFunc("POST /api/v1/subtitles/library/movies/{id}", a.requireRole(auth.RoleManager, a.handleSubtitleQueueMovie))
 	mux.HandleFunc("POST /api/v1/subtitles/library/episodes/{series}/{season}/{episode}", a.requireRole(auth.RoleManager, a.handleSubtitleQueueEpisode))

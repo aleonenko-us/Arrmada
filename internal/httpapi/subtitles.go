@@ -355,6 +355,34 @@ func (a *api) handleSubtitleSyncCheck(w http.ResponseWriter, r *http.Request) {
 	a.accepted(w, jobID, existing, map[string]any{"status": "checking", "file": t.Name})
 }
 
+// handleSubtitleRedo queues a redo of one language of one file ({kind, movie_id |
+// series_id+season+episode, lang, variant, mode: next|ai|extract, audio_stream?,
+// track_index?}) at manual priority. Only that language is touched; the old file goes to
+// the recycle bin once the new one exists.
+func (a *api) handleSubtitleRedo(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		subtitles.MediaRef
+		Lang        string `json:"lang"`
+		Variant     string `json:"variant"`
+		Mode        string `json:"mode"`
+		AudioStream *int   `json:"audio_stream"`
+		TrackIndex  *int   `json:"track_index"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	job, err := a.deps.Subtitles.QueueRedo(r.Context(), req.MediaRef, req.Lang, req.Variant, req.Mode, req.AudioStream, req.TrackIndex)
+	switch {
+	case errors.Is(err, subtitles.ErrNoVideo):
+		a.writeError(w, http.StatusNotFound, err.Error())
+		return
+	case err != nil:
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	a.writeJSON(w, http.StatusAccepted, job)
+}
+
 // handleSubtitleReplaceOrphan queues a fresh subtitle for an orphan's language; the
 // orphan goes to the recycle bin only once that subtitle has been written.
 func (a *api) handleSubtitleReplaceOrphan(w http.ResponseWriter, r *http.Request) {

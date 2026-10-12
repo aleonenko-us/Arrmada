@@ -32,6 +32,26 @@ type LangStatus struct {
 	RetryOn     string `json:"retry_on,omitempty"`
 	// Health is a present language's sync Health (health.go); nil while missing.
 	Health *LangHealth `json:"health,omitempty"`
+	// File is a present language's sidecar name, so a redo can say which file it replaces.
+	File string `json:"file,omitempty"`
+}
+
+// sidecarNameFor is the name of the paired sidecar that covers lang in a scan: tagged in
+// that language (full before SDH), or the untagged one when untagged (the first kept
+// language).
+func sidecarNameFor(sc sidecarScan, lang string, untagged bool) string {
+	best := ""
+	for i, lv := range sc.Variants {
+		if i >= len(sc.Names) || !coversFull(lv.Variant) {
+			continue
+		}
+		if (lv.Lang != "" && langMatches(lv.Lang, lang)) || (lv.Lang == "" && untagged) {
+			if best == "" || lv.Variant == VariantFull {
+				best = sc.Names[i]
+			}
+		}
+	}
+	return best
 }
 
 // SubHealth is a file's Health: its worst present language's (health.go).
@@ -125,9 +145,9 @@ func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string
 	}
 	fs.External = nonNil(present)
 	fs.Languages = make([]LangStatus, 0, len(langs))
-	for _, l := range langs {
+	for i, l := range langs {
 		if have[strings.ToLower(l)] {
-			fs.Languages = append(fs.Languages, LangStatus{Lang: l, Have: true})
+			fs.Languages = append(fs.Languages, LangStatus{Lang: l, Have: true, File: sidecarNameFor(sc, l, i == 0)})
 			continue
 		}
 		fs.Missing++

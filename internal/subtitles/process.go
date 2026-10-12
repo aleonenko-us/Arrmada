@@ -27,6 +27,10 @@ type fileRef struct {
 	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
 
 	audio *jobAudio // the job's decoded audio, shared by sync checks and the AI; nil outside a job
+	// A redo's AI overrides (redo.go): the audio track to listen to, and large-v3 over
+	// turbo when it's installed.
+	aiStream    *int
+	preferLarge bool
 }
 
 // mkOutcome is one rung's Outcome for one wanted language (every want is the full subtitle today).
@@ -64,7 +68,7 @@ type langDetector interface {
 
 // wavGenerator is an aiRunner that can work from the job's already-extracted WAV.
 type wavGenerator interface {
-	generateWAV(ctx context.Context, ffmpeg, wav, srt, lang, srcLang string, translate bool, progress func(int)) error
+	generateWAV(ctx context.Context, ffmpeg, wav, srt, lang, srcLang string, translate, preferLarge bool, progress func(int)) error
 }
 
 // The seams below default to the real code paths; only tests set the fields.
@@ -117,6 +121,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.processRepair(ctx, job, ref)
 		return
 	}
+	if job.Redo || isRedoMode(job.Mode) {
+		s.processRedo(ctx, job, ref)
+		return
+	}
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
 	if mi != nil {
@@ -127,21 +135,16 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	langs := s.languages(ctx)
 	present := map[string]bool{}
 	orphaned := 0
-	if job.Redo {
-		// Make every kept language again; the sidecars there now get written over.
-		s.event("info", fmt.Sprintf("Redoing %s: replacing its existing subtitles", ref.Title))
-	} else {
-		sc := scanSidecars(ref.Path, langs, kindOf(job.Kind))
-		for _, l := range sc.Present {
-			present[strings.ToLower(l)] = true
-		}
-		// The sweep leaves languages an orphaned subtitle covers alone (see SweepMissing);
-		// an import or a button press makes a real paired one.
-		if job.Priority == PrioSweep {
-			for l := range orphanCovered(langs, sc.Present, sc.Orphans) {
-				present[l] = true
-				orphaned++
-			}
+	sc := scanSidecars(ref.Path, langs, kindOf(job.Kind))
+	for _, l := range sc.Present {
+		present[strings.ToLower(l)] = true
+	}
+	// The sweep leaves languages an orphaned subtitle covers alone (see SweepMissing);
+	// an import or a button press makes a real paired one.
+	if job.Priority == PrioSweep {
+		for l := range orphanCovered(langs, sc.Present, sc.Orphans) {
+			present[l] = true
+			orphaned++
 		}
 	}
 	var remaining []string
@@ -556,6 +559,17 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		// Only what whisper can actually do: transcribe when the audio is that language, or
 		// translate to English. It can't translate into other languages.
 		plan := aiPlan(audioLangs, l)
+		// A redo may name the audio track to listen to; then only its language counts.
+		var pinned *AudioTrack
+		if ref.aiStream != nil && mi != nil && *ref.aiStream < len(mi.Audio) {
+			t := mi.Audio[*ref.aiStream]
+			pinned = &t
+			var heard []string
+			if !t.untagged() {
+				heard = []string{t.Lang}
+			}
+			plan = aiPlan(heard, l)
+		}
 		if plan == "" {
 			outs = append(outs, mkOutcome(l, RungAI, ResultImpossible, "whisper can't translate into "+strings.ToLower(l)))
 			continue
@@ -564,6 +578,9 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		// Which audio track: a MULTI release has the dub too, and the wrong one gives a
 		// subtitle in the wrong language under the right name.
 		stream, track := audioStreamFor(mi, l, translate)
+		if pinned != nil {
+			stream, track = pinned.Index, *pinned
+		}
 		if !ai.canRun(translate) {
 			// Parked until a model download clears it (backoff.go), not retried every sweep.
 			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate "+audioLangWord(track.Lang)+" audio to English"))
@@ -597,7 +614,13 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		if translate {
 			src = SourceAITranslate
 		}
-		s.recordFile(ctx, job, ref, SubtitleFile{Path: dst, Lang: strings.ToLower(l), Variant: VariantFull, Source: src, Model: aiModelName(ai, translate)})
+		model := aiModelName(ai, translate)
+		if ref.preferLarge {
+			if n := aiModelName(ai, true); n != "" {
+				model = n
+			}
+		}
+		s.recordFile(ctx, job, ref, SubtitleFile{Path: dst, Lang: strings.ToLower(l), Variant: VariantFull, Source: src, Model: model})
 		outs = append(outs, mkOutcome(l, RungAI, ResultOK, "AI-generated"))
 		took := time.Since(started)
 		msg := fmt.Sprintf("%s: AI subtitle written (%s) in %s on %s", ref.Title, l, took.Round(time.Second), ai.Backend())
@@ -688,7 +711,7 @@ func (s *Service) runAI(ctx context.Context, ai aiRunner, ref fileRef, dst, lang
 		if err != nil {
 			return err
 		}
-		return g.generateWAV(ctx, s.ffmpeg, wav, dst, lang, srcLang, translate, progress)
+		return g.generateWAV(ctx, s.ffmpeg, wav, dst, lang, srcLang, translate, ref.preferLarge, progress)
 	}
 	return ai.generate(ctx, s.ffmpeg, ref.Path, dst, lang, srcLang, translate, stream, progress)
 }

@@ -2071,6 +2071,7 @@ export interface SubLangStatus {
   next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
   retry_on?: string; // CSV: creds | model | langs
   health?: SubLangHealth; // present languages: how well it lines up with the speech
+  file?: string; // present languages: the sidecar's file name
 }
 export type SubHealthState = "ok" | "uncertain" | "bad" | "unknown" | "unchecked";
 export interface SubLangHealth {
@@ -2099,6 +2100,8 @@ export interface SubtitleJob {
   stage?: string;    // what a running job is doing
   started_at?: number; // unix seconds the worker picked it up
   redo?: boolean; // replacing the sidecars already there
+  mode?: string; // "next" | "ai" | "extract" for a one-language redo; "repair-forced"
+  langs?: string[]; // the languages a redo makes again
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
   run_id?: string; // this run's rows in GET /subtitles/history?run_id=
   outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried

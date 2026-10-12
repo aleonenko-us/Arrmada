@@ -335,14 +335,20 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 	if fi, err := os.Stat(wav); err != nil || fi.Size() < 4096 {
 		return fmt.Errorf("extracted audio was empty (no decodable audio track?)")
 	}
-	return w.generateWAV(ctx, ffmpeg, wav, srtPath, lang, srcLang, translate, progress)
+	return w.generateWAV(ctx, ffmpeg, wav, srtPath, lang, srcLang, translate, false, progress)
 }
 
 // generateWAV is generate from an already-extracted 16 kHz mono WAV — the job's shared
 // one (audio.go), so a file whose audio was read for a sync check or language detection
 // isn't read again. The WAV is left in place.
-func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang, srcLang string, translate bool, progress func(pct int)) error {
+func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang, srcLang string, translate, preferLarge bool, progress func(pct int)) error {
 	model := w.modelPath(translate)
+	if preferLarge {
+		// A redo with AI: the bigger model, when it's there, for a better second try.
+		if p := w.modelPath(true); p != "" {
+			model = p
+		}
+	}
 	if model == "" {
 		return fmt.Errorf("no whisper model available for %s", ifElse(translate, "translation", "transcription"))
 	}
