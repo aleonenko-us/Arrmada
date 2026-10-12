@@ -695,6 +695,22 @@ func main() {
 		}
 		return err
 	}, scheduler.Label("Refresh book details"), scheduler.Description("Fills in descriptions, genres, series and release dates from the book catalogue, a few books at a time, never-refreshed books first. Holds off when most of the day's Hardcover budget is used."))
+	// New books by followed authors: each one's catalogue about once a week, 10 authors a
+	// run, inside the Hardcover budget. works_checked_at makes it restart-safe.
+	releaseJob := authorReleaseJob{
+		check:          booksSvc.CheckAuthorReleases,
+		defaultProfile: func(ctx context.Context) string { return qualitySvc.DefaultProfile(ctx, "book") },
+		emit:           notifySvc.EmitOnce,
+		search:         coordinator.SearchBookNow,
+		log:            log,
+		now:            time.Now,
+	}
+	sched.Register("check-author-releases", 6*time.Hour, false, func(ctx context.Context) error {
+		if !settingsSvc.GetBool(ctx, settings.KeyModuleBooks, true) {
+			return nil
+		}
+		return releaseJob.run(ctx)
+	}, scheduler.Label("Check followed authors for new books"), scheduler.Description("Looks at each followed author's catalogue about once a week and adds their new books, monitored, then searches the ones that are out. The first look at an author only notes what's there. Holds off when most of the day's Hardcover budget is used."))
 	// Sweep monitored albums missing tracks and grab the best release for each.
 	sched.Register("search-missing-music", 30*time.Minute, false, func(ctx context.Context) error {
 		coordinator.SearchMusicMissing(ctx)

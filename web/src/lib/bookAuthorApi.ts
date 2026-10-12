@@ -16,6 +16,10 @@ export interface LibraryAuthor {
   monitor_new: boolean;
   /** Profile for books added for this author; "" = the default book profile. */
   quality_profile: string;
+  /** When the weekly new-books check last looked at the author's catalogue (SQLite UTC); absent = not yet. */
+  works_checked_at?: string;
+  /** How many books that check has added. */
+  new_books_found?: number;
   books: number;
   owned: number;
   wanted: number;

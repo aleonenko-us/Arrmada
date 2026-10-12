@@ -866,6 +866,11 @@ func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	var skipped int
 	if authorID > 0 {
 		added, skipped = a.deps.Books.AddAuthorWorks(r.Context(), authorID, works, profile, monitored)
+		// The list just added from is what the release check has seen of this author, so
+		// a book that comes out before its first scheduled look is still new to it.
+		if err := a.deps.Books.SeedAuthorWorks(r.Context(), authorID, works); err != nil {
+			a.deps.Log.Warn("add author: could not record the author's catalogue", "author_id", authorID, "err", err)
+		}
 	} else {
 		added, skipped = a.deps.Books.AddWorks(r.Context(), works, profile, monitored)
 	}
