@@ -22,6 +22,8 @@ type fileRef struct {
 	Episode       int
 	MediaKey      string // Job.key() format: "m:<id>" or "e:<series>:<season>:<episode>"
 	SourceRelease string // the release name the file was imported from, when recorded
+
+	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
 }
 
 // langOutcome is what one rung of the ladder did for one language. It drives the job's
@@ -29,7 +31,7 @@ type fileRef struct {
 type langOutcome struct {
 	Lang   string
 	Rung   string // "extract" | "download" | "ai"
-	Result string // "done" | "empty" | "error" | "no_match" | "quota" | "model_missing" | "impossible" | "ai_failed"
+	Result string // "done" | "empty" | "error" | "no_match" | "below_score" | "out_of_sync" | "quota" | "model_missing" | "impossible" | "ai_failed"
 	Detail string // human wording for the note, e.g. "no OpenSubtitles match"
 }
 
@@ -98,6 +100,9 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	s.update(job, func(j *Job) { j.State = StateRunning; j.StartedAt = time.Now().Unix() })
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
+	if mi != nil {
+		ref.FPS = mi.FPS
+	}
 	langs := s.languages(ctx)
 	present := map[string]bool{}
 	orphaned := 0
@@ -310,7 +315,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			outs = append(outs, langOutcome{l, "download", "quota", "quota spent"})
 			continue
 		}
-		okDL, err := s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+		res, err := s.grabOne(ctx, ref, hash, l)
 		switch {
 		case ctx.Err() != nil:
 			return without(langs, done), outs
@@ -322,11 +327,12 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 		case err != nil:
 			s.event("warn", fmt.Sprintf("%s: download %s failed: %v", ref.Title, l, err))
 			outs = append(outs, langOutcome{l, "download", "error", "OpenSubtitles error"})
-		case okDL:
+		case res.Written:
 			done[strings.ToLower(l)] = true
 			outs = append(outs, langOutcome{l, "download", "done", "downloaded"})
 		default:
-			outs = append(outs, langOutcome{l, "download", "no_match", "no OpenSubtitles match"})
+			// no_match, below_score (with the scoring explanation) or out_of_sync.
+			outs = append(outs, langOutcome{l, "download", res.Outcome, res.Detail})
 		}
 	}
 	return without(langs, done), outs
