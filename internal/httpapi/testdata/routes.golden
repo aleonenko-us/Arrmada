@@ -302,6 +302,7 @@ POST /api/v1/insights/plex/scan/test staff -
 POST /api/v1/insights/plex/test staff -
 POST /api/v1/issues requester ext
 POST /api/v1/issues/{id}/dismiss staff -
+POST /api/v1/issues/{id}/fix staff -
 POST /api/v1/issues/{id}/resolve staff -
 POST /api/v1/jobs/{id}/cancel staff -
 POST /api/v1/library/fit/preview staff -

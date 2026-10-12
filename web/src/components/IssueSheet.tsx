@@ -4,7 +4,7 @@ import { formatAgo } from "../lib/format";
 import { posterThumb } from "../lib/img";
 import { ISSUE_TONE, issueCategoryLabel, issueEpisode, issueStatusLabel, issuesApi, type Issue } from "../lib/issuesApi";
 import { refreshAttention } from "../lib/useAttention";
-import { Button, Sheet, StatusChip, useToast } from "../ui";
+import { Button, Sheet, StatusChip, useConfirm, useToast } from "../ui";
 
 // The longest note staff can close an issue with (the server refuses longer).
 const CLOSE_NOTE_MAX = 500;
@@ -12,6 +12,11 @@ const CLOSE_NOTE_MAX = 500;
 // IssueSheet is one reported problem, for staff: what's wrong, who reported it and what
 // they said, and what to do about it. Resolving or dismissing tells everyone who reported
 // it, with the note when one is given.
+//
+// The one-click fixes put it in "fixing": "Blocklist this copy & find another" (confirmed
+// first — the current file goes to the recycle bin when the new one is imported) or
+// "Make the subtitles again". It then resolves itself when the new file lands or the
+// subtitle job has made subtitles, and the reporters are told.
 export function IssueSheet({ issueId, initial, onChanged, onClose }: {
   issueId: number;
   /** What the list already has, shown while the fresh copy loads. */
@@ -20,6 +25,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
   onClose: () => void;
 }) {
   const flash = useToast();
+  const confirm = useConfirm();
   const [issue, setIssue] = useState<Issue | null>(initial ?? null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +55,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
   const live = issue.status === "open" || issue.status === "fixing";
   const ep = issueEpisode(issue);
   const lib = issue.library_id ? `/${issue.media_type === "movie" ? "movies" : "series"}/${issue.library_id}` : null;
+  const big = "min-h-[40px]";
 
   const close = async () => {
     if (!closing) return;
@@ -67,7 +74,36 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
     }
   };
 
-  const big = "min-h-[40px]";
+  const fix = async (action: "replace" | "subtitles") => {
+    if (action === "replace") {
+      const yes = await confirm({
+        title: `Blocklist this copy of “${issue.title}”${ep ? ` ${ep}` : ""} and find another?`,
+        body: "The release this file came from is blocklisted and a new copy is searched for. When it’s imported, the current file goes to the recycle bin, the problem is marked fixed and everyone who reported it is told.",
+        confirmLabel: "Blocklist and search",
+        tone: "danger",
+      });
+      if (!yes) return;
+    }
+    setBusy(action); setError(null);
+    try {
+      const started = await issuesApi.fix(issue.id, action);
+      setIssue(started);
+      flash(action === "replace" ? "Searching for another copy — it’ll resolve when it lands" : "Making the subtitles again — it’ll resolve when they’re done");
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  // A subtitles problem leads with the subtitle fix; anything else with a new copy.
+  const subsFirst = issue.category === "subtitles";
+  const fixes = [
+    <Button key="replace" variant={subsFirst ? "secondary" : "primary"} className={big} onClick={() => { void fix("replace"); }} busy={busy === "replace"} busyLabel="Starting…" disabled={!!busy}>Blocklist this copy &amp; find another</Button>,
+    <Button key="subtitles" variant={subsFirst ? "primary" : "secondary"} className={big} onClick={() => { void fix("subtitles"); }} busy={busy === "subtitles"} busyLabel="Starting…" disabled={!!busy}>Make the subtitles again</Button>,
+  ];
+  if (subsFirst) fixes.reverse();
+
   return (
     <Sheet onClose={onClose} closeOnBack={false} ariaLabel={`Problem with ${issue.title}`} size="lg" dismissible={!busy}>
       <div className="flex gap-4 p-5 sm:p-6">
@@ -99,7 +135,21 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
           ))}
         </div>
 
-        {issue.action_note && <div className="text-[12px]" style={{ color: "var(--avoid-text)" }}>{issue.action_note}</div>}
+        {issue.status === "fixing" && (
+          <div className="rounded-lg p-3 text-[12.5px]" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)" }}>
+            <div className="font-semibold" style={{ color: "var(--accent)" }}>Fixing{issue.action_at ? ` · started ${formatAgo(issue.action_at * 1000, Date.now())}` : ""}</div>
+            <div className="mt-0.5 text-ink-dim">{issue.action_note || "Waiting for the fix to land."} It resolves itself when it does, and they’re told.</div>
+            {issue.action_file && <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{issue.action === "replace" ? "Replacing" : "File:"} {issue.action_file}</div>}
+          </div>
+        )}
+        {issue.status === "open" && issue.action_note && <div className="text-[12px]" style={{ color: "var(--avoid-text)" }}>{issue.action_note}</div>}
+
+        {live && !closing && (
+          <div className="flex flex-col gap-2">
+            <div className="font-mono text-[9.5px] uppercase text-ink-faint">{issue.status === "fixing" ? "Try another fix" : "Fix it"}</div>
+            <div className="flex flex-wrap gap-2">{fixes}</div>
+          </div>
+        )}
         {issue.resolution && !live && <div className="text-[12px] text-ink-dim">Told them: {issue.resolution}</div>}
 
         {live && closing && (
@@ -131,7 +181,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
         <div className="flex flex-wrap gap-2">
           {live && !closing && (
             <>
-              <Button variant="primary" className={big} onClick={() => setClosing("resolve")} disabled={!!busy}>Mark fixed…</Button>
+              <Button className={big} onClick={() => setClosing("resolve")} disabled={!!busy}>Mark fixed…</Button>
               <Button className={big} onClick={() => setClosing("dismiss")} disabled={!!busy}>Close without a fix…</Button>
             </>
           )}

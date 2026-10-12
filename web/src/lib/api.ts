@@ -3159,10 +3159,6 @@ export const api = {
   subtitleSweep: (media: "movies" | "tv" = "movies") => req<{ queued: number }>(`/api/v1/subtitles/sweep${media === "tv" ? "?media=tv" : ""}`, { method: "POST" }),
   subtitleModels: () => req<WhisperStatus>("/api/v1/subtitles/models"),
   subtitleDownloadModel: (name: string) => req<{ status: string }>(`/api/v1/subtitles/models/${encodeURIComponent(name)}`, { method: "POST" }),
-  subtitleMovies: () => req<{ movies: MovieSubStatus[] }>("/api/v1/subtitles/movies").then((r) => r.movies),
-  subtitleSeries: () => req<{ series: SeriesSubStatus[] }>("/api/v1/subtitles/series").then((r) => r.series),
-  searchMovieSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/movies/${id}/search`, { method: "POST" }),
-  searchSeriesSubs: (id: number) => req<{ status: string } & JobRef>(`/api/v1/subtitles/series/${id}/search`, { method: "POST" }),
 
   // Convert
   convertHardware: () => req<{ encoders: ConvertEncoder[]; using: string; reclaimed_bytes: number; scratch_dir: string; scratch_free_bytes: number; scratch_need_bytes?: number; scratch_need_title?: string; render_devices: { path: string; pci: string; vendor: string }[]; vaapi_device: string;

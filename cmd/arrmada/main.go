@@ -787,10 +787,12 @@ func main() {
 			Except: i.ReportedBy, Pref: requests.PrefNewRequest, What: "issue", ID: i.ID,
 		})
 	})
-	// Re-sends a closed issue's notices to any reporter an inbox write missed.
+	// Settles the problems being fixed (a finished subtitle job, a new file whose import
+	// signal was missed, a fix that brought nothing in a week) and re-sends a closed
+	// issue's notices to any reporter an inbox write missed.
 	sched.Register("issues-check", time.Minute, false, issuesSvc.Sweep,
 		scheduler.Label("Follow up reported problems"),
-		scheduler.Description("Tells people who reported a problem that it was fixed, if the first try didn't reach them."))
+		scheduler.Description("Resolves reported problems once their fix has landed, and tells the people who reported them."))
 	// Backstop for request-ready notifications: catches availability that arrived
 	// without an import (a library scan). Idempotent (unique inbox ref), so re-running
 	// never double-notifies.
@@ -803,6 +805,8 @@ func main() {
 	subsProvider := subtitles.NewOpenSubtitlesFunc(keyStore.Func("opensubtitles_api"), keyStore.Func("opensubtitles_username"), keyStore.Func("opensubtitles_password"))
 	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), log)
 	grp.Loop("subtitles: worker", subtitlesSvc.Run) // subtitle-ensure job worker
+	// A reported problem's subtitles fix resolves once its job has made subtitles.
+	issuesSvc.SetSubtitles(subtitleOutcomes{subtitlesSvc})
 	// The library pass behind the Subtitles Overview/Library pages. The worker runs the
 	// first one at startup; this keeps it from going stale.
 	sched.Register("subtitles-library-scan", 6*time.Hour, false, func(ctx context.Context) error {
@@ -1056,7 +1060,7 @@ func main() {
 	// registered at that moment. Rows a previous run left unfinished run as soon as the
 	// dispatcher starts.
 	importConsumers{
-		convert: convertSvc, subtitles: subtitlesSvc, requests: requestsSvc, audio: audioSrv, grp: grp,
+		convert: convertSvc, subtitles: subtitlesSvc, requests: requestsSvc, issues: issuesSvc, audio: audioSrv, grp: grp,
 		plex: plexScanner, showFolder: seriesSvc.FolderPath,
 		// With scans switched off nothing calls OnRefreshed; Plex's own watcher adds the
 		// file in its own time, so look again a few minutes after the import.

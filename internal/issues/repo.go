@@ -168,8 +168,7 @@ func counts(ctx context.Context, db store.Execer, userID int64) (Counts, error) 
 	return c, err
 }
 
-// fixingFor lists the issues being fixed for one item: a movie (season and episode 0), or
-// the given episodes of a show.
+// fixingFor lists the issues being fixed for one movie, or for any episode of one show.
 func fixingFor(ctx context.Context, db store.Execer, media string, libraryID int64) ([]Issue, error) {
 	return queryIssues(ctx, db, `SELECT `+issueCols+` FROM issues WHERE media_type = ? AND library_id = ? AND status = 'fixing'`, media, libraryID)
 }

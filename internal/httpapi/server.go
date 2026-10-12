@@ -523,6 +523,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/issues/episodes/{tmdb}", a.requireRole(auth.RoleRequester, a.handleIssueEpisodes).ext())
 	mux.HandleFunc("POST /api/v1/issues/{id}/resolve", a.requireRole(auth.RoleManager, a.handleCloseIssue(false)))
 	mux.HandleFunc("POST /api/v1/issues/{id}/dismiss", a.requireRole(auth.RoleManager, a.handleCloseIssue(true)))
+	// One-click fixes: replace the copy, or make the subtitles again (issuefix.go).
+	mux.HandleFunc("POST /api/v1/issues/{id}/fix", a.requireRole(auth.RoleManager, a.handleFixIssue))
 	mux.HandleFunc("POST /api/v1/insights/import/tautulli", a.requireRole(auth.RoleAdmin, a.handleImportTautulli))
 	// Tautulli imports as tracked runs: the saved connection (key masked), the latest runs
 	// with progress and counts, Retry, and undo of exactly one run's plays (backup first).

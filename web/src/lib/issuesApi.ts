@@ -90,6 +90,8 @@ export const issuesApi = {
   episodes: (tmdbId: number) => req<{ seasons: IssueSeasonFiles[] }>(`/api/v1/issues/episodes/${tmdbId}`),
   resolve: (id: number, note: string) => req<Issue>(`/api/v1/issues/${id}/resolve`, post({ note })),
   dismiss: (id: number, note: string) => req<Issue>(`/api/v1/issues/${id}/dismiss`, post({ note })),
+  /** Start a one-click fix: replace the copy, or make the subtitles again. */
+  fix: (id: number, action: "replace" | "subtitles") => req<Issue>(`/api/v1/issues/${id}/fix`, post({ action })),
 };
 
 /** "S01E04" for an episode, "" for a movie. */

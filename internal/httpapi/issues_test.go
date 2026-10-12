@@ -89,6 +89,18 @@ func TestIssuesRequesterSeesOnlyOwn(t *testing.T) {
 		t.Fatalf("staff list: HTTP %d: %s", rec.Code, body)
 	}
 
+	// Fixes are staff-only; one whose service isn't wired says so and leaves it open.
+	fix := "/api/v1/issues/" + itoa64(created.Issue.ID) + "/fix"
+	if rec := s.doJSON("POST", fix, alice, `{"action":"replace"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("requester fix: HTTP %d, want 403", rec.Code)
+	}
+	if rec := s.doJSON("POST", fix, mgr, `{"action":"subtitles"}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unwired fix: HTTP %d, want 503: %s", rec.Code, rec.Body)
+	}
+	if rec := s.doJSON("POST", fix, mgr, `{"action":"convert"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown fix: HTTP %d, want 400: %s", rec.Code, rec.Body)
+	}
+
 	path := "/api/v1/issues/" + itoa64(created.Issue.ID) + "/resolve"
 	if rec := s.doJSON("POST", path, alice, `{"note":"done"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("requester resolve: HTTP %d, want 403", rec.Code)

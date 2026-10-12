@@ -100,7 +100,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
           {ISSUE_CATEGORIES.map((c) => {
             const on = category === c.key;
             return (
-              <label key={c.key} className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-3 py-2"
+              <label key={c.key} aria-label={`${c.label}: ${c.hint}`} className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-3 py-2"
                 style={{ background: on ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}` }}>
                 <input type="radio" name={`${id}-category`} value={c.key} checked={on} onChange={() => setCategory(c.key)} className="h-4 w-4 flex-none" />
                 <span className="min-w-0">
