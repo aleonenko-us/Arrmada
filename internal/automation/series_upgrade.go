@@ -224,7 +224,7 @@ func (c *Coordinator) packUpgrades(ctx context.Context, s series.Series, idx run
 			if !e.Monitored || e.UpgradeHold || e.SourceRelease == "" {
 				return false, worse
 			}
-			_, better = c.quality.UpgradeCandidate(ctx, profile, cur, []quality.Candidate{cand})
+			_, better = c.upgradePick(ctx, profile, cur, []quality.Candidate{cand}) // notes the gain for the grab record
 			return better, worse
 		})
 		if !ok {
