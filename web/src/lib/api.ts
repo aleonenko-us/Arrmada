@@ -777,7 +777,7 @@ export interface SystemHealth {
 
 // The Needs-you feed (GET /api/v1/attention, staff only): what's waiting on a person.
 export type AttentionKind =
-  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert" | "issue";
+  | "request" | "review" | "download" | "stalled" | "import" | "wrongcat" | "search" | "health" | "convert" | "issue" | "subtitles";
 export interface AttentionCounts {
   requests: number;
   reviews: number;
@@ -788,6 +788,7 @@ export interface AttentionCounts {
   health_errors: number;
   convert?: number; // reasons Convert is stuck waiting for disk space
   issues?: number; // reported problems still open
+  subtitles?: number; // file languages waiting on a login, a model or a whisper fix
   total: number;
 }
 export interface AttentionItem {

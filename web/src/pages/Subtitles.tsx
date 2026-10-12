@@ -10,6 +10,7 @@ import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus, type SubtitleProviderState } from "../lib/api";
 import { HealthCell } from "./subtitles/health";
 import { RedoChip, redoLabel } from "./subtitles/redo";
+import { AttentionCard } from "./subtitles/attention";
 import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
@@ -107,7 +108,9 @@ function SubtitlesPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="subtitles" label="Subtitles sections" />
 
         <TabPanel idPrefix="subtitles" value={tab}>
-          {tab === "overview" && <Overview jobs={jobs} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)} />}
+          {tab === "overview" && <Overview jobs={jobs} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)}
+            onLibrary={() => { setTab("library"); flash("Pick the Orphaned filter to adopt or replace them."); }}
+            onQueued={() => { api.subtitleJobs().then(setJobs).catch(() => {}); }} />}
           {tab === "queue" && <Queue jobs={jobs} onChange={() => api.subtitleJobs().then(setJobs).catch(() => {})} flash={flash} />}
           {tab === "library" && <Library flash={flash} onQueued={() => api.subtitleJobs().then(setJobs)} />}
           {tab === "logs" && <LogsConsole />}
@@ -119,7 +122,10 @@ function SubtitlesPage() {
 }
 
 /* ============================= OVERVIEW ============================= */
-function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void }) {
+function Overview({ jobs, settings, flash, onSettings, onLibrary, onQueued }: {
+  jobs: SubtitleJob[]; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void;
+  onLibrary: () => void; onQueued: () => void;
+}) {
   // The totals come from the server's last library pass. This used to fetch the flat
   // list of every file — a directory listing per file, 25,000 of them — every time the
   // tab opened.
@@ -171,7 +177,7 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
           <div className="mt-2 flex flex-col gap-1.5 text-[12px] text-ink-dim">
             <Row2 label="Embedded extract" state="on" />
             <Row2 label="OpenSubtitles download" state={providerRow(settings?.provider_state)} onClick={onSettings} />
-            <Row2 label="AI transcription" state={settings?.ai_ready ? "on" : "model"} onClick={onSettings} />
+            <Row2 label={`AI transcription${settings?.ai_ready && settings.ai_backend ? ` (${settings.ai_backend === "cpu" ? "CPU" : "GPU"})` : ""}`} state={settings?.ai_ready ? "on" : "model"} onClick={onSettings} />
             <Row2 label="Image-sub OCR" state="unsupported" />
           </div>
           <div className="mt-2.5 border-t pt-2.5 text-[11.5px] text-ink-faint" style={{ borderColor: "var(--line-soft)" }}>
@@ -179,6 +185,8 @@ function Overview({ jobs, settings, flash, onSettings }: { jobs: SubtitleJob[]; 
           </div>
         </div>
       </div>
+
+      <AttentionCard flash={flash} onLibrary={onLibrary} onQueued={onQueued} />
 
       {active.length > 0 && (
         <div className={card} style={cardStyle}>

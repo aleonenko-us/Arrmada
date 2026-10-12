@@ -383,6 +383,45 @@ func (a *api) handleSubtitleRedo(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusAccepted, job)
 }
 
+// handleSubtitleAttention is the Overview's needs-attention board: every missing file
+// language grouped by why, with its one-click fix, plus coverage by source.
+func (a *api) handleSubtitleAttention(w http.ResponseWriter, r *http.Request) {
+	board, err := a.deps.Subtitles.Attention(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read what needs attention")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, board)
+}
+
+// handleSubtitleRetry tries file languages again now, ignoring their backoff: {items:
+// [{media_key, lang, variant}]} or {all_in_bucket: reason}, and mode "ai" to go straight to
+// the AI. Answers how many jobs were queued.
+func (a *api) handleSubtitleRetry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items       []subtitles.RetryItem `json:"items"`
+		AllInBucket string                `json:"all_in_bucket"`
+		Mode        string                `json:"mode"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.Items) > 1000 {
+		a.writeError(w, http.StatusBadRequest, "too many items — retry the bucket instead")
+		return
+	}
+	n, err := a.deps.Subtitles.Retry(r.Context(), req.Items, req.AllInBucket, req.Mode)
+	if err != nil {
+		if errors.Is(err, subtitles.ErrBadRetry) {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.writeError(w, http.StatusInternalServerError, "could not queue every retry")
+		return
+	}
+	a.writeJSON(w, http.StatusAccepted, map[string]any{"queued": n})
+}
+
 // handleSubtitleReplaceOrphan queues a fresh subtitle for an orphan's language; the
 // orphan goes to the recycle bin only once that subtitle has been written.
 func (a *api) handleSubtitleReplaceOrphan(w http.ResponseWriter, r *http.Request) {

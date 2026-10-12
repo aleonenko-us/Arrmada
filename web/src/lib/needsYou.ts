@@ -32,6 +32,7 @@ const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   health: ["Fix", "Fix"],
   convert: ["See it", "See them"],
   issue: ["Look at it", "Look at them"],
+  subtitles: ["Fix it", "Fix them"],
 };
 
 export function needsYouRows(a: Attention | undefined): NeedsYouRow[] {
