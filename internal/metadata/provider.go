@@ -250,6 +250,10 @@ type BookResult struct {
 	Author   string `json:"author"`
 	Year     int    `json:"year"`
 	CoverURL string `json:"cover_url,omitempty"`
+	// ReleaseDate is the book's first publication day, YYYY-MM-DD, when the catalogue
+	// knows it (Hardcover's book release_date; Open Library leaves it empty). An upcoming
+	// book is not searched for before it.
+	ReleaseDate string `json:"release_date,omitempty"`
 	// Set on entries of a series listing (SeriesInfo); zero elsewhere.
 	SeriesName     string  `json:"series_name,omitempty"`
 	SeriesPosition float64 `json:"series_position,omitempty"`

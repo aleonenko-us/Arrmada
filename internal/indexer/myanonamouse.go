@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // MAMSearcher is a native MyAnonaMouse integration. MAM exposes a rich JSON
@@ -326,8 +328,10 @@ func (m *MAMSearcher) releaseFrom(idx Indexer, it mamItem) Release {
 		Author:      author,
 		Narrator:    narrator,
 		Series:      series,
-		Language:    lang,
-		Format:      format,
+		// MAM sends a 639-2 code ("ENG", "GER"); the book language filter compares
+		// canonical codes, so "en", "de". An unknown code comes through lower-cased.
+		Language: langs.Canonical(lang),
+		Format:   format,
 	}
 	if n := numToInt(it.Category); n > 0 {
 		r.Categories = []int{n}
