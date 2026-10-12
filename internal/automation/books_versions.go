@@ -332,6 +332,7 @@ func (c *Coordinator) DeleteAudioVersionFile(ctx context.Context, bookID, versio
 	if err != nil {
 		return err
 	}
+	defer c.bookFilesChanged(ctx, bookID) // the audiobook catalogue re-reads, whatever moved
 	if err := c.removeAudioFiles(ctx, bookID, v.File); err != nil {
 		return err
 	}
@@ -352,6 +353,7 @@ func (c *Coordinator) RemoveAudioVersion(ctx context.Context, bookID, versionID 
 		return err
 	}
 	if deleteFiles {
+		defer c.bookFilesChanged(ctx, bookID)
 		if err := c.removeAudioFiles(ctx, bookID, v.File); err != nil {
 			return err
 		}

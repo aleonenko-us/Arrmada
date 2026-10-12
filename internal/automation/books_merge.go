@@ -134,7 +134,9 @@ func (c *Coordinator) MergeAudiobook(ctx context.Context, bookID int64) error {
 		}
 	}
 
-	if _, err := merge(ctx, paths, tmp, audiobook.MergeOptions{Title: b.Title, Author: b.Author}); err != nil {
+	opts := audiobook.MergeOptions{Title: b.Title, Author: b.Author, Series: b.SeriesName, SeriesPosition: b.SeriesPosition,
+		Year: b.Year, Narrator: b.AudiobookNarrator}
+	if _, err := merge(ctx, paths, tmp, opts); err != nil {
 		_ = os.Remove(tmp)
 		if ctx.Err() != nil {
 			return fail("it ran out of time (" + ctx.Err().Error() + ")")

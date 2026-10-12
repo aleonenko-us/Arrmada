@@ -1447,6 +1447,8 @@ func (c *Coordinator) DeleteBookEdition(ctx context.Context, bookID int64, kind 
 	} else {
 		bf = b.Ebook
 	}
+	// Even a delete that stops part way has moved files; the audiobook catalogue re-reads.
+	defer c.bookFilesChanged(ctx, bookID)
 	if bf != nil && bf.Path != "" {
 		if fi, err := os.Stat(bf.Path); err == nil && fi.IsDir() {
 			// Multi-file edition in a (possibly shared) folder — remove only this
@@ -1560,6 +1562,7 @@ func (c *Coordinator) BookRename(ctx context.Context, bookID int64) (int, error)
 	}
 	if moved > 0 {
 		c.books.AddEvent(ctx, bookID, "renamed", fmt.Sprintf("Renamed %d file%s to the canonical scheme", moved, plural(moved)))
+		c.bookFilesChanged(ctx, bookID)
 	}
 	return moved, nil
 }

@@ -103,12 +103,17 @@ func (c importConsumers) register(box *outbox.Outbox) {
 	box.Register(outbox.TopicBookImported, "requests.ready", decode(func(ctx context.Context, p outbox.BookImported) error {
 		return c.requests.NotifyBookReady(ctx, p.BookID)
 	}))
-	box.Register(outbox.TopicBookImported, "audioserver.cache", decode(func(ctx context.Context, _ outbox.BookImported) error {
-		// The warm-up probes files and can take a while; it runs in the run group with
-		// the app's own context, not this handler's, which ends when the handler returns.
-		c.audio.OnBookImported(ctx, func(fn func(ctx context.Context)) {
-			c.grp.Go("audiobook server: warm-up", fn)
-		})
+	// The warm-up probes files and can take a while; it runs in the run group with the
+	// app's own context, not the handler's, which ends when the handler returns.
+	audioWarm := func(fn func(ctx context.Context)) { c.grp.Go("audiobook server: warm-up", fn) }
+	box.Register(outbox.TopicBookImported, "audioserver.cache", decode(func(ctx context.Context, p outbox.BookImported) error {
+		c.audio.OnBookChanged(ctx, p.BookID, audioWarm)
+		return nil
+	}))
+	// A rename or delete: the catalogue re-reads the book's files, and nobody is told
+	// it's ready.
+	box.Register(outbox.TopicBookFilesChanged, "audioserver.cache", decode(func(ctx context.Context, p outbox.BookFilesChanged) error {
+		c.audio.OnBookChanged(ctx, p.BookID, audioWarm)
 		return nil
 	}))
 }

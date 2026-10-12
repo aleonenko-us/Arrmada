@@ -20,6 +20,7 @@ func TestImportConsumersCoverEveryTopic(t *testing.T) {
 	box := outbox.New(nil, nil)
 	importConsumers{}.register(box) // handlers only close over the services; none run here
 	want := []string{
+		"book.files_changed → audioserver.cache",
 		"book.imported → audioserver.cache",
 		"book.imported → requests.ready",
 		"movie.changed → convert",

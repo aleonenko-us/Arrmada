@@ -26,6 +26,8 @@ type AudioVersion struct {
 	Monitored bool      `json:"monitored"`
 	File      *BookFile `json:"file,omitempty"`
 	AddedAt   string    `json:"added_at,omitempty"`
+	// Narrator is who reads this version, typed by hand; empty means the files' tags say.
+	Narrator string `json:"narrator,omitempty"`
 }
 
 // ErrVersionNotFound is returned for an unknown audio version id.
@@ -34,7 +36,7 @@ var ErrVersionNotFound = errors.New("audio version not found")
 // ErrVersionInvalid wraps a validation failure the user can act on.
 var ErrVersionInvalid = errors.New("invalid audio version")
 
-const versionCols = `id, book_id, label, terms, monitored, path, format, size, files, added_at`
+const versionCols = `id, book_id, label, terms, monitored, path, format, size, files, added_at, narrator`
 
 func scanVersion(row interface{ Scan(...any) error }) (AudioVersion, error) {
 	var (
@@ -45,7 +47,7 @@ func scanVersion(row interface{ Scan(...any) error }) (AudioVersion, error) {
 		size         int64
 		files        int
 	)
-	if err := row.Scan(&v.ID, &v.BookID, &v.Label, &terms, &mon, &path, &format, &size, &files, &v.AddedAt); err != nil {
+	if err := row.Scan(&v.ID, &v.BookID, &v.Label, &terms, &mon, &path, &format, &size, &files, &v.AddedAt, &v.Narrator); err != nil {
 		return AudioVersion{}, err
 	}
 	v.Terms = splitTerms(terms)
@@ -232,6 +234,16 @@ func (r *Repo) SetAudioVersionFile(ctx context.Context, id int64, path, format s
 	return err
 }
 
+// setAudioVersionNarrator records who reads a version ("" = the files say).
+func (r *Repo) setAudioVersionNarrator(ctx context.Context, bookID, id int64, narrator string) error {
+	res, err := r.db.ExecContext(ctx, `UPDATE book_audio_versions SET narrator = ? WHERE id = ? AND book_id = ?`, narrator, id, bookID)
+	if err := affected(res, err); errors.Is(err, ErrNotFound) {
+		return ErrVersionNotFound
+	} else {
+		return err
+	}
+}
+
 // ClearAudioVersionFile forgets a version's file (removing it is the caller's job).
 func (r *Repo) ClearAudioVersionFile(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx,
@@ -314,6 +326,19 @@ func (s *Service) UpdateAudioVersion(ctx context.Context, bookID, id int64, labe
 		return AudioVersion{}, err
 	}
 	if err := s.repo.updateAudioVersion(ctx, bookID, id, label, CleanTerms(terms), monitored); err != nil {
+		return AudioVersion{}, err
+	}
+	return s.repo.GetAudioVersion(ctx, bookID, id)
+}
+
+// SetAudioVersionNarrator records who reads a version, typed by hand ("" hands it back
+// to the files' tags).
+func (s *Service) SetAudioVersionNarrator(ctx context.Context, bookID, id int64, narrator string) (AudioVersion, error) {
+	n, err := CleanNarrator(narrator)
+	if err != nil {
+		return AudioVersion{}, err
+	}
+	if err := s.repo.setAudioVersionNarrator(ctx, bookID, id, n); err != nil {
 		return AudioVersion{}, err
 	}
 	return s.repo.GetAudioVersion(ctx, bookID, id)

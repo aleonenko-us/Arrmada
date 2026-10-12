@@ -12,7 +12,7 @@ func TestParseProbeRealM4B(t *testing.T) {
 		t.Fatal(err)
 	}
 	var af AudioFile
-	if !parseProbe(out, &af) {
+	if !parseProbe(out, &af, "") {
 		t.Fatal("parse failed")
 	}
 	if af.Duration < 5.9 || af.Duration > 6.1 || af.Codec != "aac" || af.Bitrate <= 0 || af.Title != "Test Book" {

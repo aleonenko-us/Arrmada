@@ -54,6 +54,7 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
   const [label, setLabel] = useState(existing?.label ?? "");
   const [terms, setTerms] = useState((existing?.terms ?? []).join(", "));
   const [monitored, setMonitored] = useState(existing?.monitored ?? true);
+  const [narrator, setNarrator] = useState(existing?.narrator ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +62,9 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
     setBusy(true); setError(null);
     try {
       const body = { label: label.trim(), terms: parseTerms(terms), monitored };
-      const v = existing ? await api.updateAudioVersion(book.id, existing.id, body) : await api.addAudioVersion(book.id, body);
+      const v = existing
+        ? await api.updateAudioVersion(book.id, existing.id, { ...body, narrator: narrator.trim() })
+        : await api.addAudioVersion(book.id, body);
       onSaved(v);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
@@ -110,6 +113,13 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
           Matched as whole words against the release name, narrator, series and description. While this version exists, the standard audiobook won't take releases that match these words.
           {noTerms && <span style={{ color: "var(--avoid)" }}> With no words, this version is only filled by hand — pick it when you grab, upload or import.</span>}
         </p>
+        {existing?.file && (
+          // Who reads it, as listening apps show it; empty leaves it to the files' tags.
+          <label className="mb-2.5 block text-[11.5px] font-semibold text-ink-dim">
+            Narrator <span className="font-normal text-ink-faint">(leave empty to use the audio files' tags)</span>
+            <input value={narrator} onChange={(e) => setNarrator(e.target.value)} placeholder="From the audio files' tags" maxLength={200} className="mt-1 block w-full rounded-lg px-3 py-2 text-[13px] font-normal" style={input} />
+          </label>
+        )}
         <label className="mb-1 flex items-center gap-2 text-[12.5px]">
           <input type="checkbox" checked={monitored} onChange={(e) => setMonitored(e.target.checked)} />
           Search for it automatically
@@ -177,6 +187,7 @@ export function AudioVersionPanel({ book, v, onChange }: { book: Book; v: AudioV
               {v.terms.map((t) => <span key={t} className="rounded-full px-2 py-0.5 text-[10.5px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{t}</span>)}
             </div>
           )}
+          {has && v.narrator && <div className="mt-1.5 text-[11.5px] text-ink-dim">Narrator: {v.narrator}</div>}
         </div>
         <div className="flex flex-none flex-wrap items-center justify-end gap-1.5">
           <button disabled={busy !== null} onClick={() => setBrowsing(true)} className={small} style={ghost} title="Browse audiobook releases on your indexers and pick one for this version">Search indexers</button>

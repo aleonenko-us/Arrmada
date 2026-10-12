@@ -50,6 +50,7 @@ type Server struct {
 	limiter  *loginLimiter
 	catalog  catalogCache
 	warming  atomic.Bool // stops overlapping Warm runs (the schedule, switching on, an import)
+	warm     warmState   // books whose files changed, and items with nothing to read (warm.go)
 
 	traceUntil atomic.Int64     // unix ms; see trace.go
 	now        func() time.Time // the clock (tests set it); nil means time.Now
@@ -200,6 +201,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/items/{id}/file/{ino}", a(s.handleFile))
 	mux.HandleFunc("GET /api/items/{id}/file/{ino}/download", a(s.handleFileDownload))
 	mux.HandleFunc("GET /api/items/{id}/download", a(s.handleItemDownload))
+	mux.HandleFunc("GET /api/items/{id}/ebook", a(s.handleEbook))
+	mux.HandleFunc("GET /api/items/{id}/ebook/{fileid}", a(s.handleEbook))
 	mux.HandleFunc("POST /api/items/{id}/play", a(s.handlePlay))
 	mux.HandleFunc("POST /api/items/{id}/play/{episode}", a(s.handleNoPodcasts))
 
@@ -586,8 +589,9 @@ var signInPaths = map[string]bool{"/status": true, "/ping": true, "/login": true
 // It names the kind of call, never the thing: the route pattern ("POST /api/items/{id}/play")
 // and the names of the query parameters, never a book, author, series, search term or
 // token — admins see how much and when people listen, never what. The steady traffic of
-// playing (audio, covers, place syncs) is only logged when it fails, and a book nobody has
-// started having no place yet isn't worth a line — unless an admin has switched tracing on
+// playing and reading (audio, ebooks, covers, place syncs) is only logged when it fails,
+// and a book nobody has started having no place yet isn't worth a line — unless an admin
+// has switched tracing on
 // (trace.go), when those are logged too, the same way, tagged trace=true.
 func (s *Server) logRequest(r *http.Request, status int, bytes int64) {
 	if status == 0 {
@@ -595,6 +599,7 @@ func (s *Server) logRequest(r *http.Request, status int, bytes int64) {
 	}
 	p := r.URL.Path
 	quiet := status < 400 && !signInPaths[p] && (strings.Contains(p, "/file/") || strings.Contains(p, "/track/") || strings.HasSuffix(p, "/cover") ||
+		strings.Contains(p, "/ebook") ||
 		strings.HasSuffix(p, "/image") || strings.HasSuffix(p, "/sync") || strings.HasSuffix(p, "/download") ||
 		strings.HasPrefix(p, "/api/me/progress") || strings.HasPrefix(p, "/api/session/") && r.Method == http.MethodGet)
 	if status == http.StatusNotFound && r.Method == http.MethodGet && strings.HasPrefix(p, "/api/me/progress/") {

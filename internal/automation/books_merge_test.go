@@ -334,3 +334,32 @@ func TestMergeBackupPrune(t *testing.T) {
 		t.Error("a 13-day-old backup must be kept")
 	}
 }
+
+// The merged file is tagged from Arrmada's record of the book: title, author, series,
+// year and the narrator typed on the Books page.
+func TestMergeAudiobookPassesTheBooksTags(t *testing.T) {
+	f := newMergeFixture(t)
+	ctx := context.Background()
+	if err := f.svc.SetSeries(ctx, f.id, "The Sine Cycle", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.OverrideMetadata(ctx, f.id, "The Tone Book", "A. Sine", 2021, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.SetNarrator(ctx, f.id, "B. Square"); err != nil {
+		t.Fatal(err)
+	}
+	var got audiobook.MergeOptions
+	write := f.c.mergeFn
+	f.c.mergeFn = func(ctx context.Context, files []string, out string, o audiobook.MergeOptions) (audiobook.MergeResult, error) {
+		got = o
+		return write(ctx, files, out, o)
+	}
+	if err := f.c.MergeAudiobook(ctx, f.id); err != nil {
+		t.Fatal(err)
+	}
+	want := audiobook.MergeOptions{Title: "The Tone Book", Author: "A. Sine", Series: "The Sine Cycle", SeriesPosition: 2, Year: 2021, Narrator: "B. Square"}
+	if got != want {
+		t.Fatalf("merge options = %+v, want %+v", got, want)
+	}
+}

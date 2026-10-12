@@ -89,6 +89,14 @@ type Book struct {
 	// not known). The sweep doesn't search an upcoming book before it, searches daily for
 	// two weeks after it, and its request reads 'Out <date>' (ladder.go).
 	ReleaseDate string `json:"release_date,omitempty"`
+	// MetaUpdatedAt is when the book's details last changed (unix ms; 0 = never since
+	// it was added). SQLite triggers keep it current (migrations 0262_books_meta_updated
+	// and 0263_audio_narrator), not the Go code; TouchMeta covers changes that aren't a column, like a cover file.
+	// Listening apps read it as the item's updatedAt.
+	MetaUpdatedAt int64 `json:"-"`
+	// AudiobookNarrator is who reads the standard audiobook, typed by hand. Empty means
+	// the audio files' own tags say (the audiobook server reads them).
+	AudiobookNarrator string `json:"audiobook_narrator,omitempty"`
 }
 
 // LacksWanted reports whether the book is missing an edition its profile wants (per
@@ -186,7 +194,8 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	monitored, quality_profile, added_at, series_name, series_position, series_key, keep_catalogue,
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
-	last_search_at, search_misses, release_date, author_id`
+	last_search_at, search_misses, release_date, author_id,
+	meta_updated_at, audiobook_narrator`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
 	var (
@@ -205,7 +214,8 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
-		&lastSearch, &b.SearchMisses, &b.ReleaseDate, &authorID)
+		&lastSearch, &b.SearchMisses, &b.ReleaseDate, &authorID,
+		&b.MetaUpdatedAt, &b.AudiobookNarrator)
 	if err != nil {
 		return Book{}, err
 	}
@@ -373,6 +383,21 @@ func (r *Repo) UpdateMeta(ctx context.Context, id int64, description, coverURL s
 // path of a custom upload).
 func (r *Repo) SetCoverURL(ctx context.Context, id int64, coverURL string) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE books SET cover_url = ? WHERE id = ?`, coverURL, id)
+	return affected(res, err)
+}
+
+// SetAudiobookNarrator records who reads the standard audiobook ("" = the files say).
+func (r *Repo) SetAudiobookNarrator(ctx context.Context, id int64, narrator string) error {
+	res, err := r.db.ExecContext(ctx, `UPDATE books SET audiobook_narrator = ? WHERE id = ?`, narrator, id)
+	return affected(res, err)
+}
+
+// TouchMeta marks a book's details as changed now, for a change no column records (an
+// uploaded cover file replaced under the same URL). Column edits are caught by the
+// triggers of migration 0262_books_meta_updated; like them, it only ever moves forward.
+func (r *Repo) TouchMeta(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE books SET meta_updated_at = MAX(?, meta_updated_at + 1) WHERE id = ?`, time.Now().UnixMilli(), id)
 	return affected(res, err)
 }
 

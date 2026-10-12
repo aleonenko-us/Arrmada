@@ -20,7 +20,8 @@ const ServerVersion = "2.37.0"
 
 type obj = map[string]any
 
-func metadataMinified(it Item) obj {
+// metadataMinified is an item's metadata in lists; narrator is narratorOf's answer.
+func metadataMinified(it Item, narrator string) obj {
 	authorName := it.Book.Author
 	seriesName := ""
 	if it.Book.SeriesName != "" {
@@ -31,15 +32,15 @@ func metadataMinified(it Item) obj {
 	}
 	return obj{
 		"title": it.Title, "titleIgnorePrefix": ignorePrefix(it.Title), "subtitle": nil,
-		"authorName": authorName, "authorNameLF": authorNameLF(authorName), "narratorName": "",
+		"authorName": authorName, "authorNameLF": authorNameLF(authorName), "narratorName": strings.Join(splitNarrators(narrator), ", "),
 		"seriesName": seriesName, "genres": nonNilStrings(it.Book.Subjects), "publishedYear": yearString(it.Book.Year),
 		"publishedDate": nil, "publisher": nil, "description": it.Book.Description, "isbn": nil, "asin": nil,
 		"language": nil, "explicit": false, "abridged": false,
 	}
 }
 
-func metadataExpanded(it Item) obj {
-	m := metadataMinified(it)
+func metadataExpanded(it Item, narrator string) obj {
+	m := metadataMinified(it, narrator)
 	authors := []obj{}
 	for _, a := range splitAuthors(it.Book.Author) {
 		authors = append(authors, obj{"id": authorID(a), "name": a})
@@ -52,30 +53,43 @@ func metadataExpanded(it Item) obj {
 		}
 		series = append(series, obj{"id": seriesID(it.Book.SeriesName), "name": it.Book.SeriesName, "sequence": seq})
 	}
-	m["authors"], m["narrators"], m["series"] = authors, []string{}, series
+	m["authors"], m["narrators"], m["series"] = authors, nonNilStrings(splitNarrators(narrator)), series
 	m["descriptionPlain"] = it.Book.Description
 	return m
 }
 
-// itemMinified is an item in lists; files are only described if already probed.
+// itemMinified is an item in lists, described from what the database knows about its
+// files (no folder is listed). Before its first probe it carries the file count and size
+// the import recorded: an app that drops books with no audio files (ShelfPlayer) still
+// lists it.
 func (s *Server) itemMinified(ctx context.Context, it Item, progress map[string]listening.Progress) obj {
-	files, _ := s.probe.files(ctx, it.Path, false)
-	dur := totalDuration(files)
+	k := s.probe.knownUnder(ctx, it.Path)
+	numFiles, size := k.Files, k.Bytes
+	if numFiles == 0 {
+		if bf := it.recordedFile(); bf != nil {
+			numFiles, size = max(bf.FileCount, 1), bf.SizeBytes
+		}
+	}
 	chapters := 0
-	if dur > 0 {
-		chapters = len(bookChapters(files))
+	if k.Seconds > 0 {
+		// bookChapters' rule: one file's embedded chapters, otherwise one per file.
+		chapters = k.Files
+		if k.Files == 1 {
+			chapters = max(k.Chapters, 1)
+		}
 	}
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
-		"path": it.Path, "relPath": it.Title, "isFile": len(files) == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
-		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.AddedAt, "isMissing": false, "isInvalid": false,
+		"path": it.Path, "relPath": it.Title, "isFile": numFiles == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
+		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.updatedAt(), "isMissing": false, "isInvalid": false,
 		"mediaType": "book",
 		"media": obj{
-			"id": "m" + it.Key, "metadata": metadataMinified(it), "coverPath": coverPath(it), "tags": []string{},
-			"numTracks": len(files), "numAudioFiles": len(files), "numChapters": chapters, "duration": dur,
-			"size": totalSize(files), "ebookFormat": nil,
+			"id": "m" + it.Key, "metadata": metadataMinified(it, firstNonEmpty(it.manualNarrator(), k.Narrator)),
+			"coverPath": coverPath(it), "tags": []string{},
+			"numTracks": numFiles, "numAudioFiles": numFiles, "numChapters": chapters, "duration": k.Seconds,
+			"size": size, "ebookFormat": nilIfEmpty(ebookFormatOf(it)),
 		},
-		"numFiles": len(files), "size": totalSize(files),
+		"numFiles": numFiles, "size": size,
 	}
 	if p, ok := progress[it.Key]; ok {
 		o["userMediaProgress"] = mediaProgress(p)
@@ -92,7 +106,7 @@ func (s *Server) itemExpanded(ctx context.Context, it Item, p *listening.Progres
 // itemFull is itemExpanded; with probe false it describes only what's already been read
 // (for replies listing many items, which mustn't wait on ffprobe for each).
 func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, probe bool) (obj, []AudioFile) {
-	files, _ := s.probe.files(ctx, it.Path, probe)
+	files, _ := s.probe.filesFor(ctx, it.Path, it.Book.Author, probe)
 	audio := []obj{}
 	tracks := []obj{}
 	offset := 0.0
@@ -123,19 +137,26 @@ func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, p
 	if chapters == nil {
 		chapters = []Chapter{}
 	}
+	// The book's ebook, when it has one on disk, for apps that can read it (AUD-18).
+	var ebookFile, ebookFormat any
+	libraryFiles := []obj{}
+	if e, ok := ebookOf(it); ok {
+		ebookFile, ebookFormat = e.ebookFileJSON(it), e.Format
+		libraryFiles = append(libraryFiles, e.libraryFileJSON(it))
+	}
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
 		"path": it.Path, "relPath": it.Title, "isFile": len(files) == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
-		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.AddedAt, "lastScan": it.AddedAt, "scanVersion": ServerVersion,
+		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.updatedAt(), "lastScan": it.AddedAt, "scanVersion": ServerVersion,
 		"isMissing": false, "isInvalid": false, "mediaType": "book",
 		"media": obj{
-			"id": "m" + it.Key, "libraryItemId": it.Key, "metadata": metadataExpanded(it), "coverPath": coverPath(it),
+			"id": "m" + it.Key, "libraryItemId": it.Key, "metadata": metadataExpanded(it, filesNarrator(it, files)), "coverPath": coverPath(it),
 			"tags": []string{}, "audioFiles": audio, "chapters": chapters, "duration": totalDuration(files),
-			"size": totalSize(files), "tracks": tracks, "ebookFile": nil, "ebookFormat": nil, "numTracks": len(files),
+			"size": totalSize(files), "tracks": tracks, "ebookFile": ebookFile, "ebookFormat": ebookFormat, "numTracks": len(files),
 			"numAudioFiles": len(files), "numChapters": len(chapters),
 		},
 		// Since Audiobookshelf 2.36 the expanded item carries every list field too.
-		"libraryFiles": []obj{}, "numFiles": len(files), "size": totalSize(files),
+		"libraryFiles": libraryFiles, "numFiles": len(files), "size": totalSize(files),
 	}
 	if p != nil {
 		o["userMediaProgress"] = mediaProgress(*p)

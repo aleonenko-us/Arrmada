@@ -558,6 +558,9 @@ func (a *api) handleUploadBookCover(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not save cover")
 		return
 	}
+	// Two uploads in one second keep the same URL; the file still changed, and listening
+	// apps only fetch a cover again when the book's updatedAt moves.
+	_ = a.deps.Books.TouchMeta(r.Context(), id)
 	a.writeJSON(w, http.StatusOK, map[string]any{"cover_url": coverURL})
 }
 
@@ -1167,17 +1170,38 @@ func (a *api) handleOverrideBookMetadata(w http.ResponseWriter, r *http.Request)
 		Year     int    `json:"year"`
 		Overview string `json:"overview"`
 		CoverURL string `json:"cover_url"`
+		// Narrator, when sent, is who reads the standard audiobook ("" = the files say).
+		Narrator *string `json:"narrator"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Title == "" || req.Author == "" {
+	// The narrator alone ({"narrator": …}) changes just that, leaving the rest as it is.
+	narratorOnly := req.Narrator != nil && req.Title == "" && req.Author == ""
+	if !narratorOnly && (req.Title == "" || req.Author == "") {
 		a.writeError(w, http.StatusBadRequest, "title and author are required")
 		return
 	}
-	if err := a.deps.Books.OverrideMetadata(r.Context(), id, req.Title, req.Author, req.Year, req.Overview, req.CoverURL); err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not update metadata")
-		return
+	if req.Narrator != nil {
+		if _, err := books.CleanNarrator(*req.Narrator); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if !narratorOnly {
+		if err := a.deps.Books.OverrideMetadata(r.Context(), id, req.Title, req.Author, req.Year, req.Overview, req.CoverURL); err != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not update metadata")
+			return
+		}
+	}
+	if req.Narrator != nil {
+		if err := a.deps.Books.SetNarrator(r.Context(), id, *req.Narrator); errors.Is(err, books.ErrNotFound) {
+			a.writeError(w, http.StatusNotFound, "book not found")
+			return
+		} else if err != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not update the narrator")
+			return
+		}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
 }

@@ -45,11 +45,16 @@ type audioInfo struct {
 // the sources are deleted afterwards. An MP3 set is re-encoded instead, generously.
 var copyableCodecs = map[string]bool{"aac": true, "alac": true}
 
-// MergeOptions carries what the library knows about the book, used for the merged file's
-// tags when the first source doesn't have them.
+// MergeOptions carries what the library knows about the book. Its values are the merged
+// file's tags — Arrmada's record is the one the owner curates — and the first source's
+// own tags fill in only what it leaves empty.
 type MergeOptions struct {
-	Title  string
-	Author string
+	Title          string
+	Author         string
+	Series         string
+	SeriesPosition float64 // 0 = unknown
+	Year           int     // 0 = unknown
+	Narrator       string  // written as the composer, where audiobook players look
 }
 
 // MergeResult is the measured length of the sources and of what came out, so the caller
@@ -60,8 +65,8 @@ type MergeResult struct {
 }
 
 // Merge concatenates the given audio files (in order) into a single .m4b at outPath, with
-// one chapter per input file, the first source's tags (title, author, album…) and its
-// embedded cover when it has one. outPath may be any name — the format is set explicitly,
+// one chapter per input file, the book's tags (opts, then the first source's) and the
+// first source's embedded cover when it has one. outPath may be any name — the format is set explicitly,
 // so the caller can write to a hidden temp name and rename it into place only once it's
 // verified. It does not delete the sources — the caller decides.
 func Merge(ctx context.Context, files []string, outPath string, opts MergeOptions) (MergeResult, error) {
@@ -122,30 +127,81 @@ func Merge(ctx context.Context, files []string, outPath string, opts MergeOption
 	}
 
 	// 3) mux into a single .m4b, copying the audio when the container can carry it.
-	// Input 1 is only the chapter list: taking its (empty) global tags is what left merged
-	// files with no title or author. Global tags come from the first source instead, and
-	// input 2 — the first source again — supplies its embedded cover when there is one.
-	args := []string{
-		"-y", "-hide_banner", "-loglevel", "error",
-		"-f", "concat", "-safe", "0", "-i", listPath,
-		"-i", metaPath,
-		"-i", files[0],
-		"-map_metadata", "-1", "-map_chapters", "1",
-		"-map", "0:a", "-map", "2:v:0?",
-	}
-	args = append(args, encodeArgs(infos)...)
-	args = append(args, "-c:v", "copy", "-disposition:v:0", "attached_pic")
-	for _, kv := range mergeTags(readTags(ctx, files[0]), opts) {
-		args = append(args, "-metadata", kv)
-	}
-	args = append(args, "-movflags", "+faststart", "-f", "mp4", outPath)
-
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return res, fmt.Errorf("ffmpeg merge failed: %v — %s", err, strings.TrimSpace(string(out)))
+	in := mergeInputs{list: listPath, chapters: metaPath, first: files[0], infos: infos,
+		tags: mergeTags(readTags(ctx, files[0]), opts), out: outPath}
+	if err := runMerge(ctx, in, hasCover(ctx, files[0]), runFFmpeg); err != nil {
+		return res, err
 	}
 	res.OutputSeconds = float64(probeAudio(ctx, outPath).DurationMS) / 1000
 	return res, nil
+}
+
+// mergeInputs is what one ffmpeg merge run is built from.
+type mergeInputs struct {
+	list, chapters, first string // the concat list, the chapter ffmetadata, the first source
+	infos                 []audioInfo
+	tags                  []string // key=value, from mergeTags
+	out                   string
+}
+
+// mergeArgs builds the ffmpeg command. Input 1 is only the chapter list: taking its
+// (empty) global tags is what once left merged files with no title or author, so global
+// tags are cleared and set explicitly instead. With cover, input 2 — the first source
+// again — supplies its embedded picture, copied as the file's attached cover.
+func mergeArgs(in mergeInputs, cover bool) []string {
+	args := []string{
+		"-y", "-hide_banner", "-loglevel", "error",
+		"-f", "concat", "-safe", "0", "-i", in.list,
+		"-i", in.chapters,
+	}
+	if cover {
+		args = append(args, "-i", in.first)
+	}
+	args = append(args, "-map_metadata", "-1", "-map_chapters", "1", "-map", "0:a")
+	if cover {
+		args = append(args, "-map", "2:v:0?")
+	}
+	args = append(args, encodeArgs(in.infos)...)
+	if cover {
+		args = append(args, "-c:v", "copy", "-disposition:v:0", "attached_pic")
+	}
+	for _, kv := range in.tags {
+		args = append(args, "-metadata", kv)
+	}
+	return append(args, "-movflags", "+faststart", "-f", "mp4", in.out)
+}
+
+// runMerge runs the merge, with the cover when there is one. A cover the MP4 container
+// can't hold (an exotic image codec) mustn't sink the merge: it's tried once more
+// without the picture. Without a cover a failure is final — running a long re-encode
+// twice for an error that has nothing to do with the cover would only double the wait.
+func runMerge(ctx context.Context, in mergeInputs, cover bool, run func(ctx context.Context, args []string) ([]byte, error)) error {
+	out, err := run(ctx, mergeArgs(in, cover))
+	if err == nil {
+		return nil
+	}
+	if cover && ctx.Err() == nil {
+		_ = os.Remove(in.out)
+		var retryOut []byte
+		if retryOut, err = run(ctx, mergeArgs(in, false)); err == nil {
+			return nil
+		}
+		out = append(append(out, " — and without the cover: "...), retryOut...)
+	}
+	return fmt.Errorf("ffmpeg merge failed: %v — %s", err, strings.TrimSpace(string(out)))
+}
+
+func runFFmpeg(ctx context.Context, args []string) ([]byte, error) {
+	return exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput()
+}
+
+// hasCover reports whether a file carries a picture stream (an embedded cover). When
+// ffprobe can't say, it answers yes: the cover is mapped as optional ("2:v:0?"), so
+// trying costs nothing when there's none.
+func hasCover(ctx context.Context, path string) bool {
+	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-select_streams", "v",
+		"-show_entries", "stream=index", "-of", "csv=p=0", path).Output()
+	return err != nil || strings.TrimSpace(string(out)) != ""
 }
 
 // Duration measures one audio file in seconds. An unreadable file or one with no known
@@ -191,8 +247,12 @@ func lastProgressSeconds(progress string) float64 {
 	return float64(us) / 1e6
 }
 
-// carriedTags are the global tags worth keeping from the first source.
-var carriedTags = []string{"title", "artist", "album_artist", "album", "genre", "date", "comment"}
+// carriedTags are the global tags worth keeping from the first source, where the book's
+// record says nothing.
+var carriedTags = []string{"title", "artist", "album_artist", "album", "composer", "grouping", "date", "comment"}
+
+// mergedTagOrder is the order tags are written in (stable, so the arguments are too).
+var mergedTagOrder = []string{"title", "artist", "album_artist", "album", "composer", "grouping", "genre", "date", "comment", "media_type"}
 
 // readTags reads a file's global (format-level) tags, keys lower-cased.
 func readTags(ctx context.Context, path string) map[string]string {
@@ -212,9 +272,12 @@ func readTags(ctx context.Context, path string) map[string]string {
 	return tags
 }
 
-// mergeTags picks the merged file's tags: the first source's where it has them, else the
-// library's title and author. A chapter file's own title ("Chapter 01") isn't the book's,
-// so the book title comes from the album tag first, then the library.
+// mergeTags picks the merged file's tags. Arrmada's record of the book wins — title and
+// album, author as artist and album artist, year, series (as the grouping, where players
+// that know series look), narrator (as the composer) — and the first source's tags fill
+// whatever it leaves empty. A chapter file's own title ("Chapter 01") isn't the book's,
+// so without a library title the album tag names the book. Genre is Audiobook and the
+// iTunes media kind (media_type, written as stik) is 2, so players file it as one.
 func mergeTags(src map[string]string, opts MergeOptions) []string {
 	pick := map[string]string{}
 	for _, k := range carriedTags {
@@ -222,29 +285,47 @@ func mergeTags(src map[string]string, opts MergeOptions) []string {
 			pick[k] = v
 		}
 	}
-	title := pick["album"]
-	if title == "" {
-		title = opts.Title
-	}
-	if title != "" {
-		pick["title"] = title
-		if pick["album"] == "" {
-			pick["album"] = title
+	set := func(k, v string) {
+		if v = strings.Join(strings.Fields(v), " "); v != "" {
+			pick[k] = v
 		}
 	}
-	if pick["artist"] == "" && opts.Author != "" {
-		pick["artist"] = opts.Author
+	title := firstNonEmpty(opts.Title, pick["album"])
+	if title != "" {
+		pick["title"], pick["album"] = title, title
 	}
+	set("artist", opts.Author)
+	set("album_artist", opts.Author)
 	if pick["album_artist"] == "" && pick["artist"] != "" {
 		pick["album_artist"] = pick["artist"]
 	}
+	if opts.Year > 0 {
+		pick["date"] = strconv.Itoa(opts.Year)
+	}
+	if series := strings.TrimSpace(opts.Series); series != "" {
+		if opts.SeriesPosition > 0 {
+			series += " #" + strconv.FormatFloat(opts.SeriesPosition, 'f', -1, 64)
+		}
+		set("grouping", series)
+	}
+	set("composer", opts.Narrator)
+	pick["genre"], pick["media_type"] = "Audiobook", "2"
 	var out []string
-	for _, k := range carriedTags {
+	for _, k := range mergedTagOrder {
 		if v, ok := pick[k]; ok {
 			out = append(out, k+"="+v)
 		}
 	}
 	return out
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s = strings.TrimSpace(s); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // Plan describes how a set of files would be merged, so the caller can say so in the log

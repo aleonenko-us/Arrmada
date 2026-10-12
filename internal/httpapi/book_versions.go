@@ -20,6 +20,8 @@ type audioVersionBody struct {
 	Label     string   `json:"label"`
 	Terms     []string `json:"terms"`
 	Monitored *bool    `json:"monitored"`
+	// Narrator, when sent on an update, is who reads this version ("" = the files say).
+	Narrator *string `json:"narrator"`
 }
 
 func (a *api) writeVersionError(w http.ResponseWriter, err error) {
@@ -96,10 +98,22 @@ func (a *api) handleUpdateAudioVersion(w http.ResponseWriter, r *http.Request) {
 	if label == "" {
 		label = cur.Label
 	}
+	if req.Narrator != nil {
+		if _, err := books.CleanNarrator(*req.Narrator); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	v, err := a.deps.Books.UpdateAudioVersion(r.Context(), id, vid, label, terms, monitored)
 	if err != nil {
 		a.writeVersionError(w, err)
 		return
+	}
+	if req.Narrator != nil {
+		if v, err = a.deps.Books.SetAudioVersionNarrator(r.Context(), id, vid, *req.Narrator); err != nil {
+			a.writeVersionError(w, err)
+			return
+		}
 	}
 	if monitored && !cur.Monitored {
 		a.deps.Books.ResetSearchMisses(r.Context(), id)

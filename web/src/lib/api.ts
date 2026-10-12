@@ -667,6 +667,8 @@ export interface AudioTrack { ino: string; index: number; start_offset: number; 
 export interface AudioBookmark { item_key: string; time: number; title: string; created_at: number }
 export interface AudioItemDetail extends AudioCard {
   description?: string; year?: number; genres: string[]; chapters: AudioChapter[]; tracks: AudioTrack[];
+  /** Who reads it: typed on the Books page, else from the audio files' tags. */
+  narrator?: string;
   /** Other audiobooks of the same book (full cast, another narrator). */
   versions: { key: string; title: string }[];
   bookmarks: AudioBookmark[];
@@ -1910,6 +1912,8 @@ export interface Book {
   next_search_at?: string;
   /** The day the book comes out (YYYY-MM-DD) when the catalogue says; not searched before it. */
   release_date?: string;
+  /** Who reads the standard audiobook, typed by hand; absent = the audio files' tags say. */
+  audiobook_narrator?: string;
 }
 export interface CatalogueRef {
   name: "Hardcover" | "Open Library" | "Google Books";
@@ -1931,6 +1935,8 @@ export interface AudioVersion {
   monitored: boolean;
   file?: BookFile;
   added_at?: string;
+  /** Who reads it, typed by hand; absent = the audio files' tags say. */
+  narrator?: string;
 }
 export interface BookImportCandidate {
   path: string;
@@ -2902,7 +2908,7 @@ export const api = {
     req<{ status: string }>(`/api/v1/books/${id}/manualimport`, { method: "POST", body: JSON.stringify({ path, version_id: versionId || 0 }) }),
   addAudioVersion: (id: number, body: { label: string; terms: string[]; monitored: boolean }) =>
     req<AudioVersion>(`/api/v1/books/${id}/audio-versions`, { method: "POST", body: JSON.stringify(body) }),
-  updateAudioVersion: (id: number, vid: number, body: { label?: string; terms?: string[]; monitored?: boolean }) =>
+  updateAudioVersion: (id: number, vid: number, body: { label?: string; terms?: string[]; monitored?: boolean; narrator?: string }) =>
     req<AudioVersion>(`/api/v1/books/${id}/audio-versions/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteAudioVersion: (id: number, vid: number, deleteFiles: boolean) =>
     req<void>(`/api/v1/books/${id}/audio-versions/${vid}${deleteFiles ? "?delete_files=true" : ""}`, { method: "DELETE" }),
@@ -2955,7 +2961,7 @@ export const api = {
     req<{ monitored: boolean }>(`/api/v1/books/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
   setBookProfile: (id: number, quality_profile: string) =>
     req<{ quality_profile: string }>(`/api/v1/books/${id}/profile`, { method: "PUT", body: JSON.stringify({ quality_profile }) }),
-  overrideBookMetadata: (id: number, body: { title: string; author: string; year: number; overview: string; cover_url: string }) =>
+  overrideBookMetadata: (id: number, body: { title: string; author: string; year: number; overview: string; cover_url: string; narrator?: string }) =>
     req<{ status: string }>(`/api/v1/books/${id}/metadata`, { method: "PUT", body: JSON.stringify(body) }),
   deleteBook: (id: number, deleteFiles?: boolean) =>
     req<void>(`/api/v1/books/${id}${deleteFiles ? "?delete_files=true" : ""}`, { method: "DELETE" }),

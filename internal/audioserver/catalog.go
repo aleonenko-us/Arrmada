@@ -249,64 +249,6 @@ func sortItems(items []Item, key string, desc bool, dur func(Item) float64) {
 	})
 }
 
-// Warm probes every audiobook's files ahead of time, so an app opening a book gets its
-// chapters and durations at once rather than waiting on ffprobe. Cached files cost a
-// database read each; it pauses briefly between books to stay out of the way.
-func (s *Server) Warm(ctx context.Context) (probed int) {
-	if !s.warming.CompareAndSwap(false, true) {
-		return 0
-	}
-	defer s.warming.Store(false)
-	items, err := s.items(ctx)
-	if err != nil {
-		return 0
-	}
-	for _, it := range items {
-		if ctx.Err() != nil {
-			return probed
-		}
-		files, _ := s.probe.files(ctx, it.Path, false)
-		known := len(files) > 0
-		for _, f := range files {
-			if f.Duration <= 0 {
-				known = false
-			}
-		}
-		if known {
-			continue
-		}
-		_, _ = s.probe.files(ctx, it.Path, true)
-		probed++
-		select {
-		case <-ctx.Done():
-			return probed
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-	return probed
-}
-
-// LibraryStats counts the audiobooks served and how many have been probed.
-func (s *Server) LibraryStats(ctx context.Context) (items, ready int) {
-	list, err := s.items(ctx)
-	if err != nil {
-		return 0, 0
-	}
-	for _, it := range list {
-		files, _ := s.probe.files(ctx, it.Path, false)
-		ok := len(files) > 0
-		for _, f := range files {
-			if f.Duration <= 0 {
-				ok = false
-			}
-		}
-		if ok {
-			ready++
-		}
-	}
-	return len(list), ready
-}
-
 // ItemKey returns the key an app uses for a book's standard audiobook or a version.
 func ItemKey(bookID, versionID int64) string { return itemKeyFor(bookID, versionID) }
 

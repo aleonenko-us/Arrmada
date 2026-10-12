@@ -294,6 +294,9 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
             {file.path}
           </button>
           {multi && <FileList bookId={bookId} kind={kind} count={file.file_count} />}
+          {kind === "audiobook" && search.book.audiobook_narrator && (
+            <div className="mt-1.5 text-[11.5px] text-ink-dim">Narrator: {search.book.audiobook_narrator}</div>
+          )}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}
@@ -612,6 +615,7 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
   const [year, setYear] = useState(String(book.year || ""));
   const [cover, setCover] = useState(book.cover_url ?? "");
   const [overview, setOverview] = useState(book.description ?? "");
+  const [narrator, setNarrator] = useState(book.audiobook_narrator ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -623,7 +627,8 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
     if (!title.trim() || !author.trim()) { setErr("Title and author are required."); return; }
     setBusy(true);
     try {
-      await api.overrideBookMetadata(book.id, { title: title.trim(), author: author.trim(), year: Number(year) || 0, overview, cover_url: cover.trim() });
+      await api.overrideBookMetadata(book.id, { title: title.trim(), author: author.trim(), year: Number(year) || 0, overview, cover_url: cover.trim(),
+        ...(book.audiobook ? { narrator: narrator.trim() } : {}) });
       onSaved(); onClose();
     } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
@@ -647,6 +652,11 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
             <label className="block w-[88px]"><span className={lbl}>Year</span><input type="number" value={year} onChange={(e) => setYear(e.target.value)} className={inp} style={inpStyle} /></label>
           </div>
           <label className="block"><span className={lbl}>Cover URL</span><input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://…" className={inp} style={inpStyle} /></label>
+          {book.audiobook && (
+            // Who reads the standard audiobook, as listening apps show it; empty leaves it
+            // to the audio files' tags.
+            <label className="block"><span className={lbl}>Narrator</span><input value={narrator} onChange={(e) => setNarrator(e.target.value)} placeholder="From the audio files' tags" maxLength={200} className={inp} style={inpStyle} /></label>
+          )}
           <label className="block"><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></label>
         </div>
         {err && <p role="alert" className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}

@@ -225,6 +225,33 @@ func (s *Service) SetCover(ctx context.Context, id int64, coverURL string) error
 	return s.repo.SetCoverURL(ctx, id, coverURL)
 }
 
+// ErrNarratorInvalid is a narrator name that can't be stored.
+var ErrNarratorInvalid = errors.New("invalid narrator")
+
+// CleanNarrator tidies a narrator typed by hand: spaces collapsed, at most 200
+// characters. "" is allowed and means the audio files' tags say.
+func CleanNarrator(s string) (string, error) {
+	s = strings.Join(strings.Fields(s), " ")
+	if len([]rune(s)) > 200 {
+		return "", fmt.Errorf("%w: keep the narrator under 200 characters", ErrNarratorInvalid)
+	}
+	return s, nil
+}
+
+// SetNarrator records who reads the book's standard audiobook, typed by hand ("" hands
+// it back to the files' tags).
+func (s *Service) SetNarrator(ctx context.Context, id int64, narrator string) error {
+	n, err := CleanNarrator(narrator)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetAudiobookNarrator(ctx, id, n)
+}
+
+// TouchMeta marks a book's details as changed now (see Repo.TouchMeta), so listening
+// apps fetch its cover again.
+func (s *Service) TouchMeta(ctx context.Context, id int64) error { return s.repo.TouchMeta(ctx, id) }
+
 // OverrideMetadata applies a manual metadata correction (title/author/year/description/cover).
 func (s *Service) OverrideMetadata(ctx context.Context, id int64, title, author string, year int, description, coverURL string) error {
 	before, _ := s.repo.Get(ctx, id)

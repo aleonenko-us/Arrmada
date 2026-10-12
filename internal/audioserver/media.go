@@ -38,7 +38,8 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveFile streams one of an item's audio files, picked by its ino from the item's own
-// file list (so nothing outside the audiobook can be named).
+// file list (so nothing outside the audiobook can be named), or the ebook of its book
+// by the ebook's ino.
 func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino string, attach bool) {
 	ctx := r.Context()
 	it, err := s.item(ctx, key)
@@ -46,24 +47,47 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
-	files, err := s.probe.files(ctx, it.Path, false)
-	if err != nil {
+	// File lists are cached for a while, so when the file isn't in the list or is no
+	// longer on disk (replaced or renamed outside Arrmada), the folder is listed again
+	// once before giving up. The ebook is looked at in between, so playing never touches
+	// it and asking for it doesn't re-list the audiobook.
+	f, ok := s.cachedFileByIno(ctx, it.Path, ino)
+	if !ok {
+		if e, isEbook := ebookOf(it); isEbook && e.Ino == ino {
+			s.sendEbook(w, r, it, e, attach)
+			return
+		}
+		s.probe.cache.drop(it.Path)
+		f, ok = s.cachedFileByIno(ctx, it.Path, ino)
+	}
+	if !ok {
 		writeError(w, http.StatusNotFound, "File not found")
 		return
 	}
-	for _, f := range files {
-		if f.Ino != ino {
-			continue
-		}
-		w.Header().Set("Content-Type", mimeFor(f.Ext))
-		w.Header().Set("Cache-Control", "private, max-age=86400")
-		if attach {
-			w.Header().Set("Content-Disposition", attachment(f.Name))
-		}
-		http.ServeFile(w, r, f.Path)
-		return
+	w.Header().Set("Content-Type", mimeFor(f.Ext))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	if attach {
+		w.Header().Set("Content-Disposition", attachment(f.Name))
 	}
-	writeError(w, http.StatusNotFound, "File not found")
+	http.ServeFile(w, r, f.Path)
+}
+
+// cachedFileByIno finds one of an item's audio files in its (cached) file list, if it's
+// still on disk.
+func (s *Server) cachedFileByIno(ctx context.Context, root, ino string) (AudioFile, bool) {
+	files, err := s.probe.files(ctx, root, false)
+	if err != nil {
+		return AudioFile{}, false
+	}
+	for _, f := range files {
+		if f.Ino == ino {
+			if _, err := s.probe.statPath(f.Path); err == nil {
+				return f, true
+			}
+			break
+		}
+	}
+	return AudioFile{}, false
 }
 
 // handleItemDownload sends the whole audiobook: the file itself, or a zip of its files.
@@ -125,7 +149,22 @@ func (s *Server) WriteAudiobook(ctx context.Context, w http.ResponseWriter, r *h
 }
 
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
-	s.serveCover(w, r, r.PathValue("id"), "")
+	cache := ""
+	if versionedCover(r) {
+		cache = "public, " + immutableYear
+	}
+	s.serveCover(w, r, r.PathValue("id"), cache)
+}
+
+// immutableYear caches a cover for a year. Only for a request whose URL changes with the
+// cover (versionedCover): a new cover is a new URL, so the old one never needs checking.
+const immutableYear = "max-age=31536000, immutable"
+
+// versionedCover reports whether a cover URL names its version: apps add ?ts=<updatedAt>
+// (Audiobookshelf's own convention), Arrmada's web player ?v=.
+func versionedCover(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("ts") != "" || q.Get("v") != ""
 }
 
 // serveCover sends an item's cover. cache overrides the Cache-Control the apps get

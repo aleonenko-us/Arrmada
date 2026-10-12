@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -68,6 +69,7 @@ type VersionRef struct {
 type ItemDetail struct {
 	Card
 	Description string               `json:"description,omitempty"`
+	Narrator    string               `json:"narrator,omitempty"`
 	Year        int                  `json:"year,omitempty"`
 	Genres      []string             `json:"genres"`
 	Chapters    []Chapter            `json:"chapters"`
@@ -78,15 +80,15 @@ type ItemDetail struct {
 
 // card shapes an item for the web player.
 func (s *Server) card(ctx context.Context, it Item, prog map[string]listening.Progress) Card {
-	files, _ := s.probe.files(ctx, it.Path, false)
 	c := Card{Key: it.Key, BookID: it.Book.ID, Title: it.Title, Author: it.Book.Author, Series: it.Book.SeriesName,
-		SeriesSeq: seriesSequence(it.Book), Duration: totalDuration(files), AddedAt: it.AddedAt}
+		SeriesSeq: seriesSequence(it.Book), Duration: s.probe.knownUnder(ctx, it.Path).Seconds, AddedAt: it.AddedAt}
 	if it.Version != nil {
 		c.VersionID = it.Version.ID
 	}
 	if it.Book.CoverURL != "" {
-		// The cover URL changes when a new cover is uploaded, so ?v= follows it.
-		c.Cover = playerPrefix + url.PathEscape(it.Key) + "/cover?v=" + shortHash(it.Book.CoverURL)
+		// ?v= moves whenever the book's details (its cover among them) change, so the
+		// browser can keep the image until then.
+		c.Cover = playerPrefix + url.PathEscape(it.Key) + "/cover?v=" + strconv.FormatInt(it.updatedAt(), 10)
 	}
 	if p, ok := prog[it.Key]; ok {
 		c.Progress = &p
@@ -159,14 +161,11 @@ func (s *Server) Catalog(ctx context.Context, userID int64, q CatalogQuery) ([]C
 	switch q.Filter {
 	case "in-progress", "finished", "not-started":
 		// The same filter an app's library view uses (it takes the value base64'd).
-		items = applyFilter(items, "progress."+base64.StdEncoding.EncodeToString([]byte(q.Filter)), prog)
+		items = applyFilter(items, "progress."+base64.StdEncoding.EncodeToString([]byte(q.Filter)), prog, nil)
 	default:
 		items = append([]Item(nil), items...) // sortItems sorts in place; the catalogue is shared
 	}
-	dur := func(it Item) float64 {
-		files, _ := s.probe.files(ctx, it.Path, false)
-		return totalDuration(files)
-	}
+	dur := func(it Item) float64 { return s.probe.knownUnder(ctx, it.Path).Seconds }
 	switch q.Sort {
 	case "author":
 		sortItems(items, "media.metadata.authorName", false, nil)
@@ -190,7 +189,7 @@ func (s *Server) Detail(ctx context.Context, userID int64, key string) (ItemDeta
 	if err != nil {
 		return ItemDetail{}, ErrNotFound
 	}
-	files, _ := s.probe.files(ctx, it.Path, true)
+	files, _ := s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 	prog := map[string]listening.Progress{}
 	// Look the place up by the canonical key, so a key in either id shape finds it.
 	if p, ok, err := s.listen.Progress(ctx, userID, it.Key); err != nil {
@@ -198,7 +197,7 @@ func (s *Server) Detail(ctx context.Context, userID int64, key string) (ItemDeta
 	} else if ok {
 		prog[it.Key] = p
 	}
-	d := ItemDetail{Card: s.card(ctx, it, prog), Description: it.Book.Description, Year: it.Book.Year,
+	d := ItemDetail{Card: s.card(ctx, it, prog), Description: it.Book.Description, Narrator: filesNarrator(it, files), Year: it.Book.Year,
 		Genres: nonNilStrings(it.Book.Subjects), Chapters: nonNilChapters(bookChapters(files)), Tracks: tracksFor(it, files),
 		Versions: []VersionRef{}}
 	d.Duration = totalDuration(files)
@@ -228,9 +227,14 @@ func tracksFor(it Item, files []AudioFile) []Track {
 }
 
 // ServeCover sends an item's cover to the web player. It's private to the signed-in
-// browser (it comes through Arrmada's own sign-in), cached for a day.
+// browser (it comes through Arrmada's own sign-in), cached for a day, or for a year when
+// the URL carries the cover's version.
 func (s *Server) ServeCover(w http.ResponseWriter, r *http.Request, key string) {
-	s.serveCover(w, r, key, "private, max-age=86400")
+	cache := "private, max-age=86400"
+	if versionedCover(r) {
+		cache = "private, " + immutableYear
+	}
+	s.serveCover(w, r, key, cache)
 }
 
 // PlayStart is a web-player session just opened.
@@ -254,7 +258,7 @@ func (s *Server) StartSession(ctx context.Context, userID int64, key, deviceID, 
 	if err != nil {
 		return PlayStart{}, ErrNotFound
 	}
-	files, _ := s.probe.files(ctx, it.Path, true)
+	files, _ := s.probe.filesFor(ctx, it.Path, it.Book.Author, true)
 	sess, _, err := s.listen.OpenSession(ctx, userID, it.Key, clip(deviceID, 100), "Web player · "+clip(deviceName, 60), "Arrmada web")
 	if err != nil {
 		return PlayStart{}, err
