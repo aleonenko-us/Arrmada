@@ -46,6 +46,8 @@ type Service struct {
 	whisper  *whisperGen
 	log      *slog.Logger
 	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
+	// adoptHook records an adopted orphan as Arrmada's own (SetAdoptHook); nil = no record.
+	adoptHook func(ctx context.Context, a AdoptedSidecar) error
 
 	// repair is the one-shot forced-track repair pass (repair.go).
 	repair forcedRepair

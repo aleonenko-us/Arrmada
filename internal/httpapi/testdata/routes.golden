@@ -392,7 +392,10 @@ POST /api/v1/subtitles/library/movies/{id} staff -
 POST /api/v1/subtitles/library/rescan staff -
 POST /api/v1/subtitles/library/series/{id} staff -
 POST /api/v1/subtitles/models/{name} staff -
+POST /api/v1/subtitles/movies/{id}/orphans/adopt staff -
+POST /api/v1/subtitles/movies/{id}/orphans/replace staff -
 POST /api/v1/subtitles/movies/{id}/search staff -
+POST /api/v1/subtitles/orphans/bulk staff -
 POST /api/v1/subtitles/series/{id}/search staff -
 POST /api/v1/subtitles/sweep staff -
 POST /api/v1/system/backups admin -

@@ -151,6 +151,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		}
 	}
 	summary := outcomeNote(langs, outcomes)
+	if produced > 0 {
+		// A replace: the orphans whose language was just made go to the recycle bin.
+		s.retireReplaced(context.WithoutCancel(ctx), job, ref, outcomes)
+	}
 	if ctx.Err() != nil {
 		note := "stopped"
 		if summary != "" {

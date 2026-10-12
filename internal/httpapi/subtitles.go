@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 )
 
@@ -293,4 +295,90 @@ func (a *api) handleSubtitleSearchSeries(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	a.accepted(w, jobID, existing, map[string]any{"status": "searching"})
+}
+
+// orphanError maps an orphan action's error to its HTTP answer.
+func (a *api) orphanError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, movies.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "movie not found")
+	case errors.Is(err, subtitles.ErrOrphanTargetExists), errors.Is(err, subtitles.ErrJobBusy):
+		a.writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, subtitles.ErrNotOrphan), errors.Is(err, subtitles.ErrBadLanguage),
+		errors.Is(err, subtitles.ErrNotKept), errors.Is(err, subtitles.ErrForcedOrphan):
+		a.writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		a.deps.Log.Warn("subtitles: orphan action failed", "err", err)
+		a.writeError(w, http.StatusInternalServerError, "couldn't do that — see the Subtitles log")
+	}
+}
+
+// handleSubtitleAdoptOrphan renames one of a movie's orphaned subtitles to pair with its
+// file. name must be one of the movie's orphans as the folder is now; it is never a path.
+func (a *api) handleSubtitleAdoptOrphan(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name    string  `json:"name"`
+		Lang    *string `json:"lang"`
+		Variant *string `json:"variant"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	name, err := a.deps.Subtitles.AdoptOrphan(r.Context(), id, req.Name, req.Lang, req.Variant)
+	if err != nil {
+		a.orphanError(w, err)
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"name": name})
+}
+
+// handleSubtitleReplaceOrphan queues a fresh subtitle for an orphan's language; the
+// orphan goes to the recycle bin only once that subtitle has been written.
+func (a *api) handleSubtitleReplaceOrphan(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	job, err := a.deps.Subtitles.ReplaceOrphan(r.Context(), id, req.Name)
+	if err != nil {
+		a.orphanError(w, err)
+		return
+	}
+	a.writeJSON(w, http.StatusAccepted, job)
+}
+
+// handleSubtitleBulkOrphans adopts or replaces the orphans of every movie that has any
+// (or of the listed movies), and says what it did and what it left alone.
+func (a *api) handleSubtitleBulkOrphans(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Action   string  `json:"action"`
+		MovieIDs []int64 `json:"movie_ids"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Action != "adopt" && req.Action != "replace" {
+		a.writeError(w, http.StatusBadRequest, `action must be "adopt" or "replace"`)
+		return
+	}
+	if _, scanned := a.deps.Subtitles.SnapshotMovies(); !scanned {
+		a.writeError(w, http.StatusConflict, "the library is still being scanned — try again in a few minutes")
+		return
+	}
+	res, err := a.deps.Subtitles.BulkOrphans(r.Context(), req.Action, req.MovieIDs)
+	if err != nil {
+		a.orphanError(w, err)
+		return
+	}
+	a.writeJSON(w, http.StatusOK, res)
 }

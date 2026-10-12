@@ -59,6 +59,9 @@ type Job struct {
 	Mode string `json:"mode,omitempty"`
 
 	repairLangs []string // ModeRepairForced: the kept languages whose sidecar is suspect
+	// retire lists orphaned subtitles this job replaces: each goes to the recycle bin once
+	// its language has been made (orphans.go), and stays if it wasn't.
+	retire []orphanRetire
 }
 
 // dedupeKey is what enqueue dedupes on: the file, plus the mode for a special job. A
@@ -269,6 +272,7 @@ func (s *Service) enqueue(job *Job) *Job {
 			if job.Redo {
 				j.Redo = true // the waiting job takes on the stronger intent
 			}
+			j.retire = mergeRetire(j.retire, job.retire)
 			// Pressing Ensure on a file the sweep already queued moves it up to the
 			// button's line rather than leaving it hours deep behind the sweep.
 			if job.Priority < j.Priority {

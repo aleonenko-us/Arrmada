@@ -9,6 +9,8 @@ import { LINKS } from "../lib/links";
 import { RescanButton, scanTitle } from "../components/RescanButton";
 import { api, type SubtitleSettings, type SubFileEntry, type SubSeriesGroup, type SubtitleJob, type SubtitleCoverage, type SubLangStatus } from "../lib/api";
 import { KeptTracksNote, card, cardStyle, langName } from "./subtitles/shared";
+import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
+import { useConfirm } from "../ui";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
@@ -307,7 +309,8 @@ function embeddedKinds(f: SubFileEntry): { txt: boolean; pgs: boolean; vob: bool
   }
   return { txt, pgs, vob };
 }
-type Filter = "missing" | "pgs" | "text" | "external";
+type Filter = "missing" | "pgs" | "text" | "external" | "orphaned";
+const orphanCount = (f: SubFileEntry) => (f.orphans ?? []).length;
 // The library list is for movies or shows (?media=tv).
 const MEDIA_KINDS = ["movies", "tv"] as const;
 
@@ -322,8 +325,11 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "missing", dir: "desc" });
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
 
+  const confirm = useConfirm();
+  useEffect(() => { setItems(null); setQueued(new Set()); setFilters(new Set()); }, [media]);
+  // A reload (after a rescan or an adopt) keeps the filters, and the rows on screen until
+  // the new list lands.
   useEffect(() => {
-    setItems(null); setQueued(new Set()); setFilters(new Set());
     // TV is rendered per show by TVLibrary, which fetches its own rolled-up list.
     if (media === "tv") return;
     api.subtitleLibrary(media).then((r) => { setItems(r.items); setScanning(!!r.scanning); }).catch(() => setItems([]));
@@ -359,17 +365,65 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
     } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
   };
 
+  // An orphaned subtitle (named for no video in the folder): adopt renames it to pair with
+  // the movie; replace makes a fresh one and only then moves the orphan to the recycle bin.
+  const orphanAction = async (f: SubFileEntry, name: string, action: "adopt" | "replace") => {
+    if (action === "replace" && !(await confirm({
+      title: `Replace ${name}?`,
+      body: `Arrmada makes a fresh, properly named subtitle for ${f.title}. Once it's written, ${name} moves to the recycle bin; if nothing can be made, it stays where it is.`,
+      confirmLabel: "Replace",
+    }))) return;
+    const key = rowKey(f);
+    setBusy(key);
+    try {
+      if (action === "adopt") {
+        const r = await orphanApi.adopt(f.movie_id!, name);
+        flash(`Adopted — now ${r.name}`);
+        setRefreshKey((k) => k + 1);
+      } else {
+        await orphanApi.replace(f.movie_id!, name);
+        setQueued((q) => new Set(q).add(key));
+        flash(`Queued a replacement for ${name}`);
+        onQueued();
+      }
+    } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
+  };
+  // Adopt all / Replace all act on the orphaned movies in view.
+  const bulkOrphans = async (action: "adopt" | "replace") => {
+    const rows = view.filter((f) => orphanCount(f) > 0);
+    const n = rows.reduce((sum, f) => sum + orphanCount(f), 0);
+    const movies = `${rows.length} movie${rows.length === 1 ? "" : "s"}`;
+    const ok = await confirm(action === "adopt" ? {
+      title: `Adopt ${n} orphaned subtitle${n === 1 ? "" : "s"}?`,
+      body: `Each is renamed to pair with its movie (${movies}), so Plex shows it. Any whose language isn't clear from its name, that shares a language with another orphan, or whose new name is taken is left for you to decide.`,
+      confirmLabel: "Adopt all",
+    } : {
+      title: `Replace ${n} orphaned subtitle${n === 1 ? "" : "s"}?`,
+      body: `Queues a fresh, properly named subtitle for ${movies}. Each orphan moves to the recycle bin once its replacement is written; if nothing can be made it stays. Orphans in languages you don't keep, and forced ones, are left alone.`,
+      confirmLabel: "Replace all",
+    });
+    if (!ok) return;
+    setBusy("bulk");
+    try {
+      const r = await orphanApi.bulk(action, rows.map((f) => f.movie_id!));
+      flash(bulkSummary(action, r));
+      setRefreshKey((k) => k + 1);
+      if (action === "replace") onQueued();
+    } catch (e) { flash((e as Error).message); } finally { setBusy(null); }
+  };
+
   const toggleF = (f: Filter) => setFilters((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n; });
   const setSortKey = (key: SortKey) => setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "title" ? "asc" : "desc" });
 
   const counts = useMemo(() => {
-    const c = { missing: 0, pgs: 0, text: 0, external: 0 };
+    const c = { missing: 0, pgs: 0, text: 0, external: 0, orphaned: 0 };
     for (const f of items ?? []) {
       if (f.missing > 0) c.missing++;
       const k = embeddedKinds(f);
       if (k.pgs || k.vob) c.pgs++;
       if (k.txt) c.text++;
       if ((f.external ?? []).length > 0) c.external++;
+      if (orphanCount(f) > 0) c.orphaned++;
     }
     return c;
   }, [items]);
@@ -380,6 +434,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
     if (filters.has("pgs")) list = list.filter((f) => { const k = embeddedKinds(f); return k.pgs || k.vob; });
     if (filters.has("text")) list = list.filter((f) => embeddedKinds(f).txt);
     if (filters.has("external")) list = list.filter((f) => (f.external ?? []).length > 0);
+    if (filters.has("orphaned")) list = list.filter((f) => orphanCount(f) > 0);
     const dir = sort.dir === "asc" ? 1 : -1;
     const val = (f: SubFileEntry): number | string => {
       switch (sort.key) {
@@ -428,7 +483,14 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
             <Pill active={filters.has("pgs")} disabled={!counts.pgs} onClick={() => toggleF("pgs")}>PGS/VobSub <span className="opacity-60">{counts.pgs}</span></Pill>
             <Pill active={filters.has("text")} disabled={!counts.text} onClick={() => toggleF("text")}>Embedded text <span className="opacity-60">{counts.text}</span></Pill>
             <Pill active={filters.has("external")} disabled={!counts.external} onClick={() => toggleF("external")}>Has external <span className="opacity-60">{counts.external}</span></Pill>
+            <Pill active={filters.has("orphaned")} disabled={!counts.orphaned} onClick={() => toggleF("orphaned")}>Orphaned <span className="opacity-60">{counts.orphaned}</span></Pill>
             {filtering && <button onClick={() => setFilters(new Set())} className="ml-1 text-[10.5px] text-ink-faint underline hover:text-[var(--ink)]">clear</button>}
+            {filters.has("orphaned") && view.some((f) => orphanCount(f) > 0) && (
+              <span className="ml-auto flex items-center gap-1.5">
+                <button type="button" onClick={() => bulkOrphans("adopt")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Adopt all</button>
+                <button type="button" onClick={() => bulkOrphans("replace")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Replace all</button>
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-ink-faint">
             {filtering ? <><b style={{ color: "var(--ink)" }}>{view.length.toLocaleString()}</b> of {items.length.toLocaleString()} · </> : null}
@@ -452,6 +514,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
                     queued={queued.has(rowKey(f))}
                     onEnsure={() => ensure(f)}
                     onRedo={() => ensure(f, true)}
+                    onOrphan={(name, action) => orphanAction(f, name, action)}
                   />
                 ))}
               </tbody>
@@ -653,7 +716,7 @@ function confirmRedo(title: string) {
   return window.confirm(`Redo subtitles for ${title}?\n\nThe existing .srt files for your kept languages will be replaced — use this when what's there is wrong (the AI transcribed the wrong audio track, a bad download).`);
 }
 
-function SubRow({ f, first, busy, queued, onEnsure, onRedo }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void }) {
+function SubRow({ f, first, busy, queued, onEnsure, onRedo, onOrphan }: { f: SubFileEntry; first: boolean; busy: string | null; queued: boolean; onEnsure: () => void; onRedo: () => void; onOrphan?: (name: string, action: "adopt" | "replace") => void }) {
   const key = rowKey(f);
   const k = embeddedKinds(f);
   return (
@@ -671,6 +734,17 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo }: { f: SubFileEntry;
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1">{(f.languages ?? []).map((l) => <CoverChip key={l.lang} l={l} />)}</div>
+        {onOrphan && (f.orphans ?? []).length > 0 && (
+          <div className="mt-1 flex flex-col gap-0.5">
+            {f.orphans!.map((o) => (
+              <div key={o.name} className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-ink-faint">
+                <span className="truncate font-mono" title="Named for no video in this folder, so Plex won't show it with this file">{o.name}</span>
+                <button type="button" onClick={() => onOrphan(o.name, "adopt")} disabled={busy !== null} title="Rename it to pair with this movie, so Plex shows it" className="flex-none rounded px-1.5 py-0.5 font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Adopt</button>
+                {o.variant !== "forced" && <button type="button" onClick={() => onOrphan(o.name, "replace")} disabled={busy !== null} title="Make a fresh subtitle; this one goes to the recycle bin once it's written" className="flex-none rounded px-1.5 py-0.5 font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Replace</button>}
+              </div>
+            ))}
+          </div>
+        )}
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2">
