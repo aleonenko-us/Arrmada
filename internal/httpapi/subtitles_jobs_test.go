@@ -85,4 +85,25 @@ func TestJobsPagingHandler(t *testing.T) {
 	if rec := s.do("GET", "/api/v1/subtitles/jobs?limit=5", viewer); rec.Code != http.StatusForbidden {
 		t.Errorf("requester: HTTP %d, want 403", rec.Code)
 	}
+	// The live list carries the AI backlog.
+	var live map[string]any
+	if rec := s.do("GET", "/api/v1/subtitles/jobs", mgr); json.Unmarshal(rec.Body.Bytes(), &live) != nil || live["gpu_backlog"] != float64(0) || live["gpu_eta_sec"] != float64(0) {
+		t.Errorf("live list backlog = %v / %v, want 0 / 0", live["gpu_backlog"], live["gpu_eta_sec"])
+	}
+	// Clearing is per lane: the AI backlog is empty, the fast lane holds the restored job.
+	clear := func(q string) (int, float64) {
+		rec := s.do("POST", "/api/v1/subtitles/jobs/clear"+q, mgr)
+		var out struct{ Cleared float64 }
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out.Cleared
+	}
+	if code, _ := clear("?lane=disk"); code != http.StatusBadRequest {
+		t.Errorf("clear ?lane=disk: HTTP %d, want 400", code)
+	}
+	if code, n := clear("?lane=gpu"); code != http.StatusOK || n != 0 {
+		t.Errorf("clear gpu: HTTP %d cleared %v, want 0", code, n)
+	}
+	if code, n := clear("?lane=fast"); code != http.StatusOK || n != 1 {
+		t.Errorf("clear fast: HTTP %d cleared %v, want 1", code, n)
+	}
 }

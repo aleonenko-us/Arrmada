@@ -34,7 +34,11 @@ func (a *api) handleSubtitleJobs(w http.ResponseWriter, r *http.Request) {
 		if jobs == nil {
 			jobs = []subtitles.Job{}
 		}
-		a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+		// The AI backlog rides along: how much whisper work waits, and how long it'll take
+		// at the measured speed.
+		b := a.deps.Subtitles.GPUBacklog(r.Context())
+		a.writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "gpu_backlog": b.Files,
+			"gpu_backlog_audio_sec": b.AudioSec, "gpu_eta_sec": b.ETASec, "rtf": b.RTF})
 		return
 	}
 	jq := subtitles.JobQuery{Limit: 50}
@@ -91,9 +95,15 @@ func (a *api) handleSubtitleCancelJob(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "cancelling"})
 }
 
-// handleSubtitleClearQueue drops every queued (not yet started) job.
+// handleSubtitleClearQueue drops every queued (not yet started) job; ?lane=gpu only the AI
+// backlog, ?lane=fast only extractions and downloads.
 func (a *api) handleSubtitleClearQueue(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"cleared": a.deps.Subtitles.ClearQueue()})
+	lane := r.URL.Query().Get("lane")
+	if lane != "" && lane != subtitles.LaneFast && lane != subtitles.LaneGPU {
+		a.writeError(w, http.StatusBadRequest, "lane must be fast or gpu")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"cleared": a.deps.Subtitles.ClearLane(lane)})
 }
 
 // handleSubtitleLogs returns the recent Subtitles activity console lines.
