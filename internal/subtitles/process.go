@@ -132,7 +132,13 @@ func (s *Service) process(ctx context.Context, job *Job) {
 				remaining = append(remaining, l)
 			}
 		}
-		remainingForced = wantLangs(cov.active, VariantForced)
+		// A forced file already there is left alone (it may not be ours, and a redo has
+		// no better source for it); only missing ones are made.
+		for _, w := range cov.missing() {
+			if w.Variant == VariantForced {
+				remainingForced = append(remainingForced, w.Lang)
+			}
+		}
 	} else {
 		for _, w := range cov.missing() {
 			switch {

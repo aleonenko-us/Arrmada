@@ -949,7 +949,7 @@ func wantLabel(lang, variant string) string {
 // language, else an OpenSubtitles foreign-parts-only upload. Whisper can't tell the
 // foreign lines from the rest, so there is no AI step: what neither source has is
 // recorded as impossible. A forced track the extract rung already pulled out as an extra
-// in this run counts as made.
+// in this run counts as made; an existing forced file is never written over.
 func (s *Service) rungForced(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, langs []string) []Outcome {
 	if ctx.Err() != nil || len(langs) == 0 {
 		return nil
@@ -959,7 +959,7 @@ func (s *Service) rungForced(ctx context.Context, job *Job, ref fileRef, mi *med
 	var rest []string
 	for _, l := range langs {
 		p := sidecarPathV(ref.Path, strings.ToLower(l), VariantForced)
-		if fi, err := os.Stat(p); err == nil && fi.Size() > 0 && !job.Redo {
+		if fi, err := os.Stat(p); err == nil && fi.Size() > 0 {
 			outs = append(outs, mkOutcomeV(l, VariantForced, RungExtract, ResultOK, "extracted"))
 			continue
 		}

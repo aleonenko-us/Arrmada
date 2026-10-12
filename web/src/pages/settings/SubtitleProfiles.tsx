@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { langName, useLanguages, type Language } from "../../lib/languages";
@@ -34,7 +34,13 @@ const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line
 export function SubtitleProfiles({ version }: { version: string }) {
   const { data, error, refetch } = useProfiles();
   const languages = useLanguages();
-  useEffect(() => { void refetch(); }, [version, refetch]);
+  // Refetch when the kept languages change above (not on mount: the query loads itself).
+  const seen = useRef(version);
+  useEffect(() => {
+    if (seen.current === version) return;
+    seen.current = version;
+    void refetch();
+  }, [version, refetch]);
   const profiles = data?.profiles ?? [];
   const def = profiles.find((p) => p.is_default);
   const others = profiles.filter((p) => !p.is_default);
