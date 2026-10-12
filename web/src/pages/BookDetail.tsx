@@ -107,7 +107,9 @@ export function BookDetail() {
                   <a href={b.catalogue.url} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={b.catalogue.name === "Open Library" ? { background: "#0a3d62", color: "#fff" } : { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{b.catalogue.name}</a>
                 )}
               </div>
-              <div className="mt-1.5 text-[14px] font-semibold text-ink-dim">{b.author || "Unknown author"}</div>
+              <div className="mt-1.5 text-[14px] font-semibold text-ink-dim">
+                {b.author_id ? <Link to={`/books/authors/${b.author_id}`} className="hover:underline hover:text-[var(--accent)]">{b.author}</Link> : (b.author || "Unknown author")}
+              </div>
               {/* Keys the book had before (a Change match, the Hardcover upgrade): cards
                   still carrying one of them show this book as in the library. */}
               {b.aliases && b.aliases.length > 0 && (

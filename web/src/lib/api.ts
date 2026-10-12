@@ -1861,6 +1861,8 @@ export interface Book {
   ol_key: string;
   title: string;
   author: string;
+  /** The author row the author string means (lib/bookAuthorApi.ts); absent = not linked. */
+  author_id?: number;
   year: number;
   /** Learned from the release that matched this book; position 0 = number unknown. */
   series_name?: string;
@@ -2912,8 +2914,8 @@ export const api = {
     req<{ authors: BookAuthor[]; books: BookDiscoverCard[]; source: BookSource }>(`/api/v1/books/discover/search?q=${encodeURIComponent(q)}${source ? `&source=${source}` : ""}`),
   searchBookAuthors: (q: string) =>
     req<{ authors: BookAuthor[] }>(`/api/v1/books/discover/authors?q=${encodeURIComponent(q)}`).then((r) => r.authors),
-  addAuthor: (body: { author_key: string; quality_profile?: string; monitored?: boolean; search_on_add?: boolean }) =>
-    req<{ added: number; skipped: number; total: number }>("/api/v1/books/author", { method: "POST", body: JSON.stringify(body) }),
+  addAuthor: (body: { author_key: string; name?: string; quality_profile?: string; monitored?: boolean; search_on_add?: boolean }) =>
+    req<{ added: number; skipped: number; total: number; author_id?: number }>("/api/v1/books/author", { method: "POST", body: JSON.stringify(body) }),
   bookAuthorWorks: (key: string) =>
     req<{ author_key: string; books: BookDiscoverCard[] }>(`/api/v1/books/discover/authors/${encodeURIComponent(key)}/works`).then((r) => r.books),
   bookDiscoverSubject: (name: string) =>
