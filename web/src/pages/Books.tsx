@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
@@ -43,6 +43,9 @@ function matches(b: Book, f: FilterKey): boolean {
 }
 
 const NO_BOOKS: Book[] = [];
+
+// The duplicates review loads only when opened.
+const DuplicatesModal = lazy(() => import("../components/DuplicatesModal"));
 
 function statusOf(b: Book): { label: string; color: string; title?: string } {
   const st = libraryStatus({ hasFile: b.has_file, monitored: b.monitored });
@@ -99,6 +102,18 @@ export function Books() {
     tick();
     return () => { alive = false; window.clearTimeout(timer); };
   }, [list.length]);
+
+  // Possible duplicates: how many groups the review lists, for the header. The calls
+  // live in a lazy module, loaded only here and by the review itself.
+  const [dupesOpen, setDupesOpen] = useState(false);
+  const [dupeCount, setDupeCount] = useState(0);
+  const countDupes = () => {
+    import("../lib/bookDupesApi")
+      .then((m) => m.bookDupesApi.list())
+      .then((r) => setDupeCount(r.groups.length))
+      .catch(() => {});
+  };
+  useEffect(countDupes, [list.length]);
 
   const [toastErr, setToastErr] = useState(false);
   // err shows the toast in the error colour: a search or scan that failed says so plainly.
@@ -265,6 +280,13 @@ export function Books() {
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
         <LibraryToolbar
           count={booksQ.data ? list.length : null}
+          lead={dupeCount > 0 && !multiSelect ? (
+            <button onClick={() => setDupesOpen(true)} title="Rows that may be the same book: merge them or mark them as different"
+              className="whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold"
+              style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+              Possible duplicates ({dupeCount})
+            </button>
+          ) : undefined}
           segments={multiSelect ? [] : [
             { label: "Group by", value: mode, options: [{ value: "author", label: "author" }, { value: "book", label: "book" }], onChange: (v) => setMode(v as "author" | "book") },
             ...(phone ? [] : [{ label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v: string) => setView(v as "grid" | "table") }]),
@@ -273,6 +295,7 @@ export function Books() {
           tools={[
             { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
             { label: "Find series", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "One-off: look up which series your books belong to. Searches indexers to read the series off, and downloads nothing." },
+            { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
             {
               label: `Re-match ${upgradable} to Hardcover`,
               hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
@@ -403,6 +426,11 @@ export function Books() {
       </div>
       {adding && <AddBookModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
       {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); flash(msg); }} />}
+      {dupesOpen && (
+        <Suspense fallback={null}>
+          <DuplicatesModal onClose={() => setDupesOpen(false)} onChanged={() => { refresh(); countDupes(); }} />
+        </Suspense>
+      )}
       {confirmDelete && <DeleteBookDialog book={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
   );

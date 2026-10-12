@@ -79,9 +79,11 @@ type MergeResult struct {
 	LeftFiles []string `json:"left_files"`
 	// Note is anything the person should know (an edition only the dropped book wanted).
 	Note string `json:"note,omitempty"`
-	// Moved counts the rows re-pointed per table, and Listening the listening rows moved.
-	Moved     map[string]int        `json:"moved"`
-	Listening listening.RekeyCounts `json:"listening"`
+	// Moved counts the rows re-pointed per table.
+	Moved map[string]int `json:"moved"`
+	// Listening counts the listening rows moved. For the log only: never serialised, so
+	// no staff screen learns even how many people had listened to a book.
+	Listening listening.RekeyCounts `json:"-"`
 }
 
 // Merge folds dropID into keepID in one transaction (see the top of this file) and
@@ -219,6 +221,9 @@ func (s *Service) mergeTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64,
 		}
 		n, _ := r.RowsAffected()
 		res.Moved[rp.name] = int(n)
+	}
+	if err := carryDupeReviewsTx(ctx, tx, keepID, dropID); err != nil {
+		return fmt.Errorf("re-point duplicate reviews: %w", err)
 	}
 
 	// 6. What the kept book lacks, it takes from the dropped one.

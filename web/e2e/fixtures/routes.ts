@@ -169,6 +169,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/books/upgrade", media.bookUpgrade),
     get("/api/v1/books/search-missing", media.bookSweep),
     get("/api/v1/books/authors/images", { images: {}, pending: 0 }),
+    get("/api/v1/books/duplicates", { groups: [], past_merges: [] }),
     get("/api/v1/music/artists", mod.artists),
     get("/api/v1/quality/profiles", media.qualityProfiles),
     get("/api/v1/library/fit/profiles", media.fitProfiles),
