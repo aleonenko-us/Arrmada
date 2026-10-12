@@ -10,12 +10,15 @@ import { PHONE, useMediaQuery } from "../lib/useMediaQuery";
 import { isWanted, libraryStatus } from "../lib/status";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { posterThumb } from "../lib/img";
-import { wantedTitle } from "../lib/bookSearch";
+import { editionsHeld, wantedTitle } from "../lib/bookSearch";
 import { LINKS } from "../lib/links";
 import { useMe, isAdmin } from "../lib/me";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { useQuery } from "../lib/query";
-import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner } from "../ui";
+import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type MenuItem } from "../ui";
+import { LibraryCard } from "../features/library/LibraryCard";
+import type { LibraryConfig } from "../features/library/types";
+import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -50,9 +53,9 @@ const DuplicatesModal = lazy(() => import("../components/DuplicatesModal"));
 function statusOf(b: Book): { label: string; color: string; title?: string } {
   const st = libraryStatus({ hasFile: b.has_file, monitored: b.monitored });
   if (st.label === "Downloaded") {
-    // Show which editions are present (E / A) so the grid conveys ebook vs audiobook.
-    const tags = [b.ebook && "E", b.audiobook && "A"].filter(Boolean).join("+");
-    return { label: tags ? `${tags} ✓` : st.label, color: st.color };
+    // Say which editions are present, so the grid tells ebook from audiobook.
+    const held = editionsHeld(b);
+    return { label: held ? `${held} ✓` : st.label, color: st.color };
   }
   // The tooltip says whether it has been looked for and missed, and when it is looked for next.
   return { label: st.label, color: st.color, title: st.label === "Wanted" ? wantedTitle(b) : undefined };
@@ -67,6 +70,8 @@ export function Books() {
   const error = booksQ.error?.message ?? null;
   const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
+  // The order lives in the address too (?sort=added), so it survives a reload and Back.
+  const [sortKey, setSortKey] = useSearchParamState<BookSort>("sort", DEFAULT_SORT, { allowed: SORT_KEYS });
   const [adding, setAdding] = useState(false);
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);
@@ -210,14 +215,18 @@ export function Books() {
   };
 
   const q = query.trim().toLowerCase();
+  const sort = sortFor(mode, sortKey);
   const filtered = useMemo(
     () =>
-      list
-        .filter((b) => matches(b, filter))
-        .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
-    [list, filter, q],
+      sortBooks(
+        list
+          .filter((b) => matches(b, filter))
+          .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
+        sort,
+      ),
+    [list, filter, q, sort],
   );
-  const authors = useMemo(() => groupByAuthor(filtered, authorImages), [filtered, authorImages]);
+  const authors = useMemo(() => sortAuthors(groupByAuthor(filtered, authorImages), sort), [filtered, authorImages, sort]);
 
   // A search runs as a job; when the latest one ends the toast says what it found.
   const [searchJob, setSearchJob] = useState<{ id: number; title: string } | null>(null);
@@ -265,48 +274,72 @@ export function Books() {
     } catch (e) { flash((e as Error).message); setScanning(false); }
   };
 
+  // The header keeps the everyday actions in sight (+ Add book, + Add author, Search
+  // missing) and the occasional jobs in the Library tools menu. On a phone the two
+  // secondary buttons fold into the menu too, so + Add book always fits on the line.
+  const sweepProgress = sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : undefined;
+  const showSweep = missingEditions > 0 || !!sweep?.running;
+  const sweepTitle = `Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`;
+  const addAuthor = { label: "+ Add author", onClick: () => setAddingAuthor(true), disabled: !metaOK, title: "Add an author's entire catalogue of official books" };
+  const tools: LibraryTool[] = [
+    { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
+    {
+      label: `Re-match ${upgradable} to Hardcover`,
+      hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
+      busy: !!upgrade?.running,
+      progress: upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : undefined,
+      onClick: startUpgrade,
+      title: `${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`,
+    },
+    { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
+    // Hardcover hands over the series with each book (the refresh-books job fills it
+    // in), so this indexer-search fallback is for Open Library setups only.
+    { label: "Find series", hidden: source === "hardcover", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "Open Library doesn't say which series a book is in, so this searches your indexers once per book to read the series off release names. Downloads nothing." },
+    ...(phone ? [
+      { label: `Search missing (${missingEditions})`, hidden: !showSweep, busy: !!sweep?.running, progress: sweepProgress, onClick: startSweep, title: sweepTitle },
+      addAuthor,
+    ] : []),
+  ];
+  // One View control for both choices: authors or books, as tiles or a table (a phone
+  // always gets tiles).
+  const viewOptions = phone
+    ? [{ value: "author-grid", label: "Authors" }, { value: "book-grid", label: "Books" }]
+    : [{ value: "author-grid", label: "Authors · grid" }, { value: "author-table", label: "Authors · table" }, { value: "book-grid", label: "Books · grid" }, { value: "book-table", label: "Books · table" }];
+
+  // The grid's cards are the shared library card: its ⋯ menu (Search now, Remove) shows
+  // on hover with a mouse and always on a touch screen. Only the card reads this config.
+  const cardConfig: LibraryConfig<BookItem> = {
+    noun: { one: "book", many: "books" },
+    storageKey: "books",
+    detailPath: (b) => `/books/${b.id}`,
+    filters: [],
+    searchText: (b) => `${b.title} ${b.author}`,
+    compare: (a, b) => a.title.localeCompare(b.title),
+    columns: [],
+    tableMinWidth: 780,
+    sorts: [],
+    card: { meta: (b) => b.author || "—", status: statusOf },
+    actions: (b): MenuItem[] => [
+      ...(b.monitored && !b.has_file ? [{ label: "Search now", busyLabel: "Searching…", onSelect: () => search(b) }] : []),
+      { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(b) },
+    ],
+  };
+
   return (
     <>
       <PageHeader title="Books" />
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
         <LibraryToolbar
           count={booksQ.data ? list.length : null}
-          lead={dupeCount > 0 && !multiSelect ? (
-            <button onClick={() => setDupesOpen(true)} title="Rows that may be the same book: merge them or mark them as different"
-              className="whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
-              Possible duplicates ({dupeCount})
-            </button>
-          ) : undefined}
-          segments={multiSelect ? [] : [
-            { label: "Group by", value: mode, options: [{ value: "author", label: "author" }, { value: "book", label: "book" }], onChange: (v) => setMode(v as "author" | "book") },
-            ...(phone ? [] : [{ label: "View", value: view, options: [{ value: "grid", label: "grid" }, { value: "table", label: "table" }], onChange: (v: string) => setView(v as "grid" | "table") }]),
+          pickers={multiSelect ? [] : [
+            { label: "View", value: `${mode}-${view}`, options: viewOptions, onChange: (v) => { const [m, vw] = v.split("-"); setMode(m as "author" | "book"); if (!phone) setView(vw as "grid" | "table"); } },
           ]}
+          sort={{ label: "Sort", value: sort, options: mode === "author" ? AUTHOR_SORTS : BOOK_SORTS, onChange: (v) => setSortKey(v as BookSort) }}
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
-          tools={[
-            { label: "Scan library", busyLabel: "Scanning…", busy: scanning || scan.running, onClick: scanLibrary, title: "Find books already in your library folder and catalog them" },
-            // Hardcover hands over the series with each book (the refresh-books job fills it
-            // in), so this indexer-search fallback is for Open Library setups only.
-            { label: "Find series", hidden: source === "hardcover", busyLabel: "Looking up…", busy: backfilling, onClick: backfillSeries, title: "Open Library doesn't say which series a book is in, so this searches your indexers once per book to read the series off release names. Downloads nothing." },
-            { label: dupeCount > 0 ? `Possible duplicates (${dupeCount})` : "Possible duplicates", onClick: () => setDupesOpen(true), title: "Rows that may be the same book, side by side to merge or mark as different — and earlier merges" },
-            {
-              label: `Re-match ${upgradable} to Hardcover`,
-              hidden: !(source === "hardcover" && (upgradable > 0 || upgrade?.running)),
-              busy: !!upgrade?.running,
-              progress: upgrade?.running ? `Re-matching… ${upgrade.done}/${upgrade.total}` : undefined,
-              onClick: startUpgrade,
-              title: `${upgradable} book${upgradable === 1 ? " is" : "s are"} still on Open Library keys. Re-matching runs by itself when the key is saved and at startup; this retries whatever didn't match. Files, monitoring and profiles are kept.${upgrade?.notes?.length ? `\n\nLast run: ${upgrade.notes.slice(0, 4).join("\n")}` : ""}`,
-            },
-            {
-              label: `Search missing (${missingEditions})`,
-              hidden: !(missingEditions > 0 || sweep?.running),
-              busy: !!sweep?.running,
-              progress: sweep?.running ? `Searching… ${sweep.done}/${sweep.total}${sweep.grabbed ? ` · ${sweep.grabbed} grabbed` : ""}` : undefined,
-              onClick: startSweep,
-              title: `Search your indexers for every book that lacks an edition its profile wants (ebook or audiobook), monitored or not: ${missingEditions} book${missingEditions === 1 ? "" : "s"}. Fills gaps only — editions you already have are never replaced.${sweep?.notes?.length ? `\n\nLast run, nothing found for: ${sweep.notes.slice(0, 4).join("; ")}` : ""}`,
-            },
-          ]}
-          secondary={{ label: "+ Add author", onClick: () => setAddingAuthor(true), disabled: !metaOK, title: "Add an author's entire catalogue of official books" }}
+          tools={tools}
+          toolsBadge={dupeCount}
+          actions={!phone && showSweep ? [{ label: `Search missing (${missingEditions})`, busy: !!sweep?.running, busyLabel: sweepProgress, onClick: startSweep, title: sweepTitle }] : []}
+          secondary={phone ? undefined : addAuthor}
           primary={{ label: "+ Add book", onClick: () => setAdding(true), disabled: !metaOK }}
         />
         <FilterBar
@@ -402,14 +435,13 @@ export function Books() {
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
             {filtered.map((b) => (
-              <Card
+              <LibraryCard
                 key={b.id}
-                b={b}
-                onDelete={() => setConfirmDelete(b)}
-                onSearch={() => search(b)}
+                item={{ ...b, poster_url: b.cover_url }}
+                config={cardConfig}
                 selectable={multiSelect}
                 selected={selected.has(b.id)}
-                onToggleSelect={() => toggleSelect(b.id)}
+                onToggle={() => toggleSelect(b.id)}
               />
             ))}
           </div>
@@ -488,64 +520,8 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
   );
 }
 
-function Cover({ url, title }: { url?: string; title: string }) {
-  if (url) return <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
-  return (
-    <div className="flex h-full w-full items-center justify-center p-3 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>
-      <span className="text-[12px] font-bold text-white">{title}</span>
-    </div>
-  );
-}
-
-function Card({ b, onDelete, onSearch, selectable, selected, onToggleSelect }: { b: Book; onDelete: () => void; onSearch: () => void; selectable?: boolean; selected?: boolean; onToggleSelect?: () => void }) {
-  const st = statusOf(b);
-  const [searching, setSearching] = useState(false);
-  const doSearch = async () => { setSearching(true); try { await onSearch(); } finally { window.setTimeout(() => setSearching(false), 1500); } };
-  const meta = (
-    <>
-      <div className="truncate text-[12.5px] font-semibold" title={b.title}>{b.title}</div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink-faint" title={b.author}>{b.author || "—"}</span>
-        <span className="flex-none font-mono text-[9.5px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
-      </div>
-    </>
-  );
-  return (
-    <div className="group relative overflow-hidden rounded-xl" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`, background: "var(--panel)", boxShadow: selected ? "0 0 0 1px var(--accent)" : "none" }}>
-      <div className="relative" style={{ aspectRatio: "2/3" }}>
-        {selectable ? (
-          <button onClick={onToggleSelect} className="block h-full w-full text-left">
-            <Cover url={b.cover_url} title={b.title} />
-            {selected && <div className="absolute inset-0" style={{ background: "var(--accent-soft)" }} />}
-          </button>
-        ) : (
-          <Link to={`/books/${b.id}`} className="block h-full w-full"><Cover url={b.cover_url} title={b.title} /></Link>
-        )}
-        {selectable && (
-          <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background: selected ? "var(--accent)" : "rgba(20,12,7,.65)", border: `1.5px solid ${selected ? "var(--accent)" : "rgba(255,255,255,.6)"}` }}>
-            {selected && <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12l5 5L20 6" stroke="var(--accent-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-          </span>
-        )}
-        {!selectable && (
-          <button onClick={onDelete} title="Remove" className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-full group-hover:grid" style={{ background: "rgba(20,12,7,.75)", color: "#fff" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        )}
-        {!selectable && b.monitored && !b.has_file && (
-          <button onClick={doSearch} disabled={searching} title="Search now" className="absolute inset-x-1.5 bottom-1.5 hidden items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold group-hover:flex" style={{ background: "rgba(20,12,7,.82)", color: "#fff" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {searching ? "Searching…" : "Search now"}
-          </button>
-        )}
-      </div>
-      {selectable ? (
-        <button onClick={onToggleSelect} className="block w-full p-2.5 text-left">{meta}</button>
-      ) : (
-        <Link to={`/books/${b.id}`} className="block p-2.5">{meta}</Link>
-      )}
-    </div>
-  );
-}
+// A library row as the shared card wants it: the cover is its poster.
+type BookItem = Book & { poster_url?: string };
 
 function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [q, setQ] = useState("");

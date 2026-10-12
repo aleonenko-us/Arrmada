@@ -45,6 +45,27 @@ describe("LibraryToolbar", () => {
     expect(scan).toHaveBeenCalled();
   });
 
+  it("shows everyday actions as buttons, pickers as selects, and a count on the tools", () => {
+    const sweep = vi.fn();
+    const view = vi.fn();
+    render(
+      <LibraryToolbar
+        count={3}
+        pickers={[{ label: "View", value: "a", options: [{ value: "a", label: "Authors" }, { value: "b", label: "Books" }], onChange: view }]}
+        tools={[{ label: "Scan library", onClick: () => {} }]}
+        toolsBadge={2}
+        actions={[{ label: "Search missing (4)", onClick: sweep }, { label: "Busy one", onClick: () => {}, busy: true, busyLabel: "Searching… 1/4" }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Search missing (4)" }));
+    expect(sweep).toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "Searching… 1/4" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("View"), { target: { value: "b" } });
+    expect(view).toHaveBeenCalledWith("b");
+    // The badge is visual; the button's name stays "Library tools".
+    expect(screen.getByRole("button", { name: "Library tools" }).textContent).toContain("2");
+  });
+
   it("hides the count until the list has loaded", () => {
     render(<LibraryToolbar count={null} />);
     expect(screen.queryByText(/in library/)).toBeNull();

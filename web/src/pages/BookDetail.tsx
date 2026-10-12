@@ -18,6 +18,7 @@ import { LastSearches, refreshSearches } from "../components/LastSearch";
 import { wantedCopy } from "../lib/bookSearch";
 import { formatReleaseDay, isUpcoming } from "../lib/format";
 import { libraryStatus } from "../lib/status";
+import { Menu, type MenuItem } from "../ui";
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -132,7 +133,7 @@ export function BookDetail() {
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <ProfileSelector book={b} onChange={load} />
               </div>
-              <Toolbar book={b} onChange={load} flash={flash} />
+              <Toolbar book={b} onChange={load} flash={flash} onSearch={searchNow} searching={searchJob !== null} />
               {(searchJob !== null || searchResult) && (
                 <div className="mt-2 text-[12px]" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
                   {searchJob !== null ? "Searching…" : searchResult?.text}
@@ -445,7 +446,10 @@ function MergeButton({ bookId, fileCount, onDone, flash }: { bookId: number; fil
   );
 }
 
-function Toolbar({ book, onChange, flash }: { book: Book; onChange: () => void; flash: (m: string) => void }) {
+// Toolbar groups the book's controls instead of nine equal buttons: the Monitor switch,
+// Search ▾, Add files ▾, Fix ▾ and a separate Delete. Each menu item does what its old
+// button did; the menus are the kit's (keyboard, Escape, focus back to the trigger).
+function Toolbar({ book, onChange, flash, onSearch, searching }: { book: Book; onChange: () => void; flash: (m: string) => void; onSearch: () => Promise<void>; searching: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -454,31 +458,48 @@ function Toolbar({ book, onChange, flash }: { book: Book; onChange: () => void; 
   const [showMatch, setShowMatch] = useState(false);
 
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); try { await fn(); } catch (e) { flash((e as Error).message); } finally { setBusy(null); } };
-  const btn = "rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50";
+  const trigger = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold";
   const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
+  const caret = <span aria-hidden="true" className="text-[10px] opacity-70">▾</span>;
+  const missing = (book.want_ebook && !book.ebook) || (book.want_audiobook && !book.audiobook);
 
   const rename = async () => {
     const res = await api.renameBook(book.id);
     flash(res.renamed > 0 ? `Renamed ${res.renamed} file${res.renamed === 1 ? "" : "s"}.` : "Files already named correctly.");
     onChange();
   };
+  const group = (label: string, items: MenuItem[]) => (
+    <Menu label={label} trigger={<>{label} {caret}</>} items={items} align="left" portal triggerClassName={trigger} triggerStyle={ghost} itemClassName="min-h-[40px]" />
+  );
 
   return (
     <>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button role="switch" aria-checked={book.monitored} disabled={busy !== null} onClick={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })} className="inline-flex items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
+      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        <button role="switch" aria-checked={book.monitored} disabled={busy !== null} onClick={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })} className="mr-1 inline-flex min-h-[36px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
           <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: book.monitored ? "var(--accent)" : "var(--line)" }}>
             <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: book.monitored ? "19px" : "3px" }} />
           </span>
           <span style={{ color: book.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{book.monitored ? "Monitored" : "Monitor"}</span>
         </button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("refresh", async () => { await api.refreshBook(book.id); onChange(); flash("Refreshed metadata and rescanned disk."); })}>{busy === "refresh" ? "Refreshing…" : "Refresh & rescan"}</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowSearch(true)}>Search indexers</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowPaste(true)} title="Found the release yourself? Drop the .torrent here and Arrmada will grab and import it">Upload torrent</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowImport(true)}>Manual import</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => run("rename", rename)}>{busy === "rename" ? "Renaming…" : "Rename"}</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowEdit(true)} title="Manually fix title/author/year when the metadata providers got it wrong">Edit metadata</button>
-        <button className={btn} style={ghost} disabled={busy !== null} onClick={() => setShowMatch(true)} title="This is the wrong book — search the catalogue and re-link it to the right one, keeping your files">Change match</button>
+        {group("Search", [
+          {
+            label: searching ? "Searching…" : "Automatic search",
+            disabled: !missing || searching,
+            title: missing ? "Search your indexers for this book's missing editions and grab the best match" : "Nothing to search for: every edition the format profile wants is here",
+            onSelect: onSearch,
+          },
+          { label: "Interactive search…", title: "Browse every release your indexers have for this book and pick one", onSelect: () => setShowSearch(true) },
+        ])}
+        {group("Add files", [
+          { label: "Upload torrent…", title: "Found the release yourself? Drop the .torrent here and Arrmada will grab and import it", onSelect: () => setShowPaste(true) },
+          { label: "Manual import…", title: "Import a book file that's already in the downloads folder", onSelect: () => setShowImport(true) },
+        ])}
+        {group("Fix", [
+          { label: "Edit metadata…", title: "Manually fix title/author/year when the metadata providers got it wrong", onSelect: () => setShowEdit(true) },
+          { label: "Change match…", title: "This is the wrong book — search the catalogue and re-link it to the right one, keeping your files", onSelect: () => setShowMatch(true) },
+          { label: "Rename files", busyLabel: "Renaming…", disabled: busy !== null, title: "Rename the files on disk to the library's naming", onSelect: () => run("rename", rename) },
+          { label: "Refresh & rescan", busyLabel: "Refreshing…", disabled: busy !== null, title: "Fetch the metadata again and rescan the files on disk", onSelect: () => run("refresh", async () => { await api.refreshBook(book.id); onChange(); flash("Refreshed metadata and rescanned disk."); }) },
+        ])}
         <DeleteButton book={book} />
       </div>
       {showEdit && <EditMetadataModal book={book} onClose={() => setShowEdit(false)} onSaved={() => { onChange(); flash("Metadata updated."); }} />}
