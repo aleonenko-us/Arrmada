@@ -77,6 +77,8 @@ func (s *Service) DownloadModel(name string) error {
 			return
 		}
 		s.event("info", "✓ Downloaded "+name+" — local AI is ready")
+		// Files parked for want of a model get tried by the next sweep.
+		s.ClearBackoff(context.Background(), EventModel)
 	}()
 	return nil
 }

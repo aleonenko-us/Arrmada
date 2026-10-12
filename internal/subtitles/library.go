@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/langs"
 )
@@ -21,6 +22,13 @@ type LangStatus struct {
 	// Orphan is set when the language is missing but a subtitle in the folder that pairs
 	// with no video (an old name, most likely) covers it. Plex won't show it for this file.
 	Orphan bool `json:"orphan,omitempty"`
+	// Reason is set when the language is missing and the sweep is leaving it alone for
+	// now (backoff.go): the most actionable outcome of the last run. NextRetryAt is when
+	// it comes up again (unix seconds; 0 = only RetryOn's events or a button press), and
+	// RetryOn the events that bring it back early (CSV of creds | model | langs).
+	Reason      string `json:"reason,omitempty"`
+	NextRetryAt int64  `json:"next_retry_at,omitempty"`
+	RetryOn     string `json:"retry_on,omitempty"`
 }
 
 // SubHealth is the Tier-1 sync/health score for a file's subtitle (0-100). Nil until the scoring
@@ -56,6 +64,7 @@ type FileSubs struct {
 func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error) {
 	langs := s.languages(ctx)
 	canDownload := s.provider != nil && s.provider.CanDownload()
+	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
 	var out []FileSubs
 
 	if media == "tv" {
@@ -79,6 +88,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 						Year:  full.Year, PosterURL: full.PosterURL, Path: e.FilePath,
 					}
 					s.fillCoverage(ctx, &fs, langs, canDownload)
+					applyBackoff(&fs, backoffs, now)
 					out = append(out, fs)
 				}
 			}
@@ -99,6 +109,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 			PosterURL: m.PosterURL, Path: m.MovieFilePath,
 		}
 		s.fillCoverage(ctx, &fs, langs, canDownload)
+		applyBackoff(&fs, backoffs, now)
 		out = append(out, fs)
 	}
 	return out, nil
@@ -137,6 +148,39 @@ func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string
 		}
 		fs.Languages = append(fs.Languages, ls)
 	}
+}
+
+// applyBackoff marks the missing languages the sweep is leaving alone for now, from the
+// backoff rows a pass loaded once (a nil set marks nothing).
+func applyBackoff(fs *FileSubs, bs Backoffs, now time.Time) {
+	if len(bs) == 0 {
+		return
+	}
+	key := fmt.Sprintf("m:%d", fs.MovieID)
+	if fs.Kind == "episode" {
+		key = fmt.Sprintf("e:%d:%d:%d", fs.SeriesID, fs.Season, fs.Episode)
+	}
+	for i := range fs.Languages {
+		ls := &fs.Languages[i]
+		if ls.Have {
+			continue
+		}
+		b, ok := bs[BackoffKey(key, ls.Lang, VariantFull)]
+		if !ok || !b.Blocked(fs.Path, now) {
+			continue
+		}
+		ls.Reason, ls.NextRetryAt, ls.RetryOn = string(b.PrimaryReason), b.NextRetryAt, strings.Join(b.ClearOn, ",")
+	}
+}
+
+// loadBackoffs reads every backoff row for a library pass; an error just means the
+// chips don't show next-try dates this time.
+func (s *Service) loadBackoffs(ctx context.Context) Backoffs {
+	bs, err := s.ledger.LoadBackoffs(ctx)
+	if err != nil {
+		s.log.Warn("subtitles: could not read backoff for the library", "err", err)
+	}
+	return bs
 }
 
 // aiCanMake reports whether the local AI could produce lang from audio in audioLangs:
@@ -284,6 +328,7 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 	}
 	langs := s.languages(ctx)
 	canDownload := s.provider != nil && s.provider.CanDownload()
+	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
 	full, err := s.series.Get(ctx, seriesID)
 	if err != nil {
 		return nil, err
@@ -300,6 +345,7 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 				Year:  full.Year, PosterURL: full.PosterURL, Path: e.FilePath,
 			}
 			s.fillCoverage(ctx, &fs, langs, canDownload)
+			applyBackoff(&fs, backoffs, now)
 			out = append(out, fs)
 		}
 	}

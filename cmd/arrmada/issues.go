@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"log/slog"
+
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 )
@@ -29,6 +32,22 @@ func (s subtitleOutcomes) Outcome(jobID int64, t issues.Target, since int64) iss
 		}
 	}
 	return issues.SubtitleOutcome{}
+}
+
+// subtitleJobDone settles a reported problem's subtitles fix the moment its job finishes
+// (Subtitles' job-done hook), instead of at the next minute's poll. The poll above stays
+// as the fallback for jobs dropped from the queue and for restarts.
+func subtitleJobDone(ctx context.Context, svc *issues.Service, log *slog.Logger) func(subtitles.Job) {
+	return func(j subtitles.Job) {
+		t := issues.Target{MediaType: issues.MediaMovie, LibraryID: j.MovieID}
+		if j.Kind == "episode" {
+			t = issues.Target{MediaType: issues.MediaSeries, LibraryID: j.SeriesID, Season: j.Season, Episode: j.Episode}
+		}
+		o := issues.SubtitleOutcome{Found: true, Done: j.State == subtitles.StateDone, Note: j.Note}
+		if err := svc.OnSubtitleJobDone(ctx, t, j.ID, o); err != nil {
+			log.Warn("issues: could not settle a subtitles fix", "job_id", j.ID, "err", err)
+		}
+	}
 }
 
 // jobIsFor reports whether a subtitle job is for an issue's movie or episode.

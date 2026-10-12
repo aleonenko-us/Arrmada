@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
-import { api, type SubtitleSettings, type WhisperStatus } from "../../lib/api";
+import { api, type SubtitleProviderState, type SubtitleSettings, type WhisperStatus } from "../../lib/api";
 import { LINKS } from "../../lib/links";
+import { isAdmin, useMe } from "../../lib/me";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { usePoll } from "../../lib/usePoll";
 import { useToast } from "../../ui";
@@ -72,25 +74,7 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
 
       <LocalAI backend={settings.ai_backend} note={settings.ai_note} />
 
-      <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">OpenSubtitles (optional download source)</div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it.</div>
-        <div className="mt-3 flex items-center gap-2 text-[12px]">
-          <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: settings.can_download ? "var(--good-soft, rgba(127,176,105,.16))" : settings.provider_ready ? "var(--avoid-soft)" : "var(--panel-2)", color: settings.can_download ? "var(--good)" : settings.provider_ready ? "var(--avoid)" : "var(--ink-faint)" }}>
-            {settings.can_download ? "ready" : settings.provider_ready ? "search only" : "not configured"}
-          </span>
-          <span className="text-ink-dim">
-            {settings.can_download
-              ? settings.quota_reset_at > 0
-                ? `Daily download quota used up — resumes ${new Date(settings.quota_reset_at * 1000).toLocaleString()}.`
-                : settings.quota_remaining >= 0
-                  ? `Downloading enabled · ${settings.quota_remaining} downloads left today.`
-                  : "Downloading enabled."
-              : settings.provider_ready
-                ? <>Searching works; add your OpenSubtitles username and password under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link> to download.</>
-                : <>Add an OpenSubtitles API key (free) under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>, plus your account username and password to download.</>}
-          </span>
-        </div>
+      <OpenSubtitlesCard settings={settings} onChanged={() => void api.subtitleSettings().then(onSaved).catch(() => {})}>
         {/* Advanced: how close a download's release must be to the file when it wasn't
             uploaded for this exact file. Read per job, so a change applies to the next one. */}
         <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
@@ -98,8 +82,59 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
             <span className="text-[10.5px] text-ink-faint">Advanced. A subtitle uploaded for this exact file is always taken. Any other is scored 0–100 on how closely its release matches the file (group, source, edition, frame rate), and one below this goes to the next source instead. Default 60.</span>
           </AutoNumber>
         </div>
-      </div>
+      </OpenSubtitlesCard>
     </>
+  );
+}
+
+// What OpenSubtitles last said, as the chip and the state line read it. Only "ok" means a
+// login with these credentials has worked.
+const PROVIDER_CHIP: Record<SubtitleProviderState, { label: string; tone: "good" | "avoid" | "reject" | null }> = {
+  ok: { label: "logged in", tone: "good" },
+  unverified: { label: "not checked", tone: "avoid" },
+  needs_account: { label: "search only", tone: "avoid" },
+  quota_spent: { label: "quota used", tone: "avoid" },
+  rate_limited: { label: "rate-limited", tone: "avoid" },
+  auth_failed: { label: "login rejected", tone: "reject" },
+  not_configured: { label: "not configured", tone: null },
+};
+
+function providerLine(s: SubtitleSettings): string {
+  switch (s.provider_state) {
+    case "ok": {
+      const parts = ["Logged in", `VIP ${s.vip ? "yes" : "no"}`];
+      if (s.quota_remaining >= 0) parts.push(s.allowed_downloads > 0 ? `${s.quota_remaining}/${s.allowed_downloads} downloads left today` : `${s.quota_remaining} downloads left today`);
+      return parts.join(" · ");
+    }
+    case "quota_spent":
+      return s.quota_reset_at > 0 ? `Daily quota used — resumes ${new Date(s.quota_reset_at * 1000).toLocaleString()}.` : s.provider_detail;
+    default:
+      return s.provider_detail;
+  }
+}
+
+// OpenSubtitlesCard is the download source's real state and, for admins, its credentials
+// right here (the same saved keys as Settings → Connections; a value is never shown back).
+// Saving tests the login straight away; Test signs in fresh.
+function OpenSubtitlesCard({ settings, onChanged, children }: { settings: SubtitleSettings; onChanged: () => void; children?: ReactNode }) {
+  const { user } = useMe();
+  const admin = isAdmin(user);
+  const keys = useAPIKeys(admin, onChanged);
+  const chip = PROVIDER_CHIP[settings.provider_state] ?? PROVIDER_CHIP.not_configured;
+  const tone = chip.tone ? `var(--${chip.tone})` : "var(--ink-faint)";
+  return (
+    <div className={card} style={cardStyle}>
+      <div className="text-[14px] font-bold">OpenSubtitles (optional download source)</div>
+      <div className="mt-0.5 text-[11.5px] text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it. Downloading needs a free account as well as the API key.</div>
+      <div className="mt-3 flex items-center gap-2 text-[12px]">
+        <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: chip.tone ? `var(--${chip.tone}-soft)` : "var(--panel-2)", color: tone }}>{chip.label}</span>
+        <span className="text-ink-dim" style={settings.provider_state === "auth_failed" ? { color: "var(--reject)" } : undefined}>{providerLine(settings)}</span>
+      </div>
+      {admin
+        ? <KeyEditor ids={keyRowsFor("opensubtitles_api")} ctl={keys} />
+        : <p className="m-0 mt-2 text-[11.5px] text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</p>}
+      {children}
+    </div>
   );
 }
 

@@ -166,7 +166,12 @@ func (a *api) keyConfigured(ctx context.Context, id string) bool {
 
 // resetKeyStatus forgets a key's recorded Tests after it changed: they said nothing about
 // the new value. The OpenSubtitles login is tested through the API key's Test.
+// Called after every save and clear.
 func (a *api) resetKeyStatus(ctx context.Context, id string) {
+	// Subtitles forgets a rejected login and lets the next sweep retry what it parked.
+	if strings.HasPrefix(id, "opensubtitles_") && a.deps.Subtitles != nil {
+		a.deps.Subtitles.CredentialsChanged(ctx)
+	}
 	if a.deps.ConnStatus == nil {
 		return
 	}

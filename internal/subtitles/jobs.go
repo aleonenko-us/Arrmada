@@ -54,6 +54,11 @@ type Job struct {
 	// worker always takes the lowest non-empty line first, so tonight's import isn't stuck
 	// behind a sweep's worth of hour-long AI runs.
 	Priority int `json:"priority"`
+	// RunID names this run's rows in the attempt ledger (GET /subtitles/history?run_id=).
+	RunID string `json:"run_id,omitempty"`
+	// Outcomes is what each rung did for each language, in the order tried; the Note is
+	// generated from them.
+	Outcomes []Outcome `json:"outcomes,omitempty"`
 }
 
 // Queue priorities, most urgent first. Each has its own FIFO line in Service.pending.
@@ -328,7 +333,7 @@ func (s *Service) QueueSeries(ctx context.Context, seriesID int64) (int, error) 
 		return 0, err
 	}
 	n := 0
-	for _, e := range s.missingEpisodes(ctx, seriesID) {
+	for _, e := range s.missingEpisodes(ctx, seriesID, nil, time.Time{}) {
 		if _, err := s.QueueEpisode(ctx, seriesID, e.season, e.episode, false, PrioManual); err == nil {
 			n++
 		}
@@ -422,8 +427,18 @@ func (s *Service) OnSeriesImported(ctx context.Context, seriesID int64, episodes
 // Decides "missing" from the sidecars on disk alone. It used to go through Library(),
 // which probes every video file for embedded tracks — a full ffprobe pass over the whole
 // catalogue, every six hours, to answer a question a directory listing answers.
+//
+// A language still backing off for that file (backoff.go) doesn't count as missing: the
+// whole sweep reads every backoff row in one query up front.
 func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 	n := 0
+	backoffs, err := s.ledger.LoadBackoffs(ctx)
+	if err != nil {
+		// Backoff only saves API calls and GPU time; without it the sweep just asks again.
+		s.log.Warn("subtitles: could not read backoff, sweeping without it", "err", err)
+		backoffs = nil
+	}
+	now := time.Now()
 	if media == "tv" {
 		list, err := s.series.List(ctx)
 		if err != nil {
@@ -433,7 +448,7 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 			if ctx.Err() != nil {
 				return n, ctx.Err()
 			}
-			for _, e := range s.missingEpisodes(ctx, sm.ID) {
+			for _, e := range s.missingEpisodes(ctx, sm.ID, backoffs, now) {
 				if _, err := s.QueueEpisode(ctx, sm.ID, e.season, e.episode, false, PrioSweep); err == nil {
 					n++
 				}
@@ -453,7 +468,14 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 		if !m.HasFile || m.MovieFilePath == "" {
 			continue
 		}
-		if !movieNeedsSweep(m.MovieFilePath, langs) {
+		key := fmt.Sprintf("m:%d", m.ID)
+		due := 0
+		for _, l := range movieSweepLangs(m.MovieFilePath, langs) {
+			if !backoffs.Blocked(key, l, m.MovieFilePath, now) {
+				due++
+			}
+		}
+		if due == 0 {
 			continue
 		}
 		if _, err := s.QueueMovie(ctx, m.ID, false, PrioSweep); err == nil {
@@ -468,15 +490,23 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 // video — the owner's file under an old name, most likely) doesn't count: regenerating
 // those every six hours would bury what the owner chose. Ensure still replaces it.
 func movieNeedsSweep(path string, langs []string) bool {
+	return len(movieSweepLangs(path, langs)) > 0
+}
+
+// movieSweepLangs is the kept languages the sweep would make for a movie: missing, and
+// not covered by an orphaned subtitle.
+func movieSweepLangs(path string, langs []string) []string {
 	sc := scanSidecars(path, langs, "movie")
 	missing := missingOf(langs, sc.Present)
-	return len(without(missing, orphanCovered(langs, sc.Present, sc.Orphans))) > 0
+	return without(missing, orphanCovered(langs, sc.Present, sc.Orphans))
 }
 
 type epRef struct{ season, episode int }
 
 // missingEpisodes lists one show's episodes that have a file but lack a kept language.
-func (s *Service) missingEpisodes(ctx context.Context, seriesID int64) []epRef {
+// With backoffs (the sweep), a language still backing off for that file isn't lacking;
+// nil (a button press) counts every missing language.
+func (s *Service) missingEpisodes(ctx context.Context, seriesID int64, backoffs Backoffs, now time.Time) []epRef {
 	full, err := s.series.Get(ctx, seriesID)
 	if err != nil {
 		return nil
@@ -488,7 +518,14 @@ func (s *Service) missingEpisodes(ctx context.Context, seriesID int64) []epRef {
 			if !e.HasFile || e.FilePath == "" {
 				continue
 			}
-			if len(missingOf(langs, scanSidecars(e.FilePath, langs, "episode").Present)) == 0 {
+			key := fmt.Sprintf("e:%d:%d:%d", seriesID, e.SeasonNumber, e.EpisodeNumber)
+			due := 0
+			for _, l := range missingOf(langs, scanSidecars(e.FilePath, langs, "episode").Present) {
+				if !backoffs.Blocked(key, l, e.FilePath, now) {
+					due++
+				}
+			}
+			if due == 0 {
 				continue
 			}
 			out = append(out, epRef{e.SeasonNumber, e.EpisodeNumber})
@@ -524,9 +561,30 @@ func (s *Service) update(job *Job, fn func(*Job)) {
 
 // finish sets a job's terminal state + note, and clears the in-flight stage/progress.
 func (s *Service) finish(job *Job, state JobState, note string) {
+	s.finishOutcomes(job, state, note, nil)
+}
+
+// finishOutcomes is finish for a run of the ladder, keeping what each rung did.
+func (s *Service) finishOutcomes(job *Job, state JobState, note string, outcomes []Outcome) {
 	s.mu.Lock()
 	job.State, job.Note, job.Stage, job.Progress = state, note, "", 0
+	job.Outcomes = outcomes
 	s.retireLocked(job)
+	done, snapshot := s.onJobDone, *job
+	s.mu.Unlock()
+	if done != nil {
+		done(snapshot)
+	}
+}
+
+// SetJobDoneHook registers fn to hear about every job the worker finishes (done, skipped,
+// failed or stopped), with its final state, note and outcomes — so another module (a
+// reported problem's subtitles fix) settles when the job does instead of polling Jobs().
+// fn runs on the worker; keep it short. Jobs dropped from the queue before they ran don't
+// call it.
+func (s *Service) SetJobDoneHook(fn func(Job)) {
+	s.mu.Lock()
+	s.onJobDone = fn
 	s.mu.Unlock()
 }
 
