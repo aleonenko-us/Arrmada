@@ -31,6 +31,9 @@ type Client struct {
 	// Bundled marks the packaged qBittorrent. Startup re-adds it only while no row is
 	// marked and the owner hasn't removed it (Service.EnsureBundled).
 	Bundled bool `json:"bundled"`
+	// PathMaps translate the paths this client reports into the ones Arrmada reads, for a
+	// client that sees its downloads under a different path (pathmap.go). Empty for most.
+	PathMaps PathMaps `json:"path_maps,omitempty"`
 }
 
 // DefaultPriority is a new client's place in the order, the same default indexers use.

@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -131,66 +130,36 @@ func parseFeedPage(data []byte) ([]Release, int, error) {
 // Prowlarr shares that host, so a burst of per-series searches hits it all at once.
 const torznabRequestDelay = 1000 * time.Millisecond
 
+// torznabRequestTimeout bounds one Torznab request once its slot in the host's queue has
+// been granted. The queue wait itself only counts against the whole search's deadline, so
+// a person's search waiting behind a sweep doesn't time out before it's asked; this cap
+// keeps one slow host from using all of that.
+const torznabRequestTimeout = 20 * time.Second
+
 // TorznabSearcher queries Torznab/Newznab endpoints over HTTP. It implements
 // Searcher for both the KindTorznab and KindNewznab kinds.
 type TorznabSearcher struct {
 	log  *slog.Logger
 	http *http.Client
-	mu   sync.Mutex
-	// next[host] is the earliest time the next request to that host may start.
-	// Keyed by host so separate trackers don't queue behind each other.
-	next map[string]time.Time
+	// queue spaces requests per host (not per URL) and serves people's searches first.
+	queue *hostThrottle
 }
 
 // NewTorznabSearcher returns a searcher with a sane request timeout.
 func NewTorznabSearcher() *TorznabSearcher {
-	return &TorznabSearcher{
-		http: &http.Client{Timeout: 30 * time.Second},
-		next: map[string]time.Time{},
-	}
+	c := &TorznabSearcher{http: &http.Client{Timeout: 30 * time.Second}}
+	c.queue = newHostThrottle(func() *slog.Logger { return c.log })
+	return c
 }
 
 // SetLogger attaches a logger so each request page can be traced. Optional — the searcher
 // works without one.
 func (c *TorznabSearcher) SetLogger(l *slog.Logger) { c.log = l }
 
-// throttle reserves this request's slot for the endpoint's host and waits for it.
-// The slot is claimed under the lock but slept for outside it, so concurrent callers
-// to one host queue in order while other hosts proceed in parallel.
-func (c *TorznabSearcher) throttle(ctx context.Context, endpoint string) error {
-	host := endpoint
-	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
-		host = u.Host
-	}
-
-	c.mu.Lock()
-	slot := time.Now()
-	if next, ok := c.next[host]; ok && next.After(slot) {
-		slot = next
-	}
-	c.next[host] = slot.Add(torznabRequestDelay)
-	c.mu.Unlock()
-
-	wait := time.Until(slot)
-	if wait <= 0 {
-		return nil
-	}
-	t := time.NewTimer(wait)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return nil
-	case <-ctx.Done():
-		// Release the abandoned slot if nobody queued behind it, so a cancelled
-		// search doesn't leave a dead gap that delays the host's next request.
-		c.mu.Lock()
-		if next, ok := c.next[host]; ok && next.Equal(slot.Add(torznabRequestDelay)) {
-			c.next[host] = slot
-		}
-		c.mu.Unlock()
-		return ctx.Err()
-	}
-}
+// queuesPerHost marks a searcher whose requests wait in a per-host queue and carry their
+// own per-request deadline, so the fan-out must not put the queue wait under a
+// per-indexer deadline (see Service.Search).
+func (c *TorznabSearcher) queuesPerHost() {}
 
 // waitUntil sleeps until the reserved slot time, or until ctx is cancelled.
 // Shared by the native trackers' rate limiters so none of them block a
@@ -369,9 +338,11 @@ func (c *TorznabSearcher) TestCaps(ctx context.Context, idx Indexer) (Caps, erro
 }
 
 func (c *TorznabSearcher) get(ctx context.Context, endpoint string) ([]byte, error) {
-	if err := c.throttle(ctx, endpoint); err != nil {
+	if err := c.queue.wait(ctx, endpoint); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, torznabRequestTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, sanitizeErr(endpoint, err)

@@ -572,7 +572,19 @@ func (a *api) testConnection(ctx context.Context, kind, ref string) (detail stri
 		if errors.Is(err, download.ErrNotFound) {
 			return "", nil, false
 		}
-		return "Connected", err, true
+		if err != nil {
+			return "", err, true
+		}
+		// Connected: now whether Arrmada can see where it saves. A client that can't
+		// report its paths (or whose preferences can't be read) is just "Connected".
+		rep, perr := a.clientPaths(ctx, id)
+		if perr != nil {
+			return "Connected", nil, true
+		}
+		if !rep.OK {
+			return "", errors.New("Connected, but " + rep.Summary), true
+		}
+		return "Connected. " + rep.Summary, nil, true
 
 	case connstatus.KindFlareSolverr:
 		if ref != flareSolverrRef {

@@ -491,6 +491,29 @@ func (q *QBittorrent) ListenPort(ctx context.Context, dc Client) (int, error) {
 	return p.ListenPort, nil
 }
 
+// DefaultSavePath reads where qBittorrent saves downloads by default, as qBittorrent
+// names it (before any path mapping).
+func (q *QBittorrent) DefaultSavePath(ctx context.Context, dc Client) (string, error) {
+	resp, err := q.getAuthed(ctx, dc, "/api/v2/app/preferences")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("qbittorrent: preferences HTTP %d", resp.StatusCode)
+	}
+	var p struct {
+		SavePath string `json:"save_path"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&p); err != nil {
+		return "", fmt.Errorf("qbittorrent: preferences: %w", err)
+	}
+	if p.SavePath == "" {
+		return "", errors.New("qbittorrent didn't say where it saves downloads")
+	}
+	return p.SavePath, nil
+}
+
 // List returns the current torrents. It intentionally does NOT filter by the
 // client's category: Arrmada manages several internal categories on the bundled
 // client (movies use "arrmada", series use "arrmada-tv"), and callers that need a

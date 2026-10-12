@@ -258,8 +258,12 @@ func (s *Service) Add(ctx context.Context, req AddRequest) error {
 			unreachable = append(unreachable, fmt.Errorf("%s: no downloader for kind %q", c.Name, c.Kind))
 			continue
 		}
+		// The save path is Arrmada's downloads folder; a client that sees it under another
+		// path is sent its own name for it (no mappings: unchanged).
+		creq := req
+		creq.SavePath = c.PathMaps.ToRemote(req.SavePath)
 		start := time.Now()
-		err := impl.Add(ctx, c, req)
+		err := impl.Add(ctx, c, creq)
 		if err == nil {
 			s.record(ctx, c, nil, time.Since(start))
 			if len(unreachable) > 0 {

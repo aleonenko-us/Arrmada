@@ -26,6 +26,7 @@ import {
 import { qualityApi } from "../lib/qualityApi";
 import { UnwantedRules, unwantedSummary } from "./quality/UnwantedRules";
 import { RankingCard } from "./quality/RankingCard";
+import { CustomFormatsEditor } from "./quality/FormatEditor";
 import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
 import { ReleaseExplain } from "../components/ReleaseExplain";
@@ -80,16 +81,6 @@ const MAX_SOURCES = [
   { v: "BluRay", l: "up to BluRay (no Remux)" },
   { v: "WEB-DL", l: "up to WEB" },
   { v: "DVD", l: "up to DVD" },
-];
-
-const CONDITION_TYPES = [
-  { v: "dynamic_range", l: "Dynamic range (DV/HDR10…)" },
-  { v: "audio", l: "Audio (Atmos/TrueHD…)" },
-  { v: "codec", l: "Codec (x265/x264…)" },
-  { v: "source", l: "Source (BluRay/WEB-DL…)" },
-  { v: "resolution", l: "Resolution" },
-  { v: "edition", l: "Edition (Director's Cut…)" },
-  { v: "release_group", l: "Release group" },
 ];
 
 // Common junk file-types / sources worth one-click rejecting.
@@ -1059,35 +1050,13 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 
 function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: (p: Partial<StoredProfile>) => void; otherFormats: FormatInfo[] }) {
   const [scores, setScores] = useState(false);
-  const [cfName, setCfName] = useState("");
-  const [cfType, setCfType] = useState("release_group");
-  const [cfValue, setCfValue] = useState("");
-  const [cfScore, setCfScore] = useState(50);
 
-  const setScore = (name: string, score: number) => {
-    const next = { ...sp.format_scores };
-    if (score === 0) delete next[name];
-    else next[name] = score;
-    patch({ format_scores: next });
-  };
   const setFormat = (name: string, score: number, required: boolean) => {
     const next = { ...sp.format_scores };
     if (score === 0) delete next[name];
     else next[name] = score;
     const cur = sp.required_formats ?? [];
     patch({ format_scores: next, required_formats: required ? [...cur.filter((n) => n !== name), name] : cur.filter((n) => n !== name) });
-  };
-  const addCustom = () => {
-    if (!cfName.trim() || !cfValue.trim()) return;
-    const cf = { name: cfName.trim(), conditions: [{ type: cfType, value: cfValue.trim() }] };
-    patch({ custom_formats: [...(sp.custom_formats ?? []), cf], format_scores: { ...sp.format_scores, [cf.name]: cfScore } });
-    setCfName("");
-    setCfValue("");
-  };
-  const removeCustom = (name: string) => {
-    const next = { ...sp.format_scores };
-    delete next[name];
-    patch({ custom_formats: (sp.custom_formats ?? []).filter((c) => c.name !== name), format_scores: next });
   };
 
   return (
@@ -1107,30 +1076,7 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
         </div>
       </div>
 
-      <div>
-        <div className="text-[12px] font-semibold">Custom formats</div>
-        <p className="mb-2 text-[10.5px] text-ink-faint">Match anything the parser reads — a favourite release group, an edition, a source — and score it.</p>
-        {(sp.custom_formats ?? []).map((c) => (
-          <div key={c.name} className="mb-2 flex items-center gap-2 rounded-lg p-2 text-[11.5px]" style={{ background: "var(--panel-2)" }}>
-            <span className="font-semibold">{c.name}</span>
-            <span className="font-mono text-[10.5px] text-ink-faint">{c.conditions[0]?.type} = {c.conditions[0]?.value}</span>
-            <input type="number" aria-label={`${c.name} score`} value={sp.format_scores[c.name] ?? 0} onChange={(e) => setScore(c.name, Number(e.target.value))}
-              className="ml-auto w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-[11.5px]" style={{ ...fieldStyle, color: (sp.format_scores[c.name] ?? 0) >= 0 ? "var(--good)" : "var(--reject)" }} />
-            <button onClick={() => removeCustom(c.name)} aria-label={`Remove ${c.name}`} className="text-ink-faint hover:text-[var(--reject)]">✕</button>
-          </div>
-        ))}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input value={cfName} onChange={(e) => setCfName(e.target.value)} placeholder="Format name" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={fieldStyle} />
-          <select value={cfType} onChange={(e) => setCfType(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={fieldStyle}>
-            {CONDITION_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
-          </select>
-          <input value={cfValue} onChange={(e) => setCfValue(e.target.value)} placeholder="FraMeSToR" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={fieldStyle} />
-          <div className="flex items-center gap-2">
-            <input type="number" aria-label="Score" value={cfScore} onChange={(e) => setCfScore(Number(e.target.value))} className="w-full rounded-lg px-2 py-1.5 text-right font-mono text-[12px]" style={fieldStyle} />
-            <button onClick={addCustom} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
-          </div>
-        </div>
-      </div>
+      <CustomFormatsEditor sp={sp} patch={patch} />
 
       <div>
         <div className="text-[12px] font-semibold">Name contains</div>

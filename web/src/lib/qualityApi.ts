@@ -1,4 +1,21 @@
-import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
+import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
+
+// One value a custom-format condition can take (quality.VocabValue): what's stored, and
+// what the editor shows.
+export interface VocabValue { value: string; label: string }
+
+// A problem with one custom format (quality.FormatProblem). index is the format's position
+// in the profile; condition the row's, -1 for the format as a whole.
+export interface FormatProblem { format: string; index: number; condition: number; message: string }
+
+// The custom-format editor's live check (quality.FormatReport): errors block a save,
+// warnings never match, matches[i] is how many of `samples` releases format i matches.
+export interface FormatReport { errors: FormatProblem[]; warnings: FormatProblem[]; matches: number[]; samples: number }
+
+// One TRaSH format converted for a profile (quality.TrashFormat), and what didn't carry over.
+export interface TrashFormat { format: QualityCustomFormat; trash_id?: string; suggested_score?: number; warnings: string[] }
+// An import's answer: formats to add, and formats (or input) that couldn't be imported.
+export interface TrashImport { formats: TrashFormat[]; warnings: string[] }
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
@@ -19,9 +36,14 @@ export const qualityApi = {
   rankingShadow: (limit = 500) => req<RankingShadowReport>(`/api/v1/quality/ranking-shadow?limit=${limit}`),
   qualityProfiles: (media: string) =>
     req<{
-      profiles: QualityProfileInfo[]; formats: FormatInfo[]; music_ladder?: string[]; music_presets?: MusicPreset[];
+      profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[];
       unwanted?: UnwantedItemInfo[]; unwanted_groups?: string[];
     }>(`/api/v1/quality/profiles?media=${media}`),
+  checkFormats: (formats: QualityCustomFormat[]) =>
+    req<FormatReport>("/api/v1/quality/formats/check", { method: "POST", body: JSON.stringify({ custom_formats: formats }) }),
+  // Converts pasted TRaSH custom-format JSON; saves nothing.
+  importTrash: (json: string, media: string) =>
+    req<TrashImport>("/api/v1/quality/import-trash", { method: "POST", body: JSON.stringify({ json, media }) }),
   libraryFitProfiles: (media: string) => req<{ profiles: Record<string, FitCounts> }>(`/api/v1/library/fit/profiles?media=${media}`),
   libraryFitPreview: (profile: StoredProfile) =>
     req<{ scope: "profile" | "library"; counts: FitCounts }>("/api/v1/library/fit/preview", { method: "POST", body: JSON.stringify({ profile }) }),

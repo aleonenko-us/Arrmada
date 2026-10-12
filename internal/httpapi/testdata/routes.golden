@@ -377,7 +377,9 @@ POST /api/v1/notifications/test admin -
 POST /api/v1/notifications/{id}/test admin -
 POST /api/v1/quality/default staff -
 POST /api/v1/quality/explain staff -
+POST /api/v1/quality/formats/check staff -
 POST /api/v1/quality/impact staff -
+POST /api/v1/quality/import-trash staff -
 POST /api/v1/quality/preview staff -
 POST /api/v1/quality/profiles staff -
 POST /api/v1/quality/profiles/{id}/hold-existing staff -

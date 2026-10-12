@@ -89,7 +89,7 @@ func (a *api) handleListQualityProfiles(w http.ResponseWriter, r *http.Request) 
 	if list == nil {
 		list = []quality.ProfileInfo{}
 	}
-	body := map[string]any{"profiles": list, "formats": quality.Catalog()}
+	body := map[string]any{"profiles": list, "formats": quality.Catalog(), "vocabulary": quality.ConditionVocabulary()}
 	if media == quality.MediaMovie || media == quality.MediaSeries {
 		// The Unwanted pack's rows and their defaults, for the Rules section.
 		body["unwanted"] = quality.UnwantedCatalog()
@@ -143,6 +143,10 @@ func (a *api) handleCreateQualityProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	created, err := a.deps.Quality.Create(r.Context(), sp)
+	if invalid := (*quality.InvalidProfileError)(nil); errors.As(err, &invalid) {
+		a.writeError(w, http.StatusBadRequest, invalid.Error())
+		return
+	}
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not create profile")
 		return
@@ -171,7 +175,12 @@ func (a *api) handleUpdateQualityProfile(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	if err := a.deps.Quality.Update(r.Context(), id, sp); err != nil {
+	err := a.deps.Quality.Update(r.Context(), id, sp)
+	if invalid := (*quality.InvalidProfileError)(nil); errors.As(err, &invalid) {
+		a.writeError(w, http.StatusBadRequest, invalid.Error())
+		return
+	}
+	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not update profile")
 		return
 	}

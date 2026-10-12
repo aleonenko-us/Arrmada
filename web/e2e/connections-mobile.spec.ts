@@ -34,8 +34,16 @@ test.describe("admin on a phone", () => {
     await expect(page.locator("#plex").getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
+    // INT-18: the add-indexer catalogue and a preset's form fit the phone too.
     await page.getByRole("button", { name: "+ Add indexer" }).click();
-    await expect(page.getByRole("form", { name: "Add an indexer" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Add an indexer" });
+    await expect(dialog.getByRole("button", { name: /MyAnonaMouse/ })).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+    await dialog.getByRole("button", { name: /TorrentLeech/ }).click();
+    const form = page.getByRole("form", { name: "Add an indexer" });
+    await expect(form.getByLabel("Username")).toBeVisible();
+    const box = await page.getByRole("dialog").boundingBox();
+    expect(box && box.x >= 0 && box.x + box.width <= 375).toBe(true);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 

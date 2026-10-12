@@ -1,13 +1,19 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/health"
 )
 
 // clientView is a download client as the settings page sees it: its settings (the
@@ -88,6 +94,25 @@ type createClientRequest struct {
 	// Priority is the client's place in the order new downloads try (1 = first); left
 	// out, a new client gets the default and an edited one keeps its own.
 	Priority *int `json:"priority"`
+	// PathMaps replaces the client's remote path mappings; left out, an edited client
+	// keeps its own (so an on/off toggle doesn't need to know them).
+	PathMaps *[]download.PathMap `json:"path_maps"`
+}
+
+// clientPathMaps checks the mappings in a request. A client that is the bundled
+// qBittorrent shares Arrmada's own folders, so it takes none.
+func (a *api) clientPathMaps(req createClientRequest, bundled bool, keep download.PathMaps) (download.PathMaps, error) {
+	if req.PathMaps == nil {
+		return keep, nil
+	}
+	maps, err := download.ValidatePathMaps(*req.PathMaps, a.deps.Config.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	if bundled && len(maps) > 0 {
+		return nil, errors.New("the bundled qBittorrent shares Arrmada's folders, so it needs no path mapping")
+	}
+	return maps, nil
 }
 
 func (a *api) handleCreateDownloadClient(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +137,11 @@ func (a *api) handleCreateDownloadClient(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	maps, err := a.clientPathMaps(req, false, nil)
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	created, err := a.deps.Downloads.Create(r.Context(), download.Client{
 		Name:     req.Name,
@@ -121,6 +151,7 @@ func (a *api) handleCreateDownloadClient(w http.ResponseWriter, r *http.Request)
 		Password: req.Password,
 		Enabled:  enabled,
 		Priority: priority,
+		PathMaps: maps,
 	})
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not create download client")
@@ -170,6 +201,11 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	maps, err := a.clientPathMaps(req, cur.Bundled, cur.PathMaps)
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	updated, err := a.deps.Downloads.Update(r.Context(), download.Client{
 		ID:       id,
 		Name:     req.Name,
@@ -178,6 +214,7 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 		Password: req.Password,
 		Enabled:  enabled,
 		Priority: priority,
+		PathMaps: maps,
 	})
 	if errors.Is(err, download.ErrNotFound) {
 		a.writeError(w, http.StatusNotFound, "download client not found")
@@ -226,6 +263,10 @@ func (a *api) handleRestoreBundledClient(w http.ResponseWriter, r *http.Request)
 	a.writeJSON(w, http.StatusOK, map[string]any{"restored": true})
 }
 
+// handleTestDownloadClient logs in to a client and, once that works, checks its paths:
+// where it saves, whether Arrmada can see that and its newest finished download, and a
+// mapping that would fix it. ok is the connection; paths.ok is whether Arrmada can see
+// what it downloads.
 func (a *api) handleTestDownloadClient(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
@@ -240,7 +281,23 @@ func (a *api) handleTestDownloadClient(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	out := map[string]any{"ok": true}
+	if rep, perr := a.clientPaths(r.Context(), id); perr == nil {
+		out["paths"] = rep
+	} else if !errors.Is(perr, download.ErrNoPathCheck) {
+		out["paths_error"] = connstatus.Redact(perr.Error())
+	}
+	a.writeJSON(w, http.StatusOK, out)
+}
+
+// clientPaths runs a client's path check against Arrmada's folders as they are now.
+func (a *api) clientPaths(ctx context.Context, id int64) (download.PathReport, error) {
+	roots := a.roots()
+	env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: a.deps.Config.DataDir}
+	for _, lib := range roots.Libraries(ctx) {
+		env.Libraries = append(env.Libraries, lib.Path)
+	}
+	return a.deps.Downloads.TestPaths(ctx, id, env)
 }
 
 // handleDownloadClientStatus reports live client info — currently the incoming
@@ -269,4 +326,64 @@ func (a *api) handleQueue(w http.ResponseWriter, r *http.Request) {
 		items = []download.Item{}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// unseenSample is how many of a client's newest finished downloads the paths check
+// looks at: enough to tell a missing mount from one deleted torrent, few enough that a
+// client seeding hundreds doesn't mean hundreds of disk reads a minute.
+const unseenSample = 20
+
+// unseenDownloads is, per client other than the bundled one, the finished downloads in
+// the shared queue snapshot whose (mapped) path isn't on disk here. The bundled client
+// saves into Arrmada's own downloads folder and is left out; a torrent the client itself
+// says has lost its files is too, since no mapping would bring it back.
+func (a *api) unseenDownloads(ctx context.Context) ([]health.UnseenDownloads, error) {
+	clients, err := a.deps.Downloads.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	watch := map[int64]download.Client{}
+	for _, c := range clients {
+		if !c.Bundled {
+			watch[c.ID] = c
+		}
+	}
+	if len(watch) == 0 {
+		return nil, nil
+	}
+	snap, err := a.deps.Downloads.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byClient := map[int64][]download.Item{}
+	for _, it := range snap.Items {
+		if _, ok := watch[it.ClientID]; !ok || !it.Complete() || it.ContentPath == "" || it.RawState == "missingFiles" {
+			continue
+		}
+		byClient[it.ClientID] = append(byClient[it.ClientID], it)
+	}
+	var out []health.UnseenDownloads
+	for id, items := range byClient {
+		sort.Slice(items, func(i, j int) bool { return items[i].AddedOn > items[j].AddedOn })
+		if len(items) > unseenSample {
+			items = items[:unseenSample]
+		}
+		u := health.UnseenDownloads{ClientID: id, ClientName: watch[id].Name}
+		for _, it := range items {
+			if filepath.IsAbs(it.ContentPath) {
+				if _, err := os.Stat(it.ContentPath); err == nil {
+					continue
+				}
+			}
+			if u.Count == 0 {
+				u.Example = it.ContentPath
+			}
+			u.Count++
+		}
+		if u.Count > 0 {
+			out = append(out, u)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ClientID < out[j].ClientID })
+	return out, nil
 }

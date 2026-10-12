@@ -401,6 +401,8 @@ func (s *Service) Test(ctx context.Context, id int64) error {
 	}
 	// A Test shows on the row like any search: a pass clears a backoff, and a failure is
 	// recorded without moving the backoff ladder — pressing Test shouldn't pause anything.
+	// Someone pressed it and is waiting, so it goes ahead of queued sweep requests.
+	ctx = WithInteractive(ctx)
 	start := time.Now()
 	caps, err := testWith(ctx, searcher, idx)
 	s.record(ctx, idx, err, time.Since(start), false)
@@ -445,7 +447,7 @@ func (s *Service) TestSettings(ctx context.Context, idx Indexer) (string, error)
 	if err != nil {
 		return "", err
 	}
-	caps, err := testWith(ctx, searcher, idx)
+	caps, err := testWith(WithInteractive(ctx), searcher, idx)
 	if err != nil || caps == nil {
 		return "", err
 	}
@@ -606,7 +608,7 @@ func (s *Service) fetchRecent(ctx context.Context, limit int) (SearchResult, err
 			defer wg.Done()
 			// A child deadline per indexer: one hung feed must not consume the
 			// whole sweep's budget while every other result waits on wg.Wait.
-			ictx, cancel := context.WithTimeout(ctx, perIndexerTimeout)
+			ictx, cancel := indexerCtx(ctx, rec)
 			defer cancel()
 			// A panic in one indexer's parser becomes that indexer's error; the others'
 			// results still come back.
@@ -677,6 +679,18 @@ func (s *Service) fetchRecent(ctx context.Context, limit int) (SearchResult, err
 // everyone. Its timeout error lands in the per-indexer Errors map as usual.
 const perIndexerTimeout = 25 * time.Second
 
+// indexerCtx is one indexer's share of a fan-out. A Torznab searcher queues per host and
+// bounds each request itself once its slot comes up (torznabRequestTimeout), so it only
+// gets the fan-out's own deadline: waiting behind other indexers on the same Prowlarr
+// mustn't use up a deadline that was meant for a hung indexer. Everything else keeps
+// perIndexerTimeout.
+func indexerCtx(ctx context.Context, searcher any) (context.Context, context.CancelFunc) {
+	if _, ok := searcher.(interface{ queuesPerHost() }); ok {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, perIndexerTimeout)
+}
+
 // Search queries every enabled indexer concurrently and merges the results,
 // ranked by seeders (desc) then indexer priority.
 func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, error) {
@@ -727,12 +741,11 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (SearchResult, erro
 		wg.Add(1)
 		go func(idx Indexer) {
 			defer wg.Done()
+			searcher, err := s.registry.For(idx.Kind)
 			// A child deadline per indexer: one hung indexer must not consume the
 			// whole search's budget while every other result waits on wg.Wait.
-			ictx, cancel := context.WithTimeout(ctx, perIndexerTimeout)
+			ictx, cancel := indexerCtx(ctx, searcher)
 			defer cancel()
-
-			searcher, err := s.registry.For(idx.Kind)
 			if err == nil {
 				// A panic in one indexer's parser becomes that indexer's error; the others'
 				// results still come back.
