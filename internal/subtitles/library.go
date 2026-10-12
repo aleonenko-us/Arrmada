@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -59,42 +60,20 @@ type FileSubs struct {
 	Orphans     []Orphan     `json:"orphans,omitempty"` // movies: subtitles in the folder paired with no video
 }
 
-// Library probes every downloaded movie (media="movies") or episode (media="tv") and returns its
-// subtitle coverage against the kept languages. Cached probes keep it fast after the first scan.
+// ErrFlatTV: TV is never listed flat, one probed row per episode (tens of thousands of
+// them); it's per show (SeriesGroups) or one show's episodes (SeriesEpisodes).
+var ErrFlatTV = errors.New("TV isn't listed flat: use group=series or series=<id>")
+
+// Library probes every downloaded movie (media="movies") and returns its subtitle coverage
+// against the kept languages. Cached probes keep it fast after the first scan.
 func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error) {
+	if media != "movies" {
+		return nil, ErrFlatTV
+	}
 	langs := s.languages(ctx)
 	canDownload := s.provider != nil && s.provider.CanDownload()
 	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
 	var out []FileSubs
-
-	if media == "tv" {
-		list, err := s.series.List(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, sm := range list {
-			full, err := s.series.Get(ctx, sm.ID)
-			if err != nil {
-				continue
-			}
-			for _, sn := range full.Seasons {
-				for _, e := range sn.Episodes {
-					if !e.HasFile || e.FilePath == "" {
-						continue
-					}
-					fs := FileSubs{
-						Kind: "episode", SeriesID: full.ID, Season: e.SeasonNumber, Episode: e.EpisodeNumber,
-						Title: fmt.Sprintf("%s - S%02dE%02d", full.Title, e.SeasonNumber, e.EpisodeNumber),
-						Year:  full.Year, PosterURL: full.PosterURL, Path: e.FilePath,
-					}
-					s.fillCoverage(ctx, &fs, langs, canDownload)
-					applyBackoff(&fs, backoffs, now)
-					out = append(out, fs)
-				}
-			}
-		}
-		return out, nil
-	}
 
 	list, err := s.movies.List(ctx)
 	if err != nil {

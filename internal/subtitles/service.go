@@ -9,9 +9,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/langs"
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 	"github.com/tristenlammi/arrmada/internal/settings"
@@ -48,6 +50,12 @@ type Service struct {
 	whisper  *whisperGen
 	ledger   *Ledger // provenance, attempts and the blocklist (ledger.go); nil-safe
 	log      *slog.Logger
+	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
+	// libraryChanged hears about the folder of each sidecar change (Plex's scanner; events.go).
+	libraryChanged atomic.Pointer[func(kind, dir string)]
+
+	// repair is the one-shot forced-track repair pass (repair.go).
+	repair forcedRepair
 
 	// Test seams for process(). Nil means the real code path: resolveFile, probeCached,
 	// the ffmpeg extraction, and s.whisper.
@@ -59,6 +67,8 @@ type Service struct {
 	rateWait time.Duration
 	// ffprobeRun is probeCached's ffprobe call (probeSubs when nil).
 	ffprobeRun func(ctx context.Context, ffprobe, path string) (*mediaInfo, error)
+	// passFn is one library pass (Library + SeriesGroups when nil).
+	passFn func(ctx context.Context) ([]FileSubs, []SeriesGroup, error)
 
 	// blocklist returns the provider file ids never to download again for a media key
 	// (Job.key() format). The ledger (SUB-11) sets it; nil blocks nothing. An error stops
@@ -129,6 +139,9 @@ type Settings struct {
 	QuotaRemaining int   `json:"quota_remaining"` // -1 = unknown
 	QuotaResetAt   int64 `json:"quota_reset_at"`  // unix seconds; 0 = not paused
 	Pending        int   `json:"pending"`         // jobs waiting for the worker
+	// Stale: the Library and Overview figures were counted for a different set of kept
+	// languages; a recount is running or about to.
+	Stale bool `json:"stale"`
 	// MinScore is the match score (0-100) a download without a hash match needs.
 	MinScore int `json:"min_score"`
 	// What OpenSubtitles actually said: not_configured | needs_account | unverified | ok |
@@ -154,6 +167,9 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		Pending:        s.Pending(),
 		MinScore:       s.minScore(ctx),
 	}
+	s.snap.mu.Lock()
+	out.Stale = s.staleLocked(ctx)
+	s.snap.mu.Unlock()
 	st := s.providerStatus()
 	out.ProviderState, out.ProviderDetail, out.VIP, out.AllowedDownloads = st.State, st.Detail, st.VIP, st.Allowed
 	if q, ok := s.provider.(quotaReporter); ok {
@@ -225,6 +241,9 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 		// longer wanted); let the next sweep look again.
 		if strings.Join(clean, ",") != before {
 			s.ClearBackoff(ctx, EventLangs)
+			// And every count is stale: recount now rather than at the next six-hourly
+			// pass. Saving the same list starts nothing.
+			s.recountIfLanguagesChanged(ctx, before)
 		}
 	}
 	return nil
@@ -281,147 +300,6 @@ func (s *Service) languages(ctx context.Context) []string {
 		return defaultLanguages
 	}
 	return out
-}
-
-// MovieStatus is a movie's subtitle coverage for the dashboard.
-type MovieStatus struct {
-	ID        int64    `json:"id"`
-	Title     string   `json:"title"`
-	Year      int      `json:"year"`
-	PosterURL string   `json:"poster_url,omitempty"`
-	Present   []string `json:"present"`
-	Missing   []string `json:"missing"`
-}
-
-// MovieStatuses lists downloaded movies with their per-language subtitle coverage.
-func (s *Service) MovieStatuses(ctx context.Context) ([]MovieStatus, error) {
-	langs := s.languages(ctx)
-	list, err := s.movies.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var out []MovieStatus
-	for _, m := range list {
-		if !m.HasFile || m.MovieFilePath == "" {
-			continue
-		}
-		present := scanSidecars(m.MovieFilePath, langs, "movie").Present
-		out = append(out, MovieStatus{
-			ID: m.ID, Title: m.Title, Year: m.Year, PosterURL: m.PosterURL,
-			Present: nonNil(present), Missing: nonNil(missingOf(langs, present)),
-		})
-	}
-	return out, nil
-}
-
-// SeriesStatus is a series' subtitle coverage rolled up across episodes.
-type SeriesStatus struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Year        int    `json:"year"`
-	PosterURL   string `json:"poster_url,omitempty"`
-	Episodes    int    `json:"episodes"`     // episodes with a file on disk
-	Complete    int    `json:"complete"`     // episodes with every wanted language
-	MissingSubs int    `json:"missing_subs"` // episodes missing at least one language
-}
-
-// SeriesStatuses lists series with rolled-up episode subtitle coverage.
-func (s *Service) SeriesStatuses(ctx context.Context) ([]SeriesStatus, error) {
-	langs := s.languages(ctx)
-	list, err := s.series.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var out []SeriesStatus
-	for _, sr := range list {
-		full, err := s.series.Get(ctx, sr.ID)
-		if err != nil {
-			continue
-		}
-		st := SeriesStatus{ID: sr.ID, Title: sr.Title, Year: sr.Year, PosterURL: sr.PosterURL}
-		for _, season := range full.Seasons {
-			for _, ep := range season.Episodes {
-				if !ep.HasFile || ep.FilePath == "" {
-					continue
-				}
-				st.Episodes++
-				if len(missingOf(langs, scanSidecars(ep.FilePath, langs, "episode").Present)) == 0 {
-					st.Complete++
-				} else {
-					st.MissingSubs++
-				}
-			}
-		}
-		if st.Episodes > 0 {
-			out = append(out, st)
-		}
-	}
-	return out, nil
-}
-
-// GrabMovie fetches every missing wanted-language subtitle for one movie. Returns how many
-// subtitle files were written.
-func (s *Service) GrabMovie(ctx context.Context, id int64) (int, error) {
-	m, err := s.movies.Get(ctx, id)
-	if err != nil {
-		return 0, err
-	}
-	if !m.HasFile || m.MovieFilePath == "" {
-		return 0, nil
-	}
-	langs := s.languages(ctx)
-	missing := missingOf(langs, scanSidecars(m.MovieFilePath, langs, "movie").Present)
-	grabbed := 0
-	hash, _ := osHash(m.MovieFilePath) // "" on error: the search still works, just unranked by sync
-	for _, lang := range missing {
-		ref := fileRef{Path: m.MovieFilePath, IMDB: m.IMDBID, Title: m.Title, Year: m.Year,
-			MediaKey: fmt.Sprintf("m:%d", m.ID), SourceRelease: m.SourceRelease}
-		res, err := s.grabOne(ctx, ref, hash, lang)
-		if err != nil {
-			s.log.Warn("subtitle grab failed", "movie", m.Title, "lang", lang, "err", err)
-			continue
-		}
-		if res.Written {
-			grabbed++
-		}
-	}
-	return grabbed, nil
-}
-
-// GrabSeries fetches missing subtitles for every downloaded episode of a series.
-func (s *Service) GrabSeries(ctx context.Context, id int64) (int, error) {
-	full, err := s.series.Get(ctx, id)
-	if err != nil {
-		return 0, err
-	}
-	langs := s.languages(ctx)
-	grabbed := 0
-	for _, season := range full.Seasons {
-		for _, ep := range season.Episodes {
-			if !ep.HasFile || ep.FilePath == "" {
-				continue
-			}
-			missing := missingOf(langs, scanSidecars(ep.FilePath, langs, "episode").Present)
-			if len(missing) == 0 {
-				continue
-			}
-			hash, _ := osHash(ep.FilePath)
-			for _, lang := range missing {
-				ref := fileRef{Path: ep.FilePath, IMDB: full.IMDBID, Title: full.Title, Year: full.Year,
-					Season: ep.SeasonNumber, Episode: ep.EpisodeNumber, SourceRelease: ep.SourceRelease,
-					MediaKey: fmt.Sprintf("e:%d:%d:%d", id, ep.SeasonNumber, ep.EpisodeNumber)}
-				res, err := s.grabOne(ctx, ref, hash, lang)
-				if err != nil {
-					s.log.Warn("subtitle grab failed", "series", full.Title, "s", ep.SeasonNumber, "e", ep.EpisodeNumber, "lang", lang, "err", err)
-					continue
-				}
-				if res.Written {
-					grabbed++
-				}
-			}
-		}
-	}
-	return grabbed, nil
 }
 
 // AutoGrab queues subtitle-ensure jobs for whichever media types have auto-mode enabled — the

@@ -628,10 +628,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/subtitles/library/series/{id}", a.requireRole(auth.RoleManager, a.handleSubtitleQueueSeries))
 	mux.HandleFunc("GET /api/v1/subtitles/settings", a.requireRole(auth.RoleManager, a.handleGetSubtitleSettings))
 	mux.HandleFunc("PUT /api/v1/subtitles/settings", a.requireRole(auth.RoleManager, a.handleUpdateSubtitleSettings))
-	mux.HandleFunc("GET /api/v1/subtitles/movies", a.requireRole(auth.RoleManager, a.handleSubtitleMovies))
-	mux.HandleFunc("GET /api/v1/subtitles/series", a.requireRole(auth.RoleManager, a.handleSubtitleSeries))
-	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/search", a.requireRole(auth.RoleManager, a.handleSubtitleSearchMovie))
-	mux.HandleFunc("POST /api/v1/subtitles/series/{id}/search", a.requireRole(auth.RoleManager, a.handleSubtitleSearchSeries))
+	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/adopt", a.requireRole(auth.RoleManager, a.handleSubtitleAdoptOrphan))
+	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/replace", a.requireRole(auth.RoleManager, a.handleSubtitleReplaceOrphan))
+	mux.HandleFunc("POST /api/v1/subtitles/orphans/bulk", a.requireRole(auth.RoleManager, a.handleSubtitleBulkOrphans))
 
 	// Books (Readarr replacement — Open Library metadata + ebook acquisition).
 	mux.HandleFunc("GET /api/v1/books", a.requireRole(auth.RoleManager, a.handleListBooks))
