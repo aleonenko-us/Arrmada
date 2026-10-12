@@ -849,7 +849,13 @@ func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	if books.ValidAuthorKey(req.AuthorKey) {
 		authorID, err = a.deps.Books.UpsertByKey(r.Context(), req.AuthorKey, authorNameFor(req.Name, req.AuthorKey, works))
 		if err == nil {
-			err = a.deps.Books.SetMonitoring(r.Context(), authorID, monitored, true, profile)
+			// Adding books never stops following an author someone already follows
+			// (Search on add off leaves the new books unmonitored, not the author).
+			follow := monitored
+			if cur, gerr := a.deps.Books.GetAuthor(r.Context(), authorID); gerr == nil && cur.Monitored {
+				follow = true
+			}
+			err = a.deps.Books.SetMonitoring(r.Context(), authorID, follow, true, profile)
 		}
 		if err != nil {
 			a.deps.Log.Warn("add author: could not save the author", "err", err)
