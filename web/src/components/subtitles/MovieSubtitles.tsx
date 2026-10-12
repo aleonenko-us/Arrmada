@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { subtitleFileApi, type SubFileView } from "../../lib/subtitleFileApi";
 import { LazySubtitleDrawer } from "./LazySubtitleDrawer";
-import { WantChip, sidecarForLang } from "./WantChip";
+import { WantChip, sidecarForWant } from "./WantChip";
 
 // MovieSubtitles is the Movie page's subtitle line for the file Subtitles works on (SUB-29):
 // one chip per kept language ("✓ en · OpenSubtitles · Health 92", "es missing · next try in
@@ -16,12 +16,14 @@ export function MovieSubtitles({ movieId, fallback, onChanged }: { movieId: numb
 
   if (failed && !view) return <>{fallback}</>;
   if (!view) return null;
-  const forced = view.sidecars.filter((s) => s.variant === "forced");
+  // Forced files the profile doesn't ask for are extras; a forced want has its own chip.
+  const forcedWants = new Set(view.languages.filter((l) => l.variant === "forced").map((l) => l.lang.toLowerCase()));
+  const forced = view.sidecars.filter((s) => s.variant === "forced" && !forcedWants.has(s.lang.toLowerCase()));
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
       <span className="font-mono uppercase text-ink-faint">Subs</span>
-      {view.languages.map((l, i) => (
-        <WantChip key={l.lang} l={l} sidecar={sidecarForLang(l.lang, view.sidecars, i === 0)} onClick={() => setOpen(true)} />
+      {view.languages.map((l) => (
+        <WantChip key={l.lang + (l.variant ?? "")} l={l} sidecar={sidecarForWant(l, view.sidecars, view.kept[0] === l.lang)} onClick={() => setOpen(true)} />
       ))}
       {forced.map((s) => (
         <span key={s.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-ink-dim" style={{ background: "var(--panel-2)" }} title={`${s.name} — the foreign-language lines only`}>{s.lang} forced</span>

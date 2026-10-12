@@ -280,7 +280,7 @@ func (s *Service) SyncTarget(ctx context.Context, m MediaRef, lang, variant stri
 	if lang == "" {
 		return SyncTargetInfo{}, ErrNoSidecar
 	}
-	kept := s.languages(ctx)
+	kept := s.titleLangs(ctx, job.Kind, job.MovieID, job.SeriesID) // the first claims an untagged sidecar
 	path, ok := findSidecar(ref.Path, lang, variant, len(kept) > 0 && kept[0] == lang)
 	if !ok && variant == VariantFull {
 		// The language's full subtitle may be an SDH one (".en.sdh.srt").

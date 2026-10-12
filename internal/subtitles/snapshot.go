@@ -3,7 +3,6 @@ package subtitles
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,10 +25,11 @@ type librarySnapshot struct {
 	groups   []SeriesGroup
 	at       time.Time // zero until the first pass completes
 	scanning bool
-	// langsKey is the kept-language list (langsKey()) the snapshot was counted against;
-	// when it differs from the current list the figures are stale. passKey is the list
-	// the running pass counts against, and followUp asks for one more pass after it
-	// because the languages changed while it ran.
+	// langsKey is what the snapshot was counted against (wantsKey: the default profile's
+	// items and the overrides — for plain items, just the kept-language list); when it
+	// differs from the current one the figures are stale. passKey is the key the running
+	// pass counts against, and followUp asks for one more pass after it because the
+	// languages or profiles changed while it ran.
 	langsKey string
 	passKey  string
 	followUp bool
@@ -56,10 +56,6 @@ type CoverageCounts struct {
 	Missing int `json:"missing"`
 }
 
-// langsKey is the kept-language list as one comparable string. Order matters: the first
-// language is the one an untagged sidecar counts for.
-func langsKey(langs []string) string { return strings.Join(langs, ",") }
-
 // Rescan starts a full pass in the background, unless one is already running (then it
 // reports false and the running one stands — except that a pass counting against
 // languages that have since changed gets exactly one more pass after it). ctx should
@@ -71,7 +67,7 @@ func (s *Service) Rescan(ctx context.Context) bool {
 	}
 	s.snap.mu.Lock()
 	if s.snap.scanning {
-		if s.snap.passKey != langsKey(s.languages(ctx)) {
+		if s.snap.passKey != s.wantsKey(ctx) {
 			s.snap.followUp = true
 		}
 		s.snap.mu.Unlock()
@@ -81,7 +77,7 @@ func (s *Service) Rescan(ctx context.Context) bool {
 	s.snap.mu.Unlock()
 	go func() {
 		for {
-			key := langsKey(s.languages(ctx))
+			key := s.wantsKey(ctx)
 			s.snap.mu.Lock()
 			s.snap.passKey, s.snap.followUp = key, false
 			s.snap.mu.Unlock()
@@ -139,20 +135,22 @@ func (s *Service) libraryPass(ctx context.Context, key string) bool {
 	return true
 }
 
-// recountIfLanguagesChanged starts a pass when the kept languages are no longer the ones
-// in before — the Overview shows "Recounting…" meanwhile instead of a percentage for
-// the old list. A pass already running gets one more after it (Rescan).
+// recountIfLanguagesChanged starts a pass when what coverage is counted against (the kept
+// languages, the profiles titles use, the overrides) is no longer before (a wantsKey) —
+// the Overview shows "Recounting…" meanwhile instead of a percentage for the old list. A
+// pass already running gets one more after it (Rescan).
 func (s *Service) recountIfLanguagesChanged(ctx context.Context, before string) {
-	if langsKey(s.languages(ctx)) == before {
+	if s.wantsKey(ctx) == before {
 		return
 	}
 	s.Rescan(context.WithoutCancel(ctx))
 }
 
-// staleLocked reports whether the snapshot was counted against other languages than the
-// kept ones now. Settings reads are in memory, so this is cheap. s.snap.mu must be held.
+// staleLocked reports whether the snapshot was counted against other languages or
+// profiles than today's. The profiles are cached in memory, so this is cheap.
+// s.snap.mu must be held.
 func (s *Service) staleLocked(ctx context.Context) bool {
-	return !s.snap.at.IsZero() && s.settings != nil && s.snap.langsKey != langsKey(s.languages(ctx))
+	return !s.snap.at.IsZero() && s.settings != nil && s.snap.langsKey != s.wantsKey(ctx)
 }
 
 // Coverage summarises the snapshot for the Overview.
@@ -211,9 +209,8 @@ func (s *Service) refreshSnapshot(ctx context.Context, job *Job) {
 	if !seen {
 		return // the first pass is still running; it will see the new sidecar itself
 	}
-	langs := s.languages(ctx)
 	if job.Kind == "episode" {
-		g, ok := s.groupFor(ctx, job.SeriesID, langs)
+		g, ok := s.groupFor(ctx, job.SeriesID, s.profileCfg(ctx))
 		s.snap.mu.Lock()
 		defer s.snap.mu.Unlock()
 		for i := range s.snap.groups {
@@ -235,13 +232,18 @@ func (s *Service) refreshSnapshot(ctx context.Context, job *Job) {
 	if err != nil || !m.HasFile || m.MovieFilePath == "" {
 		return
 	}
-	s.patchMovie(ctx, m, langs)
+	s.patchMovie(ctx, m)
 }
 
-// patchMovie recomputes one movie's entry in the snapshot from its current file.
-func (s *Service) patchMovie(ctx context.Context, m movies.Movie, langs []string) {
+// patchMovie recomputes one movie's entry in the snapshot from its current file, against
+// its profile.
+func (s *Service) patchMovie(ctx context.Context, m movies.Movie) {
 	fs := FileSubs{Kind: "movie", MovieID: m.ID, Title: m.Title, Year: m.Year, PosterURL: m.PosterURL, Path: m.MovieFilePath}
-	s.fillCoverage(ctx, &fs, langs, s.provider != nil && s.provider.CanDownload())
+	p, pinned := s.profileCfg(ctx).forTitle("movie", m.ID, 0)
+	if pinned {
+		fs.ProfileID = p.ID
+	}
+	s.fillCoverageW(ctx, &fs, p.wants(), s.provider != nil && s.provider.CanDownload())
 	if bs, err := s.ledger.BackoffsFor(ctx, fmt.Sprintf("m:%d", m.ID)); err == nil {
 		applyBackoff(&fs, bs, time.Now())
 	}
@@ -270,15 +272,21 @@ func (s *Service) dropMovie(movieID int64) {
 	s.snap.movies = kept
 }
 
-// groupFor builds one show's roll-up: how many of its episodes on disk have every kept
-// language as a sidecar. Directory listings only — nothing is probed. ok is false when
-// the show has nothing on disk.
-func (s *Service) groupFor(ctx context.Context, seriesID int64, langs []string) (SeriesGroup, bool) {
+// groupFor builds one show's roll-up: how many of its episodes on disk have every subtitle
+// its profile wants as a sidecar. Directory listings only — nothing is probed; a want that
+// depends on the audio reads the probe cache, and an episode never probed counts as
+// needing it. ok is false when the show has nothing on disk.
+func (s *Service) groupFor(ctx context.Context, seriesID int64, cfg *profileConfig) (SeriesGroup, bool) {
 	full, err := s.series.Get(ctx, seriesID)
 	if err != nil {
 		return SeriesGroup{}, false
 	}
+	p, pinned := cfg.forTitle("episode", 0, seriesID)
+	wants := p.wants()
 	g := SeriesGroup{SeriesID: full.ID, Title: full.Title, Year: full.Year, PosterURL: full.PosterURL}
+	if pinned {
+		g.ProfileID = p.ID
+	}
 	for _, sn := range full.Seasons {
 		seasonHasFile := false
 		for _, e := range sn.Episodes {
@@ -287,18 +295,8 @@ func (s *Service) groupFor(ctx context.Context, seriesID int64, langs []string) 
 			}
 			seasonHasFile = true
 			g.Episodes++
-			have := map[string]bool{}
-			for _, p := range scanSidecars(e.FilePath, langs, "episode").Present {
-				have[strings.ToLower(p)] = true
-			}
-			complete := true
-			for _, l := range langs {
-				if !have[strings.ToLower(l)] {
-					complete = false
-					break
-				}
-			}
-			if complete {
+			cov := coverageOf(e.FilePath, "episode", wants, s.peekAudio(ctx, e.FilePath, wants))
+			if len(cov.missing()) == 0 {
 				g.Covered++
 			} else {
 				g.Missing++

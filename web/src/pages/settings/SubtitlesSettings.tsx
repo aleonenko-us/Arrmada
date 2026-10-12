@@ -11,6 +11,7 @@ import { usePoll } from "../../lib/usePoll";
 import { useToast } from "../../ui";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { KeptTracksNote, card, cardStyle } from "../subtitles/shared";
+import { SubtitleProfiles } from "./SubtitleProfiles";
 
 // Settings → Subtitles & Convert → Subtitles: which languages are kept, whether new files
 // get them automatically, the local AI models, and where OpenSubtitles stands. It used to
@@ -62,6 +63,8 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
           />
         </div>
       </div>
+
+      <SubtitleProfiles version={settings.languages.join(",")} />
 
       <div className={card} style={cardStyle}>
         <div className="text-[14px] font-bold">Automatic</div>

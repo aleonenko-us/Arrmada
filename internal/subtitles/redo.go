@@ -145,7 +145,9 @@ func (s *Service) processRedo(ctx context.Context, job *Job, ref fileRef) {
 	if mode == "" {
 		mode = ModeRedoNext
 	}
-	kept := s.languages(ctx)
+	// The title's own profile: its full languages, the first claiming an untagged sidecar.
+	kept := s.titleLangs(ctx, job.Kind, job.MovieID, job.SeriesID)
+	ref.wants = s.titleWants(ctx, job.Kind, job.MovieID, job.SeriesID)
 	targets := job.Langs
 	if len(targets) == 0 {
 		targets = kept

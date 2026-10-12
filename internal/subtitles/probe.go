@@ -265,6 +265,21 @@ func (s *Service) probeCached(ctx context.Context, path string) (*mediaInfo, err
 	return mi, nil
 }
 
+// cachedProbe is a file's probe from the cache alone — nil when it was never probed, has
+// changed since, or was probed before the current version. It never runs ffprobe, so the
+// passes that only list directories can use it.
+func (s *Service) cachedProbe(ctx context.Context, path string) *mediaInfo {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	mi, ok := s.cache.get(ctx, path, fi.Size(), fi.ModTime().Unix())
+	if !ok || mi.ProbeVersion < probeVersion {
+		return nil
+	}
+	return mi
+}
+
 // saveProbe writes a probe back to the cache — after detection added to it — keyed by
 // the file's current size and mtime, as probeCached would have.
 func (s *Service) saveProbe(ctx context.Context, path string, mi *mediaInfo) {

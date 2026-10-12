@@ -103,7 +103,8 @@ type Service struct {
 
 	snap librarySnapshot // the last library pass; what the Overview and Library tab read
 
-	searches searchCache // the drawer's interactive searches, reused for a few minutes (search.go)
+	profiles profileStore // language profiles and per-title overrides, cached (profiles.go)
+	searches searchCache  // the drawer's interactive searches, reused for a few minutes (search.go)
 }
 
 // NewService wires the module over the shared Movies/Series catalogs + a subtitle provider. db is
@@ -141,9 +142,12 @@ func (s *Service) ledgerBlocklist(ctx context.Context, mediaKey string) (map[str
 
 // Settings is the module's configuration + provider readiness for the dashboard.
 type Settings struct {
-	MoviesAuto    bool     `json:"movies_auto"`
-	SeriesAuto    bool     `json:"series_auto"`
-	Languages     []string `json:"languages"`
+	MoviesAuto bool     `json:"movies_auto"`
+	SeriesAuto bool     `json:"series_auto"`
+	Languages  []string `json:"languages"` // the default profile's languages
+	// KeepLanguages is every language any profile wants: what Convert's "Same as
+	// Subtitles" keeps.
+	KeepLanguages []string `json:"keep_languages"`
 	ProviderReady bool     `json:"provider_ready"` // can search
 	CanDownload   bool     `json:"can_download"`   // can actually grab (needs account)
 	AIReady       bool     `json:"ai_ready"`       // local whisper.cpp binary + a model present
@@ -174,6 +178,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		MoviesAuto:     s.settings.GetBool(ctx, keyMoviesAuto, defaultMoviesAuto),
 		SeriesAuto:     s.settings.GetBool(ctx, keySeriesAuto, defaultSeriesAuto),
 		Languages:      s.languages(ctx),
+		KeepLanguages:  s.keepLanguages(ctx),
 		ProviderReady:  s.provider.Available(),
 		CanDownload:    s.provider.CanDownload(),
 		AIReady:        s.whisper.available(),
@@ -249,13 +254,18 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 		}
 	}
 	if clean != nil {
-		before := strings.Join(s.languages(ctx), ",")
+		// The kept languages are the default profile's (profiles.go); the setting keeps
+		// the same list, so a downgrade still finds it.
+		before := s.wantsKey(ctx)
 		if err := s.settings.Set(ctx, keyLanguages, strings.Join(clean, ",")); err != nil {
+			return err
+		}
+		if err := s.setDefaultLanguages(ctx, clean); err != nil {
 			return err
 		}
 		// A language the AI couldn't make from that audio may be makeable now (or no
 		// longer wanted); let the next sweep look again.
-		if strings.Join(clean, ",") != before {
+		if s.wantsKey(ctx) != before {
 			s.ClearBackoff(ctx, EventLangs)
 			// And every count is stale: recount now rather than at the next six-hourly
 			// pass. Saving the same list starts nothing.
@@ -296,13 +306,28 @@ func canonicalLanguages(in []string) ([]string, error) {
 	return out, nil
 }
 
-// Languages is the kept-language list (what Convert's "Same as Subtitles" keeps).
-func (s *Service) Languages(ctx context.Context) []string { return s.languages(ctx) }
+// Languages is what Convert's "Same as Subtitles" keeps: every language any profile
+// wants, the default profile's first, forced and full alike (an embedded track of a kept
+// language is never stripped, whichever variant a title wants).
+func (s *Service) Languages(ctx context.Context) []string { return s.keepLanguages(ctx) }
 
-// languages is the kept-language list, canonical and in the owner's order. A value saved
-// before the shared table existed ("eng") reads back canonical ("en"); a code the table
-// doesn't know is kept as written rather than silently dropped.
+// languages is the kept-language list: the default profile's languages, in the owner's
+// order. The first is the language an untagged sidecar counts for.
 func (s *Service) languages(ctx context.Context) []string {
+	if l := s.profileCfg(ctx).def().langs(); len(l) > 0 {
+		return l
+	}
+	return defaultLanguages
+}
+
+// settingsLanguages is the flat kept-language setting, canonical and in the owner's order
+// — what the default profile is seeded from. A value saved before the shared table
+// existed ("eng") reads back canonical ("en"); a code the table doesn't know is kept as
+// written rather than silently dropped.
+func (s *Service) settingsLanguages(ctx context.Context) []string {
+	if s.settings == nil {
+		return defaultLanguages
+	}
 	raw := s.settings.Get(ctx, keyLanguages, strings.Join(defaultLanguages, ","))
 	var out []string
 	seen := map[string]bool{}
@@ -360,6 +385,13 @@ type grabResult struct {
 // SUB-19) passes it — refused while there is none. Blocklisted and rejected candidates
 // are never downloaded.
 func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (grabResult, error) {
+	return s.grabOneV(ctx, ref, hash, lang, VariantFull)
+}
+
+// grabOneV is grabOne for one variant: VariantForced searches only the foreign-parts-only
+// uploads and writes the ".forced" sidecar; a full want follows its profile's SDH
+// preference.
+func (s *Service) grabOneV(ctx context.Context, ref fileRef, hash, lang, variant string) (grabResult, error) {
 	// A paused quota means no requests at all: searching would spend the API's rate
 	// limit on results that can't be downloaded until the reset.
 	if s.providerPaused() {
@@ -368,10 +400,17 @@ func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (
 		}
 		return grabResult{}, ErrQuotaExhausted
 	}
-	results, err := s.provider.Search(ctx, SearchRequest{
+	req := SearchRequest{
 		IMDBID: ref.IMDB, Title: ref.Title, Year: ref.Year, Season: ref.Season, Episode: ref.Episode,
 		Language: lang, MovieHash: hash,
-	})
+	}
+	m := matchContextFor(ref)
+	if variant == VariantForced {
+		req.ForeignParts, m.Forced = "only", true
+	} else {
+		m.SDH = sdhFor(ref.wants, lang)
+	}
+	results, err := s.provider.Search(ctx, req)
 	if err != nil {
 		return grabResult{}, err
 	}
@@ -383,7 +422,7 @@ func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (
 	if err != nil {
 		return grabResult{}, fmt.Errorf("read subtitle blocklist: %w", err)
 	}
-	ranked := rankCandidates(results, matchContextFor(ref), blocked)
+	ranked := rankCandidates(results, m, blocked)
 	if !ranked[0].usable() {
 		noMatch.Detail = "no usable OpenSubtitles match"
 		return noMatch, nil
@@ -423,12 +462,12 @@ func (s *Service) grabOne(ctx context.Context, ref fileRef, hash, lang string) (
 			data = out
 		}
 		// A hearing-impaired upload is still the full subtitle; the ".sdh" qualifier lets
-		// Plex label it as such.
-		variant := VariantFull
-		if c.HearingImpaired {
-			variant = VariantSDH
+		// Plex label it as such. A forced want's file is the ".forced" one.
+		written := variant
+		if variant == VariantFull && c.HearingImpaired {
+			written = VariantSDH
 		}
-		dst := sidecarPathV(ref.Path, lang, variant)
+		dst := sidecarPathV(ref.Path, lang, written)
 		if err := os.WriteFile(dst, data, 0o644); err != nil {
 			return grabResult{}, err
 		}

@@ -53,8 +53,10 @@ export interface SubFileView {
   media_key: string;
   title: string;
   video_path: string;
-  kept: string[];
-  languages: SubLangStatus[];
+  kept: string[]; // the title's profile languages, full wants first
+  languages: SubLangStatus[]; // each want of the title's profile
+  /** The language profile the title uses: its own override, else Default. */
+  profile?: { id: number; name: string; override: boolean };
   audio: SubAudioTrack[];
   embedded: SubTrack[];
   sidecars: SubSidecar[];

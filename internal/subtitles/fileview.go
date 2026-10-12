@@ -106,8 +106,9 @@ type FileView struct {
 	MediaKey  string        `json:"media_key"`
 	Title     string        `json:"title"`
 	VideoPath string        `json:"video_path"`
-	Kept      []string      `json:"kept"`      // the kept languages, in order
-	Languages []LangStatus  `json:"languages"` // each kept language's state (the wants)
+	Kept      []string      `json:"kept"`      // the title's profile languages (full wants first), in order
+	Languages []LangStatus  `json:"languages"` // each want's state, from the title's profile
+	Profile   FileProfile   `json:"profile"`   // which language profile the title uses
 	Audio     []AudioTrack  `json:"audio"`
 	Embedded  []SubTrack    `json:"embedded"`
 	Sidecars  []SidecarView `json:"sidecars"`
@@ -115,6 +116,13 @@ type FileView struct {
 	Backoffs  []Backoff     `json:"backoffs"`
 	Attempts  []Attempt     `json:"attempts"` // the latest per language, variant and rung
 	Jobs      []Job         `json:"jobs"`     // this file's queued and running jobs
+}
+
+// FileProfile names the language profile a file's title uses: its override, else Default.
+type FileProfile struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Override bool   `json:"override"` // pinned to this profile rather than following Default
 }
 
 // resolveMedia finds a ref's video from the database (the job seam in tests).
@@ -169,16 +177,19 @@ func (s *Service) FileView(ctx context.Context, r MediaRef) (FileView, error) {
 	if err != nil {
 		return FileView{}, err
 	}
-	kept := s.languages(ctx)
+	// The title's own profile (profiles.go): what it wants, and the languages it keeps.
+	prof, pinned := s.profileCfg(ctx).forTitle(r.Kind, r.MovieID, r.SeriesID)
+	kept := s.titleLangs(ctx, r.Kind, r.MovieID, r.SeriesID)
 	v := FileView{
 		MediaRef: r, MediaKey: ref.MediaKey, Title: fileTitle(r, ref), VideoPath: ref.Path, Kept: kept,
-		Audio: []AudioTrack{}, Sidecars: []SidecarView{}, Orphans: []Orphan{}, Backoffs: []Backoff{},
+		Profile: FileProfile{ID: prof.ID, Name: prof.Name, Override: pinned},
+		Audio:   []AudioTrack{}, Sidecars: []SidecarView{}, Orphans: []Orphan{}, Backoffs: []Backoff{},
 		Attempts: []Attempt{}, Jobs: []Job{},
 	}
 
-	// The kept languages' state, exactly as the Library row shows it.
+	// The wants' state, exactly as the Library row shows it.
 	fs := FileSubs{Kind: r.Kind, MovieID: r.MovieID, SeriesID: r.SeriesID, Season: r.Season, Episode: r.Episode, Path: ref.Path}
-	s.fillCoverage(ctx, &fs, kept, s.provider != nil && s.provider.CanDownload())
+	s.fillCoverageW(ctx, &fs, prof.wants(), s.provider != nil && s.provider.CanDownload())
 	bs, err := s.ledger.BackoffsFor(ctx, ref.MediaKey)
 	if err != nil {
 		s.log.Warn("subtitles: could not read backoff for the file view", "media_key", ref.MediaKey, "err", err)
@@ -309,7 +320,7 @@ func (s *Service) sidecarFor(ctx context.Context, r MediaRef, name string, allow
 	if !validSidecarName(name) {
 		return sidecarTarget{}, ErrNotSidecar
 	}
-	sc := scanSidecars(ref.Path, s.languages(ctx), kindOf(r.Kind))
+	sc := scanSidecars(ref.Path, s.titleLangs(ctx, r.Kind, r.MovieID, r.SeriesID), kindOf(r.Kind))
 	dir := filepath.Dir(ref.Path)
 	for i, n := range sc.Names {
 		if n == name {
@@ -373,8 +384,8 @@ func (s *Service) noteShift(ctx context.Context, r MediaRef, t sidecarTarget, of
 	if err == nil && !ok {
 		lang := t.lang
 		if lang == "" {
-			if kept := s.languages(ctx); len(kept) > 0 {
-				lang = kept[0] // a bare <base>.srt counts as the first kept language
+			if kept := s.titleLangs(ctx, r.Kind, r.MovieID, r.SeriesID); len(kept) > 0 {
+				lang = kept[0] // a bare <base>.srt counts as the title's first language
 			}
 		}
 		if l, known := langs.Lookup(lang); known {

@@ -81,7 +81,7 @@ func (f *orphanFixture) pass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.s.patchMovie(context.Background(), m, f.s.languages(context.Background()))
+		f.s.patchMovie(context.Background(), m)
 	}
 }
 

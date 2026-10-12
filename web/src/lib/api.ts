@@ -928,6 +928,7 @@ export interface SubSeriesGroup {
   missing: number;
   covered: number;
   seasons: number;
+  profile_id?: number; // the language profile the show is pinned to; absent = Default
 }
 
 export interface AppSettings {
@@ -2046,7 +2047,8 @@ export interface QueueItem {
 export interface SubtitleSettings {
   movies_auto: boolean;
   series_auto: boolean;
-  languages: string[];
+  languages: string[]; // the Default profile's languages (the kept languages)
+  keep_languages?: string[]; // every language any profile wants: what Convert's "Same as Subtitles" keeps
   provider_ready: boolean;
   can_download: boolean;
   ai_ready: boolean;
@@ -2067,6 +2069,7 @@ export type SubtitleProviderState = "not_configured" | "needs_account" | "unveri
 export interface SubTrack { index: number; codec: string; lang: string; text: boolean; title?: string; forced?: boolean; sdh?: boolean; default?: boolean }
 export interface SubLangStatus {
   lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean;
+  variant?: "forced"; // a profile's forced want; absent = the full subtitle
   // Set when the sweep is leaving this missing language alone for now (backoff).
   reason?: SubtitleResult;
   next_retry_at?: number; // unix seconds; absent = waiting on retry_on, or a manual retry
@@ -2093,6 +2096,7 @@ export interface SubFileEntry {
   audio_langs?: string[]; embedded: SubTrack[]; external: string[];
   languages: SubLangStatus[]; health?: SubHealth; missing: number;
   orphans?: { name: string; lang?: string; variant?: string }[]; // movies: subtitles paired with no video
+  profile_id?: number; // the language profile the title is pinned to; absent = Default
 }
 export interface SubtitleJob {
   id: number; kind: "movie" | "episode"; movie_id?: number; series_id?: number; season?: number; episode?: number;

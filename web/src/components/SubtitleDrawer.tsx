@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Button, IconButton, Sheet, useConfirm, useToast } from "../ui";
 import { usePoll } from "../lib/usePoll";
 import { formatAgo, formatBytes } from "../lib/format";
@@ -7,7 +8,8 @@ import { jobToast, useJob } from "../lib/useJob";
 import type { SubLangStatus, SubTrack } from "../lib/api";
 import { subMediaKey, subtitleFileApi, type SubFileView, type SubMediaRef, type SubRedo, type SubSidecar } from "../lib/subtitleFileApi";
 import { orphanApi } from "../pages/subtitles/orphanApi";
-import { REASON_LABEL, SOURCE_LABEL, WantChip, sidecarForLang } from "./subtitles/WantChip";
+import { LINKS } from "../lib/links";
+import { REASON_LABEL, SOURCE_LABEL, WantChip, sidecarForLang, sidecarForWant } from "./subtitles/WantChip";
 import { SearchPanel } from "./subtitles/SearchPanel";
 
 // SubtitleDrawer is one video's subtitles in full (SUB-27/28): each kept language's state
@@ -157,18 +159,26 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
             )}
 
             <Section label="Languages you keep">
+              {view.profile && (
+                <p className="m-0 mb-2 text-[11px] text-ink-faint">
+                  {view.profile.override ? <>This title uses the <b>{view.profile.name}</b> language profile (pinned in the Subtitles Library).</> : <>Language profile: <b>{view.profile.name}</b>.</>}{" "}
+                  <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Edit profiles</Link>
+                </p>
+              )}
               <div className="flex flex-col gap-2">
-                {view.languages.map((l, i) => (
-                  <div key={l.lang}>
+                {view.languages.map((l) => (
+                  <div key={l.lang + (l.variant ?? "")}>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <WantChip l={l} sidecar={sidecarForLang(l.lang, view.sidecars, i === 0)} />
-                      <span className="ml-auto flex flex-wrap gap-1.5">
+                      <WantChip l={l} sidecar={sidecarForWant(l, view.sidecars, view.kept[0] === l.lang)} />
+                      {/* A forced want comes from the file's forced track or a foreign-parts
+                          upload; search, AI and replace are for the full subtitle. */}
+                      {l.variant !== "forced" && <span className="ml-auto flex flex-wrap gap-1.5">
                         <Button size="sm" onClick={() => setSearching((s) => (s === l.lang ? null : l.lang))} aria-expanded={searching === l.lang}>
                           {searching === l.lang ? "Close search" : "Search OpenSubtitles"}
                         </Button>
                         <Button size="sm" onClick={() => generate(l)}>Generate with AI</Button>
                         {l.have && <Button size="sm" variant="ghost" onClick={() => next(l)} title="Another download, an embedded track or AI — never the one there now">Replace…</Button>}
-                      </span>
+                      </span>}
                     </div>
                     {searching === l.lang && <SearchPanel media={media} lang={l.lang} langLabel={name(l.lang)} onQueued={() => { setSearching(null); void load(); }} />}
                   </div>

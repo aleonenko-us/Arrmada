@@ -116,7 +116,7 @@ func applyHealth(fs *FileSubs, rows []SubtitleFile) {
 	var worst *LangHealth
 	for i := range fs.Languages {
 		ls := &fs.Languages[i]
-		if !ls.Have {
+		if !ls.Have || ls.Variant == VariantForced { // a forced want's file has no sync check of its own
 			continue
 		}
 		h := LangHealth{State: HealthUnchecked, Note: "not checked"}

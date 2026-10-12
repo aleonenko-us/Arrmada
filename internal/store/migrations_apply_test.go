@@ -51,4 +51,30 @@ func TestMigrationsApplyFresh(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO subtitle_backoff (media_key, lang, video_path, primary_reason, reasons_json, updated_at) VALUES ('m:1', 'en', '/v.mkv', 'no_match', '{}', 2)`); err == nil {
 		t.Error("a second backoff row for the same file and language was accepted")
 	}
+	// 0241: subtitle profiles. One default at most, names unique in any case, and a
+	// profile's overrides go with it.
+	for _, q := range []string{
+		`INSERT INTO subtitle_profiles (id, name, items_json, is_default) VALUES (1, 'Default', '[]', 1)`,
+		`INSERT INTO subtitle_profiles (id, name, items_json) VALUES (2, 'Anime', '[]')`,
+		`INSERT INTO subtitle_profile_overrides (media_kind, media_id, profile_id) VALUES ('series', 7, 2)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("subtitle profiles after 0241: %v\n%s", err, q)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO subtitle_profiles (name, items_json, is_default) VALUES ('Other', '[]', 1)`,
+		`INSERT INTO subtitle_profiles (name, items_json) VALUES ('anime', '[]')`,
+		`INSERT INTO subtitle_profile_overrides (media_kind, media_id, profile_id) VALUES ('album', 1, 2)`,
+	} {
+		if _, err := db.Exec(q); err == nil {
+			t.Errorf("accepted: %s", q)
+		}
+	}
+	if _, err := db.Exec(`DELETE FROM subtitle_profiles WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM subtitle_profile_overrides`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("%d overrides left after their profile was deleted (%v)", n, err)
+	}
 }

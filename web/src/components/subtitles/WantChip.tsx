@@ -35,7 +35,8 @@ export function retryIn(at: number, now = Date.now()): string {
 // wantLine is one kept language's state as a short line: "✓ en · OpenSubtitles · Health
 // 92", "es missing · next try in 6 days", "fr missing · will try download → AI".
 export function wantLine(l: SubLangStatus, sidecar?: SubSidecar): { text: string; tone: "good" | "bad" | "warn"; title: string } {
-  const lang = l.lang.toLowerCase();
+  // A profile's forced want: only a ".forced" subtitle (the foreign-dialogue lines) meets it.
+  const lang = l.variant === "forced" ? `${l.lang.toLowerCase()} forced` : l.lang.toLowerCase();
   if (l.have) {
     const parts = [`✓ ${lang}`];
     if (sidecar) parts.push(SOURCE_LABEL[sidecar.source] ?? sidecar.source);
@@ -55,6 +56,9 @@ export function wantLine(l: SubLangStatus, sidecar?: SubSidecar): { text: string
       : "retry by hand";
     return { text: `${lang} missing · ${when}`, tone: "bad", title: `Last try: ${why}. The sweep leaves it alone until then; a button press tries now.` };
   }
+  if (l.variant === "forced" && !l.source) {
+    return { text: `${lang} missing · no source`, tone: "bad", title: "No forced track in the file and no OpenSubtitles download set up — whisper can't make a forced subtitle" };
+  }
   const first = PLAN_LABEL[l.source ?? "ai"] ?? l.source ?? "AI";
   const plan = l.fallback ? `${first} → ${PLAN_LABEL[l.fallback] ?? l.fallback}` : first;
   return { text: `${lang} missing · will try ${plan}`, tone: "bad", title: `Missing — the next run tries ${plan}` };
@@ -65,6 +69,14 @@ export function sidecarForLang(lang: string, sidecars: SubSidecar[], first: bool
   const l = lang.toLowerCase();
   const match = (s: SubSidecar) => s.variant !== "forced" && (s.lang.toLowerCase() === l || s.lang.toLowerCase().startsWith(l + "-") || (first && s.lang === ""));
   return sidecars.find((s) => match(s) && !s.variant) ?? sidecars.find(match);
+}
+
+// sidecarForWant is the paired sidecar that meets a want: the forced one for a forced
+// want, else as sidecarForLang (first: this is the title's first language).
+export function sidecarForWant(l: SubLangStatus, sidecars: SubSidecar[], first: boolean): SubSidecar | undefined {
+  if (l.variant !== "forced") return sidecarForLang(l.lang, sidecars, first);
+  const lang = l.lang.toLowerCase();
+  return sidecars.find((s) => s.variant === "forced" && (s.lang.toLowerCase() === lang || s.lang.toLowerCase().startsWith(lang + "-")));
 }
 
 const TONE: Record<"good" | "bad" | "warn", { background: string; color: string; border?: string }> = {

@@ -14,9 +14,12 @@ import (
 // LangStatus is one kept-language's coverage for a file: whether an external SRT exists, and if
 // not, the first source the ladder will try and what it falls back to.
 type LangStatus struct {
-	Lang   string `json:"lang"`
-	Have   bool   `json:"have"`             // an external .srt for this language sits next to the file
-	Source string `json:"source,omitempty"` // when !Have: extract | ocr | download | ai
+	Lang string `json:"lang"`
+	// Variant is "" for the full subtitle (an SDH one counts) and "forced" for a profile's
+	// forced want, which only a forced sidecar meets.
+	Variant string `json:"variant,omitempty"`
+	Have    bool   `json:"have"`             // an external .srt for this language sits next to the file
+	Source  string `json:"source,omitempty"` // when !Have: extract | ocr | download | ai
 	// Fallback is "ai" when the first source is extract or download and the local AI
 	// could still make this language if that source comes up empty.
 	Fallback string `json:"fallback,omitempty"`
@@ -78,8 +81,10 @@ type FileSubs struct {
 	External    []string     `json:"external"`          // kept languages that already have a sidecar
 	Languages   []LangStatus `json:"languages"`         // per-kept-language coverage + best source
 	Health      *SubHealth   `json:"health,omitempty"`  // the worst present language's Health; nil = none present
-	Missing     int          `json:"missing"`           // count of kept languages still without an SRT
+	Missing     int          `json:"missing"`           // count of wanted subtitles still without an SRT
 	Orphans     []Orphan     `json:"orphans,omitempty"` // movies: subtitles in the folder paired with no video
+	// ProfileID is the language profile the title is pinned to (0 = the default profile).
+	ProfileID int64 `json:"profile_id,omitempty"`
 }
 
 // ErrFlatTV: TV is never listed flat, one probed row per episode (tens of thousands of
@@ -92,7 +97,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 	if media != "movies" {
 		return nil, ErrFlatTV
 	}
-	langs := s.languages(ctx)
+	cfg := s.profileCfg(ctx) // read once for the whole pass
 	canDownload := s.provider != nil && s.provider.CanDownload()
 	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
 	health := s.liveFilesByKey(ctx)                  // and one for Health
@@ -110,7 +115,11 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 			Kind: "movie", MovieID: m.ID, Title: m.Title, Year: m.Year,
 			PosterURL: m.PosterURL, Path: m.MovieFilePath,
 		}
-		s.fillCoverage(ctx, &fs, langs, canDownload)
+		p, pinned := cfg.forTitle("movie", m.ID, 0)
+		if pinned {
+			fs.ProfileID = p.ID
+		}
+		s.fillCoverageW(ctx, &fs, p.wants(), canDownload)
 		applyBackoff(&fs, backoffs, now)
 		applyHealth(&fs, health[mediaKeyOf(&fs)])
 		out = append(out, fs)
@@ -118,11 +127,19 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 	return out, nil
 }
 
-// fillCoverage probes the file and computes its per-kept-language coverage. Best-effort: a file
-// that can't be probed still reports its sidecar coverage (embedded tracks just come back empty).
+// fillCoverage is fillCoverageW for a flat language list (the full subtitle of each).
 func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string, canDownload bool) {
+	s.fillCoverageW(ctx, fs, plainWants(langs), canDownload)
+}
+
+// fillCoverageW probes the file and computes its coverage against a title's wants. Best-effort:
+// a file that can't be probed still reports its sidecar coverage (embedded tracks just come
+// back empty). A full want the file's audio makes unnecessary (OnlyIfAudioDiffers) isn't
+// listed and isn't missing.
+func (s *Service) fillCoverageW(ctx context.Context, fs *FileSubs, wants []Want, canDownload bool) {
 	unknownAudio := false // an untagged track whisper hasn't listened to yet
-	if mi, err := s.probeFile(ctx, fs.Path); err == nil && mi != nil {
+	mi, err := s.probeFile(ctx, fs.Path)
+	if err == nil && mi != nil {
 		fs.DurationSec = mi.DurationSec
 		fs.AudioLangs = mi.withDetected().AudioLangs // tags, plus what detection heard
 		fs.Embedded = mi.Subs
@@ -131,32 +148,58 @@ func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string
 				unknownAudio = true
 			}
 		}
+	} else {
+		mi = nil
 	}
 	if fs.Embedded == nil {
 		fs.Embedded = []SubTrack{} // never nil → JSON emits [] not null (frontend iterates it)
 	}
-	sc := scanSidecars(fs.Path, langs, kindOf(fs.Kind))
-	present := sc.Present // kept languages with a paired sidecar already
-	fs.Orphans = sc.Orphans
-	orphaned := orphanCovered(langs, present, sc.Orphans)
-	have := make(map[string]bool, len(present))
-	for _, p := range present {
-		have[strings.ToLower(p)] = true
+	cov := coverageOf(fs.Path, kindOf(fs.Kind), wants, mi)
+	fs.Orphans = cov.sc.Orphans
+	fs.External = nonNil(cov.sc.Present) // kept languages with a paired full sidecar already
+	first := ""                          // the language an untagged "<base>.srt" counts for
+	if fulls := wantLangs(wants, VariantFull); len(fulls) > 0 {
+		first = fulls[0]
 	}
-	fs.External = nonNil(present)
-	fs.Languages = make([]LangStatus, 0, len(langs))
-	for i, l := range langs {
-		if have[strings.ToLower(l)] {
-			fs.Languages = append(fs.Languages, LangStatus{Lang: l, Have: true, File: sidecarNameFor(sc, l, i == 0)})
+	fs.Languages = make([]LangStatus, 0, len(cov.active))
+	for _, w := range cov.active {
+		l := w.Lang
+		if cov.have[w.key()] {
+			ls := LangStatus{Lang: l, Variant: w.Variant, Have: true, File: sidecarNameFor(cov.sc, l, l == first)}
+			if w.Variant == VariantForced {
+				ls.File = forcedSidecarName(cov.sc, l)
+			}
+			fs.Languages = append(fs.Languages, ls)
 			continue
 		}
 		fs.Missing++
-		ls := LangStatus{Lang: l, Have: false, Source: bestSource(fs.Embedded, l, canDownload), Orphan: orphaned[strings.ToLower(l)]}
+		if w.Variant == VariantForced {
+			// Only a forced track or a foreign-parts upload makes one; whisper can't.
+			ls := LangStatus{Lang: l, Variant: VariantForced}
+			if _, ok := pickForcedTrack(fs.Embedded, l); ok {
+				ls.Source = "extract"
+			} else if canDownload {
+				ls.Source = "download"
+			}
+			fs.Languages = append(fs.Languages, ls)
+			continue
+		}
+		ls := LangStatus{Lang: l, Have: false, Source: bestSourcePref(fs.Embedded, l, w.SDH, canDownload), Orphan: cov.orphaned[strings.ToLower(l)]}
 		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, unknownAudio, l) {
 			ls.Fallback = "ai"
 		}
 		fs.Languages = append(fs.Languages, ls)
 	}
+}
+
+// forcedSidecarName is the paired forced sidecar for a language, "" when there is none.
+func forcedSidecarName(sc sidecarScan, lang string) string {
+	for i, lv := range sc.Variants {
+		if i < len(sc.Names) && lv.Variant == VariantForced && lv.Lang != "" && langMatches(lv.Lang, lang) {
+			return sc.Names[i]
+		}
+	}
+	return ""
 }
 
 // applyBackoff marks the missing languages the sweep is leaving alone for now, from the
@@ -174,7 +217,7 @@ func applyBackoff(fs *FileSubs, bs Backoffs, now time.Time) {
 		if ls.Have {
 			continue
 		}
-		b, ok := bs[BackoffKey(key, ls.Lang, VariantFull)]
+		b, ok := bs[BackoffKey(key, ls.Lang, ls.Variant)]
 		if !ok || !b.Blocked(fs.Path, now) {
 			continue
 		}
@@ -213,7 +256,13 @@ func (s *Service) aiCanMake(audioLangs []string, unknownAudio bool, lang string)
 // It is only the starting point — a rung that comes up empty falls through to the next one, so
 // "download" means "download, then AI" (LangStatus.Fallback says whether AI can actually act).
 func bestSource(embedded []SubTrack, lang string, canDownload bool) string {
-	if _, ok := pickFullTrack(embedded, lang); ok {
+	return bestSourcePref(embedded, lang, SDHAny, canDownload)
+}
+
+// bestSourcePref is bestSource for a want with an SDH preference: one that avoids SDH
+// doesn't count an SDH track as something to extract.
+func bestSourcePref(embedded []SubTrack, lang, sdh string, canDownload bool) string {
+	if _, ok := pickFullTrackPref(embedded, lang, sdh); ok {
 		return "extract"
 	}
 	// An embedded IMAGE track (PGS/VobSub) would be the next-best source — but OCR isn't
@@ -233,9 +282,15 @@ func bestSource(embedded []SubTrack, lang string, canDownload bool) string {
 // picked — it only carries the foreign-language lines — so a language whose only text
 // track is forced falls through to download or AI.
 func pickFullTrack(subs []SubTrack, lang string) (SubTrack, bool) {
+	return pickFullTrackPref(subs, lang, SDHAny)
+}
+
+// pickFullTrackPref is pickFullTrack under a profile's SDH preference: SDHPrefer puts an
+// SDH track ahead of a plain one, and SDHAvoid never picks one.
+func pickFullTrackPref(subs []SubTrack, lang, sdh string) (SubTrack, bool) {
 	rank := func(t SubTrack) int {
 		r := 0
-		if t.SDH {
+		if t.SDH != (sdh == SDHPrefer) {
 			r += 2
 		}
 		if !t.Default {
@@ -243,7 +298,8 @@ func pickFullTrack(subs []SubTrack, lang string) (SubTrack, bool) {
 		}
 		return r
 	}
-	return pickTrack(subs, lang, func(t SubTrack) bool { return t.Text && !t.Forced }, rank)
+	ok := func(t SubTrack) bool { return t.Text && !t.Forced && !(sdh == SDHAvoid && t.SDH) }
+	return pickTrack(subs, lang, ok, rank)
 }
 
 // pickForcedTrack is the first forced text track in a language, if any.
@@ -294,8 +350,9 @@ type SeriesGroup struct {
 	PosterURL string `json:"poster_url,omitempty"`
 	Episodes  int    `json:"episodes"` // episodes with a file on disk
 	Missing   int    `json:"missing"`  // episodes still missing at least one kept language
-	Covered   int    `json:"covered"`  // episodes with every kept language present
+	Covered   int    `json:"covered"`  // episodes with every wanted subtitle present
 	Seasons   int    `json:"seasons"`
+	ProfileID int64  `json:"profile_id,omitempty"` // the language profile the show is pinned to (0 = default)
 }
 
 // SeriesGroups returns one row per show with a file on disk, for the Library list.
@@ -308,7 +365,7 @@ func (s *Service) SeriesGroups(ctx context.Context) ([]SeriesGroup, error) {
 	if s.series == nil {
 		return []SeriesGroup{}, nil
 	}
-	langs := s.languages(ctx)
+	cfg := s.profileCfg(ctx) // read once for the whole pass
 	list, err := s.series.List(ctx)
 	if err != nil {
 		return nil, err
@@ -318,7 +375,7 @@ func (s *Service) SeriesGroups(ctx context.Context) ([]SeriesGroup, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		g, ok := s.groupFor(ctx, sm.ID, langs)
+		g, ok := s.groupFor(ctx, sm.ID, cfg)
 		if !ok {
 			continue
 		}
@@ -340,7 +397,8 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 	if s.series == nil {
 		return []FileSubs{}, nil
 	}
-	langs := s.languages(ctx)
+	p, pinned := s.profileCfg(ctx).forTitle("episode", 0, seriesID)
+	wants := p.wants()
 	canDownload := s.provider != nil && s.provider.CanDownload()
 	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
 	full, err := s.series.Get(ctx, seriesID)
@@ -358,7 +416,10 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 				Title: fmt.Sprintf("%s - S%02dE%02d", full.Title, e.SeasonNumber, e.EpisodeNumber),
 				Year:  full.Year, PosterURL: full.PosterURL, Path: e.FilePath,
 			}
-			s.fillCoverage(ctx, &fs, langs, canDownload)
+			if pinned {
+				fs.ProfileID = p.ID
+			}
+			s.fillCoverageW(ctx, &fs, wants, canDownload)
 			applyBackoff(&fs, backoffs, now)
 			s.fillHealth(ctx, &fs)
 			out = append(out, fs)

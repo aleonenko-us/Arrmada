@@ -5,6 +5,7 @@ import type {
 import { NOW } from "./clock";
 import type { PlexScanView } from "../../src/lib/plexLibraryApi";
 import type { Language } from "../../src/lib/languages";
+import type { ProfileList } from "../../src/pages/subtitles/profileApi";
 import type { SubFileView } from "../../src/lib/subtitleFileApi";
 
 // The optional modules (Convert, Subtitles, Insights, Music), idle and empty: the
@@ -57,6 +58,12 @@ export const subtitleAttention = { buckets: [], total: 0, sources: { embedded: 3
 export const subtitleJobs: { jobs: SubtitleJob[]; gpu_backlog: number; gpu_backlog_audio_sec: number; gpu_eta_sec: number; rtf: number; next_before: number } =
   { jobs: [], gpu_backlog: 0, gpu_backlog_audio_sec: 0, gpu_eta_sec: 0, rtf: 0, next_before: 0 };
 
+// Language profiles: just Default, the kept languages above.
+export const subtitleProfiles: ProfileList = {
+  profiles: [{ id: 1, name: "Default", is_default: true, titles: 0, items: [{ lang: "en", variant: "full", sdh: "any", only_if_audio_differs: false }] }],
+  overrides: [],
+};
+
 // GET /subtitles/file: one video as the per-file drawer sees it — an English SRT from
 // OpenSubtitles beside it, Spanish missing and parked, and one image track inside.
 export function subtitleFile(url: URL): SubFileView {
@@ -71,6 +78,7 @@ export function subtitleFile(url: URL): SubFileView {
     title: episode ? "Show - S01E01" : "Fixture Film",
     video_path: `/media/${base}/${base}.mkv`,
     kept: ["en", "es"],
+    profile: { id: 1, name: "Default", override: false },
     languages: [
       { lang: "en", have: true },
       { lang: "es", have: false, reason: "no_match", next_retry_at: Math.floor(NOW / 1000) + 6 * 86400 },
