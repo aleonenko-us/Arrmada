@@ -358,14 +358,25 @@ func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *me
 	return without(langs, done), outs
 }
 
-// pauser is implemented by providers that can sit out a spent quota; while paused, the
-// download rung makes no requests at all — not even a search.
+// pauser is implemented by providers that can sit out a spent quota or rejected
+// credentials; while paused, the download rung makes no requests at all — not even a search.
 type pauser interface{ Paused() bool }
 
-// providerPaused reports whether the provider is waiting out a spent quota.
+// pauseReasoner says why a provider is paused, as the outcome the skipped rung records.
+type pauseReasoner interface{ PauseReason() (Result, string) }
+
+// providerPaused reports whether the provider is waiting out a spent quota or a rejected login.
 func (s *Service) providerPaused() bool {
 	p, ok := s.provider.(pauser)
 	return ok && p.Paused()
+}
+
+// pauseOutcome is why the provider is paused; a provider that can't say is out of quota.
+func (s *Service) pauseOutcome() (Result, string) {
+	if p, ok := s.provider.(pauseReasoner); ok {
+		return p.PauseReason()
+	}
+	return ResultQuota, "quota spent"
 }
 
 // rungDownload searches OpenSubtitles for each language. A language with no match, a
@@ -377,8 +388,9 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 	}
 	var outs []Outcome
 	if s.providerPaused() {
+		res, detail := s.pauseOutcome()
 		for _, l := range langs {
-			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultQuota, "quota spent"))
+			outs = append(outs, mkOutcome(l, RungOpenSubtitles, res, detail))
 		}
 		return langs, outs
 	}
@@ -392,6 +404,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 	// stopAll is a provider-wide failure (a spent quota, a rejected login): every further
 	// language would fail the same way, so they get the same outcome without a request.
 	var stopAll *Outcome
+	waited := false // a 429 is waited out once per job, then recorded
 	for _, l := range langs {
 		if ctx.Err() != nil {
 			return without(langs, done), outs
@@ -403,6 +416,20 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			continue
 		}
 		got, err := s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+		var rl *RateLimitError
+		if errors.As(err, &rl) && !waited {
+			waited = true
+			wait := rl.RetryAfter
+			if s.rateWait > 0 {
+				wait = s.rateWait
+			}
+			s.event("info", fmt.Sprintf("%s: OpenSubtitles rate-limited, retrying in %s", ref.Title, rl.RetryAfter.Round(time.Second)))
+			select {
+			case <-ctx.Done():
+			case <-time.After(wait):
+				got, err = s.grabOne(ctx, ref.IMDB, ref.Title, ref.Year, ref.Season, ref.Episode, ref.Path, hash, l)
+			}
+		}
 		switch {
 		case ctx.Err() != nil:
 			return without(langs, done), outs
@@ -410,6 +437,13 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			// Say it once per job. The sweep re-queues anything still missing after the reset.
 			s.event("warn", fmt.Sprintf("%s: OpenSubtitles daily download quota is used up — will retry after it resets", ref.Title))
 			o := mkOutcome(l, RungOpenSubtitles, ResultQuota, "quota spent")
+			stopAll = &o
+			outs = append(outs, o)
+		case errors.Is(err, ErrRateLimited):
+			// Still limited after the wait: the rest goes to AI, and the sweep tries again
+			// in minutes — never a quota pause.
+			s.event("warn", fmt.Sprintf("%s: OpenSubtitles is still rate-limiting — leaving the rest for later", ref.Title))
+			o := mkOutcome(l, RungOpenSubtitles, ResultRateLimited, "OpenSubtitles rate limit")
 			stopAll = &o
 			outs = append(outs, o)
 		case errors.Is(err, ErrAuthFailed):

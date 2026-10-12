@@ -2053,7 +2053,13 @@ export interface SubtitleSettings {
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;
+  // What OpenSubtitles actually said; only "ok" means a login has worked.
+  provider_state: SubtitleProviderState;
+  provider_detail: string;
+  vip: boolean;
+  allowed_downloads: number; // per day; -1 = unknown
 }
+export type SubtitleProviderState = "not_configured" | "needs_account" | "unverified" | "ok" | "auth_failed" | "quota_spent" | "rate_limited";
 export interface SubTrack { index: number; codec: string; lang: string; text: boolean; title?: string; forced?: boolean; sdh?: boolean; default?: boolean }
 export interface SubLangStatus {
   lang: string; have: boolean; source?: "extract" | "ocr" | "download" | "ai"; fallback?: "ai"; orphan?: boolean;

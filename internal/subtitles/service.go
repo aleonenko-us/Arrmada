@@ -3,6 +3,7 @@ package subtitles
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -52,6 +53,8 @@ type Service struct {
 	probe   func(ctx context.Context, path string) (*mediaInfo, error)
 	extract func(ctx context.Context, path string, picks []extractPick) error
 	ai      aiRunner
+	// rateWait replaces a 429's Retry-After wait when set (tests).
+	rateWait time.Duration
 	// ffprobeRun is probeCached's ffprobe call (probeSubs when nil).
 	ffprobeRun func(ctx context.Context, ffprobe, path string) (*mediaInfo, error)
 
@@ -104,6 +107,12 @@ type Settings struct {
 	QuotaRemaining int   `json:"quota_remaining"` // -1 = unknown
 	QuotaResetAt   int64 `json:"quota_reset_at"`  // unix seconds; 0 = not paused
 	Pending        int   `json:"pending"`         // jobs waiting for the worker
+	// What OpenSubtitles actually said: not_configured | needs_account | unverified | ok |
+	// auth_failed | quota_spent | rate_limited. Only "ok" means a login has worked.
+	ProviderState    string `json:"provider_state"`
+	ProviderDetail   string `json:"provider_detail"`
+	VIP              bool   `json:"vip"`
+	AllowedDownloads int    `json:"allowed_downloads"` // per day; -1 = unknown
 }
 
 // GetSettings returns the current configuration + provider status.
@@ -120,6 +129,8 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		QuotaRemaining: -1,
 		Pending:        s.Pending(),
 	}
+	st := s.providerStatus()
+	out.ProviderState, out.ProviderDetail, out.VIP, out.AllowedDownloads = st.State, st.Detail, st.VIP, st.Allowed
 	if q, ok := s.provider.(quotaReporter); ok {
 		remaining, resetAt := q.Quota()
 		out.QuotaRemaining = remaining
@@ -128,6 +139,21 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		}
 	}
 	return out
+}
+
+// providerStatus is the provider's real state; one that can't report it is judged by
+// what's configured, and never "ok".
+func (s *Service) providerStatus() ProviderStatus {
+	if sr, ok := s.provider.(statusReporter); ok {
+		return sr.Status()
+	}
+	switch {
+	case s.provider == nil || !s.provider.Available():
+		return ProviderStatus{State: ProviderNotConfigured, Allowed: -1}
+	case !s.provider.CanDownload():
+		return ProviderStatus{State: ProviderNeedsAccount, Allowed: -1}
+	}
+	return ProviderStatus{State: ProviderUnverified, Allowed: -1}
 }
 
 // quotaReporter is implemented by providers that meter downloads.
@@ -173,8 +199,12 @@ func (s *Service) SetSettings(ctx context.Context, moviesAuto, seriesAuto *bool,
 }
 
 // CredentialsChanged is called after an OpenSubtitles credential is saved or cleared:
-// files parked on a rejected login are tried again by the next sweep.
+// the provider forgets the last login (the next job or Test signs in fresh), and files
+// parked on a rejected login are tried again by the next sweep.
 func (s *Service) CredentialsChanged(ctx context.Context) {
+	if r, ok := s.provider.(interface{ ResetAuth() }); ok {
+		r.ResetAuth()
+	}
 	s.ClearBackoff(ctx, EventCreds)
 }
 
@@ -366,6 +396,9 @@ func (s *Service) grabOne(ctx context.Context, imdb, title string, year, season,
 	// A paused quota means no requests at all: searching would spend the API's rate
 	// limit on results that can't be downloaded until the reset.
 	if s.providerPaused() {
+		if res, msg := s.pauseOutcome(); res == ResultAuthFailed {
+			return nil, fmt.Errorf("%w: %s", ErrAuthFailed, msg)
+		}
 		return nil, ErrQuotaExhausted
 	}
 	results, err := s.provider.Search(ctx, SearchRequest{

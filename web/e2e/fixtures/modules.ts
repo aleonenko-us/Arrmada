@@ -45,6 +45,7 @@ export const subtitleCoverage: SubtitleCoverage = {
 export const subtitleSettings: SubtitleSettings = {
   movies_auto: false, series_auto: false, languages: ["en"], provider_ready: false, can_download: false, ai_ready: false,
   ai_backend: "", ai_note: "", quota_remaining: 0, quota_reset_at: 0, pending: 0,
+  provider_state: "not_configured", provider_detail: "Add an OpenSubtitles API key to search, plus the account's username and password to download.", vip: false, allowed_downloads: -1,
 };
 
 export const subtitleJobs: { jobs: SubtitleJob[] } = { jobs: [] };

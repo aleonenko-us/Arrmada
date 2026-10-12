@@ -42,6 +42,8 @@ type OpenSubtitles struct {
 	quotaMu        sync.Mutex
 	quotaRemaining int       // -1 = never reported
 	quotaResetAt   time.Time // zero = not paused
+
+	st osState // the last login result, a rate-limit wait, the account (osstatus.go)
 }
 
 // ErrQuotaExhausted means the provider's daily download allowance is spent.
@@ -81,9 +83,15 @@ func (o *OpenSubtitles) quotaPaused() bool {
 	return !reset.IsZero()
 }
 
-// Paused implements the pipeline's pauser: while the quota is spent, the download rung
-// sends nothing — not even a search — and the languages go straight to the AI rung.
-func (o *OpenSubtitles) Paused() bool { return o.quotaPaused() }
+// Paused implements the pipeline's pauser: while the quota is spent, or the credentials
+// in use were rejected, the download rung sends nothing — not even a search — and the
+// languages go straight to the AI rung. PauseReason says which.
+func (o *OpenSubtitles) Paused() bool {
+	if bad, _ := o.authRejected(); bad {
+		return true
+	}
+	return o.quotaPaused()
+}
 
 // noteQuota records what a /download response said about the allowance.
 func (o *OpenSubtitles) noteQuota(remaining int, resetUTC string, exhausted bool) {
@@ -196,10 +204,15 @@ func (o *OpenSubtitles) login(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return "", &authError{what: "login", status: resp.StatusCode}
-	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		err := &authError{what: "login", status: resp.StatusCode}
+		o.noteAuth(false, err.Error())
+		return "", err
+	case http.StatusTooManyRequests:
+		return "", o.rateLimit(resp.Header)
+	case http.StatusOK:
+	default:
 		return "", fmt.Errorf("opensubtitles login: HTTP %d", resp.StatusCode)
 	}
 	var out struct {
@@ -209,22 +222,28 @@ func (o *OpenSubtitles) login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("opensubtitles login: no token in response")
 	}
 	o.token, o.tokenFor = out.Token, acct
+	o.noteAuth(true, "")
 	return o.token, nil
 }
 
 // accountFingerprint identifies the credentials a token was signed in with, without
 // keeping another copy of the password.
-func (o *OpenSubtitles) accountFingerprint() string {
-	sum := sha256.Sum256([]byte(o.apiKey() + "\x00" + o.username() + "\x00" + o.password()))
+func (o *OpenSubtitles) accountFingerprint() string { return o.fingerprintFor(o.apiKey()) }
+
+// fingerprintFor is accountFingerprint with another API key (a Test of a typed one).
+func (o *OpenSubtitles) fingerprintFor(apiKey string) string {
+	sum := sha256.Sum256([]byte(apiKey + "\x00" + o.username() + "\x00" + o.password()))
 	return hex.EncodeToString(sum[:])
 }
 
 // Verify is the credentials Test, run on demand only. candidateKey is an API key typed
 // and not yet saved (sent once, kept nowhere); empty means the saved one. The key is
 // checked with a cheap Api-Key request; then, if the saved username and password are both
-// set, it signs in and reads the account's download allowance. A missing username or
-// password is named, since search works without them but downloading doesn't. The cached
-// download token is left alone either way.
+// set, it signs in fresh and reads the account (VIP, daily allowance, downloads left). A
+// missing username or password is named, since search works without them but downloading
+// doesn't. A Test of the saved credentials sets the state the header shows and the jobs
+// obey: a rejected login pauses downloads until the credentials change, a good one clears
+// that. A second press within two seconds gets the same answer without signing in again.
 func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string, error) {
 	key := strings.TrimSpace(candidateKey)
 	if key == "" {
@@ -232,6 +251,23 @@ func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string
 	}
 	if key == "" {
 		return "", ErrNotConfigured
+	}
+	fp := o.fingerprintFor(key)
+	if detail, ok, err := o.verifyCached(fp); ok {
+		return detail, err
+	}
+	detail, err := o.verify(ctx, key, key == o.apiKey())
+	if ctx.Err() == nil {
+		o.rememberVerify(fp, detail, err)
+	}
+	return detail, err
+}
+
+func (o *OpenSubtitles) verify(ctx context.Context, key string, saved bool) (string, error) {
+	rejected := func(what string, status int) {
+		if saved {
+			o.noteAuth(false, (&authError{what: what, status: status}).Error())
+		}
 	}
 	resp, err := o.reqKey(ctx, key, http.MethodGet, "/infos/formats", nil, nil, "")
 	if err != nil {
@@ -241,7 +277,10 @@ func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string
 	resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		rejected("API key", resp.StatusCode)
 		return "", fmt.Errorf("OpenSubtitles rejected the API key (HTTP %d)", resp.StatusCode)
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return "", fmt.Errorf("OpenSubtitles is rate-limiting requests — try again in %s", retryAfter(resp.Header, time.Now()).Round(time.Second))
 	case resp.StatusCode != http.StatusOK:
 		return "", fmt.Errorf("OpenSubtitles answered HTTP %d", resp.StatusCode)
 	}
@@ -270,14 +309,20 @@ func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string
 	}
 	_ = json.Unmarshal(raw, &login)
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		return "", fmt.Errorf("The API key works, but OpenSubtitles rejected the username or password")
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		rejected("login", resp.StatusCode)
+		return "", fmt.Errorf("Login rejected (%d): the API key works, but OpenSubtitles rejected the username or password", resp.StatusCode)
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return "", fmt.Errorf("OpenSubtitles is rate-limiting sign-ins — try again in %s", retryAfter(resp.Header, time.Now()).Round(time.Second))
 	case resp.StatusCode != http.StatusOK || login.Token == "":
 		msg := login.Message
 		if msg == "" {
 			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
 		return "", fmt.Errorf("The API key works, but signing in failed: %s", msg)
+	}
+	if saved {
+		o.noteAuth(true, "")
 	}
 
 	resp, err = o.reqKey(ctx, key, http.MethodGet, "/infos/user", nil, nil, login.Token)
@@ -287,13 +332,26 @@ func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string
 	defer resp.Body.Close()
 	var info struct {
 		Data struct {
-			RemainingDownloads *int `json:"remaining_downloads"`
+			AllowedDownloads   int    `json:"allowed_downloads"`
+			RemainingDownloads *int   `json:"remaining_downloads"`
+			Level              string `json:"level"`
+			VIP                bool   `json:"vip"`
+			ResetTimeUTC       string `json:"reset_time_utc"`
 		} `json:"data"`
 	}
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&info) != nil || info.Data.RemainingDownloads == nil {
 		return "OK: API key accepted and signed in as " + user + ".", nil
 	}
-	return fmt.Sprintf("OK: signed in as %s, %d downloads left today.", user, *info.Data.RemainingDownloads), nil
+	left := *info.Data.RemainingDownloads
+	if saved {
+		o.noteAccount(info.Data.VIP, info.Data.AllowedDownloads)
+		o.noteQuota(left, info.Data.ResetTimeUTC, left <= 0)
+	}
+	vip := ""
+	if info.Data.VIP {
+		vip = " (VIP)"
+	}
+	return fmt.Sprintf("OK: signed in as %s%s, %d downloads left today.", user, vip, left), nil
 }
 
 // Search finds candidate subtitles, best (most-downloaded) first.
@@ -337,10 +395,15 @@ func (o *OpenSubtitles) Search(ctx context.Context, sr SearchRequest) ([]Subtitl
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, &authError{what: "API key", status: resp.StatusCode}
-	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		err := &authError{what: "API key", status: resp.StatusCode}
+		o.noteAuth(false, err.Error())
+		return nil, err
+	case http.StatusTooManyRequests:
+		return nil, o.rateLimit(resp.Header)
+	case http.StatusOK:
+	default:
 		return nil, fmt.Errorf("opensubtitles search: HTTP %d", resp.StatusCode)
 	}
 	var payload struct {
@@ -400,46 +463,21 @@ func (o *OpenSubtitles) Download(ctx context.Context, fileID string) ([]byte, er
 	if o.quotaPaused() {
 		return nil, ErrQuotaExhausted
 	}
-	token, err := o.login(ctx)
+	link, err := o.downloadLink(ctx, fileID)
+	if errors.Is(err, errSessionExpired) {
+		// The cached token expired: sign in once more and ask again. A rejected login
+		// says so itself; a fresh token refused too is the provider's problem, not a
+		// reason to pause every download.
+		link, err = o.downloadLink(ctx, fileID)
+		if errors.Is(err, errSessionExpired) {
+			err = fmt.Errorf("opensubtitles download: HTTP 401 even after signing in again")
+		}
+	}
 	if err != nil {
 		return nil, err
-	}
-	id, _ := strconv.Atoi(fileID)
-	resp, err := o.req(ctx, http.MethodPost, "/download", nil, map[string]any{"file_id": id}, token)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	var out struct {
-		Link         string `json:"link"`
-		Remaining    int    `json:"remaining"`
-		ResetTimeUTC string `json:"reset_time_utc"`
-		Message      string `json:"message"`
-	}
-	_ = json.Unmarshal(raw, &out)
-	switch resp.StatusCode {
-	case http.StatusOK:
-		o.noteQuota(out.Remaining, out.ResetTimeUTC, out.Remaining <= 0)
-	case http.StatusNotAcceptable, http.StatusTooManyRequests:
-		// 406 is the documented "quota exceeded"; 429 is the per-second limiter.
-		// Either way, stop asking until the reset rather than failing every file.
-		o.noteQuota(0, out.ResetTimeUTC, true)
-		return nil, ErrQuotaExhausted
-	case http.StatusUnauthorized:
-		// The cached token expired. Drop it so the next attempt logs in again.
-		o.mu.Lock()
-		o.token = ""
-		o.mu.Unlock()
-		return nil, fmt.Errorf("opensubtitles download: session expired, will re-login")
-	default:
-		return nil, fmt.Errorf("opensubtitles download: HTTP %d", resp.StatusCode)
-	}
-	if out.Link == "" {
-		return nil, fmt.Errorf("opensubtitles download: no link in response")
 	}
 	// Fetch the actual subtitle file from the temporary link.
-	fr, err := http.NewRequestWithContext(ctx, http.MethodGet, out.Link, nil)
+	fr, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -463,6 +501,57 @@ func (o *OpenSubtitles) Download(ctx context.Context, fileID string) ([]byte, er
 		return nil, fmt.Errorf("opensubtitles fetch: response isn't an SRT file")
 	}
 	return data, nil
+}
+
+// errSessionExpired is a /download 401: the cached token is no longer accepted.
+var errSessionExpired = errors.New("opensubtitles download: session expired")
+
+// downloadLink asks /download for a file's temporary link, signing in first when there's
+// no token for the credentials in use. A 406 is the daily quota (paused until the API's
+// reset time); a 429 is the per-second limiter (a short wait, never a quota pause); a 401
+// drops the token and returns errSessionExpired so the caller can sign in again once.
+func (o *OpenSubtitles) downloadLink(ctx context.Context, fileID string) (string, error) {
+	token, err := o.login(ctx)
+	if err != nil {
+		return "", err
+	}
+	id, _ := strconv.Atoi(fileID)
+	resp, err := o.req(ctx, http.MethodPost, "/download", nil, map[string]any{"file_id": id}, token)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var out struct {
+		Link         string `json:"link"`
+		Remaining    int    `json:"remaining"`
+		ResetTimeUTC string `json:"reset_time_utc"`
+		Message      string `json:"message"`
+	}
+	_ = json.Unmarshal(raw, &out)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		o.noteQuota(out.Remaining, out.ResetTimeUTC, out.Remaining <= 0)
+		o.noteAuth(true, "")
+	case http.StatusNotAcceptable:
+		// The documented "quota exceeded": stop asking until the reset rather than
+		// failing every file.
+		o.noteQuota(0, out.ResetTimeUTC, true)
+		return "", ErrQuotaExhausted
+	case http.StatusTooManyRequests:
+		return "", o.rateLimit(resp.Header)
+	case http.StatusUnauthorized:
+		o.mu.Lock()
+		o.token = ""
+		o.mu.Unlock()
+		return "", errSessionExpired
+	default:
+		return "", fmt.Errorf("opensubtitles download: HTTP %d", resp.StatusCode)
+	}
+	if out.Link == "" {
+		return "", fmt.Errorf("opensubtitles download: no link in response")
+	}
+	return out.Link, nil
 }
 
 // looksLikeSRT is a cheap sanity check: an SRT has a "-->" timing arrow within its first
