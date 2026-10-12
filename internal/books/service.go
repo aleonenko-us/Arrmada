@@ -309,13 +309,39 @@ func (s *Service) ClearEdition(ctx context.Context, id int64, kind string) error
 	return nil
 }
 
-// Refresh re-pulls Open Library metadata (description, cover, subjects) for a book.
+// Refresh re-pulls catalogue metadata (description, cover, subjects, author, series) for
+// a book. A catalogue that can't answer leaves the book as it was; that isn't an error.
 func (s *Service) Refresh(ctx context.Context, id int64) (Book, error) {
+	b, _, err := s.refresh(ctx, id)
+	return b, err
+}
+
+// refresh is Refresh that also says why the catalogue lookup failed (fetchErr), so the
+// refresh job can tell "Hardcover's budget is spent, stop" from "this key is gone". The
+// book is stamped as checked unless the lookup was refused for budget or cut short, so
+// the job doesn't come straight back to a book it just tried.
+func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err error) {
 	b, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return Book{}, err
+		return Book{}, nil, err
 	}
-	if d, derr := s.meta.GetBook(ctx, b.OLKey); derr == nil {
+	d, derr := s.meta.GetBook(ctx, b.OLKey)
+	if derr == nil && d == nil {
+		derr = errors.New("the catalogue returned no book")
+	}
+	switch {
+	case derr == nil:
+	case errors.Is(derr, metadata.ErrHardcoverBudget) || ctx.Err() != nil:
+		b, err = s.repo.Get(ctx, id)
+		return b, derr, err
+	default:
+		// The provider's own words, so a query Hardcover rejects shows why in the log.
+		s.log.Info("book refresh: catalogue lookup failed", "title", b.Title, "key", b.OLKey, "err", derr)
+	}
+	if err := s.repo.StampMetaChecked(ctx, id); err != nil {
+		s.log.Warn("book refresh: couldn't record the check", "title", b.Title, "err", err)
+	}
+	if derr == nil {
 		if d.Description != "" {
 			b.Description = d.Description
 		}
@@ -342,7 +368,8 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Book, error) {
 			_ = s.repo.SetSeriesRef(ctx, b.ID, d.SeriesName, d.SeriesPosition, d.SeriesKey)
 		}
 	}
-	return s.repo.Get(ctx, id)
+	b, err = s.repo.Get(ctx, id)
+	return b, derr, err
 }
 
 // MatchByRelease finds the book a release name refers to — used to route a finished

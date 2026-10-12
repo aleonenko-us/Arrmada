@@ -680,6 +680,21 @@ func main() {
 		coordinator.SearchBooksMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing books"), scheduler.Description("Searches the indexers for monitored books missing a wanted edition."))
+	// Fill in catalogue details (description, genres, series, release date, author) for
+	// books added in bulk, and keep the rest fresh: 25 a run, about 100 a day, inside the
+	// Hardcover budget. meta_checked_at makes it restart-safe.
+	sched.Register("refresh-books", 6*time.Hour, false, func(ctx context.Context) error {
+		if !settingsSvc.GetBool(ctx, settings.KeyModuleBooks, true) {
+			return nil
+		}
+		n, skipped, err := booksSvc.RefreshDue(ctx, 25)
+		if skipped != "" {
+			log.Info(fmt.Sprintf("refresh-books: refreshed %d, skipped: %s", n, skipped))
+		} else {
+			log.Info(fmt.Sprintf("refresh-books: refreshed %d", n))
+		}
+		return err
+	}, scheduler.Label("Refresh book details"), scheduler.Description("Fills in descriptions, genres, series and release dates from the book catalogue, a few books at a time, never-refreshed books first. Holds off when most of the day's Hardcover budget is used."))
 	// Sweep monitored albums missing tracks and grab the best release for each.
 	sched.Register("search-missing-music", 30*time.Minute, false, func(ctx context.Context) error {
 		coordinator.SearchMusicMissing(ctx)
