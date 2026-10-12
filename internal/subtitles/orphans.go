@@ -102,7 +102,7 @@ func (s *Service) movieOrphan(ctx context.Context, movieID int64, name string) (
 	if err != nil {
 		return movies.Movie{}, Orphan{}, nil, err
 	}
-	langs := s.languages(ctx)
+	langs := s.titleLangs(ctx, "movie", movieID, 0)
 	if !m.HasFile || m.MovieFilePath == "" {
 		return m, Orphan{}, langs, ErrNotOrphan
 	}
@@ -204,7 +204,7 @@ func (s *Service) patchSeenMovie(ctx context.Context, m movies.Movie) {
 	seen := !s.snap.at.IsZero()
 	s.snap.mu.Unlock()
 	if seen {
-		s.patchMovie(ctx, m, s.languages(ctx))
+		s.patchMovie(ctx, m)
 	}
 }
 
@@ -256,12 +256,12 @@ func (s *Service) retireReplaced(ctx context.Context, job *Job, ref fileRef, out
 	}
 	made := map[string]bool{}
 	for _, o := range outcomes {
-		if o.Result == ResultOK {
+		if o.Result == ResultOK && o.Variant != VariantForced { // a forced want isn't the full subtitle the orphan was
 			made[strings.ToLower(o.Lang)] = true
 		}
 	}
 	still := map[string]bool{}
-	for _, o := range scanSidecars(ref.Path, s.languages(ctx), "movie").Orphans {
+	for _, o := range scanSidecars(ref.Path, s.titleLangs(ctx, "movie", job.MovieID, 0), "movie").Orphans {
 		still[o.Name] = true
 	}
 	for _, r := range job.retire {
@@ -324,7 +324,7 @@ func (s *Service) BulkOrphans(ctx context.Context, action string, movieIDs []int
 		if err != nil || !m.HasFile || m.MovieFilePath == "" {
 			continue // gone since the pass
 		}
-		langs := s.languages(ctx)
+		langs := s.titleLangs(ctx, "movie", m.ID, 0)
 		sc := scanSidecars(m.MovieFilePath, langs, "movie")
 		skip := func(o Orphan, reason string) {
 			res.Skipped = append(res.Skipped, BulkSkip{m.ID, m.Title, o.Name, reason})

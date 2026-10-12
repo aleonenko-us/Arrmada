@@ -25,11 +25,18 @@ type fileRef struct {
 	SourceRelease string // the release name the file was imported from, when recorded
 
 	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
+
+	wants []Want // the title's profile wants (profiles.go): SDH preferences, forced extras
 }
 
-// mkOutcome is one rung's Outcome for one wanted language (every want is the full subtitle today).
+// mkOutcome is one rung's Outcome for one wanted language's full subtitle.
 func mkOutcome(lang string, rung Rung, res Result, detail string) Outcome {
-	return Outcome{Lang: lang, Variant: VariantFull, Rung: rung, Result: res, Detail: detail}
+	return mkOutcomeV(lang, VariantFull, rung, res, detail)
+}
+
+// mkOutcomeV is mkOutcome for a want's variant (VariantForced for a profile's forced want).
+func mkOutcomeV(lang, variant string, rung Rung, res Result, detail string) Outcome {
+	return Outcome{Lang: lang, Variant: variant, Rung: rung, Result: res, Detail: detail}
 }
 
 // extractPick is one embedded text track to pull out to a sidecar.
@@ -109,34 +116,37 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if mi != nil {
 		ref.FPS = mi.FPS
 	}
-	langs := s.languages(ctx)
-	present := map[string]bool{}
+	// What this title's profile wants (profiles.go), less what its audio makes unnecessary:
+	// full subtitles walk the ladder below, forced ones rungForced.
+	all := s.titleWants(ctx, job.Kind, job.MovieID, job.SeriesID)
+	ref.wants = all
+	cov := coverageOf(ref.Path, kindOf(job.Kind), all, mi)
+	langs := wantLangs(cov.active, VariantFull)
+	var remaining, remainingForced []string
 	orphaned := 0
 	if job.Redo {
-		// Make every kept language again; the sidecars there now get written over.
+		// Make every wanted subtitle again; the sidecars there now get written over.
 		s.event("info", fmt.Sprintf("Redoing %s: replacing its existing subtitles", ref.Title))
+		remaining, remainingForced = langs, wantLangs(cov.active, VariantForced)
 	} else {
-		sc := scanSidecars(ref.Path, langs, kindOf(job.Kind))
-		for _, l := range sc.Present {
-			present[strings.ToLower(l)] = true
-		}
-		// The sweep leaves languages an orphaned subtitle covers alone (see SweepMissing);
-		// an import or a button press makes a real paired one.
-		if job.Priority == PrioSweep {
-			for l := range orphanCovered(langs, sc.Present, sc.Orphans) {
-				present[l] = true
+		for _, w := range cov.missing() {
+			switch {
+			case w.Variant == VariantForced:
+				remainingForced = append(remainingForced, w.Lang)
+			case job.Priority == PrioSweep && cov.orphaned[strings.ToLower(w.Lang)]:
+				// The sweep leaves languages an orphaned subtitle covers alone (see
+				// SweepMissing); an import or a button press makes a real paired one.
 				orphaned++
+			default:
+				remaining = append(remaining, w.Lang)
 			}
 		}
 	}
-	var remaining []string
-	for _, l := range langs {
-		if !present[strings.ToLower(l)] {
-			remaining = append(remaining, l)
-		}
-	}
-	if len(remaining) == 0 {
+	if len(remaining) == 0 && len(remainingForced) == 0 {
 		note := "all kept languages already have subtitles"
+		if len(cov.active) == 0 {
+			note = "no subtitles wanted: the audio is already in the profile's language"
+		}
 		if orphaned > 0 {
 			note = fmt.Sprintf("%d language(s) covered only by orphaned subtitles — Ensure replaces them", orphaned)
 		}
@@ -147,17 +157,18 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	// A sweep job leaves alone the languages still backing off (it may have been queued
 	// before the last run parked them). Import and manual jobs always try.
 	if job.Priority == PrioSweep && !job.Redo {
-		var parked []string
+		var parked, parkedForced []string
 		remaining, parked = s.dropBackedOff(ctx, ref, remaining)
-		if len(remaining) == 0 {
-			s.finish(job, StateSkipped, strings.Join(parked, " · "))
+		remainingForced, parkedForced = s.dropBackedOffV(ctx, ref, remainingForced, VariantForced)
+		if len(remaining) == 0 && len(remainingForced) == 0 {
+			s.finish(job, StateSkipped, strings.Join(append(parked, parkedForced...), " · "))
 			return
 		}
 	}
 
 	runID := NewRunID()
 	s.update(job, func(j *Job) { j.RunID = runID })
-	wanted := remaining
+	wanted, wantedForced := remaining, remainingForced
 	var outcomes []Outcome
 	// inFlight is the rung a stop lands in, for the cancelled outcomes below.
 	inFlight := RungExtract
@@ -168,6 +179,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	}
 	remaining, outs = s.rungDownload(ctx, job, ref, remaining)
 	outcomes = append(outcomes, outs...)
+	outcomes = append(outcomes, s.rungForced(ctx, job, ref, mi, remainingForced)...)
 	if ctx.Err() == nil {
 		inFlight = RungAI
 	}
@@ -189,15 +201,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	if ctx.Err() != nil {
 		// Every language the stop left without a subtitle gets a cancelled attempt, so
 		// the history says the run was cut short rather than that nothing was tried.
-		got := map[string]bool{}
-		for _, o := range outcomes {
-			if o.Result == ResultOK {
-				got[strings.ToLower(o.Lang)] = true
-			}
-		}
-		for _, l := range without(wanted, got) {
-			outcomes = append(outcomes, mkOutcome(l, inFlight, ResultCancelled, "stopped"))
-		}
+		outcomes = append(outcomes, stoppedOutcomes(wanted, wantedForced, outcomes, inFlight)...)
 		s.recordAttempts(ctx, runID, ref, outcomes)
 		note := "stopped"
 		if summary != "" {
@@ -212,6 +216,7 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	}
 	s.recordAttempts(ctx, runID, ref, outcomes)
 	s.updateBackoff(ctx, ref, wanted, outcomes)
+	s.updateBackoffV(ctx, ref, wantedForced, VariantForced, outcomes)
 	if summary == "" {
 		summary = "no source could act" // every rung declined without a reason; shouldn't happen
 	}
@@ -280,7 +285,7 @@ func outcomeNote(langs []string, outcomes []Outcome) string {
 	for _, l := range langs {
 		var steps []string
 		for _, o := range outcomes {
-			if strings.EqualFold(o.Lang, l) && o.Result != ResultCancelled {
+			if strings.EqualFold(o.Lang, l) && o.Result != ResultCancelled && o.Variant != VariantForced {
 				steps = append(steps, o.Detail)
 			}
 		}
@@ -288,7 +293,46 @@ func outcomeNote(langs []string, outcomes []Outcome) string {
 			parts = append(parts, strings.ToLower(l)+": "+strings.Join(steps, " → "))
 		}
 	}
+	// A profile's forced wants follow, "en forced: …", in the order they were tried.
+	var forced []string
+	steps := map[string][]string{}
+	for _, o := range outcomes {
+		if o.Variant != VariantForced || o.Result == ResultCancelled {
+			continue
+		}
+		l := strings.ToLower(o.Lang)
+		if _, ok := steps[l]; !ok {
+			forced = append(forced, l)
+		}
+		steps[l] = append(steps[l], o.Detail)
+	}
+	for _, l := range forced {
+		parts = append(parts, wantLabel(l, VariantForced)+": "+strings.Join(steps[l], " → "))
+	}
 	return strings.Join(parts, " · ")
+}
+
+// stoppedOutcomes is a cancelled outcome for every want a stopped run left unmade, so the
+// history says the run was cut short rather than that nothing was tried.
+func stoppedOutcomes(wanted, wantedForced []string, outcomes []Outcome, inFlight Rung) []Outcome {
+	got := map[string]bool{}
+	for _, o := range outcomes {
+		if o.Result == ResultOK {
+			got[strings.ToLower(o.Lang)+"|"+outcomeVariant(o)] = true
+		}
+	}
+	var out []Outcome
+	for _, l := range wanted {
+		if !got[strings.ToLower(l)+"|"+VariantFull] {
+			out = append(out, mkOutcome(l, inFlight, ResultCancelled, "stopped"))
+		}
+	}
+	for _, l := range wantedForced {
+		if !got[strings.ToLower(l)+"|"+VariantForced] {
+			out = append(out, mkOutcomeV(l, VariantForced, inFlight, ResultCancelled, "stopped"))
+		}
+	}
+	return out
 }
 
 // without returns langs minus the ones in done (case-insensitive).
@@ -316,7 +360,7 @@ func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *me
 	}
 	var picks []extractPick
 	for _, l := range langs {
-		if t, ok := pickFullTrack(mi.Subs, l); ok {
+		if t, ok := pickFullTrackPref(mi.Subs, l, sdhFor(ref.wants, l)); ok {
 			v := VariantFull
 			if t.SDH {
 				v = VariantSDH
@@ -327,7 +371,11 @@ func (s *Service) rungExtract(ctx context.Context, job *Job, ref fileRef, mi *me
 	if len(picks) == 0 {
 		return langs, nil
 	}
-	for _, l := range s.languages(ctx) {
+	extras := s.languages(ctx)
+	if ref.wants != nil {
+		extras = langsOf(ref.wants)
+	}
+	for _, l := range extras {
 		t, ok := pickForcedTrack(mi.Subs, l)
 		if !ok {
 			continue
@@ -400,8 +448,17 @@ func (s *Service) pauseOutcome() (Result, string) {
 // provider error or a spent quota stays in the returned list for the AI rung. Skipped
 // without a single request when downloads aren't configured or the quota is paused.
 func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs []string) ([]string, []Outcome) {
+	return s.rungDownloadV(ctx, job, ref, langs, VariantFull)
+}
+
+// rungDownloadV is rungDownload for one variant's wants: VariantForced searches the
+// foreign-parts-only uploads and writes "<base>.<lang>.forced.srt".
+func (s *Service) rungDownloadV(ctx context.Context, job *Job, ref fileRef, langs []string, variant string) ([]string, []Outcome) {
 	if ctx.Err() != nil || len(langs) == 0 || s.provider == nil || !s.provider.CanDownload() {
 		return langs, nil
+	}
+	mkOutcome := func(lang string, rung Rung, res Result, detail string) Outcome {
+		return mkOutcomeV(lang, variant, rung, res, detail)
 	}
 	var outs []Outcome
 	if s.providerPaused() {
@@ -432,7 +489,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			outs = append(outs, o)
 			continue
 		}
-		res, err := s.grabOne(ctx, ref, hash, l)
+		res, err := s.grabOneV(ctx, ref, hash, l, variant)
 		var rl *RateLimitError
 		if errors.As(err, &rl) && !waited {
 			waited = true
@@ -444,7 +501,7 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			select {
 			case <-ctx.Done():
 			case <-time.After(wait):
-				res, err = s.grabOne(ctx, ref, hash, l)
+				res, err = s.grabOneV(ctx, ref, hash, l, variant)
 			}
 		}
 		switch {
@@ -473,13 +530,13 @@ func (s *Service) rungDownload(ctx context.Context, job *Job, ref fileRef, langs
 			outs = append(outs, mkOutcome(l, RungOpenSubtitles, ResultProviderError, "OpenSubtitles error"))
 		case res.Written:
 			done[strings.ToLower(l)] = true
-			variant := VariantFull
-			if res.Pick.HearingImpaired {
-				variant = VariantSDH
+			written := variant
+			if variant == VariantFull && res.Pick.HearingImpaired {
+				written = VariantSDH
 			}
 			score := res.Pick.Score
 			s.recordFile(ctx, job, ref, SubtitleFile{
-				Path: res.Path, Lang: strings.ToLower(l), Variant: variant, Source: SourceOpenSubtitles,
+				Path: res.Path, Lang: strings.ToLower(l), Variant: written, Source: SourceOpenSubtitles,
 				Provider: providerOpenSubtitles, ProviderFileID: res.Pick.FileID, ReleaseName: res.Pick.Release,
 				HashMatch: res.Pick.HashMatch, Score: &score,
 			})

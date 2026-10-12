@@ -42,6 +42,9 @@ type MatchContext struct {
 	Season        int     // 0 for movies
 	Episode       int
 	Forced        bool // the want is the forced (foreign-parts-only) subtitle, not the full one
+	// SDH is the want's profile preference for hearing-impaired uploads: SDHAny (a plain
+	// one wins a tie), SDHPrefer (an SDH one wins a tie) or SDHAvoid (never used).
+	SDH string
 }
 
 func matchContextFor(ref fileRef) MatchContext {
@@ -192,12 +195,15 @@ func rejectReason(c SubtitleResult, m MatchContext) string {
 		return "foreign parts only"
 	case !c.ForeignPartsOnly && m.Forced:
 		return "a full subtitle, not foreign parts"
+	case c.HearingImpaired && m.SDH == SDHAvoid && !m.Forced:
+		return "hearing-impaired (the profile avoids SDH)"
 	}
 	return ""
 }
 
 // rankCandidates scores every result, marks the blocklisted and rejected ones, and sorts
-// best first: score, then a plain subtitle over a hearing-impaired one, then downloads.
+// best first: score, then a plain subtitle over a hearing-impaired one (the other way
+// round when the profile prefers SDH), then downloads.
 func rankCandidates(results []SubtitleResult, m MatchContext, blocked map[string]bool) []ScoredCandidate {
 	out := make([]ScoredCandidate, 0, len(results))
 	for _, r := range results {
@@ -217,7 +223,7 @@ func rankCandidates(results []SubtitleResult, m MatchContext, blocked map[string
 			return a.Score > b.Score
 		}
 		if a.HearingImpaired != b.HearingImpaired {
-			return !a.HearingImpaired
+			return a.HearingImpaired == (m.SDH == SDHPrefer)
 		}
 		return a.Downloads > b.Downloads
 	})

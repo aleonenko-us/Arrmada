@@ -390,7 +390,7 @@ func (s *Service) OnMovieChanged(ctx context.Context, movieID int64) error {
 	seen := !s.snap.at.IsZero()
 	s.snap.mu.Unlock()
 	if seen { // before the first pass there's nothing to patch; the pass will see it
-		s.patchMovie(ctx, m, s.languages(ctx))
+		s.patchMovie(ctx, m)
 	}
 	return nil
 }
@@ -479,7 +479,7 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	langs := s.languages(ctx)
+	cfg := s.profileCfg(ctx) // each movie's profile, read once
 	for _, m := range list {
 		if ctx.Err() != nil {
 			return n, ctx.Err()
@@ -488,9 +488,10 @@ func (s *Service) SweepMissing(ctx context.Context, media string) (int, error) {
 			continue
 		}
 		key := fmt.Sprintf("m:%d", m.ID)
+		p, _ := cfg.forTitle("movie", m.ID, 0)
 		due := 0
-		for _, l := range movieSweepLangs(m.MovieFilePath, langs) {
-			if !backoffs.Blocked(key, l, m.MovieFilePath, now) {
+		for _, w := range s.sweepWants(ctx, m.MovieFilePath, "movie", p.wants()) {
+			if !backoffs.BlockedV(key, w.Lang, w.Variant, m.MovieFilePath, now) {
 				due++
 			}
 		}
@@ -530,7 +531,7 @@ func (s *Service) missingEpisodes(ctx context.Context, seriesID int64, backoffs 
 	if err != nil {
 		return nil
 	}
-	langs := s.languages(ctx)
+	wants := s.titleWants(ctx, "episode", 0, seriesID)
 	var out []epRef
 	for _, sn := range full.Seasons {
 		for _, e := range sn.Episodes {
@@ -539,8 +540,8 @@ func (s *Service) missingEpisodes(ctx context.Context, seriesID int64, backoffs 
 			}
 			key := fmt.Sprintf("e:%d:%d:%d", seriesID, e.SeasonNumber, e.EpisodeNumber)
 			due := 0
-			for _, l := range missingOf(langs, scanSidecars(e.FilePath, langs, "episode").Present) {
-				if !backoffs.Blocked(key, l, e.FilePath, now) {
+			for _, w := range s.sweepWants(ctx, e.FilePath, "episode", wants) {
+				if !backoffs.BlockedV(key, w.Lang, w.Variant, e.FilePath, now) {
 					due++
 				}
 			}

@@ -34,6 +34,8 @@ DELETE /api/v1/series/{id}/duplicates staff -
 DELETE /api/v1/series/{id}/numbering/pending staff -
 DELETE /api/v1/series/{id}/scene-map/{season} staff -
 DELETE /api/v1/series/{id}/seasons/{season}/episodes/{episode}/file staff -
+DELETE /api/v1/subtitles/overrides/{kind}/{id} staff -
+DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
@@ -232,6 +234,7 @@ GET /api/v1/subtitles/jobs staff -
 GET /api/v1/subtitles/library staff -
 GET /api/v1/subtitles/logs staff -
 GET /api/v1/subtitles/models staff -
+GET /api/v1/subtitles/profiles staff -
 GET /api/v1/subtitles/settings staff -
 GET /api/v1/system/backups admin -
 GET /api/v1/system/backups/{name}/download admin -
@@ -401,6 +404,7 @@ POST /api/v1/subtitles/models/{name} staff -
 POST /api/v1/subtitles/movies/{id}/orphans/adopt staff -
 POST /api/v1/subtitles/movies/{id}/orphans/replace staff -
 POST /api/v1/subtitles/orphans/bulk staff -
+POST /api/v1/subtitles/profiles staff -
 POST /api/v1/subtitles/sweep staff -
 POST /api/v1/system/backups admin -
 POST /api/v1/system/backups/upload admin -
@@ -449,6 +453,8 @@ PUT /api/v1/series/{id}/scene-map staff -
 PUT /api/v1/series/{id}/seasons/{season}/monitor staff -
 PUT /api/v1/series/{id}/type staff -
 PUT /api/v1/settings staff -
+PUT /api/v1/subtitles/overrides/{kind}/{id} staff -
+PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -
 PUT /api/v1/system/backups/settings admin -
 PUT /api/v1/system/library admin -

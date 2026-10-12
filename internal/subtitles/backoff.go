@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -56,7 +57,13 @@ func BackoffKey(mediaKey, lang, variant string) string {
 
 // Blocked reports whether a (file, language) is backing off; a nil set blocks nothing.
 func (bs Backoffs) Blocked(mediaKey, lang, videoPath string, now time.Time) bool {
-	b, ok := bs[BackoffKey(mediaKey, lang, VariantFull)]
+	return bs.BlockedV(mediaKey, lang, VariantFull, videoPath, now)
+}
+
+// BlockedV is Blocked for one variant of the language (a profile's forced want backs off
+// on its own).
+func (bs Backoffs) BlockedV(mediaKey, lang, variant, videoPath string, now time.Time) bool {
+	b, ok := bs[BackoffKey(mediaKey, lang, variant)]
 	return ok && b.Blocked(videoPath, now)
 }
 
@@ -313,6 +320,20 @@ func (s *Service) quotaResetAt() time.Time {
 // updateBackoff records, after a run, when each language it couldn't make may be tried
 // again — and forgets the ones it made. Bookkeeping: errors are logged, never the job's.
 func (s *Service) updateBackoff(ctx context.Context, ref fileRef, wanted []string, outcomes []Outcome) {
+	s.updateBackoffV(ctx, ref, wanted, VariantFull, outcomes)
+}
+
+// outcomeVariant is the want an outcome is for: forced, or the full subtitle (SDH included).
+func outcomeVariant(o Outcome) string {
+	if o.Variant == VariantForced {
+		return VariantForced
+	}
+	return VariantFull
+}
+
+// updateBackoffV is updateBackoff for one variant's wants: only that variant's outcomes
+// count, and its rows are its own.
+func (s *Service) updateBackoffV(ctx context.Context, ref fileRef, wanted []string, variant string, outcomes []Outcome) {
 	if s.ledger == nil || len(wanted) == 0 {
 		return
 	}
@@ -326,22 +347,29 @@ func (s *Service) updateBackoff(ctx context.Context, ref fileRef, wanted []strin
 	for _, l := range wanted {
 		var outs []Outcome
 		for _, o := range outcomes {
-			if strings.EqualFold(o.Lang, l) {
+			if strings.EqualFold(o.Lang, l) && outcomeVariant(o) == variant {
 				outs = append(outs, o)
 			}
 		}
-		key := BackoffKey(ref.MediaKey, l, VariantFull)
+		key := BackoffKey(ref.MediaKey, l, variant)
 		var p *Backoff
 		if b, ok := prev[key]; ok {
 			p = &b
 		}
 		b, park := planBackoff(p, ref.MediaKey, l, ref.Path, outs, now, reset)
+		b.Variant = variant
+		if park && variant == VariantForced && b.PrimaryReason == ResultImpossible && !slices.Contains(b.ClearOn, EventCreds) {
+			// Only a download can make a forced subtitle the file doesn't carry: setting up
+			// OpenSubtitles is worth another look, not just a language change.
+			b.ClearOn = append(b.ClearOn, EventCreds)
+			sort.Strings(b.ClearOn)
+		}
 		var err error
 		switch {
 		case park:
 			err = s.ledger.SaveBackoff(ctx, b)
 		case p != nil && madeIt(outs):
-			err = s.ledger.DeleteBackoff(ctx, ref.MediaKey, l, VariantFull)
+			err = s.ledger.DeleteBackoff(ctx, ref.MediaKey, l, variant)
 		}
 		if err != nil {
 			s.log.Warn("subtitles: could not record backoff", "media_key", ref.MediaKey, "lang", l, "err", err)
@@ -352,6 +380,14 @@ func (s *Service) updateBackoff(ctx context.Context, ref fileRef, wanted []strin
 // dropBackedOff splits langs into those to try now and notes for those still backing
 // off for this file. A backoff that can't be read doesn't block anything.
 func (s *Service) dropBackedOff(ctx context.Context, ref fileRef, langs []string) (keep, parked []string) {
+	return s.dropBackedOffV(ctx, ref, langs, VariantFull)
+}
+
+// dropBackedOffV is dropBackedOff for one variant's wants.
+func (s *Service) dropBackedOffV(ctx context.Context, ref fileRef, langs []string, variant string) (keep, parked []string) {
+	if len(langs) == 0 {
+		return nil, nil
+	}
 	bs, err := s.ledger.BackoffsFor(ctx, ref.MediaKey)
 	if err != nil {
 		s.log.Warn("subtitles: could not read backoff", "media_key", ref.MediaKey, "err", err)
@@ -359,7 +395,7 @@ func (s *Service) dropBackedOff(ctx context.Context, ref fileRef, langs []string
 	}
 	now := time.Now()
 	for _, l := range langs {
-		if b, ok := bs[BackoffKey(ref.MediaKey, l, VariantFull)]; ok && b.Blocked(ref.Path, now) {
+		if b, ok := bs[BackoffKey(ref.MediaKey, l, variant)]; ok && b.Blocked(ref.Path, now) {
 			parked = append(parked, backoffNote(b))
 			continue
 		}
@@ -395,5 +431,5 @@ func backoffNote(b Backoff) string {
 	if reason == "" {
 		reason = string(b.PrimaryReason)
 	}
-	return b.Lang + ": " + reason + " — " + when
+	return wantLabel(b.Lang, b.Variant) + ": " + reason + " — " + when
 }

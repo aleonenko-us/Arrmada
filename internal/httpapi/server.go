@@ -631,6 +631,12 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/adopt", a.requireRole(auth.RoleManager, a.handleSubtitleAdoptOrphan))
 	mux.HandleFunc("POST /api/v1/subtitles/movies/{id}/orphans/replace", a.requireRole(auth.RoleManager, a.handleSubtitleReplaceOrphan))
 	mux.HandleFunc("POST /api/v1/subtitles/orphans/bulk", a.requireRole(auth.RoleManager, a.handleSubtitleBulkOrphans))
+	mux.HandleFunc("GET /api/v1/subtitles/profiles", a.requireRole(auth.RoleManager, a.handleSubtitleProfiles))
+	mux.HandleFunc("POST /api/v1/subtitles/profiles", a.requireRole(auth.RoleManager, a.handleCreateSubtitleProfile))
+	mux.HandleFunc("PUT /api/v1/subtitles/profiles/{id}", a.requireRole(auth.RoleManager, a.handleUpdateSubtitleProfile))
+	mux.HandleFunc("DELETE /api/v1/subtitles/profiles/{id}", a.requireRole(auth.RoleManager, a.handleDeleteSubtitleProfile))
+	mux.HandleFunc("PUT /api/v1/subtitles/overrides/{kind}/{id}", a.requireRole(auth.RoleManager, a.handleSetSubtitleOverride))
+	mux.HandleFunc("DELETE /api/v1/subtitles/overrides/{kind}/{id}", a.requireRole(auth.RoleManager, a.handleClearSubtitleOverride))
 
 	// Books (Readarr replacement — Open Library metadata + ebook acquisition).
 	mux.HandleFunc("GET /api/v1/books", a.requireRole(auth.RoleManager, a.handleListBooks))
