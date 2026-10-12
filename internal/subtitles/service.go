@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -48,6 +49,8 @@ type Service struct {
 	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
 	// adoptHook records an adopted orphan as Arrmada's own (SetAdoptHook); nil = no record.
 	adoptHook func(ctx context.Context, a AdoptedSidecar) error
+	// libraryChanged hears about the folder of each sidecar change (Plex's scanner; events.go).
+	libraryChanged atomic.Pointer[func(kind, dir string)]
 
 	// repair is the one-shot forced-track repair pass (repair.go).
 	repair forcedRepair

@@ -262,6 +262,7 @@ func (s *Service) processRepair(ctx context.Context, job *Job, ref fileRef) {
 	s.repair.mu.Unlock()
 	note := strings.Join(notes, " · ")
 	if fixed > 0 {
+		s.sidecarChanged(job.Kind, ref.Path, "", SidecarWritten)
 		s.refreshSnapshot(context.WithoutCancel(ctx), job)
 	}
 	switch {

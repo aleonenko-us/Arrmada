@@ -935,6 +935,8 @@ func main() {
 	seriesSvc.SetLibraryChanged(plexScanner.Request)   // episode and show deletes
 	coordinator.SetLibraryChanged(plexScanner.Request) // series renames
 	convertSvc.SetLibraryChanged(plexScanner.Request)  // a converted file swapped in
+	// A subtitle written, shifted, removed or adopted: Plex picks it up without a full scan.
+	subtitlesSvc.SetLibraryChanged(plexScanner.Request)
 	// Prune raw bandwidth samples older than 90 days: the poller writes one row per
 	// cycle, so at the 5s default that's ~17k/day and every graph query scans them all.
 	// Watch history itself is kept — only the high-frequency bandwidth series is rolled off.

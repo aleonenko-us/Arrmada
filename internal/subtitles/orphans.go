@@ -177,6 +177,7 @@ func (s *Service) adoptOne(ctx context.Context, m movies.Movie, o Orphan, lang, 
 		return "", err
 	}
 	s.recordAdopted(ctx, AdoptedSidecar{MediaKey: fmt.Sprintf("m:%d", m.ID), VideoPath: video, Path: dst, Lang: lang, Variant: variant})
+	s.sidecarChanged("movie", video, dst, SidecarAdopted)
 	s.patchSeenMovie(ctx, m)
 	return newName, nil
 }
@@ -283,6 +284,7 @@ func (s *Service) retireReplaced(ctx context.Context, job *Job, ref fileRef, out
 				continue
 			}
 			s.event("info", fmt.Sprintf("%s: replaced %s; the old file is in the recycle bin", ref.Title, r.Name))
+			s.sidecarChanged(job.Kind, ref.Path, p, SidecarRemoved)
 		}
 	}
 }
