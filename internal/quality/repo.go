@@ -21,19 +21,19 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const profileCols = `id, media_type, name, base, allowed_resolutions, min_source, bitrate_cap_mbps,
 	small_bias, min_format_score, format_scores, custom_formats, keywords, rejected, min_seeders, stall_minutes, max_source,
-	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger`
+	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (StoredProfile, error) {
 	var (
 		sp                                                    StoredProfile
 		allowedJSON, scoresJSON, cfJSON, kwJSON, rejectedJSON string
-		requiredJSON, idealJSON                               string
+		requiredJSON, idealJSON, unwantedJSON                 string
 		upgradesEnabled, allowPreRelease                      int
 	)
 	err := row.Scan(&sp.ID, &sp.MediaType, &sp.Name, &sp.Base, &allowedJSON, &sp.MinSource,
 		&sp.BitrateCapMbps, &sp.SmallBias, &sp.MinFormatScore, &scoresJSON, &cfJSON,
 		&kwJSON, &rejectedJSON, &sp.MinSeeders, &sp.StallMinutes, &sp.MaxSource,
-		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger)
+		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger, &unwantedJSON)
 	if err != nil {
 		return StoredProfile{}, err
 	}
@@ -50,6 +50,12 @@ func (r *Repo) scan(row interface{ Scan(...any) error }) (StoredProfile, error) 
 		var ideal IdealFile
 		if json.Unmarshal([]byte(idealJSON), &ideal) == nil && !ideal.Empty() {
 			sp.Ideal = &ideal
+		}
+	}
+	if unwantedJSON != "" {
+		var u Unwanted
+		if json.Unmarshal([]byte(unwantedJSON), &u) == nil {
+			sp.Unwanted = u.normalized()
 		}
 	}
 	if sp.FormatScores == nil {
@@ -98,12 +104,12 @@ func (r *Repo) Create(ctx context.Context, sp StoredProfile) (StoredProfile, err
 		`INSERT INTO quality_profiles (media_type, name, base, allowed_resolutions, min_source,
 			bitrate_cap_mbps, small_bias, min_format_score, format_scores, custom_formats,
 			keywords, rejected, min_seeders, stall_minutes, max_source, upgrades_enabled, upgrade_min_percent,
-			required_formats, ideal, allow_prerelease, upgrade_trigger)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sp.MediaType, sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias,
 		sp.MinFormatScore, scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger))
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp))
 	if err != nil {
 		return StoredProfile{}, err
 	}
@@ -120,12 +126,12 @@ func (r *Repo) Update(ctx context.Context, id int64, sp StoredProfile) error {
 			bitrate_cap_mbps = ?, small_bias = ?, min_format_score = ?, format_scores = ?, custom_formats = ?,
 			keywords = ?, rejected = ?, min_seeders = ?, stall_minutes = ?, max_source = ?,
 			upgrades_enabled = ?, upgrade_min_percent = ?, required_formats = ?, ideal = ?, allow_prerelease = ?,
-			upgrade_trigger = ?
+			upgrade_trigger = ?, unwanted = ?
 		 WHERE id = ?`,
 		sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias, sp.MinFormatScore,
 		scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger), id)
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), id)
 	if err != nil {
 		return err
 	}
@@ -304,6 +310,17 @@ func marshalJSON(sp StoredProfile) (allowed, scores, cf, keywords, rejected stri
 	k, _ := json.Marshal(sp.Keywords)
 	rj, _ := json.Marshal(sp.Rejected)
 	return string(a), string(s), string(c), string(k), string(rj)
+}
+
+// marshalUnwanted encodes the Unwanted choices: "" for the defaults, so a profile that
+// never touched them keeps following the shipped defaults as they evolve.
+func marshalUnwanted(sp StoredProfile) string {
+	u := sp.Unwanted.normalized()
+	if u.IsDefault() {
+		return ""
+	}
+	b, _ := json.Marshal(u)
+	return string(b)
 }
 
 // marshalExtra encodes the required formats and the ideal file ("" when not set up).

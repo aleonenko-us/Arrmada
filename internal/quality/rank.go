@@ -52,8 +52,8 @@ func NormalizeTrigger(t string) string {
 
 // improvementKey is the most significant way cand beats cur, checked in the order
 // resolution, preferences, custom, source, proper. "" when none of those improved — the
-// score gain came from somewhere no trigger names (a low-quality group penalty, a size
-// lean), which only TriggerAny accepts.
+// score gain came from somewhere no trigger names (a size lean), which only TriggerAny
+// accepts.
 //
 // Only gains count, not the balance: a release that trades a preferred format for a better
 // source improved on source, and whether that's worth a re-download is the trigger's call.
@@ -143,7 +143,7 @@ func decidingFactor(p Profile, winner, runnerUp Evaluation) (RankKey, string) {
 }
 
 // scoreFactor names the part of the score the winner gained on, most significant first:
-// the quality ladder (resolution, the low-quality-group penalty, source, PROPER), the
+// the quality ladder (resolution, source, PROPER), the
 // target's formats, custom formats, then the size lean. "" when none is higher, which
 // can't happen while the winner's total is.
 func scoreFactor(winner, runnerUp Evaluation) (RankKey, string) {
@@ -152,8 +152,6 @@ func scoreFactor(winner, runnerUp Evaluation) (RankKey, string) {
 		switch {
 		case resRank[wr.Resolution] > resRank[rr.Resolution]:
 			return KeyResolution, "lower resolution"
-		case lowQualityGroup(strings.ToLower(runnerUp.Candidate.Name)) && !lowQualityGroup(strings.ToLower(winner.Candidate.Name)):
-			return KeyGroup, "its group is known for over-compressed encodes"
 		case sourceBonus[wr.Source] > sourceBonus[rr.Source]:
 			return KeySource, sourceLoss(wr, rr)
 		case isProper(wr) && !isProper(rr):

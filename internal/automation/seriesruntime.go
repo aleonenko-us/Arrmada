@@ -162,5 +162,9 @@ func (c *Coordinator) episodeUpgradeCandidates(ctx context.Context, s series.Ser
 // at it. Build idx once per pass with newRuntimeIndex.
 func (c *Coordinator) newSeriesCandidate(ctx context.Context, s series.Series, idx runtimeIndex, rel indexer.Release) quality.Candidate {
 	cand := quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders)
+	// The show's original language, for the Unwanted pack's foreign-only check.
+	if s.Extra != nil {
+		cand = cand.WithLanguage(s.Extra.OriginalLanguage)
+	}
 	return cand.WithRuntime(c.releaseRuntime(ctx, s, idx, cand.Release))
 }

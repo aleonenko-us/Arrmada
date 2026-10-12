@@ -886,6 +886,9 @@ func main() {
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)
+	// The Unwanted pack's foreign-only check: the audio languages Convert keeps are the
+	// household's own, so a release dubbed into one of them is never foreign.
+	qualitySvc.SetOwnerLanguages(convertSvc.AudioLanguages)
 	// A conversion plan warns when dropping a file's Dolby Vision layer would leave it
 	// outside the target of the profile its title runs under.
 	convertSvc.SetProfilePrefersDV(func(ctx context.Context, kind string, id int64) bool {

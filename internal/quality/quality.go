@@ -89,21 +89,6 @@ func qualityScore(r parser.Release) int {
 	return s
 }
 
-// lowQualityGroups are release groups widely regarded as over-compressed /
-// low-quality despite carrying legit resolution/source tags. Kept conservative
-// so decent groups (NAHOM, GalaxyRG, FraMeSToR…) are never penalized.
-var lowQualityGroups = []string{"yify", "yts", "megusta"}
-
-// lowQualityGroup reports whether a release name is from a known low-quality group.
-func lowQualityGroup(lcName string) bool {
-	for _, g := range lowQualityGroups {
-		if strings.Contains(lcName, g) {
-			return true
-		}
-	}
-	return false
-}
-
 // --- Custom formats -------------------------------------------------------
 
 // ConditionType is what a custom-format condition matches on.
@@ -260,6 +245,14 @@ type Profile struct {
 	// RejectPreRelease refuses cams, telesyncs, telecines, screeners and workprints
 	// outright (they parse as CAM), rather than only ranking them last.
 	RejectPreRelease bool `json:"reject_prerelease,omitempty"`
+	// Unwanted is the profile's Unwanted pack choices (unwanted.go); the zero value is the
+	// defaults. NoUnwanted turns the pack off — book and music profiles, whose names are
+	// titles and authors, not video tags.
+	Unwanted   Unwanted `json:"unwanted,omitempty"`
+	NoUnwanted bool     `json:"no_unwanted,omitempty"`
+	// OwnerLanguages are the audio languages the household keeps (Convert's audio
+	// languages); a release in one of them is never foreign-only. Empty means English.
+	OwnerLanguages []string `json:"owner_languages,omitempty"`
 }
 
 // Candidate is a release under consideration (release + indexer metadata).
@@ -269,6 +262,9 @@ type Candidate struct {
 	SizeGB     float64        `json:"size_gb"`
 	Seeders    int            `json:"seeders"`
 	RuntimeMin int            `json:"runtime_min,omitempty"` // content length this release covers; 0 = unknown (bitrate cap can't apply)
+	// OrigLanguage is the title's original language (TMDB's original_language), so a
+	// release dubbed only into another language can be told apart; "" = no judgement.
+	OrigLanguage string `json:"orig_language,omitempty"`
 }
 
 // NewCandidate parses a release name into a Candidate.
@@ -281,6 +277,13 @@ func NewCandidate(name string, sizeGB float64, seeders int) Candidate {
 // the sum across its episodes. 0 leaves the bitrate cap inert for this candidate.
 func (c Candidate) WithRuntime(min int) Candidate {
 	c.RuntimeMin = min
+	return c
+}
+
+// WithLanguage attaches the title's original language, so the Unwanted pack can tell a
+// foreign-only dub. "" (unknown) means no judgement.
+func (c Candidate) WithLanguage(lang string) Candidate {
+	c.OrigLanguage = strings.TrimSpace(lang)
 	return c
 }
 
@@ -373,6 +376,9 @@ type Evaluation struct {
 	// there's an alternative" — not merely a score penalty a better source could overcome.
 	Avoided        bool     `json:"avoided,omitempty"`
 	AvoidedFormats []string `json:"avoided_formats,omitempty"`
+	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
+	// out of it can be told apart (current.go).
+	lowGroup bool
 	// ceiling names the profile ceiling a rejected release is above ("40 Mb/s", "BluRay"),
 	// "" for every other outcome. It lets a downgrade prompt tell "too big for this
 	// profile" from "not what this profile wants" without parsing the reason text.
@@ -400,12 +406,13 @@ const (
 	RejectTerm            = "rejected_term"    // carries a rejected term
 	RejectMissingRequired = "missing_required" // lacks a required format
 	RejectMinFormatScore  = "min_format_score" // below the minimum format score
+	// RejectUnwanted ("unwanted", unwanted.go): an Unwanted item set to reject.
 )
 
 // RejectCodes lists every code, for tests and for anything that labels them.
 var RejectCodes = []string{
 	RejectResolution, RejectSourceFloor, RejectPrerelease, RejectSourceCeiling, RejectBitrateCeiling,
-	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore,
+	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore, RejectUnwanted,
 }
 
 // reject sets both halves of a rejection: the sentence and its code.
@@ -456,6 +463,15 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		ev.reject(RejectPrerelease, "A cam, telesync or screener copy — this profile never grabs those")
 		return ev
 	}
+	// The Unwanted pack: an item set to reject refuses the release by name, before any
+	// ceiling (a disc image is always "over the ceiling", which would hide why).
+	unwanted := p.unwantedHits(c)
+	for _, h := range unwanted {
+		if p.unwantedAction(h.item) == UnwantedReject {
+			ev.reject(RejectUnwanted, h.reject)
+			return ev
+		}
+	}
 	// An unstated source can't be judged against a ceiling, so it passes one.
 	if p.MaxSource != "" && r.Source != parser.SourceUnknown && sourceTier(r.Source) > sourceTier(p.MaxSource) {
 		ev.reject(RejectSourceCeiling, fmt.Sprintf("Above your %s ceiling — this is %s", minSourceLabel(p.MaxSource), sourceLabel(r.Source)))
@@ -493,12 +509,6 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 
 	ev.QualityScore = qualityScore(r)
-	// Baseline quality signal: notorious low-quality groups (over-compressed
-	// rips) rank below proper encodes of the same resolution/source. They stay
-	// eligible — just not the default pick.
-	if lowQualityGroup(lcName) {
-		ev.QualityScore -= 180
-	}
 	for name, score := range p.FormatScores {
 		f, ok := e.formats[name]
 		if !ok || !f.Matches(r) {
@@ -553,6 +563,15 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 			ev.Avoided = true
 			// Read as "it has <this>, which you avoid" in the decision's explanation.
 			ev.AvoidedFormats = append(ev.AvoidedFormats, fmt.Sprintf("a bitrate under your %.0f Mbps floor", w.Min))
+		}
+	}
+	// Unwanted items set to avoid join the avoided tier under their own names ("it has
+	// Low-quality group (YTS), which you avoid"), never as a hidden score.
+	for _, h := range unwanted {
+		if p.unwantedAction(h.item) == UnwantedAvoid {
+			ev.Avoided = true
+			ev.lowGroup = ev.lowGroup || h.item == UnwantedLowQualityGroup
+			ev.AvoidedFormats = append(ev.AvoidedFormats, h.avoid)
 		}
 	}
 

@@ -21,6 +21,30 @@ type Service struct {
 	// how Impact runs the upgrade decisions against a profile as edited, before it's saved
 	// (see withSpecs). nil on the app's service.
 	specs map[int64]StoredProfile
+	// ownerLangs reads the audio languages the household keeps (Convert's), for the
+	// Unwanted pack's foreign-only item; nil reads as English.
+	ownerLangs func(ctx context.Context) []string
+}
+
+// SetOwnerLanguages tells the service where the household's audio languages come from
+// (Convert's "keep audio" languages). A release in one of them is never foreign-only.
+func (s *Service) SetOwnerLanguages(fn func(ctx context.Context) []string) { s.ownerLangs = fn }
+
+// ownerLanguages is the household's audio languages, English when none are set.
+func (s *Service) ownerLanguages(ctx context.Context) []string {
+	if s.ownerLangs != nil {
+		if l := s.ownerLangs(ctx); len(l) > 0 {
+			return l
+		}
+	}
+	return []string{"en"}
+}
+
+// profileOf is sp's runtime profile with the household's languages attached.
+func (s *Service) profileOf(ctx context.Context, sp StoredProfile) Profile {
+	p := sp.ToProfile()
+	p.OwnerLanguages = s.ownerLanguages(ctx)
+	return p
 }
 
 // NewService wires the quality service over the database with a settings service of its
@@ -101,13 +125,15 @@ func (s *Service) Effective(ctx context.Context, ref, media string) string {
 func (s *Service) Resolve(ctx context.Context, ref string) (Profile, *Engine) {
 	if id, ok := customID(ref); ok {
 		if sp, ok := s.specs[id]; ok {
-			return sp.ToProfile(), sp.Engine()
+			return s.profileOf(ctx, sp), sp.Engine()
 		}
 		if sp, err := s.repo.Get(ctx, id); err == nil {
-			return sp.ToProfile(), sp.Engine()
+			return s.profileOf(ctx, sp), sp.Engine()
 		}
 	}
-	return fallbackProfile(), NewDefaultEngine()
+	p := fallbackProfile()
+	p.OwnerLanguages = s.ownerLanguages(ctx)
+	return p, NewDefaultEngine()
 }
 
 // AllowedResolutions returns the resolution strings a profile allows (empty =
@@ -479,7 +505,7 @@ func (s *Service) Update(ctx context.Context, id int64, sp StoredProfile) error 
 // on a real title" uses it with your unsaved edits.
 func (s *Service) DecideSpec(sp StoredProfile, cands []Candidate) Decision {
 	normalize(&sp)
-	return sp.Engine().Decide(sp.ToProfile(), cands)
+	return sp.Engine().Decide(s.profileOf(context.Background(), sp), cands)
 }
 
 // Delete removes a profile and moves every title, pending request and in-flight grab
@@ -583,7 +609,7 @@ func (s *Service) RepairDanglingRefs(ctx context.Context) (map[string]int, error
 // live feedback behind the builder.
 func (s *Service) Preview(sp StoredProfile) Decision {
 	normalize(&sp) // an edited target takes effect in the preview before it's saved
-	return sp.Engine().Decide(sp.ToProfile(), SampleCandidates())
+	return sp.Engine().Decide(s.profileOf(context.Background(), sp), SampleCandidates())
 }
 
 func normalize(sp *StoredProfile) {
@@ -602,6 +628,9 @@ func normalize(sp *StoredProfile) {
 			sp.Migrate()
 		}
 		sp.Compile()
+		sp.Unwanted = sp.Unwanted.normalized()
+	} else {
+		sp.Unwanted = Unwanted{} // the pack is video-only
 	}
 }
 

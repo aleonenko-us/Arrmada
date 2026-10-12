@@ -121,7 +121,10 @@ func TestAtCeilingUsesProbedBitrate(t *testing.T) {
 // Under "Avoid SDR", a Dolby Vision file with no HDR base gets the same verdict from the
 // Library fit and from the engine: it is Dolby Vision, not SDR.
 func TestDVOnlyIsNotSDR(t *testing.T) {
-	sp := StoredProfile{MediaType: MediaMovie, Name: "No SDR", Ideal: &IdealFile{HDR: map[string]string{"SDR": PrefAvoid}}}
+	// The Unwanted pack's own Dolby-Vision-without-fallback item is allowed here, so only
+	// the SDR question is asked (unwanted_test covers that item).
+	sp := StoredProfile{MediaType: MediaMovie, Name: "No SDR", Ideal: &IdealFile{HDR: map[string]string{"SDR": PrefAvoid}},
+		Unwanted: Unwanted{Items: map[string]string{UnwantedDVNoFallback: UnwantedAllow}}}
 	sp.Compile()
 	ideal := *sp.Ideal
 

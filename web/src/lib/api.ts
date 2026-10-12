@@ -489,7 +489,16 @@ export interface StoredProfile {
   upgrade_trigger?: UpgradeTrigger;
   allow_prerelease?: boolean; // grab cams/telesyncs/screeners (movie & series; off = refused)
   ideal?: IdealFile; // the target file: drives grabbing, ranking and the library fit check
+  unwanted?: UnwantedSettings; // the Unwanted pack's choices (movie & series)
 }
+
+// The Unwanted pack (quality/unwanted.go): each item refused, avoided or allowed per profile.
+export type UnwantedAction = "reject" | "avoid" | "allow";
+export interface UnwantedSettings {
+  items?: Record<string, UnwantedAction>; // a missing item is its default
+  low_quality_groups: string[] | null; // null = the default list
+}
+export interface UnwantedItemInfo { key: string; label: string; description: string; default: UnwantedAction }
 
 export type UpgradeTrigger = "any" | "source" | "format" | "resolution";
 

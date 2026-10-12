@@ -49,6 +49,11 @@ func (a *api) handleListQualityProfiles(w http.ResponseWriter, r *http.Request) 
 		list = []quality.ProfileInfo{}
 	}
 	body := map[string]any{"profiles": list, "formats": quality.Catalog()}
+	if media == quality.MediaMovie || media == quality.MediaSeries {
+		// The Unwanted pack's rows and their defaults, for the Rules section.
+		body["unwanted"] = quality.UnwantedCatalog()
+		body["unwanted_groups"] = quality.DefaultLowQualityGroups
+	}
 	if media == quality.MediaMusic {
 		// Music quality is a ranked ladder rather than a set of preferences, so the builder
 		// renders from the ladder and offers starter presets instead of the video formats.
@@ -92,6 +97,10 @@ func (a *api) handleCreateQualityProfile(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, upgradeTriggerError)
 		return
 	}
+	if msg := quality.UnwantedError(sp.Unwanted); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	created, err := a.deps.Quality.Create(r.Context(), sp)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not create profile")
@@ -115,6 +124,10 @@ func (a *api) handleUpdateQualityProfile(w http.ResponseWriter, r *http.Request)
 	}
 	if !quality.ValidTrigger(sp.UpgradeTrigger) {
 		a.writeError(w, http.StatusBadRequest, upgradeTriggerError)
+		return
+	}
+	if msg := quality.UnwantedError(sp.Unwanted); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	if err := a.deps.Quality.Update(r.Context(), id, sp); err != nil {

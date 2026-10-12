@@ -57,6 +57,14 @@ type upgradeBar struct {
 // file and, for a converted file, its original), and its gain over the file must be one
 // the profile's "Replace for" trigger counts — or a same-group PROPER of the file.
 func (b upgradeBar) qualityGain(trigger string, cand Evaluation) bool {
+	// Leaving a low-quality group's encode for a clean release that scores no worse is a
+	// gain of its own: such files carried a hidden −180 that any clean release beat, and
+	// only TriggerAny counted it, as it still does. The Unwanted items that are new (an
+	// upscale, Dolby Vision without a fallback) don't reach back into the library like this:
+	// they rank what is grabbed from now on, and never start a wave of re-downloads.
+	if b.ev.lowGroup && !cand.Avoided && cand.Total >= b.total && triggerAllows(trigger, KeyAvoid) {
+		return true
+	}
 	return cand.Total > b.total && qualityGain(trigger, cand, b.ev)
 }
 
