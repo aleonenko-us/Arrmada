@@ -145,7 +145,10 @@ func newSpeechTrack(env []float32) *speechTrack {
 // Check measures how an SRT lines up with this track's speech.
 func (t *speechTrack) Check(srt []byte) SyncResult {
 	cues := parseSRT(string(srt))
-	return t.align(cueEnvelope(cues, 0))
+	// Size the cue envelope to the audio (plus room for a slow frame rate and the largest
+	// offset), not to the last cue: a stray "99:59:59" cue mustn't allocate hours of frames.
+	frames := len(t.env) + len(t.env)/10 + int(syncMaxLag/syncFrame)
+	return t.align(cueEnvelope(cues, frames))
 }
 
 // checkSRTSync is the one-shot form: one WAV, one subtitle.

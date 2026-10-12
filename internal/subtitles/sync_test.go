@@ -299,7 +299,8 @@ func TestSpeechTrackFromWAV(t *testing.T) {
 		}
 	}
 
-	srt := formatSRT(shiftCues(bursts, 1000, 1))
+	// A stray cue days past the end is ignored rather than sizing the envelope.
+	srt := formatSRT(shiftCues(bursts, 1000, 1)) + "999\n99:59:59,000 --> 99:59:59,900\nstray\n"
 	res, err := checkSRTSync(wav, []byte(srt))
 	if err != nil {
 		t.Fatal(err)
