@@ -29,6 +29,18 @@ func TestQualityPreviewLabelsItsSamples(t *testing.T) {
 			t.Errorf("%s: label %q, winner %v", media, got.SampleLabel, got.Decision.Winner)
 		}
 	}
+
+	// A contradiction in the edit comes back as a warning; it doesn't refuse the preview.
+	rec := s.doJSON("POST", "/api/v1/quality/preview", mgr, `{"media_type":"movie","name":"x","ideal":{"hdr":{"HDR10+":"want","HDR10":"avoid"}}}`)
+	var got struct {
+		Conflicts []quality.Conflict `json:"conflicts"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
+	}
+	if len(got.Conflicts) != 1 || got.Conflicts[0].Row != "hdr" {
+		t.Errorf("conflicts = %+v", got.Conflicts)
+	}
 }
 
 // The "Test a release name" box judges a name against the profile as edited — never saved

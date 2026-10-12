@@ -13,6 +13,7 @@ import {
   type MovieSummary,
   type MusicPreset,
   type ProfileImpact,
+  type ProfileConflict,
   type ProfileMoveCounts,
   type QualityProfileInfo,
   type ReleaseList,
@@ -23,6 +24,7 @@ import {
 } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
 import { TestName } from "./quality/TestName";
+import { ConflictNotes } from "./quality/ConflictNotes";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -552,6 +554,8 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
   const [decision, setDecision] = useState<DecisionView | null>(null);
   // What the preview's samples are — a film, or an episode of a show for a series profile.
   const [sampleLabel, setSampleLabel] = useState("");
+  // Target settings that contradict each other, from the same preview — warnings only.
+  const [conflicts, setConflicts] = useState<ProfileConflict[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -570,6 +574,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
         // Go marshals empty slices as null — coalesce so .length/.map are safe.
         setDecision({ ...p.decision, eligible: p.decision.eligible ?? [], rejected: p.decision.rejected ?? [] });
         setSampleLabel(p.sample_label ?? "");
+        setConflicts(p.conflicts ?? []);
       }).catch(() => {});
     }, 250);
     return () => { alive = false; window.clearTimeout(t); };
@@ -658,7 +663,7 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
           <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
 
           <SectionLabel>1 · The file you want</SectionLabel>
-          <TargetEditor sp={sp} ideal={ideal} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
+          <TargetEditor sp={sp} ideal={ideal} conflicts={conflicts} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
 
           <div className="mt-6 flex flex-col gap-2.5">
             <Collapsible n={2} title="Sources" summary={sourceSummary(sp)}>
@@ -833,7 +838,7 @@ function advancedSummary(sp: StoredProfile, other: FormatInfo[]): string {
 
 // TargetEditor sets the file the profile aims for: its resolutions, a state for each codec,
 // HDR and audio option, and a bitrate window per resolution.
-function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile; ideal: IdealFile; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void }) {
+function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: StoredProfile; ideal: IdealFile; conflicts: ProfileConflict[]; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void }) {
   const allowed = sp.allowed_resolutions;
   const best = allowed.reduce((b, r) => (RES_RANK[r] > (RES_RANK[b] ?? 0) ? r : b), "");
   const toggleRes = (v: string) => onResolutions(allowed.includes(v) ? allowed.filter((r) => r !== v) : [...allowed, v]);
@@ -882,6 +887,7 @@ function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile
               </div>
             ))}
           </div>
+          <ConflictNotes conflicts={conflicts} row={row.row} />
         </div>
       ))}
 
@@ -900,6 +906,7 @@ function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile
           </div>
         ))}
       </div>
+      <ConflictNotes conflicts={conflicts} row="bitrate" />
 
     </div>
   );

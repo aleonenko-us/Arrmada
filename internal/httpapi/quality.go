@@ -30,10 +30,17 @@ func (a *api) handleQualityPreview(w http.ResponseWriter, r *http.Request) {
 		sp = s
 	}
 	_, label := quality.Samples(sp.MediaType)
+	// The editor's contradiction warnings ride on the preview, so they follow every unsaved
+	// edit. A profile saved before targets existed is read the way the editor opens it.
+	target := sp
+	if target.Ideal == nil {
+		target.Migrate()
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"profile":      sp.Name,
 		"decision":     a.deps.Quality.Preview(sp),
 		"sample_label": label, // what the samples are: a film, or an episode of a show
+		"conflicts":    target.Conflicts(),
 	})
 }
 

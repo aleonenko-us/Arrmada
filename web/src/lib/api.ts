@@ -214,6 +214,14 @@ export interface QualityPreview {
   decision: Decision;
   /** What the samples are: "Dune: Part Two (2024), 166 min" or "An episode of a 50-minute show". */
   sample_label?: string;
+  /** Target settings that work against each other, shown as warnings under their rows. */
+  conflicts?: ProfileConflict[] | null;
+}
+
+/** One contradiction in a profile's target; row is codec | hdr | audio | bitrate. */
+export interface ProfileConflict {
+  row: string;
+  msg: string;
 }
 
 export interface QualityProfileInfo {
