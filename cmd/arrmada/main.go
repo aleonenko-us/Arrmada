@@ -773,6 +773,14 @@ func main() {
 		global := requests.GlobalLimits(func(key string) string { return settingsSvc.Get(ctx, key, "") })
 		return requests.LimitsFrom(global, own.Movies, own.Seasons, own.Books), nil
 	})
+	// Books carried only an author name before authors were rows of their own: link each
+	// to its author (spelling variants together, namesakes with different catalogue keys
+	// apart, an ambiguous name left unlinked). Idempotent; counts only in the log.
+	grp.Go("books: author backfill", func(ctx context.Context) {
+		if _, _, err := booksSvc.BackfillAuthors(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("books: author backfill failed", "err", err)
+		}
+	})
 	// Book requests made before they remembered their library row are linked to it by
 	// title and author, so the ones whose book was re-matched to a new catalogue key
 	// stop showing "Searching" and get their "ready".

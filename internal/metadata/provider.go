@@ -250,6 +250,10 @@ type BookResult struct {
 	Author   string `json:"author"`
 	Year     int    `json:"year"`
 	CoverURL string `json:"cover_url,omitempty"`
+	// AuthorKey is the catalogue's id for the person in Author (Open Library "OL23919A",
+	// Hardcover "hc:a:123"), when the answer carried one. It links a library book to its
+	// author row by identity rather than by spelling.
+	AuthorKey string `json:"author_key,omitempty"`
 	// ReleaseDate is the book's first publication day, YYYY-MM-DD, when the catalogue
 	// knows it (Hardcover's book release_date; Open Library leaves it empty). An upcoming
 	// book is not searched for before it.

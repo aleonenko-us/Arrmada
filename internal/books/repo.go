@@ -41,6 +41,7 @@ type Book struct {
 	OLKey          string    `json:"ol_key"`
 	Title          string    `json:"title"`
 	Author         string    `json:"author"`
+	AuthorID       int64     `json:"author_id,omitempty"` // the author row Author means; 0 = not linked (none, or ambiguous)
 	Year           int       `json:"year"`
 	CoverURL       string    `json:"cover_url,omitempty"`
 	Description    string    `json:"description,omitempty"`
@@ -193,7 +194,7 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	monitored, quality_profile, added_at, series_name, series_position, series_key, keep_catalogue,
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
-	last_search_at, search_misses, release_date,
+	last_search_at, search_misses, release_date, author_id,
 	meta_updated_at, audiobook_narrator`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
@@ -208,15 +209,17 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 		abSize        int64
 		abFiles       int
 		lastSearch    sql.NullString
+		authorID      sql.NullInt64
 	)
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
-		&lastSearch, &b.SearchMisses, &b.ReleaseDate,
+		&lastSearch, &b.SearchMisses, &b.ReleaseDate, &authorID,
 		&b.MetaUpdatedAt, &b.AudiobookNarrator)
 	if err != nil {
 		return Book{}, err
 	}
+	b.AuthorID = authorID.Int64
 	if t := parseStamp(lastSearch.String); !t.IsZero() {
 		b.LastSearchAt = t.Format(time.RFC3339)
 	}

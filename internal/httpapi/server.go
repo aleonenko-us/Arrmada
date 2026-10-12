@@ -703,6 +703,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/books/discover/authors/{key}", a.signedIn(a.handleBookAuthorDetail).ext())
 	mux.HandleFunc("GET /api/v1/books/discover/similar", a.signedIn(a.handleBookDiscoverSimilar).ext())
 	mux.HandleFunc("GET /api/v1/books/authors/images", a.requireRole(auth.RoleManager, a.handleBookAuthorImages))
+	// Authors as rows of their own (bookauthors.go): not under /books/authors/{id}, which
+	// would overlap /books/{id}/series and the like and panic at startup.
+	mux.HandleFunc("GET /api/v1/book-authors", a.requireRole(auth.RoleManager, a.handleListBookAuthors))
+	mux.HandleFunc("GET /api/v1/book-authors/{id}", a.requireRole(auth.RoleManager, a.handleGetBookAuthor))
+	mux.HandleFunc("PUT /api/v1/book-authors/{id}", a.requireRole(auth.RoleManager, a.handleUpdateBookAuthor))
 	mux.HandleFunc("POST /api/v1/books/{id}/series/add-missing", a.requireRole(auth.RoleManager, a.handleAddMissingInSeries))
 	mux.HandleFunc("GET /api/v1/books/discover/subjects/{name}", a.signedIn(a.handleBookDiscoverSubject).ext())
 	mux.HandleFunc("GET /api/v1/books/discover/detail", a.signedIn(a.handleBookDiscoverDetail).ext())

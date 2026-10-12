@@ -165,6 +165,10 @@ func (s *Service) Add(ctx context.Context, olKey, qualityProfile string, monitor
 			return existing, ErrExists
 		}
 	}
+	authorKey := d.AuthorKey
+	if d.Author == "" {
+		authorKey = fallback.AuthorKey // the author came from the search result
+	}
 	b := Book{
 		OLKey: d.Key, Title: orStr(d.Title, fallback.Title), Author: orStr(d.Author, fallback.Author),
 		Year: d.Year, CoverURL: orStr(d.CoverURL, fallback.CoverURL),
@@ -199,6 +203,7 @@ func (s *Service) Add(ctx context.Context, olKey, qualityProfile string, monitor
 		_ = s.repo.SetSeriesRef(ctx, created.ID, d.SeriesName, d.SeriesPosition, d.SeriesKey)
 		created.SeriesName, created.SeriesPosition, created.SeriesKey = d.SeriesName, d.SeriesPosition, d.SeriesKey
 	}
+	created.AuthorID = s.linkAuthor(ctx, created.ID, created.Author, authorKey, false)
 	s.log.Info("book added", "title", created.Title, "author", created.Author)
 	s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
 	return created, nil
@@ -249,10 +254,16 @@ func (s *Service) TouchMeta(ctx context.Context, id int64) error { return s.repo
 
 // OverrideMetadata applies a manual metadata correction (title/author/year/description/cover).
 func (s *Service) OverrideMetadata(ctx context.Context, id int64, title, author string, year int, description, coverURL string) error {
+	before, _ := s.repo.Get(ctx, id)
 	if err := s.repo.UpdateDetails(ctx, id, strings.TrimSpace(title), strings.TrimSpace(author), year, description, coverURL); err != nil {
 		return err
 	}
 	s.repo.AddEvent(ctx, id, "edited", "Metadata corrected by hand")
+	// A corrected author is another person, or at least another spelling: the link
+	// follows the name now on the book.
+	if !strings.EqualFold(strings.TrimSpace(before.Author), strings.TrimSpace(author)) {
+		s.linkAuthor(ctx, id, strings.TrimSpace(author), "", true)
+	}
 	return nil
 }
 
@@ -261,6 +272,26 @@ func (s *Service) OverrideMetadata(ctx context.Context, id int64, title, author 
 // network fetch — so this stays fast for a big catalogue; descriptions/subjects fill in on
 // the next refresh. Returns the books actually added and how many were skipped as dupes.
 func (s *Service) AddWorks(ctx context.Context, works []metadata.BookResult, profile string, monitored bool) ([]Book, int) {
+	return s.addWorks(ctx, works, profile, monitored, 0)
+}
+
+// AddAuthorWorks is AddWorks for one author's catalogue ("Add author", a followed
+// author's new books): every added book is linked to that author, whoever the
+// catalogue lists first on a co-written book, and books by them already in the library
+// that aren't linked to anyone are linked too.
+func (s *Service) AddAuthorWorks(ctx context.Context, authorID int64, works []metadata.BookResult, profile string, monitored bool) ([]Book, int) {
+	return s.addWorks(ctx, works, profile, monitored, authorID)
+}
+
+func (s *Service) addWorks(ctx context.Context, works []metadata.BookResult, profile string, monitored bool, authorID int64) ([]Book, int) {
+	var author Author
+	if authorID > 0 {
+		var err error
+		if author, err = s.repo.getAuthor(ctx, s.repo.db, authorID); err != nil {
+			s.log.Warn("add author: unknown author row", "author_id", authorID, "err", err)
+			authorID = 0
+		}
+	}
 	var added []Book
 	skipped := 0
 	// One pass over the library for the title-and-author check, then each incoming
@@ -272,8 +303,13 @@ func (s *Service) AddWorks(ctx context.Context, works []metadata.BookResult, pro
 		if wk.Key == "" || wk.Title == "" {
 			continue
 		}
-		if _, ok := have.Find(wk.Title, wk.Author); ok {
+		if held, ok := have.Find(wk.Title, wk.Author); ok {
 			skipped++
+			if authorID > 0 && SameAuthorName(held.Author, author.Name) {
+				if cur, err := bookAuthorID(ctx, s.repo.db, held.ID); err == nil && cur == 0 {
+					_ = setBookAuthor(ctx, s.repo.db, held.ID, authorID)
+				}
+			}
 			continue
 		}
 		created, err := s.repo.Create(ctx, Book{
@@ -287,6 +323,13 @@ func (s *Service) AddWorks(ctx context.Context, works []metadata.BookResult, pro
 		if err != nil {
 			s.log.Warn("add author: create failed", "title", wk.Title, "err", err)
 			continue
+		}
+		if authorID > 0 {
+			if err := setBookAuthor(ctx, s.repo.db, created.ID, authorID); err == nil {
+				created.AuthorID = authorID
+			}
+		} else {
+			created.AuthorID = s.linkAuthor(ctx, created.ID, created.Author, wk.AuthorKey, false)
 		}
 		have.Add(created)
 		s.repo.AddEvent(ctx, created.ID, "added", "Added from the author's catalogue")
@@ -389,13 +432,22 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 		// The catalogue's author wins over the one on file: a book filed under its
 		// illustrator (the catalogue once listed that contributor first) is put right
 		// here, and every indexer search from then on carries the right name.
+		authorChanged := false
 		if d.Author != "" && !strings.EqualFold(d.Author, b.Author) {
 			old := b.Author
 			if err := s.repo.UpdateDetails(ctx, b.ID, b.Title, d.Author, b.Year, b.Description, b.CoverURL); err == nil {
 				b.Author = d.Author
+				authorChanged = true
 				s.repo.AddEvent(ctx, b.ID, "refreshed", "Author corrected: "+old+" → "+d.Author)
 			}
 		}
+		// The catalogue's key for the author on file links the book to its author by
+		// identity; a corrected author is relinked.
+		key := ""
+		if d.Author != "" && strings.EqualFold(d.Author, b.Author) {
+			key = d.AuthorKey
+		}
+		s.linkAuthor(ctx, b.ID, b.Author, key, authorChanged)
 		// A series the catalogue knows outranks one guessed from a release name, and
 		// books added before series keys existed pick theirs up here.
 		if d.SeriesName != "" && (b.SeriesKey == "" || d.SeriesKey != "") {
@@ -545,6 +597,10 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 	if err != nil {
 		return Book{}, fmt.Errorf("fetch metadata: %w", err)
 	}
+	authorKey := d.AuthorKey
+	if d.Author == "" {
+		authorKey = fallback.AuthorKey
+	}
 	next := Book{
 		OLKey:       orStr(d.Key, olKey),
 		Title:       orStr(d.Title, fallback.Title),
@@ -572,6 +628,7 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 	if err := s.repo.Rematch(ctx, id, next, keepOld); err != nil {
 		return Book{}, err
 	}
+	s.linkAuthor(ctx, id, next.Author, authorKey, !strings.EqualFold(before.Author, next.Author))
 	s.repo.AddEvent(ctx, id, "matched", fmt.Sprintf("Re-matched from %q to %q (%s)", before.Title, next.Title, next.OLKey))
 	s.log.Info("book re-matched", "id", id, "from", before.Title, "to", next.Title, "ol_key", next.OLKey)
 	return s.repo.Get(ctx, id)

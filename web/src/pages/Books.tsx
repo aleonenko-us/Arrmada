@@ -217,17 +217,7 @@ export function Books() {
         .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
     [list, filter, q],
   );
-  const authors = useMemo(() => {
-    const map = new Map<string, Book[]>();
-    for (const b of filtered) {
-      const name = b.author || "Unknown author";
-      const arr = map.get(name);
-      if (arr) arr.push(b); else map.set(name, [b]);
-    }
-    return [...map.entries()]
-      .map(([name, books]) => ({ name, books: books.slice().sort((a, b) => a.title.localeCompare(b.title)) }))
-      .sort((a, b) => a.name.localeCompare(b.name)); // authors A→Z, books A→Z within each
-  }, [filtered]);
+  const authors = useMemo(() => groupByAuthor(filtered, authorImages), [filtered, authorImages]);
 
   // A search runs as a job; when the latest one ends the toast says what it found.
   const [searchJob, setSearchJob] = useState<{ id: number; title: string } | null>(null);
@@ -404,7 +394,7 @@ export function Books() {
         ) : mode === "author" ? (
           view === "table" ? <AuthorTable authors={authors} /> : (
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-              {authors.map((a) => <AuthorCard key={a.name} name={a.name} books={a.books} image={authorImages[a.name]} />)}
+              {authors.map((a) => <AuthorCard key={a.key} group={a} />)}
             </div>
           )
         ) : view === "table" ? (
@@ -648,6 +638,47 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   );
 }
 
+// AuthorGroup is one author tile: the books linked to one author row (author_id), or, for
+// books not linked to anyone yet, the books sharing an author string. Spelling variants of
+// one person ("J.K. Rowling" / "J. K. Rowling") are one row, so one tile.
+interface AuthorGroup {
+  key: string;
+  id?: number;
+  name: string;
+  books: Book[];
+  image?: string;
+}
+
+function groupByAuthor(books: Book[], images: Record<string, string>): AuthorGroup[] {
+  const map = new Map<string, Book[]>();
+  for (const b of books) {
+    const key = b.author_id ? `id:${b.author_id}` : `name:${b.author || "Unknown author"}`;
+    const arr = map.get(key);
+    if (arr) arr.push(b); else map.set(key, [b]);
+  }
+  return [...map.entries()]
+    .map(([key, group]) => {
+      // The tile shows the spelling most of the author's books carry.
+      const counts = new Map<string, number>();
+      for (const b of group) counts.set(b.author || "Unknown author", (counts.get(b.author || "Unknown author") ?? 0) + 1);
+      const names = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([n]) => n);
+      return {
+        key,
+        id: group[0].author_id,
+        name: names[0],
+        books: group.slice().sort((a, b) => a.title.localeCompare(b.title)),
+        image: names.map((n) => images[n]).find(Boolean),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name)); // authors A→Z, books A→Z within each
+}
+
+// An author's page: by id when the books are linked to an author row; an unlinked name
+// goes through the old by-name route, which resolves it or asks which author is meant.
+function authorPath(a: { id?: number; name: string }): string {
+  return a.id ? `/books/authors/${a.id}` : `/books/author/${encodeURIComponent(a.name)}`;
+}
+
 function authorStats(books: Book[]): { downloaded: number; wanted: number; cover?: string } {
   let downloaded = 0, wanted = 0;
   for (const b of books) {
@@ -657,10 +688,11 @@ function authorStats(books: Book[]): { downloaded: number; wanted: number; cover
   return { downloaded, wanted, cover: books.find((b) => b.cover_url)?.cover_url };
 }
 
-function AuthorCard({ name, books, image }: { name: string; books: Book[]; image?: string }) {
+function AuthorCard({ group }: { group: AuthorGroup }) {
+  const { name, books, image } = group;
   const { downloaded, wanted, cover } = authorStats(books);
   return (
-    <Link to={`/books/author/${encodeURIComponent(name)}`} className="group relative block overflow-hidden rounded-xl" style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+    <Link to={authorPath(group)} className="group relative block overflow-hidden rounded-xl" style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       {image ? (
         <img src={image} alt={name} className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]" loading="lazy" decoding="async" />
       ) : cover ? (
@@ -680,7 +712,7 @@ function AuthorCard({ name, books, image }: { name: string; books: Book[]; image
   );
 }
 
-function AuthorTable({ authors }: { authors: { name: string; books: Book[] }[] }) {
+function AuthorTable({ authors }: { authors: AuthorGroup[] }) {
   return (
     <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
       <table className="w-full border-collapse text-[12.5px]">
@@ -696,9 +728,9 @@ function AuthorTable({ authors }: { authors: { name: string; books: Book[] }[] }
           {authors.map((a, i) => {
             const { downloaded, wanted } = authorStats(a.books);
             return (
-              <tr key={a.name} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
+              <tr key={a.key} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                 <td className="px-3 py-2">
-                  <Link to={`/books/author/${encodeURIComponent(a.name)}`} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>{a.name}</Link>
+                  <Link to={authorPath(a)} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>{a.name}</Link>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-ink-dim">{a.books.length}</td>
                 <td className="px-3 py-2 text-right font-mono" style={{ color: downloaded > 0 ? "var(--good)" : "var(--ink-faint)" }}>{downloaded}</td>
@@ -747,7 +779,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
     if (!selected) return;
     setBusy(true); setError(null);
     try {
-      const r = await api.addAuthor({ author_key: selected.key, quality_profile: profile });
+      const r = await api.addAuthor({ author_key: selected.key, name: selected.name, quality_profile: profile });
       const parts = [`Added ${r.added} book${r.added === 1 ? "" : "s"} by ${selected.name}`];
       if (r.skipped > 0) parts.push(`${r.skipped} already in library`);
       onAdded(parts.join(" · "));

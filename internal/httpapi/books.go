@@ -811,6 +811,7 @@ func (a *api) handleBookAuthorSearch(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AuthorKey      string `json:"author_key"`
+		Name           string `json:"name"` // the author's name as the picker showed it
 		QualityProfile string `json:"quality_profile"`
 		Monitored      *bool  `json:"monitored"`
 		SearchOnAdd    *bool  `json:"search_on_add"`
@@ -844,7 +845,33 @@ func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	if !searchOnAdd {
 		monitored = false
 	}
-	added, skipped := a.deps.Books.AddWorks(r.Context(), works, profile, monitored)
+	// The author becomes a followed author row under the catalogue's key, and every book
+	// added from the catalogue is linked to it. A key that is no author key Arrmada knows
+	// still adds the books (linked by name), as before.
+	var authorID int64
+	if books.ValidAuthorKey(req.AuthorKey) {
+		authorID, err = a.deps.Books.UpsertByKey(r.Context(), req.AuthorKey, authorNameFor(req.Name, req.AuthorKey, works))
+		if err == nil {
+			// Adding books never stops following an author someone already follows
+			// (Search on add off leaves the new books unmonitored, not the author).
+			follow := monitored
+			if cur, gerr := a.deps.Books.GetAuthor(r.Context(), authorID); gerr == nil && cur.Monitored {
+				follow = true
+			}
+			err = a.deps.Books.SetMonitoring(r.Context(), authorID, follow, true, profile)
+		}
+		if err != nil {
+			a.deps.Log.Warn("add author: could not save the author", "err", err)
+			authorID = 0
+		}
+	}
+	var added []books.Book
+	var skipped int
+	if authorID > 0 {
+		added, skipped = a.deps.Books.AddAuthorWorks(r.Context(), authorID, works, profile, monitored)
+	} else {
+		added, skipped = a.deps.Books.AddWorks(r.Context(), works, profile, monitored)
+	}
 	if monitored && searchOnAdd && len(added) > 0 {
 		ids := make([]int64, len(added))
 		for i, b := range added {
@@ -880,7 +907,30 @@ func (a *api) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 				return nil
 			})})
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"added": len(added), "skipped": skipped, "total": len(works)})
+	a.writeJSON(w, http.StatusOK, map[string]any{"added": len(added), "skipped": skipped, "total": len(works), "author_id": authorID})
+}
+
+// authorNameFor is the name to file a new author row under: the one the picker showed,
+// else the name the catalogue gives most often for that key in the works, else the most
+// common author name in the works.
+func authorNameFor(picked, key string, works []metadata.BookResult) string {
+	if n := strings.TrimSpace(picked); n != "" {
+		return n
+	}
+	count := map[string]int{}
+	best, bestKeyed := "", false
+	for _, wk := range works {
+		n := strings.TrimSpace(wk.Author)
+		if n == "" {
+			continue
+		}
+		count[n]++
+		keyed := wk.AuthorKey == key
+		if best == "" || (keyed && !bestKeyed) || (keyed == bestKeyed && count[n] > count[best]) {
+			best, bestKeyed = n, keyed
+		}
+	}
+	return best
 }
 
 // handleBookAuthorWorks returns an author's catalogue.
