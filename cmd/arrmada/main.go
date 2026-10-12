@@ -888,6 +888,16 @@ func main() {
 	// Convert pauses its encodes while someone is watching — which it can only know while
 	// monitoring is on, so its settings page says so when it isn't.
 	convertSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })
+	// convert.done / failed / blocked / stalled (staff-only topics): the live UI and the
+	// admin alerts hear them (internal/notify/convert_digest.go).
+	convertSvc.SetBus(bus)
+	// "Convert gave up on a file" at once, and one summary a morning (notify/convert_digest.go;
+	// its counts survive a restart in a setting). Stuck-for-space is a Needs-you item below.
+	convertAlerts := notify.NewConvertAlerts(notifySvc, settingsSvc, log)
+	grp.Loop("notify: convert alerts", func(ctx context.Context) { convertAlerts.Run(ctx, bus) })
+	sched.Register("convert-digest", 15*time.Minute, false, convertAlerts.SendDigest,
+		scheduler.Label("Send the daily Convert summary"),
+		scheduler.Description("After 09:00, sends one message with what Convert did since the last one: files converted, space freed and any problems."))
 	// Tell Plex which folder changed after an import, upgrade, rename, delete or Convert
 	// swap: one debounced partial scan per folder, translated to Plex's own paths. Plex
 	// being down or unset never holds anything up — requests are queued in memory and
@@ -987,6 +997,7 @@ func main() {
 		attention.Imports(importFailures, coordinator),
 		attention.WrongCategory(coordinator.WrongCategoryDownloads),
 		attention.Health(healthReg),
+		attention.Convert(convertSvc),
 		attention.Searches(
 			func(ctx context.Context) (int, error) {
 				return movieSvc.CountSearchStuck(ctx, attention.SearchStuckAfter)

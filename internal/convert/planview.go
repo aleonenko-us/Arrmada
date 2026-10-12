@@ -125,7 +125,7 @@ func (s *Service) planView(ctx context.Context, p prefs, r indexRow, plan Plan, 
 		v.Video.ToCodec = strings.ToUpper(plan.VideoCodec)
 		v.Video.CRF = plan.Quality
 		v.Video.ToHDR = mi.EncodeHDR()
-		v.Video.ToBits = outputBits(mi, enc)
+		v.Video.ToBits = outputBits(mi, plan, enc)
 		if p.allowAV1 && mi.EncodeHDR() != "HDR10+" {
 			v.Video.CodecNote = "HEVC or AV1 — a side-by-side test of a few clips picks at conversion time"
 		}
@@ -148,6 +148,9 @@ func (s *Service) planView(ctx context.Context, p prefs, r indexRow, plan Plan, 
 	if w := s.dvProfileWarning(ctx, r, plan); w != "" {
 		v.Warnings = append(v.Warnings, w)
 	}
+	// The time forecast (throughput.go), the same estimate Up next shows.
+	eta := float64(s.newEstimator(ctx, p).seconds(factsFor(mi, plan, v.SizeBytes)))
+	v.EtaSec = &eta
 	return v
 }
 
@@ -200,11 +203,11 @@ func sidecarCoveredImageSubs(mi *MediaInfo, plan Plan) int {
 	return n
 }
 
-// outputBits is the picture's bit depth after an encode: the CPU encoders always write
-// 10-bit; hardware keeps the source's depth.
-func outputBits(mi *MediaInfo, enc Encoder) int {
+// outputBits is the picture's bit depth after an encode: the CPU encoders write what the
+// 10-bit choice says (tenbit.go outputPixFmt); hardware keeps the source's depth.
+func outputBits(mi *MediaInfo, plan Plan, enc Encoder) int {
 	if enc.Kind == "cpu" || enc.Kind == "" {
-		return 10
+		return bitsOf(outputPixFmt(mi, plan) == pixFmt10)
 	}
 	return bitsOf(mi.TenBit)
 }

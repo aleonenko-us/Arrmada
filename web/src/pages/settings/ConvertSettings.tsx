@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { SavedTick } from "../../components/settings/auto";
 import { useScrollWhenLoaded } from "../../components/settings/ui";
-import { api, type ConvertSettings as Settings } from "../../lib/api";
+import { api, type ConvertDevice, type ConvertSettings as Settings } from "../../lib/api";
+import { backlogLine } from "../../lib/convertForecast";
+import { DevicesPanel, transcodedSentence, transcodingDevices, useConvertDevices } from "../../components/convert/DevicesPanel";
+import { useConfirm } from "../../ui";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
@@ -74,9 +77,30 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     validate: (v) => ((v.hours_start === "") !== (v.hours_end === "") ? "Set both a start and an end time." : null),
   });
   const pause = useAutoSave(s.pause_watching, put("pause_watching"));
-  const av1 = useAutoSave(s.allow_av1, put("allow_av1"));
+  const av1Save = useAutoSave(s.allow_av1, put("allow_av1"));
+  const devices = useConvertDevices();
+  const confirm = useConfirm();
+  // Turning AV1 on asks first when a device seen lately had AV1 transcoded: the plays are
+  // the evidence, not the owner's memory of every TV in the house.
+  const av1: AutoSave<boolean> = {
+    ...av1Save,
+    commit: async (v) => {
+      const on = v ?? av1Save.value;
+      const risky = transcodingDevices(devices, "av1");
+      if (on && !s.allow_av1 && risky.length > 0) {
+        const ok = await confirm({
+          title: "Allow AV1?",
+          body: transcodedSentence(risky, "av1"),
+          confirmLabel: "Allow AV1 anyway",
+        });
+        if (!ok) return false;
+      }
+      return av1Save.commit(v);
+    },
+  };
   const gpu = useAutoSave(s.use_gpu, put("use_gpu"));
   const crop = useAutoSave(s.crop, put("crop"));
+  const tenBit = useAutoSave(s.ten_bit ?? "always", put("ten_bit"), { keepOnError: false });
   const dolbyVision = useAutoSave(s.dolby_vision, put("dolby_vision"), { keepOnError: false });
   // How many files the Dolby Vision choice applies to, from the library stats.
   const [dvFiles, setDvFiles] = useState<number | null>(null);
@@ -101,6 +125,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     api.convertHardware().then((h) => setHw({ dir: h.scratch_dir, free: h.scratch_free_bytes, need: h.scratch_need_bytes ?? 0, needTitle: h.scratch_need_title ?? "", devices: h.render_devices ?? [] })).catch(() => {});
   }, []);
   useEffect(loadHw, [loadHw]);
+  // The backlog's encoding time, so the hours show what they mean before they're saved.
+  const [backlogSec, setBacklogSec] = useState(0);
+  useEffect(() => { api.convertStatus().then((st) => setBacklogSec(st.backlog_sec ?? 0)).catch(() => {}); }, []);
   // A new transcode folder changes the free space shown under it.
   useEffect(() => { if (scratch.status === "saved") loadHw(); }, [scratch.status, loadHw]);
 
@@ -127,11 +154,19 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     style: save.status === "error" ? errStyle : inpStyle,
   });
 
+  // What switching on would write, against what the players did lately (CONV-25): HEVC
+  // always, 10-bit when every re-encode is, AV1 when it's allowed.
+  const switchOnWarnings = [
+    transcodedSentence(transcodingDevices(devices, "hevc"), "hevc"),
+    tenBit.value === "always" ? transcodedSentence(transcodingDevices(devices, "hevc10"), "hevc10") : "",
+    s.allow_av1 ? transcodedSentence(transcodingDevices(devices, "av1"), "av1") : "",
+  ].filter(Boolean);
+
   return (
     <div className="flex flex-col gap-4">
       <Section title="Automatic conversion">
         {askSwitchOn && (
-          <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => {
+          <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} deviceWarnings={switchOnWarnings} switchOn={async () => {
             if (!(await auto.commit(true))) throw new Error("Couldn't switch it on — try again in a moment.");
             setAskSwitchOn(false);
           }} />
@@ -151,13 +186,18 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
             <span className={`text-[11px] ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
               {clockSkewed ? "⚠ " : ""}Read on the server's clock: {s.server_time} {s.server_tz}{clockSkewed ? ` — yours says ${browserTime}. Set TZ in your .env and recreate the container (docker compose up -d).` : "."}
             </span>
+            {backlogSec > 0 && hours.value.hours_start && hours.value.hours_end && (
+              <span className="text-[11px] text-ink-dim">
+                At these hours: {backlogLine(backlogSec, hours.value.hours_start, hours.value.hours_end)} — at this machine's pace so far.
+              </span>
+            )}
           </div>
         )}
         <Toggle save={pause} label="Pause while someone is watching Plex"
           hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
-      <Section title="Format" desc="HEVC by default: the best quality, and it plays on most devices made since about 2016. HDR10, HDR10+ and HLG are kept.">
+      <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. HDR10, HDR10+ and HLG are kept.">
         <div role="radiogroup" aria-label="Dolby Vision files">
           <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
             Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
@@ -171,6 +211,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         </div>
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
+        <TenBitChoice save={tenBit} transcoded={transcodingDevices(devices, "hevc10")} />
         {s.has_gpu && (
           <Toggle save={gpu} label="Use my GPU"
             hint={`Many times faster, but files come out somewhat bigger for the same quality. HDR always encodes on the CPU (the GPU can't carry its metadata).${s.gpu_does_av1 ? "" : " Your GPU has no AV1 encoder, so GPU mode converts to HEVC."}`} />
@@ -178,6 +219,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <Toggle save={crop} label="Remove black bars"
           hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed, which is why this is off unless you turn it on. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
         {!s.hdr10plus_tool && <p className="text-[11px]" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
+        <DevicesPanel data={devices} />
       </Section>
 
       <Section title="Audio & subtitles" desc="Tracks you don't keep are removed while converting — or on their own, which only copies the file (no re-encode). Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through untouched.">
@@ -246,6 +288,32 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </Field>
         </div>
       </details>
+    </div>
+  );
+}
+
+// TenBitChoice: whether an 8-bit SDR source is written 10-bit (less banding) or kept 8-bit
+// (plays as it is on more players). The devices panel below is the evidence either way.
+function TenBitChoice({ save, transcoded }: { save: AutoSave<"always" | "match_source">; transcoded: ConvertDevice[] }) {
+  const options = [
+    ["always", "Always 10-bit", "Smoother skies, smoke and dark gradients — 8-bit sources show banding sooner after a re-encode. Players that can't decode 10-bit have the video transcoded."],
+    ["match_source", "Match the source", "An 8-bit file stays 8-bit, so a player that plays the original as it is plays the converted file too. Gradients band a little more."],
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label="8-bit sources">
+      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">8-bit sources (most H.264 films) <SavedTick save={save} /></div>
+      <div className="mb-1.5 text-[10.5px] text-ink-faint">
+        {save.value === "always"
+          ? "Now: every re-encode is 10-bit (Main10)."
+          : "Now: 8-bit sources stay 8-bit; 10-bit and HDR files are always 10-bit."}
+        {transcoded.length > 0 && ` ${transcodedSentence(transcoded, "hevc10")}`}
+      </div>
+      {options.map(([v, label, hint]) => (
+        <label key={v} className="flex cursor-pointer items-start gap-2 py-0.5 text-[12px]">
+          <input type="radio" name="ten_bit" className="mt-0.5" checked={save.value === v} onChange={() => void save.commit(v)} />
+          <span><b className="font-semibold">{label}</b><span className="block text-[11px] leading-snug text-ink-faint">{hint}</span></span>
+        </label>
+      ))}
     </div>
   );
 }

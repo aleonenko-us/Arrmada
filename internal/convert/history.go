@@ -57,6 +57,9 @@ type jobRecord struct {
 	encodeStart         time.Time
 	encodeEnd           time.Time
 	historyID           int64 // the in_progress row, once the encode has started
+	// stallNeed/stallFree are the space figures behind a "waiting for room" skip, for the
+	// convert.stalled event (events.go noteStall).
+	stallNeed, stallFree int64
 }
 
 // record returns the job's ledger record, creating it on first use. Created under s.mu so
@@ -529,6 +532,7 @@ func (s *Service) recordOutcome(job *Job, state JobState, note string) {
 		StateSkipped: OutcomeSkipped, StateCancelled: OutcomeCancelled}[state]
 	r := s.historyRowFor(job, outcome, note)
 	rec.historyID = s.history.finish(context.Background(), rec.historyID, r)
+	s.recordPixFmt(context.Background(), rec)
 }
 
 // historyRowFor assembles a row from the job and its record as they stand.
@@ -592,6 +596,11 @@ func (s *Service) historyRowFor(job *Job, outcome, note string) historyRow {
 			end = time.Now()
 		}
 		r.encodeSecs = end.Sub(rec.encodeStart).Seconds()
+		if j.activeSecs > 0 {
+			// The time actually spent encoding: a film frozen across four nights' worth of
+			// daytime took a day to encode, not four — and the forecast learns from this.
+			r.encodeSecs = j.activeSecs
+		}
 	}
 	return r
 }

@@ -336,6 +336,7 @@ func (s *Service) spaceCheck(ctx context.Context, job *Job, src string, mi *Medi
 	}
 	dir := filepath.Dir(src)
 	if free := freeBytesFn(dir); free > 0 && int64(free) < need {
+		s.noteStall(job, need, int64(free))
 		s.finishSkip(job, SkipLibraryFull, fmt.Sprintf("needs ~%s free on the library disk for the converted file, it has %s — will try again later",
 			humanBytes(need), humanBytes(int64(free))))
 		return false
@@ -348,6 +349,7 @@ func (s *Service) spaceCheck(ctx context.Context, job *Job, src string, mi *Medi
 // on a full disk.
 func (s *Service) scratchFits(job *Job, scratch string, need int64) bool {
 	if free := freeBytesFn(scratch); free > 0 && int64(free) < need {
+		s.noteStall(job, need, int64(free))
 		s.finishSkip(job, SkipNoScratch, fmt.Sprintf("needs ~%s of scratch in %s, it has %s free — will try again later",
 			humanBytes(need), scratch, humanBytes(int64(free))))
 		return false
@@ -644,6 +646,7 @@ func (s *Service) runWithProgress(ctx context.Context, job *Job, args []string, 
 func (s *Service) readProgress(job *Job, r io.Reader, durationSec float64) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
+		s.tickActive(job) // encoding time for the forecast and the ledger (pauses excluded)
 		k, v, ok := strings.Cut(sc.Text(), "=")
 		if !ok {
 			continue
@@ -768,6 +771,7 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 		if errors.Is(err, syscall.ENOSPC) {
 			// The library disk filled up. Retrying straight away would re-run the whole encode
 			// only to fail the same way, so wait for space to be freed.
+			s.noteStall(job, outSize, int64(freeBytesFn(filepath.Dir(part))))
 			s.finishSkip(job, SkipLibraryFull, fmt.Sprintf("the library disk had %s free; staging needed %s — the encode was discarded and the original kept",
 				humanBytes(int64(freeBytesFn(filepath.Dir(part)))), humanBytes(outSize)))
 			return

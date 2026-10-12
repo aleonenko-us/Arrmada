@@ -507,7 +507,8 @@ func videoArgs(enc Encoder, mi *MediaInfo, plan Plan, hwDecode bool, cores int, 
 				hdrParams, colourTags = av1HDRParams(mi)
 			}
 		}
-		a = append(a, cpuVideoArgs(enc.Name, codec, crf, cores, hdrParams, noNumaPools)...)
+		// 10-bit unless the owner chose to keep 8-bit SDR sources 8-bit (tenbit.go).
+		a = append(a, withPixFmt(cpuVideoArgs(enc.Name, codec, crf, cores, hdrParams, noNumaPools), outputPixFmt(mi, plan))...)
 		a = append(a, colourTags...)
 	}
 	return a
@@ -734,9 +735,11 @@ func stripTuningKeys(params string) string {
 const av1QualityParams = "tune=0:enable-variance-boost=1:luminance-qp-bias=20"
 
 // cpuVideoArgs builds the CPU encoder args. cores bounds the encoder's own thread pool so a
-// library conversion can't take the whole machine. Output is always 10-bit: the extra
+// library conversion can't take the whole machine. Output is 10-bit here: the extra
 // precision near-eliminates the banding on skies, smoke and dark gradients that is the first
 // thing anyone notices in a re-encode, and it improves efficiency rather than costing any.
+// videoArgs switches an 8-bit SDR source to 8-bit when the owner chose "match the source"
+// (tenbit.go); HDR, and the HDR10+ pipeline, are always 10-bit.
 //
 // -dolbyvision 0: this ffmpeg's x265 and SVT-AV1 wrappers default to copying a source's
 // Dolby Vision RPU into the output. Dolby Vision is deliberately dropped (only its HDR10/

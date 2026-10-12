@@ -74,6 +74,7 @@ type prefs struct {
 	crop bool
 	// dolbyVision is DVDrop or DVSkip (see dvpolicy.go).
 	dolbyVision string
+	tenBit      string // TenBitAlways | TenBitMatchSource (tenbit.go)
 	// measured holds what test encodes measured (see measured.go), keyed by measureKey.
 	measured map[string]measurement
 }
@@ -94,6 +95,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		imageSubs:      g.Get(ctx, keyImageSubs, ""),
 		tidyTracks:     g.GetBool(ctx, keyTidyTracks, false),
 		crop:           g.GetBool(ctx, keyCrop, false),
+		tenBit:         s.tenBitChoice(ctx),
 		measured:       s.measured.all(ctx),
 		dolbyVision:    dvPolicy(g.Get(ctx, keyDolbyVision, "")),
 	}
@@ -111,8 +113,8 @@ func (s *Service) prefs(ctx context.Context) prefs {
 
 // cacheKey identifies the settings that change which files need work, for cached views.
 func (p prefs) cacheKey() string {
-	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v|%s", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
-		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks, p.dolbyVision)
+	return fmt.Sprintf("%v|%v|%s|%v|%s|%s|%v|%s|%s", p.allowAV1, p.keepOriginal, strings.Join(p.keepAudio, ","),
+		p.dropCommentary, strings.Join(p.keepSubs, ","), p.imageSubs, p.tidyTracks, p.dolbyVision, p.tenBit)
 }
 
 // Needs is the gap between a file and the target.
@@ -229,8 +231,9 @@ func needsOf(mi *MediaInfo, plan Plan) Needs {
 // basePlan is the part of every file's plan that comes from the settings alone.
 func (p prefs) basePlan() Plan {
 	return Plan{
-		Audio: AudioPlan{KeepLangs: p.keepAudio, DropCommentary: p.dropCommentary},
-		Subs:  SubPlan{KeepLangs: p.keepSubs, ImageSubs: p.imageSubs},
+		Audio:            AudioPlan{KeepLangs: p.keepAudio, DropCommentary: p.dropCommentary},
+		Subs:             SubPlan{KeepLangs: p.keepSubs, ImageSubs: p.imageSubs},
+		MatchSourceDepth: p.tenBit == TenBitMatchSource,
 	}
 }
 

@@ -3,7 +3,7 @@ import { api, type ConvertPlan, type ConvertTrackDecision } from "../../lib/api"
 import { posterThumb } from "../../lib/img";
 import { useQuery } from "../../lib/query";
 import { StatusChip } from "../../ui";
-import { sizeLine, trackLabel, videoLine } from "./plan";
+import { sizeLine, timeLine, trackLabel, videoLine } from "./plan";
 
 // The Library's "Conversion plan" card: what converting this one file would do, before
 // anything runs — the picture before → after, every audio and subtitle track kept or
@@ -45,6 +45,7 @@ export function PlanDetails({ plan }: { plan: ConvertPlan }) {
         <div className="font-semibold">{videoLine(plan)}</div>
         <div className="text-ink-dim">
           {sizeLine(plan)}
+          {plan.needs.save > 0 && timeLine(plan) && <> · {timeLine(plan)}</>}
           {plan.container.from !== plan.container.to && <> · {plan.container.from} → {plan.container.to}</>}
         </div>
         {!v.to_codec && v.why && <div className="text-[11px] text-ink-faint">Picture left alone: {v.why}</div>}
