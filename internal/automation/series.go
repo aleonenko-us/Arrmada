@@ -826,14 +826,7 @@ func (c *Coordinator) rotateSeasons(ctx context.Context, s series.Series, season
 		return seasons // they all fit in one sweep — nothing to rotate
 	}
 	cursor, _ := c.series.SearchCursors(ctx, s.ID)
-	start := 0
-	for i, sn := range seasons {
-		if sn >= cursor {
-			start = i
-			break
-		}
-	}
-	out := append(append([]int{}, seasons[start:]...), seasons[:start]...)
+	out := rotateFrom(seasons, cursor)
 	// Where the budget runs out. If a sweep is cut short (context cancelled mid-fan-out)
 	// this advances past a season it didn't actually query — harmless, because the order
 	// wraps, so that season comes around again rather than being lost.
