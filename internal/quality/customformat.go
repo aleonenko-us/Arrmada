@@ -420,3 +420,39 @@ func conditionNoun(t ConditionType) string {
 	}
 	return string(t)
 }
+
+// FormatCheck is the editor's live read on a profile's custom formats: what would block a
+// save, what can never match, and how many of the sample releases each format matches.
+type FormatCheck struct {
+	Errors   []FormatProblem `json:"errors"`
+	Warnings []FormatProblem `json:"warnings"`
+	// Matches is, per format (by position), how many of the Samples releases it matches.
+	Matches []int `json:"matches"`
+	Samples int   `json:"samples"`
+}
+
+// CheckFormats validates formats and counts their matches over the sample releases.
+func CheckFormats(formats []CustomFormat) FormatCheck {
+	samples := SampleCandidates()
+	out := FormatCheck{
+		Errors:   ValidateFormats(formats),
+		Warnings: FormatWarnings(formats),
+		Matches:  make([]int, len(formats)),
+		Samples:  len(samples),
+	}
+	if out.Errors == nil {
+		out.Errors = []FormatProblem{}
+	}
+	if out.Warnings == nil {
+		out.Warnings = []FormatProblem{}
+	}
+	for i, f := range formats {
+		nf := normalizeFormat(f)
+		for _, c := range samples {
+			if nf.holds(c.Name, c.Release, nil) {
+				out.Matches[i]++
+			}
+		}
+	}
+	return out
+}

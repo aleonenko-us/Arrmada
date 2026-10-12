@@ -1,10 +1,24 @@
-import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile } from "./api";
+import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile } from "./api";
+
+// One value a custom-format condition can take (quality.VocabValue): what's stored, and
+// what the editor shows.
+export interface VocabValue { value: string; label: string }
+
+// A problem with one custom format (quality.FormatProblem). index is the format's position
+// in the profile; condition the row's, -1 for the format as a whole.
+export interface FormatProblem { format: string; index: number; condition: number; message: string }
+
+// The custom-format editor's live check (quality.FormatCheck): errors block a save,
+// warnings never match, matches[i] is how many of `samples` releases format i matches.
+export interface FormatCheck { errors: FormatProblem[]; warnings: FormatProblem[]; matches: number[]; samples: number }
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
 export const qualityApi = {
   qualityProfiles: (media: string) =>
-    req<{ profiles: QualityProfileInfo[]; formats: FormatInfo[]; music_ladder?: string[]; music_presets?: MusicPreset[] }>(`/api/v1/quality/profiles?media=${media}`),
+    req<{ profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[] }>(`/api/v1/quality/profiles?media=${media}`),
+  checkFormats: (formats: QualityCustomFormat[]) =>
+    req<FormatCheck>("/api/v1/quality/formats/check", { method: "POST", body: JSON.stringify({ custom_formats: formats }) }),
   libraryFitProfiles: (media: string) => req<{ profiles: Record<string, FitCounts> }>(`/api/v1/library/fit/profiles?media=${media}`),
   libraryFitPreview: (profile: StoredProfile) =>
     req<{ scope: "profile" | "library"; counts: FitCounts }>("/api/v1/library/fit/preview", { method: "POST", body: JSON.stringify({ profile }) }),

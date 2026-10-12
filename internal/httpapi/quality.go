@@ -48,7 +48,7 @@ func (a *api) handleListQualityProfiles(w http.ResponseWriter, r *http.Request) 
 	if list == nil {
 		list = []quality.ProfileInfo{}
 	}
-	body := map[string]any{"profiles": list, "formats": quality.Catalog()}
+	body := map[string]any{"profiles": list, "formats": quality.Catalog(), "vocabulary": quality.ConditionVocabulary()}
 	if media == quality.MediaMusic {
 		// Music quality is a ranked ladder rather than a set of preferences, so the builder
 		// renders from the ladder and offers starter presets instead of the video formats.

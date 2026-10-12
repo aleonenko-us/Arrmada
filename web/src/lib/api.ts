@@ -461,6 +461,7 @@ export interface QualityCondition {
 
 export interface QualityCustomFormat {
   name: string;
+  match?: "all" | "any"; // how the conditions combine; missing reads as "all"
   conditions: QualityCondition[];
 }
 
