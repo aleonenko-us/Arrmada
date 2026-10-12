@@ -80,7 +80,7 @@ func (s *Server) itemMinified(ctx context.Context, it Item, progress map[string]
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
 		"path": it.Path, "relPath": it.Title, "isFile": numFiles == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
-		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.AddedAt, "isMissing": false, "isInvalid": false,
+		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.updatedAt(), "isMissing": false, "isInvalid": false,
 		"mediaType": "book",
 		"media": obj{
 			"id": "m" + it.Key, "metadata": metadataMinified(it), "coverPath": coverPath(it), "tags": []string{},
@@ -138,7 +138,7 @@ func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, p
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
 		"path": it.Path, "relPath": it.Title, "isFile": len(files) == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
-		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.AddedAt, "lastScan": it.AddedAt, "scanVersion": ServerVersion,
+		"birthtimeMs": it.AddedAt, "addedAt": it.AddedAt, "updatedAt": it.updatedAt(), "lastScan": it.AddedAt, "scanVersion": ServerVersion,
 		"isMissing": false, "isInvalid": false, "mediaType": "book",
 		"media": obj{
 			"id": "m" + it.Key, "libraryItemId": it.Key, "metadata": metadataExpanded(it), "coverPath": coverPath(it),

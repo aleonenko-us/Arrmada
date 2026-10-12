@@ -558,6 +558,9 @@ func (a *api) handleUploadBookCover(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not save cover")
 		return
 	}
+	// Two uploads in one second keep the same URL; the file still changed, and listening
+	// apps only fetch a cover again when the book's updatedAt moves.
+	_ = a.deps.Books.TouchMeta(r.Context(), id)
 	a.writeJSON(w, http.StatusOK, map[string]any{"cover_url": coverURL})
 }
 

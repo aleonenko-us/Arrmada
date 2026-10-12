@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -84,8 +85,9 @@ func (s *Server) card(ctx context.Context, it Item, prog map[string]listening.Pr
 		c.VersionID = it.Version.ID
 	}
 	if it.Book.CoverURL != "" {
-		// The cover URL changes when a new cover is uploaded, so ?v= follows it.
-		c.Cover = playerPrefix + url.PathEscape(it.Key) + "/cover?v=" + shortHash(it.Book.CoverURL)
+		// ?v= moves whenever the book's details (its cover among them) change, so the
+		// browser can keep the image until then.
+		c.Cover = playerPrefix + url.PathEscape(it.Key) + "/cover?v=" + strconv.FormatInt(it.updatedAt(), 10)
 	}
 	if p, ok := prog[it.Key]; ok {
 		c.Progress = &p
@@ -224,9 +226,14 @@ func tracksFor(it Item, files []AudioFile) []Track {
 }
 
 // ServeCover sends an item's cover to the web player. It's private to the signed-in
-// browser (it comes through Arrmada's own sign-in), cached for a day.
+// browser (it comes through Arrmada's own sign-in), cached for a day, or for a year when
+// the URL carries the cover's version.
 func (s *Server) ServeCover(w http.ResponseWriter, r *http.Request, key string) {
-	s.serveCover(w, r, key, "private, max-age=86400")
+	cache := "private, max-age=86400"
+	if versionedCover(r) {
+		cache = "private, " + immutableYear
+	}
+	s.serveCover(w, r, key, cache)
 }
 
 // PlayStart is a web-player session just opened.

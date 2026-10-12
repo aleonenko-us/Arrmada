@@ -143,7 +143,22 @@ func (s *Server) WriteAudiobook(ctx context.Context, w http.ResponseWriter, r *h
 }
 
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
-	s.serveCover(w, r, r.PathValue("id"), "")
+	cache := ""
+	if versionedCover(r) {
+		cache = "public, " + immutableYear
+	}
+	s.serveCover(w, r, r.PathValue("id"), cache)
+}
+
+// immutableYear caches a cover for a year. Only for a request whose URL changes with the
+// cover (versionedCover): a new cover is a new URL, so the old one never needs checking.
+const immutableYear = "max-age=31536000, immutable"
+
+// versionedCover reports whether a cover URL names its version: apps add ?ts=<updatedAt>
+// (Audiobookshelf's own convention), Arrmada's web player ?v=.
+func versionedCover(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("ts") != "" || q.Get("v") != ""
 }
 
 // serveCover sends an item's cover. cache overrides the Cache-Control the apps get

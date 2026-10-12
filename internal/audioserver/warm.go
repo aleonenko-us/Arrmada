@@ -5,8 +5,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/tristenlammi/arrmada/internal/books"
 )
 
 // What the catalogue knows about each audiobook's files comes from the database
@@ -93,14 +91,6 @@ func (s *Server) knownNothing(key string) bool {
 // ready reports whether an item's files are probed and nothing has changed them since.
 func (s *Server) ready(ctx context.Context, it Item) bool {
 	return s.probe.knownUnder(ctx, it.Path).Files > 0 && !s.isDirty(it.Book.ID)
-}
-
-// recordedFile is the file record the import left for an item.
-func (it Item) recordedFile() *books.BookFile {
-	if it.Version != nil {
-		return it.Version.File
-	}
-	return it.Book.Audiobook
 }
 
 // Warm probes the audiobooks whose files aren't known yet, or changed, so an app opening

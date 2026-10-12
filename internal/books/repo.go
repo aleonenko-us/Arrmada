@@ -84,6 +84,11 @@ type Book struct {
 	// FillNextSearch once the wanted editions are known. Empty when nothing is being
 	// searched for (unmonitored, or every wanted edition is here) or the book is due now.
 	NextSearchAt string `json:"next_search_at,omitempty"`
+	// MetaUpdatedAt is when the book's details last changed (unix ms; 0 = never since
+	// it was added). SQLite triggers keep it current (migration 0262_books_meta_updated),
+	// not the Go code; TouchMeta covers changes that aren't a column, like a cover file.
+	// Listening apps read it as the item's updatedAt.
+	MetaUpdatedAt int64 `json:"-"`
 }
 
 // LacksWanted reports whether the book is missing an edition its profile wants (per
@@ -181,7 +186,8 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	monitored, quality_profile, added_at, series_name, series_position, series_key, keep_catalogue,
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
-	last_search_at, search_misses`
+	last_search_at, search_misses,
+	meta_updated_at`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
 	var (
@@ -199,7 +205,8 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
-		&lastSearch, &b.SearchMisses)
+		&lastSearch, &b.SearchMisses,
+		&b.MetaUpdatedAt)
 	if err != nil {
 		return Book{}, err
 	}
@@ -366,6 +373,15 @@ func (r *Repo) UpdateMeta(ctx context.Context, id int64, description, coverURL s
 // path of a custom upload).
 func (r *Repo) SetCoverURL(ctx context.Context, id int64, coverURL string) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE books SET cover_url = ? WHERE id = ?`, coverURL, id)
+	return affected(res, err)
+}
+
+// TouchMeta marks a book's details as changed now, for a change no column records (an
+// uploaded cover file replaced under the same URL). Column edits are caught by the
+// triggers of migration 0262_books_meta_updated; like them, it only ever moves forward.
+func (r *Repo) TouchMeta(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE books SET meta_updated_at = MAX(?, meta_updated_at + 1) WHERE id = ?`, time.Now().UnixMilli(), id)
 	return affected(res, err)
 }
 

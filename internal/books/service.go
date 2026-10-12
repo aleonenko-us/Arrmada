@@ -216,6 +216,10 @@ func (s *Service) SetCover(ctx context.Context, id int64, coverURL string) error
 	return s.repo.SetCoverURL(ctx, id, coverURL)
 }
 
+// TouchMeta marks a book's details as changed now (see Repo.TouchMeta), so listening
+// apps fetch its cover again.
+func (s *Service) TouchMeta(ctx context.Context, id int64) error { return s.repo.TouchMeta(ctx, id) }
+
 // OverrideMetadata applies a manual metadata correction (title/author/year/description/cover).
 func (s *Service) OverrideMetadata(ctx context.Context, id int64, title, author string, year int, description, coverURL string) error {
 	if err := s.repo.UpdateDetails(ctx, id, strings.TrimSpace(title), strings.TrimSpace(author), year, description, coverURL); err != nil {
