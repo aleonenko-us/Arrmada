@@ -62,7 +62,6 @@ func TestHoldBudgetPausesTheConversion(t *testing.T) {
 	}
 }
 
-
 // The runner passes over files the hold has no room for, and the status line says why.
 func TestStatusPausedOnAFullHold(t *testing.T) {
 	ctx := context.Background()
