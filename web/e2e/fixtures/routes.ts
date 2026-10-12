@@ -185,6 +185,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/subtitles/models", mod.subtitleModels),
     get("/api/v1/subtitles/jobs", mod.subtitleJobs),
     get("/api/v1/subtitles/profiles", mod.subtitleProfiles),
+    get("/api/v1/subtitles/attention", mod.subtitleAttention),
     get("/api/v1/languages", mod.languages),
     get("/api/v1/insights/plex", mod.plexConfig),
     get("/api/v1/insights/plex/scan", mod.plexScan),

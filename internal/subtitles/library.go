@@ -33,12 +33,34 @@ type LangStatus struct {
 	Reason      string `json:"reason,omitempty"`
 	NextRetryAt int64  `json:"next_retry_at,omitempty"`
 	RetryOn     string `json:"retry_on,omitempty"`
+	// Health is a present language's sync Health (health.go); nil while missing.
+	Health *LangHealth `json:"health,omitempty"`
+	// File is a present language's sidecar name, so a redo can say which file it replaces.
+	File string `json:"file,omitempty"`
 }
 
-// SubHealth is the Tier-1 sync/health score for a file's subtitle (0-100). Nil until the scoring
-// phase lands — the field is here now so the model and UI don't need retrofitting.
+// sidecarNameFor is the name of the paired sidecar that covers lang in a scan: tagged in
+// that language (full before SDH), or the untagged one when untagged (the first kept
+// language).
+func sidecarNameFor(sc sidecarScan, lang string, untagged bool) string {
+	best := ""
+	for i, lv := range sc.Variants {
+		if i >= len(sc.Names) || !coversFull(lv.Variant) {
+			continue
+		}
+		if (lv.Lang != "" && langMatches(lv.Lang, lang)) || (lv.Lang == "" && untagged) {
+			if best == "" || lv.Variant == VariantFull {
+				best = sc.Names[i]
+			}
+		}
+	}
+	return best
+}
+
+// SubHealth is a file's Health: its worst present language's (health.go).
 type SubHealth struct {
-	Score int      `json:"score"`
+	State string   `json:"state"`           // HealthOK | HealthUncertain | HealthBad | HealthUnknown | HealthUnchecked
+	Score int      `json:"score,omitempty"` // that language's sync confidence, when checked
 	Notes []string `json:"notes,omitempty"`
 }
 
@@ -58,7 +80,7 @@ type FileSubs struct {
 	Embedded    []SubTrack   `json:"embedded"`          // embedded subtitle tracks (for badges/filters)
 	External    []string     `json:"external"`          // kept languages that already have a sidecar
 	Languages   []LangStatus `json:"languages"`         // per-kept-language coverage + best source
-	Health      *SubHealth   `json:"health,omitempty"`  // Tier-1 sync/health score (nil until scored)
+	Health      *SubHealth   `json:"health,omitempty"`  // the worst present language's Health; nil = none present
 	Missing     int          `json:"missing"`           // count of wanted subtitles still without an SRT
 	Orphans     []Orphan     `json:"orphans,omitempty"` // movies: subtitles in the folder paired with no video
 	// ProfileID is the language profile the title is pinned to (0 = the default profile).
@@ -78,6 +100,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 	cfg := s.profileCfg(ctx) // read once for the whole pass
 	canDownload := s.provider != nil && s.provider.CanDownload()
 	backoffs, now := s.loadBackoffs(ctx), time.Now() // one query for the whole pass
+	health := s.liveFilesByKey(ctx)                  // and one for Health
 	var out []FileSubs
 
 	list, err := s.movies.List(ctx)
@@ -98,6 +121,7 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 		}
 		s.fillCoverageW(ctx, &fs, p.wants(), canDownload)
 		applyBackoff(&fs, backoffs, now)
+		applyHealth(&fs, health[mediaKeyOf(&fs)])
 		out = append(out, fs)
 	}
 	return out, nil
@@ -113,11 +137,17 @@ func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string
 // back empty). A full want the file's audio makes unnecessary (OnlyIfAudioDiffers) isn't
 // listed and isn't missing.
 func (s *Service) fillCoverageW(ctx context.Context, fs *FileSubs, wants []Want, canDownload bool) {
+	unknownAudio := false // an untagged track whisper hasn't listened to yet
 	mi, err := s.probeFile(ctx, fs.Path)
 	if err == nil && mi != nil {
 		fs.DurationSec = mi.DurationSec
-		fs.AudioLangs = mi.AudioLangs
+		fs.AudioLangs = mi.withDetected().AudioLangs // tags, plus what detection heard
 		fs.Embedded = mi.Subs
+		for _, t := range mi.Audio {
+			if _, heard := mi.Detected[t.Index]; t.untagged() && !heard {
+				unknownAudio = true
+			}
+		}
 	} else {
 		mi = nil
 	}
@@ -127,11 +157,19 @@ func (s *Service) fillCoverageW(ctx context.Context, fs *FileSubs, wants []Want,
 	cov := coverageOf(fs.Path, kindOf(fs.Kind), wants, mi)
 	fs.Orphans = cov.sc.Orphans
 	fs.External = nonNil(cov.sc.Present) // kept languages with a paired full sidecar already
+	first := ""                          // the language an untagged "<base>.srt" counts for
+	if fulls := wantLangs(wants, VariantFull); len(fulls) > 0 {
+		first = fulls[0]
+	}
 	fs.Languages = make([]LangStatus, 0, len(cov.active))
 	for _, w := range cov.active {
 		l := w.Lang
 		if cov.have[w.key()] {
-			fs.Languages = append(fs.Languages, LangStatus{Lang: l, Variant: w.Variant, Have: true})
+			ls := LangStatus{Lang: l, Variant: w.Variant, Have: true, File: sidecarNameFor(cov.sc, l, l == first)}
+			if w.Variant == VariantForced {
+				ls.File = forcedSidecarName(cov.sc, l)
+			}
+			fs.Languages = append(fs.Languages, ls)
 			continue
 		}
 		fs.Missing++
@@ -147,11 +185,21 @@ func (s *Service) fillCoverageW(ctx context.Context, fs *FileSubs, wants []Want,
 			continue
 		}
 		ls := LangStatus{Lang: l, Have: false, Source: bestSourcePref(fs.Embedded, l, w.SDH, canDownload), Orphan: cov.orphaned[strings.ToLower(l)]}
-		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, l) {
+		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, unknownAudio, l) {
 			ls.Fallback = "ai"
 		}
 		fs.Languages = append(fs.Languages, ls)
 	}
+}
+
+// forcedSidecarName is the paired forced sidecar for a language, "" when there is none.
+func forcedSidecarName(sc sidecarScan, lang string) string {
+	for i, lv := range sc.Variants {
+		if i < len(sc.Names) && lv.Variant == VariantForced && lv.Lang != "" && langMatches(lv.Lang, lang) {
+			return sc.Names[i]
+		}
+	}
+	return ""
 }
 
 // applyBackoff marks the missing languages the sweep is leaving alone for now, from the
@@ -189,10 +237,15 @@ func (s *Service) loadBackoffs(ctx context.Context) Backoffs {
 
 // aiCanMake reports whether the local AI could produce lang from audio in audioLangs:
 // a model is installed, whisper can go in that direction, and the model for it is there.
-func (s *Service) aiCanMake(audioLangs []string, lang string) bool {
+// While an untagged track hasn't been listened to (unknownAudio), it may well be in that
+// language — the AI rung detects first — so any model will do.
+func (s *Service) aiCanMake(audioLangs []string, unknownAudio bool, lang string) bool {
 	ai := s.aiGen()
 	if !ai.available() {
 		return false
+	}
+	if unknownAudio && ai.canRun(false) {
+		return true
 	}
 	plan := aiPlan(audioLangs, lang)
 	return plan != "" && ai.canRun(plan == "translate")
@@ -368,6 +421,7 @@ func (s *Service) SeriesEpisodes(ctx context.Context, seriesID int64) ([]FileSub
 			}
 			s.fillCoverageW(ctx, &fs, wants, canDownload)
 			applyBackoff(&fs, backoffs, now)
+			s.fillHealth(ctx, &fs)
 			out = append(out, fs)
 		}
 	}

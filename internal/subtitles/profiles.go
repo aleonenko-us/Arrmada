@@ -532,8 +532,10 @@ func (s *Service) keepLanguages(ctx context.Context) []string {
 // --- the file's audio ---
 
 // primaryAudio is the language of a file's main audio: the track flagged default, else
-// the first. "" when unknown (no probe, no audio, untagged).
+// the first. An untagged track counts as what whisper confidently heard on it
+// (withDetected). "" when unknown (no probe, no audio, untagged and not heard).
 func primaryAudio(mi *mediaInfo) string {
+	mi = mi.withDetected()
 	if mi == nil || len(mi.Audio) == 0 {
 		return ""
 	}
@@ -544,10 +546,10 @@ func primaryAudio(mi *mediaInfo) string {
 			break
 		}
 	}
-	if l := langs.Canonical(t.Lang); l != "" && l != "und" {
-		return l
+	if t.untagged() {
+		return ""
 	}
-	return ""
+	return langs.Canonical(t.Lang)
 }
 
 // activeWants drops the full wants a file doesn't need because its main audio is already

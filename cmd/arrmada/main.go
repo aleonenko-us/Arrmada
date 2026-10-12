@@ -1035,6 +1035,7 @@ func main() {
 		attention.Health(healthReg),
 		attention.Convert(convertSvc),
 		attention.Issues(issuesSvc),
+		attention.Subtitles(subtitlesSvc),
 		attention.Searches(
 			func(ctx context.Context) (int, error) {
 				return movieSvc.CountSearchStuck(ctx, attention.SearchStuckAfter)

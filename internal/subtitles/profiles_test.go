@@ -309,6 +309,8 @@ func TestOnlyIfAudioDiffers(t *testing.T) {
 		{"default track is english", french, "en forced,fr"},
 		{"french audio", &mediaInfo{Audio: []AudioTrack{{Index: 0, Lang: "fra"}}}, "en,en forced,fr"},
 		{"untagged audio", &mediaInfo{Audio: []AudioTrack{{Index: 0, Lang: "und"}}}, "en,en forced,fr"},
+		{"untagged, heard as english", &mediaInfo{Audio: []AudioTrack{{Index: 0, Lang: "und"}}, Detected: map[int]DetectedLang{0: {Lang: "en", Prob: 0.9}}}, "en forced,fr"},
+		{"untagged, barely heard", &mediaInfo{Audio: []AudioTrack{{Index: 0}}, Detected: map[int]DetectedLang{0: {Lang: "en", Prob: 0.3}}}, "en,en forced,fr"},
 		{"never probed", nil, "en,en forced,fr"},
 	} {
 		if got := labels(activeWants(ws, c.mi)); got != c.want {

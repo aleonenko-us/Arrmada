@@ -36,10 +36,13 @@ type WhisperStatus struct {
 	BinaryReady bool        `json:"binary_ready"` // whisper-cli installed
 	Ready       bool        `json:"ready"`        // binary + a usable model
 	Models      []ModelInfo `json:"models"`
+	// Waiting is how many file languages are parked for want of a model (model_missing
+	// backoff): what a download would set going.
+	Waiting int `json:"waiting"`
 }
 
 // WhisperStatus reports the local-AI binary + model state.
-func (s *Service) WhisperStatus() WhisperStatus {
+func (s *Service) WhisperStatus(ctx context.Context) WhisperStatus {
 	w := s.whisper
 	st := WhisperStatus{BinaryReady: w != nil && w.bin != "", Ready: w.available()}
 	for _, a := range whisperAssets {
@@ -48,6 +51,11 @@ func (s *Service) WhisperStatus() WhisperStatus {
 			Present: w.hasModel(a.name), Downloading: w.isDownloading(a.name),
 		})
 	}
+	n, err := s.ledger.CountBackoffs(ctx, ResultModelMissing)
+	if err != nil {
+		s.log.Warn("subtitles: could not count files waiting for a model", "err", err)
+	}
+	st.Waiting = n
 	return st
 }
 

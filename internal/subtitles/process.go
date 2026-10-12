@@ -27,6 +27,12 @@ type fileRef struct {
 	FPS float64 // the video's frame rate from the probe (0 = unknown); scoring compares it
 
 	wants []Want // the title's profile wants (profiles.go): SDH preferences, forced extras
+
+	audio *jobAudio // the job's decoded audio, shared by sync checks and the AI; nil outside a job
+	// A redo's AI overrides (redo.go): the audio track to listen to, and large-v3 over
+	// turbo when it's installed.
+	aiStream    *int
+	preferLarge bool
 }
 
 // mkOutcome is one rung's Outcome for one wanted language's full subtitle.
@@ -59,6 +65,17 @@ type aiRunner interface {
 	generate(ctx context.Context, ffmpeg, video, srt, lang, srcLang string, translate bool, stream int, progress func(int)) error
 	Backend() string
 	Device() string
+}
+
+// langDetector is an aiRunner that can say which language is spoken in a WAV (whisper's
+// -dl). Without it, untagged audio stays unknown.
+type langDetector interface {
+	detect(ctx context.Context, ffmpeg, wav string) (DetectedLang, error)
+}
+
+// wavGenerator is an aiRunner that can work from the job's already-extracted WAV.
+type wavGenerator interface {
+	generateWAV(ctx context.Context, ffmpeg, wav, srt, lang, srcLang string, translate, preferLarge bool, progress func(int)) error
 }
 
 // The seams below default to the real code paths; only tests set the fields.
@@ -111,11 +128,17 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.processRepair(ctx, job, ref)
 		return
 	}
+	if job.Redo || isRedoMode(job.Mode) {
+		s.processRedo(ctx, job, ref)
+		return
+	}
 
 	mi, _ := s.probeFile(ctx, ref.Path) // best-effort; nil → no embedded tracks known
 	if mi != nil {
 		ref.FPS = mi.FPS
 	}
+	ref.audio = s.newJobAudio(ref.Path, mi) // extracted on first use, deleted when the job ends
+	defer ref.audio.close()
 	// What this title's profile wants (profiles.go), less what its audio makes unnecessary:
 	// full subtitles walk the ladder below, forced ones rungForced.
 	all := s.titleWants(ctx, job.Kind, job.MovieID, job.SeriesID)
@@ -124,35 +147,18 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	langs := wantLangs(cov.active, VariantFull)
 	var remaining, remainingForced []string
 	orphaned := 0
-	if job.Redo {
-		// Make every wanted subtitle again; the sidecars there now get written over.
-		s.event("info", fmt.Sprintf("Redoing %s: replacing its existing subtitles", ref.Title))
-		for _, l := range langs {
-			if inLangs(job.Langs, l) {
-				remaining = append(remaining, l)
-			}
-		}
-		// A forced file already there is left alone (it may not be ours, and a redo has
-		// no better source for it); only missing ones are made.
-		for _, w := range cov.missing() {
-			if w.Variant == VariantForced {
-				remainingForced = append(remainingForced, w.Lang)
-			}
-		}
-	} else {
-		for _, w := range cov.missing() {
-			switch {
-			case w.Variant == VariantForced:
-				remainingForced = append(remainingForced, w.Lang)
-			case !inLangs(job.Langs, w.Lang):
-				// A GPU-lane job makes only the languages the fast lane handed it.
-			case job.Priority == PrioSweep && cov.orphaned[strings.ToLower(w.Lang)]:
-				// The sweep leaves languages an orphaned subtitle covers alone (see
-				// SweepMissing); an import or a button press makes a real paired one.
-				orphaned++
-			default:
-				remaining = append(remaining, w.Lang)
-			}
+	for _, w := range cov.missing() {
+		switch {
+		case w.Variant == VariantForced:
+			remainingForced = append(remainingForced, w.Lang)
+		case !inLangs(job.Langs, w.Lang):
+			// A GPU-lane job makes only the languages the fast lane handed it.
+		case job.Priority == PrioSweep && cov.orphaned[strings.ToLower(w.Lang)]:
+			// The sweep leaves languages an orphaned subtitle covers alone (see
+			// SweepMissing); an import or a button press makes a real paired one.
+			orphaned++
+		default:
+			remaining = append(remaining, w.Lang)
 		}
 	}
 	if job.lane() == LaneGPU {
@@ -573,11 +579,15 @@ func (s *Service) rungDownloadV(ctx context.Context, job *Job, ref fileRef, lang
 				written = VariantSDH
 			}
 			score := res.Pick.Score
-			s.recordFile(ctx, job, ref, SubtitleFile{
+			f := SubtitleFile{
 				Path: res.Path, Lang: strings.ToLower(l), Variant: written, Source: SourceOpenSubtitles,
 				Provider: providerOpenSubtitles, ProviderFileID: res.Pick.FileID, ReleaseName: res.Pick.Release,
 				HashMatch: res.Pick.HashMatch, Score: &score,
-			})
+			}
+			if c, ok := ref.audio.verdict(l, res.Pick.FileID); ok {
+				c.apply(&f) // the sync check it passed: its Health
+			}
+			s.recordFile(ctx, job, ref, f)
 			o := mkOutcome(l, RungOpenSubtitles, ResultOK, "downloaded")
 			o.Score, o.Reasons = res.Pick.Score, res.Pick.Reasons
 			outs = append(outs, o)
@@ -614,6 +624,8 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		return nil
 	}
 	ai := s.aiGen()
+	// What the audio is in: the tracks' tags, plus what detection hears on untagged ones.
+	mi = s.heardAudio(ctx, job, ref, mi, ai, langs)
 	var audioLangs []string
 	if mi != nil {
 		audioLangs = mi.AudioLangs
@@ -630,22 +642,37 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		// Only what whisper can actually do: transcribe when the audio is that language, or
 		// translate to English. It can't translate into other languages.
 		plan := aiPlan(audioLangs, l)
+		// A redo may name the audio track to listen to; then only its language counts.
+		var pinned *AudioTrack
+		if ref.aiStream != nil && mi != nil && *ref.aiStream < len(mi.Audio) {
+			t := mi.Audio[*ref.aiStream]
+			pinned = &t
+			var heard []string
+			if !t.untagged() {
+				heard = []string{t.Lang}
+			}
+			plan = aiPlan(heard, l)
+		}
 		if plan == "" {
 			outs = append(outs, mkOutcome(l, RungAI, ResultImpossible, "whisper can't translate into "+strings.ToLower(l)))
 			continue
 		}
 		translate := plan == "translate"
+		// Which audio track: a MULTI release has the dub too, and the wrong one gives a
+		// subtitle in the wrong language under the right name.
+		stream, track := audioStreamFor(mi, l, translate)
+		if pinned != nil {
+			stream, track = pinned.Index, *pinned
+		}
 		if !ai.canRun(translate) {
-			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate"))
+			// Parked until a model download clears it (backoff.go), not retried every sweep.
+			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate "+audioLangWord(track.Lang)+" audio to English"))
 			continue
 		}
 		verb := "transcribing"
 		if translate {
 			verb = "translating → en"
 		}
-		// Which audio track: a MULTI release has the dub too, and the wrong one gives a
-		// subtitle in the wrong language under the right name.
-		stream, track := audioStreamFor(mi, l, translate)
 		from := ""
 		if stream >= 0 {
 			from = fmt.Sprintf(" from audio track %d/%d", stream+1, len(mi.Audio))
@@ -658,7 +685,7 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		s.update(job, func(j *Job) { j.Stage = "AI " + verb + " (" + l + ")"; j.Progress = 0 })
 		onProgress := func(pct int) { s.update(job, func(j *Job) { j.Progress = pct }) }
 		dst := sidecarPath(ref.Path, strings.ToLower(l))
-		if err := ai.generate(ctx, s.ffmpeg, ref.Path, dst, l, track.Lang, translate, stream, onProgress); err != nil {
+		if err := s.runAI(ctx, ai, ref, dst, l, track.Lang, translate, stream, onProgress); err != nil {
 			if ctx.Err() != nil {
 				break
 			}
@@ -670,7 +697,13 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		if translate {
 			src = SourceAITranslate
 		}
-		s.recordFile(ctx, job, ref, SubtitleFile{Path: dst, Lang: strings.ToLower(l), Variant: VariantFull, Source: src, Model: aiModelName(ai, translate)})
+		model := aiModelName(ai, translate)
+		if ref.preferLarge {
+			if n := aiModelName(ai, true); n != "" {
+				model = n
+			}
+		}
+		s.recordFile(ctx, job, ref, SubtitleFile{Path: dst, Lang: strings.ToLower(l), Variant: VariantFull, Source: src, Model: model})
 		outs = append(outs, mkOutcome(l, RungAI, ResultOK, "AI-generated"))
 		took := time.Since(started)
 		msg := fmt.Sprintf("%s: AI subtitle written (%s) in %s on %s", ref.Title, l, took.Round(time.Second), ai.Backend())
@@ -752,4 +785,68 @@ func (s *Service) ffmpegExtract(ctx context.Context, path string, picks []extrac
 		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", "-f", "srt", p.Path)
 	}
 	return toolrun.Command(ctx, toolrun.Background, s.ffmpeg, args...).Run()
+}
+
+// runAI runs whisper for one language, from the job's shared WAV when the runner can take
+// one (the audio may already have been read for a sync check or detection).
+func (s *Service) runAI(ctx context.Context, ai aiRunner, ref fileRef, dst, lang, srcLang string, translate bool, stream int, progress func(int)) error {
+	if g, ok := ai.(wavGenerator); ok && ref.audio != nil {
+		wav, err := ref.audio.wav(ctx, stream)
+		if err != nil {
+			return err
+		}
+		return g.generateWAV(ctx, s.ffmpeg, wav, dst, lang, srcLang, translate, ref.preferLarge, progress)
+	}
+	return ai.generate(ctx, s.ffmpeg, ref.Path, dst, lang, srcLang, translate, stream, progress)
+}
+
+// heardAudio is the probe with what detection heard on untagged audio filled in. Whisper
+// listens to an untagged track only when the AI rung needs it — some wanted language
+// isn't already in a tagged track — and once per file: the answer is kept with the probe.
+// A failed detection leaves the track unknown (the old fallback: translate with -l auto).
+func (s *Service) heardAudio(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, ai aiRunner, wanted []string) *mediaInfo {
+	if mi == nil {
+		return nil
+	}
+	det, ok := ai.(langDetector)
+	need := false
+	for _, l := range wanted {
+		if aiPlan(mi.AudioLangs, l) != "transcribe" {
+			need = true
+		}
+	}
+	if !ok || !need || ref.audio == nil || !ai.available() {
+		return mi.withDetected()
+	}
+	changed := false
+	for _, t := range mi.Audio {
+		if !t.untagged() {
+			continue
+		}
+		if _, known := mi.Detected[t.Index]; known || ctx.Err() != nil {
+			continue
+		}
+		s.update(job, func(j *Job) { j.Stage = "detecting the audio language" })
+		wav, err := ref.audio.wav(ctx, t.Index)
+		var d DetectedLang
+		if err == nil {
+			d, err = det.detect(ctx, s.ffmpeg, wav)
+		}
+		if err != nil {
+			if ctx.Err() == nil {
+				s.event("warn", fmt.Sprintf("%s: couldn't detect the language of audio track %d: %v", ref.Title, t.Index+1, shortErr(err, 160)))
+			}
+			continue
+		}
+		if mi.Detected == nil {
+			mi.Detected = map[int]DetectedLang{}
+		}
+		mi.Detected[t.Index] = d
+		changed = true
+		s.event("info", fmt.Sprintf("%s: untagged audio track %d sounds like %s (p = %.2f)", ref.Title, t.Index+1, d.Lang, d.Prob))
+	}
+	if changed {
+		s.saveProbe(ctx, ref.Path, mi)
+	}
+	return mi.withDetected()
 }

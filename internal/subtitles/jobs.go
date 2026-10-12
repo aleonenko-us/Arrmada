@@ -59,6 +59,11 @@ type Job struct {
 	// Mode is "" for an ordinary ensure job. ModeRepairForced is the one-shot repair of a
 	// sidecar that was extracted from a forced track (repair.go).
 	Mode string `json:"mode,omitempty"`
+	// AudioStream and TrackIndex narrow a redo (redo.go): the audio track the AI listens
+	// to, the embedded track to extract. Langs says which languages it makes again.
+	AudioStream *int   `json:"audio_stream,omitempty"`
+	TrackIndex  *int   `json:"track_index,omitempty"`
+	PickFileID  string `json:"pick_file_id,omitempty"` // mode pick: the OpenSubtitles file chosen
 
 	repairLangs []string // ModeRepairForced: the kept languages whose sidecar is suspect
 	// retire lists orphaned subtitles this job replaces: each goes to the recycle bin once
@@ -453,6 +458,13 @@ func (s *Service) enqueueJobs(what string, jobs []*Job) ([]*Job, int) {
 			if merged := mergeRetire(j.retire, job.retire); len(merged) != len(j.retire) {
 				j.retire = merged
 				changed = true
+			}
+			// A redo of Spanish while one of English waits: one job does both.
+			if isRedoMode(job.Mode) && len(j.Langs) > 0 && sameRedoChoices(j, job) {
+				if merged := unionLangs(j.Langs, job.Langs); len(merged) != len(j.Langs) {
+					j.Langs = merged
+					changed = true
+				}
 			}
 			// Pressing Ensure on a file the sweep already queued moves it up to the
 			// button's line rather than leaving it hours deep behind the sweep.

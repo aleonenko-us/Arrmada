@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/toolrun"
 )
 
@@ -51,6 +52,38 @@ type mediaInfo struct {
 	AudioLangs   []string     `json:"audio_langs,omitempty"`
 	Audio        []AudioTrack `json:"audio,omitempty"` // every audio stream, in ffmpeg's 0:a:N order
 	Subs         []SubTrack   `json:"subs,omitempty"`
+	// Detected is the language whisper heard on each untagged audio stream (by 0:a:N
+	// index), filled in when the AI rung first needed it and kept with the probe: it
+	// holds as long as the file's size and mtime do.
+	Detected map[int]DetectedLang `json:"detected,omitempty"`
+}
+
+// untagged reports whether an audio track carries no language the table knows ("",
+// "und", "zxx", nonsense) — the ones detection listens to.
+func (t AudioTrack) untagged() bool {
+	_, ok := langs.Lookup(t.Lang)
+	return !ok
+}
+
+// withDetected is the probe as the AI should see it: each untagged track that detection
+// heard confidently (≥ detectMinProb) takes that language, in Audio and AudioLangs. The
+// receiver isn't changed; nil stays nil.
+func (mi *mediaInfo) withDetected() *mediaInfo {
+	if mi == nil || len(mi.Detected) == 0 {
+		return mi
+	}
+	cp := *mi
+	cp.Audio = append([]AudioTrack(nil), mi.Audio...)
+	cp.AudioLangs = append([]string(nil), mi.AudioLangs...)
+	for i, t := range cp.Audio {
+		d, ok := mi.Detected[t.Index]
+		if !ok || !t.untagged() || d.Lang == "" || d.Prob < detectMinProb {
+			continue
+		}
+		cp.Audio[i].Lang = d.Lang
+		cp.AudioLangs = append(cp.AudioLangs, d.Lang)
+	}
+	return &cp
 }
 
 // AudioTrack is one audio stream: what the AI transcribes. A MULTI release carries
@@ -245,4 +278,14 @@ func (s *Service) cachedProbe(ctx context.Context, path string) *mediaInfo {
 		return nil
 	}
 	return mi
+}
+
+// saveProbe writes a probe back to the cache — after detection added to it — keyed by
+// the file's current size and mtime, as probeCached would have.
+func (s *Service) saveProbe(ctx context.Context, path string, mi *mediaInfo) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	s.cache.put(context.WithoutCancel(ctx), path, fi.Size(), fi.ModTime().Unix(), mi)
 }

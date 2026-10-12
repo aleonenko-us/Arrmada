@@ -5,14 +5,16 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 )
 
 // handleSubtitleModels returns local-AI (whisper) binary + model status.
 func (a *api) handleSubtitleModels(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, a.deps.Subtitles.WhisperStatus())
+	a.writeJSON(w, http.StatusOK, a.deps.Subtitles.WhisperStatus(r.Context()))
 }
 
 // handleSubtitleDownloadModel starts a background download of a whisper model.
@@ -359,6 +361,126 @@ func (a *api) handleSubtitleAdoptOrphan(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"name": name})
+}
+
+// handleSubtitleSyncCheck measures how one language's sidecar lines up with its video's
+// speech and stores the result as its Health. The file is named by catalog identity
+// ({kind, movie_id | series_id+season+episode, lang, variant}); its path is found server
+// side, never taken from the request. Reading the soundtrack takes a while, so the check
+// runs as a job: an unknown title or a missing sidecar is answered at once, the
+// measurement follows.
+func (a *api) handleSubtitleSyncCheck(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		subtitles.MediaRef
+		Lang    string `json:"lang"`
+		Variant string `json:"variant"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	t, err := a.deps.Subtitles.SyncTarget(r.Context(), req.MediaRef, req.Lang, req.Variant)
+	switch {
+	case errors.Is(err, subtitles.ErrNoVideo), errors.Is(err, subtitles.ErrNoSidecar):
+		a.writeError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, subtitles.ErrNotSRT):
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
+		a.writeError(w, http.StatusInternalServerError, "could not find that subtitle")
+		return
+	}
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "subtitles.sync-check", Target: t.Key, Timeout: 30 * time.Minute,
+		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			p.SetMessage("Reading the audio of " + t.Title + "…")
+			rep, err := a.deps.Subtitles.CheckSync(ctx, req.MediaRef, req.Lang, req.Variant)
+			if err != nil {
+				return nil, err
+			}
+			msg := t.Name + ": " + rep.Health.Note
+			if !rep.Judged {
+				msg = t.Name + ": too little speech or too few lines to judge its sync"
+			}
+			p.SetMessage(msg)
+			return rep, nil
+		}})
+	if !ok {
+		return
+	}
+	a.accepted(w, jobID, existing, map[string]any{"status": "checking", "file": t.Name})
+}
+
+// handleSubtitleRedo queues a redo of one language of one file ({kind, movie_id |
+// series_id+season+episode, lang, variant, mode: next|ai|extract, audio_stream?,
+// track_index?, file_id? for mode pick}) at manual priority. Only that language is touched; the old file goes to
+// the recycle bin once the new one exists.
+func (a *api) handleSubtitleRedo(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		subtitles.MediaRef
+		Lang        string `json:"lang"`
+		Variant     string `json:"variant"`
+		Mode        string `json:"mode"`
+		AudioStream *int   `json:"audio_stream"`
+		TrackIndex  *int   `json:"track_index"`
+		FileID      string `json:"file_id"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	job, err := a.deps.Subtitles.QueueRedo(r.Context(), req.MediaRef, subtitles.RedoRequest{
+		Lang: req.Lang, Variant: req.Variant, Mode: req.Mode, AudioStream: req.AudioStream, TrackIndex: req.TrackIndex, FileID: req.FileID,
+	})
+	switch {
+	case errors.Is(err, subtitles.ErrNoVideo):
+		a.writeError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, subtitles.ErrRedoBusy):
+		a.writeError(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	a.writeJSON(w, http.StatusAccepted, job)
+}
+
+// handleSubtitleAttention is the Overview's needs-attention board: every missing file
+// language grouped by why, with its one-click fix, plus coverage by source.
+func (a *api) handleSubtitleAttention(w http.ResponseWriter, r *http.Request) {
+	board, err := a.deps.Subtitles.Attention(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read what needs attention")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, board)
+}
+
+// handleSubtitleRetry tries file languages again now, ignoring their backoff: {items:
+// [{media_key, lang, variant}]} or {all_in_bucket: reason}, and mode "ai" to go straight to
+// the AI. Answers how many jobs were queued.
+func (a *api) handleSubtitleRetry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items       []subtitles.RetryItem `json:"items"`
+		AllInBucket string                `json:"all_in_bucket"`
+		Mode        string                `json:"mode"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.Items) > 1000 {
+		a.writeError(w, http.StatusBadRequest, "too many items — retry the bucket instead")
+		return
+	}
+	n, err := a.deps.Subtitles.Retry(r.Context(), req.Items, req.AllInBucket, req.Mode)
+	if err != nil {
+		if errors.Is(err, subtitles.ErrBadRetry) {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.writeError(w, http.StatusInternalServerError, "could not queue every retry")
+		return
+	}
+	a.writeJSON(w, http.StatusAccepted, map[string]any{"queued": n})
 }
 
 // handleSubtitleReplaceOrphan queues a fresh subtitle for an orphan's language; the

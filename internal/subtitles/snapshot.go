@@ -247,6 +247,7 @@ func (s *Service) patchMovie(ctx context.Context, m movies.Movie) {
 	if bs, err := s.ledger.BackoffsFor(ctx, fmt.Sprintf("m:%d", m.ID)); err == nil {
 		applyBackoff(&fs, bs, time.Now())
 	}
+	s.fillHealth(ctx, &fs)
 	s.snap.mu.Lock()
 	defer s.snap.mu.Unlock()
 	for i := range s.snap.movies {

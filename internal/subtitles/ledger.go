@@ -137,12 +137,17 @@ type SubtitleFile struct {
 	ReleaseName    string `json:"release_name,omitempty"`
 	HashMatch      bool   `json:"hash_match,omitempty"`
 	Score          *int   `json:"score,omitempty"`
-	Model          string `json:"model,omitempty"` // whisper model file, for the AI sources
-	SyncOffsetMs   *int   `json:"sync_offset_ms,omitempty"`
-	SyncConfidence *int   `json:"sync_confidence,omitempty"`
-	Locked         bool   `json:"locked,omitempty"` // the owner chose it: never replaced automatically
-	CreatedAt      int64  `json:"created_at"`
-	SupersededAt   int64  `json:"superseded_at,omitempty"` // 0 = the live row for its path
+	Model          string `json:"model,omitempty"`           // whisper model file, for the AI sources
+	SyncOffsetMs   *int   `json:"sync_offset_ms,omitempty"`  // how late it ran when checked (+ = late), before any shift
+	SyncConfidence *int   `json:"sync_confidence,omitempty"` // 0-100; nil = never checked
+	// SyncShiftMs and SyncScale are the correction Arrmada applied to the file after the
+	// check (nil = none); SyncCheckedAt is when the check ran (unix; 0 = never).
+	SyncShiftMs   *int     `json:"sync_shift_ms,omitempty"`
+	SyncScale     *float64 `json:"sync_scale,omitempty"`
+	SyncCheckedAt int64    `json:"sync_checked_at,omitempty"`
+	Locked        bool     `json:"locked,omitempty"` // the owner chose it: never replaced automatically
+	CreatedAt     int64    `json:"created_at"`
+	SupersededAt  int64    `json:"superseded_at,omitempty"` // 0 = the live row for its path
 }
 
 // Attempt is one row of subtitle_attempts.
@@ -234,6 +239,13 @@ func nullIntPtr(p *int) any {
 	return *p
 }
 
+func nullFloatPtr(p *float64) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
 func nullID(id int64) any {
 	if id == 0 {
 		return nil
@@ -277,13 +289,14 @@ func (l *Ledger) RecordFile(ctx context.Context, f SubtitleFile) (int64, error) 
 		res, err := tx.ExecContext(ctx, `INSERT INTO subtitle_files
 			(media_key, kind, movie_id, series_id, season, episode, video_path, path, lang, variant, source,
 			 embedded_index, provider, provider_file_id, release_name, hash_match, score, model,
-			 sync_offset_ms, sync_confidence, locked, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 sync_offset_ms, sync_confidence, sync_shift_ms, sync_scale, sync_checked_at, locked, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			f.MediaKey, f.Kind, nullID(f.MovieID), nullID(f.SeriesID), season, episode,
 			f.VideoPath, f.Path, langs.Canonical(f.Lang), dbVariant(f.Variant), f.Source,
 			nullIntPtr(f.EmbeddedIndex), nullStr(f.Provider), nullStr(f.ProviderFileID), nullStr(f.ReleaseName),
 			boolInt(f.HashMatch), nullIntPtr(f.Score), nullStr(f.Model),
-			nullIntPtr(f.SyncOffsetMs), nullIntPtr(f.SyncConfidence), boolInt(f.Locked), f.CreatedAt)
+			nullIntPtr(f.SyncOffsetMs), nullIntPtr(f.SyncConfidence), nullIntPtr(f.SyncShiftMs), nullFloatPtr(f.SyncScale),
+			nullID(f.SyncCheckedAt), boolInt(f.Locked), f.CreatedAt)
 		if err != nil {
 			return err
 		}
@@ -306,10 +319,47 @@ func (l *Ledger) SupersedeFile(ctx context.Context, path string) error {
 // SetSync stores a sync check's result on a path's live row. Reports whether a live row
 // was there to update.
 func (l *Ledger) SetSync(ctx context.Context, path string, offsetMs, confidence int) (bool, error) {
+	return l.RecordSync(ctx, path, SyncCheck{OffsetMs: offsetMs, Confidence: confidence})
+}
+
+// SyncCheck is one sync check of a sidecar, as the ledger keeps it.
+type SyncCheck struct {
+	OffsetMs   int     // how late the subtitle ran when checked (+ = late)
+	Confidence int     // 0-100
+	ShiftMs    int     // the shift applied to the file afterwards; 0 = none
+	Scale      float64 // the frame-rate stretch applied with it; 0 or 1 = none
+	At         int64   // unix; 0 = now
+}
+
+// apply copies a check onto a row about to be recorded.
+func (c SyncCheck) apply(f *SubtitleFile) {
+	off, conf := c.OffsetMs, c.Confidence
+	f.SyncOffsetMs, f.SyncConfidence, f.SyncCheckedAt = &off, &conf, c.At
+	f.SyncShiftMs, f.SyncScale = nil, nil
+	if c.ShiftMs != 0 {
+		sh := c.ShiftMs
+		f.SyncShiftMs = &sh
+	}
+	if c.Scale != 0 && c.Scale != 1 {
+		sc := c.Scale
+		f.SyncScale = &sc
+	}
+}
+
+// RecordSync stores a sync check on a path's live row, replacing the last one. Reports
+// whether a live row was there to update.
+func (l *Ledger) RecordSync(ctx context.Context, path string, c SyncCheck) (bool, error) {
 	if !l.ok() {
 		return false, nil
 	}
-	res, err := l.db.ExecContext(ctx, `UPDATE subtitle_files SET sync_offset_ms = ?, sync_confidence = ? WHERE path = ? AND superseded_at IS NULL`, offsetMs, confidence, path)
+	if c.At == 0 {
+		c.At = l.clock().Unix()
+	}
+	var f SubtitleFile
+	c.apply(&f)
+	res, err := l.db.ExecContext(ctx, `UPDATE subtitle_files SET sync_offset_ms = ?, sync_confidence = ?, sync_shift_ms = ?,
+		sync_scale = ?, sync_checked_at = ? WHERE path = ? AND superseded_at IS NULL`,
+		nullIntPtr(f.SyncOffsetMs), nullIntPtr(f.SyncConfidence), nullIntPtr(f.SyncShiftMs), nullFloatPtr(f.SyncScale), f.SyncCheckedAt, path)
 	if err != nil {
 		return false, err
 	}
@@ -319,20 +369,22 @@ func (l *Ledger) SetSync(ctx context.Context, path string, offsetMs, confidence 
 
 const fileCols = `id, media_key, kind, movie_id, series_id, season, episode, video_path, path, lang, variant, source,
 	embedded_index, provider, provider_file_id, release_name, hash_match, score, model,
-	sync_offset_ms, sync_confidence, locked, created_at, superseded_at`
+	sync_offset_ms, sync_confidence, sync_shift_ms, sync_scale, sync_checked_at, locked, created_at, superseded_at`
 
 func scanFile(sc interface{ Scan(...any) error }) (SubtitleFile, error) {
 	var (
 		f                                     SubtitleFile
 		movieID, seriesID, season, episode    sql.NullInt64
 		embIdx, score, syncOff, syncConf, sup sql.NullInt64
+		syncShift, syncAt                     sql.NullInt64
+		syncScale                             sql.NullFloat64
 		provider, fileID, release, model      sql.NullString
 		hash, locked                          int
 		variant                               string
 	)
 	err := sc.Scan(&f.ID, &f.MediaKey, &f.Kind, &movieID, &seriesID, &season, &episode, &f.VideoPath, &f.Path,
 		&f.Lang, &variant, &f.Source, &embIdx, &provider, &fileID, &release, &hash, &score, &model,
-		&syncOff, &syncConf, &locked, &f.CreatedAt, &sup)
+		&syncOff, &syncConf, &syncShift, &syncScale, &syncAt, &locked, &f.CreatedAt, &sup)
 	if err != nil {
 		return f, err
 	}
@@ -341,6 +393,11 @@ func scanFile(sc interface{ Scan(...any) error }) (SubtitleFile, error) {
 	f.Variant = fromDBVariant(variant)
 	f.EmbeddedIndex, f.Score = intPtr(embIdx), intPtr(score)
 	f.SyncOffsetMs, f.SyncConfidence = intPtr(syncOff), intPtr(syncConf)
+	f.SyncShiftMs, f.SyncCheckedAt = intPtr(syncShift), syncAt.Int64
+	if syncScale.Valid {
+		v := syncScale.Float64
+		f.SyncScale = &v
+	}
 	f.Provider, f.ProviderFileID, f.ReleaseName, f.Model = provider.String, fileID.String, release.String, model.String
 	f.HashMatch, f.Locked = hash != 0, locked != 0
 	f.SupersededAt = sup.Int64
@@ -378,6 +435,27 @@ func (l *Ledger) FilesFor(ctx context.Context, mediaKey string) ([]SubtitleFile,
 	}
 	rows, err := l.db.QueryContext(ctx, `SELECT `+fileCols+` FROM subtitle_files
 		WHERE media_key = ? AND superseded_at IS NULL ORDER BY lang, variant, id`, mediaKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SubtitleFile
+	for rows.Next() {
+		f, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// LiveFiles lists every live provenance row — one query for a library pass's Health.
+func (l *Ledger) LiveFiles(ctx context.Context) ([]SubtitleFile, error) {
+	if !l.ok() {
+		return nil, nil
+	}
+	rows, err := l.db.QueryContext(ctx, `SELECT `+fileCols+` FROM subtitle_files WHERE superseded_at IS NULL`)
 	if err != nil {
 		return nil, err
 	}
