@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { api, type MyBook, type MyRequest } from "../lib/api";
 import { usePoll } from "../lib/usePoll";
 import { posterThumb } from "../lib/img";
@@ -7,6 +7,10 @@ import { stillComingLine } from "../lib/bookFormats";
 import { Link } from "react-router-dom";
 import { playAudiobook } from "../lib/playerStub";
 import { STAGE } from "../lib/stages";
+import { lazyPage } from "../lib/lazyPage";
+
+// "Read on your e-reader" (the OPDS catalogue) is its own chunk, shared with Audiobooks.
+const EReaderPanel = lazyPage(() => import("../components/EReaderPanel"), "EReaderPanel");
 
 // MyBooks is the requester's view of the book library: every book that has a file,
 // a download for each ebook, and their own requests still on the way. Deliberately
@@ -121,6 +125,8 @@ export function MyBooks() {
           {shown.map((b) => <BookCard key={b.book_id} b={b} listen={listen} />)}
         </div>
       )}
+
+      {ebooks > 0 && <div className="mt-6"><Suspense fallback={null}><EReaderPanel /></Suspense></div>}
     </div>
   );
 }
