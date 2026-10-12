@@ -324,9 +324,7 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 		return fmt.Errorf("this whisper-cli build has no --output-json-full; rebuild the image (whisper.cpp v1.9+)")
 	}
 	// Work in the temp dir under a clean (space-free) base.
-	stamp := time.Now().UnixNano()
-	base := filepath.Join(os.TempDir(), fmt.Sprintf("whisper-%d", stamp))
-	wav := base + ".wav"
+	wav := filepath.Join(os.TempDir(), fmt.Sprintf("whisper-%d.wav", time.Now().UnixNano()))
 	defer os.Remove(wav)
 
 	// 1. Extract mono 16 kHz PCM — what whisper expects — from the chosen audio stream,
@@ -337,6 +335,21 @@ func (w *whisperGen) generate(ctx context.Context, ffmpeg, videoPath, srtPath, l
 	if fi, err := os.Stat(wav); err != nil || fi.Size() < 4096 {
 		return fmt.Errorf("extracted audio was empty (no decodable audio track?)")
 	}
+	return w.generateWAV(ctx, ffmpeg, wav, srtPath, lang, srcLang, translate, progress)
+}
+
+// generateWAV is generate from an already-extracted 16 kHz mono WAV — the job's shared
+// one (audio.go), so a file whose audio was read for a sync check or language detection
+// isn't read again. The WAV is left in place.
+func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang, srcLang string, translate bool, progress func(pct int)) error {
+	model := w.modelPath(translate)
+	if model == "" {
+		return fmt.Errorf("no whisper model available for %s", ifElse(translate, "translation", "transcription"))
+	}
+	if !w.jsonFull {
+		return fmt.Errorf("this whisper-cli build has no --output-json-full; rebuild the image (whisper.cpp v1.9+)")
+	}
+	base := filepath.Join(os.TempDir(), fmt.Sprintf("whisper-%d", time.Now().UnixNano()))
 	total := wavDuration(wav)
 
 	// 2. Cut at silences. A failed detection just means one chunk.
@@ -560,14 +573,15 @@ func tailStr(out []byte, n int) string {
 	return strings.ReplaceAll(s, "\n", " ⏎ ")
 }
 
-// aiPlan decides how (if at all) AI can produce a wanted-language subtitle from a file's audio:
+// aiPlan decides how (if at all) AI can produce a wanted-language subtitle from a file's
+// audio. audioLangs is every language the file's audio is known to be in: the tracks'
+// tags, plus what detection heard on an untagged track (heardAudio).
 //
-//	"transcribe" — the audio is already in that language;
-//	"translate"  — the target is English and no audio track is tagged English: Whisper's
-//	               only translation direction. Untagged audio lands here too (it is most
-//	               often foreign); the run then passes -l auto, so whisper detects the
-//	               language — and if that turns out to be English, translating English to
-//	               English is still an English subtitle;
+//	"transcribe" — the audio is already in that language (turbo is enough);
+//	"translate"  — the target is English and the audio is in another language: whisper's
+//	               only translation direction (needs large-v3, -l <the audio's language>).
+//	               When nothing at all is known about the audio — untagged and not
+//	               detected — this is the fallback too, with -l auto;
 //	""           — impossible: Whisper can't translate into a non-English language.
 func aiPlan(audioLangs []string, wanted string) string {
 	for _, a := range audioLangs {
@@ -583,9 +597,124 @@ func aiPlan(audioLangs []string, wanted string) string {
 
 func isEnglish(l string) bool { return langs.Base(l) == "en" }
 
+// audioLangWord names an audio track's language for a note: its canonical code ("fr"),
+// or "untagged".
+func audioLangWord(tag string) string {
+	if c := langs.Canonical(tag); c != "" {
+		return c
+	}
+	return "untagged"
+}
+
 func ifElse(c bool, a, b string) string {
 	if c {
 		return a
 	}
 	return b
+}
+
+// DetectedLang is the language whisper heard on an untagged audio stream, and how sure it
+// was (0-1).
+type DetectedLang struct {
+	Lang string  `json:"lang"`
+	Prob float64 `json:"prob"`
+}
+
+// detectMinProb is how sure detection must be before its answer is used.
+const detectMinProb = 0.6
+
+// detectSample is how much audio detection listens to: whisper decides the language from
+// one 30 s window.
+const detectSample = 30 * time.Second
+
+// detectedRe matches whisper.cpp's "whisper_full_with_state: auto-detected language: en
+// (p = 0.970215)".
+var detectedRe = regexp.MustCompile(`auto-detected language:\s*([a-z]{2,3}(?:[-_][a-z]+)?)\s*\(p\s*=\s*([0-9]*\.?[0-9]+)\)`)
+
+// parseDetectedLanguage reads whisper-cli's detection line; ok is false without one.
+func parseDetectedLanguage(out []byte) (DetectedLang, bool) {
+	m := detectedRe.FindSubmatch(out)
+	if m == nil {
+		return DetectedLang{}, false
+	}
+	p, err := strconv.ParseFloat(string(m[2]), 64)
+	if err != nil {
+		return DetectedLang{}, false
+	}
+	lang := langs.Canonical(string(m[1]))
+	if lang == "" {
+		lang = string(m[1])
+	}
+	return DetectedLang{Lang: lang, Prob: p}, true
+}
+
+// detectionWindow picks the stretch detection listens to: the first speech chunk that
+// starts after 10% of the runtime (past the logos and the cold-open music), its first
+// 30 s. Without one, the 30 s from the 10% mark.
+func detectionWindow(total time.Duration, chunks []chunk) chunk {
+	from := total / 10
+	for _, c := range chunks {
+		if c.start >= from {
+			return chunk{c.start, min(c.end, c.start+detectSample)}
+		}
+	}
+	return chunk{from, min(total, from+detectSample)}
+}
+
+// detectArgs is whisper-cli's command line for language detection: -dl stops after
+// detecting, -l auto asks it to. Nothing else — no -ml, -sow or --vad.
+func detectArgs(model, wav string) []string {
+	return []string{"-m", model, "-f", wav, "-dl", "-l", "auto", "-t", strconv.Itoa(threads())}
+}
+
+// detect asks whisper which language is spoken in a 16 kHz mono WAV (the job's shared
+// extraction), from one 30 s window of speech. turbo is used when it's installed (it
+// detects as well as large-v3 and loads faster), else large-v3.
+func (w *whisperGen) detect(ctx context.Context, ffmpeg, wav string) (DetectedLang, error) {
+	model := w.modelPath(false)
+	if model == "" {
+		return DetectedLang{}, fmt.Errorf("no whisper model installed")
+	}
+	total := wavDuration(wav)
+	if total <= 0 {
+		return DetectedLang{}, fmt.Errorf("no audio to listen to")
+	}
+	sils, err := detectSilences(ctx, ffmpeg, wav, total)
+	if err != nil && ctx.Err() != nil {
+		return DetectedLang{}, err
+	}
+	sample := filepath.Join(os.TempDir(), fmt.Sprintf("whisper-dl-%d.wav", time.Now().UnixNano()))
+	defer os.Remove(sample)
+	if err := cutChunk(ctx, ffmpeg, wav, detectionWindow(total, planChunks(total, sils)), sample); err != nil {
+		return DetectedLang{}, err
+	}
+	w.probeSycl(ctx, model)
+	bin := w.pickBin()
+	run := func(b string, noGPU bool) ([]byte, error) {
+		args := detectArgs(model, sample)
+		if noGPU {
+			args = append(args, "--no-gpu")
+		}
+		if b == w.sycl && w.syclDev > 0 {
+			args = append(args, "-dev", strconv.Itoa(w.syclDev))
+		}
+		return runWhisper(ctx, b, args, nil)
+	}
+	out, err := run(bin, false)
+	if err != nil && bin == w.sycl && ctx.Err() == nil {
+		w.disableSycl("it failed: " + tailStr(out, 300))
+		bin = w.bin
+		out, err = run(bin, false)
+	}
+	if err != nil && w.noGPUFlag && ctx.Err() == nil {
+		out, err = run(bin, true)
+	}
+	if err != nil {
+		return DetectedLang{}, fmt.Errorf("whisper: %w: %s", err, tailStr(out, 300))
+	}
+	d, ok := parseDetectedLanguage(out)
+	if !ok {
+		return DetectedLang{}, fmt.Errorf("whisper reported no language: %s", tailStr(out, 200))
+	}
+	return d, nil
 }

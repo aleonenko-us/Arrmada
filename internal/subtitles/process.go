@@ -56,6 +56,17 @@ type aiRunner interface {
 	Device() string
 }
 
+// langDetector is an aiRunner that can say which language is spoken in a WAV (whisper's
+// -dl). Without it, untagged audio stays unknown.
+type langDetector interface {
+	detect(ctx context.Context, ffmpeg, wav string) (DetectedLang, error)
+}
+
+// wavGenerator is an aiRunner that can work from the job's already-extracted WAV.
+type wavGenerator interface {
+	generateWAV(ctx context.Context, ffmpeg, wav, srt, lang, srcLang string, translate bool, progress func(int)) error
+}
+
 // The seams below default to the real code paths; only tests set the fields.
 
 func (s *Service) resolveRef(ctx context.Context, job *Job) (fileRef, bool) {
@@ -517,6 +528,8 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		return nil
 	}
 	ai := s.aiGen()
+	// What the audio is in: the tracks' tags, plus what detection hears on untagged ones.
+	mi = s.heardAudio(ctx, job, ref, mi, ai, langs)
 	var audioLangs []string
 	if mi != nil {
 		audioLangs = mi.AudioLangs
@@ -538,17 +551,18 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 			continue
 		}
 		translate := plan == "translate"
+		// Which audio track: a MULTI release has the dub too, and the wrong one gives a
+		// subtitle in the wrong language under the right name.
+		stream, track := audioStreamFor(mi, l, translate)
 		if !ai.canRun(translate) {
-			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate"))
+			// Parked until a model download clears it (backoff.go), not retried every sweep.
+			outs = append(outs, mkOutcome(l, RungAI, ResultModelMissing, "needs large-v3 to translate "+audioLangWord(track.Lang)+" audio to English"))
 			continue
 		}
 		verb := "transcribing"
 		if translate {
 			verb = "translating → en"
 		}
-		// Which audio track: a MULTI release has the dub too, and the wrong one gives a
-		// subtitle in the wrong language under the right name.
-		stream, track := audioStreamFor(mi, l, translate)
 		from := ""
 		if stream >= 0 {
 			from = fmt.Sprintf(" from audio track %d/%d", stream+1, len(mi.Audio))
@@ -561,7 +575,7 @@ func (s *Service) rungAI(ctx context.Context, job *Job, ref fileRef, mi *mediaIn
 		s.update(job, func(j *Job) { j.Stage = "AI " + verb + " (" + l + ")"; j.Progress = 0 })
 		onProgress := func(pct int) { s.update(job, func(j *Job) { j.Progress = pct }) }
 		dst := sidecarPath(ref.Path, strings.ToLower(l))
-		if err := ai.generate(ctx, s.ffmpeg, ref.Path, dst, l, track.Lang, translate, stream, onProgress); err != nil {
+		if err := s.runAI(ctx, ai, ref, dst, l, track.Lang, translate, stream, onProgress); err != nil {
 			if ctx.Err() != nil {
 				break
 			}
@@ -652,4 +666,68 @@ func (s *Service) ffmpegExtract(ctx context.Context, path string, picks []extrac
 		args = append(args, "-map", fmt.Sprintf("0:s:%d", p.Index), "-c:s", "srt", p.Path)
 	}
 	return toolrun.Command(ctx, toolrun.Background, s.ffmpeg, args...).Run()
+}
+
+// runAI runs whisper for one language, from the job's shared WAV when the runner can take
+// one (the audio may already have been read for a sync check or detection).
+func (s *Service) runAI(ctx context.Context, ai aiRunner, ref fileRef, dst, lang, srcLang string, translate bool, stream int, progress func(int)) error {
+	if g, ok := ai.(wavGenerator); ok && ref.audio != nil {
+		wav, err := ref.audio.wav(ctx, stream)
+		if err != nil {
+			return err
+		}
+		return g.generateWAV(ctx, s.ffmpeg, wav, dst, lang, srcLang, translate, progress)
+	}
+	return ai.generate(ctx, s.ffmpeg, ref.Path, dst, lang, srcLang, translate, stream, progress)
+}
+
+// heardAudio is the probe with what detection heard on untagged audio filled in. Whisper
+// listens to an untagged track only when the AI rung needs it — some wanted language
+// isn't already in a tagged track — and once per file: the answer is kept with the probe.
+// A failed detection leaves the track unknown (the old fallback: translate with -l auto).
+func (s *Service) heardAudio(ctx context.Context, job *Job, ref fileRef, mi *mediaInfo, ai aiRunner, wanted []string) *mediaInfo {
+	if mi == nil {
+		return nil
+	}
+	det, ok := ai.(langDetector)
+	need := false
+	for _, l := range wanted {
+		if aiPlan(mi.AudioLangs, l) != "transcribe" {
+			need = true
+		}
+	}
+	if !ok || !need || ref.audio == nil || !ai.available() {
+		return mi.withDetected()
+	}
+	changed := false
+	for _, t := range mi.Audio {
+		if !t.untagged() {
+			continue
+		}
+		if _, known := mi.Detected[t.Index]; known || ctx.Err() != nil {
+			continue
+		}
+		s.update(job, func(j *Job) { j.Stage = "detecting the audio language" })
+		wav, err := ref.audio.wav(ctx, t.Index)
+		var d DetectedLang
+		if err == nil {
+			d, err = det.detect(ctx, s.ffmpeg, wav)
+		}
+		if err != nil {
+			if ctx.Err() == nil {
+				s.event("warn", fmt.Sprintf("%s: couldn't detect the language of audio track %d: %v", ref.Title, t.Index+1, shortErr(err, 160)))
+			}
+			continue
+		}
+		if mi.Detected == nil {
+			mi.Detected = map[int]DetectedLang{}
+		}
+		mi.Detected[t.Index] = d
+		changed = true
+		s.event("info", fmt.Sprintf("%s: untagged audio track %d sounds like %s (p = %.2f)", ref.Title, t.Index+1, d.Lang, d.Prob))
+	}
+	if changed {
+		s.saveProbe(ctx, ref.Path, mi)
+	}
+	return mi.withDetected()
 }

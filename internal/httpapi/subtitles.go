@@ -13,7 +13,7 @@ import (
 
 // handleSubtitleModels returns local-AI (whisper) binary + model status.
 func (a *api) handleSubtitleModels(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, a.deps.Subtitles.WhisperStatus())
+	a.writeJSON(w, http.StatusOK, a.deps.Subtitles.WhisperStatus(r.Context()))
 }
 
 // handleSubtitleDownloadModel starts a background download of a whisper model.

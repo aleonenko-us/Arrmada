@@ -2122,7 +2122,10 @@ export interface SubtitleCoverage {
   scanning: boolean;
 }
 export interface WhisperModel { name: string; label: string; size_mb: number; present: boolean; downloading: boolean }
-export interface WhisperStatus { binary_ready: boolean; ready: boolean; models: WhisperModel[] }
+export interface WhisperStatus {
+  binary_ready: boolean; ready: boolean; models: WhisperModel[];
+  waiting?: number; // file languages parked until a model is downloaded (model_missing)
+}
 export interface MovieSubStatus {
   id: number;
   title: string;

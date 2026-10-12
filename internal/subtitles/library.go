@@ -123,10 +123,16 @@ func (s *Service) Library(ctx context.Context, media string) ([]FileSubs, error)
 // fillCoverage probes the file and computes its per-kept-language coverage. Best-effort: a file
 // that can't be probed still reports its sidecar coverage (embedded tracks just come back empty).
 func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string, canDownload bool) {
+	unknownAudio := false // an untagged track whisper hasn't listened to yet
 	if mi, err := s.probeFile(ctx, fs.Path); err == nil && mi != nil {
 		fs.DurationSec = mi.DurationSec
-		fs.AudioLangs = mi.AudioLangs
+		fs.AudioLangs = mi.withDetected().AudioLangs // tags, plus what detection heard
 		fs.Embedded = mi.Subs
+		for _, t := range mi.Audio {
+			if _, heard := mi.Detected[t.Index]; t.untagged() && !heard {
+				unknownAudio = true
+			}
+		}
 	}
 	if fs.Embedded == nil {
 		fs.Embedded = []SubTrack{} // never nil → JSON emits [] not null (frontend iterates it)
@@ -148,7 +154,7 @@ func (s *Service) fillCoverage(ctx context.Context, fs *FileSubs, langs []string
 		}
 		fs.Missing++
 		ls := LangStatus{Lang: l, Have: false, Source: bestSource(fs.Embedded, l, canDownload), Orphan: orphaned[strings.ToLower(l)]}
-		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, l) {
+		if (ls.Source == "extract" || ls.Source == "download") && s.aiCanMake(fs.AudioLangs, unknownAudio, l) {
 			ls.Fallback = "ai"
 		}
 		fs.Languages = append(fs.Languages, ls)
@@ -190,10 +196,15 @@ func (s *Service) loadBackoffs(ctx context.Context) Backoffs {
 
 // aiCanMake reports whether the local AI could produce lang from audio in audioLangs:
 // a model is installed, whisper can go in that direction, and the model for it is there.
-func (s *Service) aiCanMake(audioLangs []string, lang string) bool {
+// While an untagged track hasn't been listened to (unknownAudio), it may well be in that
+// language — the AI rung detects first — so any model will do.
+func (s *Service) aiCanMake(audioLangs []string, unknownAudio bool, lang string) bool {
 	ai := s.aiGen()
 	if !ai.available() {
 		return false
+	}
+	if unknownAudio && ai.canRun(false) {
+		return true
 	}
 	plan := aiPlan(audioLangs, lang)
 	return plan != "" && ai.canRun(plan == "translate")

@@ -219,6 +219,16 @@ func (l *Ledger) LoadBackoffs(ctx context.Context) (Backoffs, error) {
 	return l.queryBackoffs(ctx, "")
 }
 
+// CountBackoffs counts the rows parked for one primary reason.
+func (l *Ledger) CountBackoffs(ctx context.Context, reason Result) (int, error) {
+	if !l.ok() {
+		return 0, nil
+	}
+	var n int
+	err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_backoff WHERE primary_reason = ?`, string(reason)).Scan(&n)
+	return n, err
+}
+
 // BackoffsFor reads one file's backoff rows.
 func (l *Ledger) BackoffsFor(ctx context.Context, mediaKey string) (Backoffs, error) {
 	return l.queryBackoffs(ctx, " WHERE media_key = ?", mediaKey)
