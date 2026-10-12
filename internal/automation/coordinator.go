@@ -449,6 +449,7 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			// don't-seed, so an uploaded torrent from a private tracker isn't deleted
 			// the moment it imports.
 			c.recordBookGrab(ctx, bookID, versionID, title, "manual", b.QualityProfile, hash)
+			c.markGrabManual(ctx, hash) // imports into this book whatever the torrent is called
 		}
 		c.books.AddEvent(ctx, bookID, "grabbed", "Uploaded torrent — "+title)
 	}

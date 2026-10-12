@@ -795,7 +795,17 @@ func (c *Coordinator) ImportBookDownloads(ctx context.Context) {
 		// for landed there silently — even though the grab row records the book id and info
 		// hash needed to catch it. Mirrors the series import gate.
 		if gid, idx, grabbed := c.grabbedMediaForHash(ctx, it.Hash, it.Name, "book"); grabbed {
-			if expected, gerr := c.books.Get(ctx, gid); gerr == nil && (!ok || b.ID != expected.ID) {
+			expected, gerr := c.books.Get(ctx, gid)
+			// A release the admin picked by hand (interactive search or an uploaded
+			// torrent) goes into the book it was picked for. The name gate exists to catch
+			// the automation's mistakes; for a hand pick it only bounced releases whose
+			// name spells the title differently (an accent, an alternate or translated
+			// title) into Review. grabForce matches on the info hash alone, so a name
+			// coincidence can never make an automatic grab look hand-picked.
+			if gerr == nil && c.grabForce(ctx, it.Hash).On {
+				b, ok = expected, true
+			}
+			if gerr == nil && (!ok || b.ID != expected.ID) {
 				parsed := bookParsedTitle(it.Name)
 				c.log.Warn("book import: download doesn't look like the book it was grabbed for — sending to review",
 					"expected", expected.Title, "release", it.Name, "parsed_title", parsed)
@@ -1106,7 +1116,9 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 		return false
 	}
 	c.log.Info("book: imported", "title", b.Title, "edition", kind, "format", bi.Format, "files", bi.FileCount)
-	c.books.AddEvent(ctx, b.ID, "imported", bookImportDetail(kind, bi.Format, bi.FileCount, downloadName))
+	// Say so when the release was hand-picked: it skipped the name check, so the
+	// timeline is where a mis-click shows up.
+	c.books.AddEvent(ctx, b.ID, "imported", bookImportDetail(kind, bi.Format, bi.FileCount, downloadName, c.grabForce(ctx, infoHash).On))
 	c.markBookGrabImported(ctx, b.ID, infoHash, downloadName) // flip THIS grab (not siblings) for seed cleanup
 	c.bookImported(ctx, b.ID, kind)
 	c.bus.Publish("book.imported", map[string]any{"title": b.Title, "id": b.ID, "edition": kind})
@@ -1130,6 +1142,9 @@ func (c *Coordinator) GrabForBook(ctx context.Context, bookID, versionID int64, 
 	}
 	if b, err := c.books.Get(ctx, bookID); err == nil {
 		c.recordBookGrab(ctx, bookID, versionID, title, indexerName, b.QualityProfile, hash)
+		// The admin chose this release for this book: import it there even when its
+		// name doesn't spell the library title the same way.
+		c.markGrabManual(ctx, hash)
 	}
 	what := "Grabbed by hand from " + indexerName + ": " + title
 	if label != "" {
@@ -2131,12 +2146,15 @@ func rssReleasesForBook(match func(string) (books.Book, bool), b books.Book, rel
 
 // bookImportDetail renders the history line for an imported edition: what landed, in what
 // format, and which release it came from.
-func bookImportDetail(kind, format string, files int, release string) string {
+func bookImportDetail(kind, format string, files int, release string, handPicked bool) string {
 	d := fmt.Sprintf("Imported the %s edition (%s", kind, format)
 	if files > 1 {
 		d += fmt.Sprintf(", %d files", files)
 	}
 	d += ")"
+	if handPicked {
+		d += " (hand-picked)"
+	}
 	if release != "" {
 		d += " from " + release
 	}
