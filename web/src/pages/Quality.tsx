@@ -13,6 +13,7 @@ import {
   type MovieSummary,
   type MusicPreset,
   type ProfileImpact,
+  type ProfileConflict,
   type ProfileMoveCounts,
   type QualityProfileInfo,
   type ReleaseList,
@@ -25,6 +26,9 @@ import {
 import { qualityApi } from "../lib/qualityApi";
 import { UnwantedRules, unwantedSummary } from "./quality/UnwantedRules";
 import { RankingCard } from "./quality/RankingCard";
+import { TestName } from "./quality/TestName";
+import { ConflictNotes } from "./quality/ConflictNotes";
+import { ReleaseExplain } from "../components/ReleaseExplain";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
@@ -559,6 +563,10 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   const start = useMemo(() => withTarget(initial), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [decision, setDecision] = useState<DecisionView | null>(null);
+  // What the preview's samples are — a film, or an episode of a show for a series profile.
+  const [sampleLabel, setSampleLabel] = useState("");
+  // Target settings that contradict each other, from the same preview — warnings only.
+  const [conflicts, setConflicts] = useState<ProfileConflict[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -576,6 +584,8 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
         if (!alive) return;
         // Go marshals empty slices as null — coalesce so .length/.map are safe.
         setDecision({ ...p.decision, eligible: p.decision.eligible ?? [], rejected: p.decision.rejected ?? [] });
+        setSampleLabel(p.sample_label ?? "");
+        setConflicts(p.conflicts ?? []);
       }).catch(() => {});
     }, 250);
     return () => { alive = false; window.clearTimeout(t); };
@@ -664,7 +674,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
           <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
 
           <SectionLabel>1 · The file you want</SectionLabel>
-          <TargetEditor sp={sp} ideal={ideal} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
+          <TargetEditor sp={sp} ideal={ideal} conflicts={conflicts} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
 
           <div className="mt-6 flex flex-col gap-2.5">
             <Collapsible n={2} title="Sources" summary={sourceSummary(sp)}>
@@ -713,7 +723,9 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />
                 What you'll get
               </div>
-              <p className="mb-3 mt-1 text-[11.5px] text-ink-faint">Live on a sample set of real-world releases — change anything and it re-decides.</p>
+              <p className="mb-3 mt-1 text-[11.5px] text-ink-faint">
+                Live on sample releases{sampleLabel ? ` — ${sampleLabel}` : ""}. Change anything and it re-decides.
+              </p>
               {!winner ? (
                 <div className="rounded-xl p-7 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Nothing in the sample matches this profile. Loosen a Must or widen a bitrate window.</div>
               ) : (
@@ -722,6 +734,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
             </div>
             <LibraryFitPanel sp={sp} />
             <TestPanel sp={sp} />
+            <TestName sp={sp} />
           </div>
         </aside>
       </div>
@@ -842,7 +855,7 @@ function advancedSummary(sp: StoredProfile, other: FormatInfo[]): string {
 
 // TargetEditor sets the file the profile aims for: its resolutions, a state for each codec,
 // HDR and audio option, and a bitrate window per resolution.
-function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile; ideal: IdealFile; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void }) {
+function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: StoredProfile; ideal: IdealFile; conflicts: ProfileConflict[]; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void }) {
   const allowed = sp.allowed_resolutions;
   const best = allowed.reduce((b, r) => (RES_RANK[r] > (RES_RANK[b] ?? 0) ? r : b), "");
   const toggleRes = (v: string) => onResolutions(allowed.includes(v) ? allowed.filter((r) => r !== v) : [...allowed, v]);
@@ -891,6 +904,7 @@ function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile
               </div>
             ))}
           </div>
+          <ConflictNotes conflicts={conflicts} row={row.row} />
         </div>
       ))}
 
@@ -909,6 +923,7 @@ function TargetEditor({ sp, ideal, onIdeal, onResolutions }: { sp: StoredProfile
           </div>
         ))}
       </div>
+      <ConflictNotes conflicts={conflicts} row="bitrate" />
 
     </div>
   );
@@ -1271,6 +1286,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
               {(result.why ?? []).map((w) => <li key={w}>✓ {w}</li>)}
             </ul>
           )}
+          {winner && result.chosen_over && <div className="mt-1 text-[11px] text-ink-faint">{result.chosen_over}</div>}
           {releases.length > 0 && (
             <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
               {showAll ? "Hide the others" : `${eligible.length} other eligible · ${skipped.length} skipped`}
@@ -1279,10 +1295,13 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
           {showAll && (
             <div className="mt-2 max-h-[280px] overflow-y-auto rounded-lg thin-scroll" style={{ border: "1px solid var(--line)" }}>
               {[...eligible, ...skipped].map((r) => (
-                <div key={r.title} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
-                  <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
-                  <span className="font-mono text-[10.5px] text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
-                  {!r.eligible && <span className="max-w-[45%] truncate text-right text-[10.5px]" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                <div key={r.title} className="px-3 py-1.5 text-[11.5px]" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
+                    <span className="font-mono text-[10.5px] text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
+                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-[10.5px]" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                  </div>
+                  {r.eligible && <ReleaseExplain className="mt-1" matched={r.matched} avoided={r.avoided} waived={r.bonus_waived} lostOn={r.lost_on} />}
                 </div>
               ))}
             </div>
@@ -1748,16 +1767,22 @@ function CmpLabel({ children }: { children: React.ReactNode }) {
   return <div className="px-3.5 pb-1 pt-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel)" }}>{children}</div>;
 }
 
+// CmpRow is one sample in the compare list. A skipped one says why it was refused; an
+// eligible one says what it matched, what it has that you avoid, and what it lost on against
+// the sample ranked just above it — the same explanation interactive search gives.
 function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
   const r = ev.candidate.release;
-  const note = skip ? ev.reject_reason
-    : ev.avoided_formats?.length ? `ranked down — ${ev.avoided_formats.join(", ")}`
-      : ev.matched?.length ? ev.matched.join(", ") : "eligible";
+  const plain = !ev.matched?.length && !ev.avoided_formats?.length && !ev.bonus_waived && !ev.lost_on_text;
   return (
-    <div className="flex items-center gap-3 px-3.5 py-2.5" style={{ background: "var(--panel)", opacity: skip ? 0.6 : 1 }}>
-      <span className="min-w-[108px] text-[12.5px] font-semibold">{r.resolution} {r.source}</span>
-      <span className="min-w-[50px] font-mono text-[11.5px] text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
-      <span className="ml-auto text-right text-[12px]" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{note}</span>
+    <div className="px-3.5 py-2.5" style={{ background: "var(--panel)", opacity: skip ? 0.6 : 1 }}>
+      <div className="flex items-center gap-3">
+        <span className="min-w-[108px] text-[12.5px] font-semibold">{r.resolution} {r.source}</span>
+        <span className="min-w-[50px] font-mono text-[11.5px] text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
+        {(skip || plain) && (
+          <span className="ml-auto text-right text-[12px]" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
+        )}
+      </div>
+      {!skip && <ReleaseExplain className="mt-1.5" matched={ev.matched} avoided={ev.avoided_formats} waived={ev.bonus_waived} lostOn={ev.lost_on_text} />}
     </div>
   );
 }

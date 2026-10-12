@@ -147,6 +147,36 @@ export interface ParsedRelease {
   audio?: string[];
   edition?: string;
   group?: string;
+  proper?: boolean;
+  repack?: boolean;
+  /** Read from the name's conventions rather than written in it (a fansub is a web capture). */
+  source_inferred?: boolean;
+  /** Read from an SD-era signal (DVD, HDTV, XviD) rather than written in the name. */
+  resolution_inferred?: boolean;
+  // The parser's newer detections, shown when the server sends them.
+  streaming?: string;
+  languages?: string[];
+  multi?: boolean;
+  full_disc?: boolean;
+  three_d?: boolean;
+  upscaled?: boolean;
+  extras?: boolean;
+}
+
+/** One format tested against a release name in the builder's "Test a release name". */
+export interface FormatCheck {
+  name: string;
+  matched: boolean;
+  score: number;
+  required?: boolean;
+  custom?: boolean;
+}
+
+/** A release name judged by a profile as edited (POST /api/v1/quality/explain). */
+export interface QualityExplain {
+  release: ParsedRelease;
+  evaluation: Evaluation;
+  formats: FormatCheck[] | null;
 }
 
 export interface Candidate {
@@ -154,6 +184,7 @@ export interface Candidate {
   release: ParsedRelease;
   size_gb: number;
   seeders: number;
+  runtime_min?: number;
 }
 
 export interface Evaluation {
@@ -167,6 +198,11 @@ export interface Evaluation {
   matched?: string[];
   avoided?: boolean; // ranked in the lower tier (an avoided format, or under the bitrate floor)
   avoided_formats?: string[];
+  /** Its preferred formats stopped counting: its bitrate collapsed against the best on offer. */
+  bonus_waived?: boolean;
+  /** Why it ranks below the release just above it: the deciding key and the words for it. */
+  lost_on?: string;
+  lost_on_text?: string;
 }
 
 export interface Decision {
@@ -175,12 +211,24 @@ export interface Decision {
   chosen_over?: string;
   eligible: Evaluation[];
   rejected: Evaluation[];
+  /** What put the winner above the runner-up (a rank key: resolution, preferences…). */
+  decided_by?: string;
 }
 
 export interface QualityPreview {
   preset?: string;
   profile?: string;
   decision: Decision;
+  /** What the samples are: "Dune: Part Two (2024), 166 min" or "An episode of a 50-minute show". */
+  sample_label?: string;
+  /** Target settings that work against each other, shown as warnings under their rows. */
+  conflicts?: ProfileConflict[] | null;
+}
+
+/** One contradiction in a profile's target; row is codec | hdr | audio | bitrate. */
+export interface ProfileConflict {
+  row: string;
+  msg: string;
 }
 
 export interface QualityProfileInfo {
@@ -513,7 +561,6 @@ export interface Evaluation {
   group_tier?: number;
   eff_bitrate?: number; // H.264-equivalent Mb/s, 0 without a runtime
   in_window?: boolean;
-  lost_on?: RankKey; // the key it ranked below the release above it on
 }
 
 // RankKey names a ranking step (quality.RankKey); "only" = the one eligible release.
@@ -522,7 +569,6 @@ export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "sourc
 // Decision fields from ranking v2 (shadow mode): merged into Decision.
 export interface Decision {
   ranking?: "v1" | "v2"; // the mode that ordered it
-  decided_by?: RankKey; // what the winner beat the runner-up on
   shadow?: { winner: string; decided_by: RankKey; differs: boolean; over_key?: RankKey; v1_key?: RankKey }; // v2's pick while v1 decides
 }
 
@@ -3320,6 +3366,13 @@ export interface RankedRelease {
   /** The extra audiobook version this release belongs to (0/absent = standard). */
   version_id?: number;
   version?: string;
+  // Why an eligible row ranks where it does (video searches):
+  matched?: string[];
+  avoided?: string[];
+  bonus_waived?: boolean;
+  /** "lower resolution", "fewer seeders"… — against the release ranked just above it. */
+  lost_on?: string;
+  lost_on_key?: string;
 }
 
 export interface BlockEntry {
@@ -3342,6 +3395,8 @@ export interface ReleaseList {
   profile: string;
   why?: string[];
   releases: RankedRelease[];
+  /** The runner-up and what the recommended release beat it on. */
+  chosen_over?: string;
   indexer_issues?: IndexerIssue[];
   /** How many indexers were asked. */
   searched?: number;

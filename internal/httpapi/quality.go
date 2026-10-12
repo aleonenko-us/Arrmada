@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
@@ -28,10 +29,50 @@ func (a *api) handleQualityPreview(w http.ResponseWriter, r *http.Request) {
 		}
 		sp = s
 	}
+	_, label := quality.Samples(sp.MediaType)
+	// The editor's contradiction warnings ride on the preview, so they follow every unsaved
+	// edit. A profile saved before targets existed is read the way the editor opens it.
+	target := sp
+	if target.Ideal == nil {
+		target.Migrate()
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		"profile":  sp.Name,
-		"decision": a.deps.Quality.Preview(sp),
+		"profile":      sp.Name,
+		"decision":     a.deps.Quality.Preview(sp),
+		"sample_label": label, // what the samples are: a film, or an episode of a show
+		"conflicts":    target.Conflicts(),
 	})
+}
+
+// maxExplainName caps a pasted release name: real ones are well under it, and the parser
+// and every format check run over the whole string.
+const maxExplainName = 512
+
+// handleQualityExplain judges one release name against a profile as edited, saved or not —
+// the builder's "Test a release name" box: what the name parses to, the verdict, and which
+// formats it matches.
+//
+//	{"profile": {...}, "name": "Show.S01E01.1080p.WEB.h264-GRP", "size_gb": 2, "runtime_min": 50}
+func (a *api) handleQualityExplain(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Profile    quality.StoredProfile `json:"profile"`
+		Name       string                `json:"name"`
+		SizeGB     float64               `json:"size_gb"`
+		RuntimeMin int                   `json:"runtime_min"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		a.writeError(w, http.StatusBadRequest, "paste a release name to test")
+		return
+	}
+	if len(name) > maxExplainName {
+		a.writeError(w, http.StatusBadRequest, "that release name is too long")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, a.deps.Quality.Explain(req.Profile, name, req.SizeGB, req.RuntimeMin))
 }
 
 // handleListQualityProfiles lists presets + user profiles for a media type.

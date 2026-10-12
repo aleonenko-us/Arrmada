@@ -405,9 +405,12 @@ type Evaluation struct {
 	// InWindow says it is inside the resolution's window (or there is none to judge).
 	EffBitrate float64 `json:"eff_bitrate,omitempty"`
 	InWindow   bool    `json:"in_window,omitempty"`
-	// LostOn is the key this release ranked below the one just above it on (Decide fills
-	// it for every eligible release after the first, in either ranking mode).
-	LostOn RankKey `json:"lost_on,omitempty"`
+	// LostOn and LostOnText say why an eligible release ranked below the one just above it
+	// in Decide's order, in either ranking mode: the deciding RankKey (KeyTie when nothing
+	// told them apart) and the plain-language reason ("lower resolution", "fewer seeders",
+	// explain.go). Empty for the winner and for rejected releases.
+	LostOn     RankKey `json:"lost_on,omitempty"`
+	LostOnText string  `json:"lost_on_text,omitempty"`
 	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
 	// out of it can be told apart (current.go).
 	lowGroup bool
@@ -688,7 +691,8 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 	} else {
 		sortV1(p, d.Eligible)
 	}
-	d.DecidedBy = decidedBy(d.Eligible)
+	// Every rank explained (explain.go), from the comparator that actually ordered it.
+	d.DecidedBy = explainRanks(p, d.Eligible, d.Ranking)
 	if len(d.Eligible) > 0 {
 		d.Winner = &d.Eligible[0]
 		d.Why = whyReasons(p, *d.Winner, d.Eligible)

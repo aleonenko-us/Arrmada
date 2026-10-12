@@ -1,4 +1,4 @@
-import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
+import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
@@ -27,6 +27,9 @@ export const qualityApi = {
     req<{ scope: "profile" | "library"; counts: FitCounts }>("/api/v1/library/fit/preview", { method: "POST", body: JSON.stringify({ profile }) }),
   qualityTest: (body: { profile: StoredProfile; movie_id?: number; series_id?: number; season?: number }) =>
     req<ReleaseList>("/api/v1/quality/test", { method: "POST", body: JSON.stringify(body) }),
+  // The builder's "Test a release name": one name judged by the profile as edited.
+  qualityExplain: (body: { profile: StoredProfile; name: string; size_gb?: number; runtime_min?: number }) =>
+    req<QualityExplain>("/api/v1/quality/explain", { method: "POST", body: JSON.stringify(body) }),
   setDefaultProfile: (media: string, profile: string) =>
     req<{ media: string; profile: string }>("/api/v1/quality/default", { method: "POST", body: JSON.stringify({ media, profile }) }),
   libraryFitMovies: () => req<{ items: FitItem[] }>("/api/v1/library/fit?media=movies"),
