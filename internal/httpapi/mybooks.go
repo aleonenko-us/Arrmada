@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
@@ -226,14 +224,14 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusNotFound, "no ebook has arrived for this book yet")
 		return
 	}
-	path, err := ebookFile(b.Ebook.Path)
+	path, err := books.EbookFile(b.Ebook.Path)
 	if err != nil {
 		a.deps.Log.Warn("ebook download: file missing", "book", b.Title, "path", b.Ebook.Path, "err", err)
 		a.writeError(w, http.StatusNotFound, "the ebook file is missing on disk")
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(path))
-	if ct := ebookContentType(ext); ct != "" {
+	if ct := books.EbookContentType(ext); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.Header().Set("Content-Disposition", attachmentHeader(downloadName(b, ext)))
@@ -246,65 +244,6 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 func (a *api) mayDownloadBook(r *http.Request, _ books.Book) bool {
 	u, ok := userFrom(r)
 	return ok && u != nil && !u.Disabled && u.Role.AtLeast(auth.RoleRequester)
-}
-
-// ebookFile resolves the stored ebook path to the file to send. An ebook edition is
-// one file, but should it ever be a folder, the best-known format inside wins.
-func ebookFile(stored string) (string, error) {
-	st, err := os.Stat(stored)
-	if err != nil {
-		return "", err
-	}
-	if !st.IsDir() {
-		return stored, nil
-	}
-	entries, err := os.ReadDir(stored)
-	if err != nil {
-		return "", err
-	}
-	var found []string
-	for _, e := range entries {
-		if !e.IsDir() && ebookContentType(strings.ToLower(filepath.Ext(e.Name()))) != "" {
-			found = append(found, e.Name())
-		}
-	}
-	if len(found) == 0 {
-		return "", os.ErrNotExist
-	}
-	sort.SliceStable(found, func(i, j int) bool {
-		return ebookRank(found[i]) < ebookRank(found[j])
-	})
-	return filepath.Join(stored, found[0]), nil
-}
-
-// ebookRank orders formats for the pick above: the ones most readers open first.
-func ebookRank(name string) int {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".epub":
-		return 0
-	case ".azw3", ".kepub":
-		return 1
-	case ".mobi", ".azw":
-		return 2
-	case ".pdf":
-		return 3
-	}
-	return 4
-}
-
-// ebookContentType maps an ebook extension to its media type ("" = not an ebook).
-func ebookContentType(ext string) string {
-	switch ext {
-	case ".epub", ".kepub":
-		return "application/epub+zip"
-	case ".mobi":
-		return "application/x-mobipocket-ebook"
-	case ".azw", ".azw3":
-		return "application/vnd.amazon.mobi8-ebook"
-	case ".pdf":
-		return "application/pdf"
-	}
-	return ""
 }
 
 // downloadName is "Title - Author.ext" with anything a filesystem or header would

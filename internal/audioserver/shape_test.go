@@ -294,7 +294,8 @@ func fill(v any, vars map[string]string) any {
 }
 
 // shapeHarness is the test harness with a book that has everything Audiobookshelf's
-// recorded one has that Arrmada can carry: a series, a cover and some progress later on.
+// recorded one has that Arrmada can carry: a series, a cover, an EPUB beside the audio,
+// a narrator and some progress later on.
 func shapeHarness(t *testing.T) (*harness, map[string]string) {
 	t.Helper()
 	h := newHarness(t)
@@ -306,6 +307,10 @@ func shapeHarness(t *testing.T) (*harness, map[string]string) {
 		"https://covers.example/dcc.jpg"); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.srv.books.SetNarrator(ctx, h.book.ID, "Jeff Hays"); err != nil {
+		t.Fatal(err)
+	}
+	h.giveEbook()
 	vars := map[string]string{
 		"libraryId": libraryID,
 		"itemId":    itemKeyFor(h.book.ID, 0),

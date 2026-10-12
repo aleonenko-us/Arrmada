@@ -87,7 +87,7 @@ func (s *Server) itemMinified(ctx context.Context, it Item, progress map[string]
 			"id": "m" + it.Key, "metadata": metadataMinified(it, firstNonEmpty(it.manualNarrator(), k.Narrator)),
 			"coverPath": coverPath(it), "tags": []string{},
 			"numTracks": numFiles, "numAudioFiles": numFiles, "numChapters": chapters, "duration": k.Seconds,
-			"size": size, "ebookFormat": nil,
+			"size": size, "ebookFormat": nilIfEmpty(ebookFormatOf(it)),
 		},
 		"numFiles": numFiles, "size": size,
 	}
@@ -137,6 +137,13 @@ func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, p
 	if chapters == nil {
 		chapters = []Chapter{}
 	}
+	// The book's ebook, when it has one on disk, for apps that can read it (AUD-18).
+	var ebookFile, ebookFormat any
+	libraryFiles := []obj{}
+	if e, ok := ebookOf(it); ok {
+		ebookFile, ebookFormat = e.ebookFileJSON(it), e.Format
+		libraryFiles = append(libraryFiles, e.libraryFileJSON(it))
+	}
 	o := obj{
 		"id": it.Key, "ino": inoFor(it.Key), "oldLibraryItemId": nil, "libraryId": libraryID, "folderId": libraryID,
 		"path": it.Path, "relPath": it.Title, "isFile": len(files) == 1, "mtimeMs": it.AddedAt, "ctimeMs": it.AddedAt,
@@ -145,11 +152,11 @@ func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, p
 		"media": obj{
 			"id": "m" + it.Key, "libraryItemId": it.Key, "metadata": metadataExpanded(it, filesNarrator(it, files)), "coverPath": coverPath(it),
 			"tags": []string{}, "audioFiles": audio, "chapters": chapters, "duration": totalDuration(files),
-			"size": totalSize(files), "tracks": tracks, "ebookFile": nil, "ebookFormat": nil, "numTracks": len(files),
+			"size": totalSize(files), "tracks": tracks, "ebookFile": ebookFile, "ebookFormat": ebookFormat, "numTracks": len(files),
 			"numAudioFiles": len(files), "numChapters": len(chapters),
 		},
 		// Since Audiobookshelf 2.36 the expanded item carries every list field too.
-		"libraryFiles": []obj{}, "numFiles": len(files), "size": totalSize(files),
+		"libraryFiles": libraryFiles, "numFiles": len(files), "size": totalSize(files),
 	}
 	if p != nil {
 		o["userMediaProgress"] = mediaProgress(*p)

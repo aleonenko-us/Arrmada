@@ -36,7 +36,8 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveFile streams one of an item's audio files, picked by its ino from the item's own
-// file list (so nothing outside the audiobook can be named).
+// file list (so nothing outside the audiobook can be named), or the ebook of its book
+// by the ebook's ino.
 func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino string, attach bool) {
 	ctx := r.Context()
 	it, err := s.item(ctx, key)
@@ -44,7 +45,19 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
-	f, ok := s.fileByIno(ctx, it.Path, ino)
+	// File lists are cached for a while, so when the file isn't in the list or is no
+	// longer on disk (replaced or renamed outside Arrmada), the folder is listed again
+	// once before giving up. The ebook is looked at in between, so playing never touches
+	// it and asking for it doesn't re-list the audiobook.
+	f, ok := s.cachedFileByIno(ctx, it.Path, ino)
+	if !ok {
+		if e, isEbook := ebookOf(it); isEbook && e.Ino == ino {
+			s.sendEbook(w, r, e, attach)
+			return
+		}
+		s.probe.cache.drop(it.Path)
+		f, ok = s.cachedFileByIno(ctx, it.Path, ino)
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "File not found")
 		return
@@ -57,31 +70,22 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 	http.ServeFile(w, r, f.Path)
 }
 
-// fileByIno finds one of an item's files. File lists are cached for a while, so when
-// the file isn't in the list or is no longer on disk (replaced or renamed outside
-// Arrmada), the folder is listed again once before giving up.
-func (s *Server) fileByIno(ctx context.Context, root, ino string) (AudioFile, bool) {
-	find := func(files []AudioFile) (AudioFile, bool) {
-		for _, f := range files {
-			if f.Ino == ino {
-				return f, true
-			}
-		}
+// cachedFileByIno finds one of an item's audio files in its (cached) file list, if it's
+// still on disk.
+func (s *Server) cachedFileByIno(ctx context.Context, root, ino string) (AudioFile, bool) {
+	files, err := s.probe.files(ctx, root, false)
+	if err != nil {
 		return AudioFile{}, false
 	}
-	files, err := s.probe.files(ctx, root, false)
-	if err == nil {
-		if f, ok := find(files); ok {
+	for _, f := range files {
+		if f.Ino == ino {
 			if _, err := s.probe.statPath(f.Path); err == nil {
 				return f, true
 			}
+			break
 		}
 	}
-	s.probe.cache.drop(root)
-	if files, err = s.probe.files(ctx, root, false); err != nil {
-		return AudioFile{}, false
-	}
-	return find(files)
+	return AudioFile{}, false
 }
 
 // handleItemDownload sends the whole audiobook: the file itself, or a zip of its files.

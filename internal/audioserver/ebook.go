@@ -1,0 +1,119 @@
+package audioserver
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/books"
+)
+
+// The ebook of an audiobook's book, for apps that read as well as listen (the official
+// Audiobookshelf app offers "Read" when an item has media.ebookFile). It is only ever
+// attached to an audiobook item — the standard one and each version of the same book —
+// and the library stays audiobooks-only: an ebook-only book would show up in Lissen and
+// Plappa as something they can't play.
+
+// ebook is the file behind an item's ebook edition.
+type ebook struct {
+	Ino, Path, Name, Ext, Format string
+	Size, MTimeMs                int64
+}
+
+// ebookFormatFor names the formats Audiobookshelf's reader opens, by extension (lower
+// case, with the dot); "" for anything else.
+func ebookFormatFor(ext string) string {
+	switch ext {
+	case ".epub", ".kepub":
+		return "epub"
+	case ".pdf":
+		return "pdf"
+	case ".mobi":
+		return "mobi"
+	case ".azw3":
+		return "azw3"
+	}
+	return ""
+}
+
+// ebookFormatOf is an item's ebook format from the database alone ("" = none), for list
+// replies, which mustn't touch the disk. The file itself is checked when an app opens
+// the item (ebookOf).
+func ebookFormatOf(it Item) string {
+	e := it.Book.Ebook
+	if e == nil || e.Path == "" {
+		return ""
+	}
+	if f := ebookFormatFor(strings.ToLower(filepath.Ext(e.Path))); f != "" {
+		return f
+	}
+	return ebookFormatFor("." + strings.ToLower(strings.TrimSpace(e.Format)))
+}
+
+// ebookOf finds an item's ebook on disk through the books package's shared helper.
+func ebookOf(it Item) (ebook, bool) {
+	if ebookFormatOf(it) == "" {
+		return ebook{}, false
+	}
+	path, err := books.EbookFile(it.Book.Ebook.Path)
+	if err != nil {
+		return ebook{}, false
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	format := ebookFormatFor(ext)
+	fi, err := os.Stat(path)
+	if format == "" || err != nil || fi.IsDir() {
+		return ebook{}, false
+	}
+	name := filepath.Base(path)
+	// "ebook/" keeps its ino apart from every audio file's, which hash the file's path
+	// within the audiobook folder.
+	return ebook{Ino: inoFor("ebook/" + name), Path: path, Name: name, Ext: ext, Format: format,
+		Size: fi.Size(), MTimeMs: fi.ModTime().UnixMilli()}, true
+}
+
+// libraryFileJSON is the ebook as one of the item's library files, as Audiobookshelf
+// lists them.
+func (e ebook) libraryFileJSON(it Item) obj {
+	return obj{
+		"ino": e.Ino,
+		"metadata": obj{"filename": e.Name, "ext": e.Ext, "path": e.Path, "relPath": e.Name, "size": e.Size,
+			"mtimeMs": e.MTimeMs, "ctimeMs": e.MTimeMs, "birthtimeMs": e.MTimeMs},
+		"isSupplementary": false, "addedAt": it.AddedAt, "updatedAt": e.MTimeMs, "fileType": "ebook",
+	}
+}
+
+// ebookFileJSON is media.ebookFile: the library file plus its format.
+func (e ebook) ebookFileJSON(it Item) obj {
+	o := e.libraryFileJSON(it)
+	o["isSupplementary"], o["ebookFormat"] = nil, e.Format
+	return o
+}
+
+// handleEbook sends an item's ebook (GET /api/items/{id}/ebook, and …/ebook/{fileid}
+// naming its ino).
+func (s *Server) handleEbook(w http.ResponseWriter, r *http.Request) {
+	it, err := s.item(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Item not found")
+		return
+	}
+	e, ok := ebookOf(it)
+	if !ok || (r.PathValue("fileid") != "" && r.PathValue("fileid") != e.Ino) {
+		writeError(w, http.StatusNotFound, "Ebook not found")
+		return
+	}
+	s.sendEbook(w, r, e, false)
+}
+
+func (s *Server) sendEbook(w http.ResponseWriter, r *http.Request, e ebook, attach bool) {
+	if ct := books.EbookContentType(e.Ext); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	if attach {
+		w.Header().Set("Content-Disposition", attachment(e.Name))
+	}
+	http.ServeFile(w, r, e.Path)
+}
