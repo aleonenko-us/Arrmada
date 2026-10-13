@@ -66,17 +66,17 @@ function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }
   return (
     <Section id="plex-server" title="Plex server" subtitle="Insights records what's watched from it, library updates go to it, and Plex sign-in checks people against it. The connection itself — Sign in with Plex, the address and token, Test — is the Plex card in Settings → Connections.">
       {!cfg ? (
-        err ? <p role="alert" className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the Plex connection: {err}</p> : <p className="m-0 text-[12px] text-ink-dim">Loading…</p>
+        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the Plex connection: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
       ) : (
         <div className="flex flex-col gap-2">
           {connected && (
-            <div className="text-[12.5px]">
+            <div className="text-base">
               Connected to <b className="font-semibold">{cfg.server_name || "your Plex server"}</b>{" "}
-              <span className="break-all font-mono text-[11px] text-ink-faint">{cfg.url}</span>
+              <span className="break-all font-mono text-xs text-ink-faint">{cfg.url}</span>
             </div>
           )}
           {line && (
-            <div className="break-words text-[11.5px]" style={{ color: line.color }}>
+            <div className="break-words text-sm" style={{ color: line.color }}>
               {line.text}
               {cfg.status === "unreachable" && cfg.last_error ? `: ${cfg.last_error}` : ""}
               {cfg.status === "recording" && cfg.last_poll_at ? ` · last answer ${ago(cfg.last_poll_at)}` : ""}
@@ -84,9 +84,9 @@ function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }
           )}
           <div>
             {connected ? (
-              <Link to={LINKS.plexConnection} className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Change the connection →</Link>
+              <Link to={LINKS.plexConnection} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Change the connection →</Link>
             ) : (
-              <Link to={LINKS.plexConnection} className="inline-block rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>
+              <Link to={LINKS.plexConnection} className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>
             )}
           </div>
         </div>
@@ -113,8 +113,8 @@ function PlexMonitoring({ cfg, setCfg }: { cfg: PlexConfig; setCfg: (c: PlexConf
         hint={connected ? "Off keeps everything already recorded and stops adding to it." : "Starts once your Plex server is connected."}
         save={on}
       />
-      <AutoNumber label="Ask Plex every (seconds)" save={poll} min={2} max={60} className="w-[90px] rounded-lg px-3 py-2 text-[12.5px]">
-        <span className="text-[11px] text-ink-faint">2 to 60. Shorter catches short plays and pauses more exactly; 5 is plenty for most homes.</span>
+      <AutoNumber label="Ask Plex every (seconds)" save={poll} min={2} max={60} className="w-[90px] rounded-lg px-3 py-2 text-base">
+        <span className="text-xs text-ink-faint">2 to 60. Shorter catches short plays and pauses more exactly; 5 is plenty for most homes.</span>
       </AutoNumber>
     </Section>
   );
@@ -148,19 +148,19 @@ function PlexAccounts() {
   return (
     <Section id="plex-accounts" title="Linked Plex accounts" subtitle="Who signs in with which Plex account. A Plex sign-in opens the Arrmada account linked to it; Discover also uses that person's Plex watch history.">
       {people === null ? (
-        err ? <p role="alert" className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the accounts: {err}</p> : <p className="m-0 text-[12px] text-ink-dim">Loading…</p>
+        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the accounts: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
       ) : linked.length === 0 ? (
-        <p className="m-0 text-[12px] text-ink-dim">No account is linked to Plex yet. Someone's first Sign in with Plex links one, and anyone can link their own Plex account themselves.</p>
+        <p className="m-0 text-sm text-ink-dim">No account is linked to Plex yet. Someone's first Sign in with Plex links one, and anyone can link their own Plex account themselves.</p>
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {linked.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }} data-testid="plex-account">
-              <span className="min-w-[8rem] flex-1 truncate text-[12.5px] font-semibold">
+              <span className="min-w-[8rem] flex-1 truncate text-base font-semibold">
                 {p.username}{p.id === user?.id && <span className="font-normal text-ink-faint"> (you)</span>}
               </span>
-              <span className="min-w-0 truncate text-[11.5px] text-ink-dim">Plex · {p.plex_username || "linked"}</span>
-              <span className="text-[11px] text-ink-faint">{ROLES.find((r) => r.value === p.role)?.label ?? p.role}</span>
-              {p.plex_blocked && <span className="rounded-full px-2 py-0.5 text-[10.5px]" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>blocked</span>}
+              <span className="min-w-0 truncate text-sm text-ink-dim">Plex · {p.plex_username || "linked"}</span>
+              <span className="text-xs text-ink-faint">{ROLES.find((r) => r.value === p.role)?.label ?? p.role}</span>
+              {p.plex_blocked && <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>blocked</span>}
               {p.id !== user?.id && (
                 <Button size="sm" busy={busy === p.id} busyLabel="Unlinking…" disabled={busy !== null} onClick={() => void unlink(p)} aria-label={`Unlink ${p.username}'s Plex account`}>Unlink</Button>
               )}
@@ -168,7 +168,7 @@ function PlexAccounts() {
           ))}
         </ul>
       )}
-      <p className="m-0 text-[11px] text-ink-faint">
+      <p className="m-0 text-xs text-ink-faint">
         To block a Plex account from signing in, or merge a duplicate Plex sign-in into the right account, use More on their row in <Link to={LINKS.users} style={{ color: "var(--accent)" }}>Settings → People &amp; access</Link>. Your own Plex link is in the sidebar.
       </p>
     </Section>
@@ -181,7 +181,7 @@ function PlexTautulli() {
   return (
     <Section id="plex-tautulli" title="Import from Tautulli" subtitle="Moving from Tautulli? Bring its watch history into Insights so the stats and graphs aren't empty on day one. The import, its past runs and Undo are in Settings → Import & migrate.">
       <div>
-        <Link to={LINKS.tautulliImport} className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Open the Tautulli import →</Link>
+        <Link to={LINKS.tautulliImport} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Open the Tautulli import →</Link>
       </div>
     </Section>
   );
@@ -199,14 +199,14 @@ function PlexSignIn() {
       <Section id="plex-sign-in" title="Plex sign-in" subtitle={<>Let your Plex Home members and shared users sign in with Plex — no accounts to hand out. They get a Requester account ({requesterPages(booksEnabled)}), and only people with access to your Plex server get in. Needs the Plex server above to be connected.</>}>
         <AutoToggle label="Allow Sign in with Plex" hint="Adds a 'Sign in with Plex' button to the login page." save={allow} />
         <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold">Auto-approve new Plex sign-ins' requests <SavedTick save={autoTypes} /></div>
+          <div className="flex flex-wrap items-center gap-2 text-base font-semibold">Auto-approve new Plex sign-ins' requests <SavedTick save={autoTypes} /></div>
           <AutoApproveChecks
             value={typesFromCSV(autoTypes.value ?? "movie")}
             onChange={(v) => void autoTypes.commit(typesToCSV(v))}
             books={booksEnabled}
             label="New Plex sign-ins auto-approve"
           />
-          <p className="m-0 text-[11px] text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → People & access.</p>
+          <p className="m-0 text-xs text-ink-faint">Ticked types download straight away for someone who signs in with Plex for the first time; the rest wait for you. A series request can pull every season of a long show, so it starts with movies only. Existing accounts keep their own settings — change them in Settings → People & access.</p>
         </div>
         <AutoToggle
           label="Let staff sign in with Plex"

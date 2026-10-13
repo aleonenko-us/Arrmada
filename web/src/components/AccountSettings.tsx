@@ -18,7 +18,7 @@ export function AccountSettings() {
   );
 }
 
-const field = "w-full rounded-lg px-2.5 py-2 text-[13px]";
+const field = "w-full rounded-lg px-2.5 py-2 text-md";
 const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
 
 // PasswordSetting changes your password: the current one first, unless the account has
@@ -61,13 +61,13 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
     }
   };
 
-  if (hasPassword === null) return <div className="px-3.5 py-3 text-[12px] text-ink-faint">Loading…</div>;
+  if (hasPassword === null) return <div className="px-3.5 py-3 text-sm text-ink-faint">Loading…</div>;
   return (
     <div className="px-3.5 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold">Password</div>
-          <div className="text-[11.5px] text-ink-dim">
+          <div className="text-md font-semibold">Password</div>
+          <div className="text-sm text-ink-dim">
             {hasPassword ? "Changing it signs out your other devices." : "You sign in with Plex. Set a password to sign in with your name too — then you can unlink Plex if you like."}
           </div>
         </div>
@@ -78,20 +78,20 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
           {/* The account name, hidden, so a password manager files the new password under it. */}
           <input type="text" autoComplete="username" value={user?.username ?? ""} readOnly hidden />
           {hasPassword && (
-            <label className="flex flex-col gap-1 text-[11.5px] font-medium text-ink-dim">
+            <label className="flex flex-col gap-1 text-sm font-medium text-ink-dim">
               Current password
               <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={field} style={fieldStyle} required />
             </label>
           )}
-          <label className="flex flex-col gap-1 text-[11.5px] font-medium text-ink-dim">
+          <label className="flex flex-col gap-1 text-sm font-medium text-ink-dim">
             New password
             <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className={field} style={fieldStyle} minLength={8} required />
           </label>
-          <label className="flex flex-col gap-1 text-[11.5px] font-medium text-ink-dim">
+          <label className="flex flex-col gap-1 text-sm font-medium text-ink-dim">
             New password again
             <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={field} style={fieldStyle} minLength={8} required />
           </label>
-          {error && <div role="alert" className="text-[11.5px] font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+          {error && <div role="alert" className="text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
           <div className="mt-1 flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={reset} disabled={busy}>Cancel</Button>
             <Button size="sm" variant="primary" type="submit" busy={busy} busyLabel="Saving…">{hasPassword ? "Change password" : "Set password"}</Button>
@@ -156,23 +156,23 @@ function Devices() {
     <div style={{ borderTop: "1px solid var(--line-soft)" }}>
       <div className="flex items-center justify-between gap-3 px-3.5 pt-3">
         <div className="min-w-0">
-          <h3 className="m-0 text-[13px] font-semibold">Signed-in devices</h3>
-          <div className="text-[11.5px] text-ink-dim">Don’t recognise one? Sign it out.</div>
+          <h3 className="m-0 text-md font-semibold">Signed-in devices</h3>
+          <div className="text-sm text-ink-dim">Don’t recognise one? Sign it out.</div>
         </div>
         {others > 0 && <Button size="sm" onClick={signOutOthers} busy={busy === "others"} busyLabel="Signing out…">Sign out others</Button>}
       </div>
-      {error && <div role="alert" className="px-3.5 pt-2 text-[11.5px] font-medium" style={{ color: "var(--reject)" }}>Couldn’t load your devices — {error}</div>}
-      {list === null && !error && <div className="px-3.5 py-3 text-[12px] text-ink-faint">Loading…</div>}
+      {error && <div role="alert" className="px-3.5 pt-2 text-sm font-medium" style={{ color: "var(--reject)" }}>Couldn’t load your devices — {error}</div>}
+      {list === null && !error && <div className="px-3.5 py-3 text-sm text-ink-faint">Loading…</div>}
       {list && (
         <ul aria-label="Signed-in devices" className="m-0 mt-1.5 list-none p-0 pb-1.5">
           {list.map((s) => (
             <li key={s.id} className="flex min-h-[52px] items-center justify-between gap-3 px-3.5 py-1.5 [&+&]:border-t [&+&]:border-[var(--line-soft)]">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[12.5px] font-medium">
+                <div className="flex items-center gap-2 text-base font-medium">
                   <span className="truncate">{s.device}</span>
-                  {s.current && <span className="flex-none rounded-full px-1.5 py-px text-[10px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>This device</span>}
+                  {s.current && <span className="flex-none rounded-full px-1.5 py-px text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>This device</span>}
                 </div>
-                <div className="truncate text-[11px] text-ink-faint">{s.current ? "Active now" : `Last seen ${seenAgo(s.last_seen_at)}`}{networkLabel(s.network)}</div>
+                <div className="truncate text-xs text-ink-faint">{s.current ? "Active now" : `Last seen ${seenAgo(s.last_seen_at)}`}{networkLabel(s.network)}</div>
               </div>
               {!s.current && (
                 <Button size="sm" variant="ghost" onClick={() => signOutOne(s)} busy={busy === s.id} busyLabel="…" aria-label={`Sign out ${s.device}`}>Sign out</Button>

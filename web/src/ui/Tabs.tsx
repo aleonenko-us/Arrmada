@@ -108,13 +108,13 @@ export function Tabs<T extends string>({
             tabIndex={i === focusable ? 0 : -1}
             onClick={() => onChange(t.key)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className="relative flex-none px-3 py-2.5 text-[13.5px] font-semibold transition-colors sm:px-4"
+            className="relative flex-none px-3 py-2.5 text-md font-semibold transition-colors sm:px-4"
             style={{ color: active ? "var(--ink)" : "var(--ink-faint)" }}
           >
             {t.label}
             {t.count !== undefined && (
               <span
-                className="ml-1.5 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                className="ml-1.5 rounded px-1.5 py-0.5 font-mono text-xs"
                 style={{ background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-faint)" }}
               >
                 {t.count}

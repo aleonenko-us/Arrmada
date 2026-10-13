@@ -66,7 +66,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div
               key={t.id}
               role={t.tone === "error" ? "alert" : "status"}
-              className="pointer-events-auto rounded-lg px-4 py-2.5 text-[12.5px] font-medium"
+              className="pointer-events-auto rounded-lg px-4 py-2.5 text-base font-medium"
               style={{
                 background: "var(--panel-2)",
                 border: `1px solid ${t.tone === "error" ? "var(--reject)" : t.tone === "good" ? "var(--good)" : "var(--line)"}`,

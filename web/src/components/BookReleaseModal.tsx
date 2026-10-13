@@ -82,10 +82,10 @@ export function BookReleaseModal({
   const TabBtn = ({ k, label, count }: { k: "audiobook" | "ebook"; label: string; count: number }) => (
     <button
       onClick={() => setTab(k)}
-      className="rounded-lg px-3.5 py-1.5 text-[12px] font-semibold"
+      className="rounded-lg px-3.5 py-1.5 text-sm font-semibold"
       style={{ background: tab === k ? "var(--accent)" : "var(--panel-2)", color: tab === k ? "var(--accent-ink)" : "var(--ink-dim)", border: "1px solid var(--line)" }}
     >
-      {label} <span className="font-mono text-[10.5px] opacity-70">{count}</span>
+      {label} <span className="font-mono text-xs opacity-70">{count}</span>
     </button>
   );
 
@@ -93,15 +93,15 @@ export function BookReleaseModal({
     <Modal onClose={onClose} labelledBy={titleId} size="lg">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{title}</h2>
-            <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">Best match for your quality profile is marked ★ Recommended.</p>
+            <h2 id={titleId} className="m-0 truncate text-lg font-bold">{title}</h2>
+            <p className="m-0 mt-0.5 text-sm text-ink-dim">Best match for your quality profile is marked ★ Recommended.</p>
           </div>
           <div className="flex flex-none items-center gap-2">
             <Button size="sm" onClick={run} busy={loading} busyLabel="Searching…">Search again</Button>
             <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
           </div>
         </div>
-        {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
         {!loading && <IndexerIssues list={list} />}
         {!loading && (
           <div className="mb-3 flex items-center gap-2 border-b pb-3" style={{ borderColor: "var(--line)" }}>
@@ -111,9 +111,9 @@ export function BookReleaseModal({
         )}
         <div className="thin-scroll max-h-[58vh] overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">Searching your indexers…</div>
+            <div className="p-8 text-center text-base text-ink-dim">Searching your indexers…</div>
           ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">{emptyReleasesMessage(list, tab === "ebook" ? "ebook releases" : "audiobook releases")}</div>
+            <div className="p-8 text-center text-base text-ink-dim">{emptyReleasesMessage(list, tab === "ebook" ? "ebook releases" : "audiobook releases")}</div>
           ) : (
             <div className="flex flex-col gap-2">
               {rows.map((rel, i) => (
@@ -145,24 +145,24 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            {rel.recommended && <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>★ Recommended{rel.version ? ` · ${rel.version}` : targets && targets.length > 0 && rel.edition === "audiobook" ? " · Standard" : ""}</span>}
-            {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
-            {rel.format && <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>{rel.format}</span>}
-            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-[9.5px] uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
+            {rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>★ Recommended{rel.version ? ` · ${rel.version}` : targets && targets.length > 0 && rel.edition === "audiobook" ? " · Standard" : ""}</span>}
+            {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
+            {rel.format && <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>{rel.format}</span>}
+            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-xs uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
           </div>
           {/* The raw torrent name — narrator and edition detail live here. */}
-          <div className="mt-1 break-words text-[12.5px] font-medium">{rel.title}</div>
+          <div className="mt-1 break-words text-base font-medium">{rel.title}</div>
           {/* Another language: the automation skips it, a hand pick is still allowed. */}
-          {rel.reject_reason && !usenet && <div className="mt-0.5 text-[11px]" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
+          {rel.reject_reason && !usenet && <div className="mt-0.5 text-xs" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
           {/* Structured metadata (rich on trackers like MyAnonaMouse). */}
           {(rel.narrator || rel.series || rel.language) && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
               {rel.narrator && <span style={{ color: "var(--accent)" }}>🎙 {rel.narrator}</span>}
               {rel.series && <span className="text-ink-dim">📚 {rel.series}</span>}
               {rel.language && <span className="text-ink-faint">🌐 {rel.language}</span>}
             </div>
           )}
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10.5px] text-ink-faint">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-ink-faint">
             <span>{rel.size_gb.toFixed(2)} GB</span>
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
             {age && <span>{age} old</span>}
@@ -176,7 +176,8 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             value={target}
             onChange={(e) => setTarget(Number(e.target.value))}
             title="Which audiobook this download is filed as"
-            className="rounded-md px-1.5 py-1 text-[11px]"
+            aria-label="File the audio as"
+            className="rounded-md px-1.5 py-1 text-xs"
             style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
           >
             <option value={0}>as Standard</option>

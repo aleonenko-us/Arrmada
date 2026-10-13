@@ -12,6 +12,7 @@ import { attemptLine, nextTryText } from "../lib/searchOutcome";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip, useConfirm, useToast } from "../ui";
 import { TabPanel, Tabs } from "../ui/Tabs";
+import { Page } from "../ui/Page";
 
 // Movies → Wanted: what Arrmada is still looking for among the films, why it hasn't found
 // it, and when it tries next. The Wanted tab lists the films badged Wanted (the library's
@@ -44,7 +45,7 @@ export function MoviesWanted() {
   return (
     <>
       <PageHeader title="Wanted movies" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <MoviesSwitch active="wanted" />
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
@@ -68,7 +69,7 @@ export function MoviesWanted() {
             <CutoffTab q={cutoff} />
           </TabPanel>
         )}
-      </div>
+      </Page>
     </>
   );
 }
@@ -116,7 +117,7 @@ function MissingTab({ q }: { q: MissingQuery }) {
     <>
       {q.error && <StaleBanner message={q.error.message} onRetry={q.refetch} />}
       {!data.queue_known && (
-        <div className="mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-dim)" }}>
+        <div className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-dim)" }}>
           The download client isn't answering, so some of these may already be downloading — automatic searches are paused until it's back.
         </div>
       )}
@@ -125,7 +126,7 @@ function MissingTab({ q }: { q: MissingQuery }) {
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[12px] text-ink-dim">Monitored films without a file — the ones the library badges Wanted.</span>
+            <span className="text-sm text-ink-dim">Monitored films without a file — the ones the library badges Wanted.</span>
             <Button size="sm" variant="primary" disabled={toSearch.length === 0} busy={busy} busyLabel="Queuing…" onClick={() => void searchAll()}>
               Search all ({toSearch.length})
             </Button>
@@ -189,7 +190,7 @@ function CutoffTab({ q }: { q: CutoffQuery }) {
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-dim">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-ink-dim">
               <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
               Also show files Arrmada won't upgrade ({wont})
             </label>
@@ -211,8 +212,8 @@ function CutoffTab({ q }: { q: CutoffQuery }) {
 function Section({ title, note, children }: { title: string; note: string; children: ReactNode }) {
   return (
     <section className="mt-6">
-      <h2 className="m-0 text-[13px] font-semibold">{title}</h2>
-      <p className="mb-2 mt-0.5 text-[11.5px] text-ink-faint">{note}</p>
+      <h2 className="m-0 text-md font-semibold">{title}</h2>
+      <p className="mb-2 mt-0.5 text-sm text-ink-faint">{note}</p>
       {children}
     </section>
   );
@@ -287,20 +288,20 @@ function WantedMovieRow({ row, onChange, upcoming, cutoff }: { row: MovieWantedR
           {row.poster_url && <img src={posterThumb(row.poster_url)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium">
-            {row.title} <span className="font-mono text-[10.5px] text-ink-faint">{row.year || ""}</span>
+          <div className="truncate text-base font-medium">
+            {row.title} <span className="font-mono text-xs text-ink-faint">{row.year || ""}</span>
             {row.tracks?.map((t) => (
-              <span key={t} className="ml-1.5 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{t}</span>
+              <span key={t} className="ml-1.5 rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{t}</span>
             ))}
           </div>
-          {words.line && <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink-faint" data-testid="movie-wanted-line">{words.line}</div>}
+          {words.line && <div className="mt-0.5 line-clamp-2 text-xs leading-snug text-ink-faint" data-testid="movie-wanted-line">{words.line}</div>}
         </div>
       </Link>
       <span className="hidden flex-none flex-col items-end gap-1 sm:flex">
         {row.queued && <StatusChip tone="accent">Queued</StatusChip>}
-        {row.quality_profile && <span className="font-mono text-[10px] text-ink-faint">{row.quality_profile}</span>}
+        {row.quality_profile && <span className="font-mono text-xs text-ink-faint">{row.quality_profile}</span>}
       </span>
-      <span className="w-[110px] flex-none text-right font-mono text-[10px] uppercase sm:w-[140px]" style={{ color: words.tone }}>{words.chip}</span>
+      <span className="w-[110px] flex-none text-right font-mono text-2xs uppercase sm:w-[140px]" style={{ color: words.tone }}>{words.chip}</span>
       <span className="flex w-[90px] flex-none justify-end">
         {canSearch && (
           <Button size="sm" onClick={() => void searchNow()} busy={busy} busyLabel="Queuing…" title={cutoff ? "Look for a better release now" : "Search your indexers for it now"}>

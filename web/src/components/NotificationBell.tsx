@@ -116,18 +116,18 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
       style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", ...(side && anchor ? anchor : {}) }}
     >
       <div className="flex items-center justify-between px-3.5 py-2.5" style={{ borderBottom: "1px solid var(--line)" }}>
-        <span className="text-[13px] font-bold">Notifications</span>
-        <div className="flex items-center gap-3 text-[11px]">
+        <span className="text-md font-bold">Notifications</span>
+        <div className="flex items-center gap-3 text-xs">
           {items.some((i) => !i.read) && <button onClick={markAll} style={{ color: "var(--accent)" }}>Mark all read</button>}
           <Link to={SETTINGS} onClick={() => setOpen(false)} className="font-medium text-ink-dim hover:text-[var(--ink)]">Settings</Link>
         </div>
       </div>
 
-      {error && <div className="px-3.5 py-1.5 text-[11px] font-medium" style={{ color: "var(--reject)", borderBottom: "1px solid var(--line-soft)" }}>{error}</div>}
+      {error && <div className="px-3.5 py-1.5 text-xs font-medium" style={{ color: "var(--reject)", borderBottom: "1px solid var(--line-soft)" }}>{error}</div>}
 
       <div className="thin-scroll max-h-[360px] overflow-y-auto">
         {items.length === 0 ? (
-          <div className="px-3.5 py-8 text-center text-[12px] text-ink-faint">
+          <div className="px-3.5 py-8 text-center text-sm text-ink-faint">
             Nothing yet. When a request you made is ready, it’ll show up here.
             <div className="mt-1.5"><Link to={SETTINGS} onClick={() => setOpen(false)} style={{ color: "var(--accent)" }}>Turn on notifications in Settings</Link></div>
           </div>
@@ -136,13 +136,13 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
             <button onClick={() => clickItem(n)} className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left">
               <span className="mt-1 h-2 w-2 flex-none rounded-full" style={{ background: n.read ? "transparent" : "var(--accent)" }} />
               <span className="min-w-0">
-                <span className="block text-[12.5px] font-semibold">{n.title}</span>
-                <span className="block whitespace-pre-line text-[11.5px] text-ink-dim">{n.body}</span>
+                <span className="block text-base font-semibold">{n.title}</span>
+                <span className="block whitespace-pre-line text-sm text-ink-dim">{n.body}</span>
               </span>
             </button>
             {/* A ready title Plex has: straight to it in Plex (the row itself opens it here). */}
             {n.plex_url && (
-              <a href={n.plex_url} target="_blank" rel="noopener noreferrer" onClick={() => { void markRead(n); }} className="-mt-1 mb-2.5 ml-[30px] inline-flex min-h-[30px] items-center rounded-md bg-accent-grad px-2.5 text-[11.5px] font-semibold text-accent-ink">▶ Watch on Plex</a>
+              <a href={n.plex_url} target="_blank" rel="noopener noreferrer" onClick={() => { void markRead(n); }} className="-mt-1 mb-2.5 ml-[30px] inline-flex min-h-[30px] items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on Plex</a>
             )}
           </div>
         ))}
@@ -154,7 +154,7 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
     <div className="relative" ref={ref}>
       <button onClick={toggle} className="relative grid h-9 w-9 place-items-center rounded-lg" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }} aria-label="Notifications" aria-expanded={open}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M13.7 21a2 2 0 0 1-3.4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        {unread > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{unread > 9 ? "9+" : unread}</span>}
+        {unread > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-xs font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{unread > 9 ? "9+" : unread}</span>}
       </button>
 
       {open && (side ? createPortal(panel, document.body) : panel)}

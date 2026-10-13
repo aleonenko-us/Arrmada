@@ -17,6 +17,7 @@ import { lazyPage } from "../lib/lazyPage";
 import { ISSUE_TOPICS, issuesApi, type IssueCounts } from "../lib/issuesApi";
 import { useLiveRefresh } from "../lib/useLiveRefresh";
 import { Button, EmptyState, ErrorState, StatusChip, useConfirm, useToast } from "../ui";
+import { Page } from "../ui/Page";
 
 // The Requests page: every request in sections, for staff to decide and for requesters to
 // follow their own (and the ones they joined). Everything that shapes the view lives in the
@@ -198,8 +199,8 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <PageHeader title="Requests" />}
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6">
-        {!chrome && <h1 className="m-0 mb-3 text-[17px] font-bold">{staff ? "Requests" : "Your requests"}</h1>}
+      <Page className="py-5">
+        {!chrome && <h1 className="m-0 mb-3 text-xl font-bold">{staff ? "Requests" : "Your requests"}</h1>}
         {!staff && <QuotaSummary />}
         <Tabs
           tabs={TABS.map((t) => ({ key: t, label: tabLabel[t], count: countOf[t] }))}
@@ -217,7 +218,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
                 key={t.key}
                 onClick={() => setParam("type", t.key)}
                 aria-pressed={type === t.key}
-                className="min-h-[32px] rounded-md px-3 text-[11.5px] font-semibold"
+                className="min-h-[32px] rounded-md px-3 text-sm font-semibold"
                 style={{ background: type === t.key ? "var(--accent)" : "transparent", color: type === t.key ? "var(--accent-ink)" : "var(--ink-faint)" }}
               >
                 {t.label}
@@ -231,7 +232,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
               onChange={(e) => { setQInput(e.target.value); if (!e.target.value) setParam("q", "", true); }}
               placeholder="Search titles"
               aria-label="Search requests by title"
-              className="min-h-[34px] w-full rounded-lg px-3 text-[12.5px]"
+              className="min-h-[34px] w-full rounded-lg px-3 text-base"
               style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             />
           </form>
@@ -239,19 +240,19 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
 
         <TabPanel idPrefix="requests" value={tab}>
           {issuesTab ? (
-            <Suspense fallback={<div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>}>
+            <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}>
               <IssuesPanel staff={staff} onCounts={setIssueCounts} />
             </Suspense>
           ) : error && !items ? (
             <ErrorState what="requests" message={error} onRetry={() => { void load(); }} />
           ) : !items ? (
-            <div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>
+            <div className="py-10 text-center text-base text-ink-dim">Loading…</div>
           ) : items.length === 0 ? (
             <EmptyState title={emptyTitle(tab, staff, !!(q || type))} body={emptyBody(tab, staff, !!(q || type))} />
           ) : (
             <>
               {selectable && (
-                <label className="mb-2 flex min-h-[36px] w-fit items-center gap-2 text-[12px] text-ink-dim">
+                <label className="mb-2 flex min-h-[36px] w-fit items-center gap-2 text-sm text-ink-dim">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4" />
                   Select all on this page
                 </label>
@@ -282,12 +283,12 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
             </>
           )}
         </TabPanel>
-      </div>
+      </Page>
 
       {/* The bulk bar sits at the bottom of the screen while anything is ticked. */}
       {selectable && selected.size > 0 && (
         <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-center gap-2 px-4 py-3" style={{ background: "var(--panel)", borderTop: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
-          <span className="text-[12px] text-ink-dim">{selected.size} selected</span>
+          <span className="text-sm text-ink-dim">{selected.size} selected</span>
           <Button variant="primary" className="min-h-[40px]" onClick={() => bulk("approve")} busy={busy === "bulk:approve"} busyLabel="Approving…" disabled={!!busy}>Approve {selected.size}</Button>
           <input
             value={bulkReason}
@@ -295,7 +296,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
             maxLength={DECLINE_REASON_MAX}
             placeholder="Decline reason (optional)"
             aria-label="Reason for declining the selected requests"
-            className="min-h-[40px] w-full rounded-lg px-3 text-[12.5px] sm:w-[220px]"
+            className="min-h-[40px] w-full rounded-lg px-3 text-base sm:w-[220px]"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
           />
           <Button className="min-h-[40px]" onClick={() => bulk("decline")} busy={busy === "bulk:decline"} busyLabel="Declining…" disabled={!!busy}>Decline {selected.size}</Button>
@@ -338,26 +339,26 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{mediaLabel(rq.media_type)}</span>
-              <span className="min-w-0 truncate text-[13.5px] font-semibold" style={{ color: "var(--ink)" }}>{rq.title}</span>
-              <span className="font-mono text-[10.5px] text-ink-faint">{rq.year || ""}</span>
-              {rq.author && <span className="min-w-0 truncate text-[11px] text-ink-dim">{rq.author}</span>}
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{mediaLabel(rq.media_type)}</span>
+              <span className="min-w-0 truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{rq.title}</span>
+              <span className="font-mono text-xs text-ink-faint">{rq.year || ""}</span>
+              {rq.author && <span className="min-w-0 truncate text-xs text-ink-dim">{rq.author}</span>}
               {rq.media_type === "book" && <BookFormatBadge formats={rq.formats} />}
               {rq.media_type === "series" && rq.seasons && rq.seasons.length > 0 && (
-                <span className="font-mono text-[10.5px] text-ink-dim">{formatSeasons(rq.seasons)}</span>
+                <span className="font-mono text-xs text-ink-dim">{formatSeasons(rq.seasons)}</span>
               )}
               {rq.relation === "subscriber" && <StatusChip tone="faint">Following</StatusChip>}
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <StatusChip tone={stage.tone}>{stage.badge}</StatusChip>
               <span style={{ color: stage.detailTone ?? "var(--ink-dim)" }}>{stage.detail}</span>
             </div>
-            <div className="mt-1 truncate font-mono text-[10px] text-ink-faint">
+            <div className="mt-1 truncate font-mono text-xs text-ink-faint">
               {staff && rq.requested_by_name ? `${rq.requested_by_name} · ` : own && !staff ? "" : ""}{requestAge(rq.created_at)}
               {staff && decisionLine(rq) ? ` · ${decisionLine(rq)}` : ""}
             </div>
             {staff && rq.rerequest ? <div className="mt-1"><ReRequestFlag rq={rq} /></div> : null}
-            {rq.note && (staff || own) && <div className="mt-1 line-clamp-1 text-[11.5px] italic text-ink-dim">“{rq.note}”</div>}
+            {rq.note && (staff || own) && <div className="mt-1 line-clamp-1 text-sm italic text-ink-dim">“{rq.note}”</div>}
           </div>
         </button>
         {staff && pending && (
@@ -367,10 +368,10 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
           </div>
         )}
         {rq.plex_url && (
-          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] flex-none items-center rounded-md bg-accent-grad px-2.5 text-[11.5px] font-semibold text-accent-ink">▶ Watch on Plex</a>
+          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] flex-none items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on Plex</a>
         )}
       </div>
-      {error && <div className="mt-2 text-[11.5px] font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+      {error && <div className="mt-2 text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
     </li>
   );
 }
@@ -381,7 +382,7 @@ function QuotaSummary() {
   const q = useQuota();
   const lines = (["movie", "season", "book"] as const).map((k) => quotaLine(q, k)).filter(Boolean);
   if (lines.length === 0) return null;
-  return <p className="m-0 mb-3 text-[12px] text-ink-dim" data-testid="quota-summary">{lines.join(" · ")}</p>;
+  return <p className="m-0 mb-3 text-sm text-ink-dim" data-testid="quota-summary">{lines.join(" · ")}</p>;
 }
 
 function emptyTitle(tab: Tab, staff: boolean, filtered: boolean): string {

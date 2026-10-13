@@ -59,8 +59,8 @@ export function ConfirmDialog<V extends string = string>({
   // can't be "cancelled" visually while it carries on server-side.
   return (
     <Modal onClose={onCancel} labelledBy={titleId} size="sm" dismissible={!busy} initialFocus={cancelRef}>
-      <h2 id={titleId} className="m-0 text-[15px] font-bold">{title}</h2>
-      {body && <div className="mt-1 text-[12px] text-ink-dim">{body}</div>}
+      <h2 id={titleId} className="m-0 text-lg font-bold">{title}</h2>
+      {body && <div className="mt-1 text-sm text-ink-dim">{body}</div>}
 
       {choices && choices.length > 0 && (
         <div className="mt-4 flex flex-col gap-2" role="radiogroup">
@@ -68,11 +68,11 @@ export function ConfirmDialog<V extends string = string>({
             const on = c.value === choice;
             const tint = c.danger ? "var(--reject)" : "var(--accent)";
             return (
-              <label key={c.value} className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={{ border: `1px solid ${on ? tint : "var(--line)"}`, background: on ? (c.danger ? "var(--reject-soft)" : "var(--accent-soft)") : "var(--panel-2)", cursor: c.disabled ? "default" : "pointer", opacity: c.disabled ? 0.6 : 1 }}>
+              <label key={c.value} className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={{ border: `1px solid ${on ? tint : "var(--line)"}`, background: on ? (c.danger ? "var(--reject-soft)" : "var(--accent-soft)") : "var(--panel-2)", cursor: c.disabled ? "default" : "pointer", opacity: c.disabled ? 0.6 : 1 }}>
                 <input type="radio" name={titleId} checked={on} disabled={c.disabled || busy} onChange={() => onChoice?.(c.value)} className="mt-0.5" />
                 <span>
                   <span className="font-semibold" style={{ color: on ? tint : "var(--ink)" }}>{c.label}</span>
-                  {c.hint && <span className="mt-0.5 block text-[11px] text-ink-faint">{c.hint}</span>}
+                  {c.hint && <span className="mt-0.5 block text-xs text-ink-faint">{c.hint}</span>}
                 </span>
               </label>
             );
@@ -84,7 +84,7 @@ export function ConfirmDialog<V extends string = string>({
 
       {typedPhrase && (
         <label className="mt-4 flex flex-col gap-1.5">
-          <span className="text-[11.5px] text-ink-dim">Type <b className="font-mono" style={{ color: "var(--ink)" }}>{typedPhrase}</b> to confirm</span>
+          <span className="text-sm text-ink-dim">Type <b className="font-mono" style={{ color: "var(--ink)" }}>{typedPhrase}</b> to confirm</span>
           <input
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
@@ -92,17 +92,17 @@ export function ConfirmDialog<V extends string = string>({
             disabled={busy}
             autoComplete="off"
             spellCheck={false}
-            className="rounded-lg px-3 py-2 font-mono text-[12.5px]"
+            className="rounded-lg px-3 py-2 font-mono text-base"
             style={{ background: "var(--panel-2)", border: `1px solid ${phraseOK ? "var(--line)" : "var(--reject)"}`, color: "var(--ink)" }}
           />
         </label>
       )}
 
-      {error && <div role="alert" className="mt-3 whitespace-pre-line rounded-lg p-2.5 text-[12px]" style={{ color: "var(--reject)", background: "var(--reject-soft)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-3 whitespace-pre-line rounded-lg p-2.5 text-sm" style={{ color: "var(--reject)", background: "var(--reject-soft)" }}>{error}</div>}
 
       <div className="mt-4 flex justify-end gap-2.5">
-        <button ref={cancelRef} onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{cancelLabel}</button>
-        <button onClick={onConfirm} disabled={!canConfirm} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: solid, color: solidInk }}>{busy ? (busyLabel ?? "Working…") : confirmLabel}</button>
+        <button ref={cancelRef} onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{cancelLabel}</button>
+        <button onClick={onConfirm} disabled={!canConfirm} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ background: solid, color: solidInk }}>{busy ? (busyLabel ?? "Working…") : confirmLabel}</button>
       </div>
     </Modal>
   );

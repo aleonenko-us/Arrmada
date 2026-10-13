@@ -49,8 +49,8 @@ export function MiniPlayer({ sidebar = false }: { sidebar?: boolean }) {
             {cover && <img src={cover} alt="" className="h-full w-full object-cover" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold" style={{ color: "var(--ink)" }}>{p.key ? title : <>Resume {title}</>}</span>
-            <span className="block truncate text-[11.5px]" style={{ color: subtitleTone(p) }}>
+            <span className="block truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{p.key ? title : <>Resume {title}</>}</span>
+            <span className="block truncate text-sm" style={{ color: subtitleTone(p) }}>
               {p.sleep && <span data-testid="mini-sleep" style={{ color: "var(--accent-text)" }}>☾ {fmtTime(sleepLeft(p) ?? 0)} · </span>}
               {subtitle(p)}
             </span>

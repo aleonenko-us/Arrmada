@@ -82,7 +82,7 @@ export function MapFilesModal({ review, onClose, onDone }: {
         </>
       }
     >
-      <p className="mb-3 mt-0 text-[11.5px] text-ink-dim">
+      <p className="mb-3 mt-0 text-sm text-ink-dim">
         Say which episode each file of <span className="break-all font-mono">{review.name}</span> is. Leave a row blank to skip it;
         a file holding two episodes takes both (for example <span className="font-mono">3,4</span>). The quality check is skipped —
         an episode that already has a file gets this one instead, and the old file goes to the recycle bin.
@@ -91,35 +91,35 @@ export function MapFilesModal({ review, onClose, onDone }: {
       <TargetPicker review={review} target={target} picking={picking} onPicking={setPicking} onPick={(t) => { setTarget(t); setPicking(false); }} />
 
       {loadError ? (
-        <div className="p-4 text-[12px]" style={{ color: "var(--reject)" }}>{loadError}</div>
+        <div className="p-4 text-sm" style={{ color: "var(--reject)" }}>{loadError}</div>
       ) : rows === null ? (
-        <div className="p-4 text-[12px] text-ink-faint">Listing files…</div>
+        <div className="p-4 text-sm text-ink-faint">Listing files…</div>
       ) : rows.length === 0 ? (
-        <div className="p-4 text-[12px] text-ink-faint">No video files in this download.</div>
+        <div className="p-4 text-sm text-ink-faint">No video files in this download.</div>
       ) : (
         <div className="thin-scroll max-h-[50vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
-          <div className="sticky top-0 grid grid-cols-[1fr_72px_60px_90px] gap-2 px-3 py-1.5 text-[10px] font-bold uppercase text-ink-faint" style={{ background: "var(--panel-2)" }}>
+          <div className="sticky top-0 grid grid-cols-[1fr_72px_60px_90px] gap-2 px-3 py-1.5 text-xs font-bold uppercase text-ink-faint" style={{ background: "var(--panel-2)" }}>
             <span>File</span><span className="text-right">Size</span><span>Season</span><span>Episode(s)</span>
           </div>
           {rows.map((r, i) => {
             const eps = parseEpisodes(r.episodes);
             const bad = (r.episodes.trim() !== "" || r.season.trim() !== "") && (eps == null || r.season.trim() === "");
             return (
-              <div key={r.file.rel_path} className="grid grid-cols-[1fr_72px_60px_90px] items-center gap-2 px-3 py-1.5 font-mono text-[10.5px]" style={{ borderTop: "1px solid var(--line-soft)" }}>
+              <div key={r.file.rel_path} className="grid grid-cols-[1fr_72px_60px_90px] items-center gap-2 px-3 py-1.5 font-mono text-xs" style={{ borderTop: "1px solid var(--line-soft)" }}>
                 <span className="min-w-0 truncate" title={`${r.file.rel_path} — ${guessLabel(r.file)}`}>{r.file.rel_path}</span>
                 <span className="text-right text-ink-dim">{formatBytes(r.file.size)}</span>
                 <input aria-label={`Season for ${r.file.rel_path}`} inputMode="numeric" value={r.season} onChange={(e) => set(i, { season: e.target.value })}
-                  className="w-full rounded px-1.5 py-1 text-[11px]" style={{ background: "var(--panel-2)", border: `1px solid ${bad ? "var(--reject)" : "var(--line)"}`, color: "var(--ink)" }} />
+                  className="w-full rounded px-1.5 py-1 text-xs" style={{ background: "var(--panel-2)", border: `1px solid ${bad ? "var(--reject)" : "var(--line)"}`, color: "var(--ink)" }} />
                 <input aria-label={`Episodes for ${r.file.rel_path}`} value={r.episodes} placeholder="—" onChange={(e) => set(i, { episodes: e.target.value })}
-                  className="w-full rounded px-1.5 py-1 text-[11px]" style={{ background: "var(--panel-2)", border: `1px solid ${bad ? "var(--reject)" : "var(--line)"}`, color: "var(--ink)" }} />
+                  className="w-full rounded px-1.5 py-1 text-xs" style={{ background: "var(--panel-2)", border: `1px solid ${bad ? "var(--reject)" : "var(--line)"}`, color: "var(--ink)" }} />
               </div>
             );
           })}
         </div>
       )}
-      {truncated && <p className="mb-0 mt-2 text-[11px] text-ink-faint">Only the first files of this download are listed.</p>}
-      {invalid > 0 && <p className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{invalid} row{invalid === 1 ? " needs" : "s need"} a season and episode numbers like 3, 3,4 or 3-4.</p>}
-      {error && <p className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{error}</p>}
+      {truncated && <p className="mb-0 mt-2 text-xs text-ink-faint">Only the first files of this download are listed.</p>}
+      {invalid > 0 && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{invalid} row{invalid === 1 ? " needs" : "s need"} a season and episode numbers like 3, 3,4 or 3-4.</p>}
+      {error && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</p>}
     </Modal>
   );
 }
@@ -148,22 +148,22 @@ function TargetPicker({ review, target, picking, onPicking, onPick }: {
 
   return (
     <div className="mb-3">
-      <div className="flex items-center gap-2 text-[12px]">
+      <div className="flex items-center gap-2 text-sm">
         <span className="text-ink-dim">Into:</span>
         <b>{target ? target.title : "choose a show"}</b>
-        {!picking && <button onClick={() => onPicking(true)} className="text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>Change…</button>}
+        {!picking && <button onClick={() => onPicking(true)} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Change…</button>}
       </div>
       {picking && (
         <div className="mt-2">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter your shows…" aria-label="Filter your shows"
-            className="mb-2 w-full rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+            className="mb-2 w-full rounded-lg px-3 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
           <div className="thin-scroll max-h-[160px] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
             {items === null ? (
-              <div className="p-3 text-[11.5px] text-ink-faint">Loading…</div>
+              <div className="p-3 text-sm text-ink-faint">Loading…</div>
             ) : items.length === 0 ? (
-              <div className="p-3 text-[11.5px] text-ink-faint">No matching shows.</div>
+              <div className="p-3 text-sm text-ink-faint">No matching shows.</div>
             ) : items.map((i) => (
-              <button key={i.id} onClick={() => onPick({ id: i.id, title: i.title })} className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
+              <button key={i.id} onClick={() => onPick({ id: i.id, title: i.title })} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
                 {i.title}{i.year ? ` (${i.year})` : ""}
               </button>
             ))}

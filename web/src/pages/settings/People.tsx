@@ -25,12 +25,12 @@ export function PeopleSettings() {
   return (
     <div className="flex flex-col gap-6">
       <PeopleList meId={user?.id} />
-      <p className="m-0 text-[11.5px] text-ink-faint">
+      <p className="m-0 text-sm text-ink-faint">
         Who may sign in with Plex, and what new Plex sign-ins auto-approve, is in <Link to={LINKS.plexSignIn} style={{ color: "var(--accent)" }}>Settings → Plex</Link>.
       </p>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
-        <p className="m-0 text-[11px] text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person under More on their row.</p>
+        <p className="m-0 text-xs text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person under More on their row.</p>
       </Section>
     </div>
   );
@@ -54,7 +54,7 @@ function RequestLimits({ books }: { books: boolean }) {
   const bookQ = useQuota("request_quota_books", "Books", 0, 1000);
   const days = useQuota("request_quota_days", "Every … days", 1, 365);
   const typical = useAutoSave<string>("", async () => { await commit(TYPICAL); });
-  const field = "w-[96px] rounded-lg px-3 py-2 text-[12.5px]";
+  const field = "w-[96px] rounded-lg px-3 py-2 text-base";
   return (
     <div className="flex flex-wrap items-start gap-3">
       <AutoNumber label="Movies" save={movies} min={0} max={1000} className={field} />
@@ -65,7 +65,7 @@ function RequestLimits({ books }: { books: boolean }) {
         <button
           type="button"
           onClick={() => void typical.commit("typical")}
-          className="min-h-[36px] rounded-lg px-3 text-[12px] font-semibold"
+          className="min-h-[36px] rounded-lg px-3 text-sm font-semibold"
           style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
         >
           Typical household
@@ -93,7 +93,7 @@ const sameTypes = (a: AutoTypes, b: AutoTypes) => a.movie === b.movie && a.serie
 // module is on; a hidden type keeps its value).
 export function AutoApproveChecks({ value, onChange, books, label }: { value: AutoTypes; onChange: (v: AutoTypes) => void; books: boolean; label: string }) {
   return (
-    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-ink-dim">
+    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-ink-dim">
       {TYPE_LABEL.filter(([k]) => k !== "book" || books).map(([k, name]) => (
         <label key={k} className="flex min-h-[28px] items-center gap-1.5">
           <input type="checkbox" checked={value[k]} onChange={(e) => onChange({ ...value, [k]: e.target.checked })} />
@@ -184,12 +184,12 @@ function PeopleList({ meId }: { meId?: number }) {
   return (
     <Section id="users" title="People & access" subtitle="Everyone who can use Arrmada, and what each of them may do. Changes save as you make them. Auto-approve lets someone's requests download without waiting for you.">
       <RoleLegend />
-      {err && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
       <div className="flex flex-col gap-2">
         {people === null ? (
-          !err && <p className="text-[12px] text-ink-dim">Loading…</p>
+          !err && <p className="text-sm text-ink-dim">Loading…</p>
         ) : people.length === 0 ? (
-          <p className="text-[12px] text-ink-dim">No one yet.</p>
+          <p className="text-sm text-ink-dim">No one yet.</p>
         ) : (
           people.map((p) => <PersonRow key={p.id} p={p} isMe={p.id === meId} ctx={ctx} />)
         )}
@@ -199,15 +199,15 @@ function PeopleList({ meId }: { meId?: number }) {
 
       {blocks.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Blocked Plex accounts</div>
+          <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Blocked Plex accounts</div>
           {blocks.map((b) => (
             <div key={b.plex_id} className="flex flex-wrap items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
-              <span className="min-w-0 flex-1 truncate text-[12.5px]">{b.name || `Plex account ${b.plex_id}`}</span>
-              <span className="flex-none text-[10.5px] text-ink-faint">can't sign in with Plex</span>
-              <button onClick={() => unblock(b)} className="flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unblock</button>
+              <span className="min-w-0 flex-1 truncate text-base">{b.name || `Plex account ${b.plex_id}`}</span>
+              <span className="flex-none text-xs text-ink-faint">can't sign in with Plex</span>
+              <button onClick={() => unblock(b)} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unblock</button>
             </div>
           ))}
-          {blockErr && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{blockErr}</div>}
+          {blockErr && <div className="text-sm" style={{ color: "var(--reject)" }}>{blockErr}</div>}
         </div>
       )}
     </Section>
@@ -222,7 +222,7 @@ interface RowContext {
   people: Person[];
 }
 
-const chip = "rounded-full px-2 py-0.5 font-mono text-[8.5px] font-bold uppercase";
+const chip = "rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase";
 
 // PersonRow is one person. The row wraps into a stack on a phone.
 function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext }) {
@@ -277,11 +277,11 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
     <div className="flex flex-col gap-2 rounded-lg px-3 py-2.5" style={{ background: "var(--panel-2)" }} data-testid="person">
       {/* Who: name, Plex, role. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="grid h-7 w-7 flex-none place-items-center rounded-full text-[11px] font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p.username[0]?.toUpperCase()}</span>
-        <span className="min-w-[8rem] flex-1 truncate text-[12.5px] font-semibold" style={faded}>{p.username}{isMe && <span className="font-normal text-ink-faint"> (you)</span>}</span>
+        <span className="grid h-7 w-7 flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p.username[0]?.toUpperCase()}</span>
+        <span className="min-w-[8rem] flex-1 truncate text-base font-semibold" style={faded}>{p.username}{isMe && <span className="font-normal text-ink-faint"> (you)</span>}</span>
         {p.disabled && <span className={chip} style={{ background: "var(--reject-soft)", color: "var(--reject)" }} title="Can't sign in. Nothing of theirs was deleted.">Disabled</span>}
         {p.plex_linked && (
-          <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-[10.5px]" style={{ background: "var(--panel)", color: p.plex_blocked ? "var(--reject)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.plex_blocked ? "Linked Plex account — blocked from signing in" : "Linked Plex account"}>
+          <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel)", color: p.plex_blocked ? "var(--reject)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.plex_blocked ? "Linked Plex account — blocked from signing in" : "Linked Plex account"}>
             Plex{p.plex_username ? ` · ${p.plex_username}` : ""}{p.plex_blocked ? " · blocked" : ""}
           </span>
         )}
@@ -293,7 +293,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
             aria-label={`${p.username}'s role`}
             value={role.value}
             onChange={(e) => void role.commit(e.target.value as UserRole)}
-            className="rounded-lg px-2 py-1 text-[12px] font-semibold"
+            className="rounded-lg px-2 py-1 text-sm font-semibold"
             style={{ ...inputStyle, color: ROLE_TONE[role.value] ?? "var(--ink)" }}
           >
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -303,7 +303,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
       {role.status !== "idle" && <SavedTick save={role} />}
 
       {/* When and where: last seen, browsers, audiobooks. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-ink-dim">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-ink-dim">
         <span title={p.last_seen ? new Date(p.last_seen).toLocaleString() : undefined}>Last seen {ago(p.last_seen)}</span>
         <span className="flex items-center gap-2">
           {p.sessions === 0 ? "Not signed in" : `Signed in on ${p.sessions} ${p.sessions === 1 ? "browser" : "browsers"}`}
@@ -313,7 +313,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-[11.5px] text-ink-dim">Auto-approve:</span>
+        <span className="text-sm text-ink-dim">Auto-approve:</span>
         <AutoApproveChecks value={auto.value} onChange={(v) => void auto.commit(v)} books={booksEnabled} label={`Auto-approve ${p.username}'s requests for`} />
         <SavedTick save={auto} />
       </div>
@@ -407,32 +407,32 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
   // Accounts this one could be merged into: any other account with no Plex link of its own.
   const mergeTargets = ctx.people.filter((u) => u.id !== p.id && !u.plex_linked);
   const [mergeInto, setMergeInto] = useState<number | null>(null);
-  const field = "w-[88px] rounded-lg px-2.5 py-1.5 text-[12.5px]";
+  const field = "w-[88px] rounded-lg px-2.5 py-1.5 text-base";
 
   return (
     <div className="flex flex-col gap-3 rounded-lg p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div>
-        <div className="mb-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Their request limits</div>
+        <div className="mb-1 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Their request limits</div>
         <div className="flex flex-wrap items-start gap-2">
           <AutoNumber label="Movies" save={movies} min={0} max={1000} placeholder="Default" className={field} />
           <AutoNumber label="Seasons" save={seasons} min={0} max={1000} placeholder="Default" className={field} />
           {booksEnabled && <AutoNumber label="Books" save={books} min={0} max={1000} placeholder="Default" className={field} />}
         </div>
-        <p className="m-0 mt-1 text-[11px] text-ink-faint">Blank uses the limits under Request limits; 0 means no limit for them.</p>
+        <p className="m-0 mt-1 text-xs text-ink-faint">Blank uses the limits under Request limits; 0 means no limit for them.</p>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">New password</span>
+        <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">New password</span>
         <div className="flex flex-wrap items-center gap-2">
-          <input type="password" minLength={8} aria-label={`New password for ${p.username}`} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete="new-password" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
+          <input type="password" minLength={8} aria-label={`New password for ${p.username}`} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete="new-password" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           <Button size="sm" variant="primary" disabled={password.length < 8} busy={pwBusy} busyLabel="Setting…" onClick={setPw}>Set password</Button>
         </div>
-        {pwMsg && <span className="text-[11.5px]" style={{ color: pwMsg.ok ? "var(--good)" : "var(--reject)" }}>{pwMsg.text}</span>}
+        {pwMsg && <span className="text-sm" style={{ color: pwMsg.ok ? "var(--good)" : "var(--reject)" }}>{pwMsg.text}</span>}
       </div>
 
       {p.plex_linked && !isMe && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="min-w-[12rem] flex-1 text-[11.5px] text-ink-dim">
+          <span className="min-w-[12rem] flex-1 text-sm text-ink-dim">
             {p.plex_blocked
               ? "Their Plex account is blocked from signing in here. Unblock it under Blocked Plex accounts."
               : `Linked to Plex${p.plex_username ? ` as ${p.plex_username}` : ""}.`}
@@ -444,9 +444,9 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
       {/* A duplicate Plex requester (the owner or a family member signed in with Plex before
           their own account was linked) can be folded into that account. */}
       {p.plex_linked && !isMe && (p.role === "requester" || p.role === "readonly") && mergeTargets.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-dim">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-ink-dim">
           <span className="min-w-[12rem] flex-1">Same person as another account? Merge this one into it: requests, inbox, phones, audiobook progress and the Plex link move there.</span>
-          <select aria-label="Merge into" value={mergeInto ?? ""} onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : null)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
+          <select aria-label="Merge into" value={mergeInto ?? ""} onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : null)} className="rounded-lg px-2 py-1.5 text-sm" style={inputStyle}>
             <option value="">Merge into…</option>
             {mergeTargets.map((t) => <option key={t.id} value={t.id}>{t.username} ({t.role})</option>)}
           </select>
@@ -482,22 +482,22 @@ function AddPerson({ onAdded }: { onAdded: () => void }) {
   };
   return (
     <form onSubmit={add} className="mt-2 flex flex-col gap-2.5 rounded-lg p-3" style={{ border: "1px dashed var(--line)" }}>
-      <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Add a person</div>
+      <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Add a person</div>
       <div className="flex flex-wrap gap-2">
-        <input type="email" required aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className="min-w-[180px] flex-1 rounded-lg px-3 py-2 text-[12.5px]" style={inputStyle} />
-        <input type="password" required minLength={8} aria-label="Password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password (8+ chars)" autoComplete="new-password" className="min-w-[160px] flex-1 rounded-lg px-3 py-2 text-[12.5px]" style={inputStyle} />
-        <select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg px-2.5 py-2 text-[12.5px]" style={inputStyle}>
+        <input type="email" required aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className="min-w-[180px] flex-1 rounded-lg px-3 py-2 text-base" style={inputStyle} />
+        <input type="password" required minLength={8} aria-label="Password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password (8+ chars)" autoComplete="new-password" className="min-w-[160px] flex-1 rounded-lg px-3 py-2 text-base" style={inputStyle} />
+        <select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg px-2.5 py-2 text-base" style={inputStyle}>
           {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
         </select>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-dim">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-dim">
           <span>Auto-approve:</span>
           <AutoApproveChecks value={autoApprove} onChange={setAutoApprove} books={booksEnabled} label="Auto-approve this user's requests" />
         </div>
         <Button type="submit" variant="primary" busy={busy} busyLabel="Adding…">Add person</Button>
       </div>
-      {err && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
     </form>
   );
 }
@@ -514,7 +514,7 @@ function RoleLegend() {
     ["Admin", "everything."],
   ];
   return (
-    <div className="-mt-2 flex flex-col gap-0.5 text-[11px] text-ink-faint">
+    <div className="-mt-2 flex flex-col gap-0.5 text-xs text-ink-faint">
       {rows.map(([role, what]) => <div key={role}><b className="text-ink-dim">{role}</b> — {what}</div>)}
     </div>
   );
@@ -560,7 +560,7 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
         </>
       ) : !err ? "Checking what this would remove…" : null}
       extra={canBlock ? (
-        <label className="flex items-center gap-2 text-[12px] text-ink-dim">
+        <label className="flex items-center gap-2 text-sm text-ink-dim">
           <input type="checkbox" checked={blockPlex} disabled={busy} onChange={(e) => setBlockPlex(e.target.checked)} />
           Also block their Plex account from signing in here
         </label>

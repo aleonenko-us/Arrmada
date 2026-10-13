@@ -23,6 +23,7 @@ import { invalidate, useQuery } from "../lib/query";
 import { useTabParam } from "../lib/useTabParam";
 import { defaultSeason, sortSeasons } from "./series/util";
 import { SeasonPanel, SeasonRail } from "./series/SeasonRail";
+import { Page } from "../ui/Page";
 
 // What the page listens for besides the queue (see SeriesDetail).
 const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
@@ -140,8 +141,8 @@ export function SeriesDetail() {
   });
   useEffect(() => () => window.clearTimeout(grabLook.current), []);
 
-  if (notFound) return <Shell><div className="py-10 text-center text-[13px] text-ink-dim">That series isn't in your library. <Link to="/series" className="underline" style={{ color: "var(--accent)" }}>Back to Series</Link></div></Shell>;
-  if (!s) return <Shell><p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p></Shell>;
+  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That series isn't in your library. <Link to="/series" className="underline" style={{ color: "var(--accent)" }}>Back to Series</Link></div></Shell>;
+  if (!s) return <Shell><p className="text-base text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const ex = s.extra;
   const seasons = sortSeasons(s.seasons);
@@ -161,14 +162,14 @@ export function SeriesDetail() {
         <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={say} />
       </Hero>
 
-      <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
+      <Page className="pb-10">
         <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="series" label="Series sections" className="mb-4 mt-1 border-b" />
 
         {tab === "episodes" && (
           <TabPanel idPrefix="series" value="episodes">
             <NumberingBanner seriesId={s.id} refreshKey={numberingKey} onApplied={settleNumbering} />
             {!s.monitored && (
-              <div className="mt-2 rounded-lg px-3 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+              <div className="mt-2 rounded-lg px-3 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
                 Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
               </div>
             )}
@@ -197,7 +198,7 @@ export function SeriesDetail() {
             <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={say} />
           </TabPanel>
         )}
-      </div>
+      </Page>
     </>
   );
 }
@@ -206,15 +207,15 @@ function CastRow({ cast }: { cast?: CastMember[] }) {
   if (!cast || cast.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
+      <h2 className="m-0 mb-3 text-md font-bold">Cast</h2>
       <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
         {cast.map((c, i) => (
           <div key={i} className="w-[92px] flex-none text-center">
             <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
               {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
             </div>
-            <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
-            {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
+            <div className="truncate text-xs font-semibold" title={c.name}>{c.name}</div>
+            {c.character && <div className="truncate text-xs text-ink-faint" title={c.character}>{c.character}</div>}
           </div>
         ))}
       </div>
@@ -242,7 +243,7 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
     }
   };
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-dim">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
       <StatusChip tone="accent">Upgrades paused</StatusChip>
       <span>{held} episode{held === 1 ? "" : "s"} kept when the profile changed</span>
       <Button size="sm" variant="secondary" onClick={resume} busy={busy} busyLabel="Resuming…">Resume</Button>
@@ -252,6 +253,6 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
 
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <><PageHeader title="Series" /><div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">{children}</div></>;
+  return <><PageHeader title="Series" /><Page>{children}</Page></>;
 }
 

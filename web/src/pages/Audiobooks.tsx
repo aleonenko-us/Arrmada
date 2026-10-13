@@ -16,6 +16,7 @@ import { AllAudiobooks } from "../components/audiobooks/AllAudiobooks";
 import { BookSheet } from "../components/audiobooks/BookSheet";
 import { Cover } from "../components/audiobooks/BookCard";
 import { Card, DailyBars, DaysPicker, Field, Loading, Sessions, Totals, addresses, danger, fmtAgo, fmtClock, ghost, inputStyle, primary } from "./audiobooks/shared";
+import { Page } from "../ui/Page";
 
 // The admin tabs are their own chunk: requesters never download them.
 const AudiobooksAdmin = lazyPage(() => import("./AudiobooksAdmin"), "AudiobooksAdmin");
@@ -59,13 +60,13 @@ function AudiobooksPage({ chrome, admin }: { chrome: boolean; admin: boolean }) 
   return (
     <>
       {chrome && <PageHeader title="Audiobooks" />}
-      <div className="mx-auto w-full max-w-[980px] px-4 py-6 sm:px-6">
-        {!chrome && <h1 className="m-0 mb-1 text-[18px] font-bold">Audiobooks</h1>}
+      <Page>
+        {!chrome && <h1 className="m-0 mb-1 text-xl font-bold">Audiobooks</h1>}
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <p className="m-0 max-w-[70ch] text-[12.5px] text-ink-dim">
+          <p className="m-0 max-w-[70ch] text-base text-ink-dim">
             Listen right here, or in a listening app. Your place follows you between them.
           </p>
-          {admin && <Link to={LINKS.audiobookServer} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Configure →</Link>}
+          {admin && <Link to={LINKS.audiobookServer} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Configure →</Link>}
         </div>
         <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="audiobooks" label="Audiobooks sections" />
         <TabPanel idPrefix="audiobooks" value={tab}>
@@ -75,7 +76,7 @@ function AudiobooksPage({ chrome, admin }: { chrome: boolean; admin: boolean }) 
             </Suspense>
           )}
         </TabPanel>
-      </div>
+      </Page>
     </>
   );
 }
@@ -118,12 +119,12 @@ function ListenView() {
   if (!data) return <Loading error={error} />;
   if (!data.allowed) {
     return <Card title="Not available">
-      <p className="m-0 text-[12.5px] text-ink-dim">Your account isn't set up for audiobooks. Ask an admin.</p>
+      <p className="m-0 text-base text-ink-dim">Your account isn't set up for audiobooks. Ask an admin.</p>
     </Card>;
   }
   if (!data.enabled || blocked) {
     return <Card title="Switched off">
-      <p className="m-0 text-[12.5px] text-ink-dim">Audiobooks are switched off at the moment, so there's nothing to listen to yet.</p>
+      <p className="m-0 text-base text-ink-dim">Audiobooks are switched off at the moment, so there's nothing to listen to yet.</p>
     </Card>;
   }
   const places = new Map(data.places.map((p) => [p.item_key, p]));
@@ -152,14 +153,14 @@ function CheckPlaces({ places, onOpen }: { places: AudioPlace[]; onOpen: (key: s
         <button key={p.item_key} onClick={() => onOpen(p.item_key)} className="flex w-full items-center gap-3 py-2 text-left" style={{ borderTop: "1px solid var(--line-soft)" }}>
           <Cover src={p.cover_url ? posterThumb(p.cover_url) : undefined} title={p.title} className="w-[44px] flex-none" small />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold">{p.title}</span>
-            <span className="block truncate text-[11.5px] text-ink-dim">
+            <span className="block truncate text-md font-semibold">{p.title}</span>
+            <span className="block truncate text-sm text-ink-dim">
               {p.offer
                 ? <>A later spot (<b>{fmtClock(p.offer.position)}</b>) wasn't used — use it?</>
                 : <>A jump to <b>{fmtClock(p.pending_position ?? 0)}</b> is waiting to be kept</>}
             </span>
           </span>
-          <span className="flex-none text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Open</span>
+          <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>Open</span>
         </button>
       ))}
     </Card>
@@ -181,21 +182,21 @@ function AppsView() {
 
   if (!data.allowed) {
     return <Card title="Not available">
-      <p className="m-0 text-[12.5px] text-ink-dim">Your account isn't set up to use the audiobook server. Ask an admin.</p>
+      <p className="m-0 text-base text-ink-dim">Your account isn't set up to use the audiobook server. Ask an admin.</p>
     </Card>;
   }
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex max-w-form flex-col gap-4">
       <AppSetup data={data} external={external} onData={setData} onPasswordStep={setSetupAsks} />
       {data.devices.length > 0 && <DevicesCard data={data} onChange={load} />}
       {booksEnabled && (
         <Suspense fallback={null}>
           <EReaderPanel password={{ has: data.has_password, allowed: data.allowed }} passwordCard={setupAsks
-            ? <span className="text-[12px] text-ink-dim">Set or change it in step 2 of Set up listening, above.</span>
+            ? <span className="text-sm text-ink-dim">Set or change it in step 2 of Set up listening, above.</span>
             : <PasswordCard data={data} onSaved={setData} />} />
         </Suspense>
       )}
-      <div className="rounded-xl px-4 py-2.5 text-[12px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
+      <div className="rounded-xl px-4 py-2.5 text-sm text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
         Your places moved to Listen: open a book there to see where you're up to and put back an earlier place.
       </div>
     </div>
@@ -221,7 +222,7 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
       <div role="radiogroup" aria-label="Your device" className="mb-3 flex flex-wrap gap-1.5">
         {([["ios", "iPhone or iPad"], ["android", "Android"], ["other", "Computer"]] as const).map(([k, label]) => (
           <button key={k} role="radio" aria-checked={platform === k} onClick={() => { setPlatform(k); setPick(null); }}
-            className="rounded-full px-3 py-1 text-[12px] font-semibold"
+            className="rounded-full px-3 py-1 text-sm font-semibold"
             style={platform === k ? { background: "var(--accent-soft)", color: "var(--accent-text)", border: "1px solid var(--accent-line)" } : ghost}>
             {label}
           </button>
@@ -235,10 +236,10 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
                 className="flex items-start justify-between gap-3 rounded-lg px-3 py-2 text-left"
                 style={pick === a.id ? { background: "var(--accent-soft)", border: "1px solid var(--accent-line)" } : { background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold">{a.name}{i === 0 && a.status === "verified" ? <span className="font-normal text-ink-faint"> · recommended</span> : null}</span>
-                  <span className="block text-[11.5px] text-ink-dim">{a.blurb}</span>
+                  <span className="block text-md font-semibold">{a.name}{i === 0 && a.status === "verified" ? <span className="font-normal text-ink-faint"> · recommended</span> : null}</span>
+                  <span className="block text-sm text-ink-dim">{a.blurb}</span>
                 </span>
-                <span className="flex-none rounded-full px-2 py-0.5 text-[10.5px] font-bold"
+                <span className="flex-none rounded-full px-2 py-0.5 text-xs font-bold"
                   style={a.status === "verified" ? { background: "var(--good-soft)", color: "var(--good-text)" } : { background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
                   {a.status === "verified" ? "Works" : "Not tested yet"}
                 </span>
@@ -249,7 +250,7 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
 
         {chosen?.id === "web" && (
           <Step n={2} title="Open Listen and press play" done={false}>
-            <p className="m-0 text-[12px] text-ink-dim">
+            <p className="m-0 text-sm text-ink-dim">
               Nothing to install and no password: pick a book on the <Link to="/audiobooks" className="font-semibold" style={{ color: "var(--accent)" }}>Listen</Link> tab.
               {platform === "ios" && <> On an iPhone, add Arrmada to your Home Screen first (Share → Add to Home Screen) and listen from there: it keeps playing with the screen locked, with the controls on the lock screen.</>}
               {platform === "android" && <> On Android, Add to Home screen from the browser's menu gives you an app icon and lock-screen controls.</>}
@@ -260,7 +261,7 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
         {chosen && chosen.id !== "web" && (
           <>
             {chosen.status === "untested" && (
-              <li className="rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
+              <li className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
                 {chosen.name} hasn't been tried with Arrmada on a phone yet. It speaks the same language as the apps that work, so it may well — if it does (or doesn't), tell your admin.
                 {platform === "ios" && <> Listening right here works on an iPhone today.</>}
               </li>
@@ -269,14 +270,14 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
               <PasswordCard data={data} onSaved={onData} />
             </Step>
             <Step n={3} title={`Enter these in ${chosen.name}`} done={false}>
-              {!data.enabled && <div className="mb-2 text-[12px]" style={{ color: "var(--avoid-text)" }}>The audiobook server is switched off at the moment, so apps can't connect yet.</div>}
-              {data.enabled && !data.running && <div className="mb-2 text-[12px]" style={{ color: "var(--avoid-text)" }}>The server is switched on but not running{data.error ? `: ${data.error}` : ""}.</div>}
-              {chosen.url && <p className="m-0 mb-2 text-[12px] text-ink-dim">Get it from <a href={chosen.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>{chosen.url.replace(/^https?:\/\//, "")}</a>, then sign in with:</p>}
+              {!data.enabled && <div className="mb-2 text-sm" style={{ color: "var(--avoid-text)" }}>The audiobook server is switched off at the moment, so apps can't connect yet.</div>}
+              {data.enabled && !data.running && <div className="mb-2 text-sm" style={{ color: "var(--avoid-text)" }}>The server is switched on but not running{data.error ? `: ${data.error}` : ""}.</div>}
+              {chosen.url && <p className="m-0 mb-2 text-sm text-ink-dim">Get it from <a href={chosen.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>{chosen.url.replace(/^https?:\/\//, "")}</a>, then sign in with:</p>}
               <Field label="Server type" value="Audiobookshelf" />
               {servers.map((s, i) => <Field key={i} label={s.label} value={s.value} note={s.note} />)}
-              {external && !data.public_url && <div className="mb-2 text-[12px] text-ink-dim">The server address works on the home network. Open this page at home to see it.</div>}
+              {external && !data.public_url && <div className="mb-2 text-sm text-ink-dim">The server address works on the home network. Open this page at home to see it.</div>}
               <Field label="Username" value={data.username} />
-              <div className="text-[11.5px] text-ink-faint">Password: your audiobook &amp; e-reader password from step 2 — not your Arrmada password.</div>
+              <div className="text-sm text-ink-faint">Password: your audiobook &amp; e-reader password from step 2 — not your Arrmada password.</div>
             </Step>
             {data.has_password && <WaitForDevice data={data} onData={onData} />}
           </>
@@ -289,12 +290,12 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
 function Step({ n, title, done, children }: { n: number; title: string; done: boolean; children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span aria-hidden className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-full text-[11.5px] font-bold"
+      <span aria-hidden className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-full text-sm font-bold"
         style={done ? { background: "var(--good)", color: "var(--accent-ink)" } : { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
         {done ? "✓" : n}
       </span>
       <div className="min-w-0 flex-1">
-        <h3 className="m-0 mb-1.5 text-[13px] font-bold">{title}{done && <span className="sr-only"> (done)</span>}</h3>
+        <h3 className="m-0 mb-1.5 text-md font-bold">{title}{done && <span className="sr-only"> (done)</span>}</h3>
         {children}
       </div>
     </li>
@@ -318,13 +319,13 @@ function WaitForDevice({ data, onData }: { data: MyAudio; onData: (d: MyAudio) =
   return (
     <Step n={4} title={found ? "Signed in" : "Waiting for your phone…"} done={!!found}>
       {found ? (
-        <div role="status" className="text-[12.5px] font-semibold" style={{ color: "var(--good-text)" }}>
+        <div role="status" className="text-base font-semibold" style={{ color: "var(--good-text)" }}>
           {[found.device, found.client].filter(Boolean).join(" · ") || "An app"} signed in ✓
         </div>
       ) : waiting ? (
-        <div role="status" className="text-[12px] text-ink-dim">Sign in from the app; this ticks green as soon as it connects.</div>
+        <div role="status" className="text-sm text-ink-dim">Sign in from the app; this ticks green as soon as it connects.</div>
       ) : (
-        <div className="text-[12px] text-ink-dim">
+        <div className="text-sm text-ink-dim">
           Nothing signed in yet. <button onClick={() => { const t = performance.now(); setSince(t); setNow(t); }} className="font-semibold" style={{ color: "var(--accent)" }}>Keep waiting</button>
         </div>
       )}
@@ -336,12 +337,12 @@ function DevicesCard({ data, onChange }: { data: MyAudio; onChange: () => void }
   return (
     <Card title="Your devices" note="Apps signed in as you. Sign one out if you lose the phone or stop using it.">
       {data.devices.map((d) => (
-        <div key={d.id} className="flex items-center justify-between gap-3 py-1.5 text-[12.5px]" style={{ borderTop: "1px solid var(--line-soft)" }}>
+        <div key={d.id} className="flex items-center justify-between gap-3 py-1.5 text-base" style={{ borderTop: "1px solid var(--line-soft)" }}>
           <div className="min-w-0">
             <div className="truncate font-semibold">{d.device || d.client || "App"}{d.client && d.device && d.device !== d.client ? <span className="font-normal text-ink-faint"> · {d.client}</span> : null}</div>
-            <div className="text-[11px] text-ink-faint">Signed in {fmtAgo(d.created_at)} · last used {fmtAgo(d.last_used_at)}</div>
+            <div className="text-xs text-ink-faint">Signed in {fmtAgo(d.created_at)} · last used {fmtAgo(d.last_used_at)}</div>
           </div>
-          <button onClick={() => api.revokeMyDevice(d.id).then(onChange)} className="flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={danger}>Sign out</button>
+          <button onClick={() => api.revokeMyDevice(d.id).then(onChange)} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold" style={danger}>Sign out</button>
         </div>
       ))}
     </Card>
@@ -380,29 +381,29 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
         : "Not set yet — set one to connect a listening or e-reader app. It's separate from your Arrmada password."}
       right={data.has_password && !open ? (
         <div className="flex flex-none gap-2">
-          <button onClick={() => setOpen(true)} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={ghost}>Change</button>
-          <button onClick={remove} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60" style={danger}>Remove</button>
+          <button onClick={() => setOpen(true)} className="rounded-lg px-2.5 py-1 text-sm font-semibold" style={ghost}>Change</button>
+          <button onClick={remove} disabled={busy} className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-60" style={danger}>Remove</button>
         </div>
       ) : undefined}
     >
       {open && (
         <form onSubmit={(e) => { e.preventDefault(); if (!problem && pw && pw === again) save(); }} className="flex max-w-[420px] flex-col gap-2">
-          <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={data.has_password ? "New password" : "Password"} className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
-          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Type it again" className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
+          <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={data.has_password ? "New password" : "Password"} aria-label={data.has_password ? "New password" : "Password"} className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
+          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Type it again" aria-label="Password again" className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           {data.has_password && (
-            <label className="flex items-center gap-2 text-[12px] text-ink-dim">
+            <label className="flex items-center gap-2 text-sm text-ink-dim">
               <input type="checkbox" checked={signOut} onChange={(e) => setSignOut(e.target.checked)} />
               Sign out my apps (they'll need the new password)
             </label>
           )}
-          {problem && <div className="text-[12px]" style={{ color: "var(--avoid)" }}>{problem}</div>}
+          {problem && <div className="text-sm" style={{ color: "var(--avoid)" }}>{problem}</div>}
           <div className="flex gap-2">
-            <button type="submit" disabled={busy || !!problem || !pw || pw !== again} className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-50" style={primary}>{data.has_password ? "Change password" : "Set password"}</button>
-            {data.has_password && <button type="button" onClick={() => { setOpen(false); setPw(""); setAgain(""); }} className="rounded-lg px-3 py-1.5 text-[12.5px] font-semibold" style={ghost}>Cancel</button>}
+            <button type="submit" disabled={busy || !!problem || !pw || pw !== again} className="rounded-lg px-3.5 py-1.5 text-base font-semibold disabled:opacity-50" style={primary}>{data.has_password ? "Change password" : "Set password"}</button>
+            {data.has_password && <button type="button" onClick={() => { setOpen(false); setPw(""); setAgain(""); }} className="rounded-lg px-3 py-1.5 text-base font-semibold" style={ghost}>Cancel</button>}
           </div>
         </form>
       )}
-      {msg && <div className="mt-2 text-[12px]" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</div>}
+      {msg && <div className="mt-2 text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</div>}
     </Card>
   );
 }
@@ -424,13 +425,13 @@ function RemovedCard({ removed, onChange }: { removed: AudioRemoved[]; onChange:
             {r.cover_url && <img src={posterThumb(r.cover_url)} alt="" className="h-full w-full object-cover" loading="lazy" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold">{r.title}</div>
-            <div className="text-[11px] text-ink-faint">{r.finished ? "Finished" : fmtClock(r.position)} · removed {fmtAgo(r.discarded_at)}{r.device ? ` in ${r.device}` : ""}</div>
+            <div className="truncate text-md font-semibold">{r.title}</div>
+            <div className="text-xs text-ink-faint">{r.finished ? "Finished" : fmtClock(r.position)} · removed {fmtAgo(r.discarded_at)}{r.device ? ` in ${r.device}` : ""}</div>
           </div>
-          <button onClick={() => restore(r.item_key)} disabled={busy !== null} className="flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60" style={primary}>{busy === r.item_key ? "Restoring…" : "Restore"}</button>
+          <button onClick={() => restore(r.item_key)} disabled={busy !== null} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-60" style={primary}>{busy === r.item_key ? "Restoring…" : "Restore"}</button>
         </div>
       ))}
-      {error && <div className="mt-1 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-1 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
     </Card>
   );
 }
@@ -447,7 +448,7 @@ function MyListeningCard() {
         <>
           <Totals t={data.totals[0]} />
           <DailyBars since={data.since} days={data.days} perDay={perDay} />
-          <div className="mb-1 mt-4 text-[12.5px] font-bold">Sessions</div>
+          <div className="mb-1 mt-4 text-base font-bold">Sessions</div>
           <Sessions list={data.sessions} />
         </>
       )}

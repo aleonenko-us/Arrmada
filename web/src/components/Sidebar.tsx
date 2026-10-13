@@ -24,7 +24,7 @@ function CountPill({ badge }: { badge: NavBadge | null }) {
   return (
     <>
       <span
-        className="ml-auto min-w-[18px] rounded-full px-1.5 py-px text-center font-mono text-[10px] font-semibold"
+        className="ml-auto min-w-[18px] rounded-full px-1.5 py-px text-center font-mono text-xs font-semibold"
         style={PILL_TONE[badge.tone]}
         title={badge.label}
         aria-hidden
@@ -126,7 +126,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           >
             <FleetMark className="h-[18px] w-[18px]" />
           </span>
-          <span className="text-[15px] font-extrabold tracking-[0.12em]">ARRMADA</span>
+          <span className="text-lg font-extrabold tracking-[0.12em]">ARRMADA</span>
           {bell && <div className="ml-auto"><NotificationBell placement="side" /></div>}
         </div>
 
@@ -134,7 +134,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           {nav.map((group, gi) => (
             <div key={gi} className="flex flex-col gap-0.5">
               {group.group && (
-                <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+                <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
                   {group.group}
                 </div>
               )}
@@ -144,7 +144,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                   to={item.to}
                   end={item.end}
                   onClick={onClose}
-                  className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[13.5px] transition-colors"
+                  className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-md transition-colors"
                   style={({ isActive }) =>
                     isActive
                       ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }
@@ -155,7 +155,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                   {item.label}
                   {item.tag && (
                     <span
-                      className="ml-auto rounded-full px-1.5 py-px font-mono text-[10.5px] uppercase"
+                      className="ml-auto rounded-full px-1.5 py-px font-mono text-2xs uppercase"
                       style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}
                     >
                       {item.tag}
@@ -174,12 +174,12 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
         <div className="mt-auto flex items-center gap-2.5 p-3.5" style={{ borderTop: "1px solid var(--line)" }}>
           {/* You: notifications, password and signed-in devices live on the Me page. */}
           <NavLink to="/me" onClick={onClose} aria-label={`${user?.username ?? "Your account"} — Me`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
-            <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-xs font-bold text-white">
+            <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-sm font-bold text-white">
               {(user?.username?.[0] ?? "?").toUpperCase()}
             </span>
             <div className="min-w-0">
-              <div className="truncate text-[12.5px] font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
-              <div className="font-mono text-[10.5px] capitalize text-ink-faint">{user?.role ?? ""}</div>
+              <div className="truncate text-base font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
+              <div className="font-mono text-xs capitalize text-ink-faint">{user?.role ?? ""}</div>
             </div>
           </NavLink>
           <ThemeButton />

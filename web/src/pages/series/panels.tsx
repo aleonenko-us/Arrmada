@@ -15,15 +15,15 @@ export function SeriesBlocklistPanel({ seriesId, refreshKey }: { seriesId: numbe
   if (!entries || entries.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">Blocklist <span className="font-normal text-ink-faint">· {entries.length}</span></h2>
+      <h2 className="m-0 mb-3 text-md font-bold">Blocklist <span className="font-normal text-ink-faint">· {entries.length}</span></h2>
       <div className="flex flex-col gap-2">
         {entries.map((e) => (
-          <div key={e.id} className="flex items-center gap-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+          <div key={e.id} className="flex items-center gap-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-[11.5px]" title={e.title}>{e.title}</div>
-              <div className="mt-0.5 text-[10.5px] text-ink-faint">{e.reason}{e.indexer ? ` · ${e.indexer}` : ""}</div>
+              <div className="truncate font-mono text-sm" title={e.title}>{e.title}</div>
+              <div className="mt-0.5 text-xs text-ink-faint">{e.reason}{e.indexer ? ` · ${e.indexer}` : ""}</div>
             </div>
-            <button onClick={() => unblock(e.id)} className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Remove</button>
+            <button onClick={() => unblock(e.id)} className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Remove</button>
           </div>
         ))}
       </div>
@@ -77,12 +77,12 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="text-[12.5px] font-semibold">Alternate titles</span>
-        {count > 0 && <span className="font-mono text-[11px] text-ink-faint">{count}</span>}
-        <span className="ml-auto font-mono text-[11px] text-ink-faint">{open ? "Hide" : "Show"}</span>
+        <span className="text-base font-semibold">Alternate titles</span>
+        {count > 0 && <span className="font-mono text-xs text-ink-faint">{count}</span>}
+        <span className="ml-auto font-mono text-xs text-ink-faint">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (<>
-      <p className="mb-2.5 mt-0.5 text-[11px] text-ink-faint">
+      <p className="mb-2.5 mt-0.5 text-xs text-ink-faint">
         Other names this show is released under. Titles from TMDB are added on refresh and only match
         exactly. Add your own for an arc that ships as its own show, and set &ldquo;maps to season&rdquo; so
         the alias&apos; <code className="mx-1 font-mono">S02E02</code> reads as &ldquo;second cour, episode 2&rdquo; of
@@ -93,18 +93,18 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
         <div className="mb-2.5 flex flex-col gap-1.5">
           {rows.map((a) => (
             <div key={a.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--panel-2)" }}>
-              <span className="min-w-0 truncate text-[12px]">{a.title}</span>
-              <span className="shrink-0 font-mono text-[11px] text-ink-faint">
+              <span className="min-w-0 truncate text-sm">{a.title}</span>
+              <span className="shrink-0 font-mono text-xs text-ink-faint">
                 {a.tmdb_season > 0 ? `→ season ${a.tmdb_season}` : "title only"}
               </span>
               <span
-                className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase"
+                className="shrink-0 rounded px-1.5 py-0.5 font-mono text-2xs uppercase"
                 style={{ background: "var(--panel)", color: "var(--ink-faint)", border: "1px solid var(--line)" }}
               >
                 {a.source === "tmdb" ? "from TMDB" : "added by you"}
               </span>
               <button
-                className="ml-auto shrink-0 text-[11px] font-semibold"
+                className="ml-auto shrink-0 text-xs font-semibold"
                 style={{ color: "var(--reject)" }}
                 title={a.source === "tmdb" ? "Stops matching this title; a refresh won't add it back" : undefined}
                 onClick={async () => { await api.deleteSeriesAlias(series.id, a.id); load(); }}
@@ -117,20 +117,20 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
       )}
 
       <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-[220px] flex-1 text-[10.5px] text-ink-faint">
+        <label className="min-w-[220px] flex-1 text-xs text-ink-faint">
           <div>Release title</div>
           <input
-            className="w-full rounded-lg px-2.5 py-1.5 text-[12.5px]"
+            className="w-full rounded-lg px-2.5 py-1.5 text-base"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="BLEACH Thousand-Year Blood War"
           />
         </label>
-        <label className="text-[10.5px] text-ink-faint">
+        <label className="text-xs text-ink-faint">
           <div>Maps to season</div>
           <input
-            className="w-[104px] rounded-lg px-2 py-1.5 text-center text-[12.5px]"
+            className="w-[104px] rounded-lg px-2 py-1.5 text-center text-base"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             inputMode="numeric"
             value={season}
@@ -141,15 +141,15 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
         <button
           onClick={add}
           disabled={busy || title.trim() === ""}
-          className="rounded-lg px-3.5 py-2 text-[12px] font-semibold disabled:opacity-50"
+          className="rounded-lg px-3.5 py-2 text-sm font-semibold disabled:opacity-50"
           style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
         >
           {busy ? "Adding…" : "Add title"}
         </button>
       </div>
-      {err && <p className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}
+      {err && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</p>}
       {empty && !err && (
-        <p className="mb-0 mt-2 text-[11px] text-ink-faint">No alternate titles — most shows never need one.</p>
+        <p className="mb-0 mt-2 text-xs text-ink-faint">No alternate titles — most shows never need one.</p>
       )}
       </>)}
     </div>
@@ -195,19 +195,19 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
     }
   };
 
-  const num = "w-[64px] rounded-lg px-2 py-1.5 text-center text-[12.5px]";
+  const num = "w-[64px] rounded-lg px-2 py-1.5 text-center text-base";
   const numStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
   const ready = sceneSeason !== "" && tmdbSeason !== "" && tmdbEpisode !== "";
 
   return (
     <div className="mt-3 rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <button type="button" className="flex w-full items-center gap-2 text-left" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span className="text-[12.5px] font-semibold">Scene season mapping</span>
-        {(rows?.length ?? 0) > 0 && <span className="font-mono text-[11px] text-ink-faint">{rows?.length}</span>}
-        <span className="ml-auto font-mono text-[11px] text-ink-faint">{open ? "Hide" : "Show"}</span>
+        <span className="text-base font-semibold">Scene season mapping</span>
+        {(rows?.length ?? 0) > 0 && <span className="font-mono text-xs text-ink-faint">{rows?.length}</span>}
+        <span className="ml-auto font-mono text-xs text-ink-faint">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (<>
-      <p className="mb-2.5 mt-0.5 text-[11px] text-ink-faint">
+      <p className="mb-2.5 mt-0.5 text-xs text-ink-faint">
         Only needed when releases number seasons differently to TMDB — e.g. this show ships as
         <code className="mx-1 font-mono">S02E01</code> but TMDB counts it as one long season. Pin where each
         scene season starts and the rest of the cour follows automatically.
@@ -217,11 +217,11 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
         <div className="mb-2.5 flex flex-col gap-1.5">
           {rows.map((o) => (
             <div key={o.scene_season} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--panel-2)" }}>
-              <span className="font-mono text-[11.5px]">
+              <span className="font-mono text-sm">
                 Scene S{String(o.scene_season).padStart(2, "0")} → S{String(o.tmdb_season).padStart(2, "0")}E{String(o.tmdb_episode).padStart(2, "0")}
               </span>
               <button
-                className="ml-auto text-[11px] font-semibold"
+                className="ml-auto text-xs font-semibold"
                 style={{ color: "var(--reject)" }}
                 onClick={async () => { await seriesApi.deleteSceneOverride(series.id, o.scene_season); load(); }}
               >
@@ -233,29 +233,29 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
       )}
 
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-[10.5px] text-ink-faint">
+        <label className="text-xs text-ink-faint">
           <div>Scene season</div>
           <input className={num} style={numStyle} inputMode="numeric" value={sceneSeason} onChange={(e) => setSceneSeason(e.target.value)} placeholder="2" />
         </label>
-        <span className="pb-1.5 text-[12px] text-ink-faint">starts at</span>
-        <label className="text-[10.5px] text-ink-faint">
+        <span className="pb-1.5 text-sm text-ink-faint">starts at</span>
+        <label className="text-xs text-ink-faint">
           <div>TMDB season</div>
           <input className={num} style={numStyle} inputMode="numeric" value={tmdbSeason} onChange={(e) => setTmdbSeason(e.target.value)} placeholder="1" />
         </label>
-        <label className="text-[10.5px] text-ink-faint">
+        <label className="text-xs text-ink-faint">
           <div>Episode</div>
           <input className={num} style={numStyle} inputMode="numeric" value={tmdbEpisode} onChange={(e) => setTmdbEpisode(e.target.value)} placeholder="13" />
         </label>
         <button
           disabled={!ready || busy}
           onClick={add}
-          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold"
+          className="rounded-lg px-3 py-1.5 text-sm font-semibold"
           style={{ background: ready ? "var(--accent)" : "var(--panel-2)", color: ready ? "var(--accent-ink)" : "var(--ink-faint)" }}
         >
           {busy ? "Saving…" : "Add mapping"}
         </button>
       </div>
-      {err && <div className="mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
       </>)}
     </div>
   );
@@ -297,28 +297,28 @@ export function DuplicatesPanel({ seriesId, refreshKey, flash }: { seriesId: num
   const extras = dupes.reduce((n, d) => n + d.extras.length, 0);
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-1 text-[14px] font-bold" style={{ color: "var(--avoid)" }}>Duplicate files</h2>
-      <p className="mb-3 text-[11.5px] text-ink-dim">
+      <h2 className="m-0 mb-1 text-md font-bold" style={{ color: "var(--avoid)" }}>Duplicate files</h2>
+      <p className="mb-3 text-sm text-ink-dim">
         {extras} extra file{extras === 1 ? "" : "s"} on disk across {dupes.length} episode{dupes.length === 1 ? "" : "s"}
         {reclaim > 0 && <> · {fmtBytes(reclaim)} reclaimable</>}. These are older copies left behind when a re-import
         wrote a different filename. Arrmada tracks the one marked <em>keeping</em>; the rest are unused.
       </p>
-      {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
       <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
         {dupes.map((d) => (
           <div key={`${d.season}-${d.episode}`} className="border-b p-3 last:border-b-0" style={{ borderColor: "var(--line-soft)" }}>
-            <div className="mb-1.5 font-mono text-[11px] font-bold">{`S${String(d.season).padStart(2, "0")}E${String(d.episode).padStart(2, "0")}`}</div>
-            <div className="flex items-center gap-2 py-1 text-[12px]">
-              <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>keeping</span>
+            <div className="mb-1.5 font-mono text-xs font-bold">{`S${String(d.season).padStart(2, "0")}E${String(d.episode).padStart(2, "0")}`}</div>
+            <div className="flex items-center gap-2 py-1 text-sm">
+              <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>keeping</span>
               <span className="min-w-0 flex-1 truncate text-ink-dim" title={d.keeping.path}>{d.keeping.filename}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(d.keeping.size_bytes)}</span>
+              <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(d.keeping.size_bytes)}</span>
             </div>
             {d.extras.map((x) => (
-              <div key={x.path} className="flex items-center gap-2 py-1 text-[12px]">
-                <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)" }}>extra</span>
+              <div key={x.path} className="flex items-center gap-2 py-1 text-sm">
+                <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)" }}>extra</span>
                 <span className="min-w-0 flex-1 truncate text-ink-dim" title={x.path}>{x.filename}</span>
-                <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(x.size_bytes)}</span>
-                <button disabled={busy !== null} onClick={() => remove(x.path)} className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+                <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(x.size_bytes)}</span>
+                <button disabled={busy !== null} onClick={() => remove(x.path)} className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
                   {busy === x.path ? "Deleting…" : "Delete"}
                 </button>
               </div>

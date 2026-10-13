@@ -28,7 +28,7 @@ export function LastSearchLine({ summary, nextSearchAt, className = "mt-2" }: { 
   if (!summary && !next) return null;
   const tail = [emptyTriesText(summary), next].filter(Boolean).join(" · ");
   return (
-    <div className={`${className} text-[11.5px] leading-relaxed`} data-testid="last-search">
+    <div className={`${className} text-sm leading-relaxed`} data-testid="last-search">
       {summary ? (
         <span style={{ color: outcomeTone(summary.latest.outcome) }}>{attemptLine(summary.latest)}</span>
       ) : (
@@ -45,10 +45,10 @@ export function LastSearches({ kind, id, className = "mt-2", max = 4 }: { kind: 
   const rows = latestPerScope(useSearchAttempts(kind, id), max);
   if (rows.length === 0) return null;
   return (
-    <div className={`${className} flex flex-col gap-0.5 text-[11.5px] leading-relaxed`} data-testid="last-searches">
+    <div className={`${className} flex flex-col gap-0.5 text-sm leading-relaxed`} data-testid="last-searches">
       {rows.map((a) => (
         <div key={a.scope || "all"} style={{ color: outcomeTone(a.outcome) }}>
-          {scopeLabel(a.scope) && <span className="mr-1.5 font-mono text-[10.5px] font-bold text-ink-faint">{scopeLabel(a.scope)}</span>}
+          {scopeLabel(a.scope) && <span className="mr-1.5 font-mono text-xs font-bold text-ink-faint">{scopeLabel(a.scope)}</span>}
           {attemptLine(a)}
         </div>
       ))}

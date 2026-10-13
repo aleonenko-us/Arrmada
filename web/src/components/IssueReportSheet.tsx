@@ -65,28 +65,28 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
     <Sheet onClose={onClose} ariaLabel={`Report a problem with ${title}`} size="md" dismissible={!busy}>
       <div className="flex flex-col gap-4 p-5 sm:p-6">
         <div>
-          <h2 className="m-0 text-[17px] font-bold leading-tight">Report a problem</h2>
-          <p className="m-0 mt-1 text-[12.5px] text-ink-dim">with {title}. We’ll take a look and let you know when it’s fixed.</p>
+          <h2 className="m-0 text-xl font-bold leading-tight">Report a problem</h2>
+          <p className="m-0 mt-1 text-base text-ink-dim">with {title}. We’ll take a look and let you know when it’s fixed.</p>
         </div>
 
         {media === "series" && (
           seasons === null ? (
-            <div className="text-[12px] text-ink-faint">Loading episodes…</div>
+            <div className="text-sm text-ink-faint">Loading episodes…</div>
           ) : seasons === "error" || seasons.length === 0 ? (
-            <div className="text-[12px]" style={{ color: "var(--reject)" }}>
+            <div className="text-sm" style={{ color: "var(--reject)" }}>
               {seasons === "error" ? "Couldn’t load the episodes — try again in a moment." : "There are no episodes of this show to report yet."}
             </div>
           ) : (
             <div className="flex flex-wrap gap-3">
-              <label className="flex min-w-[120px] flex-1 flex-col gap-1 text-[12px]">
-                <span className="font-mono text-[9.5px] uppercase text-ink-faint">Season</span>
-                <select aria-label="Season" value={season} onChange={(e) => { setSeason(Number(e.target.value)); setEpisode(0); }} className="min-h-[40px] rounded-lg px-3 text-[13px]" style={field}>
+              <label className="flex min-w-[120px] flex-1 flex-col gap-1 text-sm">
+                <span className="font-mono text-2xs uppercase text-ink-faint">Season</span>
+                <select aria-label="Season" value={season} onChange={(e) => { setSeason(Number(e.target.value)); setEpisode(0); }} className="min-h-[40px] rounded-lg px-3 text-md" style={field}>
                   {seasons.map((s) => <option key={s.season} value={s.season}>{s.season === 0 ? "Specials" : `Season ${s.season}`}</option>)}
                 </select>
               </label>
-              <label className="flex min-w-[160px] flex-[2] flex-col gap-1 text-[12px]">
-                <span className="font-mono text-[9.5px] uppercase text-ink-faint">Episode</span>
-                <select aria-label="Episode" value={episode} onChange={(e) => setEpisode(Number(e.target.value))} className="min-h-[40px] rounded-lg px-3 text-[13px]" style={field}>
+              <label className="flex min-w-[160px] flex-[2] flex-col gap-1 text-sm">
+                <span className="font-mono text-2xs uppercase text-ink-faint">Episode</span>
+                <select aria-label="Episode" value={episode} onChange={(e) => setEpisode(Number(e.target.value))} className="min-h-[40px] rounded-lg px-3 text-md" style={field}>
                   <option value={0}>Pick an episode</option>
                   {eps.map((e) => <option key={e.episode} value={e.episode}>{`Episode ${e.episode}${e.title ? ` — ${e.title}` : ""}`}</option>)}
                 </select>
@@ -96,7 +96,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
         )}
 
         <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-          <legend className="mb-1.5 font-mono text-[9.5px] uppercase text-ink-faint">What’s wrong?</legend>
+          <legend className="mb-1.5 font-mono text-2xs uppercase text-ink-faint">What’s wrong?</legend>
           {ISSUE_CATEGORIES.map((c) => {
             const on = category === c.key;
             return (
@@ -104,29 +104,29 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
                 style={{ background: on ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}` }}>
                 <input type="radio" name={`${id}-category`} value={c.key} checked={on} onChange={() => setCategory(c.key)} className="h-4 w-4 flex-none" />
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{c.label}</span>
-                  <span className="block text-[11px] text-ink-faint">{c.hint}</span>
+                  <span className="block text-md font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{c.label}</span>
+                  <span className="block text-xs text-ink-faint">{c.hint}</span>
                 </span>
               </label>
             );
           })}
         </fieldset>
 
-        <label className="flex flex-col gap-1 text-[12px] text-ink-dim">
-          <span className="font-mono text-[9.5px] uppercase text-ink-faint">Note (optional)</span>
+        <label className="flex flex-col gap-1 text-sm text-ink-dim">
+          <span className="font-mono text-2xs uppercase text-ink-faint">Note (optional)</span>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, ISSUE_NOTE_MAX))}
             maxLength={ISSUE_NOTE_MAX}
             rows={3}
             placeholder="For example: no English audio from 10 minutes in"
-            className="rounded-lg px-3 py-2 text-[13px]"
+            className="rounded-lg px-3 py-2 text-md"
             style={field}
           />
-          <span className="self-end font-mono text-[10px] text-ink-faint">{note.length}/{ISSUE_NOTE_MAX}</span>
+          <span className="self-end font-mono text-xs text-ink-faint">{note.length}/{ISSUE_NOTE_MAX}</span>
         </label>
 
-        {error && <div className="text-[12px] font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" className="min-h-[44px] flex-1 sm:flex-none" onClick={() => { void send(); }} busy={busy} busyLabel="Sending…" disabled={!ready}>Send report</Button>

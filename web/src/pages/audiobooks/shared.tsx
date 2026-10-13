@@ -47,8 +47,8 @@ export function Card({ title, note, children, right }: { title: string; note?: s
     <section className="rounded-xl p-4" style={card}>
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="m-0 text-[14px] font-bold">{title}</h2>
-          {note && <p className="m-0 mt-0.5 text-[11.5px] text-ink-faint">{note}</p>}
+          <h2 className="m-0 text-md font-bold">{title}</h2>
+          {note && <p className="m-0 mt-0.5 text-sm text-ink-faint">{note}</p>}
         </div>
         {right}
       </div>
@@ -58,8 +58,8 @@ export function Card({ title, note, children, right }: { title: string; note?: s
 }
 
 export function Loading({ error }: { error?: string | null }) {
-  if (error) return <div className="text-[12.5px]" style={{ color: "var(--reject)" }}>{error}</div>;
-  return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
+  if (error) return <div className="text-base" style={{ color: "var(--reject)" }}>{error}</div>;
+  return <div className="text-base text-ink-dim">Loading…</div>;
 }
 
 export function Field({ label, value, note }: { label: string; value: string; note?: string }) {
@@ -67,11 +67,11 @@ export function Field({ label, value, note }: { label: string; value: string; no
   const copy = () => { navigator.clipboard?.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {}); };
   return (
     <div className="mb-2">
-      <div className="text-[11px] font-semibold text-ink-faint">{label}{note ? ` · ${note}` : ""}</div>
+      <div className="text-xs font-semibold text-ink-faint">{label}{note ? ` · ${note}` : ""}</div>
       <div className="flex items-center gap-2">
         {/* Wraps rather than truncating: on a phone you need the whole address to type it in. */}
-        <code className="min-w-0 flex-1 break-all rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{value}</code>
-        <button onClick={copy} className="flex-none rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={ghost}>{copied ? "Copied" : "Copy"}</button>
+        <code className="min-w-0 flex-1 break-all rounded-lg px-2.5 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{value}</code>
+        <button onClick={copy} className="flex-none rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={ghost}>{copied ? "Copied" : "Copy"}</button>
       </div>
     </div>
   );
@@ -97,11 +97,11 @@ export function DailyBars({ since, days, perDay }: { since: string; days: number
     });
   }, [since, days, perDay]);
   const max = Math.max(...list.map((x) => x.secs), 0);
-  if (max === 0) return <div className="py-6 text-center text-[12px] text-ink-faint">No listening in this period.</div>;
+  if (max === 0) return <div className="py-6 text-center text-sm text-ink-faint">No listening in this period.</div>;
   const label = (dt: Date) => dt.toLocaleDateString([], { day: "numeric", month: "short" });
   return (
     <div>
-      <div className="mb-1 text-right text-[10.5px] text-ink-faint">top {fmtHours(max)}</div>
+      <div className="mb-1 text-right text-xs text-ink-faint">top {fmtHours(max)}</div>
       {/* 1px gaps on a phone: 90 days of 3px gaps alone outgrow a 320px screen's card. */}
       <div className="flex h-[110px] items-end gap-px sm:gap-[3px]">
         {list.map((x) => (
@@ -110,7 +110,7 @@ export function DailyBars({ since, days, perDay }: { since: string; days: number
           </div>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-[10.5px] text-ink-faint">
+      <div className="mt-1 flex justify-between text-xs text-ink-faint">
         <span>{label(list[0].dt)}</span>
         <span>Today</span>
       </div>
@@ -129,8 +129,8 @@ export function Totals({ t }: { t?: { today: number; week: number; month: number
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
       {cells.map(([k, v]) => (
         <div key={k} className="rounded-lg px-3 py-2" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
-          <div className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">{k}</div>
-          <div className="text-[16px] font-bold">{fmtHours(v)}</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{k}</div>
+          <div className="text-lg font-bold">{fmtHours(v)}</div>
         </div>
       ))}
     </div>
@@ -138,11 +138,11 @@ export function Totals({ t }: { t?: { today: number; week: number; month: number
 }
 
 export function Sessions({ list, showUser }: { list: AudioListening["sessions"]; showUser?: boolean }) {
-  if (list.length === 0) return <div className="text-[12px] text-ink-faint">No listening sessions in this period.</div>;
+  if (list.length === 0) return <div className="text-sm text-ink-faint">No listening sessions in this period.</div>;
   return (
     <div className="thin-scroll max-h-[320px] overflow-y-auto">
       {list.map((s, i) => (
-        <div key={i} className="flex items-center justify-between gap-3 py-1.5 text-[12.5px]" style={{ borderTop: i ? "1px solid var(--line-soft)" : undefined }}>
+        <div key={i} className="flex items-center justify-between gap-3 py-1.5 text-base" style={{ borderTop: i ? "1px solid var(--line-soft)" : undefined }}>
           <span className="min-w-0 truncate">
             {showUser && <b>{s.username} · </b>}
             <span className={showUser ? "text-ink-faint" : ""}>{s.device || s.client || "App"}</span>
@@ -156,7 +156,7 @@ export function Sessions({ list, showUser }: { list: AudioListening["sessions"];
 
 export function DaysPicker({ days, setDays }: { days: number; setDays: (d: number) => void }) {
   return (
-    <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
+    <select aria-label="Period" value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg px-2 py-1 text-sm" style={inputStyle}>
       <option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
     </select>
   );

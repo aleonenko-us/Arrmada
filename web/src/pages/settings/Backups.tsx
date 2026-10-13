@@ -26,9 +26,9 @@ const KIND: Record<BackupKind, { label: string; tone: string }> = {
   "pre-insights-repair": { label: "Before Insights cleanup", tone: "var(--avoid)" },
 };
 
-const btn = "rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50";
+const btn = "rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50";
 const btnStyle = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
-const rowBtn = "flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40";
+const rowBtn = "flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40";
 
 function fmtBytes(b: number): string {
   if (!b || b <= 0) return "0 MB";
@@ -166,33 +166,33 @@ export function Backups() {
 
   return (
     <div id="backups" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <h2 className="m-0 text-[14px] font-bold">Backups</h2>
-      <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">
+      <h2 className="m-0 text-md font-bold">Backups</h2>
+      <p className="mb-4 mt-0.5 text-sm text-ink-faint">
         Copies of Arrmada's database: one every night, one before every update, and any you take yourself. Backups contain your API keys and password hashes. They're stored next to the database (on Unraid: /mnt/user/appdata/arrmada/backups when the data dir is in appdata), so download one now and then to keep a copy off this server.
       </p>
 
       <div className="flex flex-col gap-4">
-        {loadErr && <p className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>{loadErr}</p>}
+        {loadErr && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>{loadErr}</p>}
 
         {last && (
-          <div role="status" className="flex items-start gap-3 rounded-lg p-3 text-[12px]" style={{ color: last.ok ? "var(--good)" : "var(--reject)", background: last.ok ? "var(--good-soft)" : "var(--reject-soft)" }}>
+          <div role="status" className="flex items-start gap-3 rounded-lg p-3 text-sm" style={{ color: last.ok ? "var(--good)" : "var(--reject)", background: last.ok ? "var(--good-soft)" : "var(--reject-soft)" }}>
             <div className="min-w-0 flex-1 break-words">
               {last.ok
                 ? <>Restored {last.from} on {when(last.at)}. The database it replaced is kept as a “Before restore” backup.</>
                 : <>The restore on {when(last.at)} didn't happen: {last.error}. Arrmada started on the database as it was.</>}
             </div>
-            <button onClick={() => dismissRestore(last.at)} className="flex-none text-[11px] font-semibold text-ink-dim">Dismiss</button>
+            <button onClick={() => dismissRestore(last.at)} className="flex-none text-xs font-semibold text-ink-dim">Dismiss</button>
           </div>
         )}
 
         {pending && (
-          <div className="flex flex-col gap-2 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--avoid)", background: "var(--panel-2)" }}>
+          <div className="flex flex-col gap-2 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--avoid)", background: "var(--panel-2)" }}>
             <div>
               <b>Restore staged.</b> {pendingFile ? <>The {kindLabel(pendingFile.kind)} backup from {when(pendingFile.created_at)}</> : <>{pending.name}</>} replaces the database the next time Arrmada starts{pending.requested_by ? ` (asked for by ${pending.requested_by})` : ""}. Anything changed until then will be lost.
             </div>
             {!state?.can_restart && (
               <div className="text-ink-dim">
-                Restart the Arrmada container to run it, for example <code className="select-all rounded px-1.5 py-0.5 font-mono text-[11px]" style={{ background: "var(--panel)" }}>docker restart Arrmada-app</code>.
+                Restart the Arrmada container to run it, for example <code className="select-all rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: "var(--panel)" }}>docker restart Arrmada-app</code>.
               </div>
             )}
             <div className="flex flex-wrap gap-2">
@@ -207,23 +207,23 @@ export function Backups() {
           <button onClick={() => fileRef.current?.click()} disabled={busy || progress !== null} title="A .db, or a .db.gz from Download — up to 4 GB" className={btn} style={btnStyle}>Restore from file…</button>
           <input ref={fileRef} type="file" accept=".db,.gz,.sqlite,application/gzip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
           {state && (
-            <span className="text-[12px] text-ink-dim">
+            <span className="text-sm text-ink-dim">
               {state.backups.length} backup{state.backups.length === 1 ? "" : "s"} · <b>{fmtBytes(state.total_bytes)}</b>
               {state.free_bytes !== null && <> · {fmtBytes(state.free_bytes)} free on this disk</>}
             </span>
           )}
         </div>
         {progress !== null && (
-          <div className="flex items-center gap-3 text-[11.5px] text-ink-dim">
+          <div className="flex items-center gap-3 text-sm text-ink-dim">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }} role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
               <div className="h-full rounded-full" style={{ width: `${Math.round(progress * 100)}%`, background: "var(--accent)" }} />
             </div>
             <span className="flex-none font-mono">{progress < 1 ? `${Math.round(progress * 100)}%` : "Checking…"}</span>
           </div>
         )}
-        {msg && <p className="m-0 break-all text-[12px]" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
+        {msg && <p className="m-0 break-all text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
         {uploaded && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
+          <div className="flex flex-wrap items-center gap-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
             <span className="min-w-0 flex-1">Uploaded and checked: {uploaded.name} ({fmtBytes(uploaded.size_bytes)}). It's in the list as Uploaded.</span>
             <button onClick={() => setToRestore(uploaded)} className={btn} style={btnStyle}>Restore it…</button>
           </div>
@@ -231,9 +231,9 @@ export function Backups() {
 
         <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
           {state === null ? (
-            <div className="p-4 text-center text-[12px] text-ink-dim">{loadErr ? "Couldn't load the backups." : "Loading…"}</div>
+            <div className="p-4 text-center text-sm text-ink-dim">{loadErr ? "Couldn't load the backups." : "Loading…"}</div>
           ) : state.backups.length === 0 ? (
-            <div className="p-4 text-center text-[12px] text-ink-dim">No backups yet. The first nightly one is taken within the hour.</div>
+            <div className="p-4 text-center text-sm text-ink-dim">No backups yet. The first nightly one is taken within the hour.</div>
           ) : (
             <div className="thin-scroll max-h-[380px] overflow-y-auto">
               {state.backups.map((b, i) => {
@@ -242,12 +242,12 @@ export function Backups() {
                   <div key={b.name} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2" style={{ borderTop: i === 0 ? undefined : "1px solid var(--line-soft)" }}>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: k.tone, border: `1px solid ${k.tone}` }}>{k.label}</span>
-                        <span className="truncate text-[12.5px] font-medium" title={when(b.created_at)}>{ago(b.created_at)}</span>
+                        <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase tracking-[0.06em]" style={{ color: k.tone, border: `1px solid ${k.tone}` }}>{k.label}</span>
+                        <span className="truncate text-base font-medium" title={when(b.created_at)}>{ago(b.created_at)}</span>
                       </div>
-                      <div className="truncate font-mono text-[10px] text-ink-faint" title={b.name}>{b.name}{b.schema_version ? ` · schema ${b.schema_version.split("_")[0]}` : ""}</div>
+                      <div className="truncate font-mono text-xs text-ink-faint" title={b.name}>{b.name}{b.schema_version ? ` · schema ${b.schema_version.split("_")[0]}` : ""}</div>
                     </div>
-                    <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(b.size_bytes)}</span>
+                    <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(b.size_bytes)}</span>
                     <a href={backupDownloadURL(b.name)} download className={rowBtn} style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</a>
                     <button onClick={() => setToRestore(b)} className={rowBtn} style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Restore</button>
                     <button onClick={() => setToDelete(b)} disabled={pending?.name === b.name} title={pending?.name === b.name ? "Staged to be restored — cancel the restore first" : undefined} className={rowBtn} style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
@@ -260,8 +260,8 @@ export function Backups() {
 
         {state && <NightlySchedule schedule={state.settings} lastNightly={state.last_nightly_at} save={saveSchedule} />}
 
-        {state && <p className="m-0 truncate font-mono text-[10.5px] text-ink-faint" title={state.dir}>{state.dir}</p>}
-        <p className="m-0 text-[10.5px] text-ink-faint">Backups sit on the same disk as the database, so they cover a bad update or a mistake — not a failed disk. That's what Download is for. Restore from file takes a .db or a downloaded .db.gz up to 4 GB; behind Cloudflare anything over 100 MB fails, so upload big ones from your home network.</p>
+        {state && <p className="m-0 truncate font-mono text-xs text-ink-faint" title={state.dir}>{state.dir}</p>}
+        <p className="m-0 text-xs text-ink-faint">Backups sit on the same disk as the database, so they cover a bad update or a mistake — not a failed disk. That's what Download is for. Restore from file takes a .db or a downloaded .db.gz up to 4 GB; behind Cloudflare anything over 100 MB fails, so upload big ones from your home network.</p>
       </div>
 
       {toDelete && (
@@ -301,13 +301,13 @@ export function Backups() {
           panelClassName="max-w-[420px] rounded-2xl p-6 text-center" panelStyle={{ boxShadow: "var(--shadow)" }}>
           {restarting === "waiting" ? (
             <>
-              <h2 className="m-0 text-[15px] font-bold">Restarting…</h2>
-              <p className="mb-0 mt-2 text-[12px] text-ink-dim">Arrmada is restoring the backup and starting again. This page reloads when it's back.</p>
+              <h2 className="m-0 text-lg font-bold">Restarting…</h2>
+              <p className="mb-0 mt-2 text-sm text-ink-dim">Arrmada is restoring the backup and starting again. This page reloads when it's back.</p>
             </>
           ) : (
             <>
-              <h2 className="m-0 text-[15px] font-bold">Still not back</h2>
-              <p className="mt-2 text-[12px] text-ink-dim">Arrmada hasn't answered for two minutes. Check the container is running and look at its log; the card shows how the restore went once it's up.</p>
+              <h2 className="m-0 text-lg font-bold">Still not back</h2>
+              <p className="mt-2 text-sm text-ink-dim">Arrmada hasn't answered for two minutes. Check the container is running and look at its log; the card shows how the restore went once it's up.</p>
               <button onClick={() => window.location.reload()} className={btn} style={btnStyle}>Reload</button>
             </>
           )}
@@ -333,9 +333,9 @@ function NightlySchedule({ schedule, lastNightly, save }: { schedule: BackupSche
       />
       <div className="flex flex-wrap items-start gap-4">
         <AutoSelect label="From" save={hour} options={HOURS} className="font-mono disabled:opacity-50" />
-        <AutoNumber label="Keep" save={keep} min={1} max={365} className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]" />
+        <AutoNumber label="Keep" save={keep} min={1} max={365} className="w-24 rounded-lg px-3 py-2 font-mono text-base" />
       </div>
-      <p className="m-0 text-[10.5px] text-ink-faint">Keeps the newest {keep.value || "…"} nightly backups; older ones are removed after the next nightly. Copies taken before updates (newest 5) and manual ones (newest 10) are kept separately.</p>
+      <p className="m-0 text-xs text-ink-faint">Keeps the newest {keep.value || "…"} nightly backups; older ones are removed after the next nightly. Copies taken before updates (newest 5) and manual ones (newest 10) are kept separately.</p>
     </div>
   );
 }

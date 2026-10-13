@@ -18,7 +18,7 @@ function SeriesMonitorDefault() {
   const save = useAutoSave<MonitorPreset>(current, (v) => commit({ series_monitor_default: v }), { keepOnError: false });
   return (
     <AutoSelect label="Monitor" save={save} options={MONITOR_PRESETS}>
-      <span className="text-[10.5px] text-ink-faint">{MONITOR_PRESETS.find((p) => p.value === save.value)?.help}</span>
+      <span className="text-xs text-ink-faint">{MONITOR_PRESETS.find((p) => p.value === save.value)?.help}</span>
     </AutoSelect>
   );
 }
@@ -32,10 +32,10 @@ function BookLanguages() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[12.5px] font-semibold">Book languages</span>
+        <span className="text-base font-semibold">Book languages</span>
         <SavedTick save={save} />
       </div>
-      <span className="text-[11.5px] text-ink-faint">
+      <span className="text-sm text-ink-faint">
         Automatic grabs skip a release that says it's in another language; 'Search indexers' still lists it so you can pick it by hand. Releases that don't say are always allowed. Leave the list empty to accept any language.
       </span>
       <LanguagePicker value={save.value} onChange={(next) => void save.commit(next)} label="Add a book language" />
@@ -53,7 +53,7 @@ export function LibrarySettings() {
       </Section>
       <Section id="adding-titles" title="Adding titles" subtitle="Defaults when adding movies and series.">
         <AutoToggle label="Search on add" hint="Start searching for a release as soon as a title is added." save={searchOnAdd} />
-        <Link to="/quality" className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Quality profiles →</Link>
+        <Link to="/quality" className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Quality profiles →</Link>
       </Section>
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">
         <SeriesMonitorDefault />

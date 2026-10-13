@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
@@ -9,6 +9,7 @@ import { isAdmin, useMe } from "../../lib/me";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { usePoll } from "../../lib/usePoll";
 import { useToast } from "../../ui";
+import { Switch } from "../../ui/Switch";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { KeptTracksNote, card, cardStyle } from "../subtitles/shared";
 import { SubtitleProfiles } from "./SubtitleProfiles";
@@ -26,8 +27,8 @@ export function SubtitlesSettings() {
   useScrollWhenLoaded(SUBTITLES_SETTINGS_ID, !!settings);
   return (
     <div id={SUBTITLES_SETTINGS_ID} className="flex scroll-mt-20 flex-col gap-4">
-      <h2 className="m-0 text-[15px] font-bold">Subtitles</h2>
-      {settings ? <SubtitlesForm settings={settings} onSaved={setSettings} /> : <p className="m-0 text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p>}
+      <h2 className="m-0 text-lg font-bold">Subtitles</h2>
+      {settings ? <SubtitlesForm settings={settings} onSaved={setSettings} /> : <p className="m-0 text-base text-ink-dim">{error ?? "Loading…"}</p>}
     </div>
   );
 }
@@ -50,10 +51,10 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
     <>
       <div className={card} style={cardStyle}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[14px] font-bold">Kept languages</div>
+          <div className="text-md font-bold">Kept languages</div>
           <SavedTick save={langs} />
         </div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">Arrmada keeps an external <code>.srt</code> for each of these, in this order. <KeptTracksNote /></div>
+        <div className="mt-0.5 text-sm text-ink-faint">Arrmada keeps an external <code>.srt</code> for each of these, in this order. <KeptTracksNote /></div>
         <div className="mt-3">
           <LanguagePicker
             value={langs.value}
@@ -67,8 +68,8 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
       <SubtitleProfiles version={settings.languages.join(",")} />
 
       <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">Automatic</div>
-        <div className="mt-0.5 text-[11.5px] text-ink-faint">When on, every new download gets its subtitles as soon as it imports, and a sweep every six hours catches anything still missing (including releases whose subtitles appeared later). Off = run it yourself from the Library.</div>
+        <div className="text-md font-bold">Automatic</div>
+        <div className="mt-0.5 text-sm text-ink-faint">When on, every new download gets its subtitles as soon as it imports, and a sweep every six hours catches anything still missing (including releases whose subtitles appeared later). Off = run it yourself from the Library.</div>
         <div className="mt-3 flex flex-col gap-2.5">
           <ToggleRow label="Auto-ensure movies" save={movies} />
           <ToggleRow label="Auto-ensure series" save={series} />
@@ -81,8 +82,8 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
         {/* Advanced: how close a download's release must be to the file when it wasn't
             uploaded for this exact file. Read per job, so a change applies to the next one. */}
         <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
-          <AutoNumber label="Minimum match score" save={minScore} min={0} max={100} placeholder="60" className="w-24 rounded-lg px-3 py-2 font-mono text-[12.5px]">
-            <span className="text-[10.5px] text-ink-faint">Advanced. A subtitle uploaded for this exact file is always taken. Any other is scored 0–100 on how closely its release matches the file (group, source, edition, frame rate), and one below this goes to the next source instead. Default 60.</span>
+          <AutoNumber label="Minimum match score" save={minScore} min={0} max={100} placeholder="60" className="w-24 rounded-lg px-3 py-2 font-mono text-base">
+            <span className="text-xs text-ink-faint">Advanced. A subtitle uploaded for this exact file is always taken. Any other is scored 0–100 on how closely its release matches the file (group, source, edition, frame rate), and one below this goes to the next source instead. Default 60.</span>
           </AutoNumber>
         </div>
       </OpenSubtitlesCard>
@@ -127,15 +128,15 @@ function OpenSubtitlesCard({ settings, onChanged, children }: { settings: Subtit
   const tone = chip.tone ? `var(--${chip.tone})` : "var(--ink-faint)";
   return (
     <div className={card} style={cardStyle}>
-      <div className="text-[14px] font-bold">OpenSubtitles (optional download source)</div>
-      <div className="mt-0.5 text-[11.5px] text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it. Downloading needs a free account as well as the API key.</div>
-      <div className="mt-3 flex items-center gap-2 text-[12px]">
-        <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: chip.tone ? `var(--${chip.tone}-soft)` : "var(--panel-2)", color: tone }}>{chip.label}</span>
+      <div className="text-md font-bold">OpenSubtitles (optional download source)</div>
+      <div className="mt-0.5 text-sm text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it. Downloading needs a free account as well as the API key.</div>
+      <div className="mt-3 flex items-center gap-2 text-sm">
+        <span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: chip.tone ? `var(--${chip.tone}-soft)` : "var(--panel-2)", color: tone }}>{chip.label}</span>
         <span className="text-ink-dim" style={settings.provider_state === "auth_failed" ? { color: "var(--reject)" } : undefined}>{providerLine(settings)}</span>
       </div>
       {admin
         ? <KeyEditor ids={keyRowsFor("opensubtitles_api")} ctl={keys} />
-        : <p className="m-0 mt-2 text-[11.5px] text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</p>}
+        : <p className="m-0 mt-2 text-sm text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</p>}
       {children}
     </div>
   );
@@ -154,16 +155,16 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
   return (
     <div className={card} style={cardStyle}>
       <div className="flex items-center justify-between">
-        <div className="text-[14px] font-bold">Local AI (whisper)</div>
-        <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: st?.ready ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: st?.ready ? "var(--good)" : "var(--ink-faint)" }}>
+        <div className="text-md font-bold">Local AI (whisper)</div>
+        <span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: st?.ready ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: st?.ready ? "var(--good)" : "var(--ink-faint)" }}>
           {st?.ready ? "ready" : st?.binary_ready ? "needs a model" : "not installed"}
         </span>
       </div>
-      <div className="mt-0.5 text-[11.5px] text-ink-faint">Generates subtitles from a file's audio when no better source exists — 100% local, no key. Download a model to enable it (large files, runs in the background).</div>
+      <div className="mt-0.5 text-sm text-ink-faint">Generates subtitles from a file's audio when no better source exists — 100% local, no key. Download a model to enable it (large files, runs in the background).</div>
       {/* Which compute backend the last run used. A Vulkan build with no visible device runs
           on the CPU without complaint, so "ready" alone can hide a GPU that isn't being used. */}
       {st?.ready && (
-        <div className="mt-1.5 text-[11.5px]" style={{ color: backend === "vulkan" || backend === "sycl" ? "var(--good)" : "var(--ink-dim)" }}>
+        <div className="mt-1.5 text-sm" style={{ color: backend === "vulkan" || backend === "sycl" ? "var(--good)" : "var(--ink-dim)" }}>
           {backend === "sycl"
             ? "Running on the GPU (Intel oneAPI)."
             : backend === "vulkan"
@@ -176,33 +177,33 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
       {/* The Intel oneAPI build is tried first; when it's set aside, say why rather than
           quietly running slower. */}
       {st?.ready && note && (
-        <div className="mt-1 text-[11.5px]" style={{ color: "var(--avoid)" }}>Intel oneAPI build not in use — {note}</div>
+        <div className="mt-1 text-sm" style={{ color: "var(--avoid)" }}>Intel oneAPI build not in use — {note}</div>
       )}
-      {st && !st.binary_ready && <div className="mt-2 text-[11.5px]" style={{ color: "var(--avoid)" }}>whisper-cli isn't in this build yet — update to a build that bundles it.</div>}
+      {st && !st.binary_ready && <div className="mt-2 text-sm" style={{ color: "var(--avoid)" }}>whisper-cli isn't in this build yet — update to a build that bundles it.</div>}
       <div className="mt-3 flex flex-col gap-2">
         {(st?.models ?? []).map((m) => (
           <div key={m.name} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold">{m.label}</div>
-              <div className="font-mono text-[10px] text-ink-faint">{m.name} · ~{m.size_mb >= 1000 ? `${(m.size_mb / 1000).toFixed(1)} GB` : `${m.size_mb} MB`}</div>
+              <div className="text-sm font-semibold">{m.label}</div>
+              <div className="font-mono text-xs text-ink-faint">{m.name} · ~{m.size_mb >= 1000 ? `${(m.size_mb / 1000).toFixed(1)} GB` : `${m.size_mb} MB`}</div>
             </div>
             {m.present ? (
-              <span className="rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}>installed ✓</span>
+              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}>installed ✓</span>
             ) : m.downloading ? (
-              <span className="rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>downloading…</span>
+              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>downloading…</span>
             ) : (
               <div className="flex flex-none items-center gap-2">
                 {/* What this download would set going: files parked for want of a model. */}
                 {!!st?.waiting && waitingFor(st) === m.name && (
-                  <span className="text-[11px]" style={{ color: "var(--avoid-text)" }}>{st.waiting} file{st.waiting === 1 ? " is" : "s are"} waiting for {m.name.includes("turbo") ? "a model" : "large-v3"}</span>
+                  <span className="text-xs" style={{ color: "var(--avoid-text)" }}>{st.waiting} file{st.waiting === 1 ? " is" : "s are"} waiting for {m.name.includes("turbo") ? "a model" : "large-v3"}</span>
                 )}
-                <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
+                <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
               </div>
             )}
           </div>
         ))}
       </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
+      <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
     </div>
   );
 }
@@ -217,14 +218,12 @@ function waitingFor(st: WhisperStatus): string | undefined {
 }
 
 function ToggleRow({ label, save }: { label: string; save: AutoSave<boolean> }) {
-  const on = save.value;
+  const id = useId();
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[12.5px] font-semibold">{label}</span>
-        <button role="switch" aria-checked={on} aria-label={label} onClick={() => void save.commit(!on)} className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: on ? "translateX(22px)" : "translateX(3px)" }} />
-        </button>
+        <label htmlFor={id} className="text-base font-semibold">{label}</label>
+        <Switch id={id} checked={save.value} onChange={(v) => void save.commit(v)} />
       </div>
       {save.status !== "idle" && <div className="flex justify-end"><SavedTick save={save} /></div>}
     </div>

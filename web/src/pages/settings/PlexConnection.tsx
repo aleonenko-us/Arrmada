@@ -78,47 +78,47 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
     <div className="mt-2 flex flex-col gap-4 border-t pt-3" style={{ borderColor: "var(--line)" }}>
       {choices.length > 1 && (
         <div role="group" aria-label="Choose your Plex server" className="flex flex-col gap-2 rounded-lg p-3" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
-          <div className="text-[12.5px] font-semibold">More than one of your servers answered. Which one should Arrmada use?</div>
+          <div className="text-base font-semibold">More than one of your servers answered. Which one should Arrmada use?</div>
           {choices.map((c) => (
-            <button key={c.machine_id} onClick={() => { setUrl(c.url); void save(c.url); }} disabled={busy !== null} className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg px-3 py-2 text-left text-[12.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+            <button key={c.machine_id} onClick={() => { setUrl(c.url); void save(c.url); }} disabled={busy !== null} className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg px-3 py-2 text-left text-base" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
               <span className="font-semibold">{c.name}</span>
-              <span className="break-all font-mono text-[11px] text-ink-faint">{c.url}</span>
+              <span className="break-all font-mono text-xs text-ink-faint">{c.url}</span>
             </button>
           ))}
         </div>
       )}
       <div className="flex flex-col gap-2">
-        <button onClick={() => { setTest(null); plex.begin(); }} disabled={signingIn} className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-semibold disabled:opacity-60" style={{ background: "#e5a00d", color: "#1f1200" }}>
+        <button onClick={() => { setTest(null); plex.begin(); }} disabled={signingIn} className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-md font-semibold disabled:opacity-60" style={{ background: "#e5a00d", color: "#1f1200" }}>
           {plex.phase === "finishing" ? "Finishing Plex sign-in…" : signingIn ? "Waiting for Plex…" : (cfg?.token_set ? "Re-sign in with Plex" : "Sign in with Plex")}
         </button>
         {(plex.phase === "waiting" || plex.phase === "slow") && (
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11.5px]">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">
             {plex.phase === "slow" && <button onClick={plex.continueHere} className="font-semibold" style={{ color: "var(--accent)" }}>Plex window didn't open? Continue in this tab</button>}
             <button onClick={plex.cancel} className="text-ink-faint underline">Cancel</button>
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 text-[10.5px] text-ink-faint">
+      <div className="flex items-center gap-2 text-xs text-ink-faint">
         <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or enter manually <span className="h-px flex-1" style={{ background: "var(--line)" }} />
       </div>
 
       <label className="block">
-        <span className="mb-1 block text-[12px] font-semibold">Server URL</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:32400" className="w-full rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+        <span className="mb-1 block text-sm font-semibold">Server URL</span>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:32400" className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
       </label>
       <label className="block">
-        <span className="mb-1 block text-[12px] font-semibold">X-Plex-Token</span>
-        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
-        <span className="mt-1 block text-[10.5px] text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
+        <span className="mb-1 block text-sm font-semibold">X-Plex-Token</span>
+        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+        <span className="mt-1 block text-xs text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
       </label>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
-        <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
+        <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
+        <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
       </div>
 
       {test && (
-        <div className="rounded-lg p-3 text-[12px]" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good)" : "var(--reject)" }}>
+        <div className="rounded-lg p-3 text-sm" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good)" : "var(--reject)" }}>
           {test.ok ? (
             <div>
               <div className="font-semibold">✓ Connected{test.server_name ? ` to ${test.server_name}` : ""}{test.version ? ` · Plex ${test.version}` : ""}</div>
@@ -131,7 +131,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
           )}
         </div>
       )}
-      <p className="m-0 text-[11px] text-ink-faint">
+      <p className="m-0 text-xs text-ink-faint">
         Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex →</Link>
       </p>
     </div>

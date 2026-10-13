@@ -4,6 +4,7 @@ import { type LogEntry } from "../lib/api";
 import { systemApi, type LogLevelState } from "../lib/systemApi";
 import { usePoll } from "../lib/usePoll";
 import { Button, Menu, useToast } from "../ui";
+import { Page } from "../ui/Page";
 
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const LEVEL_STYLE: Record<string, { color: string; label: string }> = {
@@ -93,12 +94,12 @@ function DebugSwitch({ onEnabled }: { onEnabled: () => void }) {
 
   if (!state) return null;
   if (state.env_level === "debug") {
-    return <span className="text-[11.5px] text-ink-faint" title="ARRMADA_LOG_LEVEL is debug for this install">Debug is always on</span>;
+    return <span className="text-sm text-ink-faint" title="ARRMADA_LOG_LEVEL is debug for this install">Debug is always on</span>;
   }
   if (raised) {
     return (
       <span className="flex items-center gap-2">
-        <span className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} title={`Debug lines until ${new Date(until).toLocaleTimeString()}, then back to ${state.env_level}`}>
+        <span className="font-mono text-sm" style={{ color: "var(--accent)" }} title={`Debug lines until ${new Date(until).toLocaleTimeString()}, then back to ${state.env_level}`}>
           Debug on · {fmtLeft(until - now)} left
         </span>
         <Button size="sm" onClick={() => change("")} busy={busy}>Back to normal</Button>
@@ -228,15 +229,15 @@ export function Logs() {
   return (
     <>
       <PageHeader title="Logs" />
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-3 px-4 py-5">
+      <Page className="flex flex-col gap-3 py-5">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg" role="group" aria-label="Lowest level shown" style={{ border: "1px solid var(--line)" }}>
             {LEVELS.map((l) => (
-              <button key={l} onClick={() => setLevel(l)} aria-pressed={level === l} className="px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent)" : "var(--ink-dim)" }}>{l}</button>
+              <button key={l} onClick={() => setLevel(l)} aria-pressed={level === l} className="px-3 py-1.5 text-sm font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent)" : "var(--ink-dim)" }}>{l}</button>
             ))}
           </div>
-          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Show only lines containing" placeholder="Show only lines containing…" className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <input value={hide} onChange={(e) => setHide(e.target.value)} aria-label="Hide lines containing" placeholder="Hide lines containing… (comma-separated)" title="Drop noisy lines. Comma-separated; matches the message or any field." className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Show only lines containing" placeholder="Show only lines containing…" className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <input value={hide} onChange={(e) => setHide(e.target.value)} aria-label="Hide lines containing" placeholder="Hide lines containing… (comma-separated)" title="Drop noisy lines. Comma-separated; matches the message or any field." className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
           <Button
             size="sm"
             onClick={() => setHide((h) => (h === NOISE ? "" : NOISE))}
@@ -246,7 +247,7 @@ export function Logs() {
           >
             {hide === NOISE ? "Noise hidden" : "Hide noise"}
           </Button>
-          <select value={module} onChange={(e) => setModule(e.target.value)} aria-label="Module" title="Only one part of the app's lines" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+          <select value={module} onChange={(e) => setModule(e.target.value)} aria-label="Module" title="Only one part of the app's lines" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
             <option value="">All modules</option>
             {modules.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -256,7 +257,7 @@ export function Logs() {
           <Menu
             trigger="Download ▾"
             label="Download logs"
-            triggerClassName="rounded-md px-2.5 py-1 text-[11.5px] font-semibold"
+            triggerClassName="rounded-md px-2.5 py-1 text-sm font-semibold"
             triggerStyle={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             menuWidthClassName="min-w-[260px]"
             items={[
@@ -268,15 +269,15 @@ export function Logs() {
           <DebugSwitch onEnabled={() => setLevel("debug")} />
         </div>
 
-        {err && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{err}</div>}
+        {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
 
-        <div ref={scroller} onScroll={onScroll} className="thin-scroll overflow-auto rounded-xl p-2 font-mono text-[11.5px] leading-[1.5]" style={{ background: "var(--panel)", border: "1px solid var(--line)", height: "calc(100vh - 220px)" }}>
+        <div ref={scroller} onScroll={onScroll} className="thin-scroll overflow-auto rounded-xl p-2 font-mono text-sm leading-[1.5]" style={{ background: "var(--panel)", border: "1px solid var(--line)", height: "calc(100vh - 220px)" }}>
           {entries === null ? (
             <div className="p-6 text-center text-ink-dim">Loading…</div>
           ) : entries.length === 0 ? (
             <div className="p-6 text-center text-ink-dim">
               No log lines match.
-              {(dq || dhide || module) && <div className="mt-1 text-[11px]">Your filters may be too narrow — clear them to see everything.</div>}
+              {(dq || dhide || module) && <div className="mt-1 text-xs">Your filters may be too narrow — clear them to see everything.</div>}
             </div>
           ) : (
             entries.map((e, i) => {
@@ -294,11 +295,11 @@ export function Logs() {
             })
           )}
         </div>
-        <p className="text-[11px] text-ink-faint">
+        <p className="text-xs text-ink-faint">
           Showing the newest {(entries?.length ?? 0).toLocaleString()} matching lines{dhide ? " (some hidden by your filter)" : ""}
           {capacity ? ` of the last ${capacity.toLocaleString()} kept in memory` : ""}. Older lines are in the logs folder on disk (/data/logs in the container); Download → Full log history has them all. Same stream as the container logs.
         </p>
-      </div>
+      </Page>
     </>
   );
 }

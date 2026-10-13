@@ -75,7 +75,7 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <span className="flex w-full min-w-0 flex-wrap items-center gap-2.5 sm:w-auto">
         {lead}
-        <span className="font-mono text-[11px] text-ink-faint">{count === null ? "" : `${count} in library`}</span>
+        <span className="font-mono text-xs text-ink-faint">{count === null ? "" : `${count} in library`}</span>
         {running.map((t) => <StatusChip key={t.label} tone="accent" title={t.title}>{t.progress}</StatusChip>)}
       </span>
       <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
@@ -84,7 +84,7 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
             {g.options.map((o) => {
               const on = g.value === o.value;
               return (
-                <button key={o.value} onClick={() => g.onChange(o.value)} aria-pressed={on} className="whitespace-nowrap rounded-md px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--ink-faint)" }}>
+                <button key={o.value} onClick={() => g.onChange(o.value)} aria-pressed={on} className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold capitalize" style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--ink-faint)" }}>
                   {o.label}
                 </button>
               );
@@ -93,8 +93,8 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
         ))}
         {[...pickers, ...(sort ? [sort] : [])].map((p) => (
           <label key={p.label} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg py-0.5 pl-2.5 pr-1" style={PANEL}>
-            <span className="font-mono text-[10px] uppercase text-ink-faint">{p.label}</span>
-            <select value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-label={p.label} className="rounded-md bg-transparent py-1 pr-1 text-[12px] font-semibold" style={{ color: "var(--ink)" }}>
+            <span className="font-mono text-2xs uppercase text-ink-faint">{p.label}</span>
+            <select value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-label={p.label} className="rounded-md bg-transparent py-1 pr-1 text-sm font-semibold" style={{ color: "var(--ink)" }}>
               {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
@@ -103,7 +103,7 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
           <button
             onClick={select.onToggle}
             aria-pressed={select.active}
-            className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold"
+            className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold"
             style={{ border: `1px solid ${select.active ? "var(--accent)" : "var(--line)"}`, background: select.active ? "var(--accent-soft)" : "var(--panel-2)", color: select.active ? "var(--accent)" : "var(--ink)" }}
           >
             {select.active ? "Done" : "Select"}
@@ -114,10 +114,10 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
             label="Library tools"
             trigger={<>
               <span aria-hidden="true">⋯</span> Tools
-              {toolsBadge > 0 && <span aria-hidden="true" className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{toolsBadge}</span>}
+              {toolsBadge > 0 && <span aria-hidden="true" className="ml-1.5 rounded-full px-1.5 py-px font-mono text-xs" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{toolsBadge}</span>}
             </>}
             items={items}
-            triggerClassName="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold"
+            triggerClassName="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold"
             triggerStyle={{ ...PANEL, color: "var(--ink)" }}
             itemClassName="min-h-[40px]"
             // Portalled so the list is kept on screen: on a phone the button wraps to the
@@ -126,17 +126,17 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
           />
         )}
         {actions.map((a) => (
-          <button key={a.label} onClick={a.onClick} disabled={a.disabled || a.busy} aria-busy={a.busy || undefined} title={a.title} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ ...PANEL, color: "var(--ink)" }}>
+          <button key={a.label} onClick={a.onClick} disabled={a.disabled || a.busy} aria-busy={a.busy || undefined} title={a.title} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold disabled:opacity-60" style={{ ...PANEL, color: "var(--ink)" }}>
             {a.busy && a.busyLabel ? a.busyLabel : a.label}
           </button>
         ))}
         {secondary && (
-          <button onClick={secondary.onClick} disabled={secondary.disabled} title={secondary.title} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
+          <button onClick={secondary.onClick} disabled={secondary.disabled} title={secondary.title} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
             {secondary.label}
           </button>
         )}
         {primary && (
-          <button onClick={primary.onClick} disabled={primary.disabled} title={primary.title} className="bg-accent-grad shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12.5px] font-semibold text-accent-ink disabled:opacity-50">
+          <button onClick={primary.onClick} disabled={primary.disabled} title={primary.title} className="bg-accent-grad shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-semibold text-accent-ink disabled:opacity-50">
             {primary.label}
           </button>
         )}

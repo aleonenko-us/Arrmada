@@ -31,26 +31,26 @@ export function TestName({ sp }: { sp: StoredProfile }) {
 
   return (
     <div className="rounded-xl p-4" style={panelStyle}>
-      <div className="mb-0.5 text-[13px] font-semibold">Test a release name</div>
-      <div className="mb-2.5 text-[11px] text-ink-faint">Paste a name to see what's read from it and what this profile, as edited, makes of it.</div>
+      <div className="mb-0.5 text-md font-semibold">Test a release name</div>
+      <div className="mb-2.5 text-xs text-ink-faint">Paste a name to see what's read from it and what this profile, as edited, makes of it.</div>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Show.S01E01.1080p.WEB.h264-GROUP" aria-label="Release name to test"
-        className="w-full rounded-lg px-2.5 py-1.5 font-mono text-[12px]" style={fieldStyle} />
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-ink-faint">
+        className="w-full rounded-lg px-2.5 py-1.5 font-mono text-sm" style={fieldStyle} />
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
         <label className="flex items-center gap-1.5">
           Size
           <input type="number" min={0} step={0.1} value={size} onChange={(e) => setSize(e.target.value)} placeholder="—" aria-label="Size in GB"
-            className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-[12px]" style={fieldStyle} />
+            className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={fieldStyle} />
           GB
         </label>
         <label className="flex items-center gap-1.5">
           Runtime
           <input type="number" min={0} step={1} value={runtime} onChange={(e) => setRuntime(e.target.value)} placeholder="—" aria-label="Runtime in minutes"
-            className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-[12px]" style={fieldStyle} />
+            className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={fieldStyle} />
           min
         </label>
-        <span className="text-[10.5px]">Both, and the bitrate window applies.</span>
+        <span className="text-xs">Both, and the bitrate window applies.</span>
       </div>
-      {err && <div className="mt-2.5 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
       {res && trimmed && <Result res={res} />}
     </div>
   );
@@ -90,15 +90,15 @@ function ParsedChips({ r, bitrate }: { r: ParsedRelease; bitrate: number }) {
   if (bitrate > 0) add("Bitrate", `${bitrate.toFixed(1)} Mb/s`);
   return (
     <div>
-      <div className="mb-1.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Read from the name</div>
+      <div className="mb-1.5 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Read from the name</div>
       {chips.length === 0 ? (
-        <div className="text-[11.5px] text-ink-dim">Nothing recognisable — no resolution, source or codec in the name.</div>
+        <div className="text-sm text-ink-dim">Nothing recognisable — no resolution, source or codec in the name.</div>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {chips.map((c) => (
-            <span key={c.label} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-mono text-[10.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)" }}>
+            <span key={c.label} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)" }}>
               <span className="text-ink-faint">{c.label}</span> {c.value}
-              {c.inferred && <span className="rounded px-1 text-[8.5px] font-bold uppercase" style={{ background: "var(--line)", color: "var(--ink-dim)" }} title="Not written in the name — read from how it's written">inferred</span>}
+              {c.inferred && <span className="rounded px-1 text-xs font-bold uppercase" style={{ background: "var(--line)", color: "var(--ink-dim)" }} title="Not written in the name — read from how it's written">inferred</span>}
             </span>
           ))}
         </div>
@@ -117,10 +117,10 @@ function Verdict({ ev }: { ev: QualityExplain["evaluation"] }) {
     text = `Eligible, but avoided — it has ${(ev.avoided_formats ?? []).join(", ")}. Grabbed only when nothing else is available.`;
   }
   return (
-    <div className="rounded-lg px-3 py-2 text-[12px] font-semibold" style={{ background: bg, color: tone, border: `1px solid ${tone}` }}>
+    <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ background: bg, color: tone, border: `1px solid ${tone}` }}>
       {text}
       {ev.eligible && (ev.matched ?? []).length > 0 && (
-        <div className="mt-0.5 text-[11px] font-normal text-ink-dim">Matches what you prefer: {(ev.matched ?? []).join(", ")}</div>
+        <div className="mt-0.5 text-xs font-normal text-ink-dim">Matches what you prefer: {(ev.matched ?? []).join(", ")}</div>
       )}
     </div>
   );
@@ -138,15 +138,15 @@ function FormatTable({ formats }: { formats: FormatCheck[] }) {
   if (formats.length === 0) return null;
   return (
     <div className="overflow-hidden rounded-lg" style={{ border: "1px solid var(--line)" }}>
-      <div className="flex px-3 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel-2)" }}>
+      <div className="flex px-3 py-1.5 font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel-2)" }}>
         <span className="flex-1">Format</span><span className="w-[56px] text-center">Profile</span><span className="w-[48px] text-right">Has it</span>
       </div>
       {formats.map((f) => {
         const st = stateOf(f);
         return (
-          <div key={f.name} className="flex items-center px-3 py-1 text-[11.5px]" style={{ borderTop: "1px solid var(--line-soft)" }}>
-            <span className="min-w-0 flex-1 truncate">{f.name}{f.custom && <span className="ml-1.5 text-[10px] text-ink-faint">custom</span>}</span>
-            <span className="w-[56px] text-center text-[10.5px] font-semibold" style={{ color: st.color }}>{st.label}</span>
+          <div key={f.name} className="flex items-center px-3 py-1 text-sm" style={{ borderTop: "1px solid var(--line-soft)" }}>
+            <span className="min-w-0 flex-1 truncate">{f.name}{f.custom && <span className="ml-1.5 text-xs text-ink-faint">custom</span>}</span>
+            <span className="w-[56px] text-center text-xs font-semibold" style={{ color: st.color }}>{st.label}</span>
             <span className="w-[48px] text-right font-mono" style={{ color: f.matched ? "var(--good)" : "var(--ink-faint)" }} aria-label={f.matched ? "matched" : "not matched"}>{f.matched ? "✓" : "·"}</span>
           </div>
         );

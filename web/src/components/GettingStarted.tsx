@@ -44,14 +44,14 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
               <Link
                 to={to}
                 onClick={onOpen ? (e) => { e.preventDefault(); onOpen(to); } : undefined}
-                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12.5px] no-underline hover:bg-[var(--panel-2)]"
+                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-base no-underline hover:bg-[var(--panel-2)]"
                 style={{ color: "var(--ink)" }}
               >
                 {label}
-                {!it.done && <span aria-hidden className="ml-auto text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>→</span>}
+                {!it.done && <span aria-hidden className="ml-auto text-sm font-semibold" style={{ color: "var(--accent)" }}>→</span>}
               </Link>
             ) : (
-              <div className="flex items-center gap-2.5 px-2 py-1.5 text-[12.5px]">{label}</div>
+              <div className="flex items-center gap-2.5 px-2 py-1.5 text-base">{label}</div>
             )}
           </li>
         );
@@ -84,7 +84,7 @@ export function GettingStarted() {
   return (
     <section aria-labelledby="getting-started" className="mb-6">
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 id="getting-started" className="m-0 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+        <h2 id="getting-started" className="m-0 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
           Getting started · {left} to go
         </h2>
         <Button variant="ghost" size="sm" onClick={dismiss} busy={dismissing} title="Hide this card. Settings → System → Run setup again still shows the list.">
@@ -92,7 +92,7 @@ export function GettingStarted() {
         </Button>
       </div>
       <div className="rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-        <p className="m-0 mb-2 px-2 text-[12px] text-ink-dim">Each step ticks itself off once it's done.</p>
+        <p className="m-0 mb-2 px-2 text-sm text-ink-dim">Each step ticks itself off once it's done.</p>
         <ChecklistRows items={c.items} />
       </div>
     </section>

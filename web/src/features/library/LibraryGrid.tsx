@@ -7,6 +7,7 @@ import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
 import { compareValues } from "./sort";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
+import { Page } from "../../ui/Page";
 
 export type LibraryViewMode = "grid" | "table";
 const VIEW_OPTIONS = [{ value: "grid", label: "grid" }, { value: "table", label: "table" }];
@@ -96,7 +97,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
 
   const noun = config.noun;
   return (
-    <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+    <Page width="wide">
       <LibraryToolbar
         count={items ? list.length : null}
         lead={p.lead}
@@ -117,9 +118,9 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
 
       {multi && (
         <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-          <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{sel.ids.size} selected</span>
-          <button onClick={() => sel.set(visible.map((it) => it.id))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({visible.length})</button>
-          <button onClick={sel.clear} disabled={sel.ids.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
+          <span className="font-mono text-sm font-semibold" style={{ color: "var(--accent)" }}>{sel.ids.size} selected</span>
+          <button onClick={() => sel.set(visible.map((it) => it.id))} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({visible.length})</button>
+          <button onClick={sel.clear} disabled={sel.ids.size === 0} className="rounded-lg px-2.5 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
           {p.bulkActions && <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />}
           {p.bulkActions?.(sel)}
         </div>
@@ -135,7 +136,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       ) : list.length === 0 ? (
         p.empty
       ) : visible.length === 0 ? (
-        <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+        <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
           {q ? <>No {noun.many} match “<b>{query.trim()}</b>”.</> : <>No {noun.many} match the <b>{active?.label}</b> filter.</>}
         </div>
       ) : view.mode === "table" ? (
@@ -150,6 +151,6 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

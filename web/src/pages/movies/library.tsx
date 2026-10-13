@@ -38,8 +38,8 @@ export function hasAtmos(f?: SummaryMedia): boolean {
 // YesNo renders a clear yes/no so gaps (missing HDR/Atmos) are easy to scan for.
 function YesNo({ on, label }: { on: boolean; label?: string }) {
   return on
-    ? <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "var(--good-soft, rgba(90,140,90,.14))", color: "var(--good)" }}>{label ?? "Yes"}</span>
-    : <span className="text-[11px] text-ink-faint">—</span>;
+    ? <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--good-soft, rgba(90,140,90,.14))", color: "var(--good)" }}>{label ?? "Yes"}</span>
+    : <span className="text-xs text-ink-faint">—</span>;
 }
 
 // DownloadBar is a download's progress along the poster's foot, labelled when it's an
@@ -50,11 +50,11 @@ function DownloadBar({ d }: { d: MovieDownload }) {
   return (
     <div className="absolute inset-x-0 bottom-0 p-1.5">
       <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1" style={{ background: "rgba(20,12,7,.82)" }} title={label ? `Downloading: ${label}` : "Downloading"}>
-        {label && <span className="max-w-[60px] truncate font-mono text-[8.5px] font-bold uppercase" style={{ color: "var(--accent)" }}>{label}</span>}
+        {label && <span className="max-w-[60px] truncate font-mono text-2xs font-bold uppercase" style={{ color: "var(--accent)" }}>{label}</span>}
         <div className="h-1 flex-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.25)" }}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
         </div>
-        <span className="font-mono text-[9px] font-bold" style={{ color: "#fff" }}>{pct}%</span>
+        <span className="font-mono text-xs font-bold" style={{ color: "#fff" }}>{pct}%</span>
       </div>
     </div>
   );
@@ -81,7 +81,7 @@ export function hdrBadge(f?: SummaryMedia): string {
 }
 
 function Badge({ children }: { children: ReactNode }) {
-  return <span className="rounded px-1 py-px font-mono text-[8.5px] font-bold leading-[1.4]" style={{ background: POSTER_CHIP_BG, color: "#fff" }}>{children}</span>;
+  return <span className="rounded px-1 py-px font-mono text-xs font-bold leading-[1.4]" style={{ background: POSTER_CHIP_BG, color: "#fff" }}>{children}</span>;
 }
 
 // MovieBadges sit over a poster's top-left corner: the monitored dot (filled when
@@ -141,19 +141,19 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
     compare: (a, b) => (a.sort_title || a.title).localeCompare(b.sort_title || b.title),
     tableMinWidth: 900,
     columns: [
-      { key: "status", label: "Status", sort: (m) => (m.has_file ? 0 : m.monitored ? 1 : 2), cell: (m) => { const st = movieStatus(m, undefined, queueKnown); return <span className="font-mono text-[10px] uppercase" style={{ color: st.color }}>{st.label}</span>; } },
+      { key: "status", label: "Status", sort: (m) => (m.has_file ? 0 : m.monitored ? 1 : 2), cell: (m) => { const st = movieStatus(m, undefined, queueKnown); return <span className="font-mono text-2xs uppercase" style={{ color: st.color }}>{st.label}</span>; } },
       { key: "resolution", label: "Resolution", sort: (m) => resValue(m.media), cell: (m) => m.media?.resolution || (m.media?.quality ? m.media.quality.split(" ")[0] : "—") },
       { key: "codec", label: "Codec", sort: (m) => m.media?.codec || undefined, cell: (m) => <span style={bad(m, "codec")}>{m.media?.codec || "—"}</span> },
       { key: "audio", label: "Audio", sort: (m) => (m.media?.audio?.length ? m.media.audio.join(", ").toLowerCase() : undefined), cell: (m) => <span style={bad(m, "lossless")}>{m.media?.audio?.length ? m.media.audio.join(", ") : "—"}</span> },
-      { key: "atmos", label: "Atmos", sort: (m) => (hasAtmos(m.media) ? 1 : 0), cell: (m) => (hasIssue(fits.get(m.id)?.fit, "atmos") ? <span className="text-[11px] font-semibold" style={{ color: FIT_COLOR.over }}>No</span> : <YesNo on={hasAtmos(m.media)} />) },
+      { key: "atmos", label: "Atmos", sort: (m) => (hasAtmos(m.media) ? 1 : 0), cell: (m) => (hasIssue(fits.get(m.id)?.fit, "atmos") ? <span className="text-xs font-semibold" style={{ color: FIT_COLOR.over }}>No</span> : <YesNo on={hasAtmos(m.media)} />) },
       { key: "hdr", label: "HDR", sort: (m) => (m.media?.hdr?.length ? 1 : 0), cell: (m) => {
         const hdr = m.media?.hdr;
-        if (hasIssue(fits.get(m.id)?.fit, "hdr")) return <span className="text-[11px] font-semibold" style={{ color: FIT_COLOR.over }}>{hdr?.length ? hdr.join("/") : "SDR"}</span>;
+        if (hasIssue(fits.get(m.id)?.fit, "hdr")) return <span className="text-xs font-semibold" style={{ color: FIT_COLOR.over }}>{hdr?.length ? hdr.join("/") : "SDR"}</span>;
         return hdr?.length ? <YesNo on label={hdr.join("/")} /> : <YesNo on={false} />;
       } },
-      { key: "type", label: "Type", sort: (m) => m.media?.container || undefined, cell: (m) => <span className="font-mono text-[11px] text-ink-dim">{m.media?.container || "—"}</span> },
-      { key: "size", label: "Size", align: "right", className: "font-mono text-[11px] text-ink-dim", sort: (m) => m.size_bytes || undefined, cell: (m) => gb(m.size_bytes) },
-      { key: "bitrate", label: "Bitrate", align: "right", className: "font-mono text-[11px] text-ink-dim", sort: (m) => m.media?.bitrate_mbps || undefined, cell: (m) => {
+      { key: "type", label: "Type", sort: (m) => m.media?.container || undefined, cell: (m) => <span className="font-mono text-xs text-ink-dim">{m.media?.container || "—"}</span> },
+      { key: "size", label: "Size", align: "right", className: "font-mono text-xs text-ink-dim", sort: (m) => m.size_bytes || undefined, cell: (m) => gb(m.size_bytes) },
+      { key: "bitrate", label: "Bitrate", align: "right", className: "font-mono text-xs text-ink-dim", sort: (m) => m.media?.bitrate_mbps || undefined, cell: (m) => {
         const fi = fits.get(m.id);
         const c = bitrateColor(fi?.fit);
         const n = m.media?.bitrate_mbps;
@@ -177,9 +177,9 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
 export function FitLegend({ judged, misfits }: { judged: number; misfits: number }) {
   if (judged === 0) return null;
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-3 text-[11.5px] text-ink-dim">
+    <div className="mb-2 flex flex-wrap items-center gap-3 text-sm text-ink-dim">
       <span>{misfits} of {judged} judged files don't fit their profile</span>
-      <span className="text-[10.5px] text-ink-faint">
+      <span className="text-xs text-ink-faint">
         <span style={{ color: FIT_COLOR.over }}>■</span> over the bitrate ceiling ·{" "}
         <span style={{ color: FIT_COLOR.under }}>■</span> under the floor ·{" "}
         <span style={{ color: FIT_COLOR.mismatch }}>■</span> bitrate fine, spec isn't ·{" "}

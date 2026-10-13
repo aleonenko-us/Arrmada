@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Field, Section, input, inputStyle } from "../../components/settings/ui";
+import { Section, input, inputStyle } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { type ImportRun } from "../../lib/api";
 import { importApi } from "../../lib/importApi";
 import { invalidate, useQuery } from "../../lib/query";
@@ -114,7 +115,7 @@ export function TautulliImport() {
         <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keySaved ? "saved — leave blank to keep it" : "from Tautulli → Settings → Web Interface → API Key"} className={input} style={inputStyle} autoComplete="off" />
       </Field>
       {firstLive > 0 && (
-        <label className="flex items-center gap-2 text-[12px]">
+        <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={onlyBefore} onChange={(e) => setOnlyBefore(e.target.checked)} />
           Only import plays from before {day(firstLive)}, when Arrmada started recording
         </label>
@@ -123,7 +124,7 @@ export function TautulliImport() {
         <Button variant="primary" onClick={run} disabled={job.running || !url.trim() || (!key.trim() && !keySaved)} busy={starting} busyLabel="Connecting…">
           Import history
         </Button>
-        {job.running && job.message && <span className="text-[11.5px] text-ink-faint">{job.message}</span>}
+        {job.running && job.message && <span className="text-sm text-ink-faint">{job.message}</span>}
       </div>
       {list.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -143,9 +144,9 @@ function RunRow({ run: r, busy, onRetry, onRemove }: { run: ImportRun; busy: boo
   return (
     <div className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-semibold">Import · {when(r.started_at)}</span>
+        <span className="text-sm font-semibold">Import · {when(r.started_at)}</span>
         <StatusChip tone={st.tone}>{st.label}</StatusChip>
-        {r.cutoff_at > 0 && <span className="text-[11px] text-ink-faint">plays before {day(r.cutoff_at)}</span>}
+        {r.cutoff_at > 0 && <span className="text-xs text-ink-faint">plays before {day(r.cutoff_at)}</span>}
         <span className="flex-1" />
         {canRetry(r) && <Button size="sm" onClick={onRetry} disabled={busy}>Retry</Button>}
         {r.rows > 0 && r.status !== "running" && <Button size="sm" variant="danger" onClick={onRemove} disabled={busy}>Remove this import</Button>}
@@ -155,12 +156,12 @@ function RunRow({ run: r, busy, onRetry, onRemove }: { run: ImportRun; busy: boo
           <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Import progress">
             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
           </div>
-          <span className="font-mono text-[11px] tabular-nums text-ink-faint">{r.total > 0 ? `${r.processed.toLocaleString()} / ${r.total.toLocaleString()}` : "starting…"}</span>
+          <span className="font-mono text-xs tabular-nums text-ink-faint">{r.total > 0 ? `${r.processed.toLocaleString()} / ${r.total.toLocaleString()}` : "starting…"}</span>
         </div>
       )}
-      <span className="text-[11.5px] text-ink-dim">{runSummary(r)}</span>
-      {r.error && <span className="text-[11.5px]" style={{ color: "var(--reject)" }}>{r.error}</span>}
-      {r.removed_at > 0 && <span className="text-[11.5px] text-ink-faint">Removed {r.removed_rows.toLocaleString()} of its plays on {day(r.removed_at)}.</span>}
+      <span className="text-sm text-ink-dim">{runSummary(r)}</span>
+      {r.error && <span className="text-sm" style={{ color: "var(--reject)" }}>{r.error}</span>}
+      {r.removed_at > 0 && <span className="text-sm text-ink-faint">Removed {r.removed_rows.toLocaleString()} of its plays on {day(r.removed_at)}.</span>}
     </div>
   );
 }
@@ -203,7 +204,7 @@ function DoubleCounts({ count, firstLive }: { count: number; firstLive: number }
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-      <span className="flex-1 text-[12px]">
+      <span className="flex-1 text-sm">
         An earlier import counted {plays} twice: they were also recorded live.
       </span>
       <Button variant="danger" size="sm" onClick={remove} busy={starting || job.running} busyLabel={job.message || "Removing…"}>

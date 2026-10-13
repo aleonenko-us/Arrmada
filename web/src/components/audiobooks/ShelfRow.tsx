@@ -22,7 +22,7 @@ export function ShelfRow({ shelf, onOpen }: { shelf: AudioShelf; onOpen: (key: s
   const label = shelfLabel(shelf);
   return (
     <section aria-label={label}>
-      <h2 className="m-0 mb-2 text-[15px] font-bold">{label}</h2>
+      <h2 className="m-0 mb-2 text-lg font-bold">{label}</h2>
       <div className="thin-scroll -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0" style={{ scrollSnapType: "x proximity" }}>
         {shelf.items.map((c) => (
           <BookCard key={c.key} c={c} onOpen={onOpen} className="w-[128px] flex-none sm:w-[140px]" />

@@ -75,7 +75,7 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between">
-        {title ? <h2 className="m-0 min-w-0 text-[15px] font-bold">{title}</h2> : <span />}
+        {title ? <h2 className="m-0 min-w-0 text-lg font-bold">{title}</h2> : <span />}
         {items && items.length > 0 && (
           <div className="flex flex-none items-center gap-2">
             {seeAll && <SeeAll to={seeAll} label={title} />}
@@ -102,6 +102,6 @@ export function SeeAll({ to, label }: { to: string | (() => void); label: string
   const aria = label ? `See all: ${label}` : "See all";
   const style = { color: "var(--accent)" };
   return typeof to === "string"
-    ? <Link to={to} aria-label={aria} className="text-[12px] font-semibold" style={style}>See all →</Link>
-    : <button onClick={to} aria-label={aria} className="min-h-[28px] text-[12px] font-semibold" style={style}>See all →</button>;
+    ? <Link to={to} aria-label={aria} className="text-sm font-semibold" style={style}>See all →</Link>
+    : <button onClick={to} aria-label={aria} className="min-h-[28px] text-sm font-semibold" style={style}>See all →</button>;
 }

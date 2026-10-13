@@ -62,20 +62,20 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
   return (
     <Modal onClose={onClose} labelledBy={titleId} size="lg">
       <div className="mb-1 flex items-center justify-between">
-        <h2 id={titleId} className="m-0 text-[15px] font-bold">Manual import</h2>
+        <h2 id={titleId} className="m-0 text-lg font-bold">Manual import</h2>
         <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
-      <p className="mb-3 text-[12px] text-ink-dim">Pick episode files already on disk to import as <b>{series.title}</b>. Season/episode is detected from each filename; files are renamed to the library scheme.</p>
-      {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      <p className="mb-3 text-sm text-ink-dim">Pick episode files already on disk to import as <b>{series.title}</b>. Season/episode is detected from each filename; files are renamed to the library scheme.</p>
+      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
       {background && (
-        <div className="mb-3 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+        <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
           Importing in the background — this can take several minutes for a large pack.
           You can close this and keep using the page; the episode list updates as it goes, and a note appears when it's done.
         </div>
       )}
       {folders.length > 0 && (
         <div className="mb-3">
-          <div className="mb-1.5 text-[11px] font-semibold text-ink-dim">Whole downloads</div>
+          <div className="mb-1.5 text-xs font-semibold text-ink-dim">Whole downloads</div>
           {folders.map((f) => (
             <button
               key={f.path}
@@ -85,38 +85,38 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
               style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[12.5px] font-medium" title={f.path}>{f.name}</div>
-                <div className="mt-0.5 font-mono text-[10.5px] text-ink-faint">
+                <div className="truncate text-base font-medium" title={f.path}>{f.name}</div>
+                <div className="mt-0.5 font-mono text-xs text-ink-faint">
                   {f.count} video files — imported together, keeping whichever copy of each episode is better
                 </div>
               </div>
-              <span className="flex-none text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+              <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>
                 {importing === f.path ? "Importing…" : "Import all"}
               </span>
             </button>
           ))}
         </div>
       )}
-      {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
+      {notice && <div className="mb-2 text-sm text-ink-faint">{notice}</div>}
       <div className="thin-scroll max-h-[52vh] overflow-y-auto">
         {cands === null ? (
-          <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
+          <div className="p-6 text-center text-base text-ink-dim">Scanning…</div>
         ) : cands.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-ink-dim">No importable video files found in the downloads folder.</div>
+          <div className="p-6 text-center text-base text-ink-dim">No importable video files found in the downloads folder.</div>
         ) : (
           cands.map((c) => {
             const detected = c.season > 0 && c.episode > 0;
             return (
               <button key={c.path} onClick={() => detected && doImport(c.path)} disabled={importing !== null || !detected} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)] disabled:opacity-50">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
-                  <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
+                  <div className="truncate text-base font-medium" title={c.filename}>{c.filename}</div>
+                  <div className="mt-0.5 flex items-center gap-3 font-mono text-xs text-ink-faint">
                     {detected ? <span style={{ color: "var(--accent)" }}>S{String(c.season).padStart(2, "0")}E{String(c.episode).padStart(2, "0")}</span> : <span style={{ color: "var(--avoid)" }}>No S/E detected</span>}
                     {c.quality && <span>{c.quality}</span>}
                     <span>{fmtSize(c.size_bytes)}</span>
                   </div>
                 </div>
-                <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
               </button>
             );
           })

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { AutoNumber, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
-import { Field, Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { api, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
 import { systemApi } from "../../lib/systemApi";
 import { LINKS } from "../../lib/links";
@@ -16,7 +17,7 @@ export function DownloadsSettings() {
   return (
     <div className="flex flex-col gap-6">
       <Section id="download-links" title="Download clients and indexers" subtitle="Both live on Settings → Connections, with their live status: where downloads are sent, and where releases are searched for.">
-        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-semibold">
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
           <Link to={LINKS.downloadClients} style={{ color: "var(--accent)" }}>Download clients →</Link>
           <Link to={LINKS.indexers} style={{ color: "var(--accent)" }}>Indexers →</Link>
         </div>
@@ -117,10 +118,10 @@ function RecycleBin() {
   return (
     <Section id="recycle-bin" title="Recycle bin" subtitle="Deleted & replaced files (movie/episode deletes and Convert originals) are moved into a hidden .arrmada-recycle folder inside the library they came from — a quick move on the same drive, hidden from Plex — instead of being erased, so a mistake can be undone until the guard rails below purge it. The size cap counts every bin together, and the oldest files go first once they're over it. Convert only starts a file whose original fits under the cap. To restore a converted film, delete the converted file first: the bin won't restore over it.">
       {stats && !stats.enabled ? (
-        <p className="text-[12px] text-ink-dim">Recycling is turned off (<code>ARRMADA_RECYCLE_DIR=off</code>) — deleted files are erased immediately, and Convert deletes each original once its conversion is verified, with no undo.</p>
+        <p className="text-sm text-ink-dim">Recycling is turned off (<code>ARRMADA_RECYCLE_DIR=off</code>) — deleted files are erased immediately, and Convert deletes each original once its conversion is verified, with no undo.</p>
       ) : (
         <>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12.5px]">
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-base">
             <span>Holding <b>{stats ? fmtBytes(stats.bytes) : "…"}</b>{stats ? ` · ${stats.files} file${stats.files === 1 ? "" : "s"}` : ""}</span>
             {stats?.oldest_unix ? <span className="text-ink-faint">oldest {ageOf(stats.oldest_unix)}</span> : null}
           </div>
@@ -129,66 +130,66 @@ function RecycleBin() {
               {bins.map((b, i) => (
                 <div key={b.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" style={i > 0 ? { borderTop: "1px solid var(--line-soft)" } : undefined}>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2 text-[12.5px] font-medium">
+                    <div className="flex flex-wrap items-center gap-2 text-base font-medium">
                       {b.label}
-                      {b.legacy && <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Legacy bin</span>}
+                      {b.legacy && <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Legacy bin</span>}
                     </div>
-                    <div className="truncate font-mono text-[10.5px] text-ink-faint" title={b.dir}>{b.dir}</div>
-                    {b.legacy && <div className="text-[10.5px] text-ink-faint">Where deletes used to go. Only files outside every library folder land here now — empty it once you've checked it.</div>}
-                    {b.other_drive && <div className="text-[10.5px]" style={{ color: "var(--avoid)" }}>On a different drive from your library — every delete into it is a full copy.</div>}
+                    <div className="truncate font-mono text-xs text-ink-faint" title={b.dir}>{b.dir}</div>
+                    {b.legacy && <div className="text-xs text-ink-faint">Where deletes used to go. Only files outside every library folder land here now — empty it once you've checked it.</div>}
+                    {b.other_drive && <div className="text-xs" style={{ color: "var(--avoid)" }}>On a different drive from your library — every delete into it is a full copy.</div>}
                   </div>
-                  <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(b.bytes)} · {b.files} file{b.files === 1 ? "" : "s"}{b.free_known ? ` · ${fmtBytes(b.free_bytes)} free` : ""}</span>
+                  <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(b.bytes)} · {b.files} file{b.files === 1 ? "" : "s"}{b.free_known ? ` · ${fmtBytes(b.free_bytes)} free` : ""}</span>
                   {bins.length > 1 && (
-                    <button onClick={() => setConfirm({ kind: "empty", bin: b })} disabled={busy || b.files === 0} className="flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Empty this bin</button>
+                    <button onClick={() => setConfirm({ kind: "empty", bin: b })} disabled={busy || b.files === 0} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Empty this bin</button>
                   )}
                 </div>
               ))}
             </div>
           )}
           {stats && stats.over_cap_bytes > 0 && (
-            <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>
+            <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>
               Over the cap by {fmtBytes(stats.over_cap_bytes)} — {stats.protected_bytes > 0 && stats.over_cap_bytes <= stats.protected_bytes
                 ? "items from the last 3 days are kept until they're older."
                 : "the next hourly clean-up will trim it."}
             </p>
           )}
           {stats && stats.max_gb > 0 && stats.largest_item_bytes > stats.max_gb * 1024 ** 3 && (
-            <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>Your cap ({stats.max_gb} GB) is smaller than the largest file here ({fmtBytes(stats.largest_item_bytes)}).</p>
+            <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>Your cap ({stats.max_gb} GB) is smaller than the largest file here ({fmtBytes(stats.largest_item_bytes)}).</p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <AutoNumber label="Max size (GB)" save={maxGB} min={0} max={100000} placeholder="0">
-              <span className="text-[10.5px] text-ink-faint">0 = unlimited. Over this, the oldest files are purged first — never anything deleted in the last 3 days, or the newest file.</span>
+              <span className="text-xs text-ink-faint">0 = unlimited. Over this, the oldest files are purged first — never anything deleted in the last 3 days, or the newest file.</span>
             </AutoNumber>
             <AutoNumber label="Keep for (days)" save={keepDays} min={0} max={36500} placeholder="0">
-              <span className="text-[10.5px] text-ink-faint">0 = keep forever. Older files are auto-deleted.</span>
+              <span className="text-xs text-ink-faint">0 = keep forever. Older files are auto-deleted.</span>
             </AutoNumber>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button onClick={() => setShowItems((v) => !v)} disabled={(stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>{showItems ? "Hide contents" : `Manage contents${stats ? ` (${stats.files})` : ""}`}</button>
-            <button onClick={() => setConfirm({ kind: "empty" })} disabled={busy || (stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{busy ? "Emptying…" : "Empty now"}</button>
-            {msg && <span className="text-[11.5px] text-ink-dim">{msg}</span>}
+            <button onClick={() => setShowItems((v) => !v)} disabled={(stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>{showItems ? "Hide contents" : `Manage contents${stats ? ` (${stats.files})` : ""}`}</button>
+            <button onClick={() => setConfirm({ kind: "empty" })} disabled={busy || (stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{busy ? "Emptying…" : "Empty now"}</button>
+            {msg && <span className="text-sm text-ink-dim">{msg}</span>}
           </div>
 
           {showItems && (
             <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
               {items === null ? (
-                <div className="p-4 text-center text-[12px] text-ink-dim">Loading…</div>
+                <div className="p-4 text-center text-sm text-ink-dim">Loading…</div>
               ) : items.length === 0 ? (
-                <div className="p-4 text-center text-[12px] text-ink-dim">The recycle bin is empty.</div>
+                <div className="p-4 text-center text-sm text-ink-dim">The recycle bin is empty.</div>
               ) : (
                 <div className="thin-scroll max-h-[340px] overflow-y-auto">
                   {items.map((it) => (
                     <div key={it.id} className="flex items-center gap-3 px-3 py-2" style={{ borderTop: "1px solid var(--line-soft)" }}>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12.5px] font-medium" title={it.name}>{it.name}</div>
-                        <div className="truncate font-mono text-[10px] text-ink-faint" title={it.orig_path || "origin not recorded"}>{it.orig_path || "origin not recorded"}</div>
-                        {bins.length > 1 && <div className="text-[10px] text-ink-faint">In: {it.bin_label}{it.legacy ? " (legacy bin)" : ""}</div>}
-                        {it.expires_at > 0 && <div className="text-[10px] text-ink-faint">Deleted for good on {fmtDay(it.expires_at)}</div>}
+                        <div className="truncate text-base font-medium" title={it.name}>{it.name}</div>
+                        <div className="truncate font-mono text-xs text-ink-faint" title={it.orig_path || "origin not recorded"}>{it.orig_path || "origin not recorded"}</div>
+                        {bins.length > 1 && <div className="text-xs text-ink-faint">In: {it.bin_label}{it.legacy ? " (legacy bin)" : ""}</div>}
+                        {it.expires_at > 0 && <div className="text-xs text-ink-faint">Deleted for good on {fmtDay(it.expires_at)}</div>}
                       </div>
-                      <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtBytes(it.size_bytes)}</span>
-                      <span className="hidden flex-none font-mono text-[10.5px] text-ink-faint sm:block">{ageOf(it.deleted_unix)}</span>
-                      <button onClick={() => restore(it)} disabled={!it.restorable || rowBusy !== null} title={it.restorable ? "Move back to its original location" : "Original location wasn't recorded for this item"} className="flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{rowBusy === it.id ? "…" : "Restore"}</button>
-                      <button onClick={() => setConfirm({ kind: "item", it })} disabled={rowBusy !== null} title="Delete permanently" className="flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
+                      <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(it.size_bytes)}</span>
+                      <span className="hidden flex-none font-mono text-xs text-ink-faint sm:block">{ageOf(it.deleted_unix)}</span>
+                      <button onClick={() => restore(it)} disabled={!it.restorable || rowBusy !== null} title={it.restorable ? "Move back to its original location" : "Original location wasn't recorded for this item"} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{rowBusy === it.id ? "…" : "Restore"}</button>
+                      <button onClick={() => setConfirm({ kind: "item", it })} disabled={rowBusy !== null} title="Delete permanently" className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
                     </div>
                   ))}
                 </div>
@@ -196,7 +197,7 @@ function RecycleBin() {
             </div>
           )}
 
-          <p className="text-[10.5px] text-ink-faint">Guard rails run automatically about once an hour. Restore moves a file back to where it was deleted from (when that location is free).</p>
+          <p className="text-xs text-ink-faint">Guard rails run automatically about once an hour. Restore moves a file back to where it was deleted from (when that location is free).</p>
         </>
       )}
       {emptying && (
@@ -285,12 +286,12 @@ function DiskGuardSection() {
 
       {status && (
         <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <div className="text-[10px] uppercase tracking-[0.1em] text-ink-faint">Currently watching</div>
-          <div className="mt-0.5 break-all font-mono text-[11.5px]">
+          <div className="text-xs uppercase tracking-[0.1em] text-ink-faint">Currently watching</div>
+          <div className="mt-0.5 break-all font-mono text-sm">
             {status.path || "(not set)"}
           </div>
           {status.measurable ? (
-            <div className="mt-1 text-[11.5px] text-ink-dim">
+            <div className="mt-1 text-sm text-ink-dim">
               {status.used_pct.toFixed(1)}% full
               {status.holding > 0 && (
                 <span style={{ color: "var(--avoid)" }}>
@@ -299,13 +300,13 @@ function DiskGuardSection() {
               )}
             </div>
           ) : (
-            <div className="mt-1 text-[11.5px]" style={{ color: "var(--reject)" }}>
+            <div className="mt-1 text-sm" style={{ color: "var(--reject)" }}>
               Arrmada can't read this folder's disk usage, so the guard will do nothing. Check the
               path exists and is mounted into the container.
             </div>
           )}
           {(status.shared_with?.length ?? 0) > 0 && (
-            <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--reject)" }}>
+            <div className="mt-1.5 text-sm" style={{ color: "var(--reject)" }}>
               Shares a drive with: {status.shared_with.map((f) => f.label).join(", ")}.
               The guard will be measuring your whole array, not a torrent drive — a threshold like
               85% almost certainly isn't what you want here.
@@ -322,7 +323,7 @@ function DiskGuardSection() {
       {on.value && (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Pause at (% full)">
+            <Field label="Pause at (% full)" hint="Active downloads are paused once the volume is this full.">
               <input
                 inputMode="numeric"
                 value={pair.value.downloads_disk_guard_pause_pct}
@@ -334,9 +335,8 @@ function DiskGuardSection() {
                 className={input}
                 style={fieldStyle}
               />
-              <span className="text-[10.5px] text-ink-faint">Active downloads are paused once the volume is this full.</span>
             </Field>
-            <Field label="Resume at (% full)">
+            <Field label="Resume at (% full)" hint="They restart once it drops back to this. Must be below the pause point.">
               <input
                 inputMode="numeric"
                 value={pair.value.downloads_disk_guard_resume_pct}
@@ -348,7 +348,6 @@ function DiskGuardSection() {
                 className={input}
                 style={fieldStyle}
               />
-              <span className="text-[10.5px] text-ink-faint">They restart once it drops back to this. Must be below the pause point.</span>
             </Field>
           </div>
           <SavedTick save={pair} />
@@ -377,7 +376,7 @@ function StallSection() {
       subtitle="When a download makes no progress for this long, Arrmada looks for another release. The stalled one is only removed once a replacement has been grabbed — with nothing else available it's left to keep trying. Time spent paused, queued by the client, rechecking or held by the disk guard doesn't count."
     >
       <AutoText label="Give up on a download with no progress after (hours)" save={hours} mono={false} inputMode="decimal" filter={(v) => v.replace(/[^0-9.]/g, "").slice(0, 5)}>
-        <span className="text-[10.5px] text-ink-faint">0 = never. Quality profiles can set their own time, or turn it off.</span>
+        <span className="text-xs text-ink-faint">0 = never. Quality profiles can set their own time, or turn it off.</span>
       </AutoText>
     </Section>
   );
@@ -397,7 +396,7 @@ function UpgradeBudgetSection() {
       subtitle="Each upgrade sweep — movies and TV separately — grabs at most this many better releases. The rest wait for the next sweep, so changing a quality profile can't start hundreds of downloads at once. Upgrading a single title by hand is never held back."
     >
       <AutoNumber label="Upgrades per sweep" save={budget} min={0} max={1000}>
-        <span className="text-[10.5px] text-ink-faint">0 = no limit. Each episode counts as one.</span>
+        <span className="text-xs text-ink-faint">0 = no limit. Each episode counts as one.</span>
       </AutoNumber>
     </Section>
   );

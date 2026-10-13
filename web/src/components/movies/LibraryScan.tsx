@@ -105,7 +105,7 @@ export function ScanStatus({ scan }: { scan: MovieScan }) {
   if (s.attached) parts.push(`${n(s.attached)} attached`);
   if (s.duplicates) parts.push(`${n(s.duplicates)} left alone (already have a file)`);
   return (
-    <div role="status" className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
+    <div role="status" className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl px-3.5 py-2.5 text-base" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
       <span className="font-semibold">Scan finished</span>
       <span className="text-ink-dim">{parts.join(" · ")}</span>
       {s.unmatched > 0 && (
@@ -113,7 +113,7 @@ export function ScanStatus({ scan }: { scan: MovieScan }) {
           · {n(s.unmatched)} need review →
         </Link>
       )}
-      <button onClick={scan.dismiss} aria-label="Dismiss" className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-ink-faint hover:text-[var(--ink)]">✕</button>
+      <button onClick={scan.dismiss} aria-label="Dismiss" className="ml-auto rounded-md px-2 py-0.5 text-xs text-ink-faint hover:text-[var(--ink)]">✕</button>
     </div>
   );
 }

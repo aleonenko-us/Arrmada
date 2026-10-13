@@ -34,7 +34,7 @@ export default function AddIndexerModal({ onClose, onAdded, onProwlarr }: {
 function Catalogue({ onPick }: { onPick: (p: IndexerPreset) => void }) {
   return (
     <>
-      <p className="mb-3 mt-1.5 text-[12px] text-ink-dim">Pick where releases come from. You can test it before anything is saved.</p>
+      <p className="mb-3 mt-1.5 text-sm text-ink-dim">Pick where releases come from. You can test it before anything is saved.</p>
       <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 min-[400px]:grid-cols-2">
         {INDEXER_PRESETS.map((p) => (
           <li key={p.id}>
@@ -43,12 +43,12 @@ function Catalogue({ onPick }: { onPick: (p: IndexerPreset) => void }) {
               onClick={() => onPick(p)}
               className="flex w-full items-center gap-3 rounded-xl border border-line bg-panel-2 p-3 text-left transition-colors hover:border-accent"
             >
-              <span aria-hidden className="grid h-9 w-9 flex-none place-items-center rounded-lg font-mono text-[12px] font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+              <span aria-hidden className="grid h-9 w-9 flex-none place-items-center rounded-lg font-mono text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
                 {p.monogram}
               </span>
               <span className="min-w-0">
-                <span className="block text-[13px] font-semibold">{p.label}</span>
-                <span className="block text-[11px] text-ink-faint">{p.blurb}</span>
+                <span className="block text-md font-semibold">{p.label}</span>
+                <span className="block text-xs text-ink-faint">{p.blurb}</span>
               </span>
             </button>
           </li>
@@ -149,7 +149,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
       onSubmit={(e) => { e.preventDefault(); if (!missing) void (passed ? save() : runTest()); }}
       className="mt-2"
     >
-      <button type="button" onClick={onBack} disabled={saving} className="mb-2 text-[11.5px] text-ink-dim hover:text-ink">
+      <button type="button" onClick={onBack} disabled={saving} className="mb-2 text-sm text-ink-dim hover:text-ink">
         ← All trackers
       </button>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -180,10 +180,10 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
         )}
       </div>
 
-      <p className="mb-0 mt-3 text-[11px] text-ink-faint">{preset.help}</p>
+      <p className="mb-0 mt-3 text-xs text-ink-faint">{preset.help}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Used for">
-        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-ink-faint">Used for</span>
+        <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Used for</span>
         {MEDIA_TYPES.map((m) => {
           const on = scope.includes(m.key);
           return (
@@ -192,7 +192,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
               type="button"
               aria-pressed={on}
               onClick={() => toggleScope(m.key)}
-              className="rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold transition-colors"
+              className="rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors"
               style={{
                 border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
                 background: on ? "var(--accent-soft)" : "var(--panel-2)",
@@ -207,13 +207,13 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
 
       <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />
       {preset.privateTracker && (
-        <p className="mb-0 mt-2 text-[10.5px] text-ink-faint">
+        <p className="mb-0 mt-2 text-xs text-ink-faint">
           A private tracker counts how long you seed. Keep these at least as long as its rules ask; {DEFAULT_SEED_DAYS} days covers most.
         </p>
       )}
 
       <details className="mt-3">
-        <summary className="cursor-pointer text-[11.5px] text-ink-dim">More options: name, tie-break, minimum seeders</summary>
+        <summary className="cursor-pointer text-sm text-ink-dim">More options: name, tie-break, minimum seeders</summary>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Labeled label="Name" span2>
             <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} />
@@ -230,7 +230,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
       <div aria-live="polite">
         {!current.loading && current.ok !== undefined && <TestLine state={current} />}
       </div>
-      {error && <div role="alert" className="mt-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2.5">
         {passed ? (

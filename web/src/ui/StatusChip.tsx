@@ -30,9 +30,9 @@ const TONE_SOFT: Record<Tone, string> = {
 export const POSTER_CHIP_BG = "rgba(14,10,7,.92)";
 
 const SIZE = {
-  xs: "px-1.5 py-0.5 text-[8.5px]",
-  sm: "px-2 py-0.5 text-[9px] tracking-wide",
-  md: "px-2 py-0.5 text-[9.5px] tracking-wide",
+  xs: "px-1.5 py-0.5 text-2xs",
+  sm: "px-2 py-0.5 text-2xs tracking-wide",
+  md: "px-2 py-0.5 text-2xs tracking-wide",
 } as const;
 
 export interface StatusChipProps {

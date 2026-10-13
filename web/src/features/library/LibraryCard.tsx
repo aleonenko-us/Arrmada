@@ -8,7 +8,7 @@ export function Poster({ url, title }: { url?: string; title: string }) {
   if (url) return <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />;
   return (
     <div className="flex h-full w-full items-end p-2.5" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-      <span className="text-[13px] font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{title}</span>
+      <span className="text-md font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{title}</span>
     </div>
   );
 }
@@ -41,12 +41,12 @@ export function LibraryCard<T extends LibraryItem>({ item, config, selectable, s
   const actions = !selectable ? config.actions?.(item) ?? [] : [];
   const caption = (
     <>
-      <div className="truncate text-[12.5px] font-semibold" title={item.title}>{item.title}</div>
+      <div className="truncate text-base font-semibold" title={item.title}>{item.title}</div>
       {/* A long caption ("Coastal · Next Thu") takes the line and pushes the status word
           under it on a narrow card, rather than being cut short. */}
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2">
-        <span className="max-w-full truncate font-mono text-[10.5px] text-ink-faint">{config.card.meta(item)}</span>
-        <span className="ml-auto flex-none font-mono text-[9.5px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
+        <span className="max-w-full truncate font-mono text-xs text-ink-faint">{config.card.meta(item)}</span>
+        <span className="ml-auto flex-none font-mono text-2xs uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span>
       </div>
     </>
   );

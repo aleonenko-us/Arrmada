@@ -33,8 +33,8 @@ export function PersonSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
     return (
       <Sheet onClose={close} closeOnBack={false} ariaLabel="Not available" size="sm">
         <div className="p-6">
-          <h2 className="m-0 text-[16px] font-bold">Not available</h2>
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-dim">{error.status === 404 ? "This person can’t be shown here." : `Couldn’t load them — ${error.message}`}</p>
+          <h2 className="m-0 text-lg font-bold">Not available</h2>
+          <p className="m-0 mt-1.5 text-base text-ink-dim">{error.status === 404 ? "This person can’t be shown here." : `Couldn’t load them — ${error.message}`}</p>
           <div className="mt-4 flex justify-end"><Button onClick={close}>Back</Button></div>
         </div>
       </Sheet>
@@ -55,14 +55,14 @@ export function PersonSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
             {p?.profile_url ? <img src={p.profile_url} alt="" className="h-full w-full object-cover" /> : null}
           </div>
           <div className="min-w-0 flex-1 pt-1">
-            <h2 className="m-0 text-[19px] font-bold leading-tight sm:text-[22px]">{p?.name || <span className="text-ink-faint">Loading…</span>}</h2>
-            {p?.known_for_department && <div className="mt-1 font-mono text-[10.5px] uppercase text-ink-faint">{p.known_for_department}</div>}
-            {born && <div className="mt-1 text-[11.5px] text-ink-dim">{born}</div>}
+            <h2 className="m-0 text-2xl font-bold leading-tight sm:text-3xl">{p?.name || <span className="text-ink-faint">Loading…</span>}</h2>
+            {p?.known_for_department && <div className="mt-1 font-mono text-2xs uppercase text-ink-faint">{p.known_for_department}</div>}
+            {born && <div className="mt-1 text-sm text-ink-dim">{born}</div>}
             {p?.biography && (
               <div className="mt-2.5">
-                <p className={`m-0 whitespace-pre-line text-[12.5px] leading-relaxed text-ink-dim ${bioOpen ? "" : "line-clamp-4"}`}>{p.biography}</p>
+                <p className={`m-0 whitespace-pre-line text-base leading-relaxed text-ink-dim ${bioOpen ? "" : "line-clamp-4"}`}>{p.biography}</p>
                 {!bioOpen && p.biography.length > 280 && (
-                  <button onClick={() => setBioOpen(true)} className="mt-1 min-h-[28px] text-[12px] font-semibold" style={{ color: "var(--accent)" }}>More</button>
+                  <button onClick={() => setBioOpen(true)} className="mt-1 min-h-[28px] text-sm font-semibold" style={{ color: "var(--accent)" }}>More</button>
                 )}
               </div>
             )}
@@ -72,14 +72,14 @@ export function PersonSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
         {p === null ? (
           <div className="mt-6 grid gap-x-3 gap-y-5" style={GRID}>{Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} full />)}</div>
         ) : credits.length === 0 ? (
-          <p className="mt-6 text-[12.5px] text-ink-dim">Nothing of theirs to show here yet.</p>
+          <p className="mt-6 text-base text-ink-dim">Nothing of theirs to show here yet.</p>
         ) : (
           <>
-            <h3 className="m-0 mb-2.5 mt-6 text-[12px] font-bold uppercase tracking-wide text-ink-faint">Known for</h3>
+            <h3 className="m-0 mb-2.5 mt-6 text-sm font-bold uppercase tracking-wide text-ink-faint">Known for</h3>
             <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
               {knownFor.map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} />)}
             </div>
-            <h3 className="m-0 mb-2.5 mt-6 text-[12px] font-bold uppercase tracking-wide text-ink-faint">Filmography · {credits.length}</h3>
+            <h3 className="m-0 mb-2.5 mt-6 text-sm font-bold uppercase tracking-wide text-ink-faint">Filmography · {credits.length}</h3>
             <div className="grid gap-x-3 gap-y-5" style={GRID}>
               {byYear.map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} full />)}
             </div>

@@ -49,7 +49,7 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
         type="button"
         aria-pressed={on}
         onClick={() => setPick(value)}
-        className="min-h-[36px] rounded-full px-3 text-[12px] font-semibold"
+        className="min-h-[36px] rounded-full px-3 text-sm font-semibold"
         style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-dim)" }}
       >
         {label}
@@ -65,7 +65,7 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
         {latest !== null && missing.length > 1 && chip("Latest season", [latest])}
       </div>
       {seasons.length === 0 ? (
-        <p className="m-0 py-2 text-[12px] text-ink-faint">No season list for this show yet — All seasons asks for the whole show.</p>
+        <p className="m-0 py-2 text-sm text-ink-faint">No season list for this show yet — All seasons asks for the whole show.</p>
       ) : (
         // A long-running show scrolls inside the sheet instead of pushing the button away.
         <ul role="group" aria-label="Seasons" className="thin-scroll m-0 max-h-[45vh] list-none overflow-y-auto rounded-lg p-0" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
@@ -84,8 +84,8 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
                     className="h-[18px] w-[18px] flex-none accent-[var(--accent)]"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold" style={{ color: "var(--ink)" }}>{seasonTitle(s)}</span>
-                    {meta && <span className="block text-[10.5px] text-ink-faint">{meta}</span>}
+                    <span className="block truncate text-base font-semibold" style={{ color: "var(--ink)" }}>{seasonTitle(s)}</span>
+                    {meta && <span className="block text-xs text-ink-faint">{meta}</span>}
                   </span>
                   {st && <StatusChip tone={st.tone} size="xs" className="max-w-[45%] flex-none truncate">{st.label}</StatusChip>}
                 </label>
@@ -94,11 +94,11 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
           })}
         </ul>
       )}
-      <p className="m-0 mt-2 text-[11px] text-ink-faint">
+      <p className="m-0 mt-2 text-xs text-ink-faint">
         {pick === null ? "The whole show. Anything already here or on the way is skipped." : follows ? "Only the seasons ticked. Where someone already asked for one, you’ll follow their request." : "Only the seasons ticked."}
       </p>
       {left !== null && (
-        <p className="m-0 mt-1 text-[11px]" style={{ color: overQuota ? "var(--avoid-text)" : "var(--ink-faint)" }}>
+        <p className="m-0 mt-1 text-xs" style={{ color: overQuota ? "var(--avoid-text)" : "var(--ink-faint)" }}>
           {quotaLine(quota, "season")}{overQuota && left > 0 ? ` — tick ${left === 1 ? "one" : `at most ${left}`}.` : ""}
         </p>
       )}

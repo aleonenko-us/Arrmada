@@ -86,7 +86,7 @@ export function AppLayout() {
           <span className="grid h-[26px] w-[26px] place-items-center rounded-lg" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
             <FleetMark className="h-[15px] w-[15px]" />
           </span>
-          <span className="text-[14px] font-extrabold tracking-[0.12em]">ARRMADA</span>
+          <span className="text-md font-extrabold tracking-[0.12em]">ARRMADA</span>
           {!wide && <div className="ml-auto"><NotificationBell /></div>}
         </div>
         <RestartBanner />

@@ -17,8 +17,8 @@ export function PageHeader({ title, crumb, tail }: { title: string; crumb?: stri
       style={{ borderBottom: "1px solid var(--line)", background: "var(--bg)" }}
     >
       <div>
-        <h1 className="m-0 text-[17px] font-bold tracking-[-0.01em]">{title}</h1>
-        {line && <div className="font-mono text-[11px] text-ink-faint">{line}</div>}
+        <h1 className="m-0 text-xl font-bold tracking-[-0.01em]">{title}</h1>
+        {line && <div className="font-mono text-xs text-ink-faint">{line}</div>}
       </div>
     </div>
   );

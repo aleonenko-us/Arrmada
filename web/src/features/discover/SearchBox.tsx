@@ -109,11 +109,11 @@ export function SearchBox({ value, onChange, onSeeAll }: { value: string; onChan
         onKeyDown={onKeyDown}
         placeholder="Search movies & TV…"
         aria-label="Search movies and TV"
-        className="w-full rounded-lg py-2 pl-8 pr-7 text-[12.5px] transition-[width,box-shadow] sm:w-[210px] sm:focus:w-[300px]"
+        className="w-full rounded-lg py-2 pl-8 pr-7 text-base transition-[width,box-shadow] sm:w-[210px] sm:focus:w-[300px]"
         style={{ background: "var(--panel-2)", border: `1px solid ${focused ? "var(--accent-line)" : "var(--line)"}`, color: "var(--ink)" }}
       />
       {value && (
-        <button onClick={() => { onChange(""); inputRef.current?.focus(); }} className="absolute right-2 top-1/2 z-10 -translate-y-1/2 text-ink-faint hover:text-[var(--ink)]" style={{ fontSize: "13px" }} aria-label="Clear search">✕</button>
+        <button onClick={() => { onChange(""); inputRef.current?.focus(); }} className="absolute right-2 top-1/2 z-10 -translate-y-1/2 text-md text-ink-faint hover:text-[var(--ink)]" aria-label="Clear search">✕</button>
       )}
 
       {open && (

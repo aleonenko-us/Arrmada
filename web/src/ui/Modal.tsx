@@ -95,7 +95,7 @@ export function Modal({
         className={`relative outline-none ${shape}`}
         style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: panelClassName ? undefined : "var(--shadow)", ...panelStyle }}
       >
-        {title && <h2 id={titleId} className="m-0 text-[15px] font-bold">{title}</h2>}
+        {title && <h2 id={titleId} className="m-0 text-lg font-bold">{title}</h2>}
         {children}
         {footer && <div className="mt-4 flex justify-end gap-2.5">{footer}</div>}
       </div>

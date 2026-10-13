@@ -47,7 +47,7 @@ export function AllAudiobooks({ onOpen }: { onOpen: (key: string) => void }) {
   return (
     <section aria-label="All audiobooks">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="m-0 text-[15px] font-bold">All audiobooks{items && total > 0 ? <span className="font-normal text-ink-faint"> · {total}</span> : null}</h2>
+        <h2 className="m-0 text-lg font-bold">All audiobooks{items && total > 0 ? <span className="font-normal text-ink-faint"> · {total}</span> : null}</h2>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
           <input
             type="search"
@@ -55,20 +55,20 @@ export function AllAudiobooks({ onOpen }: { onOpen: (key: string) => void }) {
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search title, author, series"
             aria-label="Search audiobooks"
-            className="min-w-0 max-w-[240px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]"
+            className="min-w-0 max-w-[240px] flex-1 rounded-lg px-3 py-1.5 text-base"
             style={inputStyle}
           />
-          <select value={sort} onChange={(e) => setSort(e.target.value as AudioLibrarySort)} aria-label="Sort audiobooks" className="flex-none rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
+          <select value={sort} onChange={(e) => setSort(e.target.value as AudioLibrarySort)} aria-label="Sort audiobooks" className="flex-none rounded-lg px-2 py-1.5 text-sm" style={inputStyle}>
             <option value="title">Title</option>
             <option value="author">Author</option>
             <option value="added">Recently added</option>
           </select>
         </div>
       </div>
-      {error && <div className="mb-2 text-[12.5px]" style={{ color: "var(--reject-text)" }}>{error}</div>}
-      {items === null && !error && <div className="text-[12.5px] text-ink-dim">Loading…</div>}
+      {error && <div className="mb-2 text-base" style={{ color: "var(--reject-text)" }}>{error}</div>}
+      {items === null && !error && <div className="text-base text-ink-dim">Loading…</div>}
       {items && items.length === 0 && (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
+        <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
           {query ? `Nothing matches “${query}”.` : "No audiobooks in the library yet. Ask for one from Discover."}
         </div>
       )}
@@ -79,7 +79,7 @@ export function AllAudiobooks({ onOpen }: { onOpen: (key: string) => void }) {
       )}
       {items && items.length < total && (
         <div className="mt-4 flex justify-center">
-          <button onClick={more} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={ghost}>
+          <button onClick={more} disabled={busy} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-60" style={ghost}>
             {busy ? "Loading…" : `Show more (${total - items.length})`}
           </button>
         </div>

@@ -84,7 +84,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
   if (!rq) {
     return (
       <Sheet onClose={onClose} closeOnBack={closeOnBack} ariaLabel="Request" size="lg">
-        <div className="p-6 text-[12.5px] text-ink-dim">{loadError ?? "Loading…"}</div>
+        <div className="p-6 text-base text-ink-dim">{loadError ?? "Loading…"}</div>
       </Sheet>
     );
   }
@@ -137,50 +137,50 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{mediaLabel(rq.media_type)}</span>
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{mediaLabel(rq.media_type)}</span>
             {/* What was asked for: Read / Listen / Both for a book. */}
             {rq.media_type === "book" && <BookFormatBadge formats={rq.formats} />}
             {following && <StatusChip tone="faint">Following</StatusChip>}
           </div>
-          <h2 className="m-0 mt-1.5 text-[18px] font-bold leading-tight">{rq.title}</h2>
-          <div className="mt-0.5 font-mono text-[11px] text-ink-faint">
+          <h2 className="m-0 mt-1.5 text-xl font-bold leading-tight">{rq.title}</h2>
+          <div className="mt-0.5 font-mono text-xs text-ink-faint">
             {[rq.author, rq.year || "", rq.media_type === "series" ? formatSeasons(rq.seasons) || "All seasons" : ""].filter(Boolean).join(" · ")}
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <StatusChip tone={stage.tone}>{stage.badge}</StatusChip>
-            <span className="text-[12px]" style={{ color: stage.detailTone ?? "var(--ink-dim)" }}>{stage.detail}</span>
+            <span className="text-sm" style={{ color: stage.detailTone ?? "var(--ink-dim)" }}>{stage.detail}</span>
           </div>
-          <div className="mt-2.5 text-[12px] text-ink-dim">
+          <div className="mt-2.5 text-sm text-ink-dim">
             {staff && rq.requested_by_name ? <>Requested by <b className="text-ink">{rq.requested_by_name}</b></> : own ? "Your request" : following ? "Someone else asked for this; you’re following it" : "Requested"}
             {requestAge(rq.created_at) && <span className="text-ink-faint"> · {requestAge(rq.created_at)}</span>}
           </div>
-          {decided && <div className="mt-1 text-[11.5px] text-ink-faint">{decided}</div>}
+          {decided && <div className="mt-1 text-sm text-ink-faint">{decided}</div>}
           {staff && <div className="mt-1.5"><ReRequestFlag rq={rq} /></div>}
         </div>
       </div>
 
       <div className="flex flex-col gap-4 px-5 pb-5 sm:px-6 sm:pb-6">
         {rq.note && (staff || own) && (
-          <div className="rounded-lg p-3 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-            <div className="mb-1 font-mono text-[9.5px] uppercase text-ink-faint">Note</div>
+          <div className="rounded-lg p-3 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+            <div className="mb-1 font-mono text-2xs uppercase text-ink-faint">Note</div>
             <div className="whitespace-pre-wrap text-ink-dim">{rq.note}</div>
           </div>
         )}
         {staff && rq.followers && rq.followers.length > 0 && (
-          <div className="text-[12px] text-ink-dim">
-            <span className="font-mono text-[9.5px] uppercase text-ink-faint">Also following · </span>
+          <div className="text-sm text-ink-dim">
+            <span className="font-mono text-2xs uppercase text-ink-faint">Also following · </span>
             {rq.followers.map((f) => f.name).join(", ")}
           </div>
         )}
 
         {staff && pending && (
-          <label className="flex flex-col gap-1 text-[12px]">
-            <span className="font-mono text-[9.5px] uppercase text-ink-faint">Quality profile</span>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-mono text-2xs uppercase text-ink-faint">Quality profile</span>
             <select
               value={profile}
               onChange={(e) => setProfile(e.target.value)}
               disabled={!profiles || profiles.length === 0}
-              className={`${big} rounded-lg px-3 text-[12.5px]`}
+              className={`${big} rounded-lg px-3 text-base`}
               style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             >
               {!profiles && <option value="">Loading profiles…</option>}
@@ -197,7 +197,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
 
         {staff && pending && declining && (
           <div className="flex flex-col gap-2 rounded-lg p-3" style={{ border: "1px solid var(--line)" }}>
-            <div className="text-[12.5px] font-semibold">Decline “{rq.title}”{rq.requested_by_name ? ` for ${rq.requested_by_name}` : ""}? They’ll be told.</div>
+            <div className="text-base font-semibold">Decline “{rq.title}”{rq.requested_by_name ? ` for ${rq.requested_by_name}` : ""}? They’ll be told.</div>
             <DeclineReasonField value={reason} onChange={setReason} disabled={!!busy} />
             <div className="flex flex-wrap gap-2">
               <Button variant="danger" className={big} onClick={decline} busy={busy === "decline"} busyLabel="Declining…" disabled={!!busy}>Decline and tell them</Button>
@@ -206,7 +206,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
           </div>
         )}
 
-        {error && <div className="text-[12px] font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           {staff && pending && (
@@ -215,8 +215,8 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
               {!declining && <Button className={big} onClick={() => setDeclining(true)} disabled={!!busy}>Decline…</Button>}
             </>
           )}
-          {rq.plex_url && <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className={`${big} inline-flex items-center rounded-lg bg-accent-grad px-4 text-[12.5px] font-semibold text-accent-ink`}>▶ Watch on Plex</a>}
-          {lib && <Link to={lib} className={`${big} inline-flex items-center rounded-lg px-4 text-[12.5px] font-semibold`} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Open in library</Link>}
+          {rq.plex_url && <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className={`${big} inline-flex items-center rounded-lg bg-accent-grad px-4 text-base font-semibold text-accent-ink`}>▶ Watch on Plex</a>}
+          {lib && <Link to={lib} className={`${big} inline-flex items-center rounded-lg px-4 text-base font-semibold`} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Open in library</Link>}
           {!staff && own && pending && <Button className={big} onClick={withdraw} busy={busy === "withdraw"} disabled={!!busy}>Withdraw</Button>}
           {following && <Button className={big} onClick={unfollow} busy={busy === "unfollow"} disabled={!!busy}>Stop following</Button>}
           {staff && <Button variant="ghost" className={big} onClick={remove} busy={busy === "delete"} disabled={!!busy}>Delete</Button>}

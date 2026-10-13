@@ -58,7 +58,7 @@ const renderSeries = (format: string) => renderNaming(seriesIdFormat(format, SER
 function OrganizeEntry() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-2.5 text-[11.5px] text-ink-faint">
+    <div className="flex flex-wrap items-center gap-2.5 text-sm text-ink-faint">
       <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>Preview rename…</Button>
       <span>Existing files keep their names until you rename them.</span>
       {open && <OrganizeModal onClose={() => setOpen(false)} />}
@@ -112,7 +112,7 @@ export function NamingSettings() {
           <Button size="sm" onClick={usePlexPreset} busy={applying} busyLabel="Saving…" disabled={isPlex}>
             {isPlex ? "Using Plex recommended" : "Plex recommended"}
           </Button>
-          <span className="text-[11px] text-ink-faint">
+          <span className="text-xs text-ink-faint">
             Ids in folder names so Plex matches the right title, and editions in movie file names. Existing folders only change when you rename them.
           </span>
         </div>
@@ -121,7 +121,7 @@ export function NamingSettings() {
         <AutoText label="Folder name" save={movieFolder}><Preview>{render(movieFolder.value)}</Preview></AutoText>
         <AutoText label="File name" save={movieFile}><Preview>{render(movieFile.value)}.mkv</Preview></AutoText>
         <TokenList tokens={TOKENS} />
-        <p className="text-[11px] text-ink-faint">
+        <p className="text-xs text-ink-faint">
           <code className="font-mono">{"{plexedition}"}</code> is Plex’s <code className="font-mono">{"{edition-Director's Cut}"}</code>, and nothing when there’s no edition. A version with an edition always gets it in its file name, so Plex shows each version as an edition of one movie. Write <code className="font-mono">{"{tmdb-{tmdbid}}"}</code> for Plex’s id tag; an empty tag drops out of the name. A movie that already has a folder keeps it until you rename it.
         </p>
         <OrganizeEntry />
@@ -130,7 +130,7 @@ export function NamingSettings() {
         <AutoText label="Series folder" save={seriesFolder}><Preview>{renderSeries(seriesFolder.value)}</Preview></AutoText>
         <AutoText label="Season folder" save={seasonFolder}><Preview>{renderSeries(seasonFolder.value)}</Preview></AutoText>
         <AutoText label="Episode file" save={episodeFile}><Preview>{renderSeries(episodeFile.value)}.mkv</Preview></AutoText>
-        <p className="text-[11px] text-ink-faint">
+        <p className="text-xs text-ink-faint">
           <code className="font-mono">{"{episode}"}</code> is the SxxExx tag (a range for double episodes). Use <code className="font-mono">{"{season00}"}</code> for a zero-padded season number. Season 0 is always “Specials”. <code className="font-mono">{"{tvdb-{tvdbid}}"}</code> falls back to the TMDB id for a show TVDB doesn’t know. A show that already has a folder keeps it.
         </p>
         <TokenList tokens={SERIES_TOKENS} />

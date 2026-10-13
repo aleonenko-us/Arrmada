@@ -11,7 +11,7 @@ import { usePoll } from "../../lib/usePoll";
 // Self-contained so the Settings hub can mount it as is. Run now is admin-only on the
 // server, so only admins see the button.
 
-const rowBtn = "flex-none rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40";
+const rowBtn = "flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40";
 // Columns on a wide screen; below 640px each task is a card.
 const grid = "sm:grid sm:grid-cols-[minmax(0,1fr)_76px_minmax(0,128px)_84px_72px_auto] sm:items-center sm:gap-x-3";
 
@@ -76,16 +76,16 @@ export function TasksTable() {
 
   return (
     <div className="flex flex-col gap-3">
-      {err && <p className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the tasks: {err}</p>}
-      {msg && <p role="status" className="m-0 text-[12px]" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
+      {err && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the tasks: {err}</p>}
+      {msg && <p role="status" className="m-0 text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
       <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {tasks === null ? (
-          <div className="p-4 text-center text-[12px] text-ink-dim">{err ? "Couldn't load the tasks." : "Loading…"}</div>
+          <div className="p-4 text-center text-sm text-ink-dim">{err ? "Couldn't load the tasks." : "Loading…"}</div>
         ) : tasks.length === 0 ? (
-          <div className="p-4 text-center text-[12px] text-ink-dim">No scheduled tasks.</div>
+          <div className="p-4 text-center text-sm text-ink-dim">No scheduled tasks.</div>
         ) : (
           <>
-            <div className={`hidden px-3 py-2 font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint ${grid}`} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+            <div className={`hidden px-3 py-2 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint ${grid}`} style={{ borderBottom: "1px solid var(--line-soft)" }}>
               <span>Task</span><span>Every</span><span>Last run</span><span>Result</span><span>Next</span><span />
             </div>
             {tasks.map((t, i) => {
@@ -97,8 +97,8 @@ export function TasksTable() {
                 <div key={t.name} className="px-3 py-2.5" style={{ borderTop: i === 0 ? undefined : "1px solid var(--line-soft)" }}>
                   <div className={`flex flex-col gap-1.5 ${grid}`}>
                     <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-semibold" title={t.name}>{nameOf(t)}</div>
-                      {t.description && <div className="truncate text-[11px] text-ink-faint" title={t.description}>{t.description}</div>}
+                      <div className="truncate text-base font-semibold" title={t.name}>{nameOf(t)}</div>
+                      {t.description && <div className="truncate text-xs text-ink-faint" title={t.description}>{t.description}</div>}
                     </div>
                     <Cell label="Every">{every(t.interval_seconds)}</Cell>
                     <Cell label="Last run">
@@ -111,13 +111,13 @@ export function TasksTable() {
                           onClick={() => setOpenErr(showErr ? null : t.name)}
                           title={t.last_error}
                           aria-expanded={showErr}
-                          className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.06em]"
+                          className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase tracking-[0.06em]"
                           style={{ color: res.color, border: `1px solid ${res.border}` }}
                         >
                           {res.label}{t.consecutive_failures > 1 ? ` ×${t.consecutive_failures}` : ""}
                         </button>
                       ) : (
-                        <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: res.color, border: `1px solid ${res.border}` }}>{res.label}</span>
+                        <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase tracking-[0.06em]" style={{ color: res.color, border: `1px solid ${res.border}` }}>{res.label}</span>
                       )}
                     </Cell>
                     <Cell label="Next">{running ? "—" : until(t.next_run)}</Cell>
@@ -135,7 +135,7 @@ export function TasksTable() {
                     </div>
                   </div>
                   {showErr && (
-                    <div className="mt-2 break-words rounded-md p-2 font-mono text-[11px]" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{t.last_error}</div>
+                    <div className="mt-2 break-words rounded-md p-2 font-mono text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{t.last_error}</div>
                   )}
                 </div>
               );
@@ -150,8 +150,8 @@ export function TasksTable() {
 // Cell is one value; on a phone (no column headers) it carries its own label.
 function Cell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-baseline gap-2 text-[12px] text-ink-dim">
-      <span className="w-16 flex-none font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint sm:hidden">{label}</span>
+    <div className="flex min-w-0 items-baseline gap-2 text-sm text-ink-dim">
+      <span className="w-16 flex-none font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint sm:hidden">{label}</span>
       <span className="min-w-0 truncate">{children}</span>
     </div>
   );

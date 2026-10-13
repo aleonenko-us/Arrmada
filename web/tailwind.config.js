@@ -6,6 +6,24 @@ export default {
   // on a control that had just faded in under the finger.
   future: { hoverOnlyWhenSupported: true },
   theme: {
+    // The type scale (FE-30), replacing Tailwind's defaults: every size in the UI is one of
+    // these. Text that carries information is at least xs (11px); 2xs is only for the
+    // uppercase mono eyebrow labels, whose capitals and tracking carry them. Sizes only, no
+    // line-heights, so each element keeps the leading it already had.
+    // scripts/type-scale.mjs moved the old text-[Npx] sizes here; eslint keeps them out.
+    fontSize: {
+      "2xs": "10.5px",
+      xs: "11px",
+      sm: "12px",
+      base: "12.5px",
+      md: "13.5px",
+      lg: "15px",
+      xl: "17px",
+      "2xl": "20px",
+      "3xl": "24px",
+      display: "30px",
+      "display-lg": "38px",
+    },
     extend: {
       // Design tokens are defined as CSS variables in index.css (so light/dark
       // theming lives in one place); these aliases let Tailwind utilities reach
@@ -56,6 +74,13 @@ export default {
         drawer: "50",
         modal: "60",
         toast: "70",
+      },
+      // The two page widths and the form column (ui/Page): every page uses one of them,
+      // so the content's left edge doesn't jump from page to page.
+      maxWidth: {
+        page: "1240px",
+        "page-wide": "1600px",
+        form: "760px",
       },
       backgroundImage: {
         "accent-grad": "linear-gradient(150deg, var(--accent), var(--accent-deep))",

@@ -49,7 +49,7 @@ export function LanguagePicker({ value, onChange, languages, firstNote, label = 
     else if (e.key === "Escape") { setQuery(""); setActive(0); }
   };
 
-  const btn = "h-7 w-7 shrink-0 rounded-md text-[12px] text-ink-dim disabled:opacity-30";
+  const btn = "h-7 w-7 shrink-0 rounded-md text-sm text-ink-dim disabled:opacity-30";
   return (
     <div className="flex flex-col gap-2">
       {value.length > 0 && (
@@ -58,11 +58,11 @@ export function LanguagePicker({ value, onChange, languages, firstNote, label = 
             const name = langName(code, rows);
             return (
               <li key={code} className="flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-                <span className="w-4 shrink-0 text-right font-mono text-[10.5px] text-ink-faint">{i + 1}</span>
+                <span className="w-4 shrink-0 text-right font-mono text-xs text-ink-faint">{i + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="text-[12.5px] font-semibold">{name}</span>
-                  <span className="ml-1.5 font-mono text-[10px] text-ink-faint">{code}</span>
-                  {i === 0 && firstNote && <span className="block text-[10.5px] text-ink-faint">{firstNote}</span>}
+                  <span className="text-base font-semibold">{name}</span>
+                  <span className="ml-1.5 font-mono text-xs text-ink-faint">{code}</span>
+                  {i === 0 && firstNote && <span className="block text-xs text-ink-faint">{firstNote}</span>}
                 </span>
                 <IconButton label={`Move ${name} up`} className={btn} disabled={disabled || i === 0} onClick={() => move(i, -1)}>↑</IconButton>
                 <IconButton label={`Move ${name} down`} className={btn} disabled={disabled || i === value.length - 1} onClick={() => move(i, 1)}>↓</IconButton>
@@ -86,7 +86,7 @@ export function LanguagePicker({ value, onChange, languages, firstNote, label = 
           placeholder={rows ? "Add a language — type to search" : "Loading languages…"}
           onChange={(e) => { setQuery(e.target.value); setActive(0); }}
           onKeyDown={onKey}
-          className="w-full rounded-lg px-3 py-2 text-[12.5px] outline-none"
+          className="w-full rounded-lg px-3 py-2 text-base outline-none"
           style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
         />
         {matches.length > 0 && (
@@ -99,11 +99,11 @@ export function LanguagePicker({ value, onChange, languages, firstNote, label = 
                 aria-selected={i === active}
                 onMouseDown={(e) => { e.preventDefault(); add(l.code); }}
                 onMouseEnter={() => setActive(i)}
-                className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[12.5px]"
+                className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-base"
                 style={{ background: i === active ? "var(--accent-soft)" : "transparent", color: i === active ? "var(--accent)" : "var(--ink)" }}
               >
                 <span>{l.name}</span>
-                <span className="font-mono text-[10px] text-ink-faint">{l.code}</span>
+                <span className="font-mono text-xs text-ink-faint">{l.code}</span>
               </li>
             ))}
           </ul>

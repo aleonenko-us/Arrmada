@@ -42,7 +42,7 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
   if (!d) {
     return (
       <Sheet onClose={onClose} closeOnBack={false} ariaLabel="Audiobook" size="lg">
-        <div className="p-6 text-[12.5px]" style={{ color: error ? "var(--reject-text)" : "var(--ink-dim)" }}>{error ?? "Loading…"}</div>
+        <div className="p-6 text-base" style={{ color: error ? "var(--reject-text)" : "var(--ink-dim)" }}>{error ?? "Loading…"}</div>
       </Sheet>
     );
   }
@@ -64,31 +64,31 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
         <div className="flex gap-4">
           <Cover src={d.cover} title={d.title} className="w-[112px] flex-none sm:w-[140px]" />
           <div className="min-w-0 flex-1">
-            <h2 className="m-0 text-[17px] font-bold leading-snug">{d.title}</h2>
-            {d.author && <div className="mt-0.5 text-[12.5px] text-ink-dim">{d.author}</div>}
-            {d.narrator && <div className="mt-0.5 text-[12px] text-ink-faint">Read by {d.narrator}</div>}
-            {series &&<div className="mt-0.5 text-[12px] text-ink-faint">{series}</div>}
-            <div className="mt-1 text-[11.5px] text-ink-faint">{[fmtLength(d.duration), d.year ? String(d.year) : "", d.chapters.length ? `${d.chapters.length} chapters` : ""].filter(Boolean).join(" · ")}</div>
+            <h2 className="m-0 text-xl font-bold leading-snug">{d.title}</h2>
+            {d.author && <div className="mt-0.5 text-base text-ink-dim">{d.author}</div>}
+            {d.narrator && <div className="mt-0.5 text-sm text-ink-faint">Read by {d.narrator}</div>}
+            {series &&<div className="mt-0.5 text-sm text-ink-faint">{series}</div>}
+            <div className="mt-1 text-sm text-ink-faint">{[fmtLength(d.duration), d.year ? String(d.year) : "", d.chapters.length ? `${d.chapters.length} chapters` : ""].filter(Boolean).join(" · ")}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => (playingHere ? pausePlayer() : play())}
-                className="rounded-lg px-4 py-2 text-[13px] font-semibold"
+                className="rounded-lg px-4 py-2 text-md font-semibold"
                 style={primary}
               >
                 {playingHere ? "❚❚ Pause" : `▶ ${mainLabel}`}
               </button>
               {booksEnabled && (
-                <a href={api.audiobookDownloadURL(d.book_id, d.version_id ?? 0)} download className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={ghost}>Download</a>
+                <a href={api.audiobookDownloadURL(d.book_id, d.version_id ?? 0)} download className="rounded-lg px-3 py-2 text-base font-semibold" style={ghost}>Download</a>
               )}
             </div>
           </div>
         </div>
 
         {d.description && (
-          <div className="text-[12.5px] leading-relaxed text-ink-dim">
+          <div className="text-base leading-relaxed text-ink-dim">
             <p className={`m-0 whitespace-pre-line ${moreText ? "" : "line-clamp-4"}`}>{d.description}</p>
             {d.description.length > 240 && (
-              <button onClick={() => setMoreText(!moreText)} className="mt-1 text-[12px] font-semibold" style={{ color: "var(--accent)" }}>{moreText ? "Less" : "More"}</button>
+              <button onClick={() => setMoreText(!moreText)} className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>{moreText ? "Less" : "More"}</button>
             )}
           </div>
         )}
@@ -97,18 +97,18 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
 
         {d.chapters.length > 0 && (
           <section aria-label="Chapters">
-            <h3 className="m-0 mb-1.5 text-[13.5px] font-bold">Chapters</h3>
+            <h3 className="m-0 mb-1.5 text-md font-bold">Chapters</h3>
             <ol className="m-0 flex list-none flex-col p-0">
               {d.chapters.map((c, i) => (
                 <li key={c.id ?? i}>
                   <button
                     onClick={() => play(c.start)}
                     aria-current={i === current ? "true" : undefined}
-                    className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]"
+                    className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-base hover:bg-[var(--panel-2)]"
                     style={i === current ? { background: "var(--accent-soft)", color: "var(--accent-text)" } : undefined}
                   >
                     <span className="min-w-0 truncate">{c.title || `Chapter ${i + 1}`}</span>
-                    <span className="flex-none text-[11.5px] text-ink-faint">{fmtTime(c.start)}</span>
+                    <span className="flex-none text-sm text-ink-faint">{fmtTime(c.start)}</span>
                   </button>
                 </li>
               ))}
@@ -118,11 +118,11 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
 
         {d.bookmarks.length > 0 && (
           <section aria-label="Bookmarks">
-            <h3 className="m-0 mb-1.5 text-[13.5px] font-bold">Bookmarks</h3>
+            <h3 className="m-0 mb-1.5 text-md font-bold">Bookmarks</h3>
             {d.bookmarks.map((b) => (
-              <button key={b.time} onClick={() => play(b.time)} className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]">
+              <button key={b.time} onClick={() => play(b.time)} className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-base hover:bg-[var(--panel-2)]">
                 <span className="min-w-0 truncate">{b.title || "Bookmark"}</span>
-                <span className="flex-none text-[11.5px] text-ink-faint">{fmtTime(b.time)}</span>
+                <span className="flex-none text-sm text-ink-faint">{fmtTime(b.time)}</span>
               </button>
             ))}
           </section>
@@ -130,9 +130,9 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
 
         {d.versions.length > 0 && (
           <section aria-label="Other versions">
-            <h3 className="m-0 mb-1.5 text-[13.5px] font-bold">Other versions</h3>
+            <h3 className="m-0 mb-1.5 text-md font-bold">Other versions</h3>
             {d.versions.map((v) => (
-              <button key={v.key} onClick={() => onOpenBook(v.key)} className="flex min-h-[40px] w-full items-center rounded-lg px-2 text-left text-[12.5px] font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--accent)" }}>
+              <button key={v.key} onClick={() => onOpenBook(v.key)} className="flex min-h-[40px] w-full items-center rounded-lg px-2 text-left text-base font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--accent)" }}>
                 {v.title}
               </button>
             ))}
@@ -173,17 +173,17 @@ function YourPlace({ d, place, position, here, onChanged }: { d: AudioItemDetail
   return (
     <section aria-label="Your place" className="rounded-xl p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[13.5px] font-bold">Your place</h3>
-        {prog && <button onClick={toggle} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={ghost}>{open ? "Hide" : "Earlier places"}</button>}
+        <h3 className="m-0 text-md font-bold">Your place</h3>
+        {prog && <button onClick={toggle} className="rounded-lg px-2.5 py-1 text-sm font-semibold" style={ghost}>{open ? "Hide" : "Earlier places"}</button>}
       </div>
       {!prog ? (
-        <div className="mt-1 text-[12px] text-ink-faint">Not started yet. Your place is kept in Arrmada, so it follows you to a listening app too.</div>
+        <div className="mt-1 text-sm text-ink-faint">Not started yet. Your place is kept in Arrmada, so it follows you to a listening app too.</div>
       ) : (
         <>
           <div className="mt-2 h-[4px] overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: prog.finished ? "var(--good)" : "var(--accent)" }} />
           </div>
-          <div className="mt-1 text-[11.5px] text-ink-faint">
+          <div className="mt-1 text-sm text-ink-faint">
             {prog.finished && !here ? "Finished" : `${fmtTime(position)}${dur > 0 ? ` of ${fmtTime(dur)} · ${Math.round(pct)}%` : ""}`} · saved {fmtAgo(prog.updated_at)}{prog.device ? ` on ${prog.device}` : ""}
           </div>
         </>
@@ -194,7 +194,7 @@ function YourPlace({ d, place, position, here, onChanged }: { d: AudioItemDetail
           onDismiss={() => act(() => api.dismissAudioOffer(d.key, place.offer!.history_id))} />
       )}
       {pending !== null && prog && (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm"
           style={prog.finished ? { background: "var(--panel)", border: "1px solid var(--line-soft)" } : { background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
           <span>
             {prog.finished
@@ -203,7 +203,7 @@ function YourPlace({ d, place, position, here, onChanged }: { d: AudioItemDetail
                 ? <>An app jumped ahead to <b>{fmtTime(pending)}</b>, near the end. It's kept once you listen on from there — or use it now.</>
                 : <>An app jumped back to <b>{fmtTime(pending)}</b>. It's kept once you listen on from there for a bit — or use it now if that was you.</>}
           </span>
-          <button onClick={() => act(() => api.acceptAudioJump(d.key))} disabled={busy} className="flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60" style={primary}>
+          <button onClick={() => act(() => api.acceptAudioJump(d.key))} disabled={busy} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-60" style={primary}>
             {prog.finished && pending === 0 ? "Start over now" : "Use this spot"}
           </button>
         </div>
@@ -213,7 +213,7 @@ function YourPlace({ d, place, position, here, onChanged }: { d: AudioItemDetail
           <PlaceTimeline history={hist} busy={busy} onRestore={(h) => restore(h.id)} />
         </div>
       )}
-      {error && <div className="mt-1 text-[12px]" style={{ color: "var(--reject-text)" }}>{error}</div>}
+      {error && <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </section>
   );
 }

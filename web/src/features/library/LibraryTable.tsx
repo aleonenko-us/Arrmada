@@ -4,7 +4,7 @@ import { usePersisted } from "../../lib/persist";
 import { compareValues, parseSortPref } from "./sort";
 import type { LibraryConfig, LibraryItem } from "./types";
 
-const TH = "px-2.5 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-[0.06em] text-ink-faint";
+const TH = "px-2.5 py-2 text-left font-mono text-2xs font-bold uppercase tracking-[0.06em] text-ink-faint";
 const TD = "px-2.5 py-2 align-middle";
 
 // LibraryTable is the library's table view: the config's columns, each sortable by a
@@ -38,15 +38,15 @@ export function LibraryTable<T extends LibraryItem>({ items, config, selectable,
 
   return (
     <div className="thin-scroll overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-[12px]" style={{ minWidth: `${config.tableMinWidth}px` }}>
+      <table className="w-full border-collapse text-sm" style={{ minWidth: `${config.tableMinWidth}px` }}>
         <thead>
           <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
-            {selectable && <th className={TH}></th>}
+            {selectable && <th className={TH}><span className="sr-only">Select</span></th>}
             <SortTh label="Title" k="title" sort={sort} onSort={onSort} />
             {cols.map((c) => (c.sort
               ? <SortTh key={c.key} label={c.label} k={c.key} align={c.align} title={c.title} sort={sort} onSort={onSort} />
               : <th key={c.key} className={`${TH}${c.align === "right" ? " text-right" : ""}`} title={c.title}>{c.label}</th>))}
-            {config.rowAction && <th className={TH}></th>}
+            {config.rowAction && <th className={TH}><span className="sr-only">Actions</span></th>}
           </tr>
         </thead>
         <tbody>
@@ -80,7 +80,7 @@ function SortTh({ label, k, align, title, sort, onSort }: { label: string; k: st
     <th className={`${TH}${align === "right" ? " text-right" : ""}`} title={title} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
       <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-[var(--ink)] ${align === "right" ? "flex-row-reverse" : ""}`} style={{ color: active ? "var(--accent)" : undefined }}>
         {label}
-        <span className="text-[8px]" style={{ opacity: active ? 1 : 0.3 }}>{active ? (sort.dir === "asc" ? "▲" : "▼") : "▲"}</span>
+        <span className="text-xs" style={{ opacity: active ? 1 : 0.3 }}>{active ? (sort.dir === "asc" ? "▲" : "▼") : "▲"}</span>
       </button>
     </th>
   );

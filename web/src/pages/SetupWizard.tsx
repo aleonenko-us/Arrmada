@@ -187,7 +187,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   });
 
   if (!state || !folders) {
-    return <Frame><p className="text-[13px] text-ink-dim">{error ?? "Loading…"}</p></Frame>;
+    return <Frame><p className="text-md text-ink-dim">{error ?? "Loading…"}</p></Frame>;
   }
 
   const keyStatus = (id: string): APIKeyStatus | undefined => state.keys.find((k) => k.id === id);
@@ -198,7 +198,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
   return (
     <Frame>
-      <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+      <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-xs font-semibold uppercase tracking-wide text-ink-faint">
         {STEPS.map((s, i) => (
           <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent)" : undefined }}>
             {i > 0 && <span aria-hidden className="mr-1.5 text-ink-faint">›</span>}
@@ -207,12 +207,12 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
         ))}
       </ol>
 
-      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
 
       {step === "keys" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">{rerun ? "Run setup again" : "Welcome to Arrmada"}</h1>
-          <p className="mb-4 mt-1 text-[13px] text-ink-dim">
+          <h1 className="m-0 text-2xl font-bold">{rerun ? "Run setup again" : "Welcome to Arrmada"}</h1>
+          <p className="mb-4 mt-1 text-md text-ink-dim">
             {rerun ? "What's already set is filled in; change anything, or carry on to the next step." : "A few quick steps and you're ready. Everything here can be changed later in Settings."}
           </p>
 
@@ -225,12 +225,12 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             onBlur={(v) => { if (v.trim()) checkTmdb(v); }}
           />
           {tmdbCheck && tmdbCheck.value === (keys.tmdb ?? "").trim() && (
-            <p className="mt-1 text-[11.5px]" style={{ color: tmdbCheck.busy ? "var(--ink-faint)" : tmdbCheck.ok ? "var(--good)" : "var(--reject)" }}>
+            <p className="mt-1 text-sm" style={{ color: tmdbCheck.busy ? "var(--ink-faint)" : tmdbCheck.ok ? "var(--good)" : "var(--reject)" }}>
               {tmdbCheck.busy ? "Checking with TMDB…" : `${tmdbCheck.ok ? "✓" : "✗"} ${tmdbCheck.detail}`}
             </p>
           )}
           <details className="mt-3">
-            <summary className="cursor-pointer text-[12px] font-semibold text-ink-dim">More keys (all optional)</summary>
+            <summary className="cursor-pointer text-sm font-semibold text-ink-dim">More keys (all optional)</summary>
             <div className="mt-2 flex flex-col gap-3">
               {OPTIONAL_KEYS.map((id) => {
                 const s = keyStatus(id);
@@ -252,15 +252,15 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "folders" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">Where's your media?</h1>
-          <p className="mb-1 mt-1 text-[13px] text-ink-dim">
+          <h1 className="m-0 text-2xl font-bold">Where's your media?</h1>
+          <p className="mb-1 mt-1 text-md text-ink-dim">
             Pick a folder for each library. {state.libraries_chosen ? "These are your current folders." : "We've filled in anything that looked right — check it."}
           </p>
-          <p className="mb-4 text-[11.5px] text-ink-faint">
+          <p className="mb-4 text-sm text-ink-faint">
             Keep Downloads on the same drive or share as your libraries, so finished downloads are hardlinked instantly instead of copied.
           </p>
           {managedOnly && (
-            <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
+            <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
               Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, re-run the installer with your media folder.
             </div>
           )}
@@ -268,8 +268,8 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             {FOLDERS.map((f) => (
               <div key={f.key}>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <label htmlFor={`setup-folder-${f.key}`} className="text-[12.5px] font-semibold">{f.label}</label>
-                  <span className="text-[11px] text-ink-faint">{f.hint}</span>
+                  <label htmlFor={`setup-folder-${f.key}`} className="text-base font-semibold">{f.label}</label>
+                  <span className="text-xs text-ink-faint">{f.hint}</span>
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -277,7 +277,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
                     value={folders[f.key]}
                     onChange={(e) => setFolders({ ...folders, [f.key]: e.target.value })}
                     placeholder={f.optional ? "Leave as is if you don't use it" : "/storage/…"}
-                    className="min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-[12px]"
+                    className="min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-sm"
                     style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
                   />
                   <Button onClick={() => setPicking(f.key)} className="flex-none" aria-label={`Browse for the ${f.label} folder`}>Browse</Button>
@@ -306,17 +306,17 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "plex" && family && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">Connect Plex</h1>
-          <p className="mb-3 mt-1 text-[13px] text-ink-dim">
+          <h1 className="m-0 text-2xl font-bold">Connect Plex</h1>
+          <p className="mb-3 mt-1 text-md text-ink-dim">
             Family sign-in, watch stats and pausing conversions while someone's watching all need your Plex server. Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.
           </p>
           {state.plex_connected && (
-            <p role="status" className="m-0 mb-1 text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>
+            <p role="status" className="m-0 mb-1 text-base font-semibold" style={{ color: "var(--good)" }}>
               ✓ Connected{state.plex_server ? ` to ${state.plex_server}` : ""}
             </p>
           )}
           {plexError && (
-            <div role="alert" className="mb-1 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
+            <div role="alert" className="mb-1 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
               Couldn't reach plex.tv from the server — you can connect later in Settings → Connections, or enter the server's address below.
               <span className="mt-1 block break-words text-ink-faint">{plexError}</span>
             </div>
@@ -325,17 +325,17 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
           <fieldset className="m-0 mt-5 flex flex-col gap-2.5 rounded-xl p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
             <legend className="sr-only">Family sign-in</legend>
-            <div className="flex items-start gap-2.5 text-[12.5px]">
+            <div className="flex items-start gap-2.5 text-base">
               <input id="setup-plex-family" type="checkbox" className="mt-0.5" aria-describedby="setup-plex-family-hint" checked={family.enabled} onChange={(e) => setFamily({ ...family, enabled: e.target.checked })} />
               <div>
                 <label htmlFor="setup-plex-family" className="block font-semibold">Let family sign in with Plex</label>
-                <span id="setup-plex-family-hint" className="block text-[11.5px] text-ink-faint">People with access to your Plex server get a requester account the first time they sign in — no accounts to hand out.</span>
+                <span id="setup-plex-family-hint" className="block text-sm text-ink-faint">People with access to your Plex server get a requester account the first time they sign in — no accounts to hand out.</span>
               </div>
             </div>
             {family.enabled && (
               <div role="group" aria-label="Auto-approve their requests" className="ml-6 flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-semibold">Auto-approve their requests</span>
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-ink-dim">
+                <span className="text-base font-semibold">Auto-approve their requests</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-ink-dim">
                   {TYPE_NAMES.filter(([k]) => k !== "book" || booksEnabled).map(([k, name]) => (
                     <label key={k} className="flex min-h-[28px] items-center gap-1.5">
                       <input type="checkbox" checked={family.types[k]} onChange={(e) => setFamily({ ...family, types: { ...family.types, [k]: e.target.checked } })} />
@@ -343,7 +343,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
                     </label>
                   ))}
                 </div>
-                <span className="text-[11px] text-ink-faint">Ticked types download straight away; the rest wait for you to approve. A series request can pull every season of a long show.</span>
+                <span className="text-xs text-ink-faint">Ticked types download straight away; the rest wait for you to approve. A series request can pull every season of a long show.</span>
               </div>
             )}
           </fieldset>
@@ -359,33 +359,33 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "indexers" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">Where releases come from</h1>
-          <p className="mb-3 mt-1 text-[13px] text-ink-dim">
+          <h1 className="m-0 text-2xl font-bold">Where releases come from</h1>
+          <p className="mb-3 mt-1 text-md text-ink-dim">
             Arrmada searches indexers — your trackers — for releases. Sync them all from Prowlarr in one go, or add one tracker now and test it before it's saved. You can add more any time in Settings → Connections.
           </p>
           {(state.indexers_enabled ?? 0) > 0 && (
-            <p role="status" className="m-0 mb-3 text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>
+            <p role="status" className="m-0 mb-3 text-base font-semibold" style={{ color: "var(--good)" }}>
               ✓ {state.indexers_enabled} {state.indexers_enabled === 1 ? "indexer" : "indexers"} enabled
             </p>
           )}
 
           <div className="flex flex-col gap-3">
             {prowlarr === null ? (
-              <p className="m-0 text-[12px] text-ink-faint">Looking for Prowlarr…</p>
+              <p className="m-0 text-sm text-ink-faint">Looking for Prowlarr…</p>
             ) : showProwlarr ? (
               <div>
-                <div className="text-[12.5px] font-semibold">{prowlarr ? "Prowlarr is running — sync its indexers" : "Sync from Prowlarr"}</div>
+                <div className="text-base font-semibold">{prowlarr ? "Prowlarr is running — sync its indexers" : "Sync from Prowlarr"}</div>
                 <ProwlarrPanel onSynced={() => void refreshIndexers()} />
               </div>
             ) : (
-              <p className="m-0 text-[12px] text-ink-dim">
+              <p className="m-0 text-sm text-ink-dim">
                 No Prowlarr answered at its saved address.{" "}
                 <button type="button" onClick={() => setShowProwlarr(true)} className="font-semibold" style={{ color: "var(--accent)" }}>Sync from a Prowlarr elsewhere</button>
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={() => setAddingIndexer(true)}>{(state.indexers_enabled ?? 0) > 0 ? "Add another tracker…" : "Add a tracker…"}</Button>
-              <span className="text-[11.5px] text-ink-faint">Pick it from the list, fill in its key, and Test it first.</span>
+              <span className="text-sm text-ink-faint">Pick it from the list, fill in its key, and Test it first.</span>
             </div>
           </div>
           {addingIndexer && (
@@ -409,14 +409,14 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "finish" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">{state.restart_needed ? "One restart to go" : "Here's where you are"}</h1>
+          <h1 className="m-0 text-2xl font-bold">{state.restart_needed ? "One restart to go" : "Here's where you are"}</h1>
           {state.restart_needed ? (
-            <p className="mt-1 text-[13px] text-ink-dim">
+            <p className="mt-1 text-md text-ink-dim">
               Arrmada needs to restart to start using the new folders for downloads and imports.
               {state.can_restart ? " It takes a few seconds." : " Restart the Arrmada container the way you started it (for example docker compose restart arrmada-app)."}
             </p>
           ) : (
-            <p className="mt-1 text-[13px] text-ink-dim">
+            <p className="mt-1 text-md text-ink-dim">
               Each step ticks itself off once it's done; pick one to go there now. The Dashboard keeps this list until everything's ticked.
             </p>
           )}
@@ -425,7 +425,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
               // A restart has to come first, so the steps aren't links until it's done.
               <ChecklistRows items={checklist.data.items} onOpen={restartFirst ? undefined : (to) => finish(to)} />
             ) : (
-              <p className="m-0 px-2 py-1.5 text-[12px] text-ink-faint">{checklist.error ? "Couldn't read the checklist — the Dashboard shows it too." : "Checking…"}</p>
+              <p className="m-0 px-2 py-1.5 text-sm text-ink-faint">{checklist.error ? "Couldn't read the checklist — the Dashboard shows it too." : "Checking…"}</p>
             )}
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
@@ -465,7 +465,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           <span className="grid h-[30px] w-[30px] place-items-center rounded-lg" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
             <FleetMark className="h-[17px] w-[17px]" />
           </span>
-          <span className="text-[15px] font-extrabold tracking-[0.12em]">ARRMADA</span>
+          <span className="text-lg font-extrabold tracking-[0.12em]">ARRMADA</span>
         </div>
         <div className="rounded-2xl p-6" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>{children}</div>
       </div>
@@ -483,8 +483,8 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
   return (
     <label className="block">
       <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="text-[12.5px] font-semibold">{label}</span>
-        {status?.configured && <span className="text-[11px]" style={{ color: "var(--good)" }}>✓ saved{status.hint ? ` (…${status.hint})` : ""}</span>}
+        <span className="text-base font-semibold">{label}</span>
+        {status?.configured && <span className="text-xs" style={{ color: "var(--good)" }}>✓ saved{status.hint ? ` (…${status.hint})` : ""}</span>}
       </div>
       <input
         type={status?.secret === false ? "text" : "password"}
@@ -494,10 +494,10 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
         onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
         placeholder={status?.configured ? "Leave blank to keep the saved key" : "Paste the key"}
         autoComplete="off"
-        className="block w-full rounded-lg px-3 py-2 font-mono text-[12px]"
+        className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
         style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
       />
-      <span className="mt-1 block text-[11px] text-ink-faint">
+      <span className="mt-1 block text-xs text-ink-faint">
         {note}{status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>get one</a></>}
       </span>
     </label>
@@ -519,7 +519,7 @@ function Nav({ busy, blocked, onBack, skip, onNext, nextLabel }: {
       <div className="flex flex-wrap items-center gap-2">
         {onBack && <Button variant="ghost" onClick={onBack} disabled={busy}>Back</Button>}
         {skip && (
-          <button type="button" onClick={skip.onClick} disabled={busy} className="text-left text-[12px] text-ink-faint hover:text-[var(--ink)]">{skip.label}</button>
+          <button type="button" onClick={skip.onClick} disabled={busy} className="text-left text-sm text-ink-faint hover:text-[var(--ink)]">{skip.label}</button>
         )}
       </div>
       <Button variant="primary" onClick={onNext} disabled={blocked} busy={busy} busyLabel="Saving…" title={blocked ? "Fix the folders marked in red first" : undefined}>{nextLabel}</Button>

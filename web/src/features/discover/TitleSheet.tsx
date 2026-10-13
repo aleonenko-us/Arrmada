@@ -52,8 +52,8 @@ const NOTE_MAX = 500;
 
 function RatingBadge({ label, value, bg, fg }: { label: string; value: string; bg: string; fg: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold" style={{ background: bg, color: fg }}>
-      <span className="font-mono text-[8.5px] uppercase opacity-80">{label}</span>{value}
+    <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold" style={{ background: bg, color: fg }}>
+      <span className="font-mono text-2xs uppercase opacity-80">{label}</span>{value}
     </span>
   );
 }
@@ -179,8 +179,8 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
     return (
       <Sheet onClose={onClose} closeOnBack={false} ariaLabel="Not available" size="sm">
         <div className="p-6">
-          <h2 className="m-0 text-[16px] font-bold">Not available</h2>
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-dim">
+          <h2 className="m-0 text-lg font-bold">Not available</h2>
+          <p className="m-0 mt-1.5 text-base text-ink-dim">
             {detailError.status === 404 ? "This title can’t be shown here." : `Couldn’t load it — ${detailError.message}`}
           </p>
           <div className="mt-4 flex justify-end"><Button onClick={onClose}>Back to Discover</Button></div>
@@ -228,13 +228,13 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           </div>
           <div className="min-w-0 flex-1 pt-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{c.media_type === "series" ? "TV" : "Movie"}</span>
-              <h2 className="m-0 text-[18px] font-bold leading-tight sm:text-[21px]">{c.title || <span className="text-ink-faint">Loading…</span>}</h2>
-              <span className="font-mono text-[11.5px] text-ink-faint">{c.year || ""}</span>
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{c.media_type === "series" ? "TV" : "Movie"}</span>
+              <h2 className="m-0 text-xl font-bold leading-tight sm:text-2xl">{c.title || <span className="text-ink-faint">Loading…</span>}</h2>
+              <span className="font-mono text-sm text-ink-faint">{c.year || ""}</span>
             </div>
             {/* Meta line */}
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-faint">
-              {d?.certification && <span className="rounded border px-1.5 py-px font-mono text-[10px]" style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>{d.certification}</span>}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+              {d?.certification && <span className="rounded border px-1.5 py-px font-mono text-xs" style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>{d.certification}</span>}
               {runtime && <span>{runtime}</span>}
               {d?.network && <span>{d.network}</span>}
               {d?.status && <span>{d.status}</span>}
@@ -243,7 +243,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
             {d?.genres && d.genres.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {d.genres.slice(0, 4).map((g) => (
-                  <span key={g} className="rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{g}</span>
+                  <span key={g} className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{g}</span>
                 ))}
               </div>
             )}
@@ -257,22 +257,22 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
               </div>
             )}
             {c.release_date && new Date(c.release_date) > new Date() && (
-              <div className="mt-2 font-mono text-[10.5px]" style={{ color: "var(--avoid-text)" }}>Releases {c.release_date} — request ahead</div>
+              <div className="mt-2 font-mono text-xs" style={{ color: "var(--avoid-text)" }}>Releases {c.release_date} — request ahead</div>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {/* Opened cold, nothing is offered until the title is known. */}
               {!c.title ? null : done && subscribed ? (
-                <span className="inline-block rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{FOLLOWING}</span>
+                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{FOLLOWING}</span>
               ) : badge && !declined ? (
-                <span className="inline-block rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>
+                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>
                   {badge.label === "In library" ? (moreSeasons ? "✓ Partly in your library" : "✓ In your library") : badge.label === "Pending" ? "Requested — waiting for approval" : badge.label === "Downloading" ? "Downloading…" : badge.label === "Wanted" ? "In library — waiting for a file" : done === "approved" ? "Requested — searching now" : "Requested"}
                 </span>
               ) : !ctx.canRequest ? (
-                <span className="text-[12px] text-ink-faint">Ask your admin for request access.</span>
+                <span className="text-sm text-ink-faint">Ask your admin for request access.</span>
               ) : (
                 <>
                   {declined && badge && (
-                    <span className="inline-block rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>Declined</span>
+                    <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>Declined</span>
                   )}
                   {!picking && (
                     <Button variant="primary" onClick={ask} busy={busy} busyLabel="Requesting…" disabled={quotaOut && !isShow}>
@@ -286,23 +286,23 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                 <Button variant="primary" onClick={() => setPicking(true)}>Request more seasons</Button>
               )}
               {d?.plex_url && (
-                <a href={d.plex_url} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg bg-accent-grad px-3.5 py-2 text-[12.5px] font-semibold text-accent-ink">▶ Watch on Plex</a>
+                <a href={d.plex_url} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg bg-accent-grad px-3.5 py-2 text-base font-semibold text-accent-ink">▶ Watch on Plex</a>
               )}
               {d?.trailer_url && (
-                <a href={d.trailer_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+                <a href={d.trailer_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                   Trailer
                 </a>
               )}
               {/* Something wrong with the copy in the library: tell the owner. */}
               {ctx.canRequest && c.title && c.in_library && c.has_file && (
-                <button onClick={() => setReporting(true)} className="min-h-[36px] px-1 text-[12px] font-semibold text-ink-dim underline-offset-2 hover:underline">Report a problem</button>
+                <button onClick={() => setReporting(true)} className="min-h-[36px] px-1 text-sm font-semibold text-ink-dim underline-offset-2 hover:underline">Report a problem</button>
               )}
             </div>
             {/* An optional note for whoever approves it, folded away until asked for. */}
             {ctx.canRequest && !!c.title && (picking || (!(done && subscribed) && (!badge || declined))) && (
               noteOpen || declined ? (
-                <label className="mt-2.5 flex max-w-[460px] flex-col gap-1 text-[11.5px] text-ink-dim">
+                <label className="mt-2.5 flex max-w-[460px] flex-col gap-1 text-sm text-ink-dim">
                   {declined ? "Tell them why you’d still like it" : "Note for the admin (optional)"}
                   <textarea
                     value={note}
@@ -310,13 +310,13 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                     maxLength={NOTE_MAX}
                     rows={3}
                     placeholder="Anything they should know — a particular version, why you'd like it…"
-                    className="rounded-lg px-3 py-2 text-[12.5px]"
+                    className="rounded-lg px-3 py-2 text-base"
                     style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
                   />
-                  <span className="self-end font-mono text-[10px] text-ink-faint">{note.length}/{NOTE_MAX}</span>
+                  <span className="self-end font-mono text-xs text-ink-faint">{note.length}/{NOTE_MAX}</span>
                 </label>
               ) : (
-                <button onClick={() => setNoteOpen(true)} className="mt-2 min-h-[32px] text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+                <button onClick={() => setNoteOpen(true)} className="mt-2 min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>
                   ＋ Add a note for the admin (optional)
                 </button>
               )
@@ -325,7 +325,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
             {ctx.canRequest && !isShow && !(done && subscribed) && (!badge || declined) && (
               <Suspense fallback={null}><QuotaHint kind="movie" onOut={setQuotaOut} /></Suspense>
             )}
-            {error && <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+            {error && <div className="mt-1.5 text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
           </div>
         </div>
 
@@ -333,23 +333,23 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
         {isShow && picking && (
           <div className="px-5 pt-4 sm:px-6">
             {Array.isArray(seasons) ? (
-              <Suspense fallback={<div className="py-3 text-[12px] text-ink-faint">Loading seasons…</div>}>
+              <Suspense fallback={<div className="py-3 text-sm text-ink-faint">Loading seasons…</div>}>
                 <SeasonPicker seasons={seasons} busy={busy} onSubmit={(p) => { void request(p); }} onCancel={() => setPicking(false)} />
               </Suspense>
             ) : seasons === "error" ? (
-              <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-dim">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-ink-dim">
                 Couldn’t load the seasons.
                 <Button variant="primary" onClick={() => { void request(); }} busy={busy} busyLabel="Requesting…">Request the whole show</Button>
               </div>
             ) : (
-              <div className="py-3 text-[12px] text-ink-faint">Loading seasons…</div>
+              <div className="py-3 text-sm text-ink-faint">Loading seasons…</div>
             )}
           </div>
         )}
 
         <div className="px-5 pb-6 pt-4 sm:px-6">
           {overview ? (
-            <p className="m-0 text-[13px] leading-relaxed text-ink-dim">{overview}</p>
+            <p className="m-0 text-md leading-relaxed text-ink-dim">{overview}</p>
           ) : detailLoading ? (
             <div className="space-y-2">
               <div className="h-3 w-full rounded" style={{ background: "var(--panel-2)" }} />
@@ -360,14 +360,14 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
 
           {/* The franchise it belongs to opens over this sheet; Back returns here. */}
           {collection && (
-            <button onClick={() => openOverlay("collection", collection.id)} className="mt-3 min-h-[32px] text-[12.5px] font-semibold" style={{ color: "var(--accent)" }}>
+            <button onClick={() => openOverlay("collection", collection.id)} className="mt-3 min-h-[32px] text-base font-semibold" style={{ color: "var(--accent)" }}>
               Part of the {collection.name} →
             </button>
           )}
 
           {/* Crew */}
           {(director.length > 0 || writer.length > 0 || producer.length > 0 || creator.length > 0) && (
-            <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
               {creator.length > 0 && <CrewFact label="Creator" people={creator} onOpen={openPerson} />}
               {director.length > 0 && <CrewFact label="Director" people={director} onOpen={openPerson} />}
               {writer.length > 0 && <CrewFact label="Writer" people={writer} />}
@@ -378,7 +378,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           {/* Cast */}
           {d?.cast && d.cast.length > 0 && (
             <div className="mt-5">
-              <h3 className="m-0 mb-2 text-[12px] font-bold uppercase tracking-wide text-ink-faint">Cast</h3>
+              <h3 className="m-0 mb-2 text-sm font-bold uppercase tracking-wide text-ink-faint">Cast</h3>
               <div className="thin-scroll flex gap-3 overflow-x-auto pb-1">
                 {d.cast.slice(0, 10).map((p, i) => (
                   // A tile with a person id opens their page; an old record without one stays a tile.
@@ -392,8 +392,8 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                     </div>
                     {/* Two lines instead of a hard truncate: "Arnold Schwa…" and
                         "James Earl Jo…" cut mid-word at the old width. */}
-                    <div className="line-clamp-2 text-[10.5px] font-semibold leading-tight" title={p.name}>{p.name}</div>
-                    {p.character && <div className="mt-0.5 line-clamp-1 text-[9.5px] text-ink-faint" title={p.character}>{p.character}</div>}
+                    <div className="line-clamp-2 text-xs font-semibold leading-tight" title={p.name}>{p.name}</div>
+                    {p.character && <div className="mt-0.5 line-clamp-1 text-xs text-ink-faint" title={p.character}>{p.character}</div>}
                   </CastTile>
                 ))}
               </div>
@@ -403,7 +403,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           {/* More like this */}
           {similar.length > 0 && (
             <div className="mt-6">
-              <h3 className="m-0 mb-2.5 text-[12px] font-bold uppercase tracking-wide text-ink-faint">More like this</h3>
+              <h3 className="m-0 mb-2.5 text-sm font-bold uppercase tracking-wide text-ink-faint">More like this</h3>
               <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
                 {similar.map((s) => {
                   const sBadge = badgeFor(s, ctx.isRequested(s));
@@ -418,8 +418,8 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                         {s.poster_url ? <img src={posterThumb(s.poster_url)} alt={s.title} className="h-full w-full object-cover" loading="lazy" /> : <PosterPlaceholder title={s.title} year={s.year} />}
                         {sBadge && <StatusChip tone={sBadge.tone} surface="poster" className="absolute right-1 top-1">{sBadge.label}</StatusChip>}
                       </div>
-                      <div className="mt-1.5 truncate text-[11px] font-semibold" style={{ color: "var(--ink)" }} title={s.title}>{s.title}</div>
-                      <div className="text-[10px]" style={{ color: "var(--ink-faint)" }}>{s.year || "—"}</div>
+                      <div className="mt-1.5 truncate text-xs font-semibold" style={{ color: "var(--ink)" }} title={s.title}>{s.title}</div>
+                      <div className="text-xs" style={{ color: "var(--ink-faint)" }}>{s.year || "—"}</div>
                     </button>
                   );
                 })}
@@ -441,7 +441,7 @@ function CrewFact({ label, people, onOpen }: { label: string; people: CrewMember
   const names = people.map((p) => p.name).join(", ");
   return (
     <div className="min-w-0">
-      <div className="font-mono text-[9.5px] uppercase text-ink-faint">{label}</div>
+      <div className="font-mono text-2xs uppercase text-ink-faint">{label}</div>
       <div className="truncate text-ink-dim" title={names}>
         {people.map((p, i) => (
           <span key={`${p.id ?? p.name}`}>

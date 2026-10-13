@@ -46,9 +46,9 @@ export function PushPrompt({ onDone }: { onDone: () => void }) {
   return (
     <Sheet onClose={() => close("dismissed")} ariaLabel="Get notified when it’s ready?" size="sm" dismissible={!busy}>
       <div className="p-5">
-        <h2 className="m-0 text-[16px] font-bold">Get notified when it’s ready?</h2>
+        <h2 className="m-0 text-lg font-bold">Get notified when it’s ready?</h2>
         {install ? (
-          <div className="mt-1.5 text-[12.5px] leading-relaxed text-ink-dim">
+          <div className="mt-1.5 text-base leading-relaxed text-ink-dim">
             On iPhone and iPad, notifications come through the Home Screen app:
             <ol className="m-0 mt-1 list-decimal pl-5">
               <li>Tap the Share button in Safari.</li>
@@ -57,9 +57,9 @@ export function PushPrompt({ onDone }: { onDone: () => void }) {
             </ol>
           </div>
         ) : (
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-dim">A notification on {deviceName()} when what you asked for can be watched or read — no need to keep checking. You can change it any time under Me.</p>
+          <p className="m-0 mt-1.5 text-base text-ink-dim">A notification on {deviceName()} when what you asked for can be watched or read — no need to keep checking. You can change it any time under Me.</p>
         )}
-        {error && <p role="alert" className="m-0 mt-2 text-[11.5px] font-medium" style={{ color: "var(--reject)" }}>{error}</p>}
+        {error && <p role="alert" className="m-0 mt-2 text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</p>}
         <div className="mt-4 flex justify-end gap-2.5">
           {install ? (
             <Button variant="primary" onClick={() => close("dismissed")}>Got it</Button>

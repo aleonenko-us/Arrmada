@@ -9,6 +9,8 @@ import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
 import { editionsHeld } from "../lib/bookSearch";
 import { Button, StatusChip, useToast, type Tone } from "../ui";
+import { Switch } from "../ui/Switch";
+import { Page } from "../ui/Page";
 
 // AuthorDetail unifies an author's shelf: the books you already own (link through to the
 // full book detail page for grab / auto-grab / etc.) plus the rest of their official
@@ -104,10 +106,10 @@ export function AuthorDetail() {
     return (
       <>
         <PageHeader title="Author" tail="Books" />
-        <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+        <Page width="wide">
           <BackLink />
           <Empty>This author isn’t in your library any more.</Empty>
-        </div>
+        </Page>
       </>
     );
   }
@@ -117,7 +119,7 @@ export function AuthorDetail() {
   return (
     <>
       <PageHeader title={name || "Author"} tail="Author" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <BackLink />
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -126,32 +128,32 @@ export function AuthorDetail() {
               <img src={image} alt={name} className="h-[72px] w-[72px] flex-none rounded-full object-cover sm:h-[88px] sm:w-[88px]" style={{ border: "1px solid var(--line)" }} />
             )}
             <div className="min-w-0">
-              <h1 className="m-0 break-words text-[22px] font-bold">{name || "…"}</h1>
-              <div className="mt-1 text-[12px] text-ink-faint">
+              <h1 className="m-0 break-words text-3xl font-bold">{name || "…"}</h1>
+              <div className="mt-1 text-sm text-ink-faint">
                 {owned.length} in library{detail?.work_count ? ` · ${detail.work_count.toLocaleString()} works in the catalogue` : ""}{detail?.birth_date ? ` · ${detail.birth_date}` : ""}
                 {author && author.names && author.names.length > 1 && <> · also filed as {author.names.filter((n) => n !== name).join(", ")}</>}
               </div>
-              {(detail?.bio || author?.bio) && <p className="m-0 mt-2 max-w-[70ch] text-[12.5px] leading-relaxed text-ink-dim" style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{detail?.bio || author?.bio}</p>}
+              {(detail?.bio || author?.bio) && <p className="m-0 mt-2 max-w-[70ch] text-base leading-relaxed text-ink-dim" style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{detail?.bio || author?.bio}</p>}
               {key && !repick && (
-                <div className="mt-1.5 text-[11.5px] text-ink-faint">
+                <div className="mt-1.5 text-sm text-ink-faint">
                   {catalogueName} author{" "}
                   <button type="button" onClick={() => setRepick(true)} className="underline hover:text-[var(--ink)]">Not this person?</button>
                 </div>
               )}
               {key && author?.monitored && author.monitor_new && (
-                <div className="mt-1 text-[11.5px] text-ink-faint">{followLine(author)}</div>
+                <div className="mt-1 text-sm text-ink-faint">{followLine(author)}</div>
               )}
             </div>
           </div>
           {author && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
-              <Switch label="Monitor" on={author.monitored} disabled={saving}
-                onToggle={() => save({ monitored: !author.monitored }, author.monitored ? "No longer following this author" : "Following this author")} />
-              <Switch label="Add new books automatically" on={author.monitor_new} disabled={saving}
-                onToggle={() => save({ monitor_new: !author.monitor_new })} />
+              <Switch size="sm" className="min-h-[32px]" checked={author.monitored} disabled={saving}
+                onChange={() => save({ monitored: !author.monitored }, author.monitored ? "No longer following this author" : "Following this author")}>Monitor</Switch>
+              <Switch size="sm" className="min-h-[32px]" checked={author.monitor_new} disabled={saving}
+                onChange={() => save({ monitor_new: !author.monitor_new })}>Add new books automatically</Switch>
               <label className="flex items-center gap-2">
-                <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
-                <select aria-label="Format" value={profile} disabled={saving} onChange={(e) => save({ quality_profile: e.target.value })} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+                <span className="font-mono text-2xs uppercase text-ink-faint">Format</span>
+                <select aria-label="Format" value={profile} disabled={saving} onChange={(e) => save({ quality_profile: e.target.value })} className="rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                   {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
                 </select>
               </label>
@@ -193,7 +195,7 @@ export function AuthorDetail() {
             )}
           </>
         )}
-      </div>
+      </Page>
 
     </>
   );
@@ -217,18 +219,18 @@ function WhichAuthor({ name, current, busy, onPick, onCancel }: { name: string; 
   return (
     <section aria-labelledby="which-author" className="mb-8 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="mb-1 flex items-start justify-between gap-3">
-        <h2 id="which-author" className="m-0 text-[15px] font-bold">Which author is this?</h2>
-        {onCancel && <button type="button" onClick={onCancel} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">Cancel</button>}
+        <h2 id="which-author" className="m-0 text-lg font-bold">Which author is this?</h2>
+        {onCancel && <button type="button" onClick={onCancel} className="text-sm text-ink-dim hover:text-[var(--ink)]">Cancel</button>}
       </div>
-      <p className="m-0 mb-3 text-[12px] text-ink-dim">Pick the person in the catalogue, so this page shows their books and nobody else’s. Arrmada remembers the choice.</p>
+      <p className="m-0 mb-3 text-sm text-ink-dim">Pick the person in the catalogue, so this page shows their books and nobody else’s. Arrmada remembers the choice.</p>
       <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (q.trim()) search(q.trim()); }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Author name" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-        <button type="submit" className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Search</button>
+        <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Author name" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+        <button type="submit" className="rounded-lg px-3 py-2 text-base font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Search</button>
       </form>
       {results === null ? (
-        <div className="p-4 text-center text-[12.5px] text-ink-dim">Searching the catalogue…</div>
+        <div className="p-4 text-center text-base text-ink-dim">Searching the catalogue…</div>
       ) : results.length === 0 ? (
-        <div className="p-4 text-center text-[12.5px] text-ink-dim">{error ? `The catalogue didn’t answer: ${error}` : "No authors by that name in the catalogue. Try another spelling."}</div>
+        <div className="p-4 text-center text-base text-ink-dim">{error ? `The catalogue didn’t answer: ${error}` : "No authors by that name in the catalogue. Try another spelling."}</div>
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
           {results.map((a) => (
@@ -239,11 +241,11 @@ function WhichAuthor({ name, current, busy, onPick, onCancel }: { name: string; 
                 {a.image_url ? (
                   <img src={a.image_url} alt="" className="h-11 w-11 flex-none rounded-full object-cover" loading="lazy" />
                 ) : (
-                  <span aria-hidden className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[16px] font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{a.name.charAt(0).toUpperCase()}</span>
+                  <span aria-hidden className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-lg font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{a.name.charAt(0).toUpperCase()}</span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold">{a.name}{a.key === current ? " · current" : ""}</span>
-                  <span className="block truncate text-[11.5px] text-ink-faint">
+                  <span className="block truncate text-md font-semibold">{a.name}{a.key === current ? " · current" : ""}</span>
+                  <span className="block truncate text-sm text-ink-faint">
                     {a.work_count > 0 ? `${a.work_count.toLocaleString()} works` : "Author"}{a.top_work ? ` · ${a.top_work}` : ""}{a.birth_date ? ` · b. ${a.birth_date}` : ""}
                   </span>
                 </span>
@@ -276,23 +278,23 @@ export function AuthorByName() {
   return (
     <>
       <PageHeader title={name} tail="Author" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <BackLink />
         {candidates === null ? (
-          <div className="p-8 text-center text-[12.5px] text-ink-dim">Finding {name}…</div>
+          <div className="p-8 text-center text-base text-ink-dim">Finding {name}…</div>
         ) : candidates.length === 0 ? (
           <Empty>No author in your library goes by “{name}”. Their books may be filed under another spelling — try <Link to="/books" className="underline">All books</Link>.</Empty>
         ) : (
           <section aria-labelledby="which-library-author">
-            <h2 id="which-library-author" className="m-0 mb-1 text-[15px] font-bold">Which author is this?</h2>
-            <p className="m-0 mb-3 text-[12px] text-ink-dim">“{name}” could be any of these authors in your library.</p>
+            <h2 id="which-library-author" className="m-0 mb-1 text-lg font-bold">Which author is this?</h2>
+            <p className="m-0 mb-3 text-sm text-ink-dim">“{name}” could be any of these authors in your library.</p>
             <ul className="m-0 grid list-none gap-2 p-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
               {candidates.map((a) => (
                 <li key={a.id}>
                   <Link to={`/books/authors/${a.id}`} className="flex items-center gap-3 rounded-lg p-2.5 hover:bg-[var(--panel-2)]" style={{ border: "1px solid var(--line)", minHeight: 44 }}>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold">{a.name}</span>
-                      <span className="block truncate text-[11.5px] text-ink-faint">{a.books} book{a.books === 1 ? "" : "s"}{a.names && a.names.length > 1 ? ` · also ${a.names.filter((n) => n !== a.name).join(", ")}` : ""}</span>
+                      <span className="block truncate text-md font-semibold">{a.name}</span>
+                      <span className="block truncate text-sm text-ink-faint">{a.books} book{a.books === 1 ? "" : "s"}{a.names && a.names.length > 1 ? ` · also ${a.names.filter((n) => n !== a.name).join(", ")}` : ""}</span>
                     </span>
                   </Link>
                 </li>
@@ -300,29 +302,17 @@ export function AuthorByName() {
             </ul>
           </section>
         )}
-      </div>
+      </Page>
     </>
   );
 }
 
 function BackLink() {
   return (
-    <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+    <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       All books
     </Link>
-  );
-}
-
-// Switch is the Books pages' on/off control (the book page's Monitor switch).
-function Switch({ label, on, onToggle, disabled }: { label: string; on: boolean; onToggle: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={onToggle} className="inline-flex min-h-[32px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
-      <span className="relative inline-block h-[22px] w-[38px] flex-none rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--line)" }}>
-        <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: on ? "19px" : "3px" }} />
-      </span>
-      <span style={{ color: on ? "var(--ink)" : "var(--ink-dim)" }}>{label}</span>
-    </button>
   );
 }
 
@@ -345,7 +335,7 @@ function BookCover({ url, title }: { url?: string; title: string }) {
   if (url && !failed) {
     return <img src={url} alt={title} className="h-full w-full object-cover" loading="lazy" onError={() => setFailed(true)} />;
   }
-  return <div className="flex h-full w-full items-center justify-center p-2 text-center text-[12px] font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{title}</div>;
+  return <div className="flex h-full w-full items-center justify-center p-2 text-center text-sm font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{title}</div>;
 }
 
 function OwnedCard({ b }: { b: Book }) {
@@ -359,8 +349,8 @@ function OwnedCard({ b }: { b: Book }) {
           can't hover to reveal it, and many Open Library covers carry no printed title, so
           there it always shows. */}
       <div className={`pointer-events-none absolute inset-x-0 bottom-0 p-2 ${canHover ? "opacity-0 transition-opacity group-hover:opacity-100" : ""}`} style={{ background: "linear-gradient(to top, rgba(0,0,0,.9), transparent)" }}>
-        <div className="truncate text-[11.5px] font-semibold text-white">{b.title}</div>
-        {b.year > 0 && <div className="text-[10px]" style={{ color: "rgba(255,255,255,.7)" }}>{b.year}</div>}
+        <div className="truncate text-sm font-semibold text-white">{b.title}</div>
+        {b.year > 0 && <div className="text-xs" style={{ color: "rgba(255,255,255,.7)" }}>{b.year}</div>}
       </div>
     </Link>
   );
@@ -371,8 +361,8 @@ function CatalogueCard({ w, onAdd, busy, disabled }: { w: BookDiscoverCard; onAd
     <div className="group relative overflow-hidden rounded-xl" style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <BookCover url={w.cover_url} title={w.title} />
       <div className="absolute inset-0 flex flex-col justify-end p-2" style={{ background: "linear-gradient(to top, rgba(0,0,0,.92), transparent 55%)" }}>
-        <div className="truncate text-[11.5px] font-semibold text-white" title={w.title}>{w.title}</div>
-        {w.year > 0 && <div className="mb-1.5 text-[10px]" style={{ color: "rgba(255,255,255,.7)" }}>{w.year}</div>}
+        <div className="truncate text-sm font-semibold text-white" title={w.title}>{w.title}</div>
+        {w.year > 0 && <div className="mb-1.5 text-xs" style={{ color: "rgba(255,255,255,.7)" }}>{w.year}</div>}
         <Button variant="primary" size="sm" onClick={onAdd} disabled={disabled} busy={busy} busyLabel="Adding…" className="py-1.5 disabled:opacity-60" aria-label={`Add “${w.title}”`}>
           + Add
         </Button>
@@ -382,9 +372,9 @@ function CatalogueCard({ w, onAdd, busy, disabled }: { w: BookDiscoverCard; onAd
 }
 
 function SectionTitle({ children, count }: { children: React.ReactNode; count?: number }) {
-  return <h2 className="m-0 mb-3 text-[15px] font-bold">{children}{count !== undefined && <span className="ml-1.5 font-normal text-ink-faint">· {count}</span>}</h2>;
+  return <h2 className="m-0 mb-3 text-lg font-bold">{children}{count !== undefined && <span className="ml-1.5 font-normal text-ink-faint">· {count}</span>}</h2>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="mb-8 rounded-xl p-8 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
+  return <div className="mb-8 rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
 }

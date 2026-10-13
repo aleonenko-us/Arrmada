@@ -39,18 +39,18 @@ function ServerView({ data, setData }: { data: AudioServerAdmin; setData: (d: Au
     <div id="audiobook-server" className="flex scroll-mt-20 flex-col gap-4">
       <section className="flex items-center justify-between gap-3 rounded-xl p-4" style={card}>
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[14px] font-bold"><span className="h-2 w-2 rounded-full" style={{ background: dot }} />{state}</div>
-          <div className="text-[12px] text-ink-dim">
+          <div className="flex items-center gap-2 text-md font-bold"><span className="h-2 w-2 rounded-full" style={{ background: dot }} />{state}</div>
+          <div className="text-sm text-ink-dim">
             {data.running ? `${data.items} audiobook${data.items === 1 ? "" : "s"} served${data.items_ready < data.items ? ` · reading chapters for ${data.items - data.items_ready}` : ""}.` : data.error ? data.error : "Listening apps can't connect while it's off."}
             {" "}Switching it off also turns off listening in Arrmada.
           </div>
         </div>
-        <button onClick={toggle} disabled={busy} className="flex-none rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={data.enabled ? ghost : primary}>{data.enabled ? "Switch off" : "Switch on"}</button>
+        <button onClick={toggle} disabled={busy} className="flex-none rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-60" style={data.enabled ? ghost : primary}>{data.enabled ? "Switch off" : "Switch on"}</button>
       </section>
       <div id="audiobook-address" className="scroll-mt-20">
         <Card title="Address">
-          {!external && <div className="text-[12px] text-ink-dim">At home, apps connect to <code>http://{window.location.hostname}:{data.host_port}</code> (port {data.host_port}, set by <code>ARRMADA_AUDIOBOOK_PORT</code> in .env).</div>}
-          <div className="mt-2 mb-2 text-[12px] text-ink-dim">
+          {!external && <div className="text-sm text-ink-dim">At home, apps connect to <code>http://{window.location.hostname}:{data.host_port}</code> (port {data.host_port}, set by <code>ARRMADA_AUDIOBOOK_PORT</code> in .env).</div>}
+          <div className="mt-2 mb-2 text-sm text-ink-dim">
             To listen away from home, point a Cloudflare Tunnel hostname (or another reverse proxy) at port {data.host_port} and put that address here. Only the audiobook server answers on that port, never the rest of Arrmada.
           </div>
           <AutoText label="Address away from home" save={publicURL} placeholder="https://books.example.com" />
@@ -58,7 +58,7 @@ function ServerView({ data, setData }: { data: AudioServerAdmin; setData: (d: Au
       </div>
       <TraceCard data={data} setData={setData} />
       <Card title="How places are kept">
-        <p className="m-0 text-[12px] text-ink-dim">
+        <p className="m-0 text-sm text-ink-dim">
           Play sessions are saved as they happen and survive restarts. Moving forward is saved straight away. A big jump backwards is held until playback carries on from there for 30 seconds, so a glitch can't reset anyone to the start — and the person can confirm it sooner (Keep it now in the player, or Use this spot on the book). A jump to the very end of a book needs the same proof, so one bad report can't mark it finished. Older offline listening never replaces a newer place, and everyone can put back an earlier place — or a later spot an app sent that wasn't used, or one an app removed. A place an app sets without playing, and Arrmada's own web player, follow the same rules.
         </p>
       </Card>
@@ -82,12 +82,12 @@ function TraceCard({ data, setData }: { data: AudioServerAdmin; setData: (d: Aud
   return (
     <Card title="Trace app requests">
       <div className="flex items-center justify-between gap-3">
-        <p className="m-0 min-w-0 text-[12px] text-ink-dim">
+        <p className="m-0 min-w-0 text-sm text-ink-dim">
           {on
             ? <>Tracing until {until} — every request an app makes is logged (routes only, never which book).</>
             : "When an app connects but something doesn't work, switch this on and try again: for the next 24 hours every request apps make is logged on the Logs page (routes only, never which book). It switches itself off."}
         </p>
-        <button onClick={() => set(on ? 0 : 24)} disabled={busy} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-60" style={on ? ghost : primary}>{on ? "Stop" : "Trace for 24 hours"}</button>
+        <button onClick={() => set(on ? 0 : 24)} disabled={busy} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={on ? ghost : primary}>{on ? "Stop" : "Trace for 24 hours"}</button>
       </div>
     </Card>
   );

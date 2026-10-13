@@ -153,8 +153,8 @@ export function ReleaseSearchModal({
     <Modal onClose={onClose} labelledBy={titleId} size="xl">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{title}</h2>
-            {subtitle && <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{subtitle}</p>}
+            <h2 id={titleId} className="m-0 truncate text-lg font-bold">{title}</h2>
+            {subtitle && <p className="m-0 mt-0.5 text-sm text-ink-dim">{subtitle}</p>}
           </div>
           <div className="flex flex-none items-center gap-2">
             <Button size="sm" onClick={run} busy={loading} busyLabel="Searching…">Search again</Button>
@@ -166,14 +166,14 @@ export function ReleaseSearchModal({
             {tabs.map((t) => {
               const active = t.key === tab;
               return (
-                <button key={t.key} onClick={() => onTab?.(t.key)} disabled={loading && !active} className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition-colors" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)", border: `1px solid ${active ? "var(--accent-line)" : "transparent"}` }}>
+                <button key={t.key} onClick={() => onTab?.(t.key)} disabled={loading && !active} className="rounded-md px-2.5 py-1 text-sm font-semibold transition-colors" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)", border: `1px solid ${active ? "var(--accent-line)" : "transparent"}` }}>
                   {t.label}
                 </button>
               );
             })}
           </div>
         )}
-        {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
         {!loading && <IndexerIssues list={list} />}
         {!loading && list && list.releases.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3" style={{ borderColor: "var(--line)" }}>
@@ -191,9 +191,9 @@ export function ReleaseSearchModal({
                 ))}
               </FilterGroup>
             )}
-            <label className="ml-auto flex items-center gap-1.5 text-[10.5px] text-ink-faint">
+            <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-faint">
               Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg px-2 py-1 text-[11px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg px-2 py-1 text-xs font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                 {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </label>
@@ -201,11 +201,11 @@ export function ReleaseSearchModal({
         )}
         <div className="thin-scroll max-h-[58vh] overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">Searching your indexers…</div>
+            <div className="p-8 text-center text-base text-ink-dim">Searching your indexers…</div>
           ) : !list || list.releases.length === 0 ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">{emptyReleasesMessage(list)}</div>
+            <div className="p-8 text-center text-base text-ink-dim">{emptyReleasesMessage(list)}</div>
           ) : view.length === 0 ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">
+            <div className="p-8 text-center text-base text-ink-dim">
               No releases match these filters.
               <button onClick={() => { setResFilter(new Set()); setFeatFilter(new Set()); }} className="ml-1.5 font-semibold" style={{ color: "var(--accent)" }}>Clear filters</button>
             </div>
@@ -234,7 +234,7 @@ export function ReleaseSearchModal({
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
       <div className="flex flex-wrap gap-1">{children}</div>
     </div>
   );
@@ -244,7 +244,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button
       onClick={onClick}
-      className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition-colors"
+      className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
       style={{
         border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
         background: active ? "var(--accent-soft)" : "var(--panel-2)",
@@ -269,13 +269,13 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
           <div className="flex flex-wrap items-center gap-2">
             {highlight && <StatusChip tone="accent" size="md">Recommended</StatusChip>}
             {blocked && <StatusChip tone="reject" size="md">Blocklisted</StatusChip>}
-            <span className="text-[13px] font-semibold">{rel.summary}</span>
+            <span className="text-md font-semibold">{rel.summary}</span>
             {/* An anime arc is numbered in its own universe: "S04E06" is the arc's
                 fourth cour, not the show's fourth season. Without saying what it
                 resolved to, a correct match reads as completely the wrong season. */}
             {rel.resolves && (
               <span
-                className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold"
+                className="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
                 style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}
                 title="Which episode of your library this release actually maps to"
               >
@@ -283,8 +283,8 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
               </span>
             )}
           </div>
-          <div className="mt-1 truncate font-mono text-[11px] text-ink-faint" title={rel.title}>{rel.title}</div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-3 font-mono text-[10.5px] text-ink-dim">
+          <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={rel.title}>{rel.title}</div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 font-mono text-xs text-ink-dim">
             <span>{rel.size_gb.toFixed(1)} GB</span>
             {rel.bitrate_mbps ? <span title="Average bitrate (size ÷ runtime)" style={{ color: "var(--accent)" }}>{rel.bitrate_mbps.toFixed(1)} Mb/s</span> : null}
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
@@ -292,23 +292,23 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
             <span>{rel.indexer}</span>
             {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>view ↗</a>}
           </div>
-          {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-[11px]" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
+          {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-xs" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
           {rel.eligible && (
             <ReleaseExplain className="mt-1.5" matched={rel.matched} avoided={rel.avoided} waived={rel.bonus_waived} lostOn={rel.recommended ? undefined : rel.lost_on} />
           )}
           {why && why.length > 0 && (
-            <ul className="mt-2 list-none space-y-0.5 p-0 text-[11.5px]" style={{ color: "var(--accent)" }}>
+            <ul className="mt-2 list-none space-y-0.5 p-0 text-sm" style={{ color: "var(--accent)" }}>
               {why.map((w, i) => <li key={i}>✓ {w}</li>)}
             </ul>
           )}
-          {chosenOver && <div className="mt-1 text-[11px] text-ink-dim">{chosenOver}</div>}
+          {chosenOver && <div className="mt-1 text-xs text-ink-dim">{chosenOver}</div>}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
-          <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="px-3.5 text-[12px]" style={{ opacity: blocked || usenet ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>
+          <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="px-3.5 text-sm" style={{ opacity: blocked || usenet ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>
             {grabbed ? "Grabbed ✓" : busy ? "…" : "Grab"}
           </Button>
           {onBlock && !blocked && !grabbed && !usenet && rel.token && (
-            <button onClick={onBlock} disabled={disabled} title="Blocklist and search for an alternate" className="rounded-lg px-2.5 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-faint)" }}>⊘ Block</button>
+            <button onClick={onBlock} disabled={disabled} title="Blocklist and search for an alternate" className="rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-faint)" }}>⊘ Block</button>
           )}
         </div>
       </div>

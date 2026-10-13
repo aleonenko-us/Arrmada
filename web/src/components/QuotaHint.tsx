@@ -11,7 +11,7 @@ export function QuotaHint({ kind, onOut }: { kind: QuotaKind; onOut?: (out: bool
   const line = quotaLine(q, kind);
   if (!line) return null;
   return (
-    <div className="mt-1.5 text-[11.5px]" style={{ color: left === 0 ? "var(--avoid-text)" : "var(--ink-faint)" }}>
+    <div className="mt-1.5 text-sm" style={{ color: left === 0 ? "var(--avoid-text)" : "var(--ink-faint)" }}>
       {line}
     </div>
   );

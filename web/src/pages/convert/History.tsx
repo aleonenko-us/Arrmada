@@ -12,8 +12,8 @@ import { ReleaseButton, RevertButton, holdLine } from "./hold";
 
 const card = "rounded-xl p-4";
 const cardStyle = { border: "1px solid var(--line)", background: "var(--panel)" } as const;
-const lbl = "font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint";
-const inp = "rounded-lg px-2.5 py-1.5 text-[12px]";
+const lbl = "font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint";
+const inp = "rounded-lg px-2.5 py-1.5 text-sm";
 const inpStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 const ghostBtn = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
@@ -59,7 +59,7 @@ function savedPct(e: ConvertHistoryEntry): number | null {
 
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={active} className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition-colors"
+    <button type="button" onClick={onClick} aria-pressed={active} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
       style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
       {children}
     </button>
@@ -74,7 +74,7 @@ function Poster({ e }: { e: ConvertHistoryEntry }) {
     return <img src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className={`${box} object-cover`} style={{ background: "var(--panel-2)" }} />;
   }
   return (
-    <div aria-hidden className={`${box} flex items-center justify-center font-mono text-[10px] font-bold`} style={{ background: "var(--panel-2)", color: "var(--ink-faint)", border: "1px solid var(--line-soft)" }}>
+    <div aria-hidden className={`${box} flex items-center justify-center font-mono text-xs font-bold`} style={{ background: "var(--panel-2)", color: "var(--ink-faint)", border: "1px solid var(--line-soft)" }}>
       {e.kind === "episode" ? "TV" : "M"}
     </div>
   );
@@ -118,8 +118,8 @@ export function HistoryTab({ reload, flash }: { reload: number; flash: (m: strin
     <div className={card} style={cardStyle}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-[14px] font-bold">History</div>
-          <p className="mt-0.5 text-[11.5px] text-ink-faint">Everything Convert did, and what came of it. Converted files stay listed; the rest for 90 days. While an original is held, its conversion can be reverted.</p>
+          <div className="text-md font-bold">History</div>
+          <p className="mt-0.5 text-sm text-ink-faint">Everything Convert did, and what came of it. Converted files stay listed; the rest for 90 days. While an original is held, its conversion can be reverted.</p>
         </div>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles" aria-label="Search titles" className={`${inp} w-[180px]`} style={inpStyle} />
       </div>
@@ -129,12 +129,12 @@ export function HistoryTab({ reload, flash }: { reload: number; flash: (m: strin
         {MEDIA_FILTERS.map((f) => <Pill key={f.key || "both"} active={media === f.key} onClick={() => setMedia(f.key)}>{f.label}</Pill>)}
       </div>
       <div className="mt-3 flex flex-col">
-        {items === null ? <div className="text-[12px] text-ink-faint">Loading…</div>
-          : items.length === 0 ? <div className="text-[12px] text-ink-faint">Nothing recorded yet{outcome || media || q ? " that matches" : ""}.</div>
+        {items === null ? <div className="text-sm text-ink-faint">Loading…</div>
+          : items.length === 0 ? <div className="text-sm text-ink-faint">Nothing recorded yet{outcome || media || q ? " that matches" : ""}.</div>
           : items.map((e) => <HistoryRow key={e.id} e={e} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)} flash={flash} onChanged={replace} />)}
       </div>
       {next && (
-        <button onClick={more} disabled={busy} className="mt-2.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={ghostBtn}>
+        <button onClick={more} disabled={busy} className="mt-2.5 rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={ghostBtn}>
           {busy ? "…" : "Load more"}
         </button>
       )}
@@ -159,13 +159,13 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
       <div className="flex items-start gap-2.5">
         <Poster e={e} />
         <div className="min-w-0 flex-1">
-          <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 text-left text-[12px]">
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
+          <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 text-left text-sm">
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
             <span className="min-w-0 flex-1 truncate font-semibold">{e.title}</span>
-            {(e.repeats ?? 1) > 1 && <span className="font-mono text-[10px] text-ink-faint" title={`The same ${e.repeats} times in a row`}>×{e.repeats}</span>}
-            <span className="flex-none font-mono text-[10px] text-ink-faint">{fmtWhen(e.finished_at)}</span>
+            {(e.repeats ?? 1) > 1 && <span className="font-mono text-xs text-ink-faint" title={`The same ${e.repeats} times in a row`}>×{e.repeats}</span>}
+            <span className="flex-none font-mono text-xs text-ink-faint">{fmtWhen(e.finished_at)}</span>
           </button>
-          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-ink-dim">
+          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-dim">
             {pct !== null ? (
               <span className="font-mono">
                 {shortSpec(e.src_spec) || "original"} · {fmtBytes(e.src_size)} → {shortSpec(e.out_spec) || e.codec?.toUpperCase()} · {fmtBytes(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
@@ -184,7 +184,7 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
         </div>
       </div>
       {open && (
-        <div className="mt-2 flex flex-col gap-1.5 rounded-lg p-3 text-[11.5px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+        <div className="mt-2 flex flex-col gap-1.5 rounded-lg p-3 text-sm text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
           {e.note && <div>{e.note}</div>}
           {e.src_spec && <div><span className={lbl}>Before</span> <span className="font-mono">{e.src_spec} · {fmtBytes(e.src_size)}</span></div>}
           {e.out_spec && <div><span className={lbl}>After</span> <span className="font-mono">{e.out_spec} · {fmtBytes(e.out_size)}</span></div>}
@@ -209,7 +209,7 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
           {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid)" }}>{w}</div>)}
           {e.reclaim_deferred && <div className="text-ink-faint">Releasing the original won't free its space — the download client still holds a hardlinked copy of it.</div>}
           {hold && <div><span className={lbl}>Original</span> {hold}{e.hold_state === "held" && e.hold_until ? ` (until ${fmtWhen(e.hold_until)})` : ""}</div>}
-          {e.out_path && <div className="truncate font-mono text-[10.5px] text-ink-faint" title={e.out_path}>{e.out_path}</div>}
+          {e.out_path && <div className="truncate font-mono text-xs text-ink-faint" title={e.out_path}>{e.out_path}</div>}
         </div>
       )}
     </div>
@@ -228,23 +228,23 @@ export function RecentCard({ reload, onSeeAll }: { reload: number; onSeeAll: () 
   return (
     <div className={card} style={cardStyle}>
       <div className="flex items-center justify-between">
-        <div className="text-[14px] font-bold">Recent</div>
-        <button onClick={onSeeAll} className="text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>See all in History →</button>
+        <div className="text-md font-bold">Recent</div>
+        <button onClick={onSeeAll} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>See all in History →</button>
       </div>
       <div className="mt-2 flex flex-col gap-1.5">
         {items.map((e) => {
           const pct = savedPct(e);
           return (
-            <div key={e.id} className="flex items-center gap-2.5 text-[12px]">
-              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
+            <div key={e.id} className="flex items-center gap-2.5 text-sm">
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: OUTCOME_TONE[e.outcome] }}>{OUTCOME_LABEL[e.outcome]}</span>
               <span className="min-w-0 flex-1 truncate font-semibold">{e.title}</span>
               {pct !== null ? (
                 <span className="font-mono text-ink-dim">
                   {fmtBytes(e.src_size)} → {fmtBytes(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
-                  <span className="ml-1.5 text-[10.5px] text-ink-faint">{e.codec?.toUpperCase()}{e.ssim_mean ? ` · SSIM ${e.ssim_mean.toFixed(3)}` : ""}</span>
+                  <span className="ml-1.5 text-xs text-ink-faint">{e.codec?.toUpperCase()}{e.ssim_mean ? ` · SSIM ${e.ssim_mean.toFixed(3)}` : ""}</span>
                 </span>
               ) : (
-                <span className="max-w-[55%] truncate text-[11.5px] text-ink-faint" title={e.note}>{e.note || OUTCOME_LABEL[e.outcome]}</span>
+                <span className="max-w-[55%] truncate text-sm text-ink-faint" title={e.note}>{e.note || OUTCOME_LABEL[e.outcome]}</span>
               )}
             </div>
           );

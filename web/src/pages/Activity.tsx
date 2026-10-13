@@ -6,6 +6,7 @@ import { lazyPage } from "../lib/lazyPage";
 import { useAttention } from "../lib/useAttention";
 import { Skeleton } from "../ui";
 import { TabPanel, Tabs, type TabItem } from "../ui/Tabs";
+import { Page } from "../ui/Page";
 
 // Each tab is its own lazy component and only the visible one is mounted, so only it
 // polls: leaving Queue stops the three-second queue read. The panels came from the pages
@@ -47,7 +48,7 @@ export function Activity() {
   return (
     <>
       <PageHeader title="Activity" crumb={`Activity / ${ACTIVITY_TAB_LABEL[tab]}`} />
-      <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         {/* A tab's filters are its own: switching tabs starts the next one clean. */}
         <Tabs tabs={tabs} value={tab} onChange={(t) => navigate(`/activity/${t}`)} idPrefix="activity" label="Activity" className="mb-4 border-b" />
         <TabPanel idPrefix="activity" value={tab}>
@@ -55,7 +56,7 @@ export function Activity() {
             <div key={tab}>{panelFor(tab)}</div>
           </Suspense>
         </TabPanel>
-      </div>
+      </Page>
     </>
   );
 }

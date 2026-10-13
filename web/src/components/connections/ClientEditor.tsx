@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { PathMappings } from "./PathMappings";
+import { Labeled } from "./IndexerEditor";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 
 // The download-client form, moved from the old Download clients page into the cards on
 // Settings → Connections. It adds a client, or edits one in place; the stored password is
 // never sent to the browser, so on an edit a blank password keeps it.
 
-const field = "w-full rounded-lg px-3 py-2 text-[13px]";
+const field = "w-full rounded-lg px-3 py-2 text-md";
 const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
 // clientBody is a client's saved settings as a PUT body with a change swapped in. The
@@ -93,14 +94,14 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
           <input type="number" min={1} max={99} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(e.target.value)} required />
         </Labeled>
       </div>
-      <p className="mt-3 text-[11px] text-ink-faint">
+      <p className="mt-3 text-xs text-ink-faint">
         Points at your qBittorrent WebUI as the Arrmada container reaches it: its container name or your server’s IP. localhost here means the Arrmada container itself, not your server. Credentials are stored on your server.
       </p>
-      {error && <div className="mt-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
       <button
         type="submit"
         disabled={saving}
-        className="mt-3.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold"
+        className="mt-3.5 rounded-lg px-4 py-2 text-base font-semibold"
         style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: saving ? 0.6 : 1 }}
       >
         {saving ? "Saving…" : editing ? "Save changes" : "Save client"}
@@ -123,8 +124,8 @@ export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadC
   return (
     <div className="mt-1 flex flex-col gap-1">
       {port > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span className="rounded px-1.5 py-0.5 font-mono text-[10px]" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
             incoming port {port}
           </span>
           <span className="text-ink-faint">forward TCP + UDP on your router to seed properly</span>
@@ -140,18 +141,9 @@ export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadC
 // fixed: each importer reads only its own, so they aren't a setting.
 export function CategoryLine({ c }: { c: DownloadCategories }) {
   return (
-    <p className="m-0 text-[11px] text-ink-dim" title="Arrmada files every download under one of these, so each importer finds its own.">
+    <p className="m-0 text-xs text-ink-dim" title="Arrmada files every download under one of these, so each importer finds its own.">
       Categories in qBittorrent: <span className="font-mono">{c.movies}</span> (movies) · <span className="font-mono">{c.tv}</span> · <span className="font-mono">{c.books}</span> · <span className="font-mono">{c.music}</span>
     </p>
   );
 }
 
-function Labeled({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
-      {children}
-      {hint && <span className="text-[10.5px] text-ink-faint">{hint}</span>}
-    </label>
-  );
-}

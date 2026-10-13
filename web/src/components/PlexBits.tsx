@@ -15,7 +15,7 @@ export function PlexPill({ media, tmdbId }: { media: "movie" | "series"; tmdbId:
   }, [media, tmdbId]);
   if (!url) return null;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" title="Watch on Plex" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#e5a00d", color: "#1f1f1f" }}>
+    <a href={url} target="_blank" rel="noopener noreferrer" title="Watch on Plex" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#e5a00d", color: "#1f1f1f" }}>
       ▶ Plex
     </a>
   );
@@ -35,7 +35,7 @@ export function WatchedBy({ kind, id }: { kind: "movies" | "series"; id: number 
   if (!ws || !ws.available || ws.plays === 0 || ws.users.length === 0) return null;
   const names = ws.users.map((u) => u.name || "Someone");
   return (
-    <details className="mt-2 text-[12px] text-ink-dim">
+    <details className="mt-2 text-sm text-ink-dim">
       <summary className="cursor-pointer select-none" title={names.join(", ")}>
         Watched by {ws.users.length === 1 ? names[0] : ws.users.length} · last played {ago(ws.last_played)}
       </summary>

@@ -14,6 +14,7 @@ import { discoverPlace, FOLLOWING, type ReqStatus, type RowCtx } from "./shared"
 import { SearchBox } from "./SearchBox";
 import { MyRequestsRow } from "./RequestsRow";
 import { BrowseTab, DiscoverTab } from "./tabs";
+import { Page } from "../../ui/Page";
 
 // Discover is the requester's home: tabs (Discover, Movies, Series, Books), the omnibox,
 // the rows, and whatever is open over them at its own address. Its parts live beside it in
@@ -119,7 +120,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <PageHeader title="Discover" />}
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6">
+      <Page width="wide" className="py-5">
         {/* Tabs + search. On a phone they stack, search on top so the tabs still sit on the
             underline, and the tabs scroll sideways rather than widening the page. Search comes
             first in the DOM as well, so focus order matches what a phone shows; sm:order-last
@@ -132,7 +133,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
               {metadataReady ? (
                 <SearchBox value={searchInput} onChange={onSearchChange} onSeeAll={commitSearch} />
               ) : (
-                <input disabled placeholder="Search isn't available yet" aria-label="Search movies and TV (not available yet)" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[12.5px] opacity-60 sm:w-[210px] sm:flex-initial" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+                <input disabled placeholder="Search isn't available yet" aria-label="Search movies and TV (not available yet)" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-base opacity-60 sm:w-[210px] sm:flex-initial" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
               )}
             </div>
           )}
@@ -142,7 +143,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
 
         <TabPanel idPrefix="discover" value={tab}>
           {tab === "books" ? (
-            <Suspense fallback={<div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>}>
+            <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}>
               <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} />
             </Suspense>
           ) : !metadataReady ? (
@@ -165,7 +166,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
             </>
           )}
         </TabPanel>
-      </div>
+      </Page>
       {(overlay?.kind === "movie" || overlay?.kind === "series") && (
         <Suspense fallback={null}><TitleSheet media={overlay.kind} tmdbId={overlay.id} ctx={ctx} /></Suspense>
       )}
@@ -177,7 +178,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   );
 }
 
-const gridLoading = <div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>;
+const gridLoading = <div className="py-10 text-center text-base text-ink-dim">Loading…</div>;
 
 // requestedMessage is what asking for a title says: an auto-approved request is already
 // being searched for, anything else waits for someone to approve it.

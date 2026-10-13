@@ -7,7 +7,7 @@ import { useMe } from "../lib/me";
 // Only an admin on a fresh install ever sees the wizard, so it is its own chunk.
 const SetupWizard = lazyPage(() => import("../pages/SetupWizard"), "SetupWizard");
 
-const loading = <div className="grid h-full place-items-center text-[13px] text-ink-dim">Loading…</div>;
+const loading = <div className="grid h-full place-items-center text-md text-ink-dim">Loading…</div>;
 
 // SetupGate shows the first-run wizard to an admin until setup is finished or skipped.
 // Everyone else, and an admin on a configured install, goes straight to the app. A

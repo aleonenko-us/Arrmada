@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Field, Note, Section, input, inputStyle, useScrollWhenLoaded } from "../../components/settings/ui";
+import { Note, Section, input, inputStyle, useScrollWhenLoaded } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { DEFAULT_PORT, mailApi, type MailSecurity, type SMTPView } from "../../lib/mailApi";
 import { useQuery, setQueryData } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
@@ -28,9 +29,9 @@ export function OutgoingEmail() {
       subtitle="The mail account Arrmada sends from — used for Send to Kindle. Use your own provider's SMTP details with an app password, not your normal password."
     >
       {error && !data ? (
-        <p className="text-[12px]" style={{ color: "var(--reject)" }}>Couldn’t load the outgoing email settings — {error.message}</p>
+        <p className="text-sm" style={{ color: "var(--reject)" }}>Couldn’t load the outgoing email settings — {error.message}</p>
       ) : !data ? (
-        <p className="text-[12px] text-ink-dim">Loading…</p>
+        <p className="text-sm text-ink-dim">Loading…</p>
       ) : (
         <MailForm view={data} />
       )}
@@ -100,7 +101,7 @@ function MailForm({ view }: { view: SMTPView }) {
 
   return (
     <>
-      <p className="m-0 text-[12px]" style={{ color: view.configured ? "var(--good-text)" : "var(--ink-dim)" }}>
+      <p className="m-0 text-sm" style={{ color: view.configured ? "var(--good-text)" : "var(--ink-dim)" }}>
         {view.configured ? `Set up — mail goes out from ${view.from}.` : "Not set up yet."}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -143,13 +144,13 @@ function MailForm({ view }: { view: SMTPView }) {
         <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--line)" }}>
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Send a test to</span>
+              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Send a test to</span>
               <input className={input} style={inputStyle} type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" />
             </label>
             <Button onClick={test} busy={testing} busyLabel="Sending…" disabled={!testTo.trim()}>Send test email</Button>
           </div>
           {result && (
-            <p className="m-0 break-words text-[12px]" role="status" style={{ color: result.ok ? "var(--good-text)" : "var(--reject)" }}>
+            <p className="m-0 break-words text-sm" role="status" style={{ color: result.ok ? "var(--good-text)" : "var(--reject)" }}>
               {result.ok ? result.detail : `Didn’t send: ${result.detail}`}
             </p>
           )}

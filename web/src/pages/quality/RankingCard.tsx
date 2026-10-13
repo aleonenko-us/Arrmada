@@ -38,8 +38,8 @@ export function RankingCard() {
     <div id="ranking" className="mt-6 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold">Ranking</span>
-          <span className="block text-[11px] text-ink-faint">
+          <span className="block text-md font-semibold">Ranking</span>
+          <span className="block text-xs text-ink-faint">
             Classic adds every score together. Ordered compares releases one rule at a time — resolution, then your preferences, custom formats, source, bitrate — and records which rule decided.
           </span>
         </span>
@@ -47,7 +47,7 @@ export function RankingCard() {
           {opts.map((o) => {
             const on = mode === o.v;
             return (
-              <button key={o.v} role="radio" aria-checked={on} onClick={() => void change(o.v)} className="rounded-md px-2.5 py-1 text-[11px] font-semibold"
+              <button key={o.v} role="radio" aria-checked={on} onClick={() => void change(o.v)} className="rounded-md px-2.5 py-1 text-xs font-semibold"
                 style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--ink-faint)" }}>
                 {o.label}
               </button>
@@ -56,7 +56,7 @@ export function RankingCard() {
         </div>
       </div>
       {report && mode === "v1" && (
-        <p className="mt-2 text-[11px] text-ink-dim">
+        <p className="mt-2 text-xs text-ink-dim">
           {report.decisions === 0
             ? "The ordered ranking runs alongside classic on every automatic pick; nothing to compare yet."
             : `Alongside classic, the ordered ranking would have picked differently ${report.disagreements} time${report.disagreements === 1 ? "" : "s"} in ${report.decisions} decision${report.decisions === 1 ? "" : "s"}.`}
@@ -65,7 +65,7 @@ export function RankingCard() {
           )}
         </p>
       )}
-      {error && <p className="mt-2 text-[11px]" style={{ color: "var(--reject)" }}>{error}</p>}
+      {error && <p className="mt-2 text-xs" style={{ color: "var(--reject)" }}>{error}</p>}
     </div>
   );
 }

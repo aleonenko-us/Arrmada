@@ -37,19 +37,19 @@ export function GroupTiersEditor({ sp, patch }: { sp: StoredProfile; patch: (p: 
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[12px] font-semibold">Release groups</span>
+        <span className="text-sm font-semibold">Release groups</span>
         {sp.group_tiers && (
-          <button onClick={() => { setNote(null); patch({ group_tiers: undefined }); }} className="text-[10.5px] text-ink-dim hover:text-[var(--ink)]">Use the suggestions</button>
+          <button onClick={() => { setNote(null); patch({ group_tiers: undefined }); }} className="text-xs text-ink-dim hover:text-[var(--ink)]">Use the suggestions</button>
         )}
       </div>
-      <p className="mb-2 text-[10.5px] text-ink-faint">
+      <p className="mb-2 text-xs text-ink-faint">
         With ranking v2, a tier-1 group ranks above tier 2, and tier 2 above the rest, when releases are otherwise level after source. Classic ranking ignores tiers.
         Tiers never refuse a release — groups to stay away from go in Rules → Unwanted.
         {!sp.group_tiers && " These are suggestions until you change them."}
       </p>
       <TierRow label="Tier 1" groups={tiers.tier1} onAdd={(g) => add("tier1", g)} onRemove={(g) => remove("tier1", g)} />
       <TierRow label="Tier 2" groups={tiers.tier2} onAdd={(g) => add("tier2", g)} onRemove={(g) => remove("tier2", g)} />
-      {note && <p role="alert" className="mt-1 text-[10.5px]" style={{ color: "var(--avoid-text)" }}>{note}</p>}
+      {note && <p role="alert" className="mt-1 text-xs" style={{ color: "var(--avoid-text)" }}>{note}</p>}
     </div>
   );
 }
@@ -59,21 +59,21 @@ function TierRow({ label, groups, onAdd, onRemove }: { label: string; groups: st
   const add = () => { onAdd(term); setTerm(""); };
   return (
     <div className="mb-2.5">
-      <div className="mb-1 font-mono text-[10px] font-bold uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="mb-1 font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</div>
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         {groups.map((g) => (
-          <span key={g} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px]" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>
+          <span key={g} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>
             {g}
             <button onClick={() => onRemove(g)} aria-label={`Remove ${g} from ${label}`}>✕</button>
           </span>
         ))}
-        {groups.length === 0 && <span className="text-[10.5px] text-ink-faint">No groups.</span>}
+        {groups.length === 0 && <span className="text-xs text-ink-faint">No groups.</span>}
       </div>
       <div className="flex items-center gap-2">
         <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Group name"
-          aria-label={`Add a group to ${label}`} className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]"
+          aria-label={`Add a group to ${label}`} className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-        <button onClick={add} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
+        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
       </div>
     </div>
   );

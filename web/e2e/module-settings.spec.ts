@@ -57,6 +57,23 @@ test.describe("admin", () => {
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
   });
 
+  // FE-15: switches are real switches and labels are real labels.
+  test("a switch flips from the keyboard, and a field's label focuses its box", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "PUT", path: "/api/v1/subtitles/settings", respond: ({ body }) => ({ ...subtitleSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools");
+    const sw = page.getByRole("switch", { name: "Auto-ensure movies" });
+    await expect(sw).toHaveAttribute("aria-checked", "false");
+    await sw.focus();
+    await page.keyboard.press("Space");
+    await expect(sw).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/subtitles/settings").map((c) => c.body)).toEqual([{ movies_auto: true }]);
+
+    await page.getByText("Minimum match score", { exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Minimum match score" })).toBeFocused();
+  });
+
   // SUB-31: kept languages are searched (regional variants too) and ordered.
   test("kept languages: search adds a regional variant, and the order saves", async ({ page, api }) => {
     await installExtra(page, api, [

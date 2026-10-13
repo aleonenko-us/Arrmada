@@ -61,18 +61,18 @@ export function HistoryPanel() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div role="group" aria-label="Kind" className="flex flex-wrap items-center gap-1.5">
           {[{ key: "", label: "All" }, ...kinds].map((k) => (
-            <button key={k.key || "all"} type="button" aria-pressed={f.kind === k.key} onClick={() => f.set("kind", k.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={pill(f.kind === k.key)}>
+            <button key={k.key || "all"} type="button" aria-pressed={f.kind === k.key} onClick={() => f.set("kind", k.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={pill(f.kind === k.key)}>
               {k.label}
             </button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <button type="button" aria-pressed={f.files} onClick={() => f.set("view", f.files ? "" : "imports")} title="The files imported most recently and where each went" className="rounded-full px-3 py-1 text-[12px] font-semibold" style={pill(f.files)}>
+          <button type="button" aria-pressed={f.files} onClick={() => f.set("view", f.files ? "" : "imports")} title="The files imported most recently and where each went" className="rounded-full px-3 py-1 text-sm font-semibold" style={pill(f.files)}>
             Files imported
           </button>
           {!f.files && (
             <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Search titles or releases…" aria-label="Search the history"
-              className="w-[220px] rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+              className="w-[220px] rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
           )}
         </div>
       </div>
@@ -80,7 +80,7 @@ export function HistoryPanel() {
         <>
           <div role="group" aria-label="Event" className="mb-4 flex flex-wrap items-center gap-1.5">
             {[{ key: "", label: "Everything" }, ...EVENT_CATEGORIES].map((c) => (
-              <button key={c.key || "all"} type="button" aria-pressed={f.event === c.key} onClick={() => f.set("event", c.key)} className="rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold" style={pill(f.event === c.key)}>
+              <button key={c.key || "all"} type="button" aria-pressed={f.event === c.key} onClick={() => f.set("event", c.key)} className="rounded-full px-2.5 py-0.5 text-sm font-semibold" style={pill(f.event === c.key)}>
                 {c.label}
               </button>
             ))}
@@ -181,7 +181,7 @@ function EventLog({ kind, event, q }: { kind: string; event: string; q: string }
         <div className="flex flex-col gap-4">
           {groupByDay(events).map((day) => (
             <section key={day.label} aria-label={day.label}>
-              <h2 className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">{day.label}</h2>
+              <h2 className="mb-1.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">{day.label}</h2>
               <ul className="m-0 list-none overflow-hidden rounded-xl p-0" style={{ border: "1px solid var(--line)" }}>
                 {day.items.map((e) => <EventRow key={eventKey(e)} e={e} />)}
               </ul>
@@ -212,12 +212,12 @@ function EventRow({ e }: { e: HistoryEvent }) {
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
-          <Link to={href} className="min-w-0 truncate text-[12.5px] font-semibold no-underline" style={{ color: "var(--ink)" }}>{e.title}</Link>
-          <span className="font-mono text-[9.5px] uppercase text-ink-faint">{KIND_WORD[e.kind]}</span>
+          <Link to={href} className="min-w-0 truncate text-base font-semibold no-underline" style={{ color: "var(--ink)" }}>{e.title}</Link>
+          <span className="font-mono text-2xs uppercase text-ink-faint">{KIND_WORD[e.kind]}</span>
         </div>
-        {e.detail && <div className="mt-0.5 truncate text-[11.5px] text-ink-dim" title={e.detail}>{e.detail}</div>}
+        {e.detail && <div className="mt-0.5 truncate text-sm text-ink-dim" title={e.detail}>{e.detail}</div>}
       </div>
-      <time dateTime={at.toISOString()} title={at.toLocaleString()} className="flex-none font-mono text-[10.5px] text-ink-faint">
+      <time dateTime={at.toISOString()} title={at.toLocaleString()} className="flex-none font-mono text-xs text-ink-faint">
         {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </time>
     </li>
@@ -235,19 +235,19 @@ function ImportedFiles({ kind }: { kind: string }) {
   if (items.length === 0) return <EmptyState title="Nothing imported yet" body="When a download finishes, Arrmada files it into your library and it's listed here." />;
   return (
     <div className="flex flex-col gap-2">
-      {kind && <p className="m-0 text-[11.5px] text-ink-faint">Imported files aren't split by kind; this list has every one.</p>}
+      {kind && <p className="m-0 text-sm text-ink-faint">Imported files aren't split by kind; this list has every one.</p>}
       {items.map((it) => {
         const at = it.imported_at ? new Date(it.imported_at.includes("T") ? it.imported_at : it.imported_at.replace(" ", "T") + "Z") : null;
         return (
           <div key={it.hash} className="rounded-xl px-4 py-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">{it.title || "Imported"}</div>
-                <div className="truncate font-mono text-[10.5px] text-ink-faint" title={it.target_path}>{it.target_path}</div>
+                <div className="truncate text-md font-semibold">{it.title || "Imported"}</div>
+                <div className="truncate font-mono text-xs text-ink-faint" title={it.target_path}>{it.target_path}</div>
               </div>
-              <span className="font-mono text-[11px] text-ink-dim">{formatBytes(it.size_bytes)}</span>
+              <span className="font-mono text-xs text-ink-dim">{formatBytes(it.size_bytes)}</span>
               {at && !Number.isNaN(at.getTime()) && (
-                <time dateTime={at.toISOString()} className="w-[120px] flex-none text-right font-mono text-[10.5px] text-ink-faint">{at.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</time>
+                <time dateTime={at.toISOString()} className="w-[120px] flex-none text-right font-mono text-xs text-ink-faint">{at.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</time>
               )}
             </div>
           </div>

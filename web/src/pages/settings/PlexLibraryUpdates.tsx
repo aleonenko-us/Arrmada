@@ -34,18 +34,18 @@ function howLabel(r: PlexScanRoot): string {
 function RootLine({ r, busy, onTest }: { r: PlexScanRoot; busy: string; onTest: (kind: "movie" | "show", run: boolean) => void }) {
   const label = KIND_LABEL[r.kind] ?? r.kind;
   if (!r.arrmada_root) {
-    return <div className="text-[12px] text-ink-faint">{label}: no folder set</div>;
+    return <div className="text-sm text-ink-faint">{label}: no folder set</div>;
   }
   const target = r.how === "section" || !r.plex_path ? null : r.plex_path;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <span className="font-semibold">{label}:</span>
-        <span className="font-mono text-[11.5px]">{r.arrmada_root}</span>
+        <span className="font-mono text-sm">{r.arrmada_root}</span>
         {r.how && r.how !== "none" && (
           <>
             <span className="text-ink-faint">→</span>
-            <span className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }}>{target ?? "the whole library"}</span>
+            <span className="font-mono text-sm" style={{ color: "var(--accent)" }}>{target ?? "the whole library"}</span>
             <span className="text-ink-faint">
               · {r.sections.length === 1 ? "section" : "sections"} {r.sections.join(", ")} ({howLabel(r)})
             </span>
@@ -92,7 +92,7 @@ export function PlexLibraryUpdates() {
   useUnsavedGuard(dirty);
 
   if (loadErr) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><Note tone="warn">{loadErr}</Note></Section>;
-  if (!view) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><div className="text-[12px] text-ink-faint">Loading…</div></Section>;
+  if (!view) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><div className="text-sm text-ink-faint">Loading…</div></Section>;
 
   const edit = (next: PlexPathMap[]) => { setMaps(next); setDirty(true); };
   const save = async () => {
@@ -146,8 +146,8 @@ export function PlexLibraryUpdates() {
       )}
 
       <div className="flex flex-col gap-2">
-        <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Path mappings</span>
-        <span className="text-[10.5px] text-ink-faint">Only needed when a line above says "whole library" or points somewhere wrong. The Arrmada folder is as Arrmada sees it; the Plex folder is the same place as Plex sees it (for example /data/media/movies, or D:\Media\Movies on Windows).</span>
+        <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Path mappings</span>
+        <span className="text-xs text-ink-faint">Only needed when a line above says "whole library" or points somewhere wrong. The Arrmada folder is as Arrmada sees it; the Plex folder is the same place as Plex sees it (for example /data/media/movies, or D:\Media\Movies on Windows).</span>
         {maps.map((m, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
             <input aria-label="Arrmada folder" placeholder="/movies" value={m.from} onChange={(e) => edit(maps.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)))} className={`${input} min-w-0 flex-1`} style={inputStyle} />
@@ -162,7 +162,7 @@ export function PlexLibraryUpdates() {
         </div>
       </div>
 
-      <div className="text-[11.5px] text-ink-dim">
+      <div className="text-sm text-ink-dim">
         {last ? (
           last.error
             ? <span style={{ color: "var(--reject-text)" }}>Last scan {ago(last.at)} failed: {last.error}</span>
@@ -170,7 +170,7 @@ export function PlexLibraryUpdates() {
         ) : "No scans asked for since Arrmada started."}
         {view.pending > 0 && ` · ${view.pending} waiting`}
       </div>
-      {msg && <div className="text-[11.5px]" style={{ color: msg.tone === "err" ? "var(--reject-text)" : "var(--good-text)" }}>{msg.text}</div>}
+      {msg && <div className="text-sm" style={{ color: msg.tone === "err" ? "var(--reject-text)" : "var(--good-text)" }}>{msg.text}</div>}
     </Section>
   );
 }

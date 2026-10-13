@@ -19,7 +19,7 @@ const LEVEL: Record<HealthCheck["level"], { color: string; label: string }> = {
   pending: { color: "var(--ink-faint)", label: "Not checked yet" },
 };
 
-const btn = "rounded-lg px-3.5 py-2 text-[12.5px] font-semibold disabled:opacity-50";
+const btn = "rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50";
 const btnStyle = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
 export function HealthList() {
@@ -54,20 +54,20 @@ export function HealthList() {
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={checkNow} disabled={checking} className={btn} style={btnStyle}>{checking ? "Checking…" : "Check now"}</button>
         {data && (
-          <span className="text-[12px] text-ink-dim">
+          <span className="text-sm text-ink-dim">
             {errors === 0 && warnings === 0
               ? "Everything checked is working."
               : [errors > 0 && `${errors} error${errors === 1 ? "" : "s"}`, warnings > 0 && `${warnings} warning${warnings === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
           </span>
         )}
       </div>
-      {err && <p className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>Couldn't load the health checks: {err}</p>}
-      {data === null && !err && <p className="m-0 text-[12px] text-ink-dim">Loading…</p>}
-      {data && checks.length === 0 && <p className="m-0 text-[12px] text-ink-dim">No checks have run yet. They start within half a minute of Arrmada starting.</p>}
+      {err && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the health checks: {err}</p>}
+      {data === null && !err && <p className="m-0 text-sm text-ink-dim">Loading…</p>}
+      {data && checks.length === 0 && <p className="m-0 text-sm text-ink-dim">No checks have run yet. They start within half a minute of Arrmada starting.</p>}
 
       {groups.map((g) => (
         <div key={g.cat} className="flex flex-col gap-1.5">
-          <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{g.cat}</div>
+          <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{g.cat}</div>
           <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
             {g.items.map((c, i) => <CheckRow key={c.key} c={c} first={i === 0} />)}
           </div>
@@ -84,16 +84,16 @@ function CheckRow({ c, first }: { c: HealthCheck; first: boolean }) {
     <div className="flex flex-col gap-1.5 px-3 py-2.5" style={{ borderTop: first ? undefined : "1px solid var(--line-soft)" }}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
         <span className="h-2 w-2 flex-none rounded-full" style={{ background: lv.color }} role="img" aria-label={lv.label} title={lv.label} />
-        <span className="min-w-0 flex-1 text-[12.5px] font-semibold">{c.name}</span>
-        <span className="flex-none font-mono text-[10.5px] text-ink-faint">{checked}</span>
+        <span className="min-w-0 flex-1 text-base font-semibold">{c.name}</span>
+        <span className="flex-none font-mono text-xs text-ink-faint">{checked}</span>
       </div>
       {c.findings.length === 0 ? (
-        c.level === "ok" && <div className="pl-[18px] text-[11.5px] text-ink-faint">Working.</div>
+        c.level === "ok" && <div className="pl-[18px] text-sm text-ink-faint">Working.</div>
       ) : (
         c.findings.map((f, i) => {
           const to = fixLink(f);
           return (
-            <div key={f.key ?? i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-[18px] text-[12px]">
+            <div key={f.key ?? i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-[18px] text-sm">
               <span className="min-w-0 flex-1 break-words" style={{ color: f.level === "error" ? "var(--reject)" : "var(--ink-dim)" }}>{f.message}</span>
               {to && (
                 <Link to={to} title={f.link_label} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent)" }}>Fix →</Link>

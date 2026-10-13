@@ -59,8 +59,8 @@ export function SeasonRail({ seasons, selected, onSelect }: { seasons: Season[];
               {thumb && <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-semibold" style={{ color: active ? "var(--accent-text)" : "var(--ink)" }}>{seasonName(sn.season_number)}</span>
-              <span className="block font-mono text-[10.5px] text-ink-faint">
+              <span className="block truncate text-base font-semibold" style={{ color: active ? "var(--accent-text)" : "var(--ink)" }}>{seasonName(sn.season_number)}</span>
+              <span className="block font-mono text-xs text-ink-faint">
                 {c.total === 0 ? "Not yet released" : c.airedCount === 0 ? "Upcoming" : `${c.have}/${c.counted}`}
               </span>
               {c.total > 0 && c.airedCount > 0 && (
@@ -141,8 +141,8 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
   return (
     <section aria-label={name} className="mt-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="m-0 text-[15px] font-bold">{name}</h2>
-        <span className="font-mono text-[11px] text-ink-faint">
+        <h2 className="m-0 text-lg font-bold">{name}</h2>
+        <span className="font-mono text-xs text-ink-faint">
           {c.total === 0 ? "Not yet released" : c.airedCount === 0 ? "Upcoming" : `${c.have}/${c.counted}`}
           {c.notMonitored > 0 && <span title="Aired episodes without a file that aren't monitored — not counted as missing"> · {c.notMonitored} not monitored</span>}
         </span>
@@ -183,11 +183,11 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
           </Button>
         </div>
       </div>
-      {seasonDir && <div className="mt-1 truncate font-mono text-[10.5px] text-ink-faint" title={seasonDir}>{seasonDir}</div>}
-      {anyMissing && last && !searching && <div className="mt-1 text-[11.5px]" style={{ color: outcomeTone(last.outcome) }}>{attemptLine(last)}</div>}
+      {seasonDir && <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={seasonDir}>{seasonDir}</div>}
+      {anyMissing && last && !searching && <div className="mt-1 text-sm" style={{ color: outcomeTone(last.outcome) }}>{attemptLine(last)}</div>}
 
       {c.total === 0 ? (
-        <div className="mt-3 rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No episodes are listed for {name} yet.</div>
+        <div className="mt-3 rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>No episodes are listed for {name} yet.</div>
       ) : (
         <div ref={grid} className="mt-3 grid gap-2.5 lg:grid-cols-2">
           {eps.slice(0, shown).map((e) => (
@@ -223,7 +223,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
       )}
       {eps.length > shown && (
         <div className="mt-3 flex items-center justify-center gap-3">
-          <span className="font-mono text-[11px] text-ink-faint">{shown} of {eps.length}</span>
+          <span className="font-mono text-xs text-ink-faint">{shown} of {eps.length}</span>
           <Button size="sm" onClick={() => setShown((n) => n + PAGE)}>Show more</Button>
         </div>
       )}
@@ -294,7 +294,7 @@ function BulkBar({ series, season, picked, setPicked, onDone, onSearch, onChange
       className="sticky z-20 mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5"
       style={{ bottom: "calc(var(--bottom-chrome) + 12px)", background: "var(--panel)", border: "1px solid var(--accent-line)", boxShadow: "var(--shadow)" }}
     >
-      <span className="mr-auto text-[12.5px] font-semibold" aria-live="polite">{n} selected</span>
+      <span className="mr-auto text-base font-semibold" aria-live="polite">{n} selected</span>
       {n < all && <Button size="sm" variant="ghost" onClick={() => setPicked(new Set((season.episodes ?? []).map((e) => e.id)))}>All</Button>}
       <Button size="sm" onClick={() => setMonitored(true)} disabled={n === 0 || busy !== null} busy={busy === "on"} busyLabel="Saving…">Monitor</Button>
       <Button size="sm" onClick={() => setMonitored(false)} disabled={n === 0 || busy !== null} busy={busy === "off"} busyLabel="Saving…">Unmonitor</Button>

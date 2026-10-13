@@ -1,5 +1,7 @@
+import { useId } from "react";
 import type { AutoSave } from "../../lib/useAutoSave";
-import { Field, Toggle, input, inputStyle } from "./ui";
+import { Field } from "../../ui/Field";
+import { Toggle, input, inputStyle } from "./ui";
 
 // The auto-saving controls every Settings card is built from. Each takes an AutoSave
 // (lib/useAutoSave for any endpoint, or useSetting(key) for /settings) and shows its own
@@ -17,7 +19,7 @@ type Saveish = Pick<AutoSave<unknown>, "status" | "error" | "canRetry" | "retry"
 
 // SavedTick is the inline save state for one control (or a group that saves together).
 export function SavedTick({ save, className = "" }: { save: Saveish; className?: string }) {
-  const base = `text-[11px] ${className}`;
+  const base = `text-xs ${className}`;
   return (
     <span aria-live="polite" className="min-h-[1em]">
       {save.status === "saving" && <span className={`${base} text-ink-faint`}>Saving…</span>}
@@ -53,17 +55,24 @@ export function AutoSelect<T extends string>({ label, save, options, className =
   className?: string;
   children?: React.ReactNode;
 }) {
+  const id = useId();
   return (
-    <Field label={label}>
+    <Field label={label} controlId={id}>
       <span className="flex flex-wrap items-center gap-2">
-        <select value={save.value} onChange={(e) => void save.commit(e.target.value as T)} className={`rounded-lg px-3 py-2 text-[12.5px] ${className}`} style={inputStyle}>
+        <select id={id} aria-describedby={children ? `${id}-help` : undefined} value={save.value} onChange={(e) => void save.commit(e.target.value as T)} className={`rounded-lg px-3 py-2 text-base ${className}`} style={inputStyle}>
           {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <SavedTick save={save} />
       </span>
-      {children}
+      <Help id={`${id}-help`}>{children}</Help>
     </Field>
   );
+}
+
+// Help is the text under an auto-saving control, read out as its description. `contents`
+// keeps each piece a direct row of the field, as it was before it was wrapped.
+function Help({ id, children }: { id: string; children?: React.ReactNode }) {
+  return children ? <div id={id} className="contents">{children}</div> : null;
 }
 
 // textKeys is the keyboard half of blur-to-save: Enter commits, Esc reverts.
@@ -87,9 +96,12 @@ export function AutoText({ label, save, placeholder, mono = true, className, inp
   /** Help and previews under the field. */
   children?: React.ReactNode;
 }) {
+  const id = useId();
   return (
-    <Field label={label}>
+    <Field label={label} controlId={id}>
       <input
+        id={id}
+        aria-describedby={children ? `${id}-help` : undefined}
         value={save.value}
         onChange={(e) => save.set(filter ? filter(e.target.value) : e.target.value)}
         onBlur={() => void save.commit()}
@@ -101,7 +113,7 @@ export function AutoText({ label, save, placeholder, mono = true, className, inp
         className={className ?? (mono ? input : input.replace("font-mono ", ""))}
         style={save.status === "error" ? { ...inputStyle, border: "1px solid var(--reject)" } : inputStyle}
       />
-      {children}
+      <Help id={`${id}-help`}>{children}</Help>
       <SavedTick save={save} />
     </Field>
   );

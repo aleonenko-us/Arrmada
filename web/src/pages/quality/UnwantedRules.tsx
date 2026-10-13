@@ -64,8 +64,8 @@ export function UnwantedRules({ value, onChange, catalog, ideal, defaultGroups }
 
   return (
     <div className="mt-4">
-      <div className="mb-0.5 text-[12px] font-semibold">Unwanted</div>
-      <p className="mb-2 text-[10.5px] text-ink-faint">On for every profile. Avoid means grabbed only when nothing else is available.</p>
+      <div className="mb-0.5 text-sm font-semibold">Unwanted</div>
+      <p className="mb-2 text-xs text-ink-faint">On for every profile. Avoid means grabbed only when nothing else is available.</p>
       <div className="flex flex-col gap-1.5">
         {catalog.map((item) => {
           const cur = actionOf(u, item, ideal);
@@ -73,8 +73,8 @@ export function UnwantedRules({ value, onChange, catalog, ideal, defaultGroups }
             <div key={item.key} className="rounded-lg p-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12.5px] font-semibold">{item.label}</span>
-                  <span className="block text-[10.5px] text-ink-faint">{item.description}</span>
+                  <span className="block text-base font-semibold">{item.label}</span>
+                  <span className="block text-xs text-ink-faint">{item.description}</span>
                 </span>
                 <ActionPicker value={cur} onChange={(a) => setAction(item, a)} label={item.label} />
               </div>
@@ -94,7 +94,7 @@ function ActionPicker({ value, onChange, label }: { value: UnwantedAction; onCha
       {ACTIONS.map((o) => {
         const on = value === o.v;
         return (
-          <button key={o.v} role="radio" aria-checked={on} onClick={() => onChange(o.v)} className="rounded-md px-2 py-1 text-[10.5px] font-semibold"
+          <button key={o.v} role="radio" aria-checked={on} onClick={() => onChange(o.v)} className="rounded-md px-2 py-1 text-xs font-semibold"
             title={`${o.label}: ${o.means}`} aria-label={`${o.label} — ${o.means}`}
             style={{ background: on ? o.bg : "transparent", color: on ? o.fg : "var(--ink-faint)", minWidth: 46 }}>
             {o.label}
@@ -118,18 +118,18 @@ function GroupChips({ groups, onChange }: { groups: string[]; onChange: (g: stri
     <div className="mt-2">
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         {groups.map((g) => (
-          <span key={g} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px]" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
+          <span key={g} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
             {g}
             <button onClick={() => onChange(groups.filter((x) => x !== g))} aria-label={`Remove ${g} from the low-quality groups`}>✕</button>
           </span>
         ))}
-        {groups.length === 0 && <span className="text-[10.5px] text-ink-faint">No groups — nothing is matched.</span>}
+        {groups.length === 0 && <span className="text-xs text-ink-faint">No groups — nothing is matched.</span>}
       </div>
       <div className="flex items-center gap-2">
         <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Group name"
-          aria-label="Add a low-quality group" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]"
+          aria-label="Add a low-quality group" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-        <button onClick={add} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>Add</button>
+        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>Add</button>
       </div>
     </div>
   );

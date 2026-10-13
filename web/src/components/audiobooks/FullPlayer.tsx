@@ -42,25 +42,25 @@ export function FullPlayer({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} aria-label="Close the full player" className="grid h-10 w-10 place-items-center rounded-full text-ink-dim" style={{ background: "var(--panel-2)" }}>
             <PlayerIcon name="chevron" size={20} />
           </button>
-          {p.loading && <span className="mt-2 text-[11.5px] text-ink-faint">Loading…</span>}
+          {p.loading && <span className="mt-2 text-sm text-ink-faint">Loading…</span>}
         </div>
 
         <div className="flex flex-col items-center text-center">
           <Cover src={p.meta?.cover} title={p.meta?.title ?? ""} className="w-[min(62vw,240px)]" />
-          <h2 className="m-0 mt-4 text-[17px] font-bold leading-snug">{p.meta?.title}</h2>
-          {p.meta?.author && <div className="mt-0.5 text-[12.5px] text-ink-dim">{p.meta.author}</div>}
-          {ch && <div className="mt-1.5 text-[13px] font-semibold" style={{ color: "var(--accent-text)" }}>{ch.title || `Chapter ${i + 1}`}</div>}
+          <h2 className="m-0 mt-4 text-xl font-bold leading-snug">{p.meta?.title}</h2>
+          {p.meta?.author && <div className="mt-0.5 text-base text-ink-dim">{p.meta.author}</div>}
+          {ch && <div className="mt-1.5 text-md font-semibold" style={{ color: "var(--accent-text)" }}>{ch.title || `Chapter ${i + 1}`}</div>}
         </div>
 
         {p.hold && <HeldNote kind={p.hold.kind} position={p.hold.position} />}
-        {p.error && <div className="rounded-lg px-3 py-2 text-[12.5px]" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{p.error}</div>}
-        {p.note && !p.error && <div className="text-center text-[12px] text-ink-dim">{p.note}</div>}
+        {p.error && <div className="rounded-lg px-3 py-2 text-base" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{p.error}</div>}
+        {p.note && !p.error && <div className="text-center text-sm text-ink-dim">{p.note}</div>}
 
         <Scrubber start={start} end={end} position={p.position} />
         <div aria-hidden className="-mt-3 h-[2px] overflow-hidden rounded-full" style={{ background: "var(--line-soft)" }} title="Whole book">
           <div className="h-full" style={{ width: `${bookPct}%`, background: "var(--accent-line)" }} />
         </div>
-        <div className="-mt-3 text-center text-[11px] text-ink-faint">{fmtTime(p.position)} of {fmtTime(p.duration)} · {fmtLeft((p.duration - p.position) / (p.rate || 1))}</div>
+        <div className="-mt-3 text-center text-xs text-ink-faint">{fmtTime(p.position)} of {fmtTime(p.duration)} · {fmtLeft((p.duration - p.position) / (p.rate || 1))}</div>
 
         <div className="flex items-center justify-center gap-2 sm:gap-4">
           <Round label="Previous chapter" onClick={prevChapter}><PlayerIcon name="prev" /></Round>
@@ -81,18 +81,18 @@ export function FullPlayer({ onClose }: { onClose: () => void }) {
 
         {p.chapters.length > 0 && (
           <section aria-label="Chapters">
-            <h3 className="m-0 mb-1.5 text-[13.5px] font-bold">Chapters</h3>
+            <h3 className="m-0 mb-1.5 text-md font-bold">Chapters</h3>
             <ol className="m-0 flex list-none flex-col p-0">
               {p.chapters.map((c, n) => (
                 <li key={c.id ?? n}>
                   <button
                     onClick={() => seek(c.start)}
                     aria-current={n === i ? "true" : undefined}
-                    className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]"
+                    className="flex min-h-[40px] w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-base hover:bg-[var(--panel-2)]"
                     style={n === i ? { background: "var(--accent-soft)", color: "var(--accent-text)" } : undefined}
                   >
                     <span className="min-w-0 truncate">{c.title || `Chapter ${n + 1}`}</span>
-                    <span className="flex-none text-[11.5px] text-ink-faint">{fmtTime(c.start)}</span>
+                    <span className="flex-none text-sm text-ink-faint">{fmtTime(c.start)}</span>
                   </button>
                 </li>
               ))}
@@ -127,13 +127,13 @@ export function HeldNote({ kind, position }: { kind: HoldKind; position: number 
       ? <>Jumped ahead to <b>{fmtTime(position)}</b>, near the end — kept once you play on to the end.</>
       : <>Jumped back to <b>{fmtTime(position)}</b> — kept once you listen on for a bit.</>;
   return (
-    <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
+    <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm"
       style={again ? { background: "var(--panel-2)", border: "1px solid var(--line-soft)" } : { background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
       <span className="min-w-0">{text}</span>
-      <button onClick={keep} disabled={busy} className="flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60" style={primary}>
+      <button onClick={keep} disabled={busy} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-60" style={primary}>
         {again ? "Start over now" : "Keep it now"}
       </button>
-      {error && <span className="w-full text-[11.5px]" style={{ color: "var(--reject-text)" }}>{error}</span>}
+      {error && <span className="w-full text-sm" style={{ color: "var(--reject-text)" }}>{error}</span>}
     </div>
   );
 }
@@ -164,7 +164,7 @@ function Scrubber({ start, end, position }: { start: number; end: number; positi
         className="w-full"
         style={{ accentColor: "var(--accent)" }}
       />
-      <div className="flex justify-between text-[11px] text-ink-faint">
+      <div className="flex justify-between text-xs text-ink-faint">
         <span>{fmtTime(at - start)}</span>
         <span>-{fmtTime(start + span - at)}</span>
       </div>
@@ -176,12 +176,12 @@ function SpeedControl({ rate }: { rate: number }) {
   const step = (d: number) => setRate(Math.round((rate + d) * 10) / 10);
   return (
     <div className="flex items-center justify-between gap-1 rounded-xl px-2 py-1.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
-      <button onClick={() => step(-0.1)} disabled={rate <= MIN_RATE} aria-label="Slower" className="grid h-9 w-9 place-items-center rounded-lg text-[16px] font-bold disabled:opacity-40">−</button>
+      <button onClick={() => step(-0.1)} disabled={rate <= MIN_RATE} aria-label="Slower" className="grid h-9 w-9 place-items-center rounded-lg text-lg font-bold disabled:opacity-40">−</button>
       <span className="text-center">
-        <span className="block text-[14px] font-bold" aria-live="polite">{rate.toFixed(1)}×</span>
-        <span className="block text-[10.5px] text-ink-faint">Speed</span>
+        <span className="block text-md font-bold" aria-live="polite">{rate.toFixed(1)}×</span>
+        <span className="block text-xs text-ink-faint">Speed</span>
       </span>
-      <button onClick={() => step(0.1)} disabled={rate >= MAX_RATE} aria-label="Faster" className="grid h-9 w-9 place-items-center rounded-lg text-[16px] font-bold disabled:opacity-40">+</button>
+      <button onClick={() => step(0.1)} disabled={rate >= MAX_RATE} aria-label="Faster" className="grid h-9 w-9 place-items-center rounded-lg text-lg font-bold disabled:opacity-40">+</button>
     </div>
   );
 }
@@ -195,14 +195,14 @@ function SleepControl() {
   return (
     <label className="flex items-center justify-between gap-2 rounded-xl px-3 py-1.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
       <span className="min-w-0">
-        <span className="flex items-center gap-1 text-[12.5px] font-semibold"><PlayerIcon name="sleep" size={14} /> Sleep</span>
-        <span className="block truncate text-[10.5px] text-ink-faint" data-testid="sleep-left">{left === null ? "Off" : p.sleep?.kind === "chapter" ? `End of chapter · ${fmtLeft(left)}` : fmtLeft(left)}</span>
+        <span className="flex items-center gap-1 text-base font-semibold"><PlayerIcon name="sleep" size={14} /> Sleep</span>
+        <span className="block truncate text-xs text-ink-faint" data-testid="sleep-left">{left === null ? "Off" : p.sleep?.kind === "chapter" ? `End of chapter · ${fmtLeft(left)}` : fmtLeft(left)}</span>
       </span>
       <select
         aria-label="Sleep timer"
         value={value}
         onChange={(e) => { const v = e.target.value; setSleep(v === "" ? null : v === "chapter" ? "chapter" : Number(v)); }}
-        className="max-w-[7.5rem] rounded-lg px-1.5 py-1 text-[12px]"
+        className="max-w-[7.5rem] rounded-lg px-1.5 py-1 text-sm"
         style={inputStyle}
       >
         <option value="">Off</option>
@@ -247,34 +247,34 @@ function Bookmarks({ itemKey, position }: { itemKey: string; position: number })
   return (
     <section aria-label="Bookmarks">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[13.5px] font-bold">Bookmarks</h3>
+        <h3 className="m-0 text-md font-bold">Bookmarks</h3>
         {adding === null && (
-          <button onClick={() => setAdding(Math.floor(position))} className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={ghost}>
+          <button onClick={() => setAdding(Math.floor(position))} className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-semibold" style={ghost}>
             <PlayerIcon name="bookmark" size={14} /> Add at {fmtTime(position)}
           </button>
         )}
       </div>
       {adding !== null && (
         <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="mb-2 flex gap-2">
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder={`Note for ${fmtTime(adding)} (optional)`} aria-label="Bookmark note" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
-          <button type="submit" className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={primary}>Save</button>
-          <button type="button" onClick={() => { setAdding(null); setNote(""); }} className="flex-none rounded-lg px-2.5 py-1.5 text-[12px] font-semibold" style={ghost}>Cancel</button>
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder={`Note for ${fmtTime(adding)} (optional)`} aria-label="Bookmark note" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
+          <button type="submit" className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={primary}>Save</button>
+          <button type="button" onClick={() => { setAdding(null); setNote(""); }} className="flex-none rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={ghost}>Cancel</button>
         </form>
       )}
-      {list === null ? <div className="text-[12px] text-ink-faint">Loading…</div> : list.length === 0 ? (
-        <div className="text-[12px] text-ink-faint">None yet. Add one to come back to a moment.</div>
+      {list === null ? <div className="text-sm text-ink-faint">Loading…</div> : list.length === 0 ? (
+        <div className="text-sm text-ink-faint">None yet. Add one to come back to a moment.</div>
       ) : list.map((b) => (
         <div key={b.time} className="flex items-center gap-2">
-          <button onClick={() => seek(b.time)} className="flex min-h-[40px] min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]">
+          <button onClick={() => seek(b.time)} className="flex min-h-[40px] min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-2 text-left text-base hover:bg-[var(--panel-2)]">
             <span className="min-w-0 truncate">{b.title || "Bookmark"}</span>
-            <span className="flex-none text-[11.5px] text-ink-faint">{fmtTime(b.time)}</span>
+            <span className="flex-none text-sm text-ink-faint">{fmtTime(b.time)}</span>
           </button>
           <button onClick={() => void remove(b)} aria-label={`Delete the bookmark at ${fmtTime(b.time)}`} className="grid h-9 w-9 flex-none place-items-center rounded-lg text-ink-faint">
             <PlayerIcon name="close" size={14} />
           </button>
         </div>
       ))}
-      {error && <div className="mt-1 text-[12px]" style={{ color: "var(--reject-text)" }}>{error}</div>}
+      {error && <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </section>
   );
 }
