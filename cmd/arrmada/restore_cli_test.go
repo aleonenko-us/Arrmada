@@ -114,4 +114,3 @@ func TestCLIRestoreFromPath(t *testing.T) {
 		t.Errorf("no argument: exit %d, want 2 (usage)", code)
 	}
 }
-

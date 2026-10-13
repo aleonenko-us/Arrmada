@@ -246,7 +246,7 @@ if [ ! -f .env ]; then
   fi
 
   [ "$DATA" = "./data" ] && mkdir -p ./data
-  [ -n "$TRANSCODE" ] && mkdir -p "$TRANSCODE" 2>/dev/null || true
+  if [ -n "$TRANSCODE" ]; then mkdir -p "$TRANSCODE" 2>/dev/null || true; fi
   say ""
   say "✓ Wrote .env"
   say "   • Web UI port:   $WEBPORT"

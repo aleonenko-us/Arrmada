@@ -25,10 +25,10 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 // Client queries TheXEM. The zero value is unusable; use New.
 type Client struct {
-	http     *http.Client
-	base     string
-	flare    func() string // optional FlareSolverr endpoint, used when Cloudflare blocks a direct fetch
-	log      *slog.Logger
+	http  *http.Client
+	base  string
+	flare func() string // optional FlareSolverr endpoint, used when Cloudflare blocks a direct fetch
+	log   *slog.Logger
 }
 
 // New builds a client. flareURL returns Arrmada's FlareSolverr address (e.g.
