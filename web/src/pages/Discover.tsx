@@ -65,7 +65,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   const [searchInput, setSearchInput] = useState(search);
   // Back, Forward or a notification link changed the committed search: show it in the box.
   useEffect(() => { setSearchInput(search); }, [search]);
-  const flash = useToast();
+  const toast = useToast();
   // Readonly users can browse but never request.
   const canRequest = !!user && user.role !== "readonly";
 
@@ -98,17 +98,17 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
       const res = await api.createRequest({ media_type: c.media_type, tmdb_id: c.tmdb_id, title: c.title, year: c.year, poster_url: c.poster_url, overview: c.overview, note: note?.trim() || undefined, seasons: seasons?.length ? seasons : undefined });
       const status = res.request.status;
       setRequested((m) => new Map(m).set(key, status));
-      if (!quiet) flash(res.subscribed ? FOLLOWING : requestedMessage(c.title, status, res.request.seasons));
+      if (!quiet) toast(res.subscribed ? FOLLOWING : requestedMessage(c.title, status, res.request.seasons));
       announceRequested();
       return { subscribed: res.subscribed, status };
     } catch (e) {
-      if (!quiet) flash((e as Error).message, { tone: "error" });
+      if (!quiet) toast((e as Error).message, { tone: "error" });
       throw e;
     }
-  }, [flash]);
+  }, [toast]);
   const isRequested = useCallback((c: DiscoverCard) => requested.get(`${c.media_type}:${c.tmdb_id}`), [requested]);
 
-  const ctx: RowCtx = { doRequest, isRequested, canRequest, flash };
+  const ctx: RowCtx = { doRequest, isRequested, canRequest, flash: toast };
 
   // A title's own address (/discover/movie/603) opens its sheet over the page. Discover
   // stays mounted underneath, so its rows, what loaded and the scroll position survive,
@@ -141,7 +141,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
         <TabPanel idPrefix="discover" value={tab}>
           {tab === "books" ? (
             <Suspense fallback={<div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>}>
-              <BooksDiscover flash={flash} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} />
+              <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} />
             </Suspense>
           ) : !metadataReady ? (
             // No TMDB key: every movie/TV feed would fail on its own and repeat the same error
