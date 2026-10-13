@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { api, type CalendarItem } from "../lib/api";
@@ -32,6 +32,9 @@ function initialView(): View {
   } catch { /* storage blocked */ }
   try { return window.matchMedia(PHONE).matches ? "agenda" : "month"; } catch { return "month"; }
 }
+
+// Subscribe: the private calendar link for Google / Apple Calendar, loaded when opened.
+const CalendarFeedSheet = lazy(() => import("../components/CalendarFeed"));
 
 const SCOPES = ["mine", "all"] as const;
 type Scope = (typeof SCOPES)[number];
@@ -102,6 +105,7 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
   const retry = () => { setFailed(null); setAttempt((n) => n + 1); };
 
   const [daySheet, setDaySheet] = useState<string | null>(null);
+  const [subscribing, setSubscribing] = useState(false);
 
   // The staff console's page header sticks to the top; the agenda's date headers stick
   // just below it, so measure it.
@@ -130,6 +134,7 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
           <div className="flex flex-wrap items-center gap-2">
             <Segmented label="Show" value={scope} onChange={setScope} options={[{ v: "mine", l: "My requests" }, { v: "all", l: "Everything" }]} />
             <Segmented label="View" value={view} onChange={setView} options={[{ v: "month", l: "Month" }, { v: "agenda", l: "Agenda" }]} />
+            <button type="button" onClick={() => setSubscribing(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={NAV_BTN}>Subscribe</button>
             {view === "month" && (
               <>
                 <div className="flex items-center gap-3 text-xs">
@@ -172,6 +177,11 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
             ))}
           </div>
         </Sheet>
+      )}
+      {subscribing && (
+        <Suspense fallback={null}>
+          <CalendarFeedSheet onClose={() => setSubscribing(false)} />
+        </Suspense>
       )}
     </>
   );

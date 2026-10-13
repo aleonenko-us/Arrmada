@@ -17,6 +17,8 @@ const PlexAccountLink = lazy(() => import("../components/PlexAccountLink"));
 const AccountSettings = lazyPage(() => import("../components/AccountSettings"), "AccountSettings");
 // Your Kindle's address, for Send to Kindle on My shelf (anyone who can read the shelf).
 const KindleCard = lazyPage(() => import("../components/Kindle"), "KindleCard");
+// Your private calendar link for Google / Apple Calendar (LAN only, like the Calendar).
+const CalendarFeedPanel = lazyPage(() => import("../components/CalendarFeed"), "CalendarFeedPanel");
 
 const ROLE: Record<UserRole, string> = {
   admin: "Admin",
@@ -33,6 +35,7 @@ const ROLE: Record<UserRole, string> = {
 //                  be on, then Apprise under Advanced;
 //   Plex         — link your Plex account (PLEX-14); plex.tv's redirect comes back here;
 //   Send to Kindle — your Kindle's address (Books on, requester and up);
+//   Calendar feed — your private link for Google / Apple Calendar (not from outside);
 //   Account      — change your password (or set a first one after Plex sign-in) and sign
 //                  out your other devices;
 //   More, Sign out.
@@ -73,6 +76,16 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
             <Suspense fallback={<Loading />}>
               <KindleCard />
             </Suspense>
+          </MeSection>
+        )}
+
+        {!external && (
+          <MeSection id="calendar-feed" title="Calendar feed">
+            <div className="p-3.5">
+              <Suspense fallback={<Loading />}>
+                <CalendarFeedPanel />
+              </Suspense>
+            </div>
           </MeSection>
         )}
 

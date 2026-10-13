@@ -251,6 +251,19 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	f.log.Info("apprise: posting to " + appriseURL)
 	f.log.Info("mail: bounce from someone@example.org")
 	f.log.Info("listen: bookmark added", "bookmark", mark, "item", titleID)
+	// A calendar feed link: only its hash is stored, and a careless line quoting the link
+	// (or the bare token in an attr) must still not carry it out.
+	feedTok, _, err := f.deps.Auth.RotateCalendarFeed(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var feedHash string
+	if err := db.QueryRowContext(ctx, `SELECT token_hash FROM calendar_feeds WHERE user_id = ?`, u.ID).Scan(&feedHash); err != nil {
+		t.Fatal(err)
+	}
+	f.log.Warn("calendar: fetch failed", "url", "https://arrmada.example.com/api/v1/calendar.ics?token="+feedTok+"&mine=1", "token", feedTok)
+	f.log.Info("calendar: subscribed via https://arrmada.example.com/api/v1/calendar.ics?mine=1&token=" + feedTok + " ok")
+	f.log.Info("calendar: stored " + feedHash)
 
 	// Only the admin may build one.
 	_, mgr := f.user(t, "mgr", auth.RoleManager)
@@ -280,6 +293,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 		title1, title2, "Zephyrine", "Quillfeather", "Brindlemoor", "Saltwater", author, "Thackeray", series, mark,
 		person, plexNm, kindle, "owner-admin",
 		"/api/items/b12", "b12", "/books/42", "q=zephyrine",
+		feedTok, feedHash,
 	}
 	for _, s := range forbidden {
 		if strings.Contains(lower, strings.ToLower(s)) {

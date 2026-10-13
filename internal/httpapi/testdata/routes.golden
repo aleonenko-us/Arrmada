@@ -13,6 +13,7 @@ DELETE /api/v1/insights/import/runs/{id}/rows admin -
 DELETE /api/v1/me/audio/devices/{family} user ext
 DELETE /api/v1/me/audio/items/{key}/bookmarks/{time} user ext
 DELETE /api/v1/me/audio/password user ext
+DELETE /api/v1/me/calendar-feed user -
 DELETE /api/v1/me/plex/link user ext
 DELETE /api/v1/me/sessions/{id} user ext
 DELETE /api/v1/movies/bulk staff -
@@ -79,6 +80,7 @@ GET /api/v1/books/{id}/manualimport staff -
 GET /api/v1/books/{id}/releases staff -
 GET /api/v1/books/{id}/series staff -
 GET /api/v1/calendar user -
+GET /api/v1/calendar.ics public ext
 GET /api/v1/connections staff -
 GET /api/v1/convert/auto-preview staff -
 GET /api/v1/convert/blocklist staff -
@@ -163,6 +165,7 @@ GET /api/v1/me/audio/library user ext
 GET /api/v1/me/audio/listening user ext
 GET /api/v1/me/audio/shelves user ext
 GET /api/v1/me/books user ext
+GET /api/v1/me/calendar-feed user -
 GET /api/v1/me/kindle user ext
 GET /api/v1/me/notifications user ext
 GET /api/v1/me/notify-prefs user ext
@@ -348,6 +351,7 @@ POST /api/v1/me/audio/sessions/{sid}/close user ext
 POST /api/v1/me/audio/sessions/{sid}/sync user ext
 POST /api/v1/me/audio/undiscard user ext
 POST /api/v1/me/books/{id}/send-to-kindle user ext
+POST /api/v1/me/calendar-feed user -
 POST /api/v1/me/notifications/read-all user ext
 POST /api/v1/me/notifications/{id}/read user ext
 POST /api/v1/me/password user ext

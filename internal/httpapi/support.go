@@ -254,6 +254,9 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 		{`SELECT api_key, password FROM indexers`, func(v []string) { addSecret(v[0]); addSecret(v[1]) }},
 		{`SELECT password FROM download_clients`, func(v []string) { addSecret(v[0]) }},
 		{`SELECT url FROM notifications`, func(v []string) { addSecret(v[0]) }},
+		// Calendar feed links: only their hashes are stored (the token itself never is, and
+		// a "token=" in any line is blanked by shape), but the hash is withheld too.
+		{`SELECT token_hash FROM calendar_feeds`, func(v []string) { addSecret(v[0]) }},
 		{`SELECT username, plex_username, apprise_url, kindle_email FROM users`, func(v []string) {
 			names.Add(v[0], "«user»")
 			names.Add(v[1], "«user»")
