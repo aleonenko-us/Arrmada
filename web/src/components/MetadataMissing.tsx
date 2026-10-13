@@ -22,13 +22,13 @@ export function MetadataMissing({ variant }: { variant: "banner" | "empty" }) {
 
   if (variant === "banner") {
     return (
-      <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+      <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
         {text}
       </div>
     );
   }
   return (
-    <div className="rounded-xl px-5 py-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px dashed var(--line)", background: "var(--panel)" }}>
+    <div className="rounded-xl px-5 py-10 text-center text-base text-ink-dim" style={{ border: "1px dashed var(--line)", background: "var(--panel)" }}>
       <p className="mx-auto m-0 max-w-[52ch] leading-relaxed">{text}</p>
     </div>
   );

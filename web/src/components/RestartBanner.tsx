@@ -39,7 +39,7 @@ export function RestartBanner() {
   const lines = busyLines(st.busy);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-[12px]" style={{ background: "var(--panel-2)", borderBottom: "1px solid var(--avoid)", color: "var(--ink)" }} role="status">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm" style={{ background: "var(--panel-2)", borderBottom: "1px solid var(--avoid)", color: "var(--ink)" }} role="status">
       <div className="min-w-0 flex-1">
         <span className="font-semibold" style={{ color: "var(--avoid)" }}>New folders are saved but not in use yet: </span>
         {changes.reduce<React.ReactNode[]>((acc, c, i) => (i === 0 ? [c] : [...acc, "; ", c]), [])}.
@@ -49,7 +49,7 @@ export function RestartBanner() {
         )}
       </div>
       {admin && st.can_restart && (
-        <button onClick={openConfirm} className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Restart now</button>
+        <button onClick={openConfirm} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Restart now</button>
       )}
       {confirming && (
         <ConfirmDialog

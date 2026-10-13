@@ -35,38 +35,38 @@ export function AudiobookshelfImport() {
       subtitle={<>Bring everyone's listening places and bookmarks over. Upload Audiobookshelf's database — <code>absdatabase.sqlite</code> in its config folder (copy it while Audiobookshelf is stopped, or use a recent backup). People are matched by username and books by their folder, then title. Nothing is saved until you press Import, and a place that's newer in Arrmada is never replaced.</>}
     >
       <div>
-        <input type="file" aria-label="Audiobookshelf database" accept=".sqlite,.db,application/octet-stream" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} className="max-w-full text-[12px]" />
+        <input type="file" aria-label="Audiobookshelf database" accept=".sqlite,.db,application/octet-stream" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} className="max-w-full text-sm" />
       </div>
-      {error && <div role="alert" className="text-[12.5px]" style={{ color: "var(--reject)" }}>{error}</div>}
-      {busy && <div className="text-[12.5px] text-ink-dim">Working…</div>}
+      {error && <div role="alert" className="text-base" style={{ color: "var(--reject)" }}>{error}</div>}
+      {busy && <div className="text-base text-ink-dim">Working…</div>}
       {preview && (
         <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <div className="mb-2 text-[12.5px]">
+          <div className="mb-2 text-base">
             {preview.progress} saved place{preview.progress === 1 ? "" : "s"}, {preview.matched} on books Arrmada has · {preview.bookmarks} bookmark{preview.bookmarks === 1 ? "" : "s"}.
           </div>
-          <div className="mb-1 text-[12px] font-semibold">People</div>
+          <div className="mb-1 text-sm font-semibold">People</div>
           {preview.users.map((u) => (
-            <div key={u.abs_id} className="flex flex-wrap items-center justify-between gap-3 py-1 text-[12.5px]">
+            <div key={u.abs_id} className="flex flex-wrap items-center justify-between gap-3 py-1 text-base">
               <span className="min-w-0">{u.abs_username} <span className="text-ink-faint">· {u.progress_rows} place{u.progress_rows === 1 ? "" : "s"}</span></span>
-              <select aria-label={`Arrmada account for ${u.abs_username}`} value={map[u.abs_id] ?? 0} onChange={(e) => setMap({ ...map, [u.abs_id]: Number(e.target.value) })} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
+              <select aria-label={`Arrmada account for ${u.abs_username}`} value={map[u.abs_id] ?? 0} onChange={(e) => setMap({ ...map, [u.abs_id]: Number(e.target.value) })} className="rounded-lg px-2 py-1 text-sm" style={inputStyle}>
                 <option value={0}>Skip</option>
                 {users.map((x) => <option key={x.id} value={x.id}>{x.username}</option>)}
               </select>
             </div>
           ))}
           {preview.unmatched_books && preview.unmatched_books.length > 0 && (
-            <details className="mt-2 text-[12px] text-ink-dim">
+            <details className="mt-2 text-sm text-ink-dim">
               <summary className="cursor-pointer">{preview.unmatched_books.length} book{preview.unmatched_books.length === 1 ? "" : "s"} with progress that Arrmada doesn't have</summary>
               <div className="mt-1">{preview.unmatched_books.slice(0, 50).join(" · ")}</div>
             </details>
           )}
           <div className="mt-3 flex justify-end">
-            <button onClick={apply} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Import</button>
+            <button onClick={apply} disabled={busy} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Import</button>
           </div>
         </div>
       )}
       {result && (
-        <div role="status" className="rounded-lg p-3 text-[12.5px]" style={{ border: "1px solid var(--good)" }}>
+        <div role="status" className="rounded-lg p-3 text-base" style={{ border: "1px solid var(--good)" }}>
           Imported {result.imported} place{result.imported === 1 ? "" : "s"} and {result.bookmarks} bookmark{result.bookmarks === 1 ? "" : "s"}.
           {result.kept > 0 && ` Kept ${result.kept} place${result.kept === 1 ? "" : "s"} that were newer in Arrmada.`}
           {result.skipped > 0 && ` Skipped ${result.skipped} (person or book not matched).`}

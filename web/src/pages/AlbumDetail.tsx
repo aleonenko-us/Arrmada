@@ -39,7 +39,7 @@ export function AlbumDetail() {
   if (notFound)
     return (
       <Shell>
-        <div className="py-10 text-center text-[13px] text-ink-dim">
+        <div className="py-10 text-center text-md text-ink-dim">
           That album isn't in your library.{" "}
           <Link to="/music" className="underline" style={{ color: "var(--accent)" }}>
             Back to Music
@@ -52,7 +52,7 @@ export function AlbumDetail() {
       <Shell>
         {/* The first open fetches the track listing from MusicBrainz, which is paced at one
             request per second — so say so rather than showing a bare spinner. */}
-        <p className="text-[12.5px] text-ink-dim">{error ?? "Loading the track listing…"}</p>
+        <p className="text-base text-ink-dim">{error ?? "Loading the track listing…"}</p>
       </Shell>
     );
 
@@ -62,7 +62,7 @@ export function AlbumDetail() {
     <>
       <PageHeader title={al.title} />
       <Page>
-        <Link to={`/music/${al.artist_id}`} className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+        <Link to={`/music/${al.artist_id}`} className="mb-4 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -91,19 +91,19 @@ export function AlbumDetail() {
               <StatusChip tone={st.tone} size="md">
                 {st.label}
               </StatusChip>
-              {al.year ? <span className="font-mono text-[11px] text-ink-faint">{al.year}</span> : null}
-              {al.album_type ? <span className="font-mono text-[11px] text-ink-faint">{al.album_type}</span> : null}
+              {al.year ? <span className="font-mono text-xs text-ink-faint">{al.year}</span> : null}
+              {al.album_type ? <span className="font-mono text-xs text-ink-faint">{al.album_type}</span> : null}
               <a
                 href={`https://musicbrainz.org/release-group/${al.mbid}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold"
+                className="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
                 style={{ background: "#4a2a6a", color: "#fff" }}
               >
                 MusicBrainz
               </a>
             </div>
-            <div className="mt-2 font-mono text-[11.5px] text-ink-faint">
+            <div className="mt-2 font-mono text-sm text-ink-faint">
               {al.have_tracks}/{al.track_count} tracks{al.size_bytes ? ` · ${formatBytes(al.size_bytes)}` : ""}
             </div>
             <div className="mt-4">
@@ -129,14 +129,14 @@ export function AlbumDetail() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}
           </div>
         )}
 
-        <h2 className="m-0 mb-3 mt-8 text-[14px] font-bold">Tracks</h2>
+        <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
         {!al.tracks || al.tracks.length === 0 ? (
-          <div className="rounded-xl p-8 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+          <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No track listing. MusicBrainz has no official release for this album yet — an
             announced record often has none until it ships.
           </div>
@@ -145,10 +145,10 @@ export function AlbumDetail() {
             {al.tracks.map((t) => (
               <div
                 key={t.id}
-                className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-[12.5px]"
+                className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-base"
                 style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}
               >
-                <span className="w-[42px] flex-none font-mono text-[10.5px] text-ink-faint">
+                <span className="w-[42px] flex-none font-mono text-xs text-ink-faint">
                   {t.disc_number > 1 ? `${t.disc_number}-` : ""}
                   {String(t.track_number).padStart(2, "0")}
                 </span>
@@ -156,13 +156,13 @@ export function AlbumDetail() {
                   {t.title}
                 </span>
                 {t.format ? (
-                  <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>
+                  <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>
                     {t.format}
                   </span>
                 ) : null}
-                <span className="w-[52px] flex-none text-right font-mono text-[10.5px] text-ink-faint">{fmtDuration(t.duration_sec)}</span>
+                <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
                 <span
-                  className="w-[74px] flex-none text-right font-mono text-[10px] font-semibold uppercase"
+                  className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
                   style={{ color: t.has_file ? "var(--good)" : "var(--avoid)" }}
                 >
                   {t.has_file ? "downloaded" : "wanted"}

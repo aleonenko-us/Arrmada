@@ -20,18 +20,18 @@ export function MovieSubtitles({ movieId, fallback, onChanged }: { movieId: numb
   const forcedWants = new Set(view.languages.filter((l) => l.variant === "forced").map((l) => l.lang.toLowerCase()));
   const forced = view.sidecars.filter((s) => s.variant === "forced" && !forcedWants.has(s.lang.toLowerCase()));
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
       <span className="font-mono uppercase text-ink-faint">Subs</span>
       {view.languages.map((l) => (
         <WantChip key={l.lang + (l.variant ?? "")} l={l} sidecar={sidecarForWant(l, view.sidecars, view.kept[0] === l.lang)} onClick={() => setOpen(true)} />
       ))}
       {forced.map((s) => (
-        <span key={s.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-ink-dim" style={{ background: "var(--panel-2)" }} title={`${s.name} — the foreign-language lines only`}>{s.lang} forced</span>
+        <span key={s.name} className="rounded px-1.5 py-0.5 font-mono text-xs text-ink-dim" style={{ background: "var(--panel-2)" }} title={`${s.name} — the foreign-language lines only`}>{s.lang} forced</span>
       ))}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+        className="rounded-md px-2 py-0.5 text-xs font-semibold"
         style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
         title="See this file's subtitles: previews, where each came from, timing and delete"
       >

@@ -60,7 +60,7 @@ function HealthChip({ f, l, flash, onChanged }: { f: SubFileEntry; l: SubLangSta
       onClick={run}
       disabled={busy}
       title={`${l.lang.toUpperCase()}: ${h.note}\nClick to check its sync against the audio now.`}
-      className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase disabled:opacity-60"
+      className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase disabled:opacity-60"
       style={{ ...TONE[h.state], border: checked ? "1px solid transparent" : "1px dashed var(--line)" }}
     >
       {l.lang} · {label}

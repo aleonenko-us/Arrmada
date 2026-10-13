@@ -49,13 +49,13 @@ function RestartSection() {
   return (
     <Section id="restart" title="Restart" subtitle="Restart Arrmada, for example after a change that only applies at startup. This page reloads once it's back, usually in a few seconds.">
       {st && !st.can_restart && (
-        <p className="m-0 text-[12px] text-ink-dim">Arrmada can't restart itself here. Restart the Arrmada container the way you started it.</p>
+        <p className="m-0 text-sm text-ink-dim">Arrmada can't restart itself here. Restart the Arrmada container the way you started it.</p>
       )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         {st?.can_restart && (
-          <button onClick={openConfirm} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Restart now</button>
+          <button onClick={openConfirm} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Restart now</button>
         )}
-        <Link to="/logs" className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Logs →</Link>
+        <Link to="/logs" className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Logs →</Link>
       </div>
       {confirming && (
         <ConfirmDialog
@@ -87,7 +87,7 @@ function SetupAgainSection() {
   return (
     <Section id="setup" title="Run setup again" subtitle="Walk through the first-run steps again: metadata key, folders, Plex and indexers. What's already set is filled in, and the last step shows what's still left to do.">
       <div>
-        <Link to="/setup" className="inline-block rounded-lg px-4 py-2 text-[12.5px] font-semibold no-underline" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Run setup again</Link>
+        <Link to="/setup" className="inline-block rounded-lg px-4 py-2 text-base font-semibold no-underline" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Run setup again</Link>
       </div>
     </Section>
   );

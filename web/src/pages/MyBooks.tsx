@@ -82,8 +82,8 @@ export function MyBooks() {
     <Page className="py-5">
       <div className="mb-4">
         {/* "My shelf", not "Books": Discover's Books tab is the catalogue to ask from. */}
-        <h1 className="m-0 text-[20px] font-bold">My shelf</h1>
-        <p className="m-0 mt-1 text-[12.5px] text-ink-dim">
+        <h1 className="m-0 text-2xl font-bold">My shelf</h1>
+        <p className="m-0 mt-1 text-base text-ink-dim">
           Read, download or send any book in the library, or listen to an audiobook right here.
           {books && <span className="text-ink-faint"> · {books.length} book{books.length === 1 ? "" : "s"}, {ebooks} ebook{ebooks === 1 ? "" : "s"}</span>}
         </p>
@@ -93,7 +93,7 @@ export function MyBooks() {
           rather than showing an empty library. */}
       {error && books && <StaleBanner message={error.message} onRetry={refetch} />}
 
-      <Link to="/audiobooks" className="mb-5 flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[12.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+      <Link to="/audiobooks" className="mb-5 flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-base" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         <span><b>Listen</b> <span className="text-ink-dim">— in your browser or a listening app, with your place kept in sync.</span></span>
         <span className="flex-none font-semibold" style={{ color: "var(--accent)" }}>Audiobooks →</span>
       </Link>
@@ -117,22 +117,22 @@ export function MyBooks() {
       ))}
 
       <div className="mb-3 mt-1 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="m-0 text-[14px] font-bold">All books</h2>
+        <h2 className="m-0 text-md font-bold">All books</h2>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
             value={q}
             onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }}
             placeholder="Search title, author, series"
             aria-label="Search the shelf"
-            className="w-[220px] min-w-0 max-w-full rounded-lg px-3 py-1.5 text-[12.5px]"
+            className="w-[220px] min-w-0 max-w-full rounded-lg px-3 py-1.5 text-base"
             style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
           />
-          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort" className="rounded-lg px-2 py-1.5 text-[12px]" style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort" className="rounded-lg px-2 py-1.5 text-sm" style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}>
             <option value="newest">Newest first</option>
             <option value="title">Title A–Z</option>
             <option value="author">Author A–Z</option>
           </select>
-          <label className="flex items-center gap-1.5 text-[12px] text-ink-dim">
+          <label className="flex items-center gap-1.5 text-sm text-ink-dim">
             <input type="checkbox" checked={onlyEbooks} onChange={(e) => { setOnlyEbooks(e.target.checked); setLimit(PAGE); }} />
             Ebooks only
           </label>
@@ -143,12 +143,12 @@ export function MyBooks() {
         ? <ErrorState what="the shelf" message={error.message} onRetry={refetch} busy={loading} />
         : <Skeleton variant="grid" minWidth={140} />)}
       {books && books.length === 0 && (
-        <div className="rounded-xl p-6 text-center text-[13px] text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
+        <div className="rounded-xl p-6 text-center text-md text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
           The library is empty so far. Request a book from Discover and it will show up here once it arrives.
         </div>
       )}
       {books && books.length > 0 && shown.length === 0 && (
-        <div className="rounded-xl p-6 text-center text-[13px] text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
+        <div className="rounded-xl p-6 text-center text-md text-ink-dim" style={{ border: "1px dashed var(--line)" }}>
           Nothing matches{q.trim() ? ` “${q.trim()}”` : ""}. Can't find it? Request it from Discover.
         </div>
       )}
@@ -181,9 +181,9 @@ export function MyBooks() {
 function Row({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
   return (
     <section className="mb-5" aria-label={title}>
-      <h2 className="m-0 mb-2 flex items-baseline gap-2 text-[14px] font-bold">
+      <h2 className="m-0 mb-2 flex items-baseline gap-2 text-md font-bold">
         <span className="min-w-0 truncate">{title}</span>
-        {sub && <span className="flex-none text-[11.5px] font-normal text-ink-faint">{sub}</span>}
+        {sub && <span className="flex-none text-sm font-normal text-ink-faint">{sub}</span>}
       </h2>
       <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">{children}</div>
     </section>
@@ -197,7 +197,7 @@ function CoverBox({ url, title, children }: { url?: string; title: string; child
         <img src={posterThumb(url)} alt={title} className="h-full w-full object-cover" loading="lazy" decoding="async" />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-3 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>
-          <span className="text-[12px] font-bold text-white">{title}</span>
+          <span className="text-sm font-bold text-white">{title}</span>
         </div>
       )}
       {children}
@@ -218,8 +218,8 @@ function CoverTile({ b, onOpen, label }: { b: MyBook; onOpen: (id: number) => vo
         {label && <Badge label={label} tone="faint" />}
       </CoverBox>
       <div className="p-2">
-        <div className="truncate text-[11.5px] font-semibold" title={b.title}>{b.title}</div>
-        {b.author && <div className="truncate text-[10.5px] text-ink-dim">{b.author}</div>}
+        <div className="truncate text-sm font-semibold" title={b.title}>{b.title}</div>
+        {b.author && <div className="truncate text-xs text-ink-dim">{b.author}</div>}
       </div>
     </button>
   );
@@ -236,9 +236,9 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
           {b.mine && <Badge label="Yours" tone="accent" />}
         </CoverBox>
         <div className="flex flex-col gap-0.5 px-2.5 pt-2.5">
-          <div className="truncate text-[12.5px] font-semibold" title={b.title}>{b.title}</div>
-          {b.author && <div className="truncate text-[11px] text-ink-dim" title={b.author}>{b.author}</div>}
-          {series && <div className="truncate text-[10.5px] text-ink-faint" title={series}>{series}</div>}
+          <div className="truncate text-base font-semibold" title={b.title}>{b.title}</div>
+          {b.author && <div className="truncate text-xs text-ink-dim" title={b.author}>{b.author}</div>}
+          {series && <div className="truncate text-xs text-ink-faint" title={series}>{series}</div>}
         </div>
       </button>
       <div className="mt-auto p-2.5 pt-2">
@@ -246,7 +246,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
           <a
             href={api.ebookDownloadURL(b.book_id)}
             download
-            className="block rounded-lg px-2 py-1.5 text-center text-[11.5px] font-semibold"
+            className="block rounded-lg px-2 py-1.5 text-center text-sm font-semibold"
             style={{ background: "var(--accent)", color: "var(--accent-ink)" }}
             title={`Download the ${b.ebook.format.toUpperCase()}${b.ebook.size_bytes ? ` (${fmtSize(b.ebook.size_bytes)})` : ""}`}
           >
@@ -254,7 +254,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
             {b.ebook.size_bytes ? <span className="font-normal opacity-80"> · {fmtSize(b.ebook.size_bytes)}</span> : null}
           </a>
         ) : (
-          <div className="rounded-lg px-2 py-1 text-center text-[11px] text-ink-faint" style={{ border: "1px solid var(--line)" }}>No ebook yet</div>
+          <div className="rounded-lg px-2 py-1 text-center text-xs text-ink-faint" style={{ border: "1px solid var(--line)" }}>No ebook yet</div>
         )}
         {(b.audiobooks ?? []).map((a) => (
           <div key={a.version_id} className="mt-1 flex gap-1">
@@ -262,7 +262,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
             {listen && a.item_key && (
               <button
                 onClick={() => playAudiobook(a.item_key!, { meta: { title: b.title, author: b.author, cover: b.cover_url } })}
-                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-center text-[11px] font-semibold"
+                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-center text-xs font-semibold"
                 style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent)" }}
                 aria-label={`Listen to ${b.title}${a.label ? ` (${a.label})` : ""}`}
               >
@@ -272,7 +272,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
             <a
               href={api.audiobookDownloadURL(b.book_id, a.version_id)}
               download
-              className={`${listen && a.item_key ? "flex-none" : "flex-1"} block truncate rounded-lg px-2 py-1 text-center text-[11px] font-semibold`}
+              className={`${listen && a.item_key ? "flex-none" : "flex-1"} block truncate rounded-lg px-2 py-1 text-center text-xs font-semibold`}
               style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
               title={`Download the audiobook${a.label ? ` (${a.label})` : ""}${a.files > 1 ? ` — ${a.files} files as one zip` : ""}`}
             >
@@ -306,11 +306,11 @@ function RequestCard({ r, queueKnown }: { r: MyRequest; queueKnown: boolean }) {
         <StatusChip tone={st.tone} surface="poster" className="absolute right-1.5 top-1.5">{st.badge}</StatusChip>
       </CoverBox>
       <div className="p-2">
-        <div className="truncate text-[11.5px] font-semibold" title={r.title}>{r.title}</div>
-        {r.author && <div className="truncate text-[10.5px] text-ink-dim" title={r.author}>{r.author}</div>}
-        {notOut && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date!)}</div>}
-        {st.detail && <div className="mt-0.5 line-clamp-2 text-[10.5px]" style={{ color: st.detailTone ?? "var(--ink-faint)" }} title={st.detail}>{st.detail}</div>}
-        {coming && <div className="mt-0.5 truncate text-[10.5px]" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
+        <div className="truncate text-sm font-semibold" title={r.title}>{r.title}</div>
+        {r.author && <div className="truncate text-xs text-ink-dim" title={r.author}>{r.author}</div>}
+        {notOut && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date!)}</div>}
+        {st.detail && <div className="mt-0.5 line-clamp-2 text-xs" style={{ color: st.detailTone ?? "var(--ink-faint)" }} title={st.detail}>{st.detail}</div>}
+        {coming && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
       </div>
     </>
   );

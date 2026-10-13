@@ -41,7 +41,7 @@ export function PosterCard({ title, art, badge, progress, onOpen, quick, full, c
               poster opens the sheet, never something the user couldn't see. */}
           <div className="pointer-events-none absolute inset-0 flex flex-col justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100" style={{ background: "linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.15) 42%, transparent 70%)" }}>
             {!quick && (
-              <span className="self-start rounded-md px-2.5 py-1 text-[10.5px] font-semibold" style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.26)", color: "#fff" }}>Details</span>
+              <span className="self-start rounded-md px-2.5 py-1 text-xs font-semibold" style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.26)", color: "#fff" }}>Details</span>
             )}
           </div>
         </button>
@@ -52,7 +52,7 @@ export function PosterCard({ title, art, badge, progress, onOpen, quick, full, c
           <button
             onClick={quick.onClick}
             disabled={quick.busy}
-            className="pointer-events-none absolute bottom-2 left-2 z-20 rounded-md px-2.5 py-1 text-[10.5px] font-semibold opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:cursor-default"
+            className="pointer-events-none absolute bottom-2 left-2 z-20 rounded-md px-2.5 py-1 text-xs font-semibold opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:cursor-default"
             // Dimmed with a filter, not opacity, so the busy look doesn't fight the hover reveal.
             style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", filter: quick.busy ? "brightness(.8)" : undefined }}
           >
@@ -62,7 +62,7 @@ export function PosterCard({ title, art, badge, progress, onOpen, quick, full, c
       </div>
       {/* Always-visible caption strip so cards read before hover (Plex style). */}
       <div className="px-0.5 pt-2">
-        <div className="truncate text-[12px] font-semibold" style={{ color: "var(--ink)" }} title={title}>{title}</div>
+        <div className="truncate text-sm font-semibold" style={{ color: "var(--ink)" }} title={title}>{title}</div>
         {children}
       </div>
     </div>

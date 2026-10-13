@@ -24,10 +24,10 @@ export function PlanCard({ itemKey }: { itemKey: string }) {
     // Sticky to the left edge of the table's scroller and no wider than the screen, so on a
     // phone the card reads without scrolling sideways through a 900px table.
     <div className="sticky left-0 rounded-lg p-3" style={{ maxWidth: "calc(100vw - 2rem)", background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-      <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint">Conversion plan</div>
-      {!data && loading && <p className="mt-2 text-[12px] text-ink-dim">Reading the plan…</p>}
+      <div className="font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint">Conversion plan</div>
+      {!data && loading && <p className="mt-2 text-sm text-ink-dim">Reading the plan…</p>}
       {!data && error && (
-        <p className="mt-2 text-[12px]" style={{ color: "var(--reject)" }}>
+        <p className="mt-2 text-sm" style={{ color: "var(--reject)" }}>
           {error.message} <button type="button" onClick={() => void refetch()} className="ml-1 underline">Retry</button>
         </p>
       )}
@@ -41,7 +41,7 @@ export function PlanDetails({ plan }: { plan: ConvertPlan }) {
   const v = plan.video;
   const notes = [v.codec_note, v.hdr_note, v.crop_note].filter(Boolean) as string[];
   return (
-    <div className="mt-2 flex min-w-0 flex-col gap-2.5 text-[12px]">
+    <div className="mt-2 flex min-w-0 flex-col gap-2.5 text-sm">
       <div className="min-w-0">
         <div className="font-semibold">{videoLine(plan)}</div>
         <div className="text-ink-dim">
@@ -49,15 +49,15 @@ export function PlanDetails({ plan }: { plan: ConvertPlan }) {
           {plan.needs.save > 0 && timeLine(plan) && <> · {timeLine(plan)}</>}
           {plan.container.from !== plan.container.to && <> · {plan.container.from} → {plan.container.to}</>}
         </div>
-        {!v.to_codec && v.why && <div className="text-[11px] text-ink-faint">Picture left alone: {v.why}</div>}
-        {notes.map((n) => <div key={n} className="text-[11px] text-ink-faint">{n}</div>)}
+        {!v.to_codec && v.why && <div className="text-xs text-ink-faint">Picture left alone: {v.why}</div>}
+        {notes.map((n) => <div key={n} className="text-xs text-ink-faint">{n}</div>)}
       </div>
       <TrackList title="Audio" tracks={plan.audio} />
       <TrackList title="Subtitles" tracks={plan.subs} />
       {plan.warnings.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Warnings">
           {plan.warnings.map((w) => (
-            <li key={w} className="text-[11.5px]" style={{ color: "var(--avoid)" }}>⚠ {w}</li>
+            <li key={w} className="text-sm" style={{ color: "var(--avoid)" }}>⚠ {w}</li>
           ))}
         </ul>
       )}
@@ -66,19 +66,19 @@ export function PlanDetails({ plan }: { plan: ConvertPlan }) {
 }
 
 function TrackList({ title, tracks }: { title: string; tracks: ConvertTrackDecision[] }) {
-  if (tracks.length === 0) return <div className="text-[11px] text-ink-faint">{title}: none</div>;
+  if (tracks.length === 0) return <div className="text-xs text-ink-faint">{title}: none</div>;
   const removed = tracks.filter((t) => !t.keep).length;
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold text-ink-dim">
+      <div className="text-xs font-semibold text-ink-dim">
         {title} · {tracks.length - removed} kept{removed > 0 ? `, ${removed} removed` : ""}
       </div>
       <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">
         {tracks.map((t) => (
-          <li key={`${t.type}-${t.index}`} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px]">
+          <li key={`${t.type}-${t.index}`} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
             <StatusChip tone={t.keep ? "good" : "avoid"} size="xs" className="flex-none">{t.keep ? "kept" : "removed"}</StatusChip>
             <span className="min-w-0 break-words" style={{ color: t.keep ? "var(--ink)" : "var(--ink-dim)" }}>{trackLabel(t)}</span>
-            {t.reason && <span className="text-[10.5px] text-ink-faint">{t.reason}</span>}
+            {t.reason && <span className="text-xs text-ink-faint">{t.reason}</span>}
           </li>
         ))}
       </ul>
@@ -92,7 +92,7 @@ export function PlanToggle({ open, title, onToggle, children }: { open: boolean;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} the conversion plan for ${title}`}
       className="flex items-center gap-2 text-left hover:underline">
-      <span aria-hidden className="w-3 flex-none font-mono text-[10px] text-ink-faint">{open ? "▾" : "▸"}</span>
+      <span aria-hidden className="w-3 flex-none font-mono text-xs text-ink-faint">{open ? "▾" : "▸"}</span>
       {children}
     </button>
   );

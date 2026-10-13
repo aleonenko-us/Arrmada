@@ -48,7 +48,7 @@ export function LibraryFolders() {
   useEffect(() => {
     if (paths && hash === "#needs-review") document.getElementById("needs-review")?.scrollIntoView({ block: "start" });
   }, [paths, hash]);
-  if (!paths) return <div className="text-[12.5px] text-ink-dim">Loading…</div>;
+  if (!paths) return <div className="text-base text-ink-dim">Loading…</div>;
 
   // A row's save answers with every folder; take them all so each row compares against
   // what's really stored.
@@ -56,7 +56,7 @@ export function LibraryFolders() {
 
   return (
     <div>
-      <p className="mb-4 max-w-[64ch] text-[12.5px] text-ink-dim">Point each library at a folder inside your mounted media. Use <b>Browse</b> to pick from the folders Arrmada can see — a picked folder is saved straight away — then <b>Scan</b> to catalog what's there. Ebooks and audiobooks can share one folder.</p>
+      <p className="mb-4 max-w-[64ch] text-base text-ink-dim">Point each library at a folder inside your mounted media. Use <b>Browse</b> to pick from the folders Arrmada can see — a picked folder is saved straight away — then <b>Scan</b> to catalog what's there. Ebooks and audiobooks can share one folder.</p>
 
       <div className="flex flex-col gap-2.5">
         {ROWS.map((row) => (
@@ -74,7 +74,7 @@ export function LibraryFolders() {
         ))}
       </div>
 
-      {!admin && <p className="mt-3 text-[11.5px] text-ink-faint">Only an admin can change these folders.</p>}
+      {!admin && <p className="mt-3 text-sm text-ink-faint">Only an admin can change these folders.</p>}
 
       <div id="needs-review">
         <UnmatchedReview media="movie" reloadKey={reviewKey} />
@@ -115,13 +115,13 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
     <div className="rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[13px] font-semibold">{row.label}</div>
-          <div className="text-[10.5px] text-ink-faint">{row.hint}</div>
+          <div className="text-md font-semibold">{row.label}</div>
+          <div className="text-xs text-ink-faint">{row.hint}</div>
         </div>
-        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
       </div>
       {(line || scan.note) && (
-        <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]">
+        <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
           {line && <span style={{ color: line.tone === "good" ? "var(--good)" : line.tone === "error" ? "var(--reject)" : "var(--ink-dim)" }}>{line.text}</span>}
           {unmatched > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent)" }}>{unmatched} need review ↓</a>}
           {scan.note && !scan.note.error && <span className="text-ink-faint">{scan.note.text}</span>}
@@ -138,17 +138,17 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
           }}
           readOnly={!admin}
           placeholder={admin ? "/storage/media/…" : "Not set"}
-          className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]"
+          className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-sm"
           style={{ background: "var(--panel)", border: `1px solid ${folder.status === "error" ? "var(--reject)" : "var(--line)"}`, color: admin ? "var(--ink)" : "var(--ink-dim)" }}
         />
         {admin && folder.dirty && folder.status !== "saving" && (
-          <button onClick={use} disabled={blocking} title={blocking ? "Fix the folder marked in red first" : undefined} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Use this folder</button>
+          <button onClick={use} disabled={blocking} title={blocking ? "Fix the folder marked in red first" : undefined} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Use this folder</button>
         )}
-        {admin && <button onClick={() => setPicking(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Browse…</button>}
+        {admin && <button onClick={() => setPicking(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Browse…</button>}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <SavedTick save={folder} />
-        {folder.status === "saved" && <span className="text-[10.5px] text-ink-faint">New imports go here from now on; what's already imported stays where it is.</span>}
+        {folder.status === "saved" && <span className="text-xs text-ink-faint">New imports go here from now on; what's already imported stays where it is.</span>}
       </div>
       <FolderChips kind={row.key} path={folder.value} current={paths[row.key]} downloads={row.key === "downloads" ? undefined : paths.downloads} onBlocking={onBlocking} onCreated={(p) => { onSaved(p); folder.revert(); }} />
       {picking && (
@@ -189,13 +189,13 @@ function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; relo
     <div className="mt-4 rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[13px] font-semibold">
+          <div className="text-md font-semibold">
             {label} — needs review
-            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{items.length}</span>
+            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{items.length}</span>
           </div>
-          <div className="text-[10.5px] text-ink-faint">Arrmada couldn't confidently identify these — pick the right title so nothing is mis-filed.</div>
+          <div className="text-xs text-ink-faint">Arrmada couldn't confidently identify these — pick the right title so nothing is mis-filed.</div>
         </div>
-        <button onClick={load} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Refresh</button>
+        <button onClick={load} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Refresh</button>
       </div>
       <div className="mt-3 flex flex-col gap-2.5">
         {items.map((u) => <UnmatchedRow key={u.folder} media={media} item={u} busy={busy} onPick={pick} />)}
@@ -221,25 +221,25 @@ function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"
 
   return (
     <div className="rounded-lg p-2.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-      <div className="flex items-center gap-2 text-[12px]">
+      <div className="flex items-center gap-2 text-sm">
         <span style={{ color: "var(--accent)" }}>📁</span>
         <span className="font-mono font-semibold">{item.folder}</span>
         <span className="text-ink-faint">— looked for “{item.title}”{item.year ? ` (${item.year})` : ""}</span>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {shown.length === 0 && <span className="text-[11px] text-ink-faint">No candidates — search a different title below.</span>}
+        {shown.length === 0 && <span className="text-xs text-ink-faint">No candidates — search a different title below.</span>}
         {shown.map((c) => (
           <button
             key={c.tmdb_id}
             disabled={busy}
             onClick={() => onPick(item.folder, c.tmdb_id)}
             title={c.overview}
-            className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-[11.5px] disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm disabled:opacity-50"
             style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
           >
             {c.poster_url
               ? <img src={c.poster_url} alt="" className="h-9 w-6 flex-none rounded object-cover" />
-              : <span className="grid h-9 w-6 flex-none place-items-center rounded text-[9px] text-ink-faint" style={{ background: "var(--panel-2)" }}>?</span>}
+              : <span className="grid h-9 w-6 flex-none place-items-center rounded text-xs text-ink-faint" style={{ background: "var(--panel-2)" }}>?</span>}
             <span><span className="font-semibold">{c.title}</span>{c.year ? <span className="text-ink-faint"> ({c.year})</span> : ""}</span>
           </button>
         ))}
@@ -251,10 +251,10 @@ function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"
           onKeyDown={(e) => e.key === "Enter" && search()}
           placeholder="Search a different title…"
           aria-label="Search a different title"
-          className="flex-1 rounded-lg px-2 py-1 text-[11.5px]"
+          className="flex-1 rounded-lg px-2 py-1 text-sm"
           style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />
-        <button onClick={search} disabled={searching} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>{searching ? "…" : "Search"}</button>
+        <button onClick={search} disabled={searching} className="rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>{searching ? "…" : "Search"}</button>
       </div>
     </div>
   );
@@ -309,13 +309,13 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
   };
 
   if (!p) return null;
-  if (!c) return failed === p ? null : <div className="mt-1.5 text-[10.5px] text-ink-faint">Checking…</div>;
+  if (!c) return failed === p ? null : <div className="mt-1.5 text-xs text-ink-faint">Checking…</div>;
   if (c.error) {
     return (
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]" style={{ color: blocking ? "var(--reject)" : "var(--avoid)" }}>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" style={{ color: blocking ? "var(--reject)" : "var(--avoid)" }}>
         <span>{c.error}</span>
         {!c.exists && !c.under_data_dir && (
-          <button onClick={create} disabled={creating} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{creating ? "Creating…" : "Create it"}</button>
+          <button onClick={create} disabled={creating} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{creating ? "Creating…" : "Create it"}</button>
         )}
         {createErr && <span style={{ color: "var(--reject)" }}>{createErr}</span>}
       </div>
@@ -323,7 +323,7 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
   }
   const good = "var(--good)", warn = "var(--avoid)";
   return (
-    <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px]">
+    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
       <FolderChip color={good}>✓ Exists</FolderChip>
       {c.writable
         ? <FolderChip color={good}>✓ Writable</FolderChip>
@@ -355,24 +355,24 @@ export function FolderPicker({ initial, onClose, onSelect }: { initial?: string;
   return (
     <Modal onClose={onClose} labelledBy="folder-picker-title" size="md">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 id="folder-picker-title" className="m-0 text-[15px] font-bold">Select a folder</h2>
+        <h2 id="folder-picker-title" className="m-0 text-lg font-bold">Select a folder</h2>
         <button onClick={onClose} aria-label="Close" className="text-ink-faint hover:text-[var(--ink)]">✕</button>
       </div>
 
       <div className="mb-2 flex items-center gap-2">
-        <button onClick={() => data && go(data.parent)} disabled={!data || data.path === "/"} className="rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }} title="Up one level">↑</button>
-        <div className="min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-[11.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{data?.path ?? "…"}</div>
+        <button onClick={() => data && go(data.parent)} disabled={!data || data.path === "/"} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }} title="Up one level">↑</button>
+        <div className="min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{data?.path ?? "…"}</div>
       </div>
 
-      {err && <div className="mb-2 rounded-lg p-2.5 text-[11.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mb-2 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{err}</div>}
 
       <div className="thin-scroll max-h-[46vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {!data ? (
-          <div className="p-6 text-center text-[12px] text-ink-faint">Loading…</div>
+          <div className="p-6 text-center text-sm text-ink-faint">Loading…</div>
         ) : data.dirs.length === 0 ? (
-          <div className="p-6 text-center text-[12px] text-ink-faint">No sub-folders here.</div>
+          <div className="p-6 text-center text-sm text-ink-faint">No sub-folders here.</div>
         ) : data.dirs.map((d) => (
-          <button key={d.path} onClick={() => go(d.path)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
+          <button key={d.path} onClick={() => go(d.path)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
             <span style={{ color: "var(--accent)" }}>📁</span>
             <span className="truncate">{d.name}</span>
           </button>
@@ -380,10 +380,10 @@ export function FolderPicker({ initial, onClose, onSelect }: { initial?: string;
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-[10.5px]" style={{ color: data?.path_disabled ? "var(--avoid)" : "var(--ink-faint)" }}>
+        <span className="text-xs" style={{ color: data?.path_disabled ? "var(--avoid)" : "var(--ink-faint)" }}>
           {data?.path_disabled ? "This folder holds Arrmada's own data — go into your media folder and pick one there." : "Navigate into the folder you want, then select it."}
         </span>
-        <button onClick={() => data && !data.path_disabled && onSelect(data.path)} disabled={!data || data.path_disabled}className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Select this folder</button>
+        <button onClick={() => data && !data.path_disabled && onSelect(data.path)} disabled={!data || data.path_disabled}className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Select this folder</button>
       </div>
     </Modal>
   );

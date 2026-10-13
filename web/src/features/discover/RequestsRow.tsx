@@ -42,8 +42,8 @@ export function MyRequestsRow() {
   const heading = (
     <>
       {staff ? "Requests" : "Your requests"}
-      {staff && waiting > 0 && <span className="ml-2 text-[11.5px] font-medium" style={{ color: "var(--avoid-text)" }}>{waiting} waiting</span>}
-      {moving > 0 && <span className="ml-2 text-[11.5px] font-medium" style={{ color: "var(--accent)" }}>{moving} on the way</span>}
+      {staff && waiting > 0 && <span className="ml-2 text-sm font-medium" style={{ color: "var(--avoid-text)" }}>{waiting} waiting</span>}
+      {moving > 0 && <span className="ml-2 text-sm font-medium" style={{ color: "var(--accent)" }}>{moving} on the way</span>}
     </>
   );
   return <RequestRail heading={heading} seeAll={staff && waiting > 0 ? "/requests?tab=needs" : "/requests"} items={sorted} staff={staff} queueKnown={queueKnown} onChanged={load} />;
@@ -70,9 +70,9 @@ function RequestRail({ heading, seeAll, seeAllLabel, items, staff, queueKnown = 
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between gap-2">
-        <h2 className="m-0 min-w-0 text-[15px] font-bold">{heading}</h2>
+        <h2 className="m-0 min-w-0 text-lg font-bold">{heading}</h2>
         <div className="flex flex-none items-center gap-2">
-          <Link to={seeAll} aria-label={seeAllLabel} className="text-[12px] font-semibold" style={{ color: "var(--accent)" }}>See all →</Link>
+          <Link to={seeAll} aria-label={seeAllLabel} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>See all →</Link>
           <RailArrows rail={rail} />
         </div>
       </div>
@@ -121,10 +121,10 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
               style={{ background: POSTER_CHIP_BG, border: "1px solid rgba(255,255,255,.18)" }}
               title={`Requested by ${rq.requested_by_name}`}
             >
-              <span className="grid h-[14px] w-[14px] flex-none place-items-center rounded-full text-[8px] font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
+              <span className="grid h-[14px] w-[14px] flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
                 {rq.requested_by_name[0]?.toUpperCase()}
               </span>
-              <span className="truncate text-[9px] font-semibold text-white">{rq.requested_by_name}</span>
+              <span className="truncate text-xs font-semibold text-white">{rq.requested_by_name}</span>
             </span>
           ) : following ? (
             <StatusChip tone="faint" surface="poster" className="min-w-0">Following</StatusChip>
@@ -145,23 +145,23 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
       </button>
       {/* Always-visible caption: the title, and where it's got to in plain words. */}
       <div className="px-0.5 pt-2">
-        <div className="truncate text-[12px] font-semibold" style={{ color: "var(--ink)" }} title={rq.title}>{rq.title}</div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px]" style={{ color: stage.detailTone ?? "var(--ink-faint)" }} title={stage.detail}>
+        <div className="truncate text-sm font-semibold" style={{ color: "var(--ink)" }} title={rq.title}>{rq.title}</div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs" style={{ color: stage.detailTone ?? "var(--ink-faint)" }} title={stage.detail}>
           {/* A book request says what was asked for: Read, Listen or Both. */}
           {rq.media_type === "book" && rq.formats && (
-            <span className="flex-none rounded px-1.5 py-px font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
+            <span className="flex-none rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
               {BOOK_FORMAT_BADGE[rq.formats]}
             </span>
           )}
           {/* A show asked for by season says which: S1–3, S5. */}
           {rq.media_type === "series" && rq.seasons && rq.seasons.length > 0 && (
-            <span className="flex-none font-mono text-[9.5px] font-bold" style={{ color: "var(--ink-dim)" }}>{formatSeasons(rq.seasons)}</span>
+            <span className="flex-none font-mono text-xs font-bold" style={{ color: "var(--ink-dim)" }}>{formatSeasons(rq.seasons)}</span>
           )}
           <span className="truncate">{stage.detail}</span>
         </div>
         {/* Delivered and in the owner's Plex: one tap to watch it there. */}
         {rq.plex_url && (
-          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" aria-label={`Watch ${rq.title} on Plex`} className="mt-1.5 inline-flex min-h-[28px] items-center rounded-md bg-accent-grad px-2.5 text-[11px] font-semibold text-accent-ink">▶ Watch</a>
+          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" aria-label={`Watch ${rq.title} on Plex`} className="mt-1.5 inline-flex min-h-[28px] items-center rounded-md bg-accent-grad px-2.5 text-xs font-semibold text-accent-ink">▶ Watch</a>
         )}
       </div>
     </div>

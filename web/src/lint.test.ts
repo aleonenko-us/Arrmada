@@ -38,6 +38,17 @@ export function P() { const toast = useToast(); return toast; }`)).toEqual([]);
   }, 30_000);
 });
 
+// FE-30: every font size is a token of the type scale.
+describe("type scale lint", () => {
+  it("rejects an arbitrary text size, in a string or a template, and allows the tokens", async () => {
+    // Spelled in halves so this file doesn't trip the rule it tests.
+    const size = "text-[" + "9.5px]";
+    expect(await errors(`export const A = () => <span className="font-mono ${size}">x</span>;`)).toEqual(["no-restricted-syntax"]);
+    expect(await errors("export const A = ({ on }: { on: boolean }) => <span className={`sm:" + size + " ${on ? 'a' : 'b'}`}>x</span>;")).toEqual(["no-restricted-syntax"]);
+    expect(await errors(`export const A = () => <span className="text-2xs uppercase sm:text-display-lg text-[var(--ink)]">x</span>;`)).toEqual([]);
+  }, 30_000);
+});
+
 // FE-15: the jsx-a11y rules are errors, so a field, button or click target that a screen
 // reader or a keyboard can't use fails CI rather than warning.
 describe("accessibility lint", () => {

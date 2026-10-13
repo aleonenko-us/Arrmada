@@ -35,14 +35,14 @@ export function SearchDropdown({ q, showResults, recent, loading, results, total
     >
       {!showResults ? (
         <div className="px-3 py-2">
-          <div className="mb-2 font-mono text-[9.5px] uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>Recent searches</div>
+          <div className="mb-2 font-mono text-2xs uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>Recent searches</div>
           <div className="flex flex-wrap gap-1.5">
             {recent.map((rq) => (
               <button
                 key={rq}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onRecent(rq)}
-                className="rounded-full px-2.5 py-1 text-[11.5px] font-medium"
+                className="rounded-full px-2.5 py-1 text-sm font-medium"
                 style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}
               >
                 {rq}
@@ -51,9 +51,9 @@ export function SearchDropdown({ q, showResults, recent, loading, results, total
           </div>
         </div>
       ) : loading && !results ? (
-        <div className="px-3 py-6 text-center text-[12px]" style={{ color: "var(--ink-faint)" }}>Searching…</div>
+        <div className="px-3 py-6 text-center text-sm" style={{ color: "var(--ink-faint)" }}>Searching…</div>
       ) : total === 0 ? (
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => commit(q)} className="block w-full px-3 py-6 text-center text-[12px]" style={{ color: "var(--ink-faint)" }}>
+        <button onMouseDown={(e) => e.preventDefault()} onClick={() => commit(q)} className="block w-full px-3 py-6 text-center text-sm" style={{ color: "var(--ink-faint)" }}>
           No quick matches — see all results for “{q}”
         </button>
       ) : (
@@ -64,7 +64,7 @@ export function SearchDropdown({ q, showResults, recent, loading, results, total
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => commit(q)}
-            className="mt-1 flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-[12px] font-semibold"
+            className="mt-1 flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-sm font-semibold"
             style={{ borderColor: "var(--line)", background: highlight === total ? "var(--accent-soft)" : "transparent", color: "var(--accent)" }}
           >
             See all results for “{q}”
@@ -79,7 +79,7 @@ export function SearchDropdown({ q, showResults, recent, loading, results, total
 function SearchGroup({ label, items, flatBase, highlight, onPick }: { label: string; items: DiscoverCard[]; flatBase: number; highlight: number; onPick: (c: DiscoverCard) => void }) {
   return (
     <div className="py-1">
-      <div className="px-3 py-1 font-mono text-[9.5px] uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>{label}</div>
+      <div className="px-3 py-1 font-mono text-2xs uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>{label}</div>
       {items.map((c, i) => {
         const idx = flatBase + i;
         const on = highlight === idx;
@@ -100,8 +100,8 @@ function SearchGroup({ label, items, flatBase, highlight, onPick }: { label: str
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12.5px] font-semibold" style={{ color: "var(--ink)" }}>{c.title}</div>
-              <div className="flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+              <div className="truncate text-base font-semibold" style={{ color: "var(--ink)" }}>{c.title}</div>
+              <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
                 <span>{c.year || "—"}</span>
                 <span>·</span>
                 <span>{c.media_type === "series" ? "TV" : "Movie"}</span>
@@ -120,7 +120,7 @@ function SearchGroup({ label, items, flatBase, highlight, onPick }: { label: str
 function PeopleGroup({ people, flatBase, highlight, onPick }: { people: PersonResult[]; flatBase: number; highlight: number; onPick: (p: PersonResult) => void }) {
   return (
     <div className="py-1">
-      <div className="px-3 py-1 font-mono text-[9.5px] uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>People</div>
+      <div className="px-3 py-1 font-mono text-2xs uppercase tracking-wide" style={{ color: "var(--ink-faint)" }}>People</div>
       {people.map((p, i) => (
         <button
           key={p.id}
@@ -133,8 +133,8 @@ function PeopleGroup({ people, flatBase, highlight, onPick }: { people: PersonRe
             {p.profile_url ? <img src={p.profile_url} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold" style={{ color: "var(--ink)" }}>{p.name}</span>
-            <span className="block truncate text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{[p.known_for_department, ...(p.known_for ?? [])].filter(Boolean).join(" · ")}</span>
+            <span className="block truncate text-base font-semibold" style={{ color: "var(--ink)" }}>{p.name}</span>
+            <span className="block truncate text-xs" style={{ color: "var(--ink-faint)" }}>{[p.known_for_department, ...(p.known_for ?? [])].filter(Boolean).join(" · ")}</span>
           </span>
         </button>
       ))}

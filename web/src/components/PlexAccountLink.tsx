@@ -74,7 +74,7 @@ export default function PlexAccountLink({ variant }: { variant: "sidebar" | "me"
   };
 
   const sidebar = variant === "sidebar";
-  const box = sidebar ? "flex flex-col gap-1 px-3.5 pb-3 text-[11px] text-ink-faint" : "flex min-h-[48px] flex-col justify-center gap-1 px-3.5 py-2.5 text-[13px] text-ink-dim";
+  const box = sidebar ? "flex flex-col gap-1 px-3.5 pb-3 text-xs text-ink-faint" : "flex min-h-[48px] flex-col justify-center gap-1 px-3.5 py-2.5 text-md text-ink-dim";
   if (!link) {
     // The sidebar just leaves the line out; the Me page's card says what's going on.
     if (sidebar) return null;

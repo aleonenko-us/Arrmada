@@ -37,7 +37,7 @@ export function HeldSummary({ hold, flash, onChanged }: { hold?: ConvertHoldStat
   if (!hold) return null;
   if (hold.held_count === 0) {
     return (
-      <div className="mt-1.5 text-[11.5px] text-ink-faint">
+      <div className="mt-1.5 text-sm text-ink-faint">
         {hold.hold_days > 0 ? `Nothing held — each original is kept for ${hold.hold_days} day${hold.hold_days === 1 ? "" : "s"} after its conversion so it can be undone` : "Originals are deleted once verified — there is no undo"}
       </div>
     );
@@ -59,7 +59,7 @@ export function HeldSummary({ hold, flash, onChanged }: { hold?: ConvertHoldStat
     } catch (e) { flash((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div className="mt-1.5 text-[11.5px] text-ink-dim">
+    <div className="mt-1.5 text-sm text-ink-dim">
       <div>
         <b style={{ color: "var(--ink)" }}>{fmtBytes(hold.held_bytes)}</b> held so you can undo · {hold.held_count.toLocaleString()} file{hold.held_count === 1 ? "" : "s"}
         {hold.next_release_at ? ` · next release ${inDays(hold.next_release_at)}` : ""}
@@ -71,10 +71,10 @@ export function HeldSummary({ hold, flash, onChanged }: { hold?: ConvertHoldStat
             role="meter" aria-label="Originals hold used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
             <div className="h-full" style={{ width: `${pct}%`, background: pct >= 90 ? "var(--avoid)" : "var(--accent)" }} />
           </div>
-          <span className="font-mono text-[10.5px] text-ink-faint">{pct}% of {fmtBytes(hold.budget_bytes)}</span>
+          <span className="font-mono text-xs text-ink-faint">{pct}% of {fmtBytes(hold.budget_bytes)}</span>
         </div>
       )}
-      <button onClick={releaseAll} disabled={busy} className="mt-1.5 rounded px-2 py-0.5 text-[10.5px] font-semibold disabled:opacity-50" style={ghostBtn}>
+      <button onClick={releaseAll} disabled={busy} className="mt-1.5 rounded px-2 py-0.5 text-xs font-semibold disabled:opacity-50" style={ghostBtn}>
         {busy ? "Releasing…" : "Release all…"}
       </button>
     </div>
@@ -128,7 +128,7 @@ export function RevertButton({ e, id, flash, onDone }: {
   };
   return (
     <button onClick={revert} disabled={busy} title="Put the original back in place of the converted file"
-      className="rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+      className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
       {busy ? "…" : "Revert"}
     </button>
   );
@@ -155,7 +155,7 @@ export function ReleaseButton({ e, flash, onDone }: { e: ConvertHistoryEntry; fl
     } catch (err) { flash((err as Error).message); } finally { setBusy(false); }
   };
   return (
-    <button onClick={release} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50" style={ghostBtn}>
+    <button onClick={release} disabled={busy} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={ghostBtn}>
       {busy ? "…" : "Release now"}
     </button>
   );

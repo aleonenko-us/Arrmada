@@ -35,8 +35,8 @@ export function SeasonTrim({ rq, disabled, onChange }: {
   };
 
   return (
-    <fieldset className="m-0 flex flex-col gap-1 border-0 p-0 text-[12px]">
-      <legend className="mb-1 p-0 font-mono text-[9.5px] uppercase text-ink-faint">
+    <fieldset className="m-0 flex flex-col gap-1 border-0 p-0 text-sm">
+      <legend className="mb-1 p-0 font-mono text-2xs uppercase text-ink-faint">
         Seasons to approve{!rq.seasons?.length && " · the whole show was asked for"}
       </legend>
       <div className="thin-scroll max-h-[40vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
@@ -53,8 +53,8 @@ export function SeasonTrim({ rq, disabled, onChange }: {
           );
         })}
       </div>
-      {off.size > 0 && off.size < asked.length && <span className="text-[11px] text-ink-faint">The rest won’t be approved; the requester is told which.</span>}
-      {off.size === asked.length && <span className="text-[11px] font-medium" style={{ color: "var(--avoid-text)" }}>Tick at least one season, or decline the request.</span>}
+      {off.size > 0 && off.size < asked.length && <span className="text-xs text-ink-faint">The rest won’t be approved; the requester is told which.</span>}
+      {off.size === asked.length && <span className="text-xs font-medium" style={{ color: "var(--avoid-text)" }}>Tick at least one season, or decline the request.</span>}
     </fieldset>
   );
 }

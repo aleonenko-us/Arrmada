@@ -26,7 +26,7 @@ const SDH: { value: ProfileSDH; label: string }[] = [
   { value: "avoid", label: "Never SDH" },
 ];
 
-const field = "rounded-md px-2 py-1 text-[11.5px] disabled:opacity-40";
+const field = "rounded-md px-2 py-1 text-sm disabled:opacity-40";
 const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
 // version changes whenever the kept languages are saved above, so the Default profile's
@@ -46,14 +46,14 @@ export function SubtitleProfiles({ version }: { version: string }) {
   const others = profiles.filter((p) => !p.is_default);
   return (
     <div className={card} style={cardStyle}>
-      <div className="text-[14px] font-bold">Language profiles</div>
-      <div className="mt-0.5 text-[11.5px] text-ink-faint">
+      <div className="text-md font-bold">Language profiles</div>
+      <div className="mt-0.5 text-sm text-ink-faint">
         Per language: the full subtitle, the <b>forced</b> one (just the lines in another language — signs, a scene in Klingon), or both;
         how to treat <b>SDH</b> (sound cues for the hard of hearing); and whether to skip it when the audio is already in that language.
         Every title uses Default unless you pin it to another profile from the <Link to="/subtitles?tab=library" style={{ color: "var(--accent)" }}>Subtitles Library</Link>.
       </div>
       {!data ? (
-        <p className="m-0 mt-3 text-[12px] text-ink-dim">{error ? error.message : "Loading…"}</p>
+        <p className="m-0 mt-3 text-sm text-ink-dim">{error ? error.message : "Loading…"}</p>
       ) : (
         <div className="mt-3 flex flex-col gap-3">
           {def && <ProfileEditor profile={def} languages={languages} overrides={[]} />}
@@ -105,7 +105,7 @@ function ProfileEditor({ profile, languages, overrides }: { profile: SubtitlePro
     <div className="rounded-lg p-3" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         {profile.is_default ? (
-          <div className="text-[12.5px] font-bold">Default <span className="font-normal text-ink-faint">— the kept languages above, for every title not pinned elsewhere</span></div>
+          <div className="text-base font-bold">Default <span className="font-normal text-ink-faint">— the kept languages above, for every title not pinned elsewhere</span></div>
         ) : (
           <input
             value={name}
@@ -114,7 +114,7 @@ function ProfileEditor({ profile, languages, overrides }: { profile: SubtitlePro
             onChange={(e) => setName(e.target.value)}
             onBlur={rename}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-            className="min-w-0 rounded-md px-2 py-1 text-[12.5px] font-bold"
+            className="min-w-0 rounded-md px-2 py-1 text-base font-bold"
             style={fieldStyle}
           />
         )}
@@ -136,12 +136,12 @@ function ProfileEditor({ profile, languages, overrides }: { profile: SubtitlePro
         ))}
       </div>
       {overrides.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-faint">
           <span>Used by</span>
           {overrides.map((o) => (
             <span key={`${o.kind}:${o.id}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
               {o.title || `${o.kind} #${o.id}`}
-              <IconButton label={`Put ${o.title || "this title"} back on Default`} className="h-4 w-4 text-[10px]" onClick={() => void run(() => profileApi.setOverride(o.kind, o.id, 0))}>✕</IconButton>
+              <IconButton label={`Put ${o.title || "this title"} back on Default`} className="h-4 w-4 text-xs" onClick={() => void run(() => profileApi.setOverride(o.kind, o.id, 0))}>✕</IconButton>
             </span>
           ))}
         </div>
@@ -154,14 +154,14 @@ function ItemRow({ item, name, onChange }: { item: ProfileItem; name: string; on
   const forcedOnly = item.variant === "forced";
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--panel-2)" }}>
-      <span className="min-w-[110px] flex-1 text-[12px] font-semibold">{name}</span>
+      <span className="min-w-[110px] flex-1 text-sm font-semibold">{name}</span>
       <select aria-label={`${name}: which subtitle`} value={item.variant} onChange={(e) => onChange({ ...item, variant: e.target.value as ProfileVariant })} className={field} style={fieldStyle}>
         {VARIANTS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
       </select>
       <select aria-label={`${name}: SDH`} value={item.sdh} disabled={forcedOnly} onChange={(e) => onChange({ ...item, sdh: e.target.value as ProfileSDH })} className={field} style={fieldStyle}>
         {SDH.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
       </select>
-      <label className="flex items-center gap-1.5 text-[11.5px] text-ink-dim" title="The full subtitle is skipped for a file whose main audio is already this language. Forced subtitles are kept either way — they're for exactly those films.">
+      <label className="flex items-center gap-1.5 text-sm text-ink-dim" title="The full subtitle is skipped for a file whose main audio is already this language. Forced subtitles are kept either way — they're for exactly those films.">
         <input type="checkbox" checked={item.only_if_audio_differs} disabled={forcedOnly} onChange={(e) => onChange({ ...item, only_if_audio_differs: e.target.checked })} />
         Only when the audio is another language
       </label>
@@ -191,7 +191,7 @@ function NewProfile({ from }: { from?: SubtitleProfile }) {
   };
   return (
     <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-      <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="New profile name (e.g. Anime)" aria-label="New profile name" className="w-[240px] rounded-lg px-3 py-1.5 text-[12.5px]" style={fieldStyle} />
+      <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="New profile name (e.g. Anime)" aria-label="New profile name" className="w-[240px] rounded-lg px-3 py-1.5 text-base" style={fieldStyle} />
       <Button type="submit" size="sm" busy={busy} disabled={!name.trim()}>Add profile</Button>
     </form>
   );

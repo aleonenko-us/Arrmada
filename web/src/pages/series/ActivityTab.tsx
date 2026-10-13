@@ -99,7 +99,7 @@ export function ActivityTab({ seriesId, refreshKey }: { seriesId: number; refres
             type="button"
             aria-pressed={type === t.key}
             onClick={() => setType(t.key)}
-            className="flex-none rounded-full px-3 py-1 text-[12px] font-semibold"
+            className="flex-none rounded-full px-3 py-1 text-sm font-semibold"
             style={{ background: type === t.key ? "var(--accent-soft)" : "var(--panel-2)", color: type === t.key ? "var(--accent-text)" : "var(--ink-dim)", border: `1px solid ${type === t.key ? "var(--accent-line)" : "var(--line)"}` }}
           >
             {t.label}
@@ -107,9 +107,9 @@ export function ActivityTab({ seriesId, refreshKey }: { seriesId: number; refres
         ))}
       </div>
       {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
+        <div className="text-base text-ink-dim">Loading…</div>
       ) : shown.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{type === "all" ? "No activity yet." : "Nothing of that kind yet."}</div>
+        <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{type === "all" ? "No activity yet." : "Nothing of that kind yet."}</div>
       ) : (
         <ol className="m-0 flex list-none flex-col p-0" data-testid="activity-list">
           {shown.map((r) => <Row key={r.key} row={r} />)}
@@ -127,11 +127,11 @@ function Row({ row }: { row: ActivityRow }) {
   const expandable = !!a && (reasons.length > 0 || errors.length > 0 || (a.grabbed_titles ?? []).length > 0 || !!a.example);
   const tone = a ? outcomeTone(a.outcome) : (TONES[row.event] ?? "var(--ink-dim)");
   return (
-    <li className="border-b py-2 text-[12px]" style={{ borderColor: "var(--line-soft)" }}>
+    <li className="border-b py-2 text-sm" style={{ borderColor: "var(--line-soft)" }}>
       <div className="flex items-start gap-3">
-        <span className="w-[78px] flex-none pt-px font-mono text-[10px] font-bold uppercase" style={{ color: tone }}>{row.event}</span>
+        <span className="w-[78px] flex-none pt-px font-mono text-2xs font-bold uppercase" style={{ color: tone }}>{row.event}</span>
         <div className="min-w-0 flex-1">
-          {a && scopeLabel(a.scope) && <span className="mr-1.5 font-mono text-[10.5px] font-bold text-ink-faint">{scopeLabel(a.scope)}</span>}
+          {a && scopeLabel(a.scope) && <span className="mr-1.5 font-mono text-xs font-bold text-ink-faint">{scopeLabel(a.scope)}</span>}
           {expandable ? (
             <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="text-left" style={{ color: tone }}>
               {row.detail} <span aria-hidden className="text-ink-faint">{open ? "▾" : "▸"}</span>
@@ -141,16 +141,16 @@ function Row({ row }: { row: ActivityRow }) {
           )}
           {a && TRIGGER[a.trigger] && <span className="text-ink-faint"> · {TRIGGER[a.trigger]}</span>}
           {open && a && (
-            <ul className="m-0 mt-1.5 flex list-none flex-col gap-0.5 p-0 pl-2 text-[11.5px] text-ink-dim">
+            <ul className="m-0 mt-1.5 flex list-none flex-col gap-0.5 p-0 pl-2 text-sm text-ink-dim">
               <li>{a.returned} found · {a.eligible} fit · {a.grabbed} grabbed</li>
               {reasons.map(([code, n]) => <li key={code}>{n} {reasonLabel(code)}</li>)}
-              {a.example && <li className="truncate font-mono text-[10.5px] text-ink-faint" title={a.example}>e.g. {a.example}</li>}
-              {(a.grabbed_titles ?? []).map((t) => <li key={t} className="truncate font-mono text-[10.5px]" title={t}>↓ {t}</li>)}
+              {a.example && <li className="truncate font-mono text-xs text-ink-faint" title={a.example}>e.g. {a.example}</li>}
+              {(a.grabbed_titles ?? []).map((t) => <li key={t} className="truncate font-mono text-xs" title={t}>↓ {t}</li>)}
               {errors.map(([ix, msg]) => <li key={ix} style={{ color: "var(--avoid)" }}>{ix}: {msg}</li>)}
             </ul>
           )}
         </div>
-        <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtWhen(row.at)}</span>
+        <span className="flex-none font-mono text-xs text-ink-faint">{fmtWhen(row.at)}</span>
       </div>
     </li>
   );

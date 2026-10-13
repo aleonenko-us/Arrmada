@@ -91,7 +91,7 @@ export function BlocklistPanel() {
   return (
     <>
       <div className="max-w-[1100px]">
-        <p className="mb-5 max-w-[72ch] text-[12.5px] text-ink-dim">
+        <p className="mb-5 max-w-[72ch] text-base text-ink-dim">
           Releases Arrmada won't grab again: ones you blocked or rejected, downloads that stalled, and fakes it caught.
           Most are blocked for one title. Global entries block a release for every title — usually junk rejected from
           Needs you that wasn't tied to anything. Unblock an entry to make that release grabbable again on the next search.
@@ -102,14 +102,14 @@ export function BlocklistPanel() {
             const on = type === t.key;
             return (
               <button key={t.key || "all"} onClick={() => { setType(t.key); setPage(0); }} aria-pressed={on}
-                className="rounded-full px-3 py-1 text-[12px] font-semibold"
+                className="rounded-full px-3 py-1 text-sm font-semibold"
                 style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
                 {t.label}
               </button>
             );
           })}
           <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Search releases or titles…" aria-label="Search the blocklist"
-            className="ml-auto w-full rounded-lg px-3 py-1.5 text-[12.5px] sm:w-[260px]"
+            className="ml-auto w-full rounded-lg px-3 py-1.5 text-base sm:w-[260px]"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
         </div>
 
@@ -131,9 +131,9 @@ export function BlocklistPanel() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusChip tone={r.type === "global" ? "avoid" : "faint"}>{r.type === "music" && r.discography ? "discography" : KIND_LABEL[r.type]}</StatusChip>
-                            <span className="min-w-0 break-all font-mono text-[12px]">{r.title}</span>
+                            <span className="min-w-0 break-all font-mono text-sm">{r.title}</span>
                           </div>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-ink-dim">
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-dim">
                             {r.type === "global" ? (
                               <span style={{ color: "var(--avoid)" }}>Blocks this release for every title</span>
                             ) : link && r.item_title ? (
@@ -142,8 +142,8 @@ export function BlocklistPanel() {
                               <span className="text-ink-faint">For a {KIND_LABEL[r.type]} no longer in the library</span>
                             )}
                             {r.reason && <span>{r.reason}</span>}
-                            {r.indexer && <span className="font-mono text-[10.5px] text-ink-faint">{r.indexer}</span>}
-                            <span className="font-mono text-[10.5px] text-ink-faint">{when(r.created_at)}</span>
+                            {r.indexer && <span className="font-mono text-xs text-ink-faint">{r.indexer}</span>}
+                            <span className="font-mono text-xs text-ink-faint">{when(r.created_at)}</span>
                           </div>
                         </div>
                         <Button size="sm" variant="ghost" busy={busy === r.id} busyLabel="Unblocking…" disabled={busy !== null} onClick={() => unblock(r)}>Unblock</Button>
@@ -154,7 +154,7 @@ export function BlocklistPanel() {
               </div>
             )}
             {total > PAGE_SIZE && (
-              <div className="mt-4 flex items-center justify-between text-[12px] text-ink-dim">
+              <div className="mt-4 flex items-center justify-between text-sm text-ink-dim">
                 <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}</span>
                 <span className="flex gap-2">
                   <Button size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Previous</Button>

@@ -50,25 +50,25 @@ export function timelineReason(h: AudioHistoryEntry): string {
 
 export function PlaceTimeline({ history, busy, onRestore }: { history: AudioHistoryEntry[] | null; busy?: boolean; onRestore: (h: AudioHistoryEntry) => void }) {
   const [all, setAll] = useState(false);
-  if (history === null) return <span className="text-[11.5px] text-ink-faint">Loading…</span>;
-  if (history.length === 0) return <span className="text-[11.5px] text-ink-faint">No earlier places yet.</span>;
+  if (history === null) return <span className="text-sm text-ink-faint">Loading…</span>;
+  if (history.length === 0) return <span className="text-sm text-ink-faint">No earlier places yet.</span>;
   const rows = all ? history : history.slice(0, SHOW);
   return (
     <div className="flex flex-col gap-1">
       {rows.map((h) => {
         const dim = h.kind === "rejected" && h.dismissed;
         return (
-          <div key={h.id} className="flex items-center justify-between gap-2 py-0.5 text-[11.5px]" style={dim ? { opacity: 0.55 } : undefined}>
+          <div key={h.id} className="flex items-center justify-between gap-2 py-0.5 text-sm" style={dim ? { opacity: 0.55 } : undefined}>
             <span className="min-w-0 flex-1 text-ink-dim">
               <span className="block"><b className="font-semibold" style={{ color: "var(--ink)" }}>{fmtClock(h.position)}</b> · {timelineReason(h)}</span>
-              <span className="block text-[11px] text-ink-faint">{new Date(h.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="block text-xs text-ink-faint">{new Date(h.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
             </span>
             <button onClick={() => onRestore(h)} disabled={busy} className="flex-none rounded px-2 py-1 font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Go back here</button>
           </div>
         );
       })}
       {history.length > SHOW && (
-        <button onClick={() => setAll(!all)} className="self-start text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+        <button onClick={() => setAll(!all)} className="self-start text-sm font-semibold" style={{ color: "var(--accent)" }}>
           {all ? "Show fewer" : `Show all (${history.length})`}
         </button>
       )}

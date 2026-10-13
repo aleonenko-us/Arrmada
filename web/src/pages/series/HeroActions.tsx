@@ -107,7 +107,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
         <Button onClick={() => setOpen("choose")} title="Search indexers for the whole show and pick a pack or episode yourself">Choose release…</Button>
         <Menu
           label="More actions"
-          trigger={<span aria-hidden className="text-[16px] leading-none">⋯</span>}
+          trigger={<span aria-hidden className="text-lg leading-none">⋯</span>}
           triggerClassName="grid h-[34px] w-[38px] place-items-center rounded-lg"
           triggerStyle={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
           itemClassName={MENU_ITEM}
@@ -115,7 +115,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
         />
       </div>
       {(search.running || searchResult) && (
-        <div className="mt-2 text-[12px]" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
+        <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
           {search.running ? "Searching…" : searchResult?.text}
         </div>
       )}
@@ -164,9 +164,9 @@ function MonitorMenu({ series, onChange, flash }: { series: SeriesT; onChange: (
     <span className="flex w-[240px] max-w-[calc(100vw-72px)] items-start gap-2">
       <span className="min-w-0 flex-1">
         <span className="block">{title}</span>
-        {help && <span className="block text-[11px] font-normal leading-snug text-ink-faint">{help}</span>}
+        {help && <span className="block text-xs font-normal leading-snug text-ink-faint">{help}</span>}
       </span>
-      {on !== undefined && <span aria-hidden className="flex-none font-mono text-[12px]" style={{ color: on ? "var(--accent)" : "transparent" }}>✓</span>}
+      {on !== undefined && <span aria-hidden className="flex-none font-mono text-sm" style={{ color: on ? "var(--accent)" : "transparent" }}>✓</span>}
     </span>
   );
   const items: MenuItem[] = [
@@ -193,10 +193,10 @@ function MonitorMenu({ series, onChange, flash }: { series: SeriesT; onChange: (
         <span className="inline-flex items-center gap-2">
           <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: series.monitored ? "var(--accent)" : "var(--line)" }} />
           {series.monitored ? "Monitored" : "Monitor"}
-          <span aria-hidden className="text-[10px] text-ink-faint">▾</span>
+          <span aria-hidden className="text-xs text-ink-faint">▾</span>
         </span>
       }
-      triggerClassName="rounded-lg px-3 py-2 text-[12.5px] font-semibold"
+      triggerClassName="rounded-lg px-3 py-2 text-base font-semibold"
       triggerStyle={{ background: "var(--panel-2)", border: `1px solid ${series.monitored ? "var(--accent-line)" : "var(--line)"}`, color: series.monitored ? "var(--ink)" : "var(--ink-dim)" }}
       itemClassName={MENU_ITEM}
       items={items}

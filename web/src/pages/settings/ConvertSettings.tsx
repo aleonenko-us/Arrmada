@@ -21,7 +21,7 @@ import { SwitchOnDialog } from "../convert/ConfirmConvert";
 // transcode folder, which is a path and saves only when you confirm it.
 export const CONVERT_SETTINGS_ID = "convert";
 
-const inp = "rounded-lg px-2.5 py-1.5 text-[12px]";
+const inp = "rounded-lg px-2.5 py-1.5 text-sm";
 const inpStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 const errStyle = { ...inpStyle, border: "1px solid var(--reject)" } as const;
 const cardStyle = { border: "1px solid var(--line)", background: "var(--panel)" } as const;
@@ -45,8 +45,8 @@ export function ConvertSettings() {
   }, []);
   return (
     <div id={CONVERT_SETTINGS_ID} className="flex scroll-mt-20 flex-col gap-4">
-      <h2 className="m-0 text-[15px] font-bold">Convert</h2>
-      {s ? <ConvertForm s={s} commit={commit} /> : <p className="m-0 text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p>}
+      <h2 className="m-0 text-lg font-bold">Convert</h2>
+      {s ? <ConvertForm s={s} commit={commit} /> : <p className="m-0 text-base text-ink-dim">{error ?? "Loading…"}</p>}
     </div>
   );
 }
@@ -188,16 +188,16 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           label="Only during set hours" hint={`A conversion still running when the hours end is paused and picks up again next time${s.can_pause ? "" : " (pausing needs the Linux container — elsewhere it finishes first)"}.`} />
         {scheduled && (
           <div className="ml-6 flex flex-col gap-1.5">
-            <span className="flex flex-wrap items-center gap-1.5 text-[12px]">
+            <span className="flex flex-wrap items-center gap-1.5 text-sm">
               <input type="time" aria-label="Start" value={hours.value.hours_start} onChange={(e) => hours.set({ ...hours.value, hours_start: e.target.value })} onBlur={() => void hours.commit()} className={inp} style={hours.status === "error" ? errStyle : inpStyle} />
               <span className="text-ink-faint">to</span>
               <input type="time" aria-label="End" value={hours.value.hours_end} onChange={(e) => hours.set({ ...hours.value, hours_end: e.target.value })} onBlur={() => void hours.commit()} className={inp} style={hours.status === "error" ? errStyle : inpStyle} />
             </span>
-            <span className={`text-[11px] ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
+            <span className={`text-xs ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
               {clockSkewed ? "⚠ " : ""}Read on the server's clock: {s.server_time} {s.server_tz}{clockSkewed ? ` — yours says ${browserTime}. Set TZ in your .env and recreate the container (docker compose up -d).` : "."}
             </span>
             {backlogSec > 0 && hours.value.hours_start && hours.value.hours_end && (
-              <span className="text-[11px] text-ink-dim">
+              <span className="text-xs text-ink-dim">
                 At these hours: {backlogLine(backlogSec, hours.value.hours_start, hours.value.hours_end)} — at this machine's pace so far.
               </span>
             )}
@@ -209,12 +209,12 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
 
       <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. HDR10, HDR10+ and HLG are kept.">
         <div role="radiogroup" aria-label="Dolby Vision files">
-          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
             Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
           </div>
-          <div className="mb-1.5 text-[10.5px] text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
+          <div className="mb-1.5 text-xs text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
           {([["skip", "Leave them alone — for a Dolby Vision TV (their tracks are still tidied)"], ["drop", "Convert and drop the Dolby Vision layer (keeps HDR10)"]] as const).map(([v, label]) => (
-            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
               <input type="radio" name="dolby_vision" checked={dolbyVision.value === v} onChange={() => void dolbyVision.commit(v)} />{label}
             </label>
           ))}
@@ -228,7 +228,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         )}
         <Toggle save={crop} label="Remove black bars"
           hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed, which is why this is off unless you turn it on. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
-        {!s.hdr10plus_tool && <p className="text-[11px]" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
+        {!s.hdr10plus_tool && <p className="text-xs" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
         <DevicesPanel data={devices} />
       </Section>
 
@@ -241,39 +241,39 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         <Toggle save={commentary} label="Remove commentary tracks" hint="Tracks flagged or titled as commentary." />
         <KeepSubsChoice save={subLangs} input={<input aria-label="Keep subtitles in" placeholder="all" className={`${inp} w-[190px]`} {...textProps(subLangs)} />} />
         <div role="radiogroup" aria-label="Image subtitles">
-          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">Image subtitles (PGS, VobSub) <SavedTick save={imageSubs} /></div>
-          <div className="mb-1.5 text-[10.5px] text-ink-faint">Plex has to burn these into the picture, which transcodes the video every time they're on.</div>
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">Image subtitles (PGS, VobSub) <SavedTick save={imageSubs} /></div>
+          <div className="mb-1.5 text-xs text-ink-faint">Plex has to burn these into the picture, which transcodes the video every time they're on.</div>
           {([["keep", "Keep them"], ["when_text", "Remove them when a text version exists (embedded, or an .srt from Subtitles)"], ["remove", "Always remove them — Subtitles can fetch text ones"]] as const).map(([v, label]) => (
-            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+            <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
               <input type="radio" name="image_subs" checked={imageSubs.value === v} onChange={() => void imageSubs.commit(v)} />{label}
             </label>
           ))}
         </div>
         <Toggle save={tidy} label="Tidy tracks even when that's all a file needs"
           hint="Off: a file whose picture is already fine is only rewritten when dropping tracks frees at least 10% (a big foreign-language audio track does). Its other track changes happen when it's re-encoded, or with Fix tracks. On: every file is tidied — which rewrites it end to end, often to shed a few small subtitle tracks." />
-        <p className="m-0 text-[11px] text-ink-faint">Untagged tracks are kept. A language filter that would remove every audio track or every subtitle removes none — the tags are wrong.</p>
+        <p className="m-0 text-xs text-ink-faint">Untagged tracks are kept. A language filter that would remove every audio track or every subtitle removes none — the tags are wrong.</p>
       </Section>
 
       <Section title="Undo" desc="A converted file's original isn't deleted straight away: it waits in a hidden folder on the same disk (.arrmada-hold in each library folder, which Plex ignores) so the conversion can be undone. It's never put in the recycle bin, and nothing in the hold is deleted until its time is up or you release it (Convert, History).">
         <Field label="Keep originals for" hint="days · 0 = delete each original once its conversion is verified · applies to conversions from now on" save={holdDays}>
-          <span className="flex items-center gap-1.5 text-[12px]">
+          <span className="flex items-center gap-1.5 text-sm">
             <input aria-label="Keep originals for (days)" inputMode="numeric" className={`${inp} w-[70px]`} {...textProps(holdDays)} onChange={(e) => holdDays.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} />
             <span className="text-ink-faint">days</span>
           </span>
         </Field>
-        {holdDays.value.trim() === "0" && <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
+        {holdDays.value.trim() === "0" && <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
         <Field label="Hold up to" hint="GB · when the next original wouldn't fit, conversions pause until one is released — nothing is deleted to make room · 0 = no limit" save={holdMax}>
-          <span className="flex items-center gap-1.5 text-[12px]">
+          <span className="flex items-center gap-1.5 text-sm">
             <input aria-label="Hold up to (GB)" inputMode="numeric" className={`${inp} w-[90px]`} {...textProps(holdMax)} onChange={(e) => holdMax.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))} />
             <span className="text-ink-faint">GB</span>
           </span>
         </Field>
         {hw && hw.holdCheck.length > 0 && (
-          <div className="flex flex-col gap-1 text-[11.5px]">
+          <div className="flex flex-col gap-1 text-sm">
             {hw.holdCheck.map((c) => (
               <div key={c.root} className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-semibold">{c.label}</span>
-                <span className="font-mono text-[10.5px] text-ink-faint">{c.root}</span>
+                <span className="font-mono text-xs text-ink-faint">{c.root}</span>
                 {c.err ? <span style={{ color: "var(--reject)" }}>✗ {c.err}</span>
                   : c.instant ? <span style={{ color: "var(--good)" }}>instant move ✓</span>
                   : <span style={{ color: "var(--avoid)" }}>would copy ⚠ — this folder spans more than one disk, so keeping an original is a full copy</span>}
@@ -284,7 +284,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
       </Section>
 
       <details className="rounded-xl p-4" style={cardStyle}>
-        <summary className="cursor-pointer text-[13.5px] font-bold">Advanced</summary>
+        <summary className="cursor-pointer text-md font-bold">Advanced</summary>
         <div className="mt-3 flex flex-col gap-3.5">
           <Field label="Transcode folder" hint="Fast storage (an SSD/NVMe pool), never the array. Blank = the default. Saved when you press Enter or Use this folder." save={scratch}>
             <span className="flex flex-wrap items-center gap-2">
@@ -302,13 +302,13 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
                 style={scratch.status === "error" ? errStyle : inpStyle}
               />
               {scratch.dirty && scratch.status !== "saving" && (
-                <button onClick={() => void scratch.commit(scratch.value.trim())} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={accentBtn}>Use this folder</button>
+                <button onClick={() => void scratch.commit(scratch.value.trim())} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={accentBtn}>Use this folder</button>
               )}
             </span>
           </Field>
           {/* Green only when the biggest of the next files fits: one 4K remux can need ~90 GB,
               so a fixed threshold said "fine" right before a file failed for space. */}
-          {hw && <div className="text-[11px] text-ink-faint">Using <span className="font-mono text-ink-dim">{hw.dir}</span> · <b style={{ color: hw.free >= hw.need ? "var(--good)" : "var(--avoid)" }}>{fmtBytes(hw.free)}</b> free{hw.need > 0 && <> · largest of the next 20 files{hw.needTitle ? <> (“{hw.needTitle}”)</> : null} needs ~{fmtBytes(hw.need)}</>}</div>}
+          {hw && <div className="text-xs text-ink-faint">Using <span className="font-mono text-ink-dim">{hw.dir}</span> · <b style={{ color: hw.free >= hw.need ? "var(--good)" : "var(--avoid)" }}>{fmtBytes(hw.free)}</b> free{hw.need > 0 && <> · largest of the next 20 files{hw.needTitle ? <> (“{hw.needTitle}”)</> : null} needs ~{fmtBytes(hw.need)}</>}</div>}
           {hw && hw.devices.length > 1 && (
             <Field label="GPU device" hint="The discrete card is usually the higher renderD number" save={vaapi}>
               <select aria-label="GPU device" value={vaapi.value} onChange={(e) => void vaapi.commit(e.target.value)} className={`${inp} w-[280px]`} style={inpStyle}>
@@ -340,17 +340,17 @@ function TenBitChoice({ save, transcoded }: { save: AutoSave<"always" | "match_s
   ] as const;
   return (
     <div role="radiogroup" aria-label="8-bit sources">
-      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">8-bit sources (most H.264 films) <SavedTick save={save} /></div>
-      <div className="mb-1.5 text-[10.5px] text-ink-faint">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">8-bit sources (most H.264 films) <SavedTick save={save} /></div>
+      <div className="mb-1.5 text-xs text-ink-faint">
         {save.value === "always"
           ? "Now: every re-encode is 10-bit (Main10)."
           : "Now: 8-bit sources stay 8-bit; 10-bit and HDR files are always 10-bit."}
         {transcoded.length > 0 && ` ${transcodedSentence(transcoded, "hevc10")}`}
       </div>
       {options.map(([v, label, hint]) => (
-        <label key={v} className="flex cursor-pointer items-start gap-2 py-0.5 text-[12px]">
+        <label key={v} className="flex cursor-pointer items-start gap-2 py-0.5 text-sm">
           <input type="radio" name="ten_bit" className="mt-0.5" checked={save.value === v} onChange={() => void save.commit(v)} />
-          <span><b className="font-semibold">{label}</b><span className="block text-[11px] leading-snug text-ink-faint">{hint}</span></span>
+          <span><b className="font-semibold">{label}</b><span className="block text-xs leading-snug text-ink-faint">{hint}</span></span>
         </label>
       ))}
     </div>
@@ -360,9 +360,9 @@ function TenBitChoice({ save, transcoded }: { save: AutoSave<"always" | "match_s
 function Toggle({ save, label, hint, disabled }: { save: AutoSave<boolean>; label: string; hint: ReactNode; disabled?: boolean }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <label className={`flex items-start gap-2.5 text-[12.5px] ${disabled ? "opacity-50" : "cursor-pointer"}`}>
+      <label className={`flex items-start gap-2.5 text-base ${disabled ? "opacity-50" : "cursor-pointer"}`}>
         <input type="checkbox" checked={save.value} disabled={disabled} onChange={(e) => void save.commit(e.target.checked)} className="mt-0.5" />
-        <span><b className="font-semibold">{label}</b><span className="mt-0.5 block text-[11px] leading-snug text-ink-faint">{hint}</span></span>
+        <span><b className="font-semibold">{label}</b><span className="mt-0.5 block text-xs leading-snug text-ink-faint">{hint}</span></span>
       </label>
       {save.status !== "idle" && <span className="ml-6"><SavedTick save={save} /></span>}
     </div>
@@ -372,8 +372,8 @@ function Toggle({ save, label, hint, disabled }: { save: AutoSave<boolean>; labe
 function Section({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
   return (
     <div className="rounded-xl p-4" style={cardStyle}>
-      <div className="text-[13.5px] font-bold">{title}</div>
-      {desc && <div className="mt-0.5 text-[11.5px] text-ink-faint">{desc}</div>}
+      <div className="text-md font-bold">{title}</div>
+      {desc && <div className="mt-0.5 text-sm text-ink-faint">{desc}</div>}
       <div className="mt-3 flex flex-col gap-3.5">{children}</div>
     </div>
   );
@@ -389,18 +389,18 @@ function KeepSubsChoice({ save, input }: { save: AutoSave<string>; input: ReactN
   useEffect(() => { if (follows) api.subtitleSettings().then((st) => setSubsLangs(st.keep_languages ?? st.languages)).catch(() => {}); }, [follows]);
   return (
     <div role="radiogroup" aria-label="Keep subtitles in" className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">Keep subtitles in <SavedTick save={save as AutoSave<unknown>} /></div>
-      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">Keep subtitles in <SavedTick save={save as AutoSave<unknown>} /></div>
+      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
         <input type="radio" name="keep_sub_langs" checked={follows} onChange={() => void save.commit(SAME_AS_SUBTITLES)} />
         <span>Same as Subtitles{follows && subsLangs ? <span className="text-ink-faint"> — {subsLangs.map((c) => langName(c, languages)).join(", ")}</span> : null}</span>
       </label>
-      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]">
+      <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
         <input type="radio" name="keep_sub_langs" checked={!follows} onChange={() => { if (follows) void save.commit(""); }} />
         These languages
       </label>
       {follows
-        ? <span className="ml-6 text-[10.5px] text-ink-faint">Change them under <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Subtitles → Kept languages</Link>.</span>
-        : <span className="ml-6 flex flex-wrap items-center gap-2">{input}<span className="text-[10.5px] text-ink-faint">comma-separated, e.g. en · blank = keep every language</span></span>}
+        ? <span className="ml-6 text-xs text-ink-faint">Change them under <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Subtitles → Kept languages</Link>.</span>
+        : <span className="ml-6 flex flex-wrap items-center gap-2">{input}<span className="text-xs text-ink-faint">comma-separated, e.g. en · blank = keep every language</span></span>}
     </div>
   );
 }
@@ -409,7 +409,7 @@ function Field({ label, hint, save, children }: { label: string; hint: string; s
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span><span className="block text-[12px] font-semibold">{label}</span><span className="block text-[10.5px] text-ink-faint">{hint}</span></span>
+        <span><span className="block text-sm font-semibold">{label}</span><span className="block text-xs text-ink-faint">{hint}</span></span>
         {children}
       </div>
       {save.status !== "idle" && <div className="flex justify-end"><SavedTick save={save as AutoSave<unknown>} /></div>}

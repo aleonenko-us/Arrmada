@@ -41,11 +41,11 @@ export function DeleteBookDialog({ book, onClose, onDeleted }: {
       title={<>Remove “{book.title}”?</>}
       body="It'll be removed from your library and Arrmada will stop monitoring it. Its files stay on disk unless you tick the box below."
       extra={
-        <label className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={{ border: `1px solid ${deleteFiles ? "var(--reject)" : "var(--line)"}`, background: deleteFiles ? "var(--reject-soft)" : "var(--panel-2)", cursor: hasFiles ? "pointer" : "default", opacity: hasFiles ? 1 : 0.6 }}>
+        <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={{ border: `1px solid ${deleteFiles ? "var(--reject)" : "var(--line)"}`, background: deleteFiles ? "var(--reject-soft)" : "var(--panel-2)", cursor: hasFiles ? "pointer" : "default", opacity: hasFiles ? 1 : 0.6 }}>
           <input type="checkbox" checked={deleteFiles} disabled={!hasFiles || busy} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
           <span>
             <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete files from disk</span>
-            <span className="mt-0.5 block text-[11px] text-ink-faint">{filesHint}</span>
+            <span className="mt-0.5 block text-xs text-ink-faint">{filesHint}</span>
           </span>
         </label>
       }

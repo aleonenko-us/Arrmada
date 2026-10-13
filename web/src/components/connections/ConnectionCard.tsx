@@ -46,7 +46,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
 
   const fixButton = (label: string) =>
     fix?.to ? (
-      <Link to={fix.to} className="rounded-md bg-accent-grad px-2.5 py-1 text-[11.5px] font-semibold text-accent-ink no-underline">{label} →</Link>
+      <Link to={fix.to} className="rounded-md bg-accent-grad px-2.5 py-1 text-sm font-semibold text-accent-ink no-underline">{label} →</Link>
     ) : (
       <Button size="sm" variant="primary" onClick={fix?.onClick}>{label}</Button>
     );
@@ -61,26 +61,26 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
         <span className="mt-[5px]"><StatusDot item={item} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[13.5px] font-semibold" style={{ opacity: item.state === "disabled" ? 0.6 : 1 }}>{item.name}</span>
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>
+            <span className="text-md font-semibold" style={{ opacity: item.state === "disabled" ? 0.6 : 1 }}>{item.name}</span>
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>
               {kindLabel(item)}
             </span>
             {item.managed_by === "prowlarr" && (
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Its name, address and key come from Prowlarr; the rest is yours">
+              <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Its name, address and key come from Prowlarr; the rest is yours">
                 Managed by Prowlarr
               </span>
             )}
             {item.source === "env" && (
-              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }} title="Set when Arrmada was installed; a value saved here replaces it">
+              <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }} title="Set when Arrmada was installed; a value saved here replaces it">
                 from install
               </span>
             )}
           </div>
-          {item.subtitle && <div className="mt-0.5 truncate text-[11px] text-ink-faint" title={item.subtitle}>{item.subtitle}</div>}
+          {item.subtitle && <div className="mt-0.5 truncate text-xs text-ink-faint" title={item.subtitle}>{item.subtitle}</div>}
         </div>
         {menu && menu.length > 0 && (
           <Menu
-            trigger={<span aria-hidden className="text-[15px] leading-none">⋯</span>}
+            trigger={<span aria-hidden className="text-lg leading-none">⋯</span>}
             label={`More for ${item.name}`}
             items={menu}
             triggerClassName="flex-none rounded-md px-2 py-1"
@@ -89,12 +89,12 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
         )}
       </div>
 
-      <div className="break-words text-[11.5px]" style={{ color: line.color }}>{line.text}</div>
-      {counts && <div className="text-[11px] text-ink-faint">{counts}</div>}
-      {item.detail && <div className="break-words text-[11.5px] text-ink-dim">{item.detail}</div>}
-      {notice && <div role="alert" className="break-words text-[12px]" style={{ color: "var(--reject)" }}>{notice}</div>}
+      <div className="break-words text-sm" style={{ color: line.color }}>{line.text}</div>
+      {counts && <div className="text-xs text-ink-faint">{counts}</div>}
+      {item.detail && <div className="break-words text-sm text-ink-dim">{item.detail}</div>}
+      {notice && <div role="alert" className="break-words text-sm" style={{ color: "var(--reject)" }}>{notice}</div>}
       {test && !test.running && test.detail && (
-        <div role="status" className="break-words font-mono text-[11px]" style={{ color: test.ok ? "var(--good)" : "var(--reject)" }}>
+        <div role="status" className="break-words font-mono text-xs" style={{ color: test.ok ? "var(--good)" : "var(--reject)" }}>
           {test.ok ? "✓ " : "✕ "}{test.detail}
         </div>
       )}
@@ -109,7 +109,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
             <Button size="sm" variant="ghost" onClick={onEdit} aria-expanded={!!editing}>{editing ? "Close" : "Edit"}</Button>
           )}
           {!setUp && !failing && fix?.to && item.fix_path && (
-            <Link to={fix.to} className="text-[11.5px] font-semibold no-underline" style={{ color: "var(--accent)" }}>Edit →</Link>
+            <Link to={fix.to} className="text-sm font-semibold no-underline" style={{ color: "var(--accent)" }}>Edit →</Link>
           )}
         </div>
       )}

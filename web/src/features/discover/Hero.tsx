@@ -69,17 +69,17 @@ export function Hero({ ctx }: { ctx: RowCtx }) {
         {badge && (
           <StatusChip tone={badge.tone} surface="poster" size="md" className="w-fit">{badge.label}</StatusChip>
         )}
-        <h2 className="m-0 line-clamp-2 text-[26px] font-extrabold leading-[1.08] sm:text-[38px]" style={{ color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.55)" }}>{cur.title}</h2>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-medium" style={{ color: "rgba(255,255,255,.82)" }}>
+        <h2 className="m-0 line-clamp-2 text-3xl font-extrabold leading-[1.08] sm:text-display-lg" style={{ color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.55)" }}>{cur.title}</h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium" style={{ color: "rgba(255,255,255,.82)" }}>
           {cur.year ? <span>{cur.year}</span> : null}
           {cur.vote_average > 0 && <span style={{ color: "var(--accent)" }}>★ {cur.vote_average.toFixed(1)}</span>}
-          <span className="rounded px-1.5 py-px text-[10px] uppercase" style={{ background: "rgba(255,255,255,.14)" }}>{cur.media_type === "series" ? "TV" : "Movie"}</span>
+          <span className="rounded px-1.5 py-px text-xs uppercase" style={{ background: "rgba(255,255,255,.14)" }}>{cur.media_type === "series" ? "TV" : "Movie"}</span>
         </div>
-        {cur.overview && <p className="m-0 line-clamp-2 max-w-[560px] text-[13px] leading-relaxed sm:line-clamp-3" style={{ color: "rgba(255,255,255,.78)" }}>{cur.overview}</p>}
+        {cur.overview && <p className="m-0 line-clamp-2 max-w-[560px] text-md leading-relaxed sm:line-clamp-3" style={{ color: "rgba(255,255,255,.78)" }}>{cur.overview}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <button
             onClick={() => openTitle(cur)}
-            className="rounded-lg px-4 py-2 text-[12.5px] font-semibold backdrop-blur-sm"
+            className="rounded-lg px-4 py-2 text-base font-semibold backdrop-blur-sm"
             style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.28)", color: "#fff" }}
           >
             View details
@@ -88,7 +88,7 @@ export function Hero({ ctx }: { ctx: RowCtx }) {
             <button
               onClick={quick}
               disabled={quickBusy}
-              className="rounded-lg px-4 py-2 text-[12.5px] font-semibold"
+              className="rounded-lg px-4 py-2 text-base font-semibold"
               style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: quickBusy ? 0.65 : 1 }}
             >
               {quickBusy ? "Requesting…" : "＋ Request"}

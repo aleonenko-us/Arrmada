@@ -70,7 +70,7 @@ export function KindleButton({ book }: { book: MyBook }) {
       <Button onClick={click} busy={busy} busyLabel="Sending…" disabled={!!blocked} title={blocked || "Email this ebook to your Kindle"}>
         Send to Kindle
       </Button>
-      {blocked && book.ebook && <span className="basis-full text-[11px] text-ink-faint">{blocked}</span>}
+      {blocked && book.ebook && <span className="basis-full text-xs text-ink-faint">{blocked}</span>}
       {setup && (
         <Sheet onClose={() => setSetup(null)} title="Send to Kindle" size="sm">
           <div className="flex flex-col gap-4 px-5 pb-5">
@@ -90,7 +90,7 @@ export function KindleButton({ book }: { book: MyBook }) {
 // KindleSteps is the one thing Amazon needs before the first send, said plainly.
 function KindleSteps({ from }: { from?: string }) {
   return (
-    <ol className="m-0 flex flex-col gap-2 pl-5 text-[12.5px] leading-relaxed text-ink-dim">
+    <ol className="m-0 flex flex-col gap-2 pl-5 text-base leading-relaxed text-ink-dim">
       <li>
         On Amazon’s{" "}
         <a href={AMAZON_DEVICES_URL} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: "var(--accent)" }}>Manage Your Content and Devices</a>
@@ -131,19 +131,19 @@ function KindleAddressForm({ view, submitLabel, onSaved }: { view: KindleView; s
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[11.5px] font-semibold text-ink-dim">Your Kindle’s email address</span>
+        <span className="text-sm font-semibold text-ink-dim">Your Kindle’s email address</span>
         <input
           type="email" inputMode="email" autoComplete="off" spellCheck={false} required
           value={addr} onChange={(e) => { setAddr(e.target.value); setWarned(null); }}
           placeholder="name_42@kindle.com"
-          className="w-full rounded-lg px-3 py-2 text-[13px]"
+          className="w-full rounded-lg px-3 py-2 text-md"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />
       </label>
-      {error && <p className="m-0 text-[12px]" style={{ color: "var(--reject-text)" }}>{error}</p>}
+      {error && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
       {warned ? (
         <>
-          <p className="m-0 text-[12px]" style={{ color: "var(--avoid)" }}>{warned.warning}</p>
+          <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>{warned.warning}</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => onSaved(warned)}>Use it anyway</Button>
           </div>
@@ -168,8 +168,8 @@ export function KindleCard() {
     loadView().then(setView).catch((e) => setError((e as Error).message));
   }, []);
 
-  if (error) return <p className="m-0 px-3.5 py-3 text-[12px]" style={{ color: "var(--reject-text)" }}>{error}</p>;
-  if (!view) return <p className="m-0 px-3.5 py-3 text-[12px] text-ink-faint">Loading…</p>;
+  if (error) return <p className="m-0 px-3.5 py-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>;
+  if (!view) return <p className="m-0 px-3.5 py-3 text-sm text-ink-faint">Loading…</p>;
 
   const saved = (v: KindleView) => { rememberView(v); setView(v); setEditing(false); toast("Kindle address saved", { tone: "good" }); };
   const remove = async () => {
@@ -179,19 +179,19 @@ export function KindleCard() {
   return (
     <div className="flex flex-col gap-3 px-3.5 py-3">
       {!view.smtp_configured && (
-        <p className="m-0 text-[12px] text-ink-dim">Sending to Kindle isn’t set up on this server yet. You can still save your address for when it is.</p>
+        <p className="m-0 text-sm text-ink-dim">Sending to Kindle isn’t set up on this server yet. You can still save your address for when it is.</p>
       )}
       {view.kindle_email && !editing ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="min-w-0 break-all text-[13px] font-semibold">{view.kindle_email}</span>
+            <span className="min-w-0 break-all text-md font-semibold">{view.kindle_email}</span>
             <span className="flex gap-2">
               <Button size="sm" onClick={() => setEditing(true)}>Change</Button>
               <Button size="sm" variant="ghost" onClick={remove}>Remove</Button>
             </span>
           </div>
-          {view.warning && <p className="m-0 text-[11.5px]" style={{ color: "var(--avoid)" }}>{view.warning}</p>}
-          {view.from_address && <p className="m-0 text-[11.5px] text-ink-faint">Books come from {view.from_address} — keep it on Amazon’s approved list.</p>}
+          {view.warning && <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>{view.warning}</p>}
+          {view.from_address && <p className="m-0 text-sm text-ink-faint">Books come from {view.from_address} — keep it on Amazon’s approved list.</p>}
         </>
       ) : (
         <>

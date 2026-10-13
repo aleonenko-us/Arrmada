@@ -126,7 +126,7 @@ export function MovieDetail() {
     return (
       <>
         <PageHeader title="Movie" />
-        <Page className="py-10 text-center text-[13px] text-ink-dim">
+        <Page className="py-10 text-center text-md text-ink-dim">
           That movie isn't in your library.{" "}
           <Link to="/movies" className="underline" style={{ color: "var(--accent)" }}>Back to Movies</Link>
         </Page>
@@ -138,7 +138,7 @@ export function MovieDetail() {
     return (
       <>
         <PageHeader title="Movie" />
-        <Page className="py-10 text-[13px] text-ink-dim">
+        <Page className="py-10 text-md text-ink-dim">
           {error ? <span style={{ color: "var(--reject)" }}>{error}</span> : "Loading…"}
         </Page>
       </>
@@ -164,7 +164,7 @@ export function MovieDetail() {
           </>
         )}
         <Page className="relative py-6">
-          <Link to="/movies" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+          <Link to="/movies" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             All movies
           </Link>
@@ -175,27 +175,27 @@ export function MovieDetail() {
                 <img src={movie.poster_url} alt={movie.title} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-end p-3" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-                  <span className="text-[15px] font-bold text-white">{movie.title}</span>
+                  <span className="text-lg font-bold text-white">{movie.title}</span>
                 </div>
               )}
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
+                <span className="rounded-full px-2.5 py-1 font-mono text-2xs font-semibold uppercase" style={{ background: st.soft, color: st.color }}>{st.label}</span>
                 {ex?.certification && (
-                  <span className="rounded px-1.5 py-0.5 font-mono text-[10.5px] font-bold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{ex.certification}</span>
+                  <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{ex.certification}</span>
                 )}
-                <span className="font-mono text-[11px] text-ink-faint">{movie.year || "—"}</span>
-                {movie.runtime ? <span className="font-mono text-[11px] text-ink-faint">{fmtRuntime(movie.runtime)}</span> : null}
+                <span className="font-mono text-xs text-ink-faint">{movie.year || "—"}</span>
+                {movie.runtime ? <span className="font-mono text-xs text-ink-faint">{fmtRuntime(movie.runtime)}</span> : null}
                 {typeof ex?.vote_average === "number" && ex.vote_average > 0 && (
-                  <span className="font-mono text-[11px]" style={{ color: "var(--accent)" }}>★ {ex.vote_average.toFixed(1)}</span>
+                  <span className="font-mono text-xs" style={{ color: "var(--accent)" }}>★ {ex.vote_average.toFixed(1)}</span>
                 )}
                 <ExternalLinks movie={movie} />
               </div>
               <WatchedBy kind="movies" id={movie.id} />
 
-              <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">{movie.overview || "No overview available."}</p>
+              <p className="mt-3 text-md leading-relaxed text-ink-dim">{movie.overview || "No overview available."}</p>
 
               <FactRow movie={movie} />
 
@@ -242,7 +242,7 @@ function DownloadBar({ dl }: { dl: MovieDownload }) {
   const what = dl.kind === "upgrade" ? "Downloading an upgrade" : dl.kind === "version" ? `Downloading ${dl.version_label || "an extra version"}` : "Downloading";
   return (
     <div className="mt-6 rounded-xl p-3.5" style={{ border: "1px solid var(--accent)", background: "var(--accent-soft)" }}>
-      <div className="mb-2 flex items-center justify-between text-[12px]">
+      <div className="mb-2 flex items-center justify-between text-sm">
         <span className="font-semibold" style={{ color: "var(--accent)" }}>{what} — {dl.state}</span>
         <span className="font-mono text-ink-dim">{pct}%</span>
       </div>
@@ -280,7 +280,7 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
       <>
         {clearedNotice}
         {movie.file && <FilePanel file={movie.file} movieId={movie.id} onChange={onChange} onCleared={onCleared} />}
-        <button onClick={() => setAdding(true)} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px dashed var(--line)", color: "var(--ink-dim)" }}>
+        <button onClick={() => setAdding(true)} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px dashed var(--line)", color: "var(--ink-dim)" }}>
           ＋ Keep another version <span className="text-ink-faint">(e.g. 1080p + 4K, or a Director's Cut)</span>
         </button>
         {adding && <VersionFormModal movieId={movie.id} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChange(); flash("Version added — searching for it."); }} />}
@@ -292,8 +292,8 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
     <div className="mt-6">
       {clearedNotice}
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="m-0 text-[14px] font-bold">Versions <span className="font-normal text-ink-faint">· {versions.length} tracks</span></h2>
-        <button onClick={() => setAdding(true)} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>＋ Add version</button>
+        <h2 className="m-0 text-md font-bold">Versions <span className="font-normal text-ink-faint">· {versions.length} tracks</span></h2>
+        <button onClick={() => setAdding(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>＋ Add version</button>
       </div>
       <div className="flex flex-col gap-2.5">
         {versions.map((v) => (
@@ -323,7 +323,7 @@ function ClearedNotice({ movie, flash, onDismiss }: { movie: Movie; flash: (m: s
     }
   };
   return (
-    <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl p-3.5 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+    <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl p-3.5 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <span className="min-w-0 flex-1">
         Record cleared — nothing on disk was touched.
         {movie.monitored ? " Arrmada will look for it on its next sweep, or search now." : " Turn on Monitor for Arrmada to look for it."}
@@ -376,19 +376,19 @@ function VersionCard({ movie, version, onChange, onCleared, flash, profileName }
   const status = trackStatus(version);
   const missing = status.key === "missing";
   const line = trackLine(movie, version);
-  const small = "rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50";
+  const small = "rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50";
   const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
   return (
     <div data-testid="version-card" className="rounded-xl p-3.5" style={{ border: `1px solid ${missing ? "var(--avoid)" : "var(--line)"}`, background: "var(--panel)" }}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[13.5px] font-semibold">{version.label}</span>
-        {version.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Default</span>}
-        <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{profileName(version.quality_profile)}</span>
-        {version.edition && <span className="rounded px-1.5 py-0.5 text-[10.5px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{version.edition}</span>}
+        <span className="text-md font-semibold">{version.label}</span>
+        {version.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Default</span>}
+        <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{profileName(version.quality_profile)}</span>
+        {version.edition && <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{version.edition}</span>}
         <StatusChip tone={status.tone}>{status.label}</StatusChip>
       </div>
-      {line && <div className="mt-1.5 text-[12px] text-ink-dim" role="status">{line}</div>}
+      {line && <div className="mt-1.5 text-sm text-ink-dim" role="status">{line}</div>}
       {f && <FileBody movieId={movieId} versionId={version.id} file={f} onAdopted={version.is_default ? onChange : undefined} />}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <button onClick={toggleMonitor} disabled={busy} className={small} style={ghost} aria-pressed={version.monitored}>{version.monitored ? "Monitored" : "Monitor"}</button>
@@ -396,7 +396,7 @@ function VersionCard({ movie, version, onChange, onCleared, flash, profileName }
         <button onClick={() => setPanel("import")} disabled={busy} className={small} style={ghost}>Import</button>
         {!version.is_default && <button onClick={() => setPanel("edit")} disabled={busy} className={small} style={ghost}>Edit</button>}
         {f && <button onClick={() => setConfirm("file")} disabled={busy} className={small} style={missing ? ghost : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{missing ? "Clear record" : "Delete file"}</button>}
-        {!version.is_default && <button onClick={() => setConfirm("version")} disabled={busy} className="rounded-lg px-2.5 py-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>Remove version</button>}
+        {!version.is_default && <button onClick={() => setConfirm("version")} disabled={busy} className="rounded-lg px-2.5 py-1 text-xs" style={{ color: "var(--ink-faint)" }}>Remove version</button>}
       </div>
       {panel === "search" && (
         <ReleaseSearchModal
@@ -481,7 +481,7 @@ function FileDeleteDialog({ title, file, note, confirmLabel, run, onDone, onCanc
       title={title}
       body={
         <>
-          {file && <div className="mt-1 break-all font-mono text-[11.5px]" style={{ color: "var(--ink)" }}>{file.filename || file.path}</div>}
+          {file && <div className="mt-1 break-all font-mono text-sm" style={{ color: "var(--ink)" }}>{file.filename || file.path}</div>}
           <p className="mb-0 mt-1.5">{where} {note}</p>
         </>
       }
@@ -522,7 +522,7 @@ function ClearRecordDialog({ movieId, versionId, file, onDone, onCancel }: {
       title="Clear the missing file's record?"
       body={
         <>
-          <div className="mt-1 break-all font-mono text-[11.5px]" style={{ color: "var(--ink)" }}>{file.filename || file.path}</div>
+          <div className="mt-1 break-all font-mono text-sm" style={{ color: "var(--ink)" }}>{file.filename || file.path}</div>
           <p className="mb-0 mt-1.5">Nothing on disk is touched — the file is already gone. The movie stays, so Arrmada searches for it again while it's monitored.</p>
         </>
       }
@@ -550,7 +550,7 @@ function EditionField({ value, onChange }: { value: string; onChange: (v: string
   const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
   return (
     <>
-      <label htmlFor="version-edition" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
+      <label htmlFor="version-edition" className="mb-1 block font-mono text-2xs font-bold uppercase text-accent">Edition <span className="text-ink-faint">(optional)</span></label>
       <select
         id="version-edition"
         value={showText ? "__other" : value}
@@ -558,7 +558,7 @@ function EditionField({ value, onChange }: { value: string; onChange: (v: string
           if (e.target.value === "__other") { setOther(true); onChange(""); }
           else { setOther(false); onChange(e.target.value); }
         }}
-        className="mb-2 w-full rounded-lg px-3 py-2 text-[12.5px]"
+        className="mb-2 w-full rounded-lg px-3 py-2 text-base"
         style={fieldStyle}
       >
         <option value="">Any — no particular edition</option>
@@ -566,9 +566,9 @@ function EditionField({ value, onChange }: { value: string; onChange: (v: string
         <option value="__other">Other…</option>
       </select>
       {showText && (
-        <input aria-label="Edition name" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. Ultimate Cut" className="mb-2 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+        <input aria-label="Edition name" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. Ultimate Cut" className="mb-2 w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
       )}
-      <p className="mb-4 mt-0 text-[11px] text-ink-faint">
+      <p className="mb-4 mt-0 text-xs text-ink-faint">
         {value.trim() ? `Only releases whose names say “${value.trim()}” are grabbed for this version, and its file is named as a Plex edition.` : "Any release that fits the profile can fill this version."}
       </p>
     </>
@@ -637,20 +637,20 @@ function VersionFormModal({ movieId, version, onClose, onSaved }: { movieId: num
         </>
       }
     >
-      <p className="mb-4 mt-0 text-[12px] text-ink-dim">
+      <p className="mb-4 mt-0 text-sm text-ink-dim">
         {editing ? "Changes apply to this version's next search; its file stays where it is." : "A separate track with its own quality target — kept alongside your existing file, not replacing it."}
       </p>
-      <label htmlFor="version-label" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Label</label>
-      <input ref={labelRef} id="version-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="4K · Director's Cut · Remux" className="mb-3 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+      <label htmlFor="version-label" className="mb-1 block font-mono text-2xs font-bold uppercase text-accent">Label</label>
+      <input ref={labelRef} id="version-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="4K · Director's Cut · Remux" className="mb-3 w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
-      <label htmlFor="version-profile" className="mb-1 block font-mono text-[10px] font-bold uppercase text-accent">Quality profile</label>
-      <select id="version-profile" value={profile} onChange={(e) => setProfile(e.target.value)} className="mb-3 w-full rounded-lg px-3 py-2 text-[12.5px]" style={fieldStyle}>
+      <label htmlFor="version-profile" className="mb-1 block font-mono text-2xs font-bold uppercase text-accent">Quality profile</label>
+      <select id="version-profile" value={profile} onChange={(e) => setProfile(e.target.value)} className="mb-3 w-full rounded-lg px-3 py-2 text-base" style={fieldStyle}>
         {!listed && <option value={profile}>{profile}</option>}
         {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
       </select>
 
       <EditionField value={edition} onChange={setEdition} />
-      {error && <div className="mb-1 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-1 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
     </Modal>
   );
 }
@@ -659,9 +659,9 @@ function ExternalLinks({ movie }: { movie: Movie }) {
   return (
     <span className="flex items-center gap-2">
       {movie.imdb_id && (
-        <a href={`https://www.imdb.com/title/${movie.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>
+        <a href={`https://www.imdb.com/title/${movie.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>
       )}
-      <a href={`https://www.themoviedb.org/movie/${movie.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ background: "#01b4e4", color: "#fff" }}>TMDB</a>
+      <a href={`https://www.themoviedb.org/movie/${movie.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#01b4e4", color: "#fff" }}>TMDB</a>
       <PlexPill media="movie" tmdbId={movie.tmdb_id} />
     </span>
   );
@@ -672,11 +672,11 @@ function FactRow({ movie }: { movie: Movie }) {
   const [showCollection, setShowCollection] = useState(false);
   if (!ex) return null;
   return (
-    <div className="mt-3 flex flex-col gap-2 text-[12px]">
+    <div className="mt-3 flex flex-col gap-2 text-sm">
       {ex.genres && ex.genres.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {ex.genres.map((g) => (
-            <span key={g} className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{g}</span>
+            <span key={g} className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{g}</span>
           ))}
         </div>
       )}
@@ -684,8 +684,8 @@ function FactRow({ movie }: { movie: Movie }) {
         {ex.studios && ex.studios.length > 0 && <span><span className="text-ink-faint">Studio</span> <span className="text-ink-dim">{ex.studios.slice(0, 2).join(", ")}</span></span>}
         {ex.original_language && <span><span className="text-ink-faint">Language</span> <span className="text-ink-dim uppercase">{ex.original_language}</span></span>}
         {ex.collection_name && (
-          <button onClick={() => setShowCollection(true)} className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>
-            {ex.collection_name} <span className="text-[10px]">· view collection</span>
+          <button onClick={() => setShowCollection(true)} className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-medium" style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>
+            {ex.collection_name} <span className="text-xs">· view collection</span>
           </button>
         )}
       </div>
@@ -754,18 +754,18 @@ function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () =>
     <Modal onClose={onClose} labelledBy={titleId} size="md">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h2 id={titleId} className="m-0 text-[15px] font-bold">{name || "Collection"}</h2>
-          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{members.length} films · {missing.length} not in your library</p>
+          <h2 id={titleId} className="m-0 text-lg font-bold">{name || "Collection"}</h2>
+          <p className="m-0 mt-0.5 text-sm text-ink-dim">{members.length} films · {missing.length} not in your library</p>
         </div>
         {missing.length > 0 && (
-          <button onClick={addAll} disabled={!profile || adding.size > 0} className="flex-none rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: !profile || adding.size > 0 ? 0.6 : 1 }}>
+          <button onClick={addAll} disabled={!profile || adding.size > 0} className="flex-none rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: !profile || adding.size > 0 ? 0.6 : 1 }}>
             {adding.size > 0 ? "Adding…" : `Add all ${missing.length}`}
           </button>
         )}
       </div>
-      {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
       {loading ? (
-        <p className="py-6 text-center text-[12.5px] text-ink-dim">Loading collection…</p>
+        <p className="py-6 text-center text-base text-ink-dim">Loading collection…</p>
       ) : (
         <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto">
           {members.map((m) => (
@@ -774,13 +774,13 @@ function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () =>
                 ? <img src={m.poster_url} alt="" className="h-14 w-9 flex-none rounded object-cover" />
                 : <div className="h-14 w-9 flex-none rounded" style={{ background: "var(--line)" }} />}
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">{m.title}</div>
-                <div className="text-[11px] text-ink-faint">{m.year || "—"}{m.vote_average ? ` · ★ ${m.vote_average.toFixed(1)}` : ""}</div>
+                <div className="truncate text-md font-semibold">{m.title}</div>
+                <div className="text-xs text-ink-faint">{m.year || "—"}{m.vote_average ? ` · ★ ${m.vote_average.toFixed(1)}` : ""}</div>
               </div>
               {m.in_library ? (
-                <span className="flex-none rounded px-2 py-1 font-mono text-[10px] uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library</span>
+                <span className="flex-none rounded px-2 py-1 font-mono text-2xs uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library</span>
               ) : (
-                <button onClick={() => addOne(m.tmdb_id)} disabled={!profile || adding.has(m.tmdb_id)} className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                <button onClick={() => addOne(m.tmdb_id)} disabled={!profile || adding.has(m.tmdb_id)} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
                   {adding.has(m.tmdb_id) ? "Adding…" : "Add"}
                 </button>
               )}
@@ -831,8 +831,8 @@ function ProfileSelector({ movie, onChange }: { movie: Movie; onChange: () => vo
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={profileId} className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</label>
-        <select id={profileId} value={movie.quality_profile} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+        <label htmlFor={profileId} className="font-mono text-2xs uppercase text-ink-faint">Quality</label>
+        <select id={profileId} value={movie.quality_profile} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
           {(() => {
             const opts = [...profiles];
             // Surface an unset ("n/a") profile as a real option so the select shows it.
@@ -843,7 +843,7 @@ function ProfileSelector({ movie, onChange }: { movie: Movie; onChange: () => vo
             ));
           })()}
         </select>
-        {saved && <span className="text-[11px]" style={{ color: "var(--good)" }}>Saved ✓</span>}
+        {saved && <span className="text-xs" style={{ color: "var(--good)" }}>Saved ✓</span>}
       </div>
       {downgrade && <DowngradePrompt movieId={movie.id} downgrade={downgrade} onClose={() => setDowngrade(null)} />}
     </div>
@@ -879,17 +879,17 @@ function DowngradePrompt({ movieId, downgrade, onClose }: { movieId: number; dow
     }
   };
   return (
-    <div className="rounded-lg p-3 text-[12px]" style={{ background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
+    <div className="rounded-lg p-3 text-sm" style={{ background: "var(--avoid-soft)", border: "1px solid var(--avoid)" }}>
       <div className="mb-2 text-ink-dim">
         {downgrade.kind === "smaller"
           ? `Your file is above this profile's ${downgrade.ceiling || "size"} ceiling. Download a smaller release, or keep it?`
           : `Your file doesn't meet this profile${downgrade.reason ? ` (${downgrade.reason})` : ""}. Find a release that does, or keep it?`}
       </div>
       <div className="flex gap-2">
-        <button onClick={doRegrab} disabled={regrabbing} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
+        <button onClick={doRegrab} disabled={regrabbing} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
           {regrabbing ? "Searching…" : downgrade.kind === "smaller" ? "Download smaller version" : "Find a matching release"}
         </button>
-        <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Keep current file</button>
+        <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Keep current file</button>
       </div>
     </div>
   );
@@ -910,8 +910,8 @@ function AvailabilitySelector({ movie, onChange }: { movie: Movie; onChange: () 
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label htmlFor={whenId} className="font-mono text-[10.5px] uppercase text-ink-faint">Search when</label>
-      <select id={whenId} value={movie.min_availability} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+      <label htmlFor={whenId} className="font-mono text-2xs uppercase text-ink-faint">Search when</label>
+      <select id={whenId} value={movie.min_availability} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
         {Object.entries(AVAILABILITY_LABELS).map(([key, label]) => (
           <option key={key} value={key}>{label}</option>
         ))}
@@ -983,7 +983,7 @@ function AcquisitionStatus({ movie, onChange, flash, searchInfo }: {
   } else if (acq.downloading) {
     tone = "var(--accent)";
     const pct = Math.round((acq.download_progress ?? 0) * 100);
-    const what = acq.download_title ? <span className="break-all font-mono text-[11.5px]">{acq.download_title}</span> : "a release";
+    const what = acq.download_title ? <span className="break-all font-mono text-sm">{acq.download_title}</span> : "a release";
     msg = <>{movie.has_file ? "Downloading an upgrade: " : "Downloading "}{what} — {pct}%.</>;
   } else if (movie.has_file && !acq.monitored) {
     tone = "var(--good)";
@@ -1017,7 +1017,7 @@ function AcquisitionStatus({ movie, onChange, flash, searchInfo }: {
   }
 
   return (
-    <div className="mt-4 rounded-lg p-3 text-[12px] leading-relaxed" style={{ border: "1px solid var(--line)" }}>
+    <div className="mt-4 rounded-lg p-3 text-sm leading-relaxed" style={{ border: "1px solid var(--line)" }}>
       <div style={{ color: tone }}>{msg}</div>
       {/* The searches only answer "why isn't it downloading?": the summary leaves upgrade
           searches out, so a film with its file on disk doesn't show them. */}
@@ -1078,7 +1078,7 @@ function MonitorWithProfile({ movie, onDone, onDowngrade, flash }: {
 
   return (
     <>
-      <select aria-label="Quality profile" value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || profiles.length === 0} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+      <select aria-label="Quality profile" value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || profiles.length === 0} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
         {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
       </select>
       <Button size="sm" variant="primary" onClick={monitor} busy={busy} busyLabel="Monitoring…" disabled={!pick}>Monitor</Button>
@@ -1114,7 +1114,7 @@ function UpgradeHoldChip({ movie, onChange, flash }: { movie: Movie; onChange: (
     }
   };
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-dim">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
       <StatusChip tone="accent">Upgrades paused</StatusChip>
       <span>Kept when the profile changed{which}</span>
       <Button size="sm" variant="secondary" onClick={resume} busy={busy} busyLabel="Resuming…">Resume</Button>
@@ -1154,7 +1154,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
     }
   };
 
-  const btn = "rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50";
+  const btn = "rounded-lg px-3 py-2 text-base font-semibold disabled:opacity-50";
   const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 
   // A recorded file that's gone from disk blocks the search (the track reads as having a
@@ -1226,7 +1226,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
         <Menu
           portal
           label="More actions"
-          trigger={<span aria-hidden className="text-[15px] leading-none">⋯</span>}
+          trigger={<span aria-hidden className="text-lg leading-none">⋯</span>}
           triggerClassName={`${btn} min-w-[40px]`}
           triggerStyle={ghost}
           itemClassName="py-2"
@@ -1241,7 +1241,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
         />
       </div>
       {(search.running || searchResult) && (
-        <div className="mt-2 text-[12px]" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
+        <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
           {search.running ? "Searching…" : searchResult?.text}
         </div>
       )}
@@ -1278,11 +1278,11 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
     <div className="mt-6 rounded-xl p-4" style={{ border: `1px solid ${tone}`, background: "var(--panel)" }}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="font-mono text-[10.5px] uppercase" style={{ color: tone }}>{file.missing ? "File missing from disk" : "On disk"}</div>
+          <div className="font-mono text-2xs uppercase" style={{ color: tone }}>{file.missing ? "File missing from disk" : "On disk"}</div>
           <FileBody movieId={movieId} versionId={0} file={file} onAdopted={onChange} />
         </div>
         <div className="flex-none">
-          <button onClick={() => setConfirming(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={file.missing ? { border: "1px solid var(--line)", color: "var(--ink)" } : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{file.missing ? "Clear record" : "Delete file"}</button>
+          <button onClick={() => setConfirming(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={file.missing ? { border: "1px solid var(--line)", color: "var(--ink)" } : { border: "1px solid var(--reject)", color: "var(--reject)" }}>{file.missing ? "Clear record" : "Delete file"}</button>
         </div>
       </div>
       {confirming && file.missing && (
@@ -1327,7 +1327,7 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setAdopting(null); }
   };
   const subNames = file.subtitles && file.subtitles.length > 0 && (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-dim">
       <span className="font-mono uppercase text-ink-faint">Subs</span>
       {file.subtitles.map((s) => (
         <span key={s} className="rounded px-1.5 py-0.5" style={{ background: "var(--panel-2)" }}>{s}</span>
@@ -1341,20 +1341,20 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
 
   return (
     <>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px]">
-        {file.quality && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.quality}</span>}
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-base">
+        {file.quality && <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.quality}</span>}
         {chips.map((c) => (
-          <span key={c} className="rounded px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
+          <span key={c} className="rounded px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
         ))}
         <span className="font-mono text-ink-dim">{fmtSize(file.size_bytes)}</span>
-        {file.duration_min ? <span className="font-mono text-[11px] text-ink-faint">{file.duration_min}m</span> : null}
-        {file.group && <span className="font-mono text-[11px] text-ink-faint">{file.group}</span>}
-        {file.probed && <span title="Read from the actual file (ffprobe)" className="font-mono text-[10px]" style={{ color: "var(--good)" }}>✓ probed</span>}
+        {file.duration_min ? <span className="font-mono text-xs text-ink-faint">{file.duration_min}m</span> : null}
+        {file.group && <span className="font-mono text-xs text-ink-faint">{file.group}</span>}
+        {file.probed && <span title="Read from the actual file (ffprobe)" className="font-mono text-xs" style={{ color: "var(--good)" }}>✓ probed</span>}
       </div>
       <button
         onClick={() => setShowFile(true)}
         title="Show this file's details — media info and the release it came from"
-        className="mt-1.5 block break-all text-left font-mono text-[11.5px] text-ink-faint hover:underline"
+        className="mt-1.5 block break-all text-left font-mono text-sm text-ink-faint hover:underline"
       >
         {file.path}
       </button>
@@ -1363,7 +1363,7 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
       {onAdopted && !file.missing ? <MovieSubtitles movieId={movieId} fallback={subNames} onChanged={onAdopted} /> : subNames}
       {/* Subtitles named for no video in the folder: Plex won't show them with this file. */}
       {file.orphan_subtitles && file.orphan_subtitles.length > 0 && (
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-faint" title="Named for no video in this folder, so Plex won't show them with this file">
           <span className="font-mono uppercase">Not linked to this file</span>
           {file.orphan_subtitles.map((s) => (
             <span key={s} className="inline-flex items-center gap-1">
@@ -1371,7 +1371,7 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
               {onAdopted && (
                 <button type="button" onClick={() => adopt(s)} disabled={adopting !== null}
                   title="Rename it to pair with this file, so Plex shows it"
-                  className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                  className="rounded px-1.5 py-0.5 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
                   {adopting === s ? "…" : "Adopt"}
                 </button>
               )}
@@ -1379,7 +1379,7 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
           ))}
         </div>
       )}
-      {file.missing && <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--reject)" }}>Tracked but not on disk. Refresh & rescan to look again, or clear the record (nothing on disk is touched) to search again.</div>}
+      {file.missing && <div className="mt-1.5 text-sm" style={{ color: "var(--reject)" }}>Tracked but not on disk. Refresh & rescan to look again, or clear the record (nothing on disk is touched) to search again.</div>}
       {showFile && (
         <FileDetailsModal
           path={file.path}
@@ -1399,15 +1399,15 @@ function CastRow({ cast }: { cast?: { name: string; character?: string; profile_
   if (!cast || cast.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">Cast</h2>
+      <h2 className="m-0 mb-3 text-md font-bold">Cast</h2>
       <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
         {cast.map((c) => (
           <div key={c.name} className="w-[92px] flex-none text-center">
             <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
               {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
             </div>
-            <div className="truncate text-[11px] font-semibold" title={c.name}>{c.name}</div>
-            {c.character && <div className="truncate text-[10px] text-ink-faint" title={c.character}>{c.character}</div>}
+            <div className="truncate text-xs font-semibold" title={c.name}>{c.name}</div>
+            {c.character && <div className="truncate text-xs text-ink-faint" title={c.character}>{c.character}</div>}
           </div>
         ))}
       </div>
@@ -1449,34 +1449,34 @@ function ManualImportModal({ movie, versionId, onClose, onImported }: { movie: M
 
   return (
     <Modal onClose={onClose} title="Manual import" size="lg" dismissible={importing === null}>
-      <p className="mb-3 mt-0 text-[12px] text-ink-dim">Pick a file already on disk to import as <b>{movie.title}</b>. It'll be renamed to the library scheme.</p>
+      <p className="mb-3 mt-0 text-sm text-ink-dim">Pick a file already on disk to import as <b>{movie.title}</b>. It'll be renamed to the library scheme.</p>
       {tracks.length > 1 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]">
-          <label htmlFor="import-into" className="font-mono text-[10px] font-bold uppercase text-accent">Import into</label>
-          <select id="import-into" value={into} onChange={(e) => setInto(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor="import-into" className="font-mono text-2xs font-bold uppercase text-accent">Import into</label>
+          <select id="import-into" value={into} onChange={(e) => setInto(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
             <option value="auto">Whichever version fits its name</option>
             {tracks.map((v) => <option key={v.is_default ? "d" : v.id} value={String(v.id)}>{v.label}{v.has_file ? " — replaces its file" : ""}</option>)}
           </select>
         </div>
       )}
-      {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-      {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
+      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {notice && <div className="mb-2 text-sm text-ink-faint">{notice}</div>}
       <div className="thin-scroll max-h-[52vh] overflow-y-auto">
         {cands === null ? (
-          <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
+          <div className="p-6 text-center text-base text-ink-dim">Scanning…</div>
         ) : cands.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-ink-dim">No importable video files found in the downloads folder.</div>
+          <div className="p-6 text-center text-base text-ink-dim">No importable video files found in the downloads folder.</div>
         ) : (
           cands.map((c) => (
             <button key={c.path} onClick={() => doImport(c.path)} disabled={importing !== null} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
-                <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
+                <div className="truncate text-base font-medium" title={c.filename}>{c.filename}</div>
+                <div className="mt-0.5 flex items-center gap-3 font-mono text-xs text-ink-faint">
                   {c.quality && <span>{c.quality}</span>}
                   <span>{fmtSize(c.size_bytes)}</span>
                 </div>
               </div>
-              <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+              <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
             </button>
           ))
         )}
@@ -1503,15 +1503,15 @@ function BlocklistPanel({ movieId, refreshKey }: { movieId: number; refreshKey: 
   if (!entries || entries.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">Blocklist <span className="font-normal text-ink-faint">· {entries.length}</span></h2>
+      <h2 className="m-0 mb-3 text-md font-bold">Blocklist <span className="font-normal text-ink-faint">· {entries.length}</span></h2>
       <div className="flex flex-col gap-2">
         {entries.map((e) => (
-          <div key={e.id} className="flex items-center gap-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+          <div key={e.id} className="flex items-center gap-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-[11.5px]" title={e.title}>{e.title}</div>
-              <div className="mt-0.5 text-[10.5px] text-ink-faint">{e.reason}{e.indexer ? ` · ${e.indexer}` : ""}</div>
+              <div className="truncate font-mono text-sm" title={e.title}>{e.title}</div>
+              <div className="mt-0.5 text-xs text-ink-faint">{e.reason}{e.indexer ? ` · ${e.indexer}` : ""}</div>
             </div>
-            <button onClick={() => unblock(e.id)} className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Remove</button>
+            <button onClick={() => unblock(e.id)} className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Remove</button>
           </div>
         ))}
       </div>
@@ -1542,18 +1542,18 @@ function HistoryPanel({ movieId, refreshKey }: { movieId: number; refreshKey: un
 
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">History</h2>
+      <h2 className="m-0 mb-3 text-md font-bold">History</h2>
       {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
+        <div className="text-base text-ink-dim">Loading…</div>
       ) : events.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
+        <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
       ) : (
         <div className="flex flex-col">
           {events.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 border-b py-2 text-[12px]" style={{ borderColor: "var(--line)" }}>
-              <span className="w-[74px] flex-none font-mono text-[10px] font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{e.event}</span>
+            <div key={i} className="flex items-center gap-3 border-b py-2 text-sm" style={{ borderColor: "var(--line)" }}>
+              <span className="w-[74px] flex-none font-mono text-2xs font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{e.event}</span>
               <span className="min-w-0 flex-1 truncate text-ink-dim" title={e.detail}>{e.detail || "—"}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtTime(e.created_at)}</span>
+              <span className="flex-none font-mono text-xs text-ink-faint">{fmtTime(e.created_at)}</span>
             </div>
           ))}
         </div>

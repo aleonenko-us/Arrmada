@@ -133,8 +133,8 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
 
   return (
     <div>
-      <div className="text-[12px] font-semibold">Custom formats</div>
-      <p className="mb-2 text-[10.5px] text-ink-faint">
+      <div className="text-sm font-semibold">Custom formats</div>
+      <p className="mb-2 text-xs text-ink-faint">
         Match anything the parser reads — a source, a release group, a pattern in the name — and score it. Values like HEVC, Dolby Vision or Blu-ray are understood however they're written.
       </p>
       <div className="flex flex-col gap-2">
@@ -155,8 +155,8 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
       </div>
       {!draft && (
         <div className="mt-2 flex flex-wrap gap-2">
-          <button onClick={startNew} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>+ New custom format</button>
-          <button onClick={() => setImporting(true)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Import from TRaSH</button>
+          <button onClick={startNew} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>+ New custom format</button>
+          <button onClick={() => setImporting(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Import from TRaSH</button>
         </div>
       )}
       {importing && (
@@ -169,7 +169,7 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
 function Problems({ errors, warnings }: { errors: FormatProblem[]; warnings: FormatProblem[] }) {
   if (errors.length === 0 && warnings.length === 0) return null;
   return (
-    <ul className="mt-1.5 flex flex-col gap-0.5 text-[10.5px] leading-[1.4]">
+    <ul className="mt-1.5 flex flex-col gap-0.5 text-xs leading-[1.4]">
       {errors.map((p, i) => <li key={`e${i}`} style={{ color: "var(--reject)" }}>{p.message}</li>)}
       {warnings.map((p, i) => <li key={`w${i}`} style={{ color: "var(--avoid-text)" }}>{p.message}</li>)}
     </ul>
@@ -182,21 +182,21 @@ function FormatCard({ format, score, required, matches, samples, problems, editi
   onScore: (s: number) => void; onEdit: () => void; onRemove: () => void;
 }) {
   return (
-    <div className="rounded-lg p-2.5 text-[11.5px]" style={{ background: "var(--panel-2)" }}>
+    <div className="rounded-lg p-2.5 text-sm" style={{ background: "var(--panel-2)" }}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 break-words font-semibold">{format.name}</span>
-        {format.match === "any" && <span className="rounded px-1.5 py-px font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>any</span>}
-        {required && <span className="rounded px-1.5 py-px font-mono text-[9.5px] font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>must</span>}
+        {format.match === "any" && <span className="rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>any</span>}
+        {required && <span className="rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>must</span>}
         <span className="ml-auto flex items-center gap-2">
           <input type="number" aria-label={`${format.name} score`} value={score} onChange={(e) => onScore(Number(e.target.value))}
-            className="w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-[11.5px]" style={{ ...fieldStyle, color: score >= 0 ? "var(--good)" : "var(--reject)" }} />
-          <button onClick={onEdit} disabled={editing} className="text-[11px] font-semibold text-ink-dim hover:text-[var(--ink)] disabled:opacity-40">Edit</button>
+            className="w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-sm" style={{ ...fieldStyle, color: score >= 0 ? "var(--good)" : "var(--reject)" }} />
+          <button onClick={onEdit} disabled={editing} className="text-xs font-semibold text-ink-dim hover:text-[var(--ink)] disabled:opacity-40">Edit</button>
           <button onClick={onRemove} disabled={editing} aria-label={`Remove ${format.name}`} className="text-ink-faint hover:text-[var(--reject)] disabled:opacity-40">✕</button>
         </span>
       </div>
-      <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{formatSummary(format)}</div>
+      <div className="mt-1 break-all font-mono text-xs text-ink-faint">{formatSummary(format)}</div>
       {matches != null && samples != null && (
-        <div className="mt-1 text-[10.5px] text-ink-faint">Matches {matches} of the {samples} sample releases</div>
+        <div className="mt-1 text-xs text-ink-faint">Matches {matches} of the {samples} sample releases</div>
       )}
       <Problems {...problems} />
     </div>
@@ -225,12 +225,12 @@ function FormatForm({ draft, vocab, others, problems, onChange, onCancel, onDone
     <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--accent-line)" }}>
       <div className="flex flex-wrap items-center gap-2">
         <input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="Tier 1 groups" aria-label="Format name"
-          className="min-w-0 flex-1 basis-[180px] rounded-lg px-2.5 py-1.5 text-[12px]" style={fieldStyle} />
+          className="min-w-0 flex-1 basis-[180px] rounded-lg px-2.5 py-1.5 text-sm" style={fieldStyle} />
         <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} role="group" aria-label="How the conditions combine">
           {(["all", "any"] as const).map((m) => {
             const on = (f.match ?? "all") === m;
             return (
-              <button key={m} onClick={() => set({ match: m })} aria-pressed={on} className="rounded-md px-2.5 py-1 text-[11px] font-semibold"
+              <button key={m} onClick={() => set({ match: m })} aria-pressed={on} className="rounded-md px-2.5 py-1 text-xs font-semibold"
                 style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--ink-faint)" }}>
                 {m === "all" ? "Match all" : "Match any"}
               </button>
@@ -247,23 +247,23 @@ function FormatForm({ draft, vocab, others, problems, onChange, onCancel, onDone
         ))}
       </div>
       <button onClick={() => set({ conditions: [...f.conditions, emptyCondition("source", vocab)] })}
-        className="mt-2 text-[11px] font-semibold" style={{ color: "var(--accent)" }}>+ Add condition</button>
+        className="mt-2 text-xs font-semibold" style={{ color: "var(--accent)" }}>+ Add condition</button>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--line)" }}>
-        <label className="flex items-center gap-1.5 text-[11px] text-ink-dim">
+        <label className="flex items-center gap-1.5 text-xs text-ink-dim">
           Score
           <input type="number" value={draft.score} onChange={(e) => onChange({ ...draft, score: Number(e.target.value) })}
-            className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-[12px]" style={{ ...fieldStyle, color: draft.score >= 0 ? "var(--good)" : "var(--reject)" }} />
+            className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={{ ...fieldStyle, color: draft.score >= 0 ? "var(--good)" : "var(--reject)" }} />
         </label>
         <span className="ml-auto flex items-center gap-2">
-          <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-[11.5px] text-ink-dim">Cancel</button>
-          <button onClick={onDone} disabled={blocked} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-40"
+          <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-sm text-ink-dim">Cancel</button>
+          <button onClick={onDone} disabled={blocked} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Done</button>
         </span>
       </div>
-      {local && <p className="mt-1.5 text-[10.5px] text-ink-faint">{local}</p>}
+      {local && <p className="mt-1.5 text-xs text-ink-faint">{local}</p>}
       <Problems errors={formErrors} warnings={problems.warnings.filter((p) => p.condition < 0)} />
-      <p className="mt-1.5 text-[10.5px] text-ink-faint">Applies to the profile when you press Done; Save the profile to keep it.</p>
+      <p className="mt-1.5 text-xs text-ink-faint">Applies to the profile when you press Done; Save the profile to keep it.</p>
     </div>
   );
 }
@@ -278,13 +278,13 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
   const changeType = (type: string) => onChange({ ...emptyCondition(type, vocab), negate: cond.negate });
   let value: React.ReactNode;
   if (isValueless(cond.type)) {
-    value = <span className="min-w-0 flex-1 text-[11px] text-ink-faint">{VALUELESS[cond.type]}</span>;
+    value = <span className="min-w-0 flex-1 text-xs text-ink-faint">{VALUELESS[cond.type]}</span>;
   } else if (options.length > 0) {
     // A value saved by hand ("HEVC", "TrueHD|DTS-HD") stays selectable as it was saved.
     const known = options.some((o) => o.value === cond.value);
     value = (
       <select value={cond.value} onChange={(e) => onChange({ ...cond, value: e.target.value })} aria-label={`Condition ${n} value`}
-        className="min-w-0 flex-1 basis-[140px] rounded-lg px-2 py-1.5 text-[12px]" style={fieldStyle}>
+        className="min-w-0 flex-1 basis-[140px] rounded-lg px-2 py-1.5 text-sm" style={fieldStyle}>
         {!known && <option value={cond.value}>{cond.value ? `${cond.value} (as saved)` : "Choose…"}</option>}
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -293,7 +293,7 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
     value = (
       <input value={cond.value} onChange={(e) => onChange({ ...cond, value: e.target.value })} placeholder={PLACEHOLDER[cond.type] ?? ""}
         aria-label={`Condition ${n} value`} spellCheck={false} aria-invalid={errors.length > 0}
-        className={`min-w-0 flex-1 basis-[140px] rounded-lg px-2.5 py-1.5 text-[12px] ${cond.type === "release_title" ? "font-mono" : ""}`}
+        className={`min-w-0 flex-1 basis-[140px] rounded-lg px-2.5 py-1.5 text-sm ${cond.type === "release_title" ? "font-mono" : ""}`}
         style={{ ...fieldStyle, borderColor: errors.length > 0 ? "var(--reject)" : "var(--line)" }} />
     );
   }
@@ -301,18 +301,18 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
     <div>
       <div className="flex flex-wrap items-center gap-1.5">
         <select value={cond.type} onChange={(e) => changeType(e.target.value)} aria-label={`Condition ${n} type`}
-          className="w-full rounded-lg px-2 py-1.5 text-[12px] sm:w-[160px]" style={fieldStyle}>
+          className="w-full rounded-lg px-2 py-1.5 text-sm sm:w-[160px]" style={fieldStyle}>
           {CONDITION_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
           {!TYPE_LABEL[cond.type] && <option value={cond.type}>{cond.type}</option>}
         </select>
         {value}
         <button onClick={() => onChange({ ...cond, negate: !cond.negate })} aria-pressed={!!cond.negate} aria-label={`Condition ${n}: NOT`}
-          title="Match releases that DON'T have this" className="rounded-md px-2 py-1 font-mono text-[10.5px] font-bold"
+          title="Match releases that DON'T have this" className="rounded-md px-2 py-1 font-mono text-xs font-bold"
           style={{ background: cond.negate ? "var(--reject)" : "var(--panel)", color: cond.negate ? "#fff" : "var(--ink-faint)", border: "1px solid var(--line)" }}>NOT</button>
         <button onClick={onRemove} disabled={only} aria-label={`Remove condition ${n}`} className="px-1 text-ink-faint hover:text-[var(--reject)] disabled:opacity-30">✕</button>
       </div>
       {UNWANTED_TYPES.has(cond.type) && (
-        <p className="mt-1 text-[10.5px] leading-[1.4] text-ink-faint">
+        <p className="mt-1 text-xs leading-[1.4] text-ink-faint">
           The Unwanted pack in Rules already refuses or avoids this per profile — a format here only adds a score on top.
         </p>
       )}

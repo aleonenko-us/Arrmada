@@ -70,27 +70,27 @@ export function MovieRenameModal({ movieId, title, onClose, onRenamed }: { movie
 
   return (
     <Modal onClose={onClose} size="lg" title="Rename files" footer={footer} dismissible={!busy}>
-      <p className="m-0 mb-3 text-[12px] text-ink-dim">
+      <p className="m-0 mb-3 text-sm text-ink-dim">
         Every file of <b>{title}</b> and the name your naming scheme gives it. Nothing moves until you confirm, and no existing file is ever replaced.
       </p>
-      {error && <div className="mb-2 whitespace-pre-line text-[12px]" role="alert" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 whitespace-pre-line text-sm" role="alert" style={{ color: "var(--reject)" }}>{error}</div>}
       {result ? (
         <div>
-          <div className="mb-3 rounded-lg p-3 text-[12px]" role="status" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <div className="mb-3 rounded-lg p-3 text-sm" role="status" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
             Renamed {result.renamed} file{result.renamed === 1 ? "" : "s"}{result.skipped > 0 ? ` · ${result.skipped} left as they were` : ""}.
           </div>
           {result.results.map((r) => (
             <div key={`${r.version_id}:${r.from}`} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
-              <div className="text-[11px] font-semibold text-ink-dim">{r.label}</div>
-              <div className="break-all font-mono text-[11px]" style={{ color: r.renamed ? "var(--ink)" : "var(--ink-faint)" }}>{pathTail(r.renamed ? r.to : r.from)}</div>
-              {!r.renamed && <div className="mt-0.5 text-[11px]" style={{ color: "var(--reject)" }}>Not renamed: {r.reason}</div>}
+              <div className="text-xs font-semibold text-ink-dim">{r.label}</div>
+              <div className="break-all font-mono text-xs" style={{ color: r.renamed ? "var(--ink)" : "var(--ink-faint)" }}>{pathTail(r.renamed ? r.to : r.from)}</div>
+              {!r.renamed && <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>Not renamed: {r.reason}</div>}
             </div>
           ))}
         </div>
       ) : items === null ? (
-        !error && <div className="p-6 text-center text-[12.5px] text-ink-dim">Working out the new names…</div>
+        !error && <div className="p-6 text-center text-base text-ink-dim">Working out the new names…</div>
       ) : items.length === 0 ? (
-        <div className="p-6 text-center text-[12.5px] text-ink-dim">This movie has no files to rename.</div>
+        <div className="p-6 text-center text-base text-ink-dim">This movie has no files to rename.</div>
       ) : (
         <div className="thin-scroll max-h-[52vh] overflow-y-auto">
           {items.map((it) => {
@@ -99,13 +99,13 @@ export function MovieRenameModal({ movieId, title, onClose, onRenamed }: { movie
               <label key={it.version_id} className="flex items-start gap-2.5 py-2" style={{ borderBottom: "1px solid var(--line-soft)", cursor: ok ? "pointer" : "default" }}>
                 <input type="checkbox" className="mt-0.5" disabled={!ok || busy} checked={ok && picked.has(it.version_id)} onChange={() => toggle(it.version_id)} aria-label={`Rename the ${it.label} file`} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] font-semibold text-ink-dim">{it.label}</span>
-                  <span className="block break-all font-mono text-[11px] text-ink-faint" title={it.current}>{pathTail(it.current)}</span>
+                  <span className="block text-xs font-semibold text-ink-dim">{it.label}</span>
+                  <span className="block break-all font-mono text-xs text-ink-faint" title={it.current}>{pathTail(it.current)}</span>
                   {it.status !== "same" && it.status !== "missing" && (
-                    <span className="block break-all font-mono text-[11px]" title={it.proposed} style={{ color: ok ? "var(--ink)" : "var(--reject)" }}>→ {pathTail(it.proposed)}</span>
+                    <span className="block break-all font-mono text-xs" title={it.proposed} style={{ color: ok ? "var(--ink)" : "var(--reject)" }}>→ {pathTail(it.proposed)}</span>
                   )}
                   {!ok && (
-                    <span className="mt-0.5 block text-[11px]" style={{ color: it.status === "same" ? "var(--good)" : "var(--reject)" }}>
+                    <span className="mt-0.5 block text-xs" style={{ color: it.status === "same" ? "var(--good)" : "var(--reject)" }}>
                       {STATUS_NOTE[it.status]}{it.reason ? `: ${it.reason}` : ""}
                     </span>
                   )}

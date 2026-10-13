@@ -56,7 +56,7 @@ export function IssuesPanel({ staff, onCounts }: { staff: boolean; onCounts: (c:
             key={k}
             onClick={() => setParam("show", k === "closed" ? "closed" : "")}
             aria-pressed={show === k}
-            className="min-h-[32px] rounded-md px-3 text-[11.5px] font-semibold"
+            className="min-h-[32px] rounded-md px-3 text-sm font-semibold"
             style={{ background: show === k ? "var(--accent)" : "transparent", color: show === k ? "var(--accent-ink)" : "var(--ink-faint)" }}
           >
             {k === "open" ? "Open" : "Closed"}
@@ -66,7 +66,7 @@ export function IssuesPanel({ staff, onCounts }: { staff: boolean; onCounts: (c:
       {error && !items ? (
         <ErrorState what="reported problems" message={error} onRetry={() => { void load(); }} />
       ) : !items ? (
-        <div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>
+        <div className="py-10 text-center text-base text-ink-dim">Loading…</div>
       ) : items.length === 0 ? (
         <EmptyState
           title={show === "open" ? "No open problems" : "Nothing closed yet"}
@@ -77,7 +77,7 @@ export function IssuesPanel({ staff, onCounts }: { staff: boolean; onCounts: (c:
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {items.map((i) => <IssueRow key={i.id} issue={i} staff={staff} onOpen={staff ? () => setParam("issue", String(i.id)) : undefined} />)}
           </ul>
-          {items.length < total && <p className="mt-3 text-center text-[11.5px] text-ink-faint">Showing the newest {items.length} of {total}.</p>}
+          {items.length < total && <p className="mt-3 text-center text-sm text-ink-faint">Showing the newest {items.length} of {total}.</p>}
         </>
       )}
       {staff && openID > 0 && (
@@ -101,17 +101,17 @@ function IssueRow({ issue: i, staff, onOpen }: { issue: Issue; staff: boolean; o
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="min-w-0 truncate text-[13.5px] font-semibold" style={{ color: "var(--ink)" }}>{i.title}</span>
-          {ep ? <span className="font-mono text-[10.5px] text-ink-dim">{ep}</span> : <span className="font-mono text-[10.5px] text-ink-faint">{i.year || ""}</span>}
+          <span className="min-w-0 truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{i.title}</span>
+          {ep ? <span className="font-mono text-xs text-ink-dim">{ep}</span> : <span className="font-mono text-xs text-ink-faint">{i.year || ""}</span>}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <StatusChip tone={ISSUE_TONE[i.status]}>{issueStatusLabel(i.status)}</StatusChip>
           <span className="text-ink-dim">{issueCategoryLabel(i.category)}</span>
         </div>
-        <div className="mt-1 truncate font-mono text-[10px] text-ink-faint">{who}{formatAgo(i.created_at * 1000, Date.now())}</div>
-        {note && <div className="mt-1 line-clamp-2 text-[11.5px] italic text-ink-dim">“{note}”</div>}
-        {i.resolution && (i.status === "resolved" || i.status === "dismissed") && <div className="mt-1 text-[11.5px] text-ink-dim">{i.resolution}</div>}
-        {staff && i.action_note && <div className="mt-1 text-[11.5px]" style={{ color: "var(--avoid-text)" }}>{i.action_note}</div>}
+        <div className="mt-1 truncate font-mono text-xs text-ink-faint">{who}{formatAgo(i.created_at * 1000, Date.now())}</div>
+        {note && <div className="mt-1 line-clamp-2 text-sm italic text-ink-dim">“{note}”</div>}
+        {i.resolution && (i.status === "resolved" || i.status === "dismissed") && <div className="mt-1 text-sm text-ink-dim">{i.resolution}</div>}
+        {staff && i.action_note && <div className="mt-1 text-sm" style={{ color: "var(--avoid-text)" }}>{i.action_note}</div>}
       </div>
     </>
   );

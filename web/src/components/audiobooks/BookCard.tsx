@@ -20,7 +20,7 @@ export function Cover({ src, title, className = "", small = false }: { src?: str
         <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-2 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>
-          {!small && <span aria-hidden className="line-clamp-4 text-[11.5px] font-bold text-white">{title}</span>}
+          {!small && <span aria-hidden className="line-clamp-4 text-sm font-bold text-white">{title}</span>}
         </div>
       )}
     </div>
@@ -37,8 +37,8 @@ export function BookCard({ c, onOpen, className = "" }: { c: AudioCard; onOpen: 
           <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, background: c.progress.finished ? "var(--good)" : "var(--accent)" }} />
         </div>
       )}
-      <div className="mt-1.5 truncate text-[12.5px] font-semibold" title={c.title}>{c.title}</div>
-      {c.author && <div className="truncate text-[11px] text-ink-dim">{c.author}</div>}
+      <div className="mt-1.5 truncate text-base font-semibold" title={c.title}>{c.title}</div>
+      {c.author && <div className="truncate text-xs text-ink-dim">{c.author}</div>}
     </button>
   );
 }

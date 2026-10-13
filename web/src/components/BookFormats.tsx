@@ -15,7 +15,7 @@ export function FormatChoice({ value, onChange, disabled }: { value: BookFormats
             aria-checked={on}
             disabled={disabled}
             onClick={() => onChange(f)}
-            className="px-3 py-1.5 text-left text-[12px] font-semibold"
+            className="px-3 py-1.5 text-left text-sm font-semibold"
             style={{ background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent)" : "var(--ink-dim)" }}
           >
             {FORMAT_CHOICE[f]}
@@ -34,7 +34,7 @@ export function BookFormatBadge({ formats, surface }: { formats?: string; surfac
     ? { background: "rgba(20,12,7,.78)", color: "#fff", border: "1px solid rgba(255,255,255,.22)" }
     : { background: "var(--panel-2)", color: "var(--ink-dim)", border: "1px solid var(--line)" };
   return (
-    <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={style} title={`Asked for: ${FORMAT_CHOICE[formats].toLowerCase()}`}>
+    <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={style} title={`Asked for: ${FORMAT_CHOICE[formats].toLowerCase()}`}>
       {FORMAT_BADGE[formats]}
     </span>
   );

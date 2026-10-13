@@ -59,8 +59,8 @@ export function BookDetail() {
     },
   });
 
-  if (notFound) return <Shell><div className="py-10 text-center text-[13px] text-ink-dim">That book isn't in your library. <Link to="/books" className="underline" style={{ color: "var(--accent)" }}>Back to Books</Link></div></Shell>;
-  if (!b) return <Shell><p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p></Shell>;
+  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That book isn't in your library. <Link to="/books" className="underline" style={{ color: "var(--accent)" }}>Back to Books</Link></div></Shell>;
+  if (!b) return <Shell><p className="text-base text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const searchNow = async () => {
     try {
@@ -87,7 +87,7 @@ export function BookDetail() {
           </>
         )}
         <Page className="relative py-6">
-          <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+          <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             All books
           </Link>
@@ -96,40 +96,40 @@ export function BookDetail() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
                 <StatusChip tone={st.tone} size="md">{st.label}</StatusChip>
-                {b.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{b.year}</span>}
+                {b.year > 0 && <span className="font-mono text-xs text-ink-faint">{b.year}</span>}
                 {/* Not out yet: searches start on this day. */}
                 {b.release_date && isUpcoming(b.release_date) && (
-                  <span className="rounded-full px-2.5 py-1 font-mono text-[10.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Out {formatReleaseDay(b.release_date)}</span>
+                  <span className="rounded-full px-2.5 py-1 font-mono text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Out {formatReleaseDay(b.release_date)}</span>
                 )}
                 {/* The catalogue the book actually came from. Open Library keeps its navy
                     chip; the others use the panel style so the palette doesn't grow. */}
                 {b.catalogue && (
-                  <a href={b.catalogue.url} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={b.catalogue.name === "Open Library" ? { background: "#0a3d62", color: "#fff" } : { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{b.catalogue.name}</a>
+                  <a href={b.catalogue.url} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={b.catalogue.name === "Open Library" ? { background: "#0a3d62", color: "#fff" } : { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{b.catalogue.name}</a>
                 )}
               </div>
-              <div className="mt-1.5 text-[14px] font-semibold text-ink-dim">
+              <div className="mt-1.5 text-md font-semibold text-ink-dim">
                 {b.author_id ? <Link to={`/books/authors/${b.author_id}`} className="hover:underline hover:text-[var(--accent)]">{b.author}</Link> : (b.author || "Unknown author")}
               </div>
               {/* Keys the book had before (a Change match, the Hardcover upgrade): cards
                   still carrying one of them show this book as in the library. */}
               {b.aliases && b.aliases.length > 0 && (
-                <div className="mt-1 text-[11px] text-ink-faint">
+                <div className="mt-1 text-xs text-ink-faint">
                   Also catalogued as{" "}
                   {b.aliases.map((k, i) => (
                     <span key={k.key}>{i > 0 && " · "}<span className="font-mono">{k.key}</span> ({ALIAS_SOURCE[k.source] ?? k.source})</span>
                   ))}
                 </div>
               )}
-              {b.description && <p className="mt-3 max-h-[180px] overflow-y-auto text-[13px] leading-relaxed text-ink-dim">{b.description}</p>}
+              {b.description && <p className="mt-3 max-h-[180px] overflow-y-auto text-md leading-relaxed text-ink-dim">{b.description}</p>}
               {b.subjects && b.subjects.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">{b.subjects.slice(0, 8).map((s) => <span key={s} className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{s}</span>)}</div>
+                <div className="mt-3 flex flex-wrap gap-1.5">{b.subjects.slice(0, 8).map((s) => <span key={s} className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{s}</span>)}</div>
               )}
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <ProfileSelector book={b} onChange={load} />
               </div>
               <Toolbar book={b} onChange={load} toast={toast} onSearch={searchNow} searching={searchJob !== null} />
               {(searchJob !== null || searchResult) && (
-                <div className="mt-2 text-[12px]" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
+                <div className="mt-2 text-sm" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
                   {searchJob !== null ? "Searching…" : searchResult?.text}
                 </div>
               )}
@@ -140,7 +140,7 @@ export function BookDetail() {
       </div>
 
       <Page className="pb-10">
-        <h2 className="m-0 mb-3 text-[14px] font-bold">Editions</h2>
+        <h2 className="m-0 mb-3 text-md font-bold">Editions</h2>
         <div className="flex flex-col gap-2.5">
           <EditionPanel label="Ebook" file={b.ebook} wanted={b.want_ebook} bookId={b.id} kind="ebook" onChange={load} toast={toast} search={wantedLine} />
           <EditionPanel label={b.audio_versions && b.audio_versions.length > 0 ? "Audiobook · Standard" : "Audiobook"} file={b.audiobook} wanted={b.want_audiobook} bookId={b.id} kind="audiobook" onChange={load} toast={toast} search={wantedLine} />
@@ -165,11 +165,11 @@ function Poster({ book, onChange, toast }: { book: Book; onChange: () => void; t
         {book.cover_url ? (
           <img src={book.cover_url} alt={book.title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center p-3 text-center text-[13px] font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{book.title}</div>
+          <div className="flex h-full items-center justify-center p-3 text-center text-md font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{book.title}</div>
         )}
         {canHover && (
           <button onClick={() => setPicking(true)} className="pointer-events-none absolute inset-0 flex items-end justify-center opacity-0 transition-opacity duration-150 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100" style={{ background: "linear-gradient(180deg, transparent 45%, rgba(0,0,0,.68))" }}>
-            <span className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white" style={{ background: "rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.28)" }}>
+            <span className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-white" style={{ background: "rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.28)" }}>
               {pencil}
               Edit cover
             </span>
@@ -177,7 +177,7 @@ function Poster({ book, onChange, toast }: { book: Book; onChange: () => void; t
         )}
       </div>
       {!canHover && (
-        <button onClick={() => setPicking(true)} className="mt-2 inline-flex min-h-[32px] w-[180px] items-center justify-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
+        <button onClick={() => setPicking(true)} className="mt-2 inline-flex min-h-[32px] w-[180px] items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
           {pencil}
           Edit cover
         </button>
@@ -213,11 +213,11 @@ function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onCl
   return (
     <Modal onClose={onClose} labelledBy="cover-picker-title" size="lg" dismissible={saving === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 id="cover-picker-title" className="m-0 text-[15px] font-bold">Choose a cover</h2>
+          <h2 id="cover-picker-title" className="m-0 text-lg font-bold">Choose a cover</h2>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
-        <p className="mb-3 text-[12px] text-ink-dim">{book.catalogue?.name === "Hardcover" ? "Covers from Hardcover editions" : "Covers from Open Library editions and Google Books"} — or upload your own.</p>
-        {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+        <p className="mb-3 text-sm text-ink-dim">{book.catalogue?.name === "Hardcover" ? "Covers from Hardcover editions" : "Covers from Open Library editions and Google Books"} — or upload your own.</p>
+        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="mb-3">
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
           <Button onClick={() => fileRef.current?.click()} disabled={saving !== null} busy={saving === "upload"} busyLabel="Uploading…" className="disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "transparent", color: "var(--accent)" }}>
@@ -226,9 +226,9 @@ function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onCl
         </div>
         <div className="thin-scroll max-h-[58vh] overflow-y-auto">
           {covers === null ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">Finding covers…</div>
+            <div className="p-8 text-center text-base text-ink-dim">Finding covers…</div>
           ) : covers.length === 0 ? (
-            <div className="p-8 text-center text-[12.5px] text-ink-dim">No alternate covers found — you can still upload your own above.</div>
+            <div className="p-8 text-center text-base text-ink-dim">No alternate covers found — you can still upload your own above.</div>
           ) : (
             <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
               {covers.map((url) => {
@@ -236,8 +236,8 @@ function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onCl
                 return (
                   <button key={url} onClick={() => choose(url)} disabled={saving !== null} aria-label={current ? "The current cover" : "Use this cover"} className="relative overflow-hidden rounded-lg disabled:opacity-60" style={{ border: current ? "2px solid var(--accent)" : "1px solid var(--line)", aspectRatio: "2/3", background: "var(--panel-2)" }}>
                     <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => { const btn = e.currentTarget.closest("button"); if (btn) (btn as HTMLElement).style.display = "none"; }} />
-                    {saving === url && <div className="absolute inset-0 grid place-items-center text-[11px] font-semibold text-white" style={{ background: "rgba(0,0,0,.5)" }}>Saving…</div>}
-                    {current && <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: "var(--accent)" }}>Current</span>}
+                    {saving === url && <div className="absolute inset-0 grid place-items-center text-xs font-semibold text-white" style={{ background: "rgba(0,0,0,.5)" }}>Saving…</div>}
+                    {current && <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-xs font-bold text-white" style={{ background: "var(--accent)" }}>Current</span>}
                   </button>
                 );
               })}
@@ -259,17 +259,17 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
   if (!file && !wanted) {
     return (
       <div className="flex items-center gap-3 rounded-xl px-4 py-3 opacity-60" style={{ border: "1px dashed var(--line)" }}>
-        <span className="font-mono text-[10px] uppercase text-ink-faint">{label}</span>
-        <span className="text-[12px] text-ink-faint">Not included in this book's format profile.</span>
+        <span className="font-mono text-2xs uppercase text-ink-faint">{label}</span>
+        <span className="text-sm text-ink-faint">Not included in this book's format profile.</span>
       </div>
     );
   }
   if (!file) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-3" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-        <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{label}</span>
-        <span className="min-w-0 flex-1 text-[12px]" style={{ color: "var(--avoid)" }}>{wantedCopy(search.book, label)}</span>
-        <button onClick={search.onSearch} disabled={search.searching} title="Search your indexers for this book's missing editions now" className="flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{search.searching ? "Searching…" : "Search now"}</button>
+        <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{label}</span>
+        <span className="min-w-0 flex-1 text-sm" style={{ color: "var(--avoid)" }}>{wantedCopy(search.book, label)}</span>
+        <button onClick={search.onSearch} disabled={search.searching} title="Search your indexers for this book's missing editions now" className="flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{search.searching ? "Searching…" : "Search now"}</button>
       </div>
     );
   }
@@ -284,26 +284,26 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 font-mono text-[9.5px] uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>{label}</span>
-            <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.format}</span>
-            {multi && <span className="rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{file.file_count} files</span>}
-            <span className="font-mono text-[12px] text-ink-dim">{formatBytes(file.size_bytes)}</span>
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>{label}</span>
+            <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.format}</span>
+            {multi && <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{file.file_count} files</span>}
+            <span className="font-mono text-sm text-ink-dim">{formatBytes(file.size_bytes)}</span>
           </div>
           <button
             onClick={() => setShowFile(true)}
             title="Show this file's details — format, size and the release it came from"
-            className="mt-1.5 block break-all text-left font-mono text-[11.5px] text-ink-faint hover:underline"
+            className="mt-1.5 block break-all text-left font-mono text-sm text-ink-faint hover:underline"
           >
             {file.path}
           </button>
           {multi && <FileList bookId={bookId} kind={kind} count={file.file_count} />}
           {kind === "audiobook" && search.book.audiobook_narrator && (
-            <div className="mt-1.5 text-[11.5px] text-ink-dim">Narrator: {search.book.audiobook_narrator}</div>
+            <div className="mt-1.5 text-sm text-ink-dim">Narrator: {search.book.audiobook_narrator}</div>
           )}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}
-          <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{multi ? "Delete all" : "Delete file"}</button>
+          <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{multi ? "Delete all" : "Delete file"}</button>
         </div>
       </div>
       {confirming && (
@@ -311,7 +311,7 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
           title={`Delete the ${label.toLowerCase()}${multi ? `'s ${file.file_count} files` : " file"}?`}
           body={
             <>
-              <div className="mt-1 break-all font-mono text-[11.5px]" style={{ color: "var(--ink)" }}>{file.path}</div>
+              <div className="mt-1 break-all font-mono text-sm" style={{ color: "var(--ink)" }}>{file.path}</div>
               <p className="mb-0 mt-1.5">{disposalLine(file.size_bytes, mode)}. The book stays, so Arrmada looks for the {label.toLowerCase()} again while it's monitored.</p>
             </>
           }
@@ -345,19 +345,19 @@ function FileList({ bookId, kind, count }: { bookId: number; kind: "ebook" | "au
   };
   return (
     <div className="mt-2">
-      <button onClick={toggle} className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+      <button onClick={toggle} className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--accent)" }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         {open ? "Hide files" : `Show all ${count} files`}
       </button>
       {open && (
         <div className="thin-scroll mt-2 max-h-[240px] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
           {files === null ? (
-            <div className="p-3 text-[11.5px] text-ink-dim">Loading…</div>
+            <div className="p-3 text-sm text-ink-dim">Loading…</div>
           ) : (
             files.map((f, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 px-3 py-1.5 text-[11.5px]" style={{ borderBottom: i < files.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
+              <div key={i} className="flex items-center justify-between gap-3 px-3 py-1.5 text-sm" style={{ borderBottom: i < files.length - 1 ? "1px solid var(--line-soft)" : "none" }}>
                 <span className="min-w-0 flex-1 truncate font-mono text-ink-dim" title={f.name}>{f.name}</span>
-                <span className="flex-none font-mono text-[10.5px] text-ink-faint">{formatBytes(f.size_bytes)}</span>
+                <span className="flex-none font-mono text-xs text-ink-faint">{formatBytes(f.size_bytes)}</span>
               </div>
             ))
           )}
@@ -418,10 +418,10 @@ function MergeButton({ bookId, fileCount, onDone, toast }: { bookId: number; fil
 
   return (
     <>
-      <button onClick={() => { setErr(null); setAsking(true); }} disabled={busy || running} title="Merge all chapter files into one chapterized .m4b (needs ffmpeg)" className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+      <button onClick={() => { setErr(null); setAsking(true); }} disabled={busy || running} title="Merge all chapter files into one chapterized .m4b (needs ffmpeg)" className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
         {running ? "Merging…" : "⧉ Combine into one file"}
       </button>
-      {failure && <span className="max-w-[260px] text-right text-[11px]" style={{ color: "var(--reject)" }}>Merge failed: {failure}</span>}
+      {failure && <span className="max-w-[260px] text-right text-xs" style={{ color: "var(--reject)" }}>Merge failed: {failure}</span>}
       {asking && (
         <ConfirmDialog
           title="Combine into one file?"
@@ -451,9 +451,9 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
   const [showMatch, setShowMatch] = useState(false);
 
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); try { await fn(); } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); } };
-  const trigger = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[12.5px] font-semibold";
+  const trigger = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold";
   const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
-  const caret = <span aria-hidden="true" className="text-[10px] opacity-70">▾</span>;
+  const caret = <span aria-hidden="true" className="text-xs opacity-70">▾</span>;
   const missing = (book.want_ebook && !book.ebook) || (book.want_audiobook && !book.audiobook);
 
   const rename = async () => {
@@ -538,38 +538,38 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
   return (
     <Modal onClose={onClose} labelledBy="book-import-title" size="lg" dismissible={importing === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 id="book-import-title" className="m-0 text-[15px] font-bold">Manual import</h2>
+          <h2 id="book-import-title" className="m-0 text-lg font-bold">Manual import</h2>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
-        <p className="mb-3 text-[12px] text-ink-dim">Pick a book file on disk to import as <b>{book.title}</b>. Ebook and audiobook files are assigned to the right edition automatically.</p>
+        <p className="mb-3 text-sm text-ink-dim">Pick a book file on disk to import as <b>{book.title}</b>. Ebook and audiobook files are assigned to the right edition automatically.</p>
         {versions.length > 0 && (
-          <label className="mb-3 flex items-center gap-2 text-[12px] text-ink-dim">
+          <label className="mb-3 flex items-center gap-2 text-sm text-ink-dim">
             Import audiobook files as
-            <select value={target} onChange={(e) => setTarget(Number(e.target.value))} className="rounded-md px-2 py-1 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+            <select value={target} onChange={(e) => setTarget(Number(e.target.value))} className="rounded-md px-2 py-1 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
               <option value={0}>Standard</option>
               {versions.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </label>
         )}
-        {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
-        {notice && <div className="mb-2 text-[11.5px] text-ink-faint">{notice}</div>}
+        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {notice && <div className="mb-2 text-sm text-ink-faint">{notice}</div>}
         <div className="thin-scroll max-h-[52vh] overflow-y-auto">
           {cands === null ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">Scanning…</div>
+            <div className="p-6 text-center text-base text-ink-dim">Scanning…</div>
           ) : cands.length === 0 ? (
-            <div className="p-6 text-center text-[12.5px] text-ink-dim">No ebook or audiobook files found in the downloads folder.</div>
+            <div className="p-6 text-center text-base text-ink-dim">No ebook or audiobook files found in the downloads folder.</div>
           ) : (
             cands.map((c) => (
               <button key={c.path} onClick={() => doImport(c.path, c.edition)} disabled={importing !== null} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-medium" title={c.filename}>{c.filename}</div>
-                  <div className="mt-0.5 flex items-center gap-3 font-mono text-[10.5px] text-ink-faint">
+                  <div className="truncate text-base font-medium" title={c.filename}>{c.filename}</div>
+                  <div className="mt-0.5 flex items-center gap-3 font-mono text-xs text-ink-faint">
                     <span className="uppercase" style={{ color: c.edition === "audiobook" ? "var(--accent)" : "var(--good)" }}>{c.edition}</span>
                     <span>{c.format}</span>
                     <span>{formatBytes(c.size_bytes)}</span>
                   </div>
                 </div>
-                <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
               </button>
             ))
           )}
@@ -587,8 +587,8 @@ function ProfileSelector({ book, onChange }: { book: Book; onChange: () => void 
   if (book.quality_profile && !opts.some((o) => o.key === book.quality_profile)) opts.unshift({ key: book.quality_profile, name: book.quality_profile === "n/a" ? "Not set" : book.quality_profile });
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor={profileId} className="font-mono text-[10.5px] uppercase text-ink-faint">Format profile</label>
-      <select id={profileId} value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+      <label htmlFor={profileId} className="font-mono text-2xs uppercase text-ink-faint">Format profile</label>
+      <select id={profileId} value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
         {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
       </select>
     </div>
@@ -599,7 +599,7 @@ function DeleteButton({ book }: { book: Book }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)} className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
+      <button onClick={() => setOpen(true)} className="rounded-lg px-3 py-2 text-base font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
       {open && <DeleteBookDialog book={book} onClose={() => setOpen(false)} onDeleted={() => { window.location.href = "/books"; }} />}
     </>
   );
@@ -623,9 +623,9 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
   useUnsavedGuard(title !== book.title || author !== book.author || year !== String(book.year || "") || cover !== (book.cover_url ?? "")
     || overview !== (book.description ?? "") || narrator !== (book.audiobook_narrator ?? ""));
 
-  const inp = "w-full rounded-lg px-2.5 py-1.5 text-[12.5px]";
+  const inp = "w-full rounded-lg px-2.5 py-1.5 text-base";
   const inpStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
-  const lbl = "mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint";
+  const lbl = "mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-faint";
 
   const save = async () => {
     if (!title.trim() || !author.trim()) { setErr("Title and author are required."); return; }
@@ -648,7 +648,7 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
         <Button variant="primary" onClick={save} busy={busy} busyLabel="Saving…">Save</Button>
       </>}
     >
-        <p className="mt-1 mb-3 text-[11.5px] text-ink-dim">Manually fix the details when a provider got them wrong. This overrides what was fetched.</p>
+        <p className="mt-1 mb-3 text-sm text-ink-dim">Manually fix the details when a provider got them wrong. This overrides what was fetched.</p>
         <div className="flex flex-col gap-3">
           <label className="block"><span className={lbl}>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} className={inp} style={inpStyle} /></label>
           <div className="flex gap-3">
@@ -663,7 +663,7 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
           )}
           <label className="block"><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></label>
         </div>
-        {err && <p role="alert" className="mb-0 mt-2 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</p>}
+        {err && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</p>}
     </Modal>
   );
 }
@@ -704,18 +704,18 @@ function HistoryPanel({ bookId, refreshKey }: { bookId: number; refreshKey: unkn
 
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">History</h2>
+      <h2 className="m-0 mb-3 text-md font-bold">History</h2>
       {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
+        <div className="text-base text-ink-dim">Loading…</div>
       ) : events.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
+        <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>No activity yet.</div>
       ) : (
         <div className="flex flex-col">
           {events.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 border-b py-2 text-[12px]" style={{ borderColor: "var(--line)" }}>
-              <span className="w-[74px] flex-none truncate font-mono text-[10px] font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{EVENT_LABELS[e.event] ?? e.event}</span>
+            <div key={i} className="flex items-center gap-3 border-b py-2 text-sm" style={{ borderColor: "var(--line)" }}>
+              <span className="w-[74px] flex-none truncate font-mono text-2xs font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>{EVENT_LABELS[e.event] ?? e.event}</span>
               <span className="min-w-0 flex-1 truncate text-ink-dim" title={e.detail}>{e.detail || "—"}</span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtEventTime(e.created_at)}</span>
+              <span className="flex-none font-mono text-xs text-ink-faint">{fmtEventTime(e.created_at)}</span>
             </div>
           ))}
         </div>
@@ -767,26 +767,26 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
   return (
     <Modal onClose={onClose} labelledBy="book-rematch-title" size="lg" dismissible={saving === null} initialFocus={inputRef}>
         <div className="mb-1 flex items-center justify-between gap-3">
-          <h2 id="book-rematch-title" className="m-0 min-w-0 truncate text-[15px] font-bold">Change match — {book.title}</h2>
+          <h2 id="book-rematch-title" className="m-0 min-w-0 truncate text-lg font-bold">Change match — {book.title}</h2>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 flex-none rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
-        <p className="mb-3 text-[12px] text-ink-dim">Pick the correct catalogue entry. Your files, monitoring and quality profile are kept — only the metadata changes.</p>
+        <p className="mb-3 text-sm text-ink-dim">Pick the correct catalogue entry. Your files, monitoring and quality profile are kept — only the metadata changes.</p>
 
         <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void search(query); }}>
-          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the catalogue" placeholder={source === "hardcover" ? "Search Hardcover…" : "Search Open Library…"} className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the catalogue" placeholder={source === "hardcover" ? "Search Hardcover…" : "Search Open Library…"} className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
           <Button type="submit" variant="primary" busy={searching} busyLabel="Searching…" className="disabled:opacity-50">Search</Button>
         </form>
 
-        {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
 
         {results === null ? (
-          <div className="p-4 text-center text-[12.5px] text-ink-dim">Searching…</div>
+          <div className="p-4 text-center text-base text-ink-dim">Searching…</div>
         ) : results.length === 0 ? (
-          <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>No works found. Try a different search.</div>
+          <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>No works found. Try a different search.</div>
         ) : (
           <div className="thin-scroll flex max-h-[52vh] flex-col overflow-y-auto">
             {source === "hardcover" && olResults === null && (
-              <button type="button" onClick={searchOpenLibrary} className="mb-1 self-end text-[11.5px] font-semibold underline-offset-2 hover:underline" style={{ color: "var(--ink-dim)" }}>
+              <button type="button" onClick={searchOpenLibrary} className="mb-1 self-end text-sm font-semibold underline-offset-2 hover:underline" style={{ color: "var(--ink-dim)" }}>
                 Show Open Library results too
               </button>
             )}
@@ -795,13 +795,13 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
               return (
                 <div key={r.key} className="flex items-center gap-3 border-b py-2.5" style={{ borderColor: "var(--line)" }}>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium">{r.title} {r.year > 0 && <span className="font-mono text-[11px] text-ink-faint">{r.year}</span>}</div>
-                    <div className="truncate text-[11.5px] text-ink-dim">{r.author || "Unknown author"} <span className="font-mono text-ink-faint">· {r.key}</span></div>
+                    <div className="truncate text-md font-medium">{r.title} {r.year > 0 && <span className="font-mono text-xs text-ink-faint">{r.year}</span>}</div>
+                    <div className="truncate text-sm text-ink-dim">{r.author || "Unknown author"} <span className="font-mono text-ink-faint">· {r.key}</span></div>
                   </div>
                   {current ? (
-                    <span className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Current</span>
+                    <span className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Current</span>
                   ) : (
-                    <button disabled={saving !== null} onClick={() => choose(r)} className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>
+                    <button disabled={saving !== null} onClick={() => choose(r)} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>
                       {saving === r.key ? "Matching…" : "Use this"}
                     </button>
                   )}
@@ -855,29 +855,29 @@ function SeriesPanel({ bookID }: { bookID: number }) {
   return (
     <section className="mt-4 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-bold">{series.name}</h2>
+        <h2 className="m-0 text-lg font-bold">{series.name}</h2>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[10.5px] text-ink-faint">
+          <span className="font-mono text-xs text-ink-faint">
             {catalogue && series.total ? `${series.total} books · ` : ""}{series.gaps > 0 ? `${series.gaps} missing from your library` : "complete"}
           </span>
           {catalogue && series.gaps > 0 && (
-            <button onClick={addAll} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+            <button onClick={addAll} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
               {busy === "all" ? "Adding…" : `Add all ${series.gaps} missing`}
             </button>
           )}
         </div>
       </div>
-      {note && <div className="mt-2 text-[11.5px] text-ink-dim">{note}</div>}
+      {note && <div className="mt-2 text-sm text-ink-dim">{note}</div>}
       <ol className="mt-3 flex list-none flex-col gap-1 p-0">
         {series.entries.map((e, i) => (
-          <li key={e.book_id ?? `gap-${e.position}-${i}`} className="flex items-center gap-2.5 text-[12.5px]">
-            <span className="w-8 flex-none text-right font-mono text-[11px] text-ink-faint">
+          <li key={e.book_id ?? `gap-${e.position}-${i}`} className="flex items-center gap-2.5 text-base">
+            <span className="w-8 flex-none text-right font-mono text-xs text-ink-faint">
               {e.position ? `#${e.position}` : "—"}
             </span>
             {e.missing && e.key ? (
               <>
-                <span className="min-w-0 truncate" style={{ color: "var(--ink-dim)" }}>{e.title}{e.year ? <span className="font-mono text-[10px] text-ink-faint"> {e.year}</span> : null}</span>
-                <button onClick={() => addOne(e)} disabled={busy !== null} className="ml-auto flex-none rounded-md px-2 py-0.5 text-[10.5px] font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+                <span className="min-w-0 truncate" style={{ color: "var(--ink-dim)" }}>{e.title}{e.year ? <span className="font-mono text-xs text-ink-faint"> {e.year}</span> : null}</span>
+                <button onClick={() => addOne(e)} disabled={busy !== null} className="ml-auto flex-none rounded-md px-2 py-0.5 text-xs font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
                   {busy === e.key ? "Adding…" : "Add"}
                 </button>
               </>
@@ -888,7 +888,7 @@ function SeriesPanel({ bookID }: { bookID: number }) {
                 <Link to={`/books/${e.book_id}`} style={{ color: e.book_id === bookID ? "var(--accent)" : "var(--ink)" }}>
                   {e.title}
                 </Link>
-                <span className="font-mono text-[10px]" style={{ color: e.has_file ? "var(--good)" : "var(--ink-faint)" }}>
+                <span className="font-mono text-xs" style={{ color: e.has_file ? "var(--good)" : "var(--ink-faint)" }}>
                   {e.has_file ? "downloaded" : "wanted"}
                 </span>
               </>

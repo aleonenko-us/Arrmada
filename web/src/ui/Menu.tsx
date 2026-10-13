@@ -168,7 +168,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
         >
           {header && (
             <>
-              <div className="truncate px-2.5 py-1.5 text-[12px] text-ink-dim">{header}</div>
+              <div className="truncate px-2.5 py-1.5 text-sm text-ink-dim">{header}</div>
               <div className="my-1 h-px" style={{ background: "var(--line)" }} />
             </>
           )}
@@ -183,7 +183,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
               aria-disabled={it.disabled || undefined}
               title={it.title}
               onClick={() => pick(i)}
-              className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50 ${itemClassName}`}
+              className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-base font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50 ${itemClassName}`}
               style={{ color: it.tone === "danger" ? "var(--reject)" : "var(--ink)" }}
             >
               {busy === i && it.busyLabel ? it.busyLabel : it.label}

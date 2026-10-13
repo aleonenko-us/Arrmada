@@ -20,18 +20,18 @@ export function ReleaseExplain({ matched, avoided, waived, lostOn, className }: 
       {(m.length > 0 || a.length > 0 || waived) && (
         <div className="flex flex-wrap gap-1">
           {m.map((f) => (
-            <span key={`m-${f}`} className="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>
+            <span key={`m-${f}`} className="rounded-md px-1.5 py-0.5 font-mono text-xs font-semibold" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>
               ✓ {f}
             </span>
           ))}
           {a.map((f) => (
-            <span key={`a-${f}`} className="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}
+            <span key={`a-${f}`} className="rounded-md px-1.5 py-0.5 font-mono text-xs font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}
               title="A format this profile avoids: grabbed only when nothing without it is available">
               ⚠ {avoidedLabel(f)}
             </span>
           ))}
           {waived && (
-            <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)" }}
+            <span className="rounded-md px-1.5 py-0.5 text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)" }}
               title="Its bitrate is under a third of the best release on offer, so the formats you prefer don't count for it">
               preference ignored — bitrate too low
             </span>
@@ -39,7 +39,7 @@ export function ReleaseExplain({ matched, avoided, waived, lostOn, className }: 
         </div>
       )}
       {lostOn && (
-        <div className="mt-1 text-[11px] text-ink-faint" title="Compared with the release ranked just above it in Best match order">
+        <div className="mt-1 text-xs text-ink-faint" title="Compared with the release ranked just above it in Best match order">
           ranked lower: {lostOn}
         </div>
       )}

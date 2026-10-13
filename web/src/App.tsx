@@ -9,7 +9,7 @@ import type { UserRole } from "./lib/api";
 // The sign-in screen is only for someone signed out, so a signed-in phone never
 // downloads it along with Discover.
 const Login = lazyPage(() => import("./pages/Login"), "Login");
-const spinner = <div className="grid h-full place-items-center text-[13px] text-ink-dim">Loading…</div>;
+const spinner = <div className="grid h-full place-items-center text-md text-ink-dim">Loading…</div>;
 
 // One router per session shape. Signing out and back in as someone else rebuilds it;
 // the previous one is disposed so it stops listening to the browser's history.

@@ -133,7 +133,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
               {metadataReady ? (
                 <SearchBox value={searchInput} onChange={onSearchChange} onSeeAll={commitSearch} />
               ) : (
-                <input disabled placeholder="Search isn't available yet" aria-label="Search movies and TV (not available yet)" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[12.5px] opacity-60 sm:w-[210px] sm:flex-initial" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+                <input disabled placeholder="Search isn't available yet" aria-label="Search movies and TV (not available yet)" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-base opacity-60 sm:w-[210px] sm:flex-initial" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
               )}
             </div>
           )}
@@ -143,7 +143,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
 
         <TabPanel idPrefix="discover" value={tab}>
           {tab === "books" ? (
-            <Suspense fallback={<div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>}>
+            <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}>
               <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} />
             </Suspense>
           ) : !metadataReady ? (
@@ -178,7 +178,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   );
 }
 
-const gridLoading = <div className="py-10 text-center text-[12.5px] text-ink-dim">Loading…</div>;
+const gridLoading = <div className="py-10 text-center text-base text-ink-dim">Loading…</div>;
 
 // requestedMessage is what asking for a title says: an auto-approved request is already
 // being searched for, anything else waits for someone to approve it.

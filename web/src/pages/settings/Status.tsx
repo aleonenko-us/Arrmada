@@ -20,15 +20,15 @@ export function StatusSection() {
       <SystemCard />
       <UpdatesCard />
       <section id="health" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-        <h2 className="m-0 text-[14px] font-bold">Health</h2>
-        <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">
+        <h2 className="m-0 text-md font-bold">Health</h2>
+        <p className="mb-4 mt-0.5 text-sm text-ink-faint">
           Arrmada checks its folders, download clients, indexers and connections in the background, every minute or so. Anything wrong shows here and on the Dashboard, with a link to where it's fixed.
         </p>
         <HealthList />
       </section>
       <section id="tasks" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-        <h2 className="m-0 text-[14px] font-bold">Tasks</h2>
-        <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">
+        <h2 className="m-0 text-md font-bold">Tasks</h2>
+        <p className="mb-4 mt-0.5 text-sm text-ink-faint">
           The jobs Arrmada runs on a schedule: searching for missing titles, importing finished downloads, backups and the rest. Run now starts one straight away; a task that fails three times in a row also shows under Health.
         </p>
         <TasksTable />
@@ -55,13 +55,13 @@ function SystemCard() {
   const backup = st ? backupAge(st.last_backup?.at) : null;
   return (
     <section id="status" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-      <h2 className="m-0 text-[14px] font-bold">System</h2>
-      <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">Which build is running, the database, and how much room each library has.</p>
+      <h2 className="m-0 text-md font-bold">System</h2>
+      <p className="mb-4 mt-0.5 text-sm text-ink-faint">Which build is running, the database, and how much room each library has.</p>
       {!st ? (
-        <p className="m-0 text-[12px] text-ink-dim">{error ? error.message : "Loading…"}</p>
+        <p className="m-0 text-sm text-ink-dim">{error ? error.message : "Loading…"}</p>
       ) : (
         <div className="flex flex-col gap-4">
-          <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-[12px] text-ink-dim sm:grid-cols-4">
+          <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-sm text-ink-dim sm:grid-cols-4">
             <Fact k="Version" v={versionLabel(st.version, st.commit)} />
             <Fact k="Running for" v={uptime(st.uptime_seconds)} title={`Started ${new Date(st.started_at).toLocaleString()} · ${st.go}`} />
             <Fact k="Database" v={fmtBytes(st.db_bytes)} title={st.data_dir} />
@@ -83,7 +83,7 @@ function SystemCard() {
 function Fact({ k, v, title }: { k: string; v: React.ReactNode; title?: string }) {
   return (
     <div title={title}>
-      <dt className="text-[9px] uppercase tracking-[0.1em] text-ink-faint">{k}</dt>
+      <dt className="text-xs uppercase tracking-[0.1em] text-ink-faint">{k}</dt>
       <dd className="m-0 mt-0.5 truncate text-ink">{v}</dd>
     </div>
   );
@@ -96,9 +96,9 @@ function DiskBar({ d }: { d: SystemDisk }) {
   const tone = pct >= 95 ? "var(--reject)" : pct >= 85 ? "var(--avoid)" : "var(--accent)";
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-[12px]">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
         <span className="font-semibold">{names.join(" · ")}</span>
-        <span className="font-mono text-[11px] text-ink-dim">
+        <span className="font-mono text-xs text-ink-dim">
           {d.measurable ? `${fmtBytes(d.free)} free of ${fmtBytes(d.total)}` : "can't be measured"}
         </span>
       </div>
@@ -107,7 +107,7 @@ function DiskBar({ d }: { d: SystemDisk }) {
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
         </div>
       )}
-      <span className="truncate font-mono text-[10px] text-ink-faint" title={[d.path, ...d.shared_with.map((s) => s.path)].join("\n")}>{d.path}</span>
+      <span className="truncate font-mono text-xs text-ink-faint" title={[d.path, ...d.shared_with.map((s) => s.path)].join("\n")}>{d.path}</span>
     </div>
   );
 }

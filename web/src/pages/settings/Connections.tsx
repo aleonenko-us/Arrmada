@@ -292,9 +292,9 @@ export function ConnectionsSettings() {
     if (id === "downloads") {
       return (
         <>
-          {restoreErr && <p role="alert" className="m-0 text-[12px]" style={{ color: "var(--reject)" }}>{restoreErr}</p>}
+          {restoreErr && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>{restoreErr}</p>}
           {dl.data?.can_restore_bundled && (
-            <p className="m-0 text-[12px] text-ink-dim">The qBittorrent that comes with Arrmada was removed, so it gets no downloads.</p>
+            <p className="m-0 text-sm text-ink-dim">The qBittorrent that comes with Arrmada was removed, so it gets no downloads.</p>
           )}
           {adding === "client" && <ClientForm onSaved={clientSaved} />}
         </>
@@ -336,7 +336,7 @@ export function ConnectionsSettings() {
           below={below(s.id)}
         >
           {s.items.length === 0 ? (
-            <p className="m-0 text-[12px] text-ink-dim">
+            <p className="m-0 text-sm text-ink-dim">
               {s.id === "downloads" ? "No download clients yet. Add qBittorrent to start downloading." : "Nothing here yet."}
             </p>
           ) : (

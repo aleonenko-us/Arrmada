@@ -51,11 +51,11 @@ function OverseerrImport() {
         <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="from Overseerr → Settings → General → API Key" className={input} style={inputStyle} autoComplete="off" />
       </Field>
       <div className="flex items-center gap-3">
-        <button onClick={run} disabled={busy || !url.trim() || !key.trim()} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
+        <button onClick={run} disabled={busy || !url.trim() || !key.trim()} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
           {busy ? "Connecting…" : "Import requests"}
         </button>
-        {msg && <span className="text-[11.5px]" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</span>}
-        {msg?.ok && <Link to="/requests" className="flex-none text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>Open Requests →</Link>}
+        {msg && <span className="text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</span>}
+        {msg?.ok && <Link to="/requests" className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>Open Requests →</Link>}
       </div>
     </Section>
   );

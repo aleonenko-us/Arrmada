@@ -35,8 +35,8 @@ export function CollectionSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
     return (
       <Sheet onClose={close} closeOnBack={false} ariaLabel="Not available" size="sm">
         <div className="p-6">
-          <h2 className="m-0 text-[16px] font-bold">Not available</h2>
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-dim">{error.status === 404 ? "This collection can’t be shown here." : `Couldn’t load it — ${error.message}`}</p>
+          <h2 className="m-0 text-lg font-bold">Not available</h2>
+          <p className="m-0 mt-1.5 text-base text-ink-dim">{error.status === 404 ? "This collection can’t be shown here." : `Couldn’t load it — ${error.message}`}</p>
           <div className="mt-4 flex justify-end"><Button onClick={close}>Back</Button></div>
         </div>
       </Sheet>
@@ -64,12 +64,12 @@ export function CollectionSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
           {c?.backdrop_url && <img src={c.backdrop_url} alt="" className="h-full w-full object-cover opacity-60" />}
           <div className="absolute inset-0" style={{ background: "linear-gradient(to top, var(--panel) 4%, transparent 78%)" }} />
           <div className="absolute inset-x-5 bottom-3 sm:inset-x-6">
-            <h2 className="m-0 text-[20px] font-bold leading-tight sm:text-[24px]">{c?.name || <span className="text-ink-faint">Loading…</span>}</h2>
-            {c && <div className="mt-1 text-[12px] font-semibold" style={{ color: "var(--accent)" }}>{c.owned} of {c.total} in the library</div>}
+            <h2 className="m-0 text-2xl font-bold leading-tight sm:text-3xl">{c?.name || <span className="text-ink-faint">Loading…</span>}</h2>
+            {c && <div className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>{c.owned} of {c.total} in the library</div>}
           </div>
         </div>
         <div className="px-5 pb-6 pt-3 sm:px-6">
-          {c?.overview && <p className="m-0 text-[12.5px] leading-relaxed text-ink-dim">{c.overview}</p>}
+          {c?.overview && <p className="m-0 text-base leading-relaxed text-ink-dim">{c.overview}</p>}
           {isStaff(user) && ctx.canRequest && missing.length > 1 && (
             <div className="mt-3"><Button variant="primary" onClick={() => { void requestRest(); }} busy={busy} busyLabel="Requesting…">Request the rest ({missing.length})</Button></div>
           )}

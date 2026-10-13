@@ -91,7 +91,7 @@ const TONE: Record<"good" | "bad" | "warn", { background: string; color: string;
 // WantChip is one kept language's chip.
 export function WantChip({ l, sidecar, onClick }: { l: SubLangStatus; sidecar?: SubSidecar; onClick?: () => void }) {
   const w = wantLine(l, sidecar);
-  const cls = "rounded px-1.5 py-0.5 font-mono text-[10px] font-bold";
+  const cls = "rounded px-1.5 py-0.5 font-mono text-xs font-bold";
   if (onClick) {
     return <button type="button" onClick={onClick} className={`${cls} hover:opacity-80`} style={TONE[w.tone]} title={`${w.title} — open the subtitles`}>{w.text}</button>;
   }

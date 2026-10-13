@@ -33,13 +33,13 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
         type="button"
         onClick={() => { onError(null); begin(); }}
         disabled={disabled || busy}
-        className="rounded-lg px-4 py-2.5 text-[13px] font-semibold"
+        className="rounded-lg px-4 py-2.5 text-md font-semibold"
         style={{ background: "#e5a00d", color: "#1f1300" }}
       >
         {phase === "finishing" ? "Finishing Plex sign-in…" : busy ? "Waiting for Plex…" : "Sign in with Plex"}
       </button>
       {(phase === "waiting" || phase === "slow") && (
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11.5px]">
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">
           {phase === "slow" && (
             <button type="button" onClick={continueHere} className="font-semibold" style={{ color: "var(--accent)" }}>
               Plex window didn't open? Continue in this tab

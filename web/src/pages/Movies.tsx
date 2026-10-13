@@ -121,7 +121,7 @@ export function Movies() {
       { label: "Search indexers…", onSelect: () => setSearchFor(m) },
       { label: "Remove…", tone: "danger" as const, onSelect: () => setConfirmDelete(m) },
     ],
-    rowAction: (m) => <button onClick={() => setSearchFor(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
+    rowAction: (m) => <button onClick={() => setSearchFor(m)} title="Search your indexers and pick a release" className="whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>,
   // search reads only api and toast, both stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [fits, queueKnown]);

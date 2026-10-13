@@ -43,7 +43,7 @@ export function ArtistDetail() {
   if (notFound)
     return (
       <Shell>
-        <div className="py-10 text-center text-[13px] text-ink-dim">
+        <div className="py-10 text-center text-md text-ink-dim">
           That artist isn't in your library.{" "}
           <Link to="/music" className="underline" style={{ color: "var(--accent)" }}>
             Back to Music
@@ -54,7 +54,7 @@ export function ArtistDetail() {
   if (!a)
     return (
       <Shell>
-        <p className="text-[12.5px] text-ink-dim">{error ?? "Loading…"}</p>
+        <p className="text-base text-ink-dim">{error ?? "Loading…"}</p>
       </Shell>
     );
 
@@ -71,7 +71,7 @@ export function ArtistDetail() {
     <>
       <PageHeader title={a.name} />
       <Page>
-        <Link to="/music" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+        <Link to="/music" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -82,7 +82,7 @@ export function ArtistDetail() {
           <StatusChip tone={st.tone} size="md">
             {st.label}
           </StatusChip>
-          <span className="font-mono text-[11px] text-ink-faint">
+          <span className="font-mono text-xs text-ink-faint">
             {a.stats?.albums ?? 0} albums · {done}/{all} tracks
             {a.stats?.size_bytes ? ` · ${formatBytes(a.stats.size_bytes)}` : ""}
           </span>
@@ -90,7 +90,7 @@ export function ArtistDetail() {
             href={`https://musicbrainz.org/artist/${a.mbid}`}
             target="_blank"
             rel="noreferrer"
-            className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold"
+            className="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
             style={{ background: "#4a2a6a", color: "#fff" }}
           >
             MusicBrainz
@@ -99,7 +99,7 @@ export function ArtistDetail() {
         {a.genres && a.genres.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {a.genres.map((g) => (
-              <span key={g} className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>
+              <span key={g} className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>
                 {g}
               </span>
             ))}
@@ -135,14 +135,14 @@ export function ArtistDetail() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}
           </div>
         )}
 
-        <h2 className="m-0 mb-3 mt-8 text-[14px] font-bold">Albums</h2>
+        <h2 className="m-0 mb-3 mt-8 text-md font-bold">Albums</h2>
         {!a.albums || a.albums.length === 0 ? (
-          <div className="rounded-xl p-8 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+          <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No albums listed. Try Refresh — MusicBrainz may not have returned them yet.
           </div>
         ) : (
@@ -169,12 +169,12 @@ function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2.5 last:border-b-0" style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}>
       <Link to={`/music/album/${al.id}`} className="min-w-0 flex-1 hover:underline">
-        <div className="truncate text-[12.5px] font-medium">{al.title}</div>
-        <div className="truncate font-mono text-[10.5px] text-ink-faint">
+        <div className="truncate text-base font-medium">{al.title}</div>
+        <div className="truncate font-mono text-xs text-ink-faint">
           {[al.year || "", al.album_type || ""].filter(Boolean).join(" · ")}
         </div>
       </Link>
-      <span className="flex-none font-mono text-[10.5px]" style={{ color: tone }}>
+      <span className="flex-none font-mono text-xs" style={{ color: tone }}>
         {known ? `${al.have_tracks}/${al.track_count}` : "not listed"}
       </span>
       <button
@@ -188,7 +188,7 @@ function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
             setBusy(false);
           }
         }}
-        className="flex-none rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
+        className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50"
         style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, color: al.monitored ? "var(--accent)" : "var(--ink-faint)" }}
       >
         {al.monitored ? "Monitored" : "Monitor"}
@@ -242,24 +242,24 @@ function HistoryPanel({ artistId, refreshKey }: { artistId: number; refreshKey: 
 
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-3 text-[14px] font-bold">History</h2>
+      <h2 className="m-0 mb-3 text-md font-bold">History</h2>
       {events === null ? (
-        <div className="text-[12.5px] text-ink-dim">Loading…</div>
+        <div className="text-base text-ink-dim">Loading…</div>
       ) : events.length === 0 ? (
-        <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+        <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
           No activity yet.
         </div>
       ) : (
         <div className="flex flex-col">
           {events.map((e, i) => (
-            <div key={i} className="flex items-center gap-3 border-b py-2 text-[12px]" style={{ borderColor: "var(--line)" }}>
-              <span className="w-[74px] flex-none font-mono text-[10px] font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>
+            <div key={i} className="flex items-center gap-3 border-b py-2 text-sm" style={{ borderColor: "var(--line)" }}>
+              <span className="w-[74px] flex-none font-mono text-2xs font-bold uppercase" style={{ color: EVENT_TONES[e.event] ?? "var(--ink-dim)" }}>
                 {e.event}
               </span>
               <span className="min-w-0 flex-1 truncate text-ink-dim" title={e.detail}>
                 {e.detail || "—"}
               </span>
-              <span className="flex-none font-mono text-[10.5px] text-ink-faint">{fmtEventTime(e.created_at)}</span>
+              <span className="flex-none font-mono text-xs text-ink-faint">{fmtEventTime(e.created_at)}</span>
             </div>
           ))}
         </div>

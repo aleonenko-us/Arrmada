@@ -41,7 +41,7 @@ export function ProfileSelect({ kind, id, value, title, onChanged }: {
       disabled={busy}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => void change(Number(e.target.value))}
-      className="max-w-[140px] flex-none rounded-md px-1.5 py-1 text-[11px] disabled:opacity-50"
+      className="max-w-[140px] flex-none rounded-md px-1.5 py-1 text-xs disabled:opacity-50"
       style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: value ? "var(--accent)" : "var(--ink-dim)" }}
     >
       {profiles.map((p) => <option key={p.id} value={p.id}>{p.is_default ? "Default profile" : p.name}</option>)}

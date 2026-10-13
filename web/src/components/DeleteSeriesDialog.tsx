@@ -73,11 +73,11 @@ export function DeleteSeriesDialog({ series, onClose, onDeleted }: {
         </div>
       }
       extra={
-        <label className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={{ border: `1px solid ${deleteFiles ? "var(--reject)" : "var(--line)"}`, background: deleteFiles ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" }}>
+        <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={{ border: `1px solid ${deleteFiles ? "var(--reject)" : "var(--line)"}`, background: deleteFiles ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={deleteFiles} disabled={busy} onChange={(e) => toggleFiles(e.target.checked)} className="mt-0.5" />
           <span>
             <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete files from disk</span>
-            <span className="mt-0.5 block text-[11px] text-ink-faint">{filesHint}</span>
+            <span className="mt-0.5 block text-xs text-ink-faint">{filesHint}</span>
           </span>
         </label>
       }

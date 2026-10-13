@@ -108,18 +108,18 @@ function SettingsHub() {
                 if (e.key === "Escape") setQuery("");
               }}
               placeholder="Search settings…"
-              className="w-full rounded-lg px-3 py-2 text-[12.5px]"
+              className="w-full rounded-lg px-3 py-2 text-base"
               style={inputStyle}
             />
             {query.trim() && (
               <div className="absolute inset-x-0 top-full z-20 mt-1 flex max-h-[320px] flex-col overflow-y-auto rounded-lg p-1" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
                 {results.length === 0 ? (
-                  <div className="px-2.5 py-2 text-[12px] text-ink-faint">Nothing matches.</div>
+                  <div className="px-2.5 py-2 text-sm text-ink-faint">Nothing matches.</div>
                 ) : (
                   results.map((r) => (
                     <button key={r.anchor} onClick={() => open(r)} className="flex flex-col rounded-md px-2.5 py-1.5 text-left hover:bg-[var(--panel-2)]">
-                      <span className="text-[12.5px] font-semibold">{r.label}</span>
-                      <span className="text-[10.5px] text-ink-faint">{sections.find((x) => x.id === r.section)?.label}</span>
+                      <span className="text-base font-semibold">{r.label}</span>
+                      <span className="text-xs text-ink-faint">{sections.find((x) => x.id === r.section)?.label}</span>
                     </button>
                   ))
                 )}
@@ -132,7 +132,7 @@ function SettingsHub() {
             aria-label="Settings section"
             value={section}
             onChange={(e) => navigate(`/settings/${e.target.value}`)}
-            className="rounded-lg px-3 py-2 text-[12.5px] lg:hidden"
+            className="rounded-lg px-3 py-2 text-base lg:hidden"
             style={inputStyle}
           >
             {sections.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
@@ -142,7 +142,7 @@ function SettingsHub() {
               <NavLink
                 key={x.id}
                 to={`/settings/${x.id}`}
-                className="rounded-[9px] px-2.5 py-2 text-[13px] transition-colors"
+                className="rounded-[9px] px-2.5 py-2 text-md transition-colors"
                 style={({ isActive }) =>
                   isActive
                     ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }
@@ -156,8 +156,8 @@ function SettingsHub() {
         </aside>
 
         <div className="w-full min-w-0 max-w-form flex-1">
-          {error && <div className="mb-3 rounded-lg p-3 text-[12.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
-          {!s ? <p className="text-[12.5px] text-ink-dim">Loading…</p> : <Body />}
+          {error && <div className="mb-3 rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+          {!s ? <p className="text-base text-ink-dim">Loading…</p> : <Body />}
         </div>
       </Page>
     </>

@@ -73,20 +73,20 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
       }
       extra={
         <>
-          <label className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={box(deleteFiles)}>
+          <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(deleteFiles)}>
             <input type="checkbox" checked={deleteFiles} disabled={busy} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
             <span className="min-w-0">
               <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete files from disk</span>
-              <span className="mt-0.5 block break-words text-[11px] text-ink-faint">{filesHint}</span>
+              <span className="mt-0.5 block break-words text-xs text-ink-faint">{filesHint}</span>
             </span>
           </label>
           {pending.map((d) => (
-            <label key={d.hash || d.title} className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={box(cancelDownloads)}>
+            <label key={d.hash || d.title} className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(cancelDownloads)}>
               <input type="checkbox" checked={cancelDownloads} disabled={busy} onChange={(e) => setCancelDownloads(e.target.checked)} className="mt-0.5" />
               <span className="min-w-0">
                 <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject)" : "var(--ink)" }}>Cancel the download in progress and delete its partial data</span>
-                <span className="mt-0.5 block break-all text-[11px] text-ink-faint">{d.title} · {Math.round(d.progress * 100)}%</span>
-                {!cancelDownloads && <span className="mt-0.5 block text-[11px] text-ink-faint">Left running, it waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
+                <span className="mt-0.5 block break-all text-xs text-ink-faint">{d.title} · {Math.round(d.progress * 100)}%</span>
+                {!cancelDownloads && <span className="mt-0.5 block text-xs text-ink-faint">Left running, it waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
               </span>
             </label>
           ))}
@@ -153,18 +153,18 @@ export function DeleteMoviesDialog({ movies, onClose, onDone }: {
       body={<p className="m-0">They'll be removed from your library and Arrmada will stop monitoring them. Files stay on disk unless you tick the box below.</p>}
       extra={
         <>
-          <label className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={box(deleteFiles)}>
+          <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(deleteFiles)}>
             <input type="checkbox" checked={deleteFiles} disabled={busy || done} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
             <span className="min-w-0">
               <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete their files from disk</span>
-              <span className="mt-0.5 block break-words text-[11px] text-ink-faint">{filesHint}</span>
+              <span className="mt-0.5 block break-words text-xs text-ink-faint">{filesHint}</span>
             </span>
           </label>
-          <label className="flex items-start gap-2.5 rounded-lg p-3 text-[12.5px]" style={box(cancelDownloads)}>
+          <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(cancelDownloads)}>
             <input type="checkbox" checked={cancelDownloads} disabled={busy || done} onChange={(e) => setCancelDownloads(e.target.checked)} className="mt-0.5" />
             <span className="min-w-0">
               <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject)" : "var(--ink)" }}>Cancel their downloads in progress and delete the partial data</span>
-              {!cancelDownloads && <span className="mt-0.5 block text-[11px] text-ink-faint">Left running, each waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
+              {!cancelDownloads && <span className="mt-0.5 block text-xs text-ink-faint">Left running, each waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
             </span>
           </label>
         </>

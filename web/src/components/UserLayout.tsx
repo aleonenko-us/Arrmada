@@ -47,13 +47,13 @@ export function UserLayout() {
           <span className="grid h-[28px] w-[28px] flex-none place-items-center rounded-lg" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
             <FleetMark className="h-[16px] w-[16px]" />
           </span>
-          <span className="hidden text-[15px] font-extrabold tracking-[0.12em] md:inline">ARRMADA</span>
+          <span className="hidden text-lg font-extrabold tracking-[0.12em] md:inline">ARRMADA</span>
           {/* A phone has no inline links, so the header says where you are instead. */}
-          {section && <span className="truncate text-[15px] font-bold sm:hidden">{section.label}</span>}
+          {section && <span className="truncate text-lg font-bold sm:hidden">{section.label}</span>}
         </div>
         <nav aria-label="Sections" className="thin-scroll hidden min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap sm:flex">
           {nav.filter((n) => n.header).map((n) => (
-            <NavLink key={n.key} to={n.to} className="flex-none rounded-lg px-3 py-1.5 text-[12.5px] font-semibold" style={({ isActive }) => ({ background: isActive ? "var(--accent-soft)" : "transparent", color: isActive ? "var(--accent)" : "var(--ink-dim)" })}>{n.label}</NavLink>
+            <NavLink key={n.key} to={n.to} className="flex-none rounded-lg px-3 py-1.5 text-base font-semibold" style={({ isActive }) => ({ background: isActive ? "var(--accent-soft)" : "transparent", color: isActive ? "var(--accent)" : "var(--ink-dim)" })}>{n.label}</NavLink>
           ))}
         </nav>
         <div className="flex flex-none items-center gap-2">
@@ -63,7 +63,7 @@ export function UserLayout() {
             label="Account menu"
             trigger={(user?.username?.[0] ?? "?").toUpperCase()}
             header={<span title={user?.username}>{user?.username || "Guest"}</span>}
-            triggerClassName="grid h-9 w-9 place-items-center rounded-full text-[12px] font-bold"
+            triggerClassName="grid h-9 w-9 place-items-center rounded-full text-sm font-bold"
             triggerStyle={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}
             itemClassName="min-h-[44px]"
             items={[

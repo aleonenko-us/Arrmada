@@ -18,8 +18,8 @@ export function ProfileSelector({ series, onChange }: { series: SeriesT; onChang
   if (cur && !opts.some((o) => o.key === cur)) opts.unshift({ key: cur, name: cur === "n/a" ? "Not set" : (fallbackName ?? "…") });
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor={profileId} className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</label>
-      <select id={profileId} value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+      <label htmlFor={profileId} className="font-mono text-2xs uppercase text-ink-faint">Quality</label>
+      <select id={profileId} value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
         {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
       </select>
     </div>

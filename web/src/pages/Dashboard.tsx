@@ -81,7 +81,7 @@ export function Dashboard() {
 
         {error && (
           <div
-            className="mb-5 rounded-lg px-3.5 py-2.5 text-[12.5px]"
+            className="mb-5 rounded-lg px-3.5 py-2.5 text-base"
             style={{ background: "var(--reject-soft)", border: "1px solid var(--reject)", color: "var(--reject)" }}
           >
             Backend unreachable: {error}
@@ -101,7 +101,7 @@ export function Dashboard() {
         </SectionLabel>
         {streams.length === 0 ? (
           <Card>
-            <p className="m-0 text-[12.5px] text-ink-faint">
+            <p className="m-0 text-base text-ink-faint">
               {!data ? (
                 "Loading…"
               ) : !data.plex_configured ? (
@@ -131,7 +131,7 @@ export function Dashboard() {
         </SectionLabel>
         {listening.length === 0 ? (
           <Card>
-            <p className="m-0 text-[12.5px] text-ink-faint">
+            <p className="m-0 text-base text-ink-faint">
               {!data
                 ? "Loading…"
                 : data.audio_off
@@ -151,9 +151,9 @@ export function Dashboard() {
         <SectionLabel>Storage</SectionLabel>
         <Card>
           {!data ? (
-            <p className="m-0 text-[12.5px] text-ink-faint">Reading disks…</p>
+            <p className="m-0 text-base text-ink-faint">Reading disks…</p>
           ) : !data.storage || data.storage.length === 0 ? (
-            <p className="m-0 text-[12.5px] text-ink-faint">
+            <p className="m-0 text-base text-ink-faint">
               Disk usage isn&apos;t available on this platform.
             </p>
           ) : (
@@ -209,9 +209,9 @@ export function Dashboard() {
         <SectionLabel link={{ to: LINKS.history, label: "See all →" }}>Recent activity</SectionLabel>
         <Card>
           {!data ? (
-            <p className="m-0 text-[12.5px] text-ink-faint">Loading…</p>
+            <p className="m-0 text-base text-ink-faint">Loading…</p>
           ) : data.activity.length === 0 ? (
-            <p className="m-0 text-[12.5px] text-ink-faint">
+            <p className="m-0 text-base text-ink-faint">
               Nothing yet — grabs, imports and upgrades show up here as they happen.
             </p>
           ) : (
@@ -227,7 +227,7 @@ export function Dashboard() {
         <SectionLabel>System</SectionLabel>
         <Card>
           {/* No Auth stat: sign-in is always enforced, so it could only ever say "enabled". */}
-          <dl className={`grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-[12px] text-ink-dim ${admin ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
+          <dl className={`grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-sm text-ink-dim ${admin ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
             <Stat k="Version" v={status ? versionLabel(status.version, status.commit) : "—"} />
             <Stat k="Uptime" v={status ? uptime(status.uptime_seconds) : "—"} />
             <Stat k="Database" v={dbOK ? "ok" : "down"} tone={dbOK ? "good" : "bad"} />
@@ -248,14 +248,14 @@ function NeedsYou() {
   const rows = needsYouRows(attention);
   return (
     <section aria-labelledby="needs-you" className="mb-1">
-      <div id="needs-you" className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+      <div id="needs-you" className="mb-3 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
         Needs you{attention && attention.counts.total > 0 ? ` · ${attention.counts.total}` : ""}
       </div>
       <Card>
         {!attention ? (
-          <p className="m-0 text-[12.5px] text-ink-faint">Checking…</p>
+          <p className="m-0 text-base text-ink-faint">Checking…</p>
         ) : rows.length === 0 ? (
-          <p className="m-0 text-[12.5px] text-ink-faint">
+          <p className="m-0 text-base text-ink-faint">
             {attention.at ? "All clear — nothing needs you." : "Checking what needs you…"}
           </p>
         ) : (
@@ -263,7 +263,7 @@ function NeedsYou() {
             {rows.map((r, i) => (
               <li
                 key={r.key}
-                className="flex items-center gap-2.5 py-2 text-[12.5px]"
+                className="flex items-center gap-2.5 py-2 text-base"
                 style={i > 0 ? { borderTop: "1px solid var(--line)" } : undefined}
                 title={r.sample && r.sample.length > 0 ? r.sample.join("\n") : undefined}
               >
@@ -275,7 +275,7 @@ function NeedsYou() {
                 />
                 <span className="min-w-0 flex-1 break-words">
                   {r.text}
-                  {r.detail && <span className="block text-[11.5px] text-ink-faint">{r.detail}</span>}
+                  {r.detail && <span className="block text-sm text-ink-faint">{r.detail}</span>}
                 </span>
                 {r.to && (
                   <Link to={r.to} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent)" }}>
@@ -287,7 +287,7 @@ function NeedsYou() {
           </ul>
         )}
         {attention?.stale && attention.at && (
-          <p className="m-0 mt-2 text-[11px] text-ink-faint">This list hasn&apos;t been updated for a few minutes.</p>
+          <p className="m-0 mt-2 text-xs text-ink-faint">This list hasn&apos;t been updated for a few minutes.</p>
         )}
       </Card>
     </section>
@@ -313,9 +313,9 @@ function StreamCard({ s }: { s: InsightsStream }) {
         <div className="h-[84px] w-[56px] shrink-0 rounded-md" style={{ background: "var(--panel-2)" }} />
       )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-semibold">{s.title}</div>
-        <div className="truncate text-[11.5px] text-ink-dim">{s.subtitle}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
+        <div className="truncate text-md font-semibold">{s.title}</div>
+        <div className="truncate text-sm text-ink-dim">{s.subtitle}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs">
           <Pill>{s.user}</Pill>
           <Pill tone={transcoding ? "warn" : "good"}>
             {transcoding ? `transcode · ${hw?.label ?? "CPU"}` : "direct"}
@@ -357,7 +357,7 @@ function ListenCard({ l }: { l: NowListening }) {
         />
       ) : (
         <div
-          className="flex h-[64px] w-[64px] shrink-0 items-center justify-center rounded-md text-[24px]"
+          className="flex h-[64px] w-[64px] shrink-0 items-center justify-center rounded-md text-3xl"
           style={{ background: "var(--panel-2)" }}
           aria-hidden
         >
@@ -370,23 +370,23 @@ function ListenCard({ l }: { l: NowListening }) {
             {l.book_id ? (
               <Link
                 to={`/books/${l.book_id}`}
-                className="block truncate text-[13px] font-semibold no-underline"
+                className="block truncate text-md font-semibold no-underline"
                 style={{ color: "var(--ink)" }}
               >
                 {l.title}
               </Link>
             ) : (
-              <div className="truncate text-[13px] font-semibold">{l.title}</div>
+              <div className="truncate text-md font-semibold">{l.title}</div>
             )}
-            <div className="truncate text-[11.5px] text-ink-dim">{l.author || "You"}</div>
+            <div className="truncate text-sm text-ink-dim">{l.author || "You"}</div>
           </>
         ) : (
           <>
-            <div className="truncate text-[13px] font-semibold">{l.mine ? "You" : l.user}</div>
-            <div className="truncate text-[11.5px] text-ink-dim">Listening to an audiobook</div>
+            <div className="truncate text-md font-semibold">{l.mine ? "You" : l.user}</div>
+            <div className="truncate text-sm text-ink-dim">Listening to an audiobook</div>
           </>
         )}
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs">
           {l.mine && <Pill>you</Pill>}
           <Pill tone={l.playing ? "good" : undefined}>{l.playing ? "playing" : "paused"}</Pill>
           <span className="text-ink-faint">
@@ -425,10 +425,10 @@ function StorageBar({ v }: { v: StorageVolume }) {
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <div className="min-w-0">
-          <span className="text-[12.5px] font-semibold">{v.roots.join(" · ")}</span>
-          <span className="ml-2 font-mono text-[10.5px] text-ink-faint">{v.path}</span>
+          <span className="text-base font-semibold">{v.roots.join(" · ")}</span>
+          <span className="ml-2 font-mono text-xs text-ink-faint">{v.path}</span>
         </div>
-        <span className="shrink-0 font-mono text-[11.5px] text-ink-dim">
+        <span className="shrink-0 font-mono text-sm text-ink-dim">
           {bytes(v.free_bytes)} free of {bytes(v.total_bytes)}
         </span>
       </div>
@@ -438,7 +438,7 @@ function StorageBar({ v }: { v: StorageVolume }) {
           style={{ width: `${Math.min(100, v.used_pct)}%`, background: tone }}
         />
       </div>
-      <div className="mt-1 font-mono text-[10.5px]" style={{ color: tone }}>
+      <div className="mt-1 font-mono text-xs" style={{ color: tone }}>
         {v.used_pct.toFixed(1)}% used
       </div>
     </div>
@@ -461,7 +461,7 @@ function ActivityRow({ e }: { e: ActivityEvent }) {
   const href = eventHref(e.kind, e.id);
   const icon = EVENT_ICON[e.event.toLowerCase()] ?? "•";
   return (
-    <li className="flex items-baseline gap-2.5 py-1.5 text-[12.5px]" style={{ borderTop: "1px solid var(--line)" }}>
+    <li className="flex items-baseline gap-2.5 py-1.5 text-base" style={{ borderTop: "1px solid var(--line)" }}>
       <span className="w-4 shrink-0 text-center">{icon}</span>
       <Link to={href} className="shrink-0 font-semibold no-underline" style={{ color: "var(--ink)" }}>
         {e.title}
@@ -470,7 +470,7 @@ function ActivityRow({ e }: { e: ActivityEvent }) {
         {e.event}
         {e.detail ? ` — ${e.detail}` : ""}
       </span>
-      <span className="shrink-0 font-mono text-[10.5px] text-ink-faint">{ago(e.at_ms)}</span>
+      <span className="shrink-0 font-mono text-xs text-ink-faint">{ago(e.at_ms)}</span>
     </li>
   );
 }
@@ -511,9 +511,9 @@ function Tile({
       className="rounded-[11px] p-3.5 no-underline"
       style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
     >
-      <div className="text-[10px] uppercase tracking-[0.1em] text-ink-faint">{label}</div>
-      <div className="mt-0.5 text-[22px] font-bold leading-tight">{value}</div>
-      <div className="text-[11px]" style={{ color: warn ? "var(--avoid-text)" : "var(--ink-faint)" }}>
+      <div className="text-xs uppercase tracking-[0.1em] text-ink-faint">{label}</div>
+      <div className="mt-0.5 text-3xl font-bold leading-tight">{value}</div>
+      <div className="text-xs" style={{ color: warn ? "var(--avoid-text)" : "var(--ink-faint)" }}>
         {sub}
       </div>
     </Link>
@@ -540,7 +540,7 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function SectionLabel({ children, right, link }: { children: React.ReactNode; right?: string; link?: { to: string; label: string } }) {
   return (
-    <div className="mb-3 mt-6 flex items-baseline justify-between font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+    <div className="mb-3 mt-6 flex items-baseline justify-between font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
       <span>{children}</span>
       {right && <span className="font-normal normal-case tracking-normal">{right}</span>}
       {link && <Link to={link.to} className="font-semibold normal-case tracking-normal no-underline" style={{ color: "var(--accent)" }}>{link.label}</Link>}
@@ -552,7 +552,7 @@ function Stat({ k, v, tone, to }: { k: string; v: string; tone?: "good" | "bad" 
   const color = tone === "good" ? "var(--good)" : tone === "bad" ? "var(--reject)" : tone === "avoid" ? "var(--avoid)" : "var(--ink)";
   return (
     <div>
-      <dt className="text-[9px] uppercase tracking-[0.1em] text-ink-faint">{k}</dt>
+      <dt className="text-xs uppercase tracking-[0.1em] text-ink-faint">{k}</dt>
       <dd className="m-0 mt-0.5" style={{ color }}>
         {to ? <Link to={to} style={{ color }}>{v}</Link> : v}
       </dd>

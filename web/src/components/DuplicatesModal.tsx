@@ -77,19 +77,19 @@ export default function DuplicatesModal({ onClose, onChanged }: { onClose: () =>
 
   return (
     <Modal onClose={onClose} title="Possible duplicates" size="xl" variant="sheet" panelClassName="thin-scroll w-full max-w-[1100px] overflow-y-auto rounded-t-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-5">
-      <p className="mt-1.5 text-[12px] text-ink-dim">
+      <p className="mt-1.5 text-sm text-ink-dim">
         Listening places, bookmarks and requests move to the kept book. No files are deleted.
       </p>
 
       {left && (
-        <div role="status" className="mt-3 rounded-lg px-3.5 py-2.5 text-[12px]" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
+        <div role="status" className="mt-3 rounded-lg px-3.5 py-2.5 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               {left.files.length > 0 && (
                 <>
                   <b>Left on disk</b> — “{left.title}” already had this, so these files stay where they are and Arrmada no longer tracks them:
                   <ul className="mt-1 space-y-0.5">
-                    {left.files.map((f) => <li key={f} className="break-all font-mono text-[11px]">{f}</li>)}
+                    {left.files.map((f) => <li key={f} className="break-all font-mono text-xs">{f}</li>)}
                   </ul>
                 </>
               )}
@@ -133,18 +133,18 @@ export default function DuplicatesModal({ onClose, onChanged }: { onClose: () =>
       </div>
 
       <details className="mt-5 rounded-xl px-3.5 py-2.5" style={{ border: "1px solid var(--line)" }}>
-        <summary className="cursor-pointer text-[12.5px] font-semibold">Earlier merges ({past.length})</summary>
+        <summary className="cursor-pointer text-base font-semibold">Earlier merges ({past.length})</summary>
         {past.length === 0 ? (
-          <p className="mt-2 text-[12px] text-ink-faint">No book has been merged into another.</p>
+          <p className="mt-2 text-sm text-ink-faint">No book has been merged into another.</p>
         ) : (
           <>
-            <p className="mt-2 text-[11.5px] text-ink-faint">
+            <p className="mt-2 text-sm text-ink-faint">
               Merges Arrmada once made by itself at start-up are marked automatic. If one folded two different books, add the lost one back from Discover.
             </p>
             <ul className="mt-2 divide-y" style={{ borderColor: "var(--line)" }}>
               {past.map((m, i) => (
-                <li key={`${m.book_id}-${m.created_at}-${i}`} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 py-2 text-[12px]">
-                  <span className="font-mono text-[10.5px] text-ink-faint">{m.created_at.slice(0, 10)}</span>
+                <li key={`${m.book_id}-${m.created_at}-${i}`} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 py-2 text-sm">
+                  <span className="font-mono text-xs text-ink-faint">{m.created_at.slice(0, 10)}</span>
                   {m.automatic && <StatusChip tone="avoid">Automatic</StatusChip>}
                   <span className="min-w-0 flex-1">
                     {m.lost_title ? <>“{m.lost_title}” into </> : null}
@@ -152,7 +152,7 @@ export default function DuplicatesModal({ onClose, onChanged }: { onClose: () =>
                   </span>
                   {m.automatic && m.lost_title && (
                     <Link to={`/discover?tab=books&q=${encodeURIComponent(m.lost_title)}`} onClick={onClose}
-                      className="text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>Find on Discover</Link>
+                      className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Find on Discover</Link>
                   )}
                 </li>
               ))}
@@ -171,7 +171,7 @@ function DupCard({ book, kept, suggested, name, onKeep, disabled }: {
     ? <div className="truncate" title={f.path}><b className="text-[var(--ink)]">{label}</b> {f.format} · {formatBytes(f.size_bytes)}{f.file_count > 1 ? ` · ${f.file_count} files` : ""}</div>
     : <div className="text-ink-faint">No {label.toLowerCase()}</div>;
   return (
-    <label className="flex cursor-pointer gap-3 rounded-lg p-2.5 text-[11.5px]"
+    <label className="flex cursor-pointer gap-3 rounded-lg p-2.5 text-sm"
       style={{ background: "var(--panel)", border: `1px solid ${kept ? "var(--accent)" : "var(--line)"}`, opacity: disabled ? 0.7 : 1 }}>
       <div className="h-[84px] w-[56px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
         {book.cover_url && <img src={posterThumb(book.cover_url)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
@@ -180,11 +180,11 @@ function DupCard({ book, kept, suggested, name, onKeep, disabled }: {
         <div className="flex items-start gap-2">
           <input type="radio" name={`keep-${name}`} checked={kept} onChange={onKeep} disabled={disabled} className="mt-0.5" aria-label={`Keep “${book.title}”`} />
           <span className="min-w-0">
-            <span className="block truncate text-[12.5px] font-semibold text-[var(--ink)]" title={book.title}>{book.title}</span>
+            <span className="block truncate text-base font-semibold text-[var(--ink)]" title={book.title}>{book.title}</span>
             <span className="block truncate">{book.author || "Unknown author"}{book.year ? ` · ${book.year}` : ""}</span>
           </span>
         </div>
-        <div className="truncate font-mono text-[10.5px]" title={book.key}>{SOURCE_LABEL[book.source] ?? book.source} · {book.key}</div>
+        <div className="truncate font-mono text-xs" title={book.key}>{SOURCE_LABEL[book.source] ?? book.source} · {book.key}</div>
         {ed("Ebook", book.ebook)}
         {ed("Audiobook", book.audiobook)}
         <div>

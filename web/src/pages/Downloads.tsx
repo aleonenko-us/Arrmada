@@ -140,7 +140,7 @@ const WANTED_VIEWS: readonly WantedView[] = ["searching", "upcoming"];
 
 function ProfileChip({ profile }: { profile: string }) {
   const na = profile === "n/a";
-  return <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: na ? "var(--panel-2)" : "var(--accent-soft)", color: na ? "var(--ink-faint)" : "var(--accent)" }}>{profile}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: na ? "var(--panel-2)" : "var(--accent-soft)", color: na ? "var(--ink-faint)" : "var(--accent)" }}>{profile}</span>;
 }
 
 // How often the Wanted tab refreshes on its own. It reads the search history, so it
@@ -161,8 +161,8 @@ function SubPills<T extends string>({ views, labels, counts, value, onChange, la
       {views.map((v) => {
         const on = v === value;
         return (
-          <button key={v} type="button" aria-pressed={on} onClick={() => onChange(v)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
-            {labels[v]} <span className="font-mono text-[10.5px] opacity-70">{counts[v]}</span>
+          <button key={v} type="button" aria-pressed={on} onClick={() => onChange(v)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+            {labels[v]} <span className="font-mono text-xs opacity-70">{counts[v]}</span>
           </button>
         );
       })}
@@ -171,7 +171,7 @@ function SubPills<T extends string>({ views, labels, counts, value, onChange, la
 }
 
 function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Search…" aria-label="Search this list" className="w-[200px] rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />;
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Search…" aria-label="Search this list" className="w-[200px] rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />;
 }
 
 // QueuePanel is Activity → Queue: the download client's transfers, live, with the queue
@@ -304,7 +304,7 @@ export function QueuePanel() {
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         {!noClient && (
           <>
-            <span className="flex items-center gap-1.5 font-mono text-[11px]" style={{ color: reconnecting || clientDown ? "var(--avoid)" : "var(--ink-faint)" }}>
+            <span className="flex items-center gap-1.5 font-mono text-xs" style={{ color: reconnecting || clientDown ? "var(--avoid)" : "var(--ink-faint)" }}>
               <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: reconnecting || clientDown ? "var(--avoid)" : "var(--accent)" }} />
               {reconnecting ? "Reconnecting…" : clientDown ? "Client offline" : "Live"}
             </span>
@@ -317,12 +317,12 @@ export function QueuePanel() {
         <div className="ml-auto flex items-center gap-2">
           {!noClient && (
             <>
-              <button onClick={() => act("all", () => api.pauseDownload("all"))} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Pause all</button>
-              <button onClick={resumeAll} title={guard ? "Torrents the disk guard paused stay paused until the volume drains" : undefined} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Resume all{guard && guard.holding > 0 ? ` (${guard.holding} held by disk guard)` : ""}</button>
+              <button onClick={() => act("all", () => api.pauseDownload("all"))} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Pause all</button>
+              <button onClick={resumeAll} title={guard ? "Torrents the disk guard paused stay paused until the volume drains" : undefined} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Resume all{guard && guard.holding > 0 ? ` (${guard.holding} held by disk guard)` : ""}</button>
             </>
           )}
           {clientId != null && (
-            <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
+            <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
           )}
         </div>
       </div>
@@ -330,13 +330,13 @@ export function QueuePanel() {
       {showSettings && clientId != null && <SettingsPanel clientId={clientId} onClose={() => setShowSettings(false)} />}
 
       {clients && clients.configured > 0 && clients.enabled === 0 && (
-        <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
           Every download client is switched off, so Arrmada can't grab anything. Enable one in{" "}
           <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
         </div>
       )}
       {clientDown && clients && (
-        <div className="mb-4 rounded-lg p-3.5 text-[12.5px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
           {clients.name || "A download client"} unreachable{clients.since ? ` since ${sinceLabel(clients.since)}` : ""} — searches are paused until it's back
           {clients.error ? ` (${clients.error})` : ""}. Check it in{" "}
           <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
@@ -349,7 +349,7 @@ export function QueuePanel() {
         <div className="ml-auto flex items-center gap-2">
           <SearchBox value={query} onChange={setQuery} />
           {view === "downloading" && (
-            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort downloads" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort downloads" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
               <option value="progress">Sort: Progress</option>
               <option value="name">Sort: Name</option>
               <option value="speed">Sort: Speed</option>
@@ -357,7 +357,7 @@ export function QueuePanel() {
             </select>
           )}
           {view === "seeding" && (
-            <select value={seedSort} onChange={(e) => setSeedSort(e.target.value as SortKey)} aria-label="Sort seeding" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+            <select value={seedSort} onChange={(e) => setSeedSort(e.target.value as SortKey)} aria-label="Sort seeding" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
               <option value="ratio">Sort: Ratio</option>
               <option value="seedtime">Sort: Seed time</option>
               <option value="name">Sort: Name</option>
@@ -370,13 +370,13 @@ export function QueuePanel() {
         {TYPE_PILLS.filter((p) => p.key !== "music" || musicEnabled).map((p) => {
           const on = typeFilter === p.key;
           return (
-            <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
-              {p.label} <span className="font-mono text-[10.5px] opacity-70">{typeCount(p.key)}</span>
+            <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+              {p.label} <span className="font-mono text-xs opacity-70">{typeCount(p.key)}</span>
             </button>
           );
         })}
         {problemsOnly && (
-          <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
             Problems only ✕
           </button>
         )}
@@ -460,7 +460,7 @@ export function WantedPanel() {
 // GuardChip marks a torrent the disk guard paused, so it doesn't read as one paused by hand.
 function GuardChip({ guard }: { guard: DiskGuardHold | null }) {
   return (
-    <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+    <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
       Paused · disk {guard ? `${Math.round(guard.used_pct)}% ` : ""}full
     </span>
   );
@@ -489,7 +489,7 @@ function NoClientCard() {
       title="No download client yet"
       body="Arrmada can't grab anything until one is set up: every download goes through qBittorrent."
       action={
-        <Link to={LINKS.downloadClients} className="inline-block rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
+        <Link to={LINKS.downloadClients} className="inline-block rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
           Add a download client →
         </Link>
       }
@@ -506,7 +506,7 @@ export function sinceLabel(iso: string, now: Date = new Date()): string {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
+  return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
 }
 
 // wantedMatches is the page's search box over a Wanted row: its title, author or artist.
@@ -514,7 +514,7 @@ const wantedMatches = (s: WantedRow, q: string) => s.title.toLowerCase().include
 
 function TypeChip({ mediaType }: { mediaType?: string }) {
   const label = mediaType === "series" ? "TV" : mediaType === "book" ? "Book" : mediaType === "music" ? "Music" : "Movie";
-  return <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{label}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{label}</span>;
 }
 
 // DownloadCard is an in-flight (incomplete) transfer: the title it's for, progress bar,
@@ -531,15 +531,15 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
         <div className="min-w-0 flex-1">
           <TransferTitle it={it} />
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" title={chip.tip} style={{ background: "var(--panel-2)", color: chip.tone }}>{chip.text}</span>}
+            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" title={chip.tip} style={{ background: "var(--panel-2)", color: chip.tone }}>{chip.text}</span>}
             <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
-            <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
-            <span className="font-mono text-[10.5px]" style={{ color: it.down_speed > 0 ? "var(--accent)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>
-            <span className="font-mono text-[10.5px] text-ink-faint">ETA {eta(it.eta_seconds)}</span>
+            <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
+            <span className="font-mono text-xs" style={{ color: it.down_speed > 0 ? "var(--accent)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>
+            <span className="font-mono text-xs text-ink-faint">ETA {eta(it.eta_seconds)}</span>
           </div>
-          {stall && <div className="mt-1 font-mono text-[10.5px]" style={{ color: "var(--avoid)" }}>{stall}</div>}
+          {stall && <div className="mt-1 font-mono text-xs" style={{ color: "var(--avoid)" }}>{stall}</div>}
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
@@ -560,7 +560,7 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
           <div className="h-full rounded-full" style={{ width: `${Math.round(it.progress * 100)}%`, background: paused ? "var(--ink-faint)" : "var(--accent)" }} />
         </div>
-        <span className="w-10 text-right font-mono text-[10.5px] text-ink-dim">{Math.round(it.progress * 100)}%</span>
+        <span className="w-10 text-right font-mono text-xs text-ink-dim">{Math.round(it.progress * 100)}%</span>
       </div>
       {removing && <RemoveDownloadDialog it={it} onClose={() => setRemoving(false)} onDone={(r) => { setRemoving(false); onRemoved(removedMessage(r)); }} />}
     </div>
@@ -587,13 +587,13 @@ function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: bo
             <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
-            <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
+            <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
           </div>
-          {it.why && <div className="mt-1 text-[11.5px] text-ink-dim" data-testid="stage-why">{it.why}</div>}
+          {it.why && <div className="mt-1 text-sm text-ink-dim" data-testid="stage-why">{it.why}</div>}
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
-          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
+          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
           secondary={[{ label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) }]}
         />
       </div>
@@ -653,14 +653,14 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {paused && it.held_by_guard ? <GuardChip guard={guard} /> : it.stage === "not_managed" ? (
               // Nothing in Arrmada grabbed or imported it: a muted chip, no seed rule.
-              <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
-            ) : <span className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
+            ) : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
             <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
-            <span className="font-mono text-[10px] text-ink-faint">{bytes(it.size_bytes)}</span>
-            <span className="font-mono text-[10.5px]" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>
-            <span className="font-mono text-[10.5px] text-ink-faint" title="Time seeded">{dur(it.seeding_time ?? 0)}</span>
-            <span className="font-mono text-[10.5px]" style={{ color: it.up_speed > 0 ? "var(--good)" : "var(--ink-faint)" }}>{it.up_speed > 0 ? `↑${bytes(it.up_speed)}/s` : "idle"}</span>
+            <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
+            <span className="font-mono text-xs" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>
+            <span className="font-mono text-xs text-ink-faint" title="Time seeded">{dur(it.seeding_time ?? 0)}</span>
+            <span className="font-mono text-xs" style={{ color: it.up_speed > 0 ? "var(--good)" : "var(--ink-faint)" }}>{it.up_speed > 0 ? `↑${bytes(it.up_speed)}/s` : "idle"}</span>
           </div>
         </div>
         <CardActions
@@ -675,7 +675,7 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
             <div className="h-full rounded-full" style={{ width: `${Math.round(goal.frac * 100)}%`, background: "var(--good)" }} />
           </div>
         ) : <div className="flex-1" />}
-        <span className="font-mono text-[10px] text-ink-faint">{goal.label}</span>
+        <span className="font-mono text-xs text-ink-faint">{goal.label}</span>
       </div>
       {removing && <RemoveDownloadDialog it={it} onClose={() => setRemoving(false)} onDone={(r) => { setRemoving(false); onRemoved(removedMessage(r)); }} />}
     </div>
@@ -729,22 +729,22 @@ function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind
       <Link to={wantedHref(item)} className="flex min-w-0 flex-1 items-center gap-3">
         <span className={`inline-block h-2 w-2 flex-none rounded-full ${chip.pulse ? "animate-pulse" : ""}`} style={{ background: chip.pulse ? chip.tone : "var(--ink-faint)" }} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium">
-            {item.title} <span className="font-mono text-[10.5px] text-ink-faint">{item.year || ""}</span>
-            {item.byline && <span className="text-[11px] text-ink-faint"> · {item.byline}</span>}
+          <div className="truncate text-base font-medium">
+            {item.title} <span className="font-mono text-xs text-ink-faint">{item.year || ""}</span>
+            {item.byline && <span className="text-xs text-ink-faint"> · {item.byline}</span>}
           </div>
-          {line && <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: lineTone }} data-testid="wanted-line">{line}</div>}
+          {line && <div className="mt-0.5 line-clamp-2 text-xs leading-snug" style={{ color: lineTone }} data-testid="wanted-line">{line}</div>}
         </div>
         <span className="hidden flex-none items-center gap-1.5 sm:flex">
           <TypeChip mediaType={item.media_type} />
-          {item.missing?.map((m) => <span key={m} className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{m}</span>)}
+          {item.missing?.map((m) => <span key={m} className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{m}</span>)}
           <ProfileChip profile={item.quality_profile} />
         </span>
       </Link>
       {item.state === "held_for_review" && !upcoming ? (
-        <Link to={LINKS.review} className="w-[120px] flex-none text-right font-mono text-[10px] uppercase underline sm:w-[150px]" style={{ color: chip.tone }}>{chip.text}</Link>
+        <Link to={LINKS.review} className="w-[120px] flex-none text-right font-mono text-2xs uppercase underline sm:w-[150px]" style={{ color: chip.tone }}>{chip.text}</Link>
       ) : (
-        <span className="w-[120px] flex-none text-right font-mono text-[10px] uppercase sm:w-[150px]" style={{ color: chip.tone }}>{chip.text}</span>
+        <span className="w-[120px] flex-none text-right font-mono text-2xs uppercase sm:w-[150px]" style={{ color: chip.tone }}>{chip.text}</span>
       )}
       {!upcoming && (
         <span className="flex w-[84px] flex-none justify-end">
@@ -756,12 +756,12 @@ function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind
 }
 
 function Stat({ label, value, tone, title }: { label: string; value: string; tone?: string; title?: string }) {
-  return <span className="font-mono text-[11.5px]" title={title}><span className="text-ink-faint">{label} </span><span style={{ color: tone ?? "var(--ink)" }}>{value}</span></span>;
+  return <span className="font-mono text-sm" title={title}><span className="text-ink-faint">{label} </span><span style={{ color: tone ?? "var(--ink)" }}>{value}</span></span>;
 }
 
 function IconBtn({ label, onClick, tone, title, disabled }: { label: string; onClick: () => void; tone?: string; title?: string; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2 py-1.5 text-[10.5px] font-semibold transition-colors" style={{ border: `1px solid ${tone ?? "var(--line)"}`, color: tone ?? "var(--ink-dim)", opacity: disabled ? 0.5 : 1 }}>
+    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors" style={{ border: `1px solid ${tone ?? "var(--line)"}`, color: tone ?? "var(--ink-dim)", opacity: disabled ? 0.5 : 1 }}>
       {label}
     </button>
   );
@@ -796,17 +796,17 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
     } catch (e) { setError((e as Error).message); }
   };
 
-  if (error) return <div className="mb-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>;
-  if (!s) return <div className="mb-4 rounded-xl p-4 text-[12px] text-ink-dim" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>Loading settings…</div>;
+  if (error) return <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>;
+  if (!s) return <div className="mb-4 rounded-xl p-4 text-sm text-ink-dim" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>Loading settings…</div>;
 
-  const num = "w-[70px] rounded-lg px-2 py-1.5 text-right text-[13px]";
+  const num = "w-[70px] rounded-lg px-2 py-1.5 text-right text-md";
   const numStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
   return (
     <div className="mb-4 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="m-0 text-[13.5px] font-bold">Speed &amp; limits</h2>
-        <IconButton label="Close" onClick={onClose} className="text-[12px] text-ink-faint">✕</IconButton>
+        <h2 className="m-0 text-md font-bold">Speed &amp; limits</h2>
+        <IconButton label="Close" onClick={onClose} className="text-sm text-ink-faint">✕</IconButton>
       </div>
       <div className="flex flex-col gap-3">
         <Row label="Download limit" hint="0 = unlimited">
@@ -817,19 +817,19 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
         </Row>
 
         <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <label className="flex items-center gap-2 text-[12.5px] font-semibold">
+          <label className="flex items-center gap-2 text-base font-semibold">
             <input type="checkbox" checked={s.schedule_enabled} onChange={(e) => patch({ schedule_enabled: e.target.checked })} style={{ accentColor: "var(--accent)" }} />
             Alternate speeds on a schedule
           </label>
-          <p className="mb-2.5 mt-0.5 text-[10.5px] text-ink-faint">During the window below, these alternate limits apply instead — e.g. throttle overnight.</p>
+          <p className="mb-2.5 mt-0.5 text-xs text-ink-faint">During the window below, these alternate limits apply instead — e.g. throttle overnight.</p>
           <div className={`flex flex-col gap-2.5 ${s.schedule_enabled ? "" : "pointer-events-none opacity-50"}`}>
             <Row label="Alt download"><input type="number" min={0} step={0.5} className={num} style={numStyle} value={toMB(s.alt_dl_limit)} onChange={(e) => patch({ alt_dl_limit: fromMB(Number(e.target.value)) })} /> <Unit>MB/s</Unit></Row>
             <Row label="Alt upload"><input type="number" min={0} step={0.5} className={num} style={numStyle} value={toMB(s.alt_up_limit)} onChange={(e) => patch({ alt_up_limit: fromMB(Number(e.target.value)) })} /> <Unit>MB/s</Unit></Row>
             <Row label="Window">
-              <input type="time" className="rounded-lg px-2 py-1.5 text-[13px]" style={numStyle} value={hhmm(s.from_hour, s.from_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ from_hour: h, from_min: m }); }} />
+              <input type="time" className="rounded-lg px-2 py-1.5 text-md" style={numStyle} value={hhmm(s.from_hour, s.from_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ from_hour: h, from_min: m }); }} />
               <span className="text-ink-faint">to</span>
-              <input type="time" aria-label="Window ends" className="rounded-lg px-2 py-1.5 text-[13px]" style={numStyle} value={hhmm(s.to_hour, s.to_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ to_hour: h, to_min: m }); }} />
-              <select aria-label="On" className="rounded-lg px-2 py-1.5 text-[12.5px]" style={numStyle} value={s.days} onChange={(e) => patch({ days: Number(e.target.value) })}>
+              <input type="time" aria-label="Window ends" className="rounded-lg px-2 py-1.5 text-md" style={numStyle} value={hhmm(s.to_hour, s.to_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ to_hour: h, to_min: m }); }} />
+              <select aria-label="On" className="rounded-lg px-2 py-1.5 text-base" style={numStyle} value={s.days} onChange={(e) => patch({ days: Number(e.target.value) })}>
                 <option value={0}>Every day</option>
                 <option value={1}>Weekdays</option>
                 <option value={2}>Weekends</option>
@@ -842,8 +842,8 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
         <Row label="Max active seeding"><input type="number" min={1} className={num} style={numStyle} value={s.max_active_uploads} onChange={(e) => patch({ max_active_uploads: Math.max(1, Number(e.target.value)) })} /></Row>
       </div>
       <div className="mt-3.5 flex items-center gap-3">
-        <button onClick={save} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Save</button>
-        {saved && <span className="text-[12px]" style={{ color: "var(--good)" }}>Saved ✓</span>}
+        <button onClick={save} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Save</button>
+        {saved && <span className="text-sm" style={{ color: "var(--good)" }}>Saved ✓</span>}
       </div>
     </div>
   );
@@ -855,8 +855,8 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   return (
     <label className="flex items-center gap-3">
       <span className="block w-[160px] flex-none">
-        <span className="block text-[12.5px]">{label}</span>
-        {hint && <span className="block text-[10px] text-ink-faint">{hint}</span>}
+        <span className="block text-base">{label}</span>
+        {hint && <span className="block text-xs text-ink-faint">{hint}</span>}
       </span>
       <span className="flex items-center gap-2">{children}</span>
     </label>
@@ -864,5 +864,5 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 }
 
 function Unit({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] text-ink-faint">{children}</span>;
+  return <span className="text-xs text-ink-faint">{children}</span>;
 }

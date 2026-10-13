@@ -10,7 +10,7 @@ export function RescanButton({ busy, onClick, title }: { busy: boolean; onClick:
       disabled={busy}
       title={title}
       aria-label={title}
-      className={`rounded-md px-1 text-[14px] leading-none opacity-50 hover:opacity-100 disabled:opacity-40 ${busy ? "animate-spin" : ""}`}
+      className={`rounded-md px-1 text-md leading-none opacity-50 hover:opacity-100 disabled:opacity-40 ${busy ? "animate-spin" : ""}`}
       style={{ color: "var(--ink-dim)" }}
     >
       ↻

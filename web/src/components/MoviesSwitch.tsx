@@ -16,7 +16,7 @@ export function MoviesSwitch({ active }: { active: "library" | "wanted" }) {
             key={it.key}
             to={it.to}
             aria-current={on ? "page" : undefined}
-            className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold"
+            className="rounded-md px-3 py-1.5 text-sm font-semibold"
             style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--ink-faint)" }}
           >
             {it.label}

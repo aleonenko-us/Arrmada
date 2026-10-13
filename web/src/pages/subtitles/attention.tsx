@@ -65,17 +65,17 @@ export function AttentionCard({ flash, onLibrary, onQueued }: { flash: (m: strin
 
   if (!board) return null;
   const sources = Object.entries(board.sources ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  const btn = "rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50";
+  const btn = "rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50";
   const accent = { border: "1px solid var(--accent-line)", color: "var(--accent)" };
   const plain = { border: "1px solid var(--line)", color: "var(--ink-dim)" };
 
   return (
     <div className={card} style={cardStyle}>
       <div className="flex items-center justify-between">
-        <div className="text-[14px] font-bold">Needs attention{board.total > 0 && <span className="ml-1.5 font-mono text-[11px] text-ink-faint">{board.total.toLocaleString()}</span>}</div>
+        <div className="text-md font-bold">Needs attention{board.total > 0 && <span className="ml-1.5 font-mono text-xs text-ink-faint">{board.total.toLocaleString()}</span>}</div>
       </div>
       {board.buckets.length === 0 ? (
-        <div className="mt-1.5 text-[12px] text-ink-dim">Nothing is stuck: every missing subtitle is queued or will be found by the next sweep.</div>
+        <div className="mt-1.5 text-sm text-ink-dim">Nothing is stuck: every missing subtitle is queued or will be found by the next sweep.</div>
       ) : (
         <div className="mt-2 flex flex-col gap-2">
           {board.buckets.map((b) => (
@@ -90,7 +90,7 @@ export function AttentionCard({ flash, onLibrary, onQueued }: { flash: (m: strin
         </div>
       )}
       {(sources.length > 0 || board.untracked > 0) && (
-        <div className="mt-3 border-t pt-2.5 text-[11.5px] text-ink-faint" style={{ borderColor: "var(--line-soft)" }}>
+        <div className="mt-3 border-t pt-2.5 text-sm text-ink-faint" style={{ borderColor: "var(--line-soft)" }}>
           Subtitles by source: {sources.map(([s, n]) => `${SOURCE_NAME[s] ?? s} ${n.toLocaleString()}`).join(" · ")}
           {board.untracked > 0 && <>{sources.length > 0 ? " · " : ""}movies with subtitles Arrmada didn't make {board.untracked.toLocaleString()}</>}
         </div>
@@ -108,21 +108,21 @@ function Bucket({ b, children }: { b: AttentionBucket; children: ReactNode }) {
   return (
     <div className="rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[12.5px] font-semibold" style={{ color: tone }}>{headline}</span>
+        <span className="text-base font-semibold" style={{ color: tone }}>{headline}</span>
         <span className="flex flex-wrap items-center gap-1.5">{children}</span>
       </div>
-      <ul className="mt-1.5 flex flex-col gap-0.5 text-[11.5px] text-ink-dim">
+      <ul className="mt-1.5 flex flex-col gap-0.5 text-sm text-ink-dim">
         {shown.map((it) => (
           <li key={it.media_key + it.lang} className="flex min-w-0 items-baseline gap-1.5">
             <Link to={it.kind === "movie" ? `/movies/${it.movie_id}` : `/series/${it.series_id}`} className="truncate font-semibold hover:underline" style={{ color: "var(--ink)" }}>{it.title}</Link>
-            <span className="flex-none font-mono text-[9.5px] font-bold uppercase text-ink-faint">{it.lang}</span>
+            <span className="flex-none font-mono text-2xs font-bold uppercase text-ink-faint">{it.lang}</span>
             {it.detail && <span className="truncate text-ink-faint" title={it.detail}>{it.detail}</span>}
             {!!it.next_retry_at && <span className="flex-none text-ink-faint">· next try {when(it.next_retry_at)}</span>}
           </li>
         ))}
       </ul>
       {b.items.length > 3 && (
-        <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1 text-[11px] text-ink-faint underline hover:text-[var(--ink)]">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1 text-xs text-ink-faint underline hover:text-[var(--ink)]">
           {open ? "Show fewer" : `Show ${b.items.length - 3} more${b.count > b.items.length ? ` (of ${b.count.toLocaleString()})` : ""}`}
         </button>
       )}

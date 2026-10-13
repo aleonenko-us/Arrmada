@@ -14,8 +14,8 @@ export const DECLINE_PICKS = ["Already available elsewhere", "Not something we�
 export function DeclineReasonField({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="flex flex-col gap-1 text-[12px]">
-        <span className="font-mono text-[9.5px] uppercase text-ink-faint">Reason (they’ll see it)</span>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-mono text-2xs uppercase text-ink-faint">Reason (they’ll see it)</span>
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value.slice(0, DECLINE_REASON_MAX))}
@@ -23,7 +23,7 @@ export function DeclineReasonField({ value, onChange, disabled }: { value: strin
           rows={2}
           disabled={disabled}
           placeholder="Optional"
-          className="rounded-lg px-3 py-2 text-[12.5px]"
+          className="rounded-lg px-3 py-2 text-base"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />
       </label>
@@ -35,7 +35,7 @@ export function DeclineReasonField({ value, onChange, disabled }: { value: strin
             onClick={() => onChange(p)}
             disabled={disabled}
             aria-pressed={value === p}
-            className="min-h-[32px] rounded-full px-3 text-[11.5px]"
+            className="min-h-[32px] rounded-full px-3 text-sm"
             style={{ background: value === p ? "var(--accent-soft)" : "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}
           >
             {p}
@@ -61,7 +61,7 @@ export function decisionLine(rq: MediaRequest, now = Date.now()): string {
 export function ReRequestFlag({ rq }: { rq: MediaRequest }) {
   if (!rq.rerequest || rq.status !== "pending") return null;
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-ink-dim">
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-ink-dim">
       <StatusChip tone="avoid">Re-request</StatusChip>
       {rq.decline_reason && <span className="min-w-0">Declined before: {rq.decline_reason}</span>}
     </span>

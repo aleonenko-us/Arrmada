@@ -58,12 +58,12 @@ export function NeedsYouPanel() {
       <UnmanagedSection />
       {elsewhere.length > 0 && (
         <section aria-label="Also waiting" className="mt-2 rounded-xl px-4 py-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Also waiting</div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">Also waiting</div>
           <ul className="m-0 list-none p-0">
             {elsewhere.map((g) => {
               const to = fixLink(g);
               return (
-                <li key={g.kind} className="flex items-center gap-2 py-0.5 text-[12.5px]">
+                <li key={g.kind} className="flex items-center gap-2 py-0.5 text-base">
                   <span className="min-w-0 flex-1">{g.title}</span>
                   {to && <Link to={to} className="flex-none font-semibold" style={{ color: "var(--accent)" }}>Open →</Link>}
                 </li>
@@ -79,17 +79,17 @@ export function NeedsYouPanel() {
 function Section({ id, title, count, hint, children }: { id: string; title: string; count: number; hint: string; children: ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="mb-7 scroll-mt-4">
-      <h2 id={`${id}-title`} className="m-0 flex items-baseline gap-2 text-[14px] font-bold">
-        {title} <span className="font-mono text-[11px] font-normal text-ink-faint">{count}</span>
+      <h2 id={`${id}-title`} className="m-0 flex items-baseline gap-2 text-md font-bold">
+        {title} <span className="font-mono text-xs font-normal text-ink-faint">{count}</span>
       </h2>
-      <p className="mb-3 mt-0.5 max-w-[72ch] text-[11.5px] text-ink-faint">{hint}</p>
+      <p className="mb-3 mt-0.5 max-w-[72ch] text-sm text-ink-faint">{hint}</p>
       <div className="flex flex-col gap-2">{children}</div>
     </section>
   );
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl p-5 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
+  return <div className="rounded-xl p-5 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{children}</div>;
 }
 
 // ProblemCard is one stuck download: what's wrong, since when, and its actions.
@@ -98,9 +98,9 @@ function ProblemCard({ it, primary, secondary, extras }: { it: AttentionItem; pr
     <div className="rounded-xl p-3.5" data-testid="needs-you-item" style={{ background: "var(--panel)", border: `1px solid ${it.level === "error" ? "var(--reject)" : "var(--line)"}` }}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="break-words text-[12.5px] font-semibold [overflow-wrap:anywhere]">{it.title}</div>
-          {it.detail && <div className="mt-0.5 text-[11.5px] text-ink-dim [overflow-wrap:anywhere]">{it.detail}</div>}
-          {it.since > 0 && <div className="mt-0.5 font-mono text-[10px] text-ink-faint" title={new Date(it.since).toLocaleString()}>since {formatAgo(it.since)}</div>}
+          <div className="break-words text-base font-semibold [overflow-wrap:anywhere]">{it.title}</div>
+          {it.detail && <div className="mt-0.5 text-sm text-ink-dim [overflow-wrap:anywhere]">{it.detail}</div>}
+          {it.since > 0 && <div className="mt-0.5 font-mono text-xs text-ink-faint" title={new Date(it.since).toLocaleString()}>since {formatAgo(it.since)}</div>}
         </div>
         <CardActions name={it.title} primary={primary} secondary={secondary} extras={(extras ?? []).map((a) => ({ label: a.label, onSelect: a.onSelect, disabled: a.disabled, tone: a.danger ? "danger" : "default" }))} />
       </div>
@@ -130,7 +130,7 @@ function useAct() {
 
 function PrimaryBtn({ label, onClick, disabled, title }: { label: string; onClick: () => void; disabled?: boolean; title?: string }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)", opacity: disabled ? 0.5 : 1 }}>
+    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)", opacity: disabled ? 0.5 : 1 }}>
       {label}
     </button>
   );
@@ -232,13 +232,13 @@ function UnmanagedSection() {
   const count = list?.length ?? 0;
   return (
     <section id="unmanaged" aria-labelledby="unmanaged-title" className="mb-7 scroll-mt-4">
-      <h2 id="unmanaged-title" className="m-0 flex items-center gap-2 text-[14px] font-bold">
+      <h2 id="unmanaged-title" className="m-0 flex items-center gap-2 text-md font-bold">
         <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="unmanaged-list" className="flex items-baseline gap-2 text-left">
-          <span aria-hidden className="inline-block w-3 text-[11px] text-ink-faint">{open ? "▾" : "▸"}</span>
-          Not managed by Arrmada <span className="font-mono text-[11px] font-normal text-ink-faint">{list ? count : "…"}</span>
+          <span aria-hidden className="inline-block w-3 text-xs text-ink-faint">{open ? "▾" : "▸"}</span>
+          Not managed by Arrmada <span className="font-mono text-xs font-normal text-ink-faint">{list ? count : "…"}</span>
         </button>
       </h2>
-      <p className="mb-3 mt-0.5 max-w-[72ch] text-[11.5px] text-ink-faint">
+      <p className="mb-3 mt-0.5 max-w-[72ch] text-sm text-ink-faint">
         Finished downloads Arrmada didn't grab, outside its categories. Import one into a title in your library, or ignore it.
         {ignored > 0 ? ` ${ignored} ignored.` : ""}
       </p>
@@ -281,8 +281,8 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
     <div className="rounded-xl p-3.5" data-testid="unmanaged-item" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-[11.5px] [overflow-wrap:anywhere]">{u.name}</div>
-          <div className="mt-0.5 font-mono text-[10px] text-ink-faint">
+          <div className="font-mono text-sm [overflow-wrap:anywhere]">{u.name}</div>
+          <div className="mt-0.5 font-mono text-xs text-ink-faint">
             {formatBytes(u.size_bytes)}{u.category ? ` · category “${u.category}”` : " · no category"}
           </div>
         </div>
@@ -303,7 +303,7 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
           header={
             <div role="group" aria-label="What it is" className="mb-3 flex flex-wrap gap-1.5">
               {KINDS.map((k) => (
-                <button key={k.key} type="button" aria-pressed={k.key === kind} onClick={() => setKind(k.key)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ border: `1px solid ${k.key === kind ? "var(--accent)" : "var(--line)"}`, background: k.key === kind ? "var(--accent-soft)" : "var(--panel)", color: k.key === kind ? "var(--accent)" : "var(--ink-faint)" }}>
+                <button key={k.key} type="button" aria-pressed={k.key === kind} onClick={() => setKind(k.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${k.key === kind ? "var(--accent)" : "var(--line)"}`, background: k.key === kind ? "var(--accent-soft)" : "var(--panel)", color: k.key === kind ? "var(--accent)" : "var(--ink-faint)" }}>
                   {k.label}
                 </button>
               ))}

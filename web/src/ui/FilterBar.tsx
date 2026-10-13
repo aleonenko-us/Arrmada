@@ -28,10 +28,10 @@ export function FilterBar({ filters, active, onFilter, query, onQuery, noun }: F
             onClick={() => onFilter(f.key)}
             aria-pressed={on}
             title={f.title}
-            className="whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-semibold"
+            className="whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold"
             style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}
           >
-            {f.label} <span className="font-mono text-[10.5px] opacity-70">{f.count}</span>
+            {f.label} <span className="font-mono text-xs opacity-70">{f.count}</span>
           </button>
         );
       })}
@@ -41,7 +41,7 @@ export function FilterBar({ filters, active, onFilter, query, onQuery, noun }: F
         onChange={(e) => onQuery(e.target.value)}
         placeholder={`Search ${noun}…`}
         aria-label={`Search ${noun}`}
-        className="w-full rounded-lg px-3 py-1.5 text-[12px] sm:ml-auto sm:w-[240px]"
+        className="w-full rounded-lg px-3 py-1.5 text-sm sm:ml-auto sm:w-[240px]"
         style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
       />
     </div>

@@ -47,7 +47,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
   if (!issue) {
     return (
       <Sheet onClose={onClose} closeOnBack={false} ariaLabel="Reported problem" size="sm">
-        <div className="p-6 text-[12.5px] text-ink-dim">{loadError ?? "Loading…"}</div>
+        <div className="p-6 text-base text-ink-dim">{loadError ?? "Loading…"}</div>
       </Sheet>
     );
   }
@@ -111,13 +111,13 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
           {issue.poster_url && <img src={posterThumb(issue.poster_url)} alt="" className="h-full w-full object-cover" />}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 text-[18px] font-bold leading-tight">{issue.title}</h2>
-          <div className="mt-0.5 font-mono text-[11px] text-ink-faint">{ep || issue.year || ""}</div>
+          <h2 className="m-0 text-xl font-bold leading-tight">{issue.title}</h2>
+          <div className="mt-0.5 font-mono text-xs text-ink-faint">{ep || issue.year || ""}</div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <StatusChip tone={ISSUE_TONE[issue.status]}>{issueStatusLabel(issue.status)}</StatusChip>
-            <span className="text-[12.5px] font-semibold">{issueCategoryLabel(issue.category)}</span>
+            <span className="text-base font-semibold">{issueCategoryLabel(issue.category)}</span>
           </div>
-          <div className="mt-2 text-[12px] text-ink-dim">
+          <div className="mt-2 text-sm text-ink-dim">
             Reported {formatAgo(issue.created_at * 1000, Date.now())}
             {issue.resolved_by_name && !live ? ` · closed by ${issue.resolved_by_name}` : ""}
           </div>
@@ -128,33 +128,33 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
         {/* Each reporter and what they said. Notes are plain text. */}
         <div className="flex flex-col gap-2">
           {(issue.reporters ?? []).map((r) => (
-            <div key={r.user_id} className="rounded-lg p-3 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-              <div className="font-mono text-[9.5px] uppercase text-ink-faint">{r.name || "Someone"} · {formatAgo(r.at * 1000, Date.now())}</div>
+            <div key={r.user_id} className="rounded-lg p-3 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+              <div className="font-mono text-2xs uppercase text-ink-faint">{r.name || "Someone"} · {formatAgo(r.at * 1000, Date.now())}</div>
               {r.note ? <div className="mt-1 whitespace-pre-wrap text-ink-dim">{r.note}</div> : <div className="mt-1 text-ink-faint">No note</div>}
             </div>
           ))}
         </div>
 
         {issue.status === "fixing" && (
-          <div className="rounded-lg p-3 text-[12.5px]" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)" }}>
+          <div className="rounded-lg p-3 text-base" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)" }}>
             <div className="font-semibold" style={{ color: "var(--accent)" }}>Fixing{issue.action_at ? ` · started ${formatAgo(issue.action_at * 1000, Date.now())}` : ""}</div>
             <div className="mt-0.5 text-ink-dim">{issue.action_note || "Waiting for the fix to land."} It resolves itself when it does, and they’re told.</div>
-            {issue.action_file && <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{issue.action === "replace" ? "Replacing" : "File:"} {issue.action_file}</div>}
+            {issue.action_file && <div className="mt-1 break-all font-mono text-xs text-ink-faint">{issue.action === "replace" ? "Replacing" : "File:"} {issue.action_file}</div>}
           </div>
         )}
-        {issue.status === "open" && issue.action_note && <div className="text-[12px]" style={{ color: "var(--avoid-text)" }}>{issue.action_note}</div>}
+        {issue.status === "open" && issue.action_note && <div className="text-sm" style={{ color: "var(--avoid-text)" }}>{issue.action_note}</div>}
 
         {live && !closing && (
           <div className="flex flex-col gap-2">
-            <div className="font-mono text-[9.5px] uppercase text-ink-faint">{issue.status === "fixing" ? "Try another fix" : "Fix it"}</div>
+            <div className="font-mono text-2xs uppercase text-ink-faint">{issue.status === "fixing" ? "Try another fix" : "Fix it"}</div>
             <div className="flex flex-wrap gap-2">{fixes}</div>
           </div>
         )}
-        {issue.resolution && !live && <div className="text-[12px] text-ink-dim">Told them: {issue.resolution}</div>}
+        {issue.resolution && !live && <div className="text-sm text-ink-dim">Told them: {issue.resolution}</div>}
 
         {live && closing && (
           <div className="flex flex-col gap-2 rounded-lg p-3" style={{ border: "1px solid var(--line)" }}>
-            <div className="text-[12.5px] font-semibold">
+            <div className="text-base font-semibold">
               {closing === "resolve" ? "Mark it fixed? Everyone who reported it is told." : "Close it without a fix? Everyone who reported it is told."}
             </div>
             <textarea
@@ -164,7 +164,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
               rows={2}
               placeholder={closing === "resolve" ? "What you did (optional) — they’ll see it" : "Why (optional) — they’ll see it"}
               aria-label="Note for the people who reported it"
-              className="rounded-lg px-3 py-2 text-[12.5px]"
+              className="rounded-lg px-3 py-2 text-base"
               style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             />
             <div className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
           </div>
         )}
 
-        {error && <div className="text-[12px] font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           {live && !closing && (
@@ -185,7 +185,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
               <Button className={big} onClick={() => setClosing("dismiss")} disabled={!!busy}>Close without a fix…</Button>
             </>
           )}
-          {lib && <Link to={lib} className={`${big} inline-flex items-center rounded-lg px-4 text-[12.5px] font-semibold`} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Open title</Link>}
+          {lib && <Link to={lib} className={`${big} inline-flex items-center rounded-lg px-4 text-base font-semibold`} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Open title</Link>}
           <Button variant="ghost" className={`${big} ml-auto`} onClick={onClose} disabled={!!busy}>Close</Button>
         </div>
       </div>

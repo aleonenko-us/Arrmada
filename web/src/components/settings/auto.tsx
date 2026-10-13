@@ -19,7 +19,7 @@ type Saveish = Pick<AutoSave<unknown>, "status" | "error" | "canRetry" | "retry"
 
 // SavedTick is the inline save state for one control (or a group that saves together).
 export function SavedTick({ save, className = "" }: { save: Saveish; className?: string }) {
-  const base = `text-[11px] ${className}`;
+  const base = `text-xs ${className}`;
   return (
     <span aria-live="polite" className="min-h-[1em]">
       {save.status === "saving" && <span className={`${base} text-ink-faint`}>Saving…</span>}
@@ -59,7 +59,7 @@ export function AutoSelect<T extends string>({ label, save, options, className =
   return (
     <Field label={label} controlId={id}>
       <span className="flex flex-wrap items-center gap-2">
-        <select id={id} aria-describedby={children ? `${id}-help` : undefined} value={save.value} onChange={(e) => void save.commit(e.target.value as T)} className={`rounded-lg px-3 py-2 text-[12.5px] ${className}`} style={inputStyle}>
+        <select id={id} aria-describedby={children ? `${id}-help` : undefined} value={save.value} onChange={(e) => void save.commit(e.target.value as T)} className={`rounded-lg px-3 py-2 text-base ${className}`} style={inputStyle}>
           {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <SavedTick save={save} />

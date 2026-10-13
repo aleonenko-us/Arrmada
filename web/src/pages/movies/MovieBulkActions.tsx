@@ -62,7 +62,7 @@ export function MovieBulkActions({ sel, profiles, onDone }: {
     }
   };
 
-  const selCls = "rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium disabled:opacity-50";
+  const selCls = "rounded-lg px-2.5 py-1.5 text-sm font-medium disabled:opacity-50";
   const selStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
   return (
@@ -145,12 +145,12 @@ function ExceedsPrompt({ items, onClose }: { items: Exceeds; onClose: () => void
         </>
       }
     >
-      <p className="m-0 mb-3 text-[12px] text-ink-dim">These films' files are better than, or different from, what the new profile asks for. They were left alone.</p>
+      <p className="m-0 mb-3 text-sm text-ink-dim">These films' files are better than, or different from, what the new profile asks for. They were left alone.</p>
       <div className="thin-scroll max-h-[40vh] overflow-y-auto">
         {items.map((it) => (
           <div key={it.id} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
-            <div className="text-[12px] font-semibold">{it.title} {it.size_bytes ? <span className="font-mono text-[10.5px] font-normal text-ink-faint">{fmtBytes(it.size_bytes)}</span> : null}</div>
-            {it.reason && <div className="text-[11px] text-ink-dim">{it.reason}</div>}
+            <div className="text-sm font-semibold">{it.title} {it.size_bytes ? <span className="font-mono text-xs font-normal text-ink-faint">{fmtBytes(it.size_bytes)}</span> : null}</div>
+            {it.reason && <div className="text-xs text-ink-dim">{it.reason}</div>}
           </div>
         ))}
       </div>

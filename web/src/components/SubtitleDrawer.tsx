@@ -28,7 +28,7 @@ export interface SubtitleDrawerProps {
   onChanged?: () => void;
 }
 
-const lbl = "font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint";
+const lbl = "font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint";
 const RUNG_LABEL: Record<string, string> = { extract: "Embedded", opensubtitles: "OpenSubtitles", ai: "AI", upgrade: "Upgrade", repair: "Repair" };
 const NUDGES = [-1000, -500, 500, 1000];
 const HEALTH_COLOR: Record<string, string> = { ok: "var(--good)", uncertain: "var(--accent)", bad: "var(--avoid)", unknown: "var(--ink-dim)", unchecked: "var(--ink-faint)" };
@@ -139,19 +139,19 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
       <div className="sticky top-0 z-[1] flex items-start gap-3 px-4 pb-3 pt-4" style={{ background: "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
         <div className="min-w-0 flex-1">
           <div className={lbl}>Subtitles</div>
-          <h2 className="m-0 mt-0.5 truncate text-[15px] font-bold" title={heading}>{heading}</h2>
-          {file && <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-faint" title={view?.video_path}>{file}</div>}
+          <h2 className="m-0 mt-0.5 truncate text-lg font-bold" title={heading}>{heading}</h2>
+          {file && <div className="mt-0.5 truncate font-mono text-xs text-ink-faint" title={view?.video_path}>{file}</div>}
         </div>
-        <IconButton label="Close" onClick={onClose} className="h-8 w-8 flex-none rounded-lg text-[16px] text-ink-dim hover:bg-[var(--panel-2)]">✕</IconButton>
+        <IconButton label="Close" onClick={onClose} className="h-8 w-8 flex-none rounded-lg text-lg text-ink-dim hover:bg-[var(--panel-2)]">✕</IconButton>
       </div>
 
       <div className="flex flex-col gap-5 px-4 py-4">
-        {error && !view && <div className="rounded-lg p-3 text-[12.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
-        {!view && !error && <div className="py-10 text-center text-[12.5px] text-ink-dim">Reading the folder…</div>}
+        {error && !view && <div className="rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {!view && !error && <div className="py-10 text-center text-base text-ink-dim">Reading the folder…</div>}
         {view && (
           <>
             {view.jobs.length > 0 && (
-              <div className="rounded-lg px-3 py-2 text-[12px]" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
+              <div className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
                 {view.jobs.map((j) => (
                   <div key={j.id}>{j.state === "running" ? `Working: ${j.stage || "starting"}${j.progress ? ` · ${j.progress}%` : ""}` : `Queued${j.lane === "gpu" ? " for AI" : ""}${j.langs?.length ? ` (${j.langs.join(", ")})` : ""}`}</div>
                 ))}
@@ -160,7 +160,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
 
             <Section label="Languages you keep">
               {view.profile && (
-                <p className="m-0 mb-2 text-[11px] text-ink-faint">
+                <p className="m-0 mb-2 text-xs text-ink-faint">
                   {view.profile.override ? <>This title uses the <b>{view.profile.name}</b> language profile (pinned in the Subtitles Library).</> : <>Language profile: <b>{view.profile.name}</b>.</>}{" "}
                   <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Edit profiles</Link>
                 </p>
@@ -188,7 +188,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
 
             <Section label={`Subtitle files · ${view.sidecars.length}`}>
               {view.sidecars.length === 0 ? (
-                <p className="m-0 text-[12px] text-ink-dim">No subtitle files beside this video yet.</p>
+                <p className="m-0 text-sm text-ink-dim">No subtitle files beside this video yet.</p>
               ) : (
                 <div className="flex flex-col gap-2.5">
                   {view.sidecars.map((s) => <SidecarCard key={s.name} media={media} s={s} kept={view.kept} langLabel={name(s.lang)} onChanged={changed} toast={toast} />)}
@@ -206,12 +206,12 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
 
             <Section label={`Embedded tracks · ${view.embedded.length}`} hint="Inside the video. A text track can be copied out as the subtitle file; image tracks need OCR.">
               {view.embedded.length === 0 ? (
-                <p className="m-0 text-[12px] text-ink-dim">None.</p>
+                <p className="m-0 text-sm text-ink-dim">None.</p>
               ) : (
                 <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                   {view.embedded.map((t) => (
-                    <li key={t.index} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-                      <span className="font-mono text-[10.5px] text-ink-faint">#{t.index}</span>
+                    <li key={t.index} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                      <span className="font-mono text-xs text-ink-faint">#{t.index}</span>
                       <span className="font-semibold">{t.lang && t.lang !== "und" ? name(t.lang) : "No language"}</span>
                       {t.title && <span className="truncate text-ink-dim">“{t.title}”</span>}
                       <Tag>{t.text ? t.codec : `${t.codec} · image`}</Tag>
@@ -229,9 +229,9 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
 
             {view.audio.length > 0 && (
               <Section label={`Audio · ${view.audio.length}`} hint={view.audio.length > 1 ? "Generate with AI listens to the track Arrmada picks for the language, unless you choose one." : undefined}>
-                <div className="flex flex-wrap gap-1.5 text-[12px] text-ink-dim">
+                <div className="flex flex-wrap gap-1.5 text-sm text-ink-dim">
                   {view.audio.length > 1 && (
-                    <button type="button" onClick={() => setAiStream(null)} aria-pressed={aiStream == null} className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                    <button type="button" onClick={() => setAiStream(null)} aria-pressed={aiStream == null} className="rounded px-1.5 py-0.5 font-mono text-xs"
                       style={{ background: aiStream == null ? "var(--accent-soft)" : "var(--panel-2)", color: aiStream == null ? "var(--accent-text)" : "var(--ink-dim)" }}>
                       AI picks
                     </button>
@@ -242,7 +242,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
                     const on = aiStream === a.index;
                     return (
                       <button key={a.index} type="button" onClick={() => setAiStream(a.index)} aria-pressed={on} title="Generate with AI listens to this track"
-                        className="rounded px-1.5 py-0.5 font-mono text-[10px]" style={{ background: on ? "var(--accent-soft)" : "var(--panel-2)", color: on ? "var(--accent-text)" : "var(--ink-dim)" }}>
+                        className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: on ? "var(--accent-soft)" : "var(--panel-2)", color: on ? "var(--accent-text)" : "var(--ink-dim)" }}>
                         {label}
                       </button>
                     );
@@ -255,11 +255,11 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
               <Section label="Last attempts">
                 <ul className="m-0 flex list-none flex-col gap-1 p-0">
                   {view.attempts.map((a) => (
-                    <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 text-[11.5px]">
-                      <span className="font-mono text-[10.5px] font-bold uppercase">{a.lang}{a.variant ? `.${a.variant}` : ""}</span>
+                    <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                      <span className="font-mono text-2xs font-bold uppercase">{a.lang}{a.variant ? `.${a.variant}` : ""}</span>
                       <span className="text-ink-faint">{RUNG_LABEL[a.rung] ?? a.rung}</span>
                       <span style={{ color: a.outcome === "ok" ? "var(--good)" : "var(--ink-dim)" }}>{a.detail || REASON_LABEL[a.outcome] || a.outcome}</span>
-                      <span className="ml-auto font-mono text-[10px] text-ink-faint">{formatAgo(a.at * 1000)}</span>
+                      <span className="ml-auto font-mono text-xs text-ink-faint">{formatAgo(a.at * 1000)}</span>
                     </li>
                   ))}
                 </ul>
@@ -276,14 +276,14 @@ function Section({ label, hint, children }: { label: string; hint?: string; chil
   return (
     <section>
       <div className={lbl}>{label}</div>
-      {hint && <p className="m-0 mt-0.5 text-[11px] text-ink-faint">{hint}</p>}
+      {hint && <p className="m-0 mt-0.5 text-xs text-ink-faint">{hint}</p>}
       <div className="mt-2">{children}</div>
     </section>
   );
 }
 
 export function Tag({ children }: { children: ReactNode }) {
-  return <span className="rounded px-1.5 py-0.5 font-mono text-[10px]" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{children}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{children}</span>;
 }
 
 // SidecarCard is one subtitle file: language and source, Health (with a sync check),
@@ -348,40 +348,40 @@ function SidecarCard({ media, s, kept, langLabel, onChanged, toast }: {
   return (
     <div className="rounded-lg p-3" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[12.5px] font-semibold">{langLabel}</span>
+        <span className="text-base font-semibold">{langLabel}</span>
         {s.variant === "sdh" && <Tag>SDH</Tag>}
         {s.variant === "forced" && <Tag>forced</Tag>}
-        <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: s.owned ? "var(--accent-soft)" : "var(--panel)", color: s.owned ? "var(--accent-text)" : "var(--ink-dim)", border: "1px solid var(--line-soft)" }}>
+        <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ background: s.owned ? "var(--accent-soft)" : "var(--panel)", color: s.owned ? "var(--accent-text)" : "var(--ink-dim)", border: "1px solid var(--line-soft)" }}>
           {SOURCE_LABEL[s.source] ?? s.source}
         </span>
-        <span className="rounded px-1.5 py-0.5 font-mono text-[10px]" style={{ color: HEALTH_COLOR[h.state] ?? "var(--ink-faint)", border: "1px solid var(--line-soft)" }} title={`How well its timing fits the speech (0-100): ${h.note}`}>
+        <span className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ color: HEALTH_COLOR[h.state] ?? "var(--ink-faint)", border: "1px solid var(--line-soft)" }} title={`How well its timing fits the speech (0-100): ${h.note}`}>
           {healthLabel}
         </span>
         {s.locked && <Tag>chosen · kept</Tag>}
-        <span className="ml-auto font-mono text-[10px] text-ink-faint">{formatBytes(s.size)}</span>
+        <span className="ml-auto font-mono text-xs text-ink-faint">{formatBytes(s.size)}</span>
       </div>
-      <div className="mt-1 break-all font-mono text-[10.5px] text-ink-faint">{s.name}</div>
-      {provenance.length > 0 && <div className="mt-0.5 text-[11px] text-ink-dim">{provenance.join(" · ")}</div>}
-      {h.state !== "unchecked" && <div className="mt-0.5 text-[11px] text-ink-faint">{h.note}</div>}
+      <div className="mt-1 break-all font-mono text-xs text-ink-faint">{s.name}</div>
+      {provenance.length > 0 && <div className="mt-0.5 text-xs text-ink-dim">{provenance.join(" · ")}</div>}
+      {h.state !== "unchecked" && <div className="mt-0.5 text-xs text-ink-faint">{h.note}</div>}
 
       {s.first_cues.length > 0 ? (
         <ol className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
           {s.first_cues.map((c, i) => (
-            <li key={i} className="flex gap-2 text-[12px] leading-snug">
-              <span className="w-[86px] flex-none font-mono text-[10.5px]" style={{ color: pending ? "var(--accent)" : "var(--ink-faint)" }}>{fmtCue(Math.max(0, c.start_ms + pending))}</span>
+            <li key={i} className="flex gap-2 text-sm leading-snug">
+              <span className="w-[86px] flex-none font-mono text-xs" style={{ color: pending ? "var(--accent)" : "var(--ink-faint)" }}>{fmtCue(Math.max(0, c.start_ms + pending))}</span>
               <span className="min-w-0 flex-1">{c.text}</span>
             </li>
           ))}
-          {s.cue_count > s.first_cues.length && <li className="font-mono text-[10px] text-ink-faint">… {s.cue_count} lines in all</li>}
+          {s.cue_count > s.first_cues.length && <li className="font-mono text-xs text-ink-faint">… {s.cue_count} lines in all</li>}
         </ol>
       ) : (
-        <p className="m-0 mt-2 text-[11.5px] text-ink-faint">{s.ext === ".srt" ? "No lines could be read." : "No preview for this format."}</p>
+        <p className="m-0 mt-2 text-sm text-ink-faint">{s.ext === ".srt" ? "No lines could be read." : "No preview for this format."}</p>
       )}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {s.shiftable && (
           <>
-            <span className="mr-0.5 text-[11px] text-ink-faint">Timing</span>
+            <span className="mr-0.5 text-xs text-ink-faint">Timing</span>
             {NUDGES.map((n) => (
               <Button key={n} size="sm" onClick={() => setPending((p) => p + n)} disabled={busy !== null} aria-label={`Move ${fmtShift(n)}`}>{fmtShift(n)}</Button>
             ))}
@@ -423,7 +423,7 @@ function OrphanRow({ media, name, lang, onChanged, toast }: { media: SubMediaRef
     await run(async () => { await subtitleFileApi.remove(media, name); return `${name} is in the recycle bin`; });
   };
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px]">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
       <span className="min-w-0 flex-1 truncate font-mono text-ink-dim" title={name}>{name}</span>
       {lang && <Tag>{lang}</Tag>}
       {media.kind === "movie" && <Button size="sm" onClick={adopt} disabled={busy} title="Rename it to pair with this file, so Plex shows it" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)", background: "transparent" }}>Adopt</Button>}

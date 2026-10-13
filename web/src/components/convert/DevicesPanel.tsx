@@ -58,24 +58,24 @@ export function DevicesPanel({ data }: { data: ConvertDevices | null }) {
   const rows = data.devices;
   return (
     <div className="flex flex-col gap-1.5" aria-label="Your devices" role="region">
-      <div className="text-[12px] font-semibold">Your devices</div>
-      <div className="text-[10.5px] text-ink-faint">
+      <div className="text-sm font-semibold">Your devices</div>
+      <div className="text-xs text-ink-faint">
         From the plays Plex reported over the last 90 days: ✓ played as it was, ✗ Plex transcoded it, ? not seen yet.
         10-bit is known only for plays recorded since this update.
       </div>
       {!data.monitoring && (
-        <div className="text-[11px]" style={{ color: "var(--avoid)" }}>
+        <div className="text-xs" style={{ color: "var(--avoid)" }}>
           Plex watch monitoring is off, so no new plays are recorded{rows.length ? " — this is what it saw while it was on" : ""}.{" "}
           <Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Turn it on</Link>
         </div>
       )}
       {rows.length === 0 ? (
-        <div className="text-[11.5px] text-ink-dim">No plays recorded yet — the table fills in as people watch.</div>
+        <div className="text-sm text-ink-dim">No plays recorded yet — the table fills in as people watch.</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-[11.5px]">
+          <table className="w-full min-w-[420px] text-sm">
             <thead>
-              <tr className="text-left text-[10.5px] uppercase tracking-wide text-ink-faint">
+              <tr className="text-left text-xs uppercase tracking-wide text-ink-faint">
                 <th className="py-1 pr-2 font-semibold">Device</th>
                 <th className="px-2 py-1 font-semibold">Last seen</th>
                 <th className="px-2 py-1 text-center font-semibold">HEVC</th>

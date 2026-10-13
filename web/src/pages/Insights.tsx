@@ -42,7 +42,7 @@ function MonitoringBadge({ c }: { c: PlexConfig }) {
   const title = c.status === "unreachable" && c.last_error ? c.last_error
     : c.status === "recording" && c.last_poll_at ? `Last answer from Plex ${fmtDate(c.last_poll_at)}` : undefined;
   return (
-    <span title={title} className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold" style={{ border: `1px solid ${b.color}`, background: b.soft }}>
+    <span title={title} className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold" style={{ border: `1px solid ${b.color}`, background: b.soft }}>
       <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
       {b.label}
     </span>
@@ -53,9 +53,9 @@ function MonitoringBadge({ c }: { c: PlexConfig }) {
 // is switched off, so an empty or stale History isn't mistaken for nobody watching.
 function MonitoringOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void }) {
   return (
-    <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-[12px]" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--ink)" }}>
+    <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--ink)" }}>
       <span>Monitoring is off — nothing new is recorded.</span>
-      <button onClick={onTurnOn} disabled={busy} className="rounded-lg px-3 py-1 text-[12px] font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
+      <button onClick={onTurnOn} disabled={busy} className="rounded-lg px-3 py-1 text-sm font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
         {busy ? "Turning on…" : "Turn on"}
       </button>
     </div>
@@ -112,13 +112,13 @@ function InsightsPage() {
       <PageHeader title="Insights" />
       <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <p className="max-w-[64ch] text-[12.5px] text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
+          <p className="max-w-[64ch] text-base text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
             {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {cfg && <MonitoringBadge c={cfg} />}
             {/* Monitoring, library updates, sign-in and linked accounts: one Plex page. */}
-            <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
+            <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
           </div>
         </div>
 
@@ -129,7 +129,7 @@ function InsightsPage() {
         <InsightsCfg.Provider value={cfg}>
         <TabPanel idPrefix="insights" value={tab}>
           {!cfgDone ? (
-            <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading…</div>
+            <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading…</div>
           ) : tab === "activity" ? (
             <ActivityView connected={!!connected} />
           ) : tab === "history" ? (
@@ -236,30 +236,30 @@ function ActivityView({ connected }: { connected: boolean }) {
   };
   let live: ReactNode;
   if (err) {
-    live = <div className="rounded-xl p-6 text-[12.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Couldn’t reach Plex: {err}</div>;
+    live = <div className="rounded-xl p-6 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Couldn’t reach Plex: {err}</div>;
   } else if (!act) {
-    live = <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading activity…</div>;
+    live = <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading activity…</div>;
   } else {
     const streams = act.streams;
     live = (
       <>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-[12.5px] text-ink-dim">{streams.length ? `${streams.length} stream${streams.length === 1 ? "" : "s"} active` : "Nothing is playing right now."}</div>
-          <div className="flex items-center gap-3 font-mono text-[11px]">
+          <div className="text-base text-ink-dim">{streams.length ? `${streams.length} stream${streams.length === 1 ? "" : "s"} active` : "Nothing is playing right now."}</div>
+          <div className="flex items-center gap-3 font-mono text-xs">
             <BW label="TOTAL" v={act.bandwidth.total_kbps} accent />
             <BW label="LAN" v={act.bandwidth.lan_kbps} />
             <BW label="WAN" v={act.bandwidth.wan_kbps} />
           </div>
         </div>
         {streams.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No active streams.</div>
+          <div className="rounded-xl p-12 text-center text-base text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No active streams.</div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(360px, 100%), 1fr))" }}>
             {streams.map((s) => <StreamCard key={s.session_key} s={s} offsetMs={liveOffset(s)} onOpen={() => setDetail(s)} />)}
           </div>
         )}
         {!act.geo_active && streams.some((s) => !s.geo.local) && (
-          <div className="text-[10.5px] text-ink-faint">Tip: drop a MaxMind <code>GeoLite2-City.mmdb</code> into the data dir (or set <code>ARRMADA_GEOIP_DB</code>) to resolve remote IPs to a city.</div>
+          <div className="text-xs text-ink-faint">Tip: drop a MaxMind <code>GeoLite2-City.mmdb</code> into the data dir (or set <code>ARRMADA_GEOIP_DB</code>) to resolve remote IPs to a city.</div>
         )}
       </>
     );
@@ -308,14 +308,14 @@ function HomeExtras({ live }: { live: boolean }) {
       {/* Watch statistics */}
       <section>
         <div className="mb-2.5 flex items-center justify-between">
-          <h3 className="text-[13px] font-bold">Watch statistics <span className="font-normal text-ink-faint">· last 30 days</span></h3>
+          <h3 className="text-md font-bold">Watch statistics <span className="font-normal text-ink-faint">· last 30 days</span></h3>
           <div className="flex gap-1">
             <Chip active={metric === "plays"} onClick={() => setMetric("plays")}>Plays</Chip>
             <Chip active={metric === "duration"} onClick={() => setMetric("duration")}>Duration</Chip>
           </div>
         </div>
         {!hasStats ? (
-          <div className="rounded-xl p-6 text-center text-[12px] text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No watch data yet — statistics build up as people stream.</div>
+          <div className="rounded-xl p-6 text-center text-sm text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No watch data yet — statistics build up as people stream.</div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
             <StatCard title="Most watched movies" rows={stats!.most_watched_movies.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
@@ -327,7 +327,7 @@ function HomeExtras({ live }: { live: boolean }) {
       </section>
 
       {plexErr && (
-        <div className="rounded-xl px-4 py-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
           Plex unreachable — library counts and recently added come straight from the server: {plexErr}
         </div>
       )}
@@ -335,13 +335,13 @@ function HomeExtras({ live }: { live: boolean }) {
       {/* Library statistics */}
       {libs && libs.length > 0 && (
         <section>
-          <h3 className="mb-2.5 text-[13px] font-bold">Library statistics</h3>
+          <h3 className="mb-2.5 text-md font-bold">Library statistics</h3>
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(220px, 100%), 1fr))" }}>
             {libs.map((l) => (
               <div key={l.title} className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-                <div className="font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{libTypeLabel(l.type)}</div>
-                <div className="mt-0.5 text-[13px] font-semibold">{l.title}</div>
-                <div className="mt-1 text-[24px] font-extrabold tracking-tight">{l.count.toLocaleString()}</div>
+                <div className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{libTypeLabel(l.type)}</div>
+                <div className="mt-0.5 text-md font-semibold">{l.title}</div>
+                <div className="mt-1 text-3xl font-extrabold tracking-tight">{l.count.toLocaleString()}</div>
               </div>
             ))}
           </div>
@@ -351,15 +351,15 @@ function HomeExtras({ live }: { live: boolean }) {
       {/* Recently added */}
       {recent && recent.length > 0 && (
         <section>
-          <h3 className="mb-2.5 text-[13px] font-bold">Recently added</h3>
+          <h3 className="mb-2.5 text-md font-bold">Recently added</h3>
           <div className="flex gap-3 overflow-x-auto pb-2 thin-scroll">
             {recent.map((it, i) => (
               <div key={i} className="flex-none" style={{ width: 96 }}>
                 <div className="relative h-[144px] w-[96px] overflow-hidden rounded-lg" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
                   {it.thumb_url ? <img src={it.thumb_url} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
                 </div>
-                <div className="mt-1 truncate text-[11px] font-semibold" title={it.title}>{it.title}</div>
-                <div className="truncate text-[10px] text-ink-faint">{it.subtitle}</div>
+                <div className="mt-1 truncate text-xs font-semibold" title={it.title}>{it.title}</div>
+                <div className="truncate text-xs text-ink-faint">{it.subtitle}</div>
               </div>
             ))}
           </div>
@@ -376,15 +376,15 @@ function libTypeLabel(t: string): string {
 function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; v: number }[]; metric: "plays" | "duration" }) {
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="mb-2 text-[12.5px] font-bold">{title}</div>
-      {rows.length === 0 ? <div className="text-[11px] text-ink-faint">—</div> : (
+      <div className="mb-2 text-base font-bold">{title}</div>
+      {rows.length === 0 ? <div className="text-xs text-ink-faint">—</div> : (
         <ol className="flex flex-col gap-1.5">
           {rows.map((r, i) => (
-            <li key={i} className="flex items-center gap-2 text-[12px]">
-              <span className="w-3 flex-none font-mono text-[10px] text-ink-faint">{i + 1}</span>
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <span className="w-3 flex-none font-mono text-xs text-ink-faint">{i + 1}</span>
               {r.thumb !== undefined && <span className="h-7 w-5 flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>{r.thumb ? <img src={r.thumb} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}</span>}
               <span className="min-w-0 flex-1 truncate">{r.label}</span>
-              <span className="flex-none font-mono text-[11px] font-semibold" style={{ color: "var(--accent)" }}>{metric === "plays" ? r.v : fmtHours(r.v)}</span>
+              <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--accent)" }}>{metric === "plays" ? r.v : fmtHours(r.v)}</span>
             </li>
           ))}
         </ol>
@@ -398,21 +398,21 @@ function UsersView({ connected }: { connected: boolean }) {
   const [users, setUsers] = useState<UserEntry[] | null>(null);
   // Users come from recorded plays, so an import shows here before Plex is connected.
   useEffect(() => { insightsApi.insightsUsers().then(setUsers).catch(() => setUsers([])); }, []);
-  if (!users) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading people…</div>;
+  if (!users) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading people…</div>;
   if (users.length === 0 && !connected) return <SetupState tab="people" />;
-  if (users.length === 0) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-faint" style={{ border: "1px solid var(--line)" }}>Nobody has watched anything yet.</div>;
+  if (users.length === 0) return <div className="rounded-xl p-10 text-center text-base text-ink-faint" style={{ border: "1px solid var(--line)" }}>Nobody has watched anything yet.</div>;
   return (
     <div className="flex flex-col gap-3">
       {!connected && <ImportedNotice />}
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-        <table className="w-full border-collapse text-[12.5px]" style={{ minWidth: 820 }}>
-          <thead><tr style={{ background: "var(--panel-2)" }}>{["User", "Last seen", "Location", "Platform", "Last played", "Plays", "Watch time"].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
+        <table className="w-full border-collapse text-base" style={{ minWidth: 820 }}>
+          <thead><tr style={{ background: "var(--panel-2)" }}>{["User", "Last seen", "Location", "Platform", "Last played", "Plays", "Watch time"].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
           <tbody>
             {users.map((u, i) => (
               <tr key={u.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                 <td className="px-3 py-2 font-semibold">{u.username}</td>
-                <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-ink-dim">{u.last_seen ? fmtDate(u.last_seen) : "never"}</td>
-                <td className="px-3 py-2 font-mono text-[10.5px] text-ink-dim">{u.last_ip ? geoLabel(u.geo) : "—"}</td>
+                <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{u.last_seen ? fmtDate(u.last_seen) : "never"}</td>
+                <td className="px-3 py-2 font-mono text-xs text-ink-dim">{u.last_ip ? geoLabel(u.geo) : "—"}</td>
                 <td className="px-3 py-2 text-ink-dim">{u.last_platform || "—"}</td>
                 <td className="px-3 py-2 text-ink-dim"><div className="max-w-[240px] truncate">{u.last_title || "—"}</div></td>
                 <td className="px-3 py-2 font-mono tabular-nums">{u.total_plays.toLocaleString()}</td>
@@ -429,8 +429,8 @@ function UsersView({ connected }: { connected: boolean }) {
 function BW({ label, v, accent }: { label: string; v: number; accent?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-1">
-      <span className="text-[8.5px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
-      <span style={{ color: accent ? "var(--accent)" : "var(--ink-dim)" }}>{fmtMbps(v)}<span className="text-[9px] text-ink-faint"> Mb/s</span></span>
+      <span className="text-xs font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      <span style={{ color: accent ? "var(--accent)" : "var(--ink-dim)" }}>{fmtMbps(v)}<span className="text-xs text-ink-faint"> Mb/s</span></span>
     </span>
   );
 }
@@ -448,13 +448,13 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold">{s.title}</div>
-            <div className="truncate text-[11px] text-ink-dim">{s.subtitle}</div>
+            <div className="truncate text-md font-semibold">{s.title}</div>
+            <div className="truncate text-xs text-ink-dim">{s.subtitle}</div>
           </div>
-          <span className="flex-none rounded-full px-2 py-0.5 font-mono text-[8.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+          <span className="flex-none rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
         </div>
-        <div className="mt-1 truncate text-[11px] text-ink-dim">{s.user} · {s.player || s.platform}</div>
-        <div className="truncate font-mono text-[10px] text-ink-faint">
+        <div className="mt-1 truncate text-xs text-ink-dim">{s.user} · {s.player || s.platform}</div>
+        <div className="truncate font-mono text-xs text-ink-faint">
           {geoLabel(s.geo)} · {fmtMbps(s.bandwidth_kbps)} Mb/s
           {hw && <> · <span style={hw.fellBack ? { color: "var(--avoid)" } : undefined} title={hw.fellBack ? "Plex fell back to CPU — hardware transcoding was requested but not used" : s.hw_title || undefined}>{hw.label}{hw.fellBack ? " (fell back)" : ""}</span></>}
         </div>
@@ -463,7 +463,7 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
           <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: buffering ? "var(--avoid)" : "var(--accent)", transition: "width 1s linear" }} />
           </div>
-          <div className="mt-1 flex items-center justify-between font-mono text-[9.5px] text-ink-faint">
+          <div className="mt-1 flex items-center justify-between font-mono text-xs text-ink-faint">
             <span style={{ color: buffering ? "var(--avoid)" : undefined }}>{buffering ? "● Buffering" : s.state === "paused" ? "⏸ Paused" : "▶ Playing"}</span>
             <span>{fmtClock(offsetMs)} / {fmtClock(s.duration_ms)}</span>
           </div>
@@ -481,27 +481,27 @@ function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
     <Modal onClose={onClose} labelledBy={titleId} size="md">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{s.title}</h2>
-          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{s.subtitle}</p>
+          <h2 id={titleId} className="m-0 truncate text-lg font-bold">{s.title}</h2>
+          <p className="m-0 mt-0.5 text-sm text-ink-dim">{s.subtitle}</p>
         </div>
         <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" ? ` · ${s.hw_title}` : ""}</span>}
-        {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>Fell back to CPU</span>}
-        {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
+        <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" ? ` · ${s.hw_title}` : ""}</span>}
+        {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>Fell back to CPU</span>}
+        {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
       </div>
 
       {s.reasons && s.reasons.length > 0 && (
-        <div className="mb-3 rounded-lg p-3 text-[11.5px]" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-          <div className="mb-1 font-bold uppercase tracking-wide" style={{ fontSize: 9 }}>Why it's transcoding</div>
+        <div className="mb-3 rounded-lg p-3 text-sm" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide">Why it's transcoding</div>
           <ul className="list-none space-y-0.5 p-0">{s.reasons.map((r, i) => <li key={i}>• {r}</li>)}</ul>
         </div>
       )}
 
-      <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
+      <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
         <DDRow label="User" a={s.user} />
         <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
         <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
@@ -518,7 +518,7 @@ function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
 function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "var(--panel)" }}>
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</span>
       <span className="text-right text-ink-dim">
         {a}{b ? <span style={{ color: "var(--avoid)" }}> → {b}</span> : null}
       </span>
@@ -530,14 +530,14 @@ function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
       <div className="flex flex-wrap gap-1">{children}</div>
     </div>
   );
 }
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button onClick={onClick} className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+    <button onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
       {children}
     </button>
   );
@@ -600,27 +600,27 @@ function HistoryView({ connected }: { connected: boolean }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => setType(f.key)}>{f.label}</Chip>)}</FilterGroup>
         <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => setDecision(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <input aria-label="Search title or user" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
+        <input aria-label="Search title or user" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
       </div>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-        <table className="w-full border-collapse text-[12.5px]" style={{ minWidth: 820 }}>
-          <thead><tr style={{ background: "var(--panel-2)" }}>{["When", "User", "Title", "Player", "Location", "Stream", "Watched", ""].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
+        <table className="w-full border-collapse text-base" style={{ minWidth: 820 }}>
+          <thead><tr style={{ background: "var(--panel-2)" }}>{["When", "User", "Title", "Player", "Location", "Stream", "Watched", ""].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-[12px] text-ink-dim">Loading history…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-dim">Loading history…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-[12px] text-ink-faint">No plays recorded yet. History fills in as people watch.</td></tr>
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-faint">No plays recorded yet. History fills in as people watch.</td></tr>
             ) : rows.map((r, i) => {
               const d = DECISION[r.decision] ?? DECISION.direct_play;
               return (
                 <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-ink-dim">{fmtDate(r.started_at)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{fmtDate(r.started_at)}</td>
                   <td className="px-3 py-2">{r.user_name}</td>
-                  <td className="px-3 py-2"><div className="font-semibold">{r.title}</div>{r.subtitle && <div className="text-[10.5px] text-ink-faint">{r.subtitle}</div>}</td>
+                  <td className="px-3 py-2"><div className="font-semibold">{r.title}</div>{r.subtitle && <div className="text-xs text-ink-faint">{r.subtitle}</div>}</td>
                   <td className="px-3 py-2 text-ink-dim">{r.player || r.platform}</td>
-                  <td className="px-3 py-2 font-mono text-[10.5px] text-ink-dim">{geoLabel(r.geo)}</td>
-                  <td className="px-3 py-2"><span className="rounded-full px-2 py-0.5 font-mono text-[8.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span></td>
+                  <td className="px-3 py-2 font-mono text-xs text-ink-dim">{geoLabel(r.geo)}</td>
+                  <td className="px-3 py-2"><span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span></td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono tabular-nums text-ink-dim">{fmtDur(r.watched_secs)}{r.buffer_count > 0 && <span title={`${r.buffer_count} buffer event(s)`} style={{ color: "var(--avoid)" }}> · ⚠{r.buffer_count}</span>}</td>
                   <td className="px-3 py-2 text-right text-ink-faint">›</td>
                 </tr>
@@ -630,7 +630,7 @@ function HistoryView({ connected }: { connected: boolean }) {
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-[11.5px] text-ink-faint">
+      <div className="flex items-center justify-between text-sm text-ink-faint">
         <span>{total > 0 ? `${from}–${to} of ${total.toLocaleString()}` : "0 plays"}</span>
         <span className="flex items-center gap-2">
           <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Prev</button>
@@ -651,7 +651,7 @@ function HistoryHW({ startedAt }: { startedAt: number }) {
   const old = !since || startedAt < since;
   return (
     <span title={old ? `Plays before ${since ? fmtDate(since) : "this update"} show HW as requested — Plex may have fallen back to CPU.` : undefined}
-      className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
+      className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
       {old ? "HW requested" : "HW enc"}
     </span>
   );
@@ -664,17 +664,17 @@ function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void })
     <Modal onClose={onClose} labelledBy={titleId} size="md">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{r.title}</h2>
-          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{r.subtitle}</p>
+          <h2 id={titleId} className="m-0 truncate text-lg font-bold">{r.title}</h2>
+          <p className="m-0 mt-0.5 text-sm text-ink-dim">{r.subtitle}</p>
         </div>
         <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+        <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
         {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
-        {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
+        {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
       </div>
-      <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
+      <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
         <DDRow label="User" a={r.user_name} />
         <DDRow label="Player" a={`${r.player || "—"} · ${r.platform} · ${r.product}`} />
         <DDRow label="Location" a={`${geoLabel(r.geo)}${r.ip_address ? ` · ${r.ip_address}` : ""} · ${r.location?.toUpperCase() || "—"}`} />
@@ -697,7 +697,7 @@ function GraphsView({ connected }: { connected: boolean }) {
   const [win, setWin] = useState(30);
   // Graphs are drawn from recorded plays, so imported history charts before Plex is connected.
   useEffect(() => { insightsApi.insightsGraphs(win).then(setG).catch(() => setG(null)); }, [win]);
-  if (!g) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
+  if (!g) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
 
   const anyPlays = g.daily_tv.some(Boolean) || g.daily_movies.some(Boolean) || g.daily_music.some(Boolean);
   const dayLabels = g.days.map((d) => { const [, m, day] = d.split("-"); return `${+m}/${+day}`; });
@@ -710,7 +710,7 @@ function GraphsView({ connected }: { connected: boolean }) {
       {!connected && !nothing && <ImportedNotice />}
       <div className="flex items-center justify-between">
         <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>
-        <div className="flex items-center gap-3 text-[10.5px]">
+        <div className="flex items-center gap-3 text-xs">
           <Legend c={SERIES_COLORS.tv} label="TV" /><Legend c={SERIES_COLORS.movies} label="Movies" /><Legend c={SERIES_COLORS.music} label="Music" />
         </div>
       </div>
@@ -718,7 +718,7 @@ function GraphsView({ connected }: { connected: boolean }) {
       {nothing ? (
         <SetupState tab="graphs" />
       ) : !anyPlays ? (
-        <div className="rounded-xl p-10 text-center text-[12px] text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No plays in this window yet — graphs fill in as history accrues.</div>
+        <div className="rounded-xl p-10 text-center text-sm text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No plays in this window yet — graphs fill in as history accrues.</div>
       ) : (
         <>
           <ChartCard title="Daily plays by media type">
@@ -739,9 +739,9 @@ function GraphsView({ connected }: { connected: boolean }) {
       )}
 
       {!nothing && <ChartCard title="Bandwidth (peak per hour)">
-        {g.bandwidth.length === 0 ? <div className="py-6 text-center text-[11px] text-ink-faint">No bandwidth recorded yet.</div> : (
+        {g.bandwidth.length === 0 ? <div className="py-6 text-center text-xs text-ink-faint">No bandwidth recorded yet.</div> : (
           <>
-            <div className="mb-1 flex items-center gap-3 text-[10.5px]"><Legend c="var(--accent)" label="Total" /><Legend c="var(--good)" label="LAN" /><Legend c="var(--avoid)" label="WAN" /></div>
+            <div className="mb-1 flex items-center gap-3 text-xs"><Legend c="var(--accent)" label="Total" /><Legend c="var(--good)" label="LAN" /><Legend c="var(--avoid)" label="WAN" /></div>
             <LineChart xLabels={g.bandwidth.map(() => "")} series={[
               { color: "var(--accent)", values: g.bandwidth.map((p) => p.total_kbps / 1000) },
               { color: "var(--good)", values: g.bandwidth.map((p) => p.lan_kbps / 1000) },
@@ -758,7 +758,7 @@ function Legend({ c, label }: { c: string; label: string }) {
   return <span className="inline-flex items-center gap-1 text-ink-dim"><span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />{label}</span>;
 }
 function ChartCard({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}><div className="mb-2 text-[12.5px] font-bold">{title}</div>{children}</div>;
+  return <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}><div className="mb-2 text-base font-bold">{title}</div>{children}</div>;
 }
 
 function LineChart({ series, xLabels, unit }: { series: { color: string; values: number[] }[]; xLabels: string[]; unit?: string }) {
@@ -802,12 +802,12 @@ function BarChart({ values, labels }: { values: number[]; labels: string[] }) {
 }
 
 function HBarChart({ rows }: { rows: { label: string; value: number }[] }) {
-  if (rows.length === 0) return <div className="py-6 text-center text-[11px] text-ink-faint">No data yet.</div>;
+  if (rows.length === 0) return <div className="py-6 text-center text-xs text-ink-faint">No data yet.</div>;
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="flex flex-col gap-1.5">
       {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-2 text-[11px]">
+        <div key={i} className="flex items-center gap-2 text-xs">
           <span className="w-[92px] flex-none truncate text-ink-dim" title={r.label}>{r.label || "—"}</span>
           <span className="h-3.5 flex-1 overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
             <span className="block h-full rounded" style={{ width: `${(r.value / max) * 100}%`, background: "var(--accent)" }} />
@@ -825,7 +825,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
   const [win, setWin] = useState(30);
   // Stalls are read from recorded sessions, so imported history shows before Plex is connected.
   useEffect(() => { insightsApi.insightsReliability(win).then(setR).catch(() => setR(null)); }, [win]);
-  if (!r) return <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading reliability…</div>;
+  if (!r) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading reliability…</div>;
 
   const s = r.summary;
   const clean = s.total_events === 0;
@@ -838,7 +838,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
     <div className="flex flex-col gap-4">
       {!connected && !nothing && <ImportedNotice />}
       <div className="flex items-center justify-between">
-        <p className="max-w-[54ch] text-[12px] text-ink-dim">Where and when streams stalled mid-playback — sampled every few seconds, so treat counts as observed lower bounds. Startup, seeking and resume refills aren't counted.</p>
+        <p className="max-w-[54ch] text-sm text-ink-dim">Where and when streams stalled mid-playback — sampled every few seconds, so treat counts as observed lower bounds. Startup, seeking and resume refills aren't counted.</p>
         <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>
       </div>
 
@@ -853,9 +853,9 @@ function ReliabilityView({ connected }: { connected: boolean }) {
         <SetupState tab="reliability" />
       ) : clean ? (
         <div className="rounded-xl p-12 text-center" style={{ border: "1px dashed var(--line)", background: "var(--panel)" }}>
-          <div className="text-[26px]">✓</div>
-          <div className="mt-1 text-[13.5px] font-bold" style={{ color: "var(--good)" }}>Smooth sailing</div>
-          <p className="mx-auto mt-1 max-w-[46ch] text-[12px] text-ink-dim">No mid-playback stalls observed in this window. When a stream stalls while playing (startup, seeks and resume refills don't count), it's logged here with who, what, and how it was playing — so you can pinpoint heavy transcodes or shaky connections.</p>
+          <div className="text-3xl">✓</div>
+          <div className="mt-1 text-md font-bold" style={{ color: "var(--good)" }}>Smooth sailing</div>
+          <p className="mx-auto mt-1 max-w-[46ch] text-sm text-ink-dim">No mid-playback stalls observed in this window. When a stream stalls while playing (startup, seeks and resume refills don't count), it's logged here with who, what, and how it was playing — so you can pinpoint heavy transcodes or shaky connections.</p>
         </div>
       ) : (
         <>
@@ -868,12 +868,12 @@ function ReliabilityView({ connected }: { connected: boolean }) {
           {/* Why streams buffered — diagnosed cause breakdown */}
           {r.causes.length > 0 && (
             <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-              <div className="mb-2 text-[12.5px] font-bold">Why streams stalled</div>
+              <div className="mb-2 text-base font-bold">Why streams stalled</div>
               <div className="flex flex-wrap gap-2">
                 {r.causes.map((c) => {
                   const cc = CAUSE[c.cause] ?? CAUSE.unknown;
                   return (
-                    <span key={c.cause} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: "var(--panel-2)", border: `1px solid ${cc.color}` }}>
+                    <span key={c.cause} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: "var(--panel-2)", border: `1px solid ${cc.color}` }}>
                       <span className="inline-block h-2 w-2 rounded-full" style={{ background: cc.color }} />
                       {cc.label}<span className="font-mono text-ink-faint">{c.stall_ms > 0 ? fmtStall(c.stall_ms) : c.count}</span>
                     </span>
@@ -885,22 +885,22 @@ function ReliabilityView({ connected }: { connected: boolean }) {
 
           {/* Timeline */}
           <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-            <div className="mb-2 text-[12.5px] font-bold">Recent observed stalls</div>
+            <div className="mb-2 text-base font-bold">Recent observed stalls</div>
             <div className="flex flex-col">
               {r.events.map((e, i) => {
                 const d = DECISION[e.decision] ?? DECISION.direct_play;
                 const cc = CAUSE[e.cause] ?? CAUSE.unknown;
                 return (
-                  <div key={i} className="py-1.5 text-[12px]" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
+                  <div key={i} className="py-1.5 text-sm" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                       <span className="w-2 flex-none"><span className="inline-block h-2 w-2 rounded-full" style={{ background: cc.color }} /></span>
-                      <span className="w-[92px] flex-none font-mono text-[10.5px] text-ink-faint">{fmtDate(e.at)}</span>
+                      <span className="w-[92px] flex-none font-mono text-xs text-ink-faint">{fmtDate(e.at)}</span>
                       <span className="min-w-[140px] flex-1 truncate"><b className="font-semibold">{e.user}</b> · {e.title}</span>
-                      <span className="flex-none font-mono text-[10px] text-ink-faint">@ {fmtClock(e.offset_ms)}</span>
-                      {e.duration_ms > 0 && <span className="flex-none font-mono text-[10px] font-semibold" style={{ color: "var(--avoid)" }}>{fmtStall(e.duration_ms)}</span>}
-                      <span className="flex-none rounded-full px-2 py-0.5 font-mono text-[8.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+                      <span className="flex-none font-mono text-xs text-ink-faint">@ {fmtClock(e.offset_ms)}</span>
+                      {e.duration_ms > 0 && <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--avoid)" }}>{fmtStall(e.duration_ms)}</span>}
+                      <span className="flex-none rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
                     </div>
-                    {e.detail && <div className="pl-5 text-[11px] sm:pl-[112px]" style={{ color: cc.color }}>{e.detail}</div>}
+                    {e.detail && <div className="pl-5 text-xs sm:pl-[112px]" style={{ color: cc.color }}>{e.detail}</div>}
                   </div>
                 );
               })}
@@ -915,9 +915,9 @@ function ReliabilityView({ connected }: { connected: boolean }) {
 function StatTile({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">{label}</div>
-      <div className="mt-1 text-[26px] font-extrabold tracking-tight" style={{ color }}>{value}</div>
-      <div className="text-[11px] text-ink-faint">{sub}</div>
+      <div className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="mt-1 text-3xl font-extrabold tracking-tight" style={{ color }}>{value}</div>
+      <div className="text-xs text-ink-faint">{sub}</div>
     </div>
   );
 }
@@ -936,11 +936,11 @@ function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
   const max = Math.max(1, ...rows.map(metric));
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="mb-2 text-[12.5px] font-bold">{title}</div>
-      {rows.length === 0 ? <div className="text-[11px] text-ink-faint">—</div> : (
+      <div className="mb-2 text-base font-bold">{title}</div>
+      {rows.length === 0 ? <div className="text-xs text-ink-faint">—</div> : (
         <div className="flex flex-col gap-2">
           {rows.map((r, i) => (
-            <div key={i} className="text-[11.5px]">
+            <div key={i} className="text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate" title={r.name}>{r.name || "—"}</span>
                 <span className="flex-none font-mono text-ink-dim">
@@ -973,8 +973,8 @@ function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
   return (
     <EmptyState
       title={<span className="capitalize">{tab}</span>}
-      body={<p className="mx-auto max-w-[52ch] text-[12px]">{ABOUT[tab]}</p>}
-      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
+      body={<p className="mx-auto max-w-[52ch] text-sm">{ABOUT[tab]}</p>}
+      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
     />
   );
 }
@@ -984,7 +984,7 @@ function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
 // it just won't grow until Plex is connected.
 function ImportedNotice() {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <span>Showing imported history — connect Plex to record new plays.</span>
       <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server →</Link>
     </div>

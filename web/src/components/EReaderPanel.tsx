@@ -39,9 +39,9 @@ function CopyField({ label, value, note }: { label: string; value: string; note?
   };
   return (
     <div className="mb-2">
-      <div className="text-[11px] font-semibold text-ink-faint">{label}{note ? ` · ${note}` : ""}</div>
+      <div className="text-xs font-semibold text-ink-faint">{label}{note ? ` · ${note}` : ""}</div>
       <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{value}</code>
+        <code className="min-w-0 flex-1 break-all rounded-lg px-2.5 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{value}</code>
         <Button size="sm" onClick={copy} aria-label={`Copy ${label.toLowerCase()}`}>Copy</Button>
       </div>
     </div>
@@ -70,12 +70,12 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
   return (
     <Card title="Read on your e-reader" note="Browse the library in an e-reader app and download books straight to it.">
       {known && !known.allowed ? (
-        <p className="m-0 text-[12.5px] text-ink-dim">Your account isn't set up for reading apps. Ask an admin.</p>
+        <p className="m-0 text-base text-ink-dim">Your account isn't set up for reading apps. Ask an admin.</p>
       ) : (
         <>
           <CopyField label="Catalogue address (OPDS)" value={address} note={!https && !external ? "At home" : undefined} />
           {user?.username && <CopyField label="Username" value={user.username} />}
-          <p className="m-0 mb-3 text-[12px] text-ink-dim">
+          <p className="m-0 mb-3 text-sm text-ink-dim">
             Password: your <b>audiobook &amp; e-reader password</b> — not your Arrmada password.{" "}
             {passwordCard ? null : known?.has === false
               ? <>You haven't set one yet: <Link to="/audiobooks?tab=apps" className="font-semibold" style={{ color: "var(--accent)" }}>set it in Audiobooks → Apps &amp; devices</Link>.</>
@@ -84,13 +84,13 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
           {passwordCard && <div className="mb-3">{passwordCard}</div>}
           <ul className="m-0 mb-3 flex list-none flex-col gap-1.5 p-0">
             {READER_APPS.map((a) => (
-              <li key={a.name} className="rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
+              <li key={a.name} className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
                 <span className="font-semibold">{a.name}</span> <span className="text-ink-faint">· {a.where}</span>
                 <span className="block text-ink-dim">{a.how}</span>
               </li>
             ))}
           </ul>
-          <p className="m-0 text-[11.5px] text-ink-faint">
+          <p className="m-0 text-sm text-ink-faint">
             {https
               ? "This is a secure (https) address, so it works away from home too."
               : "This address works on the home network. Away from home, use your https address instead — the password travels with every request, so never use plain http over the internet."}

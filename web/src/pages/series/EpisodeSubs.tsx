@@ -39,7 +39,7 @@ export function EpisodeSubChip({ entry, onOpen }: { entry: SubFileEntry; onOpen:
       type="button"
       onClick={onOpen}
       title={`${title}\nOpen this episode's subtitles`}
-      className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold hover:opacity-80"
+      className="rounded px-1.5 py-0.5 font-mono text-xs font-bold hover:opacity-80"
       style={done ? { background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" } : { background: "var(--avoid-soft)", color: "var(--avoid)" }}
     >
       {done ? "subs ✓" : `subs · ${entry.missing} missing`}

@@ -49,10 +49,10 @@ export function bitrateColor(fit?: FileFit): string | undefined {
 }
 
 export function FitBadge({ item }: { item?: FitItem }) {
-  if (!item?.fit) return <span className="text-[11px] text-ink-faint" title={fitTitle(item)}>—</span>;
+  if (!item?.fit) return <span className="text-xs text-ink-faint" title={fitTitle(item)}>—</span>;
   const c = FIT_COLOR[item.fit.status];
   return (
-    <span title={fitTitle(item)} className="inline-block cursor-help whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold"
+    <span title={fitTitle(item)} className="inline-block cursor-help whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-bold"
       style={{ color: c, border: `1px solid ${c}`, background: "transparent" }}>
       {FIT_LABEL[item.fit.status]}
     </span>

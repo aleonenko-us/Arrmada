@@ -48,20 +48,20 @@ export function Unreachable() {
           <FleetMark className="h-6 w-6" />
         </span>
         <div className="rounded-2xl border border-line bg-panel p-5 shadow-panel">
-          <h1 className="m-0 text-[17px] font-bold">Can't reach Arrmada</h1>
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-dim">
+          <h1 className="m-0 text-xl font-bold">Can't reach Arrmada</h1>
+          <p className="m-0 mt-1.5 text-base text-ink-dim">
             The server isn't answering. It may be restarting, or this device may be offline.
           </p>
           <button
             type="button"
             onClick={run}
             disabled={busy}
-            className="mt-4 w-full rounded-lg bg-accent-grad px-4 py-2.5 text-[13px] font-semibold text-accent-ink"
+            className="mt-4 w-full rounded-lg bg-accent-grad px-4 py-2.5 text-md font-semibold text-accent-ink"
             aria-live="polite"
           >
             {busy ? "Retrying…" : "Retry"}
           </button>
-          <p className="m-0 mt-2.5 text-[11px] text-ink-faint">Arrmada keeps trying by itself and opens as soon as it answers.</p>
+          <p className="m-0 mt-2.5 text-xs text-ink-faint">Arrmada keeps trying by itself and opens as soon as it answers.</p>
         </div>
       </div>
     </div>

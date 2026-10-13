@@ -115,7 +115,7 @@ function Grid({ state, ctx, empty }: { state: ReturnType<typeof useInfinite>; ct
     return <div className="grid gap-x-3 gap-y-5" style={GRID}>{Array.from({ length: 12 }).map((_, i) => <CardSkeleton key={i} full />)}</div>;
   }
   if (items.length === 0) {
-    return error ? <LoadError message={error} /> : <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{empty}</div>;
+    return error ? <LoadError message={error} /> : <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{empty}</div>;
   }
   return (
     <>
@@ -126,13 +126,13 @@ function Grid({ state, ctx, empty }: { state: ReturnType<typeof useInfinite>; ct
       {error && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <LoadError message={error} />
-          <button onClick={retry} className="min-h-[32px] text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Try again</button>
+          <button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Try again</button>
         </div>
       )}
       {stalled && hasMore && !loading && !error && (
-        <div className="mt-4 text-center"><button onClick={retry} className="min-h-[32px] text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Load more</button></div>
+        <div className="mt-4 text-center"><button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Load more</button></div>
       )}
-      {!hasMore && items.length > 20 && <div className="mt-6 text-center text-[11.5px] text-ink-faint">That’s everything.</div>}
+      {!hasMore && items.length > 20 && <div className="mt-6 text-center text-sm text-ink-faint">That’s everything.</div>}
       <div ref={sentinel} aria-hidden className="h-px" />
     </>
   );
@@ -147,18 +147,18 @@ export function SearchResults({ query, ctx }: { query: string; ctx: RowCtx }) {
   const state = useInfinite(query, (page) => api.discoverSearchPage(query, page), (p) => setPeople(p.people ?? []));
   return (
     <div>
-      <h2 className="m-0 mb-3 text-[15px] font-bold">Results for “{query}”</h2>
+      <h2 className="m-0 mb-3 text-lg font-bold">Results for “{query}”</h2>
       {people.length > 0 && (
         <div className="mb-5">
-          <h3 className="m-0 mb-2 text-[12px] font-bold uppercase tracking-wide text-ink-faint">People</h3>
+          <h3 className="m-0 mb-2 text-sm font-bold uppercase tracking-wide text-ink-faint">People</h3>
           <div className="thin-scroll flex gap-3 overflow-x-auto pb-1">
             {people.map((p) => (
               <button key={p.id} onClick={() => openOverlay("person", p.id)} aria-label={`Open ${p.name}`} className="w-[96px] flex-none text-center">
                 <span className="mx-auto mb-1 block h-[84px] w-[84px] overflow-hidden rounded-full" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
                   {p.profile_url ? <img src={p.profile_url} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
                 </span>
-                <span className="line-clamp-2 block text-[11px] font-semibold leading-tight">{p.name}</span>
-                {p.known_for_department && <span className="mt-0.5 block text-[9.5px] text-ink-faint">{p.known_for_department}</span>}
+                <span className="line-clamp-2 block text-xs font-semibold leading-tight">{p.name}</span>
+                {p.known_for_department && <span className="mt-0.5 block text-xs text-ink-faint">{p.known_for_department}</span>}
               </button>
             ))}
           </div>
@@ -233,46 +233,46 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button onClick={back} className="min-h-[32px] text-[12px] font-semibold" style={{ color: "var(--accent)" }}>← Discover</button>
-        <h2 className="m-0 min-w-0 flex-1 text-[17px] font-bold">{title}</h2>
+        <button onClick={back} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>← Discover</button>
+        <h2 className="m-0 min-w-0 flex-1 text-xl font-bold">{title}</h2>
       </div>
 
       <div className="mb-5 flex flex-col gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} role="group" aria-label="Filters">
         <div className="flex flex-wrap items-center gap-2">
           {(["movie", "series"] as const).map((k) => (
-            <button key={k} onClick={() => setMedia(k)} aria-pressed={media === k} className="min-h-[32px] rounded-full px-3 text-[12px] font-semibold" style={chip(media === k)}>
+            <button key={k} onClick={() => setMedia(k)} aria-pressed={media === k} className="min-h-[32px] rounded-full px-3 text-sm font-semibold" style={chip(media === k)}>
               {k === "movie" ? "Movies" : "Series"}
             </button>
           ))}
-          <select aria-label="Sort by" value={sort} onChange={(e) => set({ sort: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-[12px]" style={field}>
+          <select aria-label="Sort by" value={sort} onChange={(e) => set({ sort: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
             <option value="">Sort: default</option>
             {SORTS.filter((s) => !s.movieOnly || media !== "series").map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <select aria-label="Minimum rating" value={params.get("rating") ?? ""} onChange={(e) => set({ rating: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-[12px]" style={field}>
+          <select aria-label="Minimum rating" value={params.get("rating") ?? ""} onChange={(e) => set({ rating: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
             {RATINGS.map((r) => <option key={r} value={r}>{r ? `★ ${r}+` : "Any rating"}</option>)}
           </select>
-          <select aria-label="Length" value={Math.max(0, runtime)} onChange={(e) => { const [, lo, hi] = RUNTIMES[Number(e.target.value)]; set({ runtime_min: lo || null, runtime_max: hi || null }); }} className="min-h-[32px] rounded-lg px-2 text-[12px]" style={field}>
+          <select aria-label="Length" value={Math.max(0, runtime)} onChange={(e) => { const [, lo, hi] = RUNTIMES[Number(e.target.value)]; set({ runtime_min: lo || null, runtime_max: hi || null }); }} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
             {RUNTIMES.map(([label], i) => <option key={label} value={i}>{label}</option>)}
           </select>
-          <select aria-label="Original language" value={params.get("lang") ?? ""} onChange={(e) => set({ lang: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-[12px]" style={field}>
+          <select aria-label="Original language" value={params.get("lang") ?? ""} onChange={(e) => set({ lang: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
             {LANGUAGES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
           </select>
           <YearRange from={params.get("year_from") ?? ""} to={params.get("year_to") ?? ""} onChange={(from, to) => set({ year_from: from || null, year_to: to || null })} />
           {filtered && (
-            <button onClick={() => setParams({ media: media === "all" ? "movie" : media }, { replace: true })} className="min-h-[32px] text-[12px] font-semibold" style={{ color: "var(--accent)" }}>Clear filters</button>
+            <button onClick={() => setParams({ media: media === "all" ? "movie" : media }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Clear filters</button>
           )}
         </div>
         {genreList.length > 0 && (
           <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Genres">
             {genreList.map((g) => (
-              <button key={g.id} onClick={() => toggleGenre(g.id)} aria-pressed={genres.includes(g.id)} className="min-h-[30px] flex-none rounded-full px-3 text-[12px] font-semibold" style={chip(genres.includes(g.id))}>{g.name}</button>
+              <button key={g.id} onClick={() => toggleGenre(g.id)} aria-pressed={genres.includes(g.id)} className="min-h-[30px] flex-none rounded-full px-3 text-sm font-semibold" style={chip(genres.includes(g.id))}>{g.name}</button>
             ))}
           </div>
         )}
         {providers.length > 0 && (
           <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Streaming services">
             {providers.map((p) => (
-              <button key={p.id} onClick={() => set({ provider: provider === p.id ? null : String(p.id) })} aria-pressed={provider === p.id} title={p.name} className="flex min-h-[30px] flex-none items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2.5 text-[12px] font-semibold" style={chip(provider === p.id)}>
+              <button key={p.id} onClick={() => set({ provider: provider === p.id ? null : String(p.id) })} aria-pressed={provider === p.id} title={p.name} className="flex min-h-[30px] flex-none items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2.5 text-sm font-semibold" style={chip(provider === p.id)}>
                 {p.logo_url ? <img src={p.logo_url} alt="" className="h-5 w-5 rounded-md" /> : null}
                 <span>{p.name}</span>
               </button>
@@ -307,12 +307,12 @@ function YearRange({ from, to, onChange }: { from: string; to: string; onChange:
       onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
       onBlur={apply}
       onKeyDown={(e) => { if (e.key === "Enter") apply(); }}
-      className="min-h-[32px] w-[64px] rounded-lg px-2 text-[12px]"
+      className="min-h-[32px] w-[64px] rounded-lg px-2 text-sm"
       style={field}
     />
   );
   return (
-    <span className="flex items-center gap-1 text-[12px] text-ink-faint">
+    <span className="flex items-center gap-1 text-sm text-ink-faint">
       {box("From year", f, setF)}–{box("To year", t, setT)}
     </span>
   );

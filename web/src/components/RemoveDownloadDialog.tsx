@@ -83,20 +83,20 @@ export function RemoveDownloadDialog({ it, onClose, onDone }: { it: ActivityDown
   return (
     <ConfirmDialog
       title="Remove this download?"
-      body={<span className="block truncate font-mono text-[11px]" title={it.name}>{it.name}</span>}
+      body={<span className="block truncate font-mono text-xs" title={it.name}>{it.name}</span>}
       choices={choices}
       choice={mode}
       onChoice={setMode}
       extra={
         <>
           {linked && mode !== "block" && (
-            <label className="flex items-start gap-2 text-[12px] text-ink-dim" style={{ opacity: stop.disabled ? 0.6 : 1 }}>
+            <label className="flex items-start gap-2 text-sm text-ink-dim" style={{ opacity: stop.disabled ? 0.6 : 1 }}>
               <input type="checkbox" checked={unmonitor} disabled={stop.disabled || busy} onChange={(e) => setUnmonitor(e.target.checked)} className="mt-0.5" />
               <span>{stop.label}</span>
             </label>
           )}
           {neverImported && (
-            <div className="rounded-lg p-2.5 text-[12px]" style={mode === "keep_files" ? { color: "var(--ink-dim)", background: "var(--panel-2)" } : { color: "var(--reject)", background: "var(--reject-soft)", fontWeight: 600 }}>
+            <div className="rounded-lg p-2.5 text-sm" style={mode === "keep_files" ? { color: "var(--ink-dim)", background: "var(--panel-2)" } : { color: "var(--reject)", background: "var(--reject-soft)", fontWeight: 600 }}>
               This download was never imported — deleting its files destroys the only copy.
             </div>
           )}

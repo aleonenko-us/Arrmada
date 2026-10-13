@@ -99,7 +99,7 @@ export interface RowCtx {
 // shows one MetadataMissing message instead of an error per row.
 export function LoadError({ message }: { message: string }) {
   return (
-    <div className="rounded-lg px-3 py-2 text-[12px] font-medium" style={{ border: "1px solid var(--line)", color: "var(--reject)", background: "var(--panel)" }}>
+    <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ border: "1px solid var(--line)", color: "var(--reject)", background: "var(--panel)" }}>
       Couldn’t load — {message}
     </div>
   );
@@ -114,8 +114,8 @@ export function PosterPlaceholder({ title, year }: { title: string; year?: numbe
         <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
         <path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       </svg>
-      <div className="line-clamp-3 text-[11.5px] font-semibold leading-snug" style={{ color: "var(--ink-dim)" }}>{title}</div>
-      {year ? <div className="text-[10px]" style={{ color: "var(--ink-faint)" }}>{year}</div> : null}
+      <div className="line-clamp-3 text-sm font-semibold leading-snug" style={{ color: "var(--ink-dim)" }}>{title}</div>
+      {year ? <div className="text-xs" style={{ color: "var(--ink-faint)" }}>{year}</div> : null}
     </div>
   );
 }
@@ -180,12 +180,12 @@ export function MediaCard({ c, ctx, full }: { c: DiscoverCard; ctx: RowCtx; full
         ? <img src={posterThumb(c.poster_url)} alt={c.title} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         : <PosterPlaceholder title={c.title} year={c.year} />}
     >
-      <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+      <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
         <span>{c.year || "—"}</span>
         {c.vote_average > 0 && <><span>·</span><span style={{ color: "var(--accent)" }}>★ {c.vote_average.toFixed(1)}</span></>}
       </div>
       {c.genres && c.genres.length > 0 && (
-        <div className="mt-0.5 truncate text-[10px]" style={{ color: "var(--ink-faint)" }} title={c.genres.join(" · ")}>{c.genres.slice(0, 2).join(" · ")}</div>
+        <div className="mt-0.5 truncate text-xs" style={{ color: "var(--ink-faint)" }} title={c.genres.join(" · ")}>{c.genres.slice(0, 2).join(" · ")}</div>
       )}
     </PosterCard>
   );

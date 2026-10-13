@@ -16,13 +16,13 @@ export type TestState = { loading?: boolean; ok?: boolean; error?: string; caps?
 // Priority only orders results that are otherwise level, so say so wherever it shows.
 export const TIE_BREAK_HELP = "Only breaks ties between equally seeded results, such as the same release from two indexers. 1 = preferred.";
 
-export const field = "w-full rounded-lg px-3 py-2 text-[13px]";
+export const field = "w-full rounded-lg px-3 py-2 text-md";
 export const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
 // TestLine is a Test's answer: connected (with what the indexer supports) or why not.
 export function TestLine({ state }: { state: TestState }) {
   return (
-    <div className="mt-2.5 break-words font-mono text-[11px]" style={{ color: state.ok ? "var(--good)" : "var(--reject)" }}>
+    <div className="mt-2.5 break-words font-mono text-xs" style={{ color: state.ok ? "var(--good)" : "var(--reject)" }}>
       {state.ok ? `✓ Connected${state.caps ? ` · ${state.caps}` : ""}` : `✕ ${state.error ?? "failed"}`}
     </div>
   );
@@ -43,7 +43,7 @@ function TestSettings({ body }: { body: () => NewIndexer & { id?: number } }) {
   };
   return (
     <div className="mt-3">
-      <button type="button" onClick={run} disabled={state.loading} className="rounded-lg px-3 py-1.5 text-[12px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
+      <button type="button" onClick={run} disabled={state.loading} className="rounded-lg px-3 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
         {state.loading ? "Testing…" : "Test these settings"}
       </button>
       {!state.loading && state.ok !== undefined && <TestLine state={state} />}
@@ -58,10 +58,10 @@ export function IndexerEditor({ idx, onSaved, onChanged }: { idx: Indexer; onSav
     <div className="mt-1 flex flex-col gap-1">
       {idx.kind === "newznab" && (
         // Usenet: nothing could download what it finds, so searches skip it.
-        <div className="text-[11.5px] text-ink-dim">Not searched: needs a usenet download client.</div>
+        <div className="text-sm text-ink-dim">Not searched: needs a usenet download client.</div>
       )}
-      {idx.caps_summary && <div className="break-words text-[11px] text-ink-faint" title="What this indexer says it supports">{idx.caps_summary}</div>}
-      <div className="font-mono text-[11px] text-ink-faint" title={TIE_BREAK_HELP}>tie-break {idx.priority}</div>
+      {idx.caps_summary && <div className="break-words text-xs text-ink-faint" title="What this indexer says it supports">{idx.caps_summary}</div>}
+      <div className="font-mono text-xs text-ink-faint" title={TIE_BREAK_HELP}>tie-break {idx.priority}</div>
       <MediaPills idx={idx} onChange={onChanged} />
       <EditForm idx={idx} onSaved={onSaved} />
     </div>
@@ -128,7 +128,7 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
   return (
     <form onSubmit={submit} aria-label={`Edit ${idx.name}`} className="mt-3 rounded-lg p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
       {managed && (
-        <p className="mb-3 mt-0 text-[11.5px] text-ink-dim">
+        <p className="mb-3 mt-0 text-sm text-ink-dim">
           Managed by Prowlarr: its name, URL and key come from Prowlarr. Change them in Prowlarr; it syncs hourly. Scope, seeding, minimum seeders, tie-break and on/off below stay yours.
         </p>
       )}
@@ -173,16 +173,16 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
 
       <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />
 
-      <label className="mt-3 flex items-center gap-2 text-[12.5px]">
+      <label className="mt-3 flex items-center gap-2 text-base">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         Enabled
       </label>
       <TestSettings body={() => ({ ...body(), id: idx.id })} />
-      {error && <div className="mt-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
       <button
         type="submit"
         disabled={saving}
-        className="mt-3 rounded-lg px-4 py-2 text-[12.5px] font-semibold"
+        className="mt-3 rounded-lg px-4 py-2 text-base font-semibold"
         style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: saving ? 0.6 : 1 }}
       >
         {saving ? "Saving…" : "Save changes"}
@@ -195,7 +195,7 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
   return (
     <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
       {options.map((o) => (
-        <button key={o.v} type="button" onClick={() => onChange(o.v)} className="rounded-md px-3 py-1 text-[11.5px] font-semibold transition-colors" style={{ background: value === o.v ? "var(--accent)" : "transparent", color: value === o.v ? "var(--accent-ink)" : "var(--ink-faint)" }}>
+        <button key={o.v} type="button" onClick={() => onChange(o.v)} className="rounded-md px-3 py-1 text-sm font-semibold transition-colors" style={{ background: value === o.v ? "var(--accent)" : "transparent", color: value === o.v ? "var(--accent-ink)" : "var(--ink-faint)" }}>
           {o.l}
         </button>
       ))}
@@ -212,8 +212,8 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
     <div className="mt-3 rounded-lg p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-[12.5px] font-semibold">Seed rules</div>
-          <div className="text-[10.5px] text-ink-faint">{enabled ? "Keep seeding until a ratio or time limit" : "Off — remove the download as soon as it's imported"}</div>
+          <div className="text-base font-semibold">Seed rules</div>
+          <div className="text-xs text-ink-faint">{enabled ? "Keep seeding until a ratio or time limit" : "Off — remove the download as soon as it's imported"}</div>
         </div>
         <Switch size="sm" checked={enabled} onChange={onEnabled} label="Seed rules" />
       </div>
@@ -230,7 +230,7 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
               </div>
             </Labeled>
           </div>
-          <p className="mt-2 text-[10.5px] text-ink-faint">Removed when either limit is hit (both 0 = seed forever). The library keeps its own copy, so removing the torrent never touches your media.</p>
+          <p className="mt-2 text-xs text-ink-faint">Removed when either limit is hit (both 0 = seed forever). The library keeps its own copy, so removing the torrent never touches your media.</p>
         </>
       )}
     </div>
@@ -310,7 +310,7 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-ink-faint">Used for</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Used for</span>
       {MEDIA_TYPES.map((m) => {
         const active = lit.includes(m.key);
         return (
@@ -321,7 +321,7 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
             aria-pressed={active}
             title={active ? `Stop using it for ${m.label}` : `Use it for ${m.label} too`}
             onClick={() => toggle(m.key)}
-            className="rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold transition-colors disabled:opacity-50"
+            className="rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors disabled:opacity-50"
             style={{
               border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
               background: active ? "var(--accent-soft)" : "var(--panel-2)",
@@ -332,8 +332,8 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
           </button>
         );
       })}
-      {allLit && <span className="text-[10px] text-ink-faint">· all areas</span>}
-      {error && <span role="alert" className="basis-full text-[11px]" style={{ color: "var(--reject)" }}>{error}</span>}
+      {allLit && <span className="text-xs text-ink-faint">· all areas</span>}
+      {error && <span role="alert" className="basis-full text-xs" style={{ color: "var(--reject)" }}>{error}</span>}
     </div>
   );
 }

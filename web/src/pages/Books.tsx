@@ -354,19 +354,19 @@ export function Books() {
 
         {multiSelect && (
           <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-            <span className="font-mono text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
-            <button onClick={() => setSelected(new Set(filtered.map((b) => b.id)))} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
-            <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
+            <span className="font-mono text-sm font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
+            <button onClick={() => setSelected(new Set(filtered.map((b) => b.id)))} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
+            <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
             <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Monitor</button>
-            <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
+            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Monitor</button>
+            <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
             <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
             <select
               aria-label="Set the quality profile of the selected books"
               defaultValue=""
               disabled={selected.size === 0 || bulkBusy}
               onChange={(e) => e.target.value && (bulkProfile(e.target.value), (e.target.value = ""))}
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium"
+              className="rounded-lg px-2.5 py-1.5 text-sm font-medium"
               style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
             >
               <option value="">Set quality profile…</option>
@@ -377,7 +377,7 @@ export function Books() {
 
         {booksQ.data && error && <StaleBanner message={error} onRetry={refresh} />}
         {upgrade && !upgrade.running && !hideUpgrade && (upgrade.error || leftVisible.length > 0 || ((upgrade.left?.length ?? 0) === 0 && (upgrade.notes?.length ?? 0) > 0)) && (
-          <div className="mb-4 rounded-lg px-3.5 py-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
+          <div className="mb-4 rounded-lg px-3.5 py-2.5 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <b>Hardcover re-match:</b> {upgrade.upgraded} upgraded, {upgrade.flagged} flagged as possible duplicates, {upgrade.unmatched} left as they were{upgrade.error ? ` — stopped: ${upgrade.error}` : "."}
@@ -385,22 +385,22 @@ export function Books() {
               </div>
               <div className="flex flex-none items-center gap-2">
                 {leftVisible.length > 1 && (
-                  <button onClick={() => keepAll()} className="rounded-md px-2 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Ignore all</button>
+                  <button onClick={() => keepAll()} className="rounded-md px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Ignore all</button>
                 )}
                 <IconButton label="Hide this until the next run" onClick={() => setHideUpgrade(true)} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
               </div>
             </div>
             {leftVisible.length > 0 ? (
-              <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-[11.5px] text-ink-faint">
+              <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-sm text-ink-faint">
                 {leftVisible.map((l) => (
                   <li key={l.id} className="flex items-center gap-2">
                     <span className="min-w-0 flex-1"><Link to={`/books/${l.id}`} className="font-semibold hover:text-[var(--accent)]" style={{ color: "var(--ink-dim)" }}>{l.title}</Link>{l.author ? ` — ${l.author}` : ""}: {l.reason}</span>
-                    <button onClick={() => keepOne(l.id)} title="Stop reporting this book: it stays on its current catalogue entry and the re-match skips it from now on" className="flex-none rounded-md px-2 py-0.5 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Ignore</button>
+                    <button onClick={() => keepOne(l.id)} title="Stop reporting this book: it stays on its current catalogue entry and the re-match skips it from now on" className="flex-none rounded-md px-2 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Ignore</button>
                   </li>
                 ))}
               </ul>
             ) : (upgrade.notes?.length ?? 0) > 0 && (
-              <ul className="m-0 mt-1.5 list-disc pl-5 text-[11.5px] text-ink-faint">
+              <ul className="m-0 mt-1.5 list-disc pl-5 text-sm text-ink-faint">
                 {upgrade.notes!.map((n, i) => <li key={i}>{n}</li>)}
               </ul>
             )}
@@ -409,7 +409,7 @@ export function Books() {
         {/* Open Library works with no key; Hardcover is the better catalogue. Say so once,
             where the books are, rather than hoping the Settings page gets read. */}
         {source === "openlibrary" && metaOK && (
-          <div className="mb-4 rounded-lg px-3.5 py-2.5 text-[12px]" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
+          <div className="mb-4 rounded-lg px-3.5 py-2.5 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
             Books are using <b>Open Library</b>, which needs no key. For the preferred catalogue — one entry per book, series and author pages, cleaner covers —{" "}
             {admin
               ? <>add a free <b>Hardcover</b> API key in <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</>
@@ -423,7 +423,7 @@ export function Books() {
         ) : list.length === 0 ? (
           <LibraryEmpty noun="books" folder="ebook and audiobook folders" addLabel="Add book" onScan={scanLibrary} scanning={scanning || scan.running} />
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{q ? <>No books match “<b>{query.trim()}</b>”.</> : <>No books match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}</div>
+          <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{q ? <>No books match “<b>{query.trim()}</b>”.</> : <>No books match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}</div>
         ) : mode === "author" ? (
           view === "table" ? <AuthorTable authors={authors} /> : (
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
@@ -474,11 +474,11 @@ function editionTags(b: Book): string {
 }
 
 function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => void }) {
-  const th = "px-2.5 py-2 text-left font-mono text-[9.5px] font-bold uppercase tracking-[0.06em] text-ink-faint";
+  const th = "px-2.5 py-2 text-left font-mono text-2xs font-bold uppercase tracking-[0.06em] text-ink-faint";
   const td = "px-2.5 py-2 align-middle";
   return (
     <div className="thin-scroll overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-[12px]" style={{ minWidth: "780px" }}>
+      <table className="w-full border-collapse text-sm" style={{ minWidth: "780px" }}>
         <thead>
           <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
             <th className={th}>Title</th>
@@ -500,14 +500,14 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
               <tr key={b.id} className="transition-colors hover:bg-[var(--panel-2)]" style={{ background: "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
                 <td className={`${td} min-w-[200px]`}><Link to={`/books/${b.id}`} className="font-semibold hover:text-[var(--accent)]">{b.title}</Link></td>
                 <td className={td}>{b.author || "—"}</td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`}>{b.year || "—"}</td>
-                <td className={td}><span className="font-mono text-[10px] uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span></td>
-                <td className={td}><span className="font-mono text-[11px] text-ink-dim">{editionTags(b)}</span></td>
-                <td className={`${td} text-right font-mono text-[11px] text-ink-dim`}>{size > 0 ? gb(size) : "—"}</td>
-                <td className={td}><span className="font-mono text-[10px] uppercase" style={{ color: b.monitored ? "var(--accent)" : "var(--ink-faint)" }}>{b.monitored ? "Yes" : "No"}</span></td>
+                <td className={`${td} text-right font-mono text-xs text-ink-dim`}>{b.year || "—"}</td>
+                <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span></td>
+                <td className={td}><span className="font-mono text-xs text-ink-dim">{editionTags(b)}</span></td>
+                <td className={`${td} text-right font-mono text-xs text-ink-dim`}>{size > 0 ? gb(size) : "—"}</td>
+                <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: b.monitored ? "var(--accent)" : "var(--ink-faint)" }}>{b.monitored ? "Yes" : "No"}</span></td>
                 <td className={`${td} text-right`}>
                   {missing && (
-                    <button onClick={() => onSearch(b)} title="Search your indexers for the edition this book is missing" className="whitespace-nowrap rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
+                    <button onClick={() => onSearch(b)} title="Search your indexers for the edition this book is missing" className="whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
                   )}
                 </td>
               </tr>
@@ -565,10 +565,10 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         {r.cover_url && <img src={r.cover_url} alt="" className="h-full w-full object-cover" loading="lazy" />}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
-        <div className="truncate text-[11.5px] text-ink-dim">{r.author || "Unknown author"}</div>
+        <div className="truncate text-md font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
+        <div className="truncate text-sm text-ink-dim">{r.author || "Unknown author"}</div>
       </div>
-      <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{addingKey === r.key ? "Adding…" : "Add"}</span>
+      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{addingKey === r.key ? "Adding…" : "Add"}</span>
     </button>
   );
 
@@ -581,30 +581,30 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   return (
     <Modal onClose={onClose} labelledBy="add-book-title" size="lg" initialFocus={inputRef}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="add-book-title" className="m-0 text-[15px] font-bold">Add a book</h2>
+          <h2 id="add-book-title" className="m-0 text-lg font-bold">Add a book</h2>
           <label className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
-            <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
+            <span className="font-mono text-2xs uppercase text-ink-faint">Format</span>
+            <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-sm" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
           </label>
         </div>
         <form onSubmit={search} className="mb-3 flex gap-2">
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by title or author" placeholder="Search by title or author — e.g. Dune Herbert" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by title or author" placeholder="Search by title or author — e.g. Dune Herbert" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={inputStyle} />
           <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
-        {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
         <div className="thin-scroll max-h-[56vh] overflow-y-auto">
           {results.map(row)}
           {source === "hardcover" && results.length > 0 && olResults === null && (
-            <button type="button" onClick={searchOpenLibrary} disabled={olLoading} className="mt-1 w-full rounded-lg p-2 text-center text-[11.5px] font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--ink-dim)" }}>
+            <button type="button" onClick={searchOpenLibrary} disabled={olLoading} className="mt-1 w-full rounded-lg p-2 text-center text-sm font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--ink-dim)" }}>
               {olLoading ? "Searching Open Library…" : "Not there? Show Open Library results too"}
             </button>
           )}
           {olResults !== null && (
             <>
-              <div className="mt-2 px-2 font-mono text-[9.5px] font-bold uppercase tracking-wide text-ink-faint">Open Library</div>
-              {olResults.length === 0 ? <div className="p-2 text-[12px] text-ink-dim">Open Library has nothing more for this search.</div> : olResults.map(row)}
+              <div className="mt-2 px-2 font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">Open Library</div>
+              {olResults.length === 0 ? <div className="p-2 text-sm text-ink-dim">Open Library has nothing more for this search.</div> : olResults.map(row)}
             </>
           )}
         </div>
@@ -672,11 +672,11 @@ function AuthorCard({ group }: { group: AuthorGroup }) {
       ) : cover ? (
         <img src={posterThumb(cover)} alt={name} className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]" loading="lazy" decoding="async" />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-[34px] font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{name.charAt(0).toUpperCase()}</div>
+        <div className="flex h-full w-full items-center justify-center text-display-lg font-bold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{name.charAt(0).toUpperCase()}</div>
       )}
       <div className="absolute inset-x-0 bottom-0 p-2.5" style={{ background: "linear-gradient(to top, rgba(0,0,0,.92), rgba(0,0,0,.35) 60%, transparent)" }}>
-        <div className="truncate text-[12.5px] font-bold text-white" title={name}>{name}</div>
-        <div className="mt-0.5 flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,.8)" }}>
+        <div className="truncate text-base font-bold text-white" title={name}>{name}</div>
+        <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,.8)" }}>
           <span>{books.length} book{books.length === 1 ? "" : "s"}</span>
           {downloaded > 0 && <span style={{ color: "var(--good)" }}>{downloaded} ✓</span>}
           {wanted > 0 && <span style={{ color: "var(--avoid)" }}>{wanted} wanted</span>}
@@ -689,13 +689,13 @@ function AuthorCard({ group }: { group: AuthorGroup }) {
 function AuthorTable({ authors }: { authors: AuthorGroup[] }) {
   return (
     <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-[12.5px]">
+      <table className="w-full border-collapse text-base">
         <thead>
           <tr style={{ background: "var(--panel-2)" }}>
-            <th className="px-3 py-2 text-left font-mono text-[10px] font-bold uppercase tracking-wide text-ink-faint">Author</th>
-            <th className="px-3 py-2 text-right font-mono text-[10px] font-bold uppercase tracking-wide text-ink-faint">Books</th>
-            <th className="px-3 py-2 text-right font-mono text-[10px] font-bold uppercase tracking-wide text-ink-faint">Downloaded</th>
-            <th className="px-3 py-2 text-right font-mono text-[10px] font-bold uppercase tracking-wide text-ink-faint">Wanted</th>
+            <th className="px-3 py-2 text-left font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">Author</th>
+            <th className="px-3 py-2 text-right font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">Books</th>
+            <th className="px-3 py-2 text-right font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">Downloaded</th>
+            <th className="px-3 py-2 text-right font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">Wanted</th>
           </tr>
         </thead>
         <tbody>
@@ -764,33 +764,33 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
   return (
     <Modal onClose={onClose} labelledBy="add-author-title" size="lg" initialFocus={inputRef}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="add-author-title" className="m-0 text-[15px] font-bold">Add an author</h2>
+          <h2 id="add-author-title" className="m-0 text-lg font-bold">Add an author</h2>
           <label className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
-            <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={inputStyle}>
+            <span className="font-mono text-2xs uppercase text-ink-faint">Format</span>
+            <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-sm" style={inputStyle}>
               {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
           </label>
         </div>
 
-        {error && <div className="mb-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
 
         {!selected ? (
           <>
-            <p className="mb-3 text-[12px] text-ink-dim">Search for an author and add their entire catalogue of official individual books (box sets and collections are excluded).</p>
+            <p className="mb-3 text-sm text-ink-dim">Search for an author and add their entire catalogue of official individual books (box sets and collections are excluded).</p>
             <form onSubmit={search} className="mb-3 flex gap-2">
-              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by author" placeholder="Search by author — e.g. Brandon Sanderson" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={inputStyle} />
+              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by author" placeholder="Search by author — e.g. Brandon Sanderson" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={inputStyle} />
               <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
             </form>
             <div className="thin-scroll max-h-[52vh] overflow-y-auto">
               {authors === null ? null : authors.length === 0 ? (
-                <div className="p-6 text-center text-[12.5px] text-ink-dim">No authors found.</div>
+                <div className="p-6 text-center text-base text-ink-dim">No authors found.</div>
               ) : authors.map((a) => (
                 <button key={a.key} onClick={() => pick(a)} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
-                  <span className="grid h-10 w-10 flex-none place-items-center rounded-full text-[14px] font-bold text-white" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>{a.name.charAt(0).toUpperCase()}</span>
+                  <span className="grid h-10 w-10 flex-none place-items-center rounded-full text-md font-bold text-white" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>{a.name.charAt(0).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold">{a.name}</div>
-                    <div className="truncate text-[11.5px] text-ink-faint">{a.work_count > 0 ? `${a.work_count.toLocaleString()} works` : "Author"}{a.top_work ? ` · ${a.top_work}` : ""}</div>
+                    <div className="truncate text-md font-semibold">{a.name}</div>
+                    <div className="truncate text-sm text-ink-faint">{a.work_count > 0 ? `${a.work_count.toLocaleString()} works` : "Author"}{a.top_work ? ` · ${a.top_work}` : ""}</div>
                   </div>
                   <span className="flex-none text-ink-faint">›</span>
                 </button>
@@ -799,14 +799,14 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
           </>
         ) : (
           <>
-            <button onClick={() => { setSelected(null); setWorks(null); }} className="mb-3 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
+            <button onClick={() => { setSelected(null); setWorks(null); }} className="mb-3 inline-flex items-center gap-1 text-sm text-ink-dim hover:text-[var(--ink)]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               Choose a different author
             </button>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[15px] font-bold">{selected.name}</div>
-                <div className="text-[11.5px] text-ink-faint">{works === null ? "Loading catalogue…" : `${works.length} official book${works.length === 1 ? "" : "s"}`}</div>
+                <div className="text-lg font-bold">{selected.name}</div>
+                <div className="text-sm text-ink-faint">{works === null ? "Loading catalogue…" : `${works.length} official book${works.length === 1 ? "" : "s"}`}</div>
               </div>
               <Button variant="primary" onClick={add} disabled={works === null || works.length === 0} busy={busy} busyLabel="Adding…" className="flex-none disabled:opacity-50">
                 {works ? `Add all ${works.length} books` : "Add all"}
@@ -821,7 +821,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
                 <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))" }}>
                   {works.map((b) => (
                     <div key={b.key} className="overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }} title={`${b.title}${b.year ? ` (${b.year})` : ""}`}>
-                      {b.cover_url ? <img src={b.cover_url} alt={b.title} className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full items-center justify-center p-1.5 text-center text-[9.5px] font-semibold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{b.title}</div>}
+                      {b.cover_url ? <img src={b.cover_url} alt={b.title} className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full items-center justify-center p-1.5 text-center text-xs font-semibold text-white" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}>{b.title}</div>}
                     </div>
                   ))}
                 </div>

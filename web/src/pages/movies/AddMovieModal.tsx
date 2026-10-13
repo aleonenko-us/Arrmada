@@ -69,10 +69,10 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
       ) : (
         <>
           <form onSubmit={search} className="mb-3 flex gap-2">
-            <input ref={inputRef} aria-label="Search TMDB for a movie" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]" style={field} />
+            <input ref={inputRef} aria-label="Search TMDB for a movie" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={field} />
             <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
           </form>
-          {error && <div className="mb-2 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+          {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
           <div className="max-h-[52vh] overflow-y-auto">
             {results.map((r) => (
               <ResultRow key={r.tmdb_id} r={r} onPick={() => setPicked(r)} onOpen={onClose} />
@@ -99,8 +99,8 @@ function ResultRow({ r, onPick, onOpen }: { r: MovieLookup; onPick: () => void; 
     <>
       <Poster url={r.poster_url} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
-        <div className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-dim">{r.overview || "No overview."}</div>
+        <div className="text-md font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
+        <div className="mt-0.5 line-clamp-2 text-sm text-ink-dim">{r.overview || "No overview."}</div>
       </div>
     </>
   );
@@ -108,14 +108,14 @@ function ResultRow({ r, onPick, onOpen }: { r: MovieLookup; onPick: () => void; 
     return (
       <Link to={`/movies/${r.library_id}`} onClick={onOpen} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
         {body}
-        <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library →</span>
+        <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library →</span>
       </Link>
     );
   }
   return (
     <button onClick={onPick} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
       {body}
-      <span className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add…</span>
+      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add…</span>
     </button>
   );
 }
@@ -155,29 +155,29 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
       <div className="mb-4 flex items-center gap-3">
         <Poster url={film.poster_url} />
         <div className="min-w-0">
-          <div className="text-[14px] font-semibold">{film.title} <span className="font-normal text-ink-faint">{film.year ? `(${film.year})` : ""}</span></div>
-          <div className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-dim">{film.overview || "No overview."}</div>
+          <div className="text-md font-semibold">{film.title} <span className="font-normal text-ink-faint">{film.year ? `(${film.year})` : ""}</span></div>
+          <div className="mt-0.5 line-clamp-2 text-sm text-ink-dim">{film.overview || "No overview."}</div>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-[12px]">
-          <span className="font-mono text-[10px] uppercase text-ink-faint">Quality profile</span>
-          <select value={profile} onChange={(e) => onProfile(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12.5px]" style={field}>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-mono text-2xs uppercase text-ink-faint">Quality profile</span>
+          <select value={profile} onChange={(e) => onProfile(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-base" style={field}>
             {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-[12px]">
-          <span className="font-mono text-[10px] uppercase text-ink-faint">Minimum availability</span>
-          <select value={availability} onChange={(e) => setAvailability(e.target.value as MinAvailability)} className="rounded-lg px-2.5 py-1.5 text-[12.5px]" style={field}>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-mono text-2xs uppercase text-ink-faint">Minimum availability</span>
+          <select value={availability} onChange={(e) => setAvailability(e.target.value as MinAvailability)} className="rounded-lg px-2.5 py-1.5 text-base" style={field}>
             {AVAILABILITY.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
           </select>
-          <span className="text-[10.5px] text-ink-faint">{AVAILABILITY.find((a) => a.value === availability)?.hint}</span>
+          <span className="text-xs text-ink-faint">{AVAILABILITY.find((a) => a.value === availability)?.hint}</span>
         </label>
       </div>
 
-      <fieldset className="mt-4 flex flex-col gap-2 text-[12.5px]">
-        <legend className="mb-1 font-mono text-[10px] uppercase text-ink-faint">When it's added</legend>
+      <fieldset className="mt-4 flex flex-col gap-2 text-base">
+        <legend className="mb-1 font-mono text-2xs uppercase text-ink-faint">When it's added</legend>
         <label className="flex items-start gap-2.5">
           <input type="radio" name="add-search" className="mt-0.5" checked={searchNow} onChange={() => setSearchNow(true)} />
           <span>Monitor it and search now</span>
@@ -186,18 +186,18 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
           <input type="radio" name="add-search" className="mt-0.5" checked={!searchNow} onChange={() => setSearchNow(false)} />
           <span>
             Add unmonitored
-            <span className="mt-0.5 block text-[11.5px] text-ink-faint">Nothing is searched or grabbed until you monitor it.</span>
+            <span className="mt-0.5 block text-sm text-ink-faint">Nothing is searched or grabbed until you monitor it.</span>
           </span>
         </label>
         {searchNow !== defaultSearch && (
-          <label className="mt-1 flex items-start gap-2.5 text-[12px] text-ink-dim">
+          <label className="mt-1 flex items-start gap-2.5 text-sm text-ink-dim">
             <input type="checkbox" className="mt-0.5" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
             <span>Remember as my default (Series and Books use it too)</span>
           </label>
         )}
       </fieldset>
 
-      {error && <div className="mt-3 text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={onBack} disabled={busy}>Back</Button>
         <Button variant="primary" onClick={add} disabled={busy}>{busy ? "Adding…" : "Add movie"}</Button>

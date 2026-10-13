@@ -320,10 +320,10 @@ export function Quality() {
       <Page>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <MediaSwitch value={media} onChange={setMedia} />
-          <button onClick={openNew} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={primaryStyle}>+ New profile</button>
+          <button onClick={openNew} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={primaryStyle}>+ New profile</button>
         </div>
 
-        <p className="mb-4 text-[12.5px] text-ink-dim">
+        <p className="mb-4 text-base text-ink-dim">
           {media === "book"
             ? "A book profile picks which formats to grab (EPUB, M4B…) and can boost releases by keyword — e.g. GraphicAudio +100 to prefer full-cast dramatizations. Higher score wins."
             : media === "music"
@@ -331,10 +331,10 @@ export function Quality() {
               : "A profile describes the file you want — codec, HDR, audio and a bitrate window. Arrmada grabs to it, ranks releases by it, and shows which files in your library don't fit."}
         </p>
 
-        {error && <div className="mb-3 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
         {listQ.data && loadError && <StaleBanner message={loadError} onRetry={refresh} />}
         {notice && (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--accent-line)", color: "var(--ink)" }}>
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", color: "var(--ink)" }}>
             <span>{notice}</span>
             <button onClick={() => setNotice(null)} aria-label="Dismiss" className="text-ink-dim">✕</button>
           </div>
@@ -343,7 +343,7 @@ export function Quality() {
         {!listQ.data ? (
           loadError ? <ErrorState what="quality profiles" message={loadError} onRetry={refresh} busy={listQ.loading} /> : <Skeleton variant="list" count={3} />
         ) : profiles.length === 0 ? (
-          <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+          <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No quality profiles yet. Add one to tell Arrmada what to grab.
           </div>
         ) : (
@@ -465,7 +465,7 @@ function MediaSwitch({ value, onChange }: { value: Media; onChange: (v: Media) =
       {MEDIA_TABS.map((t, i) => {
         const active = t.key === value;
         return (
-          <button key={t.key} ref={(el) => { refs.current[i] = el; }} type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => onKeyDown(e, i)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors" style={{ background: active ? "var(--accent)" : "transparent", color: active ? "var(--accent-ink)" : "var(--ink-dim)" }}>
+          <button key={t.key} ref={(el) => { refs.current[i] = el; }} type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => onKeyDown(e, i)} className="rounded-md px-3 py-1.5 text-sm font-semibold transition-colors" style={{ background: active ? "var(--accent)" : "transparent", color: active ? "var(--accent-ink)" : "var(--ink-dim)" }}>
             {t.label}
           </button>
         );
@@ -526,43 +526,43 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
         {/* A floor on the title's width: on a phone the buttons wrap below it rather than over it. */}
         <div className="min-w-[200px] flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[13.5px] font-semibold">{info.name}</span>
-            {info.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Default</span>}
+            <span className="text-md font-semibold">{info.name}</span>
+            {info.is_default && <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Default</span>}
           </div>
-          <div className="mt-1 truncate text-[11.5px] text-ink-dim" title={info.summary}>{info.summary || "Any quality"}</div>
+          <div className="mt-1 truncate text-sm text-ink-dim" title={info.summary}>{info.summary || "Any quality"}</div>
         </div>
         <div className="flex flex-none flex-wrap items-center gap-2">
           {!info.is_default && (
-            <button onClick={makeDefault} title="Use this profile by default when adding" className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Make default</button>
+            <button onClick={makeDefault} title="Use this profile by default when adding" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Make default</button>
           )}
-          <button onClick={onEdit} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Edit</button>
-          <button onClick={onDuplicate} title="Start a new profile from this one" className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Duplicate</button>
+          <button onClick={onEdit} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Edit</button>
+          <button onClick={onDuplicate} title="Start a new profile from this one" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Duplicate</button>
           {confirming && target ? (
             <>
               {/* Every title on a profile needs somewhere real to go, so the delete asks where. */}
-              <label className="flex items-center gap-1.5 text-[11.5px] text-ink-dim">
+              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
                 Move {what} to
-                <select value={target.key} onChange={(e) => setMoveTo(e.target.value)} className="rounded-lg px-2 py-1.5 text-[11.5px]" style={fieldStyle}>
+                <select value={target.key} onChange={(e) => setMoveTo(e.target.value)} className="rounded-lg px-2 py-1.5 text-sm" style={fieldStyle}>
                   {others.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
                 </select>
               </label>
-              <button onClick={del} className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--reject)", color: "#fff" }}>
+              <button onClick={del} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ background: "var(--reject)", color: "#fff" }}>
                 {counts && titles === 0 ? "Delete" : `Delete and move ${what} to ${target.name}`}
               </button>
-              <button onClick={() => setConfirming(false)} aria-label="Keep the profile" className="rounded-lg px-2.5 py-1.5 text-[11.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>✕</button>
+              <button onClick={() => setConfirming(false)} aria-label="Keep the profile" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>✕</button>
             </>
           ) : (
             <button onClick={() => setConfirming(true)} disabled={others.length === 0}
               title={others.length === 0 ? "Create another profile first" : undefined}
-              className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
+              className="rounded-lg px-2.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
           )}
         </div>
       </div>
       {counts && (
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t pt-2.5" style={{ borderColor: "var(--line-soft)" }}>
-          <span className="font-mono text-[10.5px] text-ink-faint">Used by {titles} {noun}</span>
+          <span className="font-mono text-xs text-ink-faint">Used by {titles} {noun}</span>
           {(info.kept ?? 0) > 0 && (
-            <span className="font-mono text-[10.5px]" style={{ color: "var(--accent-text)" }}
+            <span className="font-mono text-xs" style={{ color: "var(--accent-text)" }}
               title="Kept as they were when this profile changed — each one's page has Resume to let upgrades replace it again">
               {info.kept} file{info.kept === 1 ? "" : "s"} kept as is
             </span>
@@ -577,14 +577,14 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
 // FitBar shows how a set of files fits its target: green fits, red over the ceiling,
 // orange under the floor, yellow the bitrate's fine but something else isn't.
 function FitBar({ counts }: { counts: FitCounts }) {
-  if (counts.files === 0) return <span className="text-[11px] text-ink-faint">No analysed files to judge yet</span>;
+  if (counts.files === 0) return <span className="text-xs text-ink-faint">No analysed files to judge yet</span>;
   const segs: [number, string][] = [[counts.fits, "var(--good)"], [counts.over, "var(--reject)"], [counts.under, "var(--under)"], [counts.mismatch, "var(--mismatch)"]];
   return (
     <div>
       <div className="flex h-[7px] overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
         {segs.filter(([n]) => n > 0).map(([n, c], i) => <span key={i} style={{ flex: n, background: c }} />)}
       </div>
-      <div className="mt-1 font-mono text-[10.5px] text-ink-faint">
+      <div className="mt-1 font-mono text-xs text-ink-faint">
         <span style={{ color: "var(--good)" }}>{counts.fits} fit</span>
         {counts.over > 0 && <> · <span style={{ color: "var(--reject)" }}>{counts.over} over</span></>}
         {counts.under > 0 && <> · <span style={{ color: "var(--under)" }}>{counts.under} under</span></>}
@@ -598,12 +598,12 @@ function FitBar({ counts }: { counts: FitCounts }) {
 function TemplatePicker({ media, onPick, onClose }: { media: string; onPick: (sp: StoredProfile) => void; onClose: () => void }) {
   return (
     <Modal onClose={onClose} size="lg" title={`New ${media === "series" ? "series" : "movie"} profile`}>
-      <p className="mt-1 text-[12px] text-ink-dim">Pick a starting point — everything can be changed after.</p>
+      <p className="mt-1 text-sm text-ink-dim">Pick a starting point — everything can be changed after.</p>
       <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {VIDEO_TEMPLATES.map((t) => (
           <button key={t.key} onClick={() => onPick(t.make(media))} className="rounded-xl p-3.5 text-left transition-colors hover:border-[var(--accent)]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-            <div className="text-[13px] font-semibold">{t.name}</div>
-            <div className="mt-1 text-[11.5px] leading-[1.45] text-ink-dim">{t.desc}</div>
+            <div className="text-md font-semibold">{t.name}</div>
+            <div className="mt-1 text-sm leading-[1.45] text-ink-dim">{t.desc}</div>
           </button>
         ))}
       </div>
@@ -737,10 +737,10 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
       <Page className="grid grid-cols-1 gap-7 pb-4 pt-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <section className="min-w-0">
           <div className="mb-4">
-            <button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button>
+            <button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button>
           </div>
-          <label htmlFor="qp-name" className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-wide text-accent">Name</label>
-          <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+          <label htmlFor="qp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+          <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
           <SectionLabel>1 · The file you want</SectionLabel>
           <TargetEditor sp={sp} ideal={ideal} conflicts={conflicts} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
@@ -749,23 +749,23 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
             <Collapsible n={2} title="Sources" summary={sourceSummary(sp)}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-[10.5px] text-ink-faint">Minimum</span>
-                  <select value={sourceValue(sp.min_source)} onChange={(e) => patch({ min_source: e.target.value })} className="w-full rounded-lg px-3 py-2 text-[12.5px]" style={fieldStyle}>
+                  <span className="mb-1 block text-xs text-ink-faint">Minimum</span>
+                  <select value={sourceValue(sp.min_source)} onChange={(e) => patch({ min_source: e.target.value })} className="w-full rounded-lg px-3 py-2 text-base" style={fieldStyle}>
                     {SOURCES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
                   </select>
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[10.5px] text-ink-faint">Maximum</span>
-                  <select value={sourceValue(sp.max_source)} onChange={(e) => patch({ max_source: e.target.value })} className="w-full rounded-lg px-3 py-2 text-[12.5px]" style={fieldStyle}>
+                  <span className="mb-1 block text-xs text-ink-faint">Maximum</span>
+                  <select value={sourceValue(sp.max_source)} onChange={(e) => patch({ max_source: e.target.value })} className="w-full rounded-lg px-3 py-2 text-base" style={fieldStyle}>
                     {MAX_SOURCES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
                   </select>
                 </label>
               </div>
-              <p className="mt-2 text-[10.5px] text-ink-faint">Releases rank by resolution, then your preferences, then source; bitrate breaks ties.</p>
+              <p className="mt-2 text-xs text-ink-faint">Releases rank by resolution, then your preferences, then source; bitrate breaks ties.</p>
             </Collapsible>
 
             <Collapsible n={3} title="Rules" summary={rulesSummary(sp, unwanted)}>
-              <div className="mb-1.5 text-[12px] font-semibold">Reject</div>
+              <div className="mb-1.5 text-sm font-semibold">Reject</div>
               <PreReleaseRule allowed={!!sp.allow_prerelease} onChange={(allowed) => patch({ allow_prerelease: allowed })} />
               <RejectEditor rejected={sp.rejected ?? []} onChange={(r) => patch({ rejected: r })} />
               <UnwantedRules value={sp.unwanted} onChange={(u) => patch({ unwanted: u })} catalog={unwanted.catalog} ideal={sp.ideal} defaultGroups={unwanted.groups} />
@@ -788,15 +788,15 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
         <aside className="min-w-0">
           <div className="flex flex-col gap-4 lg:sticky lg:top-[72px]">
             <div>
-              <div className="mb-1 flex items-center gap-2 text-[15px] font-bold">
+              <div className="mb-1 flex items-center gap-2 text-lg font-bold">
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />
                 What you'll get
               </div>
-              <p className="mb-3 mt-1 text-[11.5px] text-ink-faint">
+              <p className="mb-3 mt-1 text-sm text-ink-faint">
                 Live on sample releases{sampleLabel ? ` — ${sampleLabel}` : ""}. Change anything and it re-decides.
               </p>
               {!winner ? (
-                <div className="rounded-xl p-7 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>Nothing in the sample matches this profile. Loosen a Must or widen a bitrate window.</div>
+                <div className="rounded-xl p-7 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Nothing in the sample matches this profile. Loosen a Must or widen a bitrate window.</div>
               ) : (
                 <Hero winner={winner} why={decision?.why ?? []} chosenOver={decision?.chosen_over} open={open} onToggle={() => setOpen((o) => !o)} eligible={decision?.eligible.slice(1) ?? []} rejected={decision?.rejected ?? []} total={total} />
               )}
@@ -859,19 +859,19 @@ function ImpactDialog({ impact, failed, saving, onAllow, onKeepFiles, onUpgrades
         </>
       }>
       {failed ? (
-        <p className="text-[12.5px] leading-[1.5] text-ink-dim">
+        <p className="text-base leading-[1.5] text-ink-dim">
           The count of files this edit would make eligible for replacement couldn't be worked out ({failed}). Saving with upgrades on may start re-downloading files that no longer fit.
         </p>
       ) : (
         <>
-          <p className="text-[12.5px] leading-[1.5] text-ink-dim">{parts.join(", ")}. The upgrade sweeps would look for replacements for them; what's actually grabbed depends on what turns up.</p>
+          <p className="text-base leading-[1.5] text-ink-dim">{parts.join(", ")}. The upgrade sweeps would look for replacements for them; what's actually grabbed depends on what turns up.</p>
           {examples.length > 0 && (
-            <ul className="mt-3 flex flex-col gap-1 text-[12px]">
+            <ul className="mt-3 flex flex-col gap-1 text-sm">
               {examples.map((t) => <li key={t} className="truncate">{t}</li>)}
               {files > examples.length && <li className="text-ink-faint">…and more</li>}
             </ul>
           )}
-          <p className="mt-3 text-[11.5px] leading-[1.5] text-ink-faint">Keep existing files applies the edit to what's grabbed from now on and leaves these files as they are. Each one shows "Upgrades paused" with Resume on its page.</p>
+          <p className="mt-3 text-sm leading-[1.5] text-ink-faint">Keep existing files applies the edit to what's grabbed from now on and leaves these files as they are. Each one shows "Upgrades paused" with Resume on its page.</p>
         </>
       )}
     </Modal>
@@ -937,23 +937,23 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
   });
   return (
     <div className="rounded-xl p-4" style={panelStyle}>
-      <p className="mb-3.5 text-[11px] leading-[1.5] text-ink-faint">
+      <p className="mb-3.5 text-xs leading-[1.5] text-ink-faint">
         One description drives everything: what's grabbed, how releases rank, and which files in your library are flagged as not fitting.
       </p>
 
-      <div className="mb-1 text-[12px] font-semibold">Resolution</div>
+      <div className="mb-1 text-sm font-semibold">Resolution</div>
       <div className="flex flex-wrap gap-2">
         {RESOLUTIONS.map((r) => {
           const active = allowed.includes(r.v);
           return (
-            <button key={r.v} onClick={() => toggleRes(r.v)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+            <button key={r.v} onClick={() => toggleRes(r.v)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
               {r.l}
-              {active && <span className="font-mono text-[9px] font-bold uppercase opacity-80">{r.v === best ? "goal" : "fallback"}</span>}
+              {active && <span className="font-mono text-2xs font-bold uppercase opacity-80">{r.v === best ? "goal" : "fallback"}</span>}
             </button>
           );
         })}
       </div>
-      <p className="mb-4 mt-1.5 text-[10.5px] text-ink-faint">
+      <p className="mb-4 mt-1.5 text-xs text-ink-faint">
         {allowed.length === 0 ? "Any resolution. Pick some to limit what's grabbed." : "Only these are grabbed. The highest is the goal; the rest are fallbacks while it isn't available."}
       </p>
 
@@ -962,13 +962,13 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
       {TARGET_ROWS.map((row) => (
         <div key={row.row} className="mb-4">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[12px] font-semibold">{row.label}</span>
+            <span className="text-sm font-semibold">{row.label}</span>
           </div>
-          <div className="mb-1.5 text-[10.5px] text-ink-faint">{row.hint}</div>
+          <div className="mb-1.5 text-xs text-ink-faint">{row.hint}</div>
           <div className="flex flex-col gap-1.5">
             {row.options.map((o) => (
               <div key={o.k} className="flex flex-wrap items-center justify-between gap-2 rounded-lg py-1 pl-2.5 pr-1" style={{ background: "var(--panel-2)" }}>
-                <span className="text-[12.5px]">{o.l}</span>
+                <span className="text-base">{o.l}</span>
                 <PrefPicker value={(ideal[row.row]?.[o.k] ?? "") as TargetPref} onChange={(p) => onIdeal((cur) => setPref(cur, row.row, o.k, p))} label={o.l} />
               </div>
             ))}
@@ -977,18 +977,18 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
         </div>
       ))}
 
-      <div className="text-[12px] font-semibold">Bitrate window</div>
-      <div className="mb-2 text-[10.5px] text-ink-faint">
+      <div className="text-sm font-semibold">Bitrate window</div>
+      <div className="mb-2 text-xs text-ink-faint">
         The whole file's average, as the library shows it. Above the ceiling isn't grabbed; under the floor is only grabbed when nothing better exists.
       </div>
       <div className="flex flex-col gap-1.5">
         {windowKeys(allowed).map((w) => (
-          <div key={w.key} className="flex items-center gap-2 text-[12px]">
+          <div key={w.key} className="flex items-center gap-2 text-sm">
             <span className="w-[52px] font-mono text-ink-dim">{w.label}</span>
             <NumIn value={ideal.bitrate?.[w.key]?.min} onSet={(v) => setWindow(w.key, "min", v)} label={`${w.label} floor in Mb/s`} />
             <span className="text-ink-faint">to</span>
             <NumIn value={ideal.bitrate?.[w.key]?.max} onSet={(v) => setWindow(w.key, "max", v)} label={`${w.label} ceiling in Mb/s`} />
-            <span className="text-[11px] text-ink-faint">Mb/s</span>
+            <span className="text-xs text-ink-faint">Mb/s</span>
           </div>
         ))}
       </div>
@@ -1006,7 +1006,7 @@ function PrefPicker({ value, onChange, label }: { value: TargetPref; onChange: (
         const on = value === o;
         const t = PREF_TONE[o];
         return (
-          <button key={o || "none"} role="radio" aria-checked={on} onClick={() => onChange(o)} className="rounded-md px-2 py-1 text-[10.5px] font-semibold"
+          <button key={o || "none"} role="radio" aria-checked={on} onClick={() => onChange(o)} className="rounded-md px-2 py-1 text-xs font-semibold"
             title={`${t.label === "—" ? "No opinion" : t.label}: ${t.means}`}
             aria-label={`${t.label === "—" ? "No opinion" : t.label} — ${t.means}`}
             style={{ background: on ? t.bg : "transparent", color: on ? t.fg : "var(--ink-faint)", minWidth: 38 }}>
@@ -1023,19 +1023,19 @@ function PrefKey() {
   const order: TargetPref[] = ["must", "want", "", "avoid"];
   return (
     <div className="mb-4 rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
-      <div className="mb-2 text-[11px] font-semibold text-ink-dim">What the buttons mean</div>
+      <div className="mb-2 text-xs font-semibold text-ink-dim">What the buttons mean</div>
       <div className="flex flex-col gap-1.5">
         {order.map((o) => {
           const t = PREF_TONE[o];
           return (
-            <div key={o || "none"} className="flex items-start gap-2.5 text-[11px] leading-[1.45]">
-              <span className="w-[46px] flex-none rounded-md py-0.5 text-center text-[10.5px] font-semibold" style={{ background: t.bg, color: t.fg }}>{t.label}</span>
+            <div key={o || "none"} className="flex items-start gap-2.5 text-xs leading-[1.45]">
+              <span className="w-[46px] flex-none rounded-md py-0.5 text-center text-xs font-semibold" style={{ background: t.bg, color: t.fg }}>{t.label}</span>
               <span className="text-ink-dim">{t.means}</span>
             </div>
           );
         })}
       </div>
-      <div className="mt-2 text-[10.5px] text-ink-faint">Only Must and Avoid flag a file in your library as not fitting. Hover any button for its meaning.</div>
+      <div className="mt-2 text-xs text-ink-faint">Only Must and Avoid flag a file in your library as not fitting. Hover any button for its meaning.</div>
     </div>
   );
 }
@@ -1043,7 +1043,7 @@ function PrefKey() {
 function NumIn({ value, onSet, label }: { value?: number; onSet: (v: number) => void; label: string }) {
   return (
     <input type="number" min={0} step={1} aria-label={label} value={value || ""} placeholder="any" onChange={(e) => onSet(Number(e.target.value))}
-      className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-[12.5px]" style={fieldStyle} />
+      className="w-[64px] rounded-lg px-2 py-1 text-right font-mono text-base" style={fieldStyle} />
   );
 }
 
@@ -1053,8 +1053,8 @@ function Collapsible({ n, title, summary, children }: { n?: number; title: strin
     <div className="rounded-xl" style={panelStyle}>
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left">
         <span className="min-w-0 flex-1">
-          <span className="text-[13px] font-semibold">{n ? `${n} · ` : ""}{title}</span>
-          <span className="ml-2 text-[11.5px] text-ink-faint">{summary}</span>
+          <span className="text-md font-semibold">{n ? `${n} · ` : ""}{title}</span>
+          <span className="ml-2 text-sm text-ink-faint">{summary}</span>
         </span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--ink-faint)" }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
       </button>
@@ -1069,8 +1069,8 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
     <div>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <label htmlFor="qp-upgrades" className="block text-[12.5px] font-semibold">Automatically upgrade</label>
-          <div className="text-[10.5px] leading-[1.45] text-ink-faint">
+          <label htmlFor="qp-upgrades" className="block text-base font-semibold">Automatically upgrade</label>
+          <div className="text-xs leading-[1.45] text-ink-faint">
             After a file is imported, keep watching for a better release and replace it. Stops once the file is the target — the goal resolution,
             everything you prefer, inside a bitrate window that has a floor.
           </div>
@@ -1079,19 +1079,19 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
       </div>
       {sp.upgrades_enabled && (
         <div className="mt-3.5 border-t pt-3" style={{ borderColor: "var(--line)" }}>
-          <label htmlFor="qp-trigger" className="block text-[12px] font-semibold">Replace for</label>
-          <div className="mt-0.5 text-[10.5px] text-ink-faint">Which kind of improvement is worth re-downloading a file you already have.</div>
+          <label htmlFor="qp-trigger" className="block text-sm font-semibold">Replace for</label>
+          <div className="mt-0.5 text-xs text-ink-faint">Which kind of improvement is worth re-downloading a file you already have.</div>
           <select id="qp-trigger" value={trigger.v} onChange={(e) => patch({ upgrade_trigger: e.target.value as UpgradeTrigger })}
-            className="mt-2 w-full rounded-lg px-3 py-2 text-[12.5px]" style={fieldStyle}>
+            className="mt-2 w-full rounded-lg px-3 py-2 text-base" style={fieldStyle}>
             {UPGRADE_TRIGGERS.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
           </select>
-          <div className="mt-1.5 text-[10.5px] leading-[1.45] text-ink-faint">{trigger.detail}</div>
+          <div className="mt-1.5 text-xs leading-[1.45] text-ink-faint">{trigger.detail}</div>
         </div>
       )}
       {sp.upgrades_enabled && (
         <div className="mt-3.5 border-t pt-3" style={{ borderColor: "var(--line)" }}>
-          <div className="text-[12px] font-semibold">Also replace a same-quality file when it's bigger</div>
-          <div className="mt-0.5 text-[10.5px] text-ink-faint">Two releases can both be 1080p and still look different. Pick how much better one has to be before it's worth re-downloading.</div>
+          <div className="text-sm font-semibold">Also replace a same-quality file when it's bigger</div>
+          <div className="mt-0.5 text-xs text-ink-faint">Two releases can both be 1080p and still look different. Pick how much better one has to be before it's worth re-downloading.</div>
           <div className="mt-2.5 flex flex-col gap-1.5">
             {UPGRADE_STEPS.map((step) => {
               const on = sp.upgrade_min_percent === step.percent;
@@ -1101,16 +1101,16 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
                   <span className="mt-[3px] inline-block h-3 w-3 flex-none rounded-full" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "transparent" }} />
                   <span className="min-w-0">
                     <span className="flex items-baseline gap-1.5">
-                      <span className="text-[11.5px] font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{step.label}</span>
-                      {step.percent > 0 && <span className="font-mono text-[10px] text-ink-faint">+{step.percent}% bitrate</span>}
+                      <span className="text-sm font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{step.label}</span>
+                      {step.percent > 0 && <span className="font-mono text-xs text-ink-faint">+{step.percent}% bitrate</span>}
                     </span>
-                    <span className="mt-0.5 block text-[10.5px] leading-[1.45] text-ink-faint">{step.detail}</span>
+                    <span className="mt-0.5 block text-xs leading-[1.45] text-ink-faint">{step.detail}</span>
                   </span>
                 </button>
               );
             })}
           </div>
-          <div className="mt-2 text-[10.5px] text-ink-faint">Never above a bitrate ceiling. Comparisons account for codec, so a smaller HEVC file isn't treated as worse than a bloated H.264 one.</div>
+          <div className="mt-2 text-xs text-ink-faint">Never above a bitrate ceiling. Comparisons account for codec, so a smaller HEVC file isn't treated as worse than a bloated H.264 one.</div>
         </div>
       )}
     </div>
@@ -1132,12 +1132,12 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
     <div className="flex flex-col gap-5">
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold">Other formats</span>
-          <label className="flex items-center gap-1.5 text-[10.5px] text-ink-faint">
+          <span className="text-sm font-semibold">Other formats</span>
+          <label className="flex items-center gap-1.5 text-xs text-ink-faint">
             <input type="checkbox" checked={scores} onChange={(e) => setScores(e.target.checked)} /> show raw scores
           </label>
         </div>
-        <div className="mb-2 text-[10.5px] text-ink-faint">Formats the target doesn't cover, scored directly.</div>
+        <div className="mb-2 text-xs text-ink-faint">Formats the target doesn't cover, scored directly.</div>
         <div className="flex flex-col gap-2">
           {otherFormats.map((f) => (
             <FormatToggle key={f.name} format={f} score={sp.format_scores[f.name] ?? 0} required={(sp.required_formats ?? []).includes(f.name)} advanced={scores} onChange={(s, req) => setFormat(f.name, s, req)} />
@@ -1150,16 +1150,16 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
       <CustomFormatsEditor sp={sp} patch={patch} />
 
       <div>
-        <div className="text-[12px] font-semibold">Name contains</div>
-        <p className="mb-2 text-[10.5px] text-ink-faint">Points for any release whose name contains a word — IMAX, Criterion, PROPER. Negative to push one down.</p>
+        <div className="text-sm font-semibold">Name contains</div>
+        <p className="mb-2 text-xs text-ink-faint">Points for any release whose name contains a word — IMAX, Criterion, PROPER. Negative to push one down.</p>
         <KeywordEditor keywords={sp.keywords ?? []} onChange={(kw) => patch({ keywords: kw })} />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block rounded-xl p-3" style={panelStyle}>
-          <span className="text-[12px] font-semibold">Prefer smaller files</span>
-          <span className="mb-2 block text-[10.5px] text-ink-faint">Off: the biggest of equals wins. Strongly: the smallest watchable.</span>
-          <select value={SIZE_LEANS.some((s) => s.v === sp.small_bias) ? sp.small_bias : 0.15} onChange={(e) => patch({ small_bias: Number(e.target.value) })} className="w-full rounded-lg px-2.5 py-1.5 text-[12.5px]" style={fieldStyle}>
+          <span className="text-sm font-semibold">Prefer smaller files</span>
+          <span className="mb-2 block text-xs text-ink-faint">Off: the biggest of equals wins. Strongly: the smallest watchable.</span>
+          <select value={SIZE_LEANS.some((s) => s.v === sp.small_bias) ? sp.small_bias : 0.15} onChange={(e) => patch({ small_bias: Number(e.target.value) })} className="w-full rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle}>
             {SIZE_LEANS.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
           </select>
         </label>
@@ -1193,8 +1193,8 @@ function LibraryFitPanel({ sp }: { sp: StoredProfile }) {
   };
   return (
     <div className="rounded-xl p-4" style={panelStyle}>
-      <div className="mb-0.5 text-[13px] font-semibold">In your library</div>
-      <div className="mb-2.5 text-[11px] text-ink-faint">
+      <div className="mb-0.5 text-md font-semibold">In your library</div>
+      <div className="mb-2.5 text-xs text-ink-faint">
         {!res ? "Checking…"
           : res.scope === "library"
             ? `Every ${series ? "show" : "film"} judged as if it used this profile (${res.counts.titles} ${series ? "shows" : "films"})`
@@ -1202,7 +1202,7 @@ function LibraryFitPanel({ sp }: { sp: StoredProfile }) {
       </div>
       {res && <FitBar counts={res.counts} />}
       {res && misfits > 0 && (
-        <button onClick={show} className="mt-2.5 text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+        <button onClick={show} className="mt-2.5 text-sm font-semibold" style={{ color: "var(--accent)" }}>
           {series ? "Open the shows table →" : `Show the films that don't fit →`}
         </button>
       )}
@@ -1256,67 +1256,67 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
 
   return (
     <div className="rounded-xl p-4" style={panelStyle}>
-      <div className="mb-0.5 text-[13px] font-semibold">Test on a real title</div>
-      <div className="mb-2.5 text-[11px] text-ink-faint">Searches your indexers and shows what this profile, as edited, would pick.</div>
+      <div className="mb-0.5 text-md font-semibold">Test on a real title</div>
+      <div className="mb-2.5 text-xs text-ink-faint">Searches your indexers and shows what this profile, as edited, would pick.</div>
       <div className="relative">
         <div className="flex gap-2">
           <input value={pick ? pick.title : q} onFocus={loadTitles} onChange={(e) => { setPick(null); setQ(e.target.value); setResult(null); }}
-            placeholder={series ? "A show in your library" : "A film in your library"} aria-label="Title to test" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={fieldStyle} />
+            placeholder={series ? "A show in your library" : "A film in your library"} aria-label="Title to test" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle} />
           {series && (
             <input type="number" min={1} value={season} onChange={(e) => setSeason(Math.max(1, Number(e.target.value) || 1))} aria-label="Season"
-              className="w-[64px] rounded-lg px-2 py-1.5 text-right font-mono text-[12.5px]" style={fieldStyle} title="Season" />
+              className="w-[64px] rounded-lg px-2 py-1.5 text-right font-mono text-base" style={fieldStyle} title="Season" />
           )}
-          <button onClick={run} disabled={!pick || busy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <button onClick={run} disabled={!pick || busy} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
             {busy ? "Searching…" : "Search"}
           </button>
         </div>
         {matches.length > 0 && (
           <div className="absolute left-0 right-0 z-10 mt-1 overflow-hidden rounded-lg" style={{ ...panelStyle, boxShadow: "var(--shadow)" }}>
             {matches.map((t) => (
-              <button key={t.id} onClick={() => { setPick({ id: t.id, title: t.title }); setQ(""); }} className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--panel-2)]">
+              <button key={t.id} onClick={() => { setPick({ id: t.id, title: t.title }); setQ(""); }} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--panel-2)]">
                 {t.title} <span className="text-ink-faint">{t.year || ""}</span>
               </button>
             ))}
           </div>
         )}
       </div>
-      {err && <div className="mt-2.5 text-[11.5px]" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
       {result && (
         <div className="mt-3">
           <IndexerIssues list={result} className="mb-2" />
           {winner ? (
             <div className="rounded-lg p-3" style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-accent">Would grab</div>
-              <div className="mt-1 text-[13px] font-semibold">{winner.summary}</div>
-              <div className="mt-0.5 font-mono text-[10.5px] text-ink-dim">
+              <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-accent">Would grab</div>
+              <div className="mt-1 text-md font-semibold">{winner.summary}</div>
+              <div className="mt-0.5 font-mono text-xs text-ink-dim">
                 {winner.size_gb.toFixed(1)} GB{winner.bitrate_mbps ? ` · ${winner.bitrate_mbps.toFixed(1)} Mb/s` : ""} · ▲ {winner.seeders}
               </div>
-              <div className="mt-1 truncate font-mono text-[10px] text-ink-faint" title={winner.title}>{winner.title}</div>
+              <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={winner.title}>{winner.title}</div>
             </div>
           ) : (
-            <div className="rounded-lg p-3 text-[12px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+            <div className="rounded-lg p-3 text-sm text-ink-dim" style={{ border: "1px solid var(--line)" }}>
               {releases.length === 0 ? emptyReleasesMessage(result) : "Nothing found fits this profile."}
             </div>
           )}
           {(result.why ?? []).length > 0 && winner && (
-            <ul className="mt-2 flex flex-col gap-0.5 text-[11.5px] text-ink-dim">
+            <ul className="mt-2 flex flex-col gap-0.5 text-sm text-ink-dim">
               {(result.why ?? []).map((w) => <li key={w}>✓ {w}</li>)}
             </ul>
           )}
-          {winner && result.chosen_over && <div className="mt-1 text-[11px] text-ink-faint">{result.chosen_over}</div>}
+          {winner && result.chosen_over && <div className="mt-1 text-xs text-ink-faint">{result.chosen_over}</div>}
           {releases.length > 0 && (
-            <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
+            <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-sm font-semibold" style={{ color: "var(--accent)" }}>
               {showAll ? "Hide the others" : `${eligible.length} other eligible · ${skipped.length} skipped`}
             </button>
           )}
           {showAll && (
             <div className="mt-2 max-h-[280px] overflow-y-auto rounded-lg thin-scroll" style={{ border: "1px solid var(--line)" }}>
               {[...eligible, ...skipped].map((r) => (
-                <div key={r.title} className="px-3 py-1.5 text-[11.5px]" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
+                <div key={r.title} className="px-3 py-1.5 text-sm" style={{ borderBottom: "1px solid var(--line-soft)", opacity: r.eligible ? 1 : 0.6 }}>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
-                    <span className="font-mono text-[10.5px] text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
-                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-[10.5px]" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                    <span className="font-mono text-xs text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
+                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-xs" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
                   </div>
                   {r.eligible && <ReleaseExplain className="mt-1" matched={r.matched} avoided={r.avoided} waived={r.bonus_waived} lostOn={r.lost_on} />}
                 </div>
@@ -1334,14 +1334,14 @@ function SaveBar({ dirty, saving, error, onSave, onCancel, mobileNote }: { dirty
   return (
     <div className="sticky bottom-0 z-20 mt-2" style={{ background: "var(--bg)", borderTop: "1px solid var(--line)" }}>
       <Page className="flex flex-wrap items-center gap-3 py-3">
-        <div className="min-w-0 flex-1 text-[12px]">
+        <div className="min-w-0 flex-1 text-sm">
           {error ? <span style={{ color: "var(--reject)" }}>{error}</span>
             : dirty ? <span className="text-ink-dim">Unsaved changes</span>
               : <span className="text-ink-faint">No changes</span>}
-          {mobileNote && <span className="ml-2 font-mono text-[10.5px] text-ink-faint lg:hidden">· {mobileNote}</span>}
+          {mobileNote && <span className="ml-2 font-mono text-xs text-ink-faint lg:hidden">· {mobileNote}</span>}
         </div>
-        <button onClick={onCancel} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
-        <button onClick={onSave} disabled={saving} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={primaryStyle}>{saving ? "Saving…" : "Save profile"}</button>
+        <button onClick={onCancel} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
+        <button onClick={onSave} disabled={saving} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-60" style={primaryStyle}>{saving ? "Saving…" : "Save profile"}</button>
       </Page>
     </div>
   );
@@ -1367,13 +1367,13 @@ function StallField({ value, onChange }: { value: number; onChange: (v: number) 
   const def = globalMin == null ? "6h" : globalMin === 0 ? "never" : stallLabel(globalMin);
   return (
     <label className="block rounded-xl p-3" style={panelStyle}>
-      <span className="block text-[12px] font-semibold">Stall timeout</span>
-      <span className="mb-2 block text-[10.5px] text-ink-faint">Try another release after this long without progress</span>
+      <span className="block text-sm font-semibold">Stall timeout</span>
+      <span className="mb-2 block text-xs text-ink-faint">Try another release after this long without progress</span>
       <div className="flex gap-2">
         <select
           value={mode}
           onChange={(e) => onChange(e.target.value === "off" ? -1 : e.target.value === "default" ? 0 : value > 0 ? value : 360)}
-          className="flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]"
+          className="flex-1 rounded-lg px-2.5 py-1.5 text-base"
           style={fieldStyle}
         >
           <option value="default">Use default ({def})</option>
@@ -1389,11 +1389,11 @@ function StallField({ value, onChange }: { value: number; onChange: (v: number) 
             aria-label="Hours"
             value={Math.round((value / 60) * 10) / 10}
             onChange={(e) => onChange(Math.min(10080, Math.max(30, Math.round((Number(e.target.value) || 0) * 60))))}
-            className="w-20 rounded-lg px-2.5 py-1.5 text-[13px]"
+            className="w-20 rounded-lg px-2.5 py-1.5 text-md"
             style={fieldStyle}
           />
         )}
-        {mode === "custom" && <span className="self-center text-[11px] text-ink-faint">h</span>}
+        {mode === "custom" && <span className="self-center text-xs text-ink-faint">h</span>}
       </div>
     </label>
   );
@@ -1402,9 +1402,9 @@ function StallField({ value, onChange }: { value: number; onChange: (v: number) 
 function NumberField({ label, hint, value, onChange, allowNegative }: { label: string; hint: string; value: number; onChange: (v: number) => void; allowNegative?: boolean }) {
   return (
     <label className="block rounded-xl p-3" style={panelStyle}>
-      <span className="block text-[12px] font-semibold">{label}</span>
-      <span className="mb-2 block text-[10.5px] text-ink-faint">{hint}</span>
-      <input type="number" min={allowNegative ? undefined : 0} value={value} onChange={(e) => onChange(allowNegative ? Number(e.target.value) : Math.max(0, Number(e.target.value)))} className="w-full rounded-lg px-2.5 py-1.5 text-[13px]" style={fieldStyle} />
+      <span className="block text-sm font-semibold">{label}</span>
+      <span className="mb-2 block text-xs text-ink-faint">{hint}</span>
+      <input type="number" min={allowNegative ? undefined : 0} value={value} onChange={(e) => onChange(allowNegative ? Number(e.target.value) : Math.max(0, Number(e.target.value)))} className="w-full rounded-lg px-2.5 py-1.5 text-md" style={fieldStyle} />
     </label>
   );
 }
@@ -1465,9 +1465,9 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
       <PageHeader title={sp.id > 0 ? "Edit music profile" : "New music profile"} tail="Music" />
       <Page className="pb-4 pt-6">
         <div className="max-w-form">
-        <div className="mb-4"><button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
-        <label htmlFor="mp-name" className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-wide text-accent">Name</label>
-        <input id="mp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Lossless, or the best MP3" className="w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+        <div className="mb-4"><button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
+        <label htmlFor="mp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+        <input id="mp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Lossless, or the best MP3" className="w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
         {presets.length > 0 && (
           <>
@@ -1475,8 +1475,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {presets.map((p) => (
                 <button key={p.name} onClick={() => applyPreset(p)} className="rounded-xl p-3 text-left transition-colors hover:border-[var(--accent)]" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-                  <div className="text-[12.5px] font-semibold">{p.name}</div>
-                  <div className="mt-0.5 text-[11px] leading-[1.45] text-ink-faint">{p.description}</div>
+                  <div className="text-base font-semibold">{p.name}</div>
+                  <div className="mt-0.5 text-xs leading-[1.45] text-ink-faint">{p.description}</div>
                 </button>
               ))}
             </div>
@@ -1484,7 +1484,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
         )}
 
         <SectionLabel>Quality ladder</SectionLabel>
-        <p className="-mt-1 mb-2 text-[10.5px] text-ink-faint">
+        <p className="-mt-1 mb-2 text-xs text-ink-faint">
           Best first. Every tier you keep can be grabbed and the highest available wins. Tiers you leave off are never grabbed.
         </p>
         <div className="overflow-hidden rounded-xl" style={panelStyle}>
@@ -1497,9 +1497,9 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
                 <span className="grid h-4 w-4 flex-none place-items-center rounded" style={{ background: active ? "var(--accent)" : "transparent", border: `1px solid ${active ? "var(--accent)" : "var(--line)"}` }}>
                   {active && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="var(--accent-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                 </span>
-                <span className="w-[80px] font-mono text-[12.5px] font-semibold" style={{ color: active ? "var(--ink)" : "var(--ink-faint)" }}>{tier}</span>
-                <span className="text-[10.5px] text-ink-faint">{lossless ? "lossless" : "lossy"}</span>
-                {active && tier === top && <span className="ml-auto rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Top</span>}
+                <span className="w-[80px] font-mono text-base font-semibold" style={{ color: active ? "var(--ink)" : "var(--ink-faint)" }}>{tier}</span>
+                <span className="text-xs text-ink-faint">{lossless ? "lossless" : "lossy"}</span>
+                {active && tier === top && <span className="ml-auto rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Top</span>}
               </button>
             );
           })}
@@ -1508,7 +1508,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
         <SectionLabel>Upgrades</SectionLabel>
         {/* No music upgrade sweep exists, so a switch here would promise something nothing does.
             upgrades_enabled is left as saved, so the switch can come back with the sweep. */}
-        <div className="rounded-xl p-4 text-[11.5px] text-ink-faint" style={panelStyle}>
+        <div className="rounded-xl p-4 text-sm text-ink-faint" style={panelStyle}>
           Automatic album upgrades aren't built yet. An album is grabbed once, at the best tier available on your ladder.
         </div>
 
@@ -1561,22 +1561,22 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
       <PageHeader title={sp.id > 0 ? "Edit book profile" : "New book profile"} tail="Books" />
       <Page className="pb-4 pt-6">
         <div className="max-w-form">
-        <div className="mb-4"><button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
-        <label htmlFor="bp-name" className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-wide text-accent">Name</label>
-        <input id="bp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Audiobooks — GraphicAudio first" className="mb-1 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
+        <div className="mb-4"><button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
+        <label htmlFor="bp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+        <input id="bp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Audiobooks — GraphicAudio first" className="mb-1 w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
         {BOOK_FORMATS.map((grp) => (
           <div key={grp.group} className="mb-2">
             <SectionLabel>{grp.group} formats</SectionLabel>
-            <p className="-mt-1 mb-2 text-[10.5px] text-ink-faint">Score a format above 0 to grab it (higher = preferred); 0 skips it. The {grp.group.toLowerCase()} edition is fetched only if at least one of its formats is scored.</p>
+            <p className="-mt-1 mb-2 text-xs text-ink-faint">Score a format above 0 to grab it (higher = preferred); 0 skips it. The {grp.group.toLowerCase()} edition is fetched only if at least one of its formats is scored.</p>
             <div className="flex flex-col gap-1.5">
               {grp.formats.map((f) => {
                 const v = sp.format_scores?.[f] ?? 0;
                 return (
                   <div key={f} className="flex items-center gap-3 rounded-lg px-2.5 py-1.5" style={panelStyle}>
-                    <span className="w-[56px] font-mono text-[12px] font-semibold">{f}</span>
+                    <span className="w-[56px] font-mono text-sm font-semibold">{f}</span>
                     <input type="range" min={0} max={100} step={5} value={v} aria-label={`${f} score`} onChange={(e) => setFormatScore(f, Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
-                    <input type="number" min={0} value={v} aria-label={`${f} score`} onChange={(e) => setFormatScore(f, Math.max(0, Number(e.target.value)))} className="w-[60px] rounded-lg px-2 py-1 text-right font-mono text-[12px]" style={fieldStyle} />
+                    <input type="number" min={0} value={v} aria-label={`${f} score`} onChange={(e) => setFormatScore(f, Math.max(0, Number(e.target.value)))} className="w-[60px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={fieldStyle} />
                   </div>
                 );
               })}
@@ -1585,7 +1585,7 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
         ))}
 
         <SectionLabel>Name contains</SectionLabel>
-        <p className="-mt-1 mb-2 text-[10.5px] text-ink-faint">Add points to any release whose name contains a term — GraphicAudio +100, Dramatized +80, Unabridged +20. Combined with the format score; highest total wins.</p>
+        <p className="-mt-1 mb-2 text-xs text-ink-faint">Add points to any release whose name contains a term — GraphicAudio +100, Dramatized +80, Unabridged +20. Combined with the format score; highest total wins.</p>
         <KeywordEditor keywords={sp.keywords ?? []} onChange={(kw) => patch({ keywords: kw })} />
 
         <SectionLabel>Reject</SectionLabel>
@@ -1614,7 +1614,7 @@ function KeywordEditor({ keywords, onChange }: { keywords: { term: string; score
       {keywords.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5">
           {keywords.map((k, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px]" style={panelStyle}>
+            <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm" style={panelStyle}>
               <span className="font-semibold">{k.term}</span>
               <span className="ml-auto font-mono" style={{ color: k.score >= 0 ? "var(--good)" : "var(--reject)" }}>{k.score > 0 ? `+${k.score}` : k.score}</span>
               <button onClick={() => onChange(keywords.filter((_, j) => j !== i))} aria-label={`Remove ${k.term}`} className="text-ink-faint hover:text-[var(--reject)]">✕</button>
@@ -1623,9 +1623,9 @@ function KeywordEditor({ keywords, onChange }: { keywords: { term: string; score
         </div>
       )}
       <div className="flex items-center gap-2">
-        <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="IMAX" aria-label="Word" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={fieldStyle} />
-        <input type="number" value={score} aria-label="Points" onChange={(e) => setScore(Number(e.target.value))} className="w-[70px] rounded-lg px-2 py-1.5 text-right font-mono text-[12px]" style={fieldStyle} />
-        <button onClick={add} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
+        <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="IMAX" aria-label="Word" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle} />
+        <input type="number" value={score} aria-label="Points" onChange={(e) => setScore(Number(e.target.value))} className="w-[70px] rounded-lg px-2 py-1.5 text-right font-mono text-sm" style={fieldStyle} />
+        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
       </div>
     </div>
   );
@@ -1643,8 +1643,8 @@ function PreReleaseRule({ allowed, onChange }: { allowed: boolean; onChange: (al
         {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="text-[12.5px] font-semibold" style={{ color: on ? "var(--reject)" : "var(--ink)" }}>Reject cams, telesyncs and screeners</span>
-        <span className="block text-[10.5px] text-ink-faint">CAM, HDCAM, TS, HDTS, telecine, DVDSCR, workprint, R5 — however they're spelled. On by default.</span>
+        <span className="text-base font-semibold" style={{ color: on ? "var(--reject)" : "var(--ink)" }}>Reject cams, telesyncs and screeners</span>
+        <span className="block text-xs text-ink-faint">CAM, HDCAM, TS, HDTS, telecine, DVDSCR, workprint, R5 — however they're spelled. On by default.</span>
       </span>
     </button>
   );
@@ -1673,27 +1673,27 @@ function RejectEditor({ rejected, onChange }: { rejected: string[]; onChange: (r
           {execOn && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="text-[12.5px] font-semibold" style={{ color: execOn ? "var(--reject)" : "var(--ink)" }}>Reject executables and scripts</span>
-          <span className="block text-[10.5px] text-ink-faint">.exe .bat .cmd .scr .msi … — malware safety, on by default</span>
+          <span className="text-base font-semibold" style={{ color: execOn ? "var(--reject)" : "var(--ink)" }}>Reject executables and scripts</span>
+          <span className="block text-xs text-ink-faint">.exe .bat .cmd .scr .msi … — malware safety, on by default</span>
         </span>
       </button>
       <div className="mb-2 flex flex-wrap gap-1.5">
         {REJECT_TYPES.map((t) => (
-          <button key={t} onClick={() => toggle(t)} aria-pressed={has(t)} className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold" style={{ border: `1px solid ${has(t) ? "var(--reject)" : "var(--line)"}`, background: has(t) ? "var(--reject-soft)" : "var(--panel)", color: has(t) ? "var(--reject)" : "var(--ink-dim)" }}>{t}</button>
+          <button key={t} onClick={() => toggle(t)} aria-pressed={has(t)} className="rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: `1px solid ${has(t) ? "var(--reject)" : "var(--line)"}`, background: has(t) ? "var(--reject-soft)" : "var(--panel)", color: has(t) ? "var(--reject)" : "var(--ink-dim)" }}>{t}</button>
         ))}
       </div>
       {custom.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {custom.map((r) => (
-            <span key={r} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px]" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{r}<button onClick={() => toggle(r)} aria-label={`Stop rejecting ${r}`}>✕</button></span>
+            <span key={r} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{r}<button onClick={() => toggle(r)} aria-label={`Stop rejecting ${r}`}>✕</button></span>
           ))}
         </div>
       )}
       <div className="flex items-center gap-2">
-        <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCustom()} placeholder="Telesync" aria-label="Reject any release containing" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={fieldStyle} />
-        <button onClick={addCustom} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Reject</button>
+        <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCustom()} placeholder="Telesync" aria-label="Reject any release containing" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle} />
+        <button onClick={addCustom} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Reject</button>
       </div>
-      <p className="mt-1.5 text-[10.5px] text-ink-faint">Any release whose name contains one of these is skipped entirely.</p>
+      <p className="mt-1.5 text-xs text-ink-faint">Any release whose name contains one of these is skipped entirely.</p>
     </div>
   );
 }
@@ -1709,20 +1709,20 @@ function FormatToggle({ format, score, required, advanced, onChange }: { format:
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg p-2.5" style={{ background: "var(--panel-2)" }}>
       <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-semibold">{format.name}</div>
-        <div className="truncate text-[11px] text-ink-faint" title={format.description}>{format.description}</div>
+        <div className="text-base font-semibold">{format.name}</div>
+        <div className="truncate text-xs text-ink-faint" title={format.description}>{format.description}</div>
       </div>
       {advanced ? (
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-[10.5px] text-ink-faint" title="Reject any release without this format">
+          <label className="flex items-center gap-1 text-xs text-ink-faint" title="Reject any release without this format">
             <input type="checkbox" checked={required} onChange={(e) => onChange(score, e.target.checked)} /> must
           </label>
-          <input type="number" value={score} aria-label={`${format.name} score`} onChange={(e) => onChange(Number(e.target.value), required)} className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-[12px]" style={fieldStyle} />
+          <input type="number" value={score} aria-label={`${format.name} score`} onChange={(e) => onChange(Number(e.target.value), required)} className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={fieldStyle} />
         </div>
       ) : (
         <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
           {opts.map((o) => (
-            <button key={o.key} onClick={() => onChange(o.val, o.req)} aria-pressed={state === o.key} className="rounded-md px-2.5 py-1 text-[11px] font-semibold" style={{ background: state === o.key ? o.tone : "transparent", color: state === o.key ? "#fff" : "var(--ink-faint)" }}>{o.label}</button>
+            <button key={o.key} onClick={() => onChange(o.val, o.req)} aria-pressed={state === o.key} className="rounded-md px-2.5 py-1 text-xs font-semibold" style={{ background: state === o.key ? o.tone : "transparent", color: state === o.key ? "#fff" : "var(--ink-faint)" }}>{o.label}</button>
           ))}
         </div>
       )}
@@ -1739,8 +1739,8 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
   return (
     <>
       <div className="rounded-2xl p-5" style={{ background: "linear-gradient(180deg, var(--accent-soft), var(--panel) 62%)", border: "1px solid var(--accent)", boxShadow: "var(--shadow)" }}>
-        <div className="mb-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent">★ Arrmada would grab this</div>
-        <div className="mb-3 text-[22px] font-bold tracking-tight">{r.resolution} {r.source}</div>
+        <div className="mb-2.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent">★ Arrmada would grab this</div>
+        <div className="mb-3 text-3xl font-bold tracking-tight">{r.resolution} {r.source}</div>
         <div className="mb-4 flex flex-wrap gap-1.5">
           {(r.hdr ?? []).map((h) => <Chip key={h} accent>{h}</Chip>)}
           {(r.audio ?? []).map((a) => <Chip key={a} accent>{a}</Chip>)}
@@ -1749,20 +1749,20 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
           <Chip>▲ {winner.candidate.seeders}</Chip>
         </div>
         <div className="rounded-xl p-3.5" style={{ background: "color-mix(in srgb, var(--bg) 34%, transparent)", border: "1px solid var(--line-soft)" }}>
-          <div className="mb-2.5 font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Why this one</div>
+          <div className="mb-2.5 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Why this one</div>
           <div className="flex flex-col gap-2">
             {why.map((w) => (
-              <div key={w} className="flex items-start gap-2 text-[13px]">
+              <div key={w} className="flex items-start gap-2 text-md">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ color: "var(--accent)", flex: "none", marginTop: 2 }}><path d="M4 12l5 5L20 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 <span>{w}</span>
               </div>
             ))}
           </div>
         </div>
-        {chosenOver && <div className="mt-3.5 border-t border-dashed pt-3.5 text-[12.5px] text-ink-dim" style={{ borderColor: "var(--line)" }}>{chosenOver}</div>}
-        <div className="mt-3 truncate font-mono text-[10.5px] text-ink-faint" title={winner.candidate.name}>{winner.candidate.name}</div>
+        {chosenOver && <div className="mt-3.5 border-t border-dashed pt-3.5 text-base text-ink-dim" style={{ borderColor: "var(--line)" }}>{chosenOver}</div>}
+        <div className="mt-3 truncate font-mono text-xs text-ink-faint" title={winner.candidate.name}>{winner.candidate.name}</div>
       </div>
-      <button onClick={onToggle} aria-expanded={open} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl p-2.5 text-[12.5px] font-semibold text-ink-dim transition-colors hover:text-ink" style={panelStyle}>
+      <button onClick={onToggle} aria-expanded={open} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl p-2.5 text-base font-semibold text-ink-dim transition-colors hover:text-ink" style={panelStyle}>
         {open ? "Hide" : `Compare all ${total}`} sample releases
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" /></svg>
       </button>
@@ -1779,11 +1779,11 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
 }
 
 function Chip({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-  return <span className="rounded-md px-1.5 py-1 font-mono text-[10.5px]" style={{ background: accent ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${accent ? "var(--accent-line)" : "var(--line-soft)"}`, color: accent ? "var(--accent)" : "var(--ink-dim)" }}>{children}</span>;
+  return <span className="rounded-md px-1.5 py-1 font-mono text-xs" style={{ background: accent ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${accent ? "var(--accent-line)" : "var(--line-soft)"}`, color: accent ? "var(--accent)" : "var(--ink-dim)" }}>{children}</span>;
 }
 
 function CmpLabel({ children }: { children: React.ReactNode }) {
-  return <div className="px-3.5 pb-1 pt-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel)" }}>{children}</div>;
+  return <div className="px-3.5 pb-1 pt-2.5 font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint" style={{ background: "var(--panel)" }}>{children}</div>;
 }
 
 // CmpRow is one sample in the compare list. A skipped one says why it was refused; an
@@ -1795,10 +1795,10 @@ function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
   return (
     <div className="px-3.5 py-2.5" style={{ background: "var(--panel)", opacity: skip ? 0.6 : 1 }}>
       <div className="flex items-center gap-3">
-        <span className="min-w-[108px] text-[12.5px] font-semibold">{r.resolution} {r.source}</span>
-        <span className="min-w-[50px] font-mono text-[11.5px] text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
+        <span className="min-w-[108px] text-base font-semibold">{r.resolution} {r.source}</span>
+        <span className="min-w-[50px] font-mono text-sm text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
         {(skip || plain) && (
-          <span className="ml-auto text-right text-[12px]" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
+          <span className="ml-auto text-right text-sm" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
         )}
       </div>
       {!skip && <ReleaseExplain className="mt-1.5" matched={ev.matched} avoided={ev.avoided_formats} waived={ev.bonus_waived} lostOn={ev.lost_on_text} />}
@@ -1809,7 +1809,7 @@ function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-3 mt-6 flex items-center gap-2.5">
-      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent">{children}</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent">{children}</span>
       <span className="h-px flex-1" style={{ background: "var(--line-soft)" }} />
     </div>
   );

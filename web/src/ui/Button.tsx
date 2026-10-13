@@ -12,8 +12,8 @@ const LOOK: Record<ButtonVariant, { className: string; style?: CSSProperties }> 
   danger: { className: "", style: { background: "var(--reject)", color: "#fff" } },
 };
 const SIZE: Record<ButtonSize, string> = {
-  sm: "rounded-md px-2.5 py-1 text-[11.5px]",
-  md: "rounded-lg px-4 py-2 text-[12.5px]",
+  sm: "rounded-md px-2.5 py-1 text-sm",
+  md: "rounded-lg px-4 py-2 text-base",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

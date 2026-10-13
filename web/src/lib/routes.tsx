@@ -13,7 +13,7 @@ import { legacyActivityPath, type LegacyActivityPage } from "./activity";
 // The staff console's frame (sidebar, Needs-you polling, restart banner) is its own
 // chunk too: a requester's phone loads only the small requester shell with Discover.
 const AppLayout = lazyPage(() => import("../components/AppLayout"), "AppLayout");
-const staffShellLoading = <div className="grid h-full place-items-center text-[13px] text-ink-dim">Loading…</div>;
+const staffShellLoading = <div className="grid h-full place-items-center text-md text-ink-dim">Loading…</div>;
 const SetupAgain = lazyPage(() => import("../pages/SetupWizard"), "SetupAgain");
 
 // Every page is its own chunk (FE-06): a requester downloads Discover and their few

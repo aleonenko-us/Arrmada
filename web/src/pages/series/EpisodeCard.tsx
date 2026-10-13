@@ -119,7 +119,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
         {ep.still_url ? (
           <img src={stillThumb(ep.still_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
-          <span aria-hidden className="absolute bottom-1.5 left-2 font-mono text-[12px] font-bold text-white/80">E{String(ep.episode_number).padStart(2, "0")}</span>
+          <span aria-hidden className="absolute bottom-1.5 left-2 font-mono text-sm font-bold text-white/80">E{String(ep.episode_number).padStart(2, "0")}</span>
         )}
         {dl && (
           <div className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: "rgba(0,0,0,.45)" }}>
@@ -137,13 +137,13 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
             aria-pressed={ep.monitored}
             aria-label={ep.monitored ? `${label} is monitored — stop monitoring` : `Monitor ${label}`}
             title={!series.monitored ? pausedHint : ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"}
-            className="-ml-1 grid h-6 w-6 flex-none place-items-center text-[13px]"
+            className="-ml-1 grid h-6 w-6 flex-none place-items-center text-md"
             style={{ color: ep.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}
           >
             {ep.monitored ? "◉" : "○"}
           </button>
-          <div className="min-w-0 flex-1 pt-[3px] text-[13px] font-semibold leading-snug">
-            <span className="font-mono text-[11.5px] text-ink-faint">E{String(ep.episode_number).padStart(2, "0")}</span>
+          <div className="min-w-0 flex-1 pt-[3px] text-md font-semibold leading-snug">
+            <span className="font-mono text-sm text-ink-faint">E{String(ep.episode_number).padStart(2, "0")}</span>
             <span className="text-ink-faint"> · </span>
             {ep.has_file && ep.file_path && !selecting ? (
               <button type="button" onClick={() => open({ kind: "file", ep })} title="Show this file's details — media info and the release it came from" className="text-left hover:underline">{ep.title || "TBA"}</button>
@@ -154,7 +154,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
           {!selecting && (
             <Menu
               label={`Actions for ${label}`}
-              trigger={<span aria-hidden className="text-[15px] leading-none">⋯</span>}
+              trigger={<span aria-hidden className="text-lg leading-none">⋯</span>}
               triggerClassName="-mr-1 -mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg text-ink-dim hover:bg-[var(--panel-2)]"
               itemClassName={MENU_ITEM}
               items={items}
@@ -162,14 +162,14 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
           )}
         </div>
 
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-faint">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
           <span className="font-mono">{meta}</span>
-          {series.series_type === "anime" && ep.absolute_number ? <span className="rounded px-1 font-mono text-[10px]" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Absolute episode number">#{ep.absolute_number}</span> : null}
+          {series.series_type === "anime" && ep.absolute_number ? <span className="rounded px-1 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Absolute episode number">#{ep.absolute_number}</span> : null}
           <StatusChip tone={status.tone} size="xs">{grabbing.running ? "Searching…" : status.label}</StatusChip>
           {ep.has_file && fit?.fit && (
             <span className="inline-flex items-center gap-1">
               <FitBadge item={fit} />
-              {fit.facts.bitrate_mbps ? <span className="font-mono text-[10px]">{fit.facts.bitrate_mbps.toFixed(1)}</span> : null}
+              {fit.facts.bitrate_mbps ? <span className="font-mono text-xs">{fit.facts.bitrate_mbps.toFixed(1)}</span> : null}
             </span>
           )}
           {ep.has_file && subs && onSubs && !selecting && <EpisodeSubChip entry={subs} onOpen={onSubs} />}
@@ -181,13 +181,13 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
             disabled={selecting}
-            className={`mt-1.5 w-full text-left text-[12px] leading-relaxed text-ink-dim ${expanded ? "block" : "line-clamp-2"}`}
+            className={`mt-1.5 w-full text-left text-sm leading-relaxed text-ink-dim ${expanded ? "block" : "line-clamp-2"}`}
           >
             {ep.overview}
           </button>
         )}
         {canGrab && last && !grabbing.running && (
-          <div className="mt-1 text-[11px]" style={{ color: outcomeTone(last.outcome) }} title="This episode's last search">{attemptLine(last)}</div>
+          <div className="mt-1 text-xs" style={{ color: outcomeTone(last.outcome) }} title="This episode's last search">{attemptLine(last)}</div>
         )}
       </div>
     </div>

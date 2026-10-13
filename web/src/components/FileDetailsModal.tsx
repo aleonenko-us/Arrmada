@@ -40,13 +40,13 @@ export function FileDetailsModal({
     <Modal onClose={onClose} labelledBy={titleId} size="lg">
         <div className="mb-4 flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="m-0 text-[15px] font-bold">{title}</h2>
-            {subtitle && <div className="mt-0.5 text-[12px] text-ink-dim">{subtitle}</div>}
+            <h2 id={titleId} className="m-0 text-lg font-bold">{title}</h2>
+            {subtitle && <div className="mt-0.5 text-sm text-ink-dim">{subtitle}</div>}
           </div>
           <IconButton
             label="Close"
             onClick={onClose}
-            className="shrink-0 rounded-lg px-2.5 py-1 text-[13px]"
+            className="shrink-0 rounded-lg px-2.5 py-1 text-md"
             style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
           >
             ✕
@@ -54,11 +54,11 @@ export function FileDetailsModal({
         </div>
 
         {err && (
-          <p className="m-0 text-[12.5px]" style={{ color: "var(--reject)" }}>
+          <p className="m-0 text-base" style={{ color: "var(--reject)" }}>
             {err}
           </p>
         )}
-        {!info && !err && <p className="m-0 text-[12.5px] text-ink-dim">Reading the file…</p>}
+        {!info && !err && <p className="m-0 text-base text-ink-dim">Reading the file…</p>}
 
         {info && (
           <div className="flex flex-col gap-4">
@@ -137,15 +137,15 @@ export function FileDetailsModal({
                         }
                       }}
                       disabled={cleaning}
-                      className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-50"
+                      className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
                       style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
                     >
                       {cleaning ? "Queueing…" : "Bring to target"}
                     </button>
-                    <span className="ml-2 text-[11px] text-ink-faint">
+                    <span className="ml-2 text-xs text-ink-faint">
                       Applies your Convert target: codec, plus the audio and subtitle languages you keep.
                     </span>
-                    {cleanMsg && <p className="m-0 mt-1.5 text-[11.5px] text-ink-dim">{cleanMsg}</p>}
+                    {cleanMsg && <p className="m-0 mt-1.5 text-sm text-ink-dim">{cleanMsg}</p>}
                   </div>
                 )}
               </Section>
@@ -202,7 +202,7 @@ export function FileDetailsModal({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+      <div className="mb-1.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
         {label}
       </div>
       <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
@@ -215,10 +215,10 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 function Row({ k, v, mono, tone }: { k: string; v: string; mono?: boolean; tone?: "bad" }) {
   if (!v) return null;
   return (
-    <div className="flex gap-3 py-[3px] text-[12.5px]">
+    <div className="flex gap-3 py-[3px] text-base">
       <span className="w-[104px] shrink-0 text-ink-faint">{k}</span>
       <span
-        className={`min-w-0 flex-1 break-all ${mono ? "font-mono text-[11.5px]" : ""}`}
+        className={`min-w-0 flex-1 break-all ${mono ? "font-mono text-sm" : ""}`}
         style={tone === "bad" ? { color: "var(--reject)" } : undefined}
       >
         {v}
@@ -228,7 +228,7 @@ function Row({ k, v, mono, tone }: { k: string; v: string; mono?: boolean; tone?
 }
 
 function Note({ children }: { children: React.ReactNode }) {
-  return <p className="m-0 py-1 text-[11.5px] text-ink-dim">{children}</p>;
+  return <p className="m-0 py-1 text-sm text-ink-dim">{children}</p>;
 }
 
 

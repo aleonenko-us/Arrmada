@@ -33,7 +33,7 @@ export function backlogText(q: Pick<SubtitleQueue, "gpu_backlog" | "gpu_eta_sec"
 
 const PRIO_LABEL = ["import", "manual", "sweep"];
 const PRIO_TITLE = ["Just imported — runs before anything else", "Queued from a button — runs before the sweep", "Queued by the periodic sweep — runs after imports and button presses"];
-const chipCls = "ml-1.5 rounded px-1 py-0.5 font-mono text-[9px] font-bold uppercase";
+const chipCls = "ml-1.5 rounded px-1 py-0.5 font-mono text-2xs font-bold uppercase";
 
 export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: () => void; busy?: boolean }) {
   const running = j.state === "running";
@@ -46,7 +46,7 @@ export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: ()
   // A job waiting for the AI lane names the languages it carries there.
   const waitingAI = !running && j.lane === "gpu" && (j.langs ?? []).length > 0;
   return (
-    <div className="flex flex-col gap-1 text-[12px]">
+    <div className="flex flex-col gap-1 text-sm">
       <div className="flex items-center gap-2.5">
         <StateBadge state={j.state} />
         <span className="min-w-0 flex-1 truncate font-semibold">
@@ -56,16 +56,16 @@ export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: ()
           {!running && PRIO_LABEL[j.priority] && <span className={chipCls} style={{ border: "1px solid var(--line)", color: j.priority === 0 ? "var(--accent)" : "var(--ink-faint)" }} title={PRIO_TITLE[j.priority]}>{PRIO_LABEL[j.priority]}</span>}
           {waitingAI && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Languages left for the AI">{(j.langs ?? []).join(" · ")}</span>}
         </span>
-        {stopping ? <span className="font-mono text-[10.5px] text-ink-faint">stopping…</span>
-          : running && j.stage && <span className="hidden truncate font-mono text-[10.5px] text-ink-faint sm:inline">{j.stage}</span>}
+        {stopping ? <span className="font-mono text-xs text-ink-faint">stopping…</span>
+          : running && j.stage && <span className="hidden truncate font-mono text-xs text-ink-faint sm:inline">{j.stage}</span>}
         {/* On a phone the title needs the room; the bar and % still show progress. */}
-        {running && elapsed > 0 && <span className="hidden flex-none font-mono text-[10.5px] text-ink-faint sm:inline">{fmtElapsed(elapsed)}{eta > 0 ? ` · ~${fmtElapsed(eta)} left` : ""}</span>}
-        {running && pct > 0 && <span className="w-[38px] flex-none text-right font-mono text-[10.5px] text-ink-dim">{pct}%</span>}
+        {running && elapsed > 0 && <span className="hidden flex-none font-mono text-xs text-ink-faint sm:inline">{fmtElapsed(elapsed)}{eta > 0 ? ` · ~${fmtElapsed(eta)} left` : ""}</span>}
+        {running && pct > 0 && <span className="w-[38px] flex-none text-right font-mono text-xs text-ink-dim">{pct}%</span>}
         {running && pct === 0 && <span className="h-3 w-3 flex-none animate-spin rounded-full" style={{ border: "2px solid var(--line)", borderTopColor: "var(--accent)" }} />}
         {/* Stop kills the running ffmpeg/whisper; Remove just drops a queued job. */}
         {onCancel && (
           <button type="button" onClick={onCancel} disabled={busy || stopping} title={running ? "Stop this job" : "Remove from the queue"}
-            className="flex-none rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50"
+            className="flex-none rounded-md border px-1.5 py-0.5 text-xs font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50"
             style={{ borderColor: "var(--line)", color: running ? "var(--reject)" : "var(--ink-dim)" }}>
             {running ? "Stop" : "Remove"}
           </button>
@@ -100,10 +100,10 @@ export function StateBadge({ state }: { state: string }) {
     : state === "running" ? { bg: "var(--accent-soft)", fg: "var(--accent)" }
     : state === "cancelled" ? { bg: "var(--panel-2)", fg: "var(--ink-dim)" }
     : { bg: "var(--panel-2)", fg: "var(--ink-faint)" };
-  return <span className="flex-none rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase" style={{ background: s.bg, color: s.fg }}>{state}</span>;
+  return <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: s.bg, color: s.fg }}>{state}</span>;
 }
 
-const smallBtn = "rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50";
+const smallBtn = "rounded-md border px-2 py-1 text-xs font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50";
 
 export function Queue({ jobs, backlog, onChange, flash }: { jobs: SubtitleJob[]; backlog: SubtitleQueue | null; onChange: () => void; flash: (m: string) => void }) {
   // Shown the way the workers see it: what's running on top, then what's next, in order —
@@ -141,17 +141,17 @@ export function Queue({ jobs, backlog, onChange, flash }: { jobs: SubtitleJob[];
   return (
     <div className="flex flex-col gap-3.5">
       <div className={card} style={cardStyle}>
-        <div className="text-[14px] font-bold">Active <span className="font-mono text-[11px] text-ink-faint">{running} running · {queuedFast + queuedGPU} queued</span></div>
-        {active.length === 0 && <div className="mt-2 text-[12px] text-ink-dim">Nothing in the queue right now.</div>}
+        <div className="text-md font-bold">Active <span className="font-mono text-xs text-ink-faint">{running} running · {queuedFast + queuedGPU} queued</span></div>
+        {active.length === 0 && <div className="mt-2 text-sm text-ink-dim">Nothing in the queue right now.</div>}
         {active.length > 0 && (
           <div className="mt-2 flex flex-col gap-3">
             <LaneGroup title="Extract & download" sub="embedded tracks and OpenSubtitles — seconds per file"
               action={queuedFast > 0 && <button type="button" onClick={() => clear("fast")} disabled={busy} className={smallBtn} style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>Clear queue</button>}>
-              {fast.length === 0 ? <div className="text-[12px] text-ink-faint">Idle.</div> : fast.map((j) => <ActiveRow key={j.id} j={j} onCancel={() => cancel(j)} busy={busy} />)}
+              {fast.length === 0 ? <div className="text-sm text-ink-faint">Idle.</div> : fast.map((j) => <ActiveRow key={j.id} j={j} onCancel={() => cancel(j)} busy={busy} />)}
             </LaneGroup>
             <LaneGroup title="AI" sub={ai ?? "local whisper — runs beside the lane above"}
               action={queuedGPU > 0 && <button type="button" onClick={() => clear("gpu")} disabled={busy} className={smallBtn} style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>Clear AI backlog</button>}>
-              {gpu.length === 0 ? <div className="text-[12px] text-ink-faint">Idle.</div> : gpu.map((j) => <ActiveRow key={j.id} j={j} onCancel={() => cancel(j)} busy={busy} />)}
+              {gpu.length === 0 ? <div className="text-sm text-ink-faint">Idle.</div> : gpu.map((j) => <ActiveRow key={j.id} j={j} onCancel={() => cancel(j)} busy={busy} />)}
             </LaneGroup>
           </div>
         )}
@@ -165,8 +165,8 @@ function LaneGroup({ title, sub, action, children }: { title: string; sub: strin
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-faint">{title}</span>
-        <span className="min-w-0 flex-1 text-[11px] text-ink-faint">{sub}</span>
+        <span className="font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint">{title}</span>
+        <span className="min-w-0 flex-1 text-xs text-ink-faint">{sub}</span>
         {action}
       </div>
       {children}
@@ -221,20 +221,20 @@ function History({ jobs, onChange, flash }: { jobs: SubtitleJob[]; onChange: () 
   return (
     <div className={card} style={cardStyle}>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="text-[14px] font-bold">History</div>
+        <div className="text-md font-bold">History</div>
         <div className="flex-1" />
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter the history">
           {FILTERS.map((f) => (
             <button key={f.key} type="button" onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}
-              className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition-colors"
+              className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
               style={{ border: `1px solid ${filter === f.key ? "var(--accent)" : "var(--line)"}`, background: filter === f.key ? "var(--accent-soft, rgba(198,93,59,.12))" : "transparent", color: filter === f.key ? "var(--accent)" : "var(--ink-dim)" }}>
               {f.label}
             </button>
           ))}
         </div>
       </div>
-      {rows === null ? <div className="mt-2 text-[12px] text-ink-dim">Loading…</div>
-        : rows.length === 0 ? <div className="mt-2 text-[12px] text-ink-dim">{filter === "all" ? "Nothing has run yet." : `No ${filter} jobs in the history.`}</div>
+      {rows === null ? <div className="mt-2 text-sm text-ink-dim">Loading…</div>
+        : rows.length === 0 ? <div className="mt-2 text-sm text-ink-dim">{filter === "all" ? "Nothing has run yet." : `No ${filter} jobs in the history.`}</div>
         : (
           <div className="mt-2 flex flex-col gap-1.5">
             {rows.map((j) => <HistoryRow key={j.id} j={j} open={open.has(j.id)} onToggle={() => toggle(j.id)} onRetry={() => retry(j)} retrying={retrying === j.id} />)}
@@ -255,7 +255,7 @@ function HistoryRow({ j, open, onToggle, onRetry, retrying }: { j: SubtitleJob; 
   const outcomes = j.outcomes ?? [];
   const when = j.finished_at || j.at;
   return (
-    <div className="flex flex-col gap-1 text-[12px]">
+    <div className="flex flex-col gap-1 text-sm">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <StateBadge state={j.state} />
         <span className="min-w-0 flex-1 truncate font-semibold">
@@ -263,7 +263,7 @@ function HistoryRow({ j, open, onToggle, onRetry, retrying }: { j: SubtitleJob; 
           {j.redo && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Replaced the subtitles already there">redo</span>}
           {redoLabel(j) && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Made one language again">{redoLabel(j)}</span>}
         </span>
-        {when > 0 && <span className="flex-none font-mono text-[10.5px] text-ink-faint" title={new Date(when * 1000).toLocaleString()}>{ago(when)}</span>}
+        {when > 0 && <span className="flex-none font-mono text-xs text-ink-faint" title={new Date(when * 1000).toLocaleString()}>{ago(when)}</span>}
         {outcomes.length > 0 && (
           <button type="button" onClick={onToggle} aria-expanded={open} className={smallBtn} style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>
             {open ? "Hide" : "Why"}
@@ -275,7 +275,7 @@ function HistoryRow({ j, open, onToggle, onRetry, retrying }: { j: SubtitleJob; 
             {retrying ? "Queuing…" : "Retry"}
           </button>
         )}
-        {j.note && <span className="basis-full truncate text-[11.5px] text-ink-faint sm:basis-auto sm:max-w-[45%]" title={j.note}>{j.note}</span>}
+        {j.note && <span className="basis-full truncate text-sm text-ink-faint sm:basis-auto sm:max-w-[45%]" title={j.note}>{j.note}</span>}
       </div>
       {open && (
         <ul className="ml-1 flex flex-col gap-0.5 border-l pl-3" style={{ borderColor: "var(--line-soft)" }}>
@@ -294,8 +294,8 @@ function OutcomeLine({ o }: { o: SubtitleOutcome }) {
   const color = o.result === "ok" ? "var(--good)" : ERROR_RESULTS.has(o.result) ? "var(--reject)" : "var(--ink-dim)";
   const variant = o.variant && o.variant !== "full" ? ` ${o.variant}` : "";
   return (
-    <li className="text-[11.5px]" title={o.reasons?.length ? o.reasons.join(", ") : undefined}>
-      <span className="font-mono text-[10.5px] font-bold uppercase text-ink-faint">{o.lang}{variant}</span>
+    <li className="text-sm" title={o.reasons?.length ? o.reasons.join(", ") : undefined}>
+      <span className="font-mono text-2xs font-bold uppercase text-ink-faint">{o.lang}{variant}</span>
       <span className="text-ink-faint"> · {RUNG_LABEL[o.rung] ?? o.rung} — </span>
       <span style={{ color }}>{o.detail || o.result.replace(/_/g, " ")}</span>
       {o.score ? <span className="text-ink-faint"> (score {o.score})</span> : null}

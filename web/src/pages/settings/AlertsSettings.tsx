@@ -70,14 +70,14 @@ export function AlertsSettings() {
   return (
     <div className="flex flex-col gap-6">
       <Section id="alerts" title="Alerts" subtitle="Get a message when something needs you or when new things arrive. Each connection is one place a message goes, with its own choice of events.">
-        {!admin && <p className="text-[11.5px] text-ink-faint">Only an admin can add or change alert connections.</p>}
+        {!admin && <p className="text-sm text-ink-faint">Only an admin can add or change alert connections.</p>}
         {failed && !(conns && shown) ? (
-          <p className="text-[12px]" style={{ color: "var(--reject)" }}>Couldn’t load alert connections — {failed.message}</p>
+          <p className="text-sm" style={{ color: "var(--reject)" }}>Couldn’t load alert connections — {failed.message}</p>
         ) : !conns || !shown ? (
-          <p className="text-[12px] text-ink-dim">Loading…</p>
+          <p className="text-sm text-ink-dim">Loading…</p>
         ) : (
           <>
-            {conns.length === 0 && !adding && <p className="text-[12px] text-ink-dim">No alert connections yet.</p>}
+            {conns.length === 0 && !adding && <p className="text-sm text-ink-dim">No alert connections yet.</p>}
             {conns.map((c) => <ConnCard key={c.id} conn={c} preset={presetOf(presets, c)} catalog={shown} readOnly={!admin} onChange={reload} />)}
             {admin && (adding === "choose" ? (
               <PresetChooser
@@ -102,7 +102,7 @@ export function AlertsSettings() {
                 <Button onClick={() => setAdding("choose")}>+ Add alert</Button>
               </div>
             ))}
-            {admin && <p className="text-[10.5px] text-ink-faint">On iPhone, push works only when Arrmada is added to the Home Screen.</p>}
+            {admin && <p className="text-xs text-ink-faint">On iPhone, push works only when Arrmada is added to the Home Screen.</p>}
           </>
         )}
       </Section>
@@ -137,11 +137,11 @@ function PresetChooser({ presets, push, pushBusy, onPick, onCancel }: { presets?
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="mb-2.5 flex items-center justify-between gap-2">
-        <span className="text-[13px] font-semibold">Where should alerts go?</span>
+        <span className="text-md font-semibold">Where should alerts go?</span>
         <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
       </div>
       {!presets ? (
-        <p className="text-[12px] text-ink-dim">Loading…</p>
+        <p className="text-sm text-ink-dim">Loading…</p>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {tiles.map((p) => (
@@ -153,8 +153,8 @@ function PresetChooser({ presets, push, pushBusy, onPick, onCancel }: { presets?
               className="flex min-w-0 flex-col gap-0.5 rounded-lg p-3 text-left"
               style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
             >
-              <span className="text-[12.5px] font-semibold">{p.kind === "webpush" && pushBusy ? "Turning on…" : p.label}</span>
-              <span className="text-[10.5px] text-ink-faint">{p.hint}</span>
+              <span className="text-base font-semibold">{p.kind === "webpush" && pushBusy ? "Turning on…" : p.label}</span>
+              <span className="text-xs text-ink-faint">{p.hint}</span>
             </button>
           ))}
         </div>
@@ -253,9 +253,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="flex flex-wrap items-center gap-2">
         {!isNew && <StatusDot conn={conn} />}
-        <input aria-label="Connection name" value={c.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} placeholder="Name (e.g. My Discord)" className="min-w-[160px] flex-1 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={inputStyle} />
-        {preset && <span className="rounded px-1.5 py-0.5 text-[10px] text-ink-dim" style={{ background: "var(--panel)" }}>{preset.label}</span>}
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px]">
+        <input aria-label="Connection name" value={c.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} placeholder="Name (e.g. My Discord)" className="min-w-[160px] flex-1 rounded-lg px-2.5 py-1.5 text-base" style={inputStyle} />
+        {preset && <span className="rounded px-1.5 py-0.5 text-xs text-ink-dim" style={{ background: "var(--panel)" }}>{preset.label}</span>}
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
           <input type="checkbox" checked={c.enabled} disabled={readOnly} onChange={(e) => set({ enabled: e.target.checked })} /> Enabled
         </label>
       </div>
@@ -275,13 +275,13 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       ) : (
         <>
           <input aria-label="Link" type="password" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={placeholder} className={`mt-2 ${input}`} style={inputStyle} autoComplete="off" />
-          <p className="mt-1 text-[10.5px] text-ink-faint">
+          <p className="mt-1 text-xs text-ink-faint">
             An <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Apprise link</a> — e.g. <code>discord://id/token</code>, <code>tgram://token/chatid</code>, <code>ntfy://topic</code>, <code>mailtos://user:pass@host</code>.
           </p>
         </>
       )}
       {conn.invalid_reason && (
-        <p className="mt-1 text-[11px]" style={{ color: "var(--avoid)" }}>The saved link no longer passes the check ({conn.invalid_reason}). It still sends; enter a corrected link to edit this connection’s link.</p>
+        <p className="mt-1 text-xs" style={{ color: "var(--avoid)" }}>The saved link no longer passes the check ({conn.invalid_reason}). It still sends; enter a corrected link to edit this connection’s link.</p>
       )}
       <EventPicker catalog={catalog} value={c.events} readOnly={readOnly} onChange={(events) => set({ events })} />
       {!isNew && c.id ? <DeliveryLog id={c.id} catalog={catalog} /> : null}
@@ -306,19 +306,19 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
   return (
     <div className="mt-2">
-      <p className="mb-2 text-[10.5px] text-ink-faint">{preset.hint}</p>
+      <p className="mb-2 text-xs text-ink-faint">{preset.hint}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {preset.fields.map((f) => {
           const kept = f.secret && savedSecret(f.name) && !replacing[f.name];
           const label = `${f.label}${f.required ? "" : " (optional)"}`;
           return (
             <label key={f.name} className="flex min-w-0 flex-col gap-1">
-              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
+              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
               {kept ? (
-                <span className="flex items-center gap-2 text-[12px] text-ink-dim">
+                <span className="flex items-center gap-2 text-sm text-ink-dim">
                   <span>•••• saved</span>
                   {!readOnly && (
-                    <button type="button" className="text-[11px] font-semibold" style={{ color: "var(--accent)" }} onClick={() => setReplacing((r) => ({ ...r, [f.name]: true }))}>
+                    <button type="button" className="text-xs font-semibold" style={{ color: "var(--accent)" }} onClick={() => setReplacing((r) => ({ ...r, [f.name]: true }))}>
                       Replace
                     </button>
                   )}
@@ -341,13 +341,13 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                     style={inputStyle}
                   />
                   {f.secret && savedSecret(f.name) && !readOnly && (
-                    <button type="button" className="flex-none text-[11px]" style={{ color: "var(--accent)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
+                    <button type="button" className="flex-none text-xs" style={{ color: "var(--accent)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
                       Keep saved
                     </button>
                   )}
                 </span>
               )}
-              {f.hint && <span className="text-[10.5px] text-ink-faint">{f.hint}</span>}
+              {f.hint && <span className="text-xs text-ink-faint">{f.hint}</span>}
             </label>
           );
         })}
@@ -378,7 +378,7 @@ function PushDevices({ readOnly, onChange }: { readOnly?: boolean; onChange: () 
     try { await subscribeThisDevice(); setHere(true); onChange(); } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(false); }
   };
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-dim">
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
       <span>Web Push to every device the account turned push on for.</span>
       {pushSupported() && here === false && (
         <>
@@ -402,7 +402,7 @@ function StatusDot({ conn }: { conn: NotificationConn }) {
     : s === "retrying" ? `Last try failed, retrying: ${conn.last_error || "no reason given"}`
     : "Nothing sent yet";
   return (
-    <span className="flex w-full min-w-0 items-center gap-1.5 text-[10.5px] text-ink-faint" title={text}>
+    <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-ink-faint" title={text}>
       <span aria-hidden className="h-2 w-2 flex-none rounded-full" style={{ background: color }} />
       <span className="truncate" style={s === "failed" ? { color: "var(--reject)" } : undefined}>{text}</span>
     </span>
@@ -417,23 +417,23 @@ function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
   const label = (key: string) => key === "test" ? "Test" : catalog.events.find((e) => e.key === key)?.label ?? key;
   return (
     <div className="mt-3">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-[11px] font-semibold" style={{ color: "var(--accent)" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
         {open ? "Hide recent deliveries" : "Recent deliveries"}
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-1">
-          {error && !data ? <p className="text-[11px]" style={{ color: "var(--reject)" }}>Couldn’t load deliveries — {error.message}</p>
-            : !data ? <p className="text-[11px] text-ink-faint">Loading…</p>
-            : data.length === 0 ? <p className="text-[11px] text-ink-faint">Nothing sent yet.</p>
+          {error && !data ? <p className="text-xs" style={{ color: "var(--reject)" }}>Couldn’t load deliveries — {error.message}</p>
+            : !data ? <p className="text-xs text-ink-faint">Loading…</p>
+            : data.length === 0 ? <p className="text-xs text-ink-faint">Nothing sent yet.</p>
             : data.map((d) => (
-              <div key={d.id} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+              <div key={d.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
                 <span className="w-[72px] flex-none text-ink-faint">{ago(d.sent_at || d.created_at)}</span>
                 <span className="font-semibold">{label(d.event_key)}</span>
                 <span className="min-w-0 flex-1 truncate text-ink-dim">{d.body}</span>
                 <span style={{ color: d.status === "sent" ? "var(--good)" : d.status === "failed" ? "var(--reject)" : "var(--ink-faint)" }}>
                   {d.status === "queued" && d.attempts > 0 ? `retry ${until(d.next_attempt_at)}` : d.status}
                 </span>
-                {d.last_error && d.status !== "sent" && <span className="w-full pl-[80px] text-[10.5px]" style={{ color: "var(--reject)" }}>{d.last_error}</span>}
+                {d.last_error && d.status !== "sent" && <span className="w-full pl-[80px] text-xs" style={{ color: "var(--reject)" }}>{d.last_error}</span>}
               </div>
             ))}
         </div>
@@ -463,18 +463,18 @@ function EventPicker({ catalog, value, readOnly, onChange }: { catalog: AlertCat
         return (
           <fieldset key={g.key} className="min-w-0">
             <legend className="mb-1 flex w-full items-center justify-between gap-2">
-              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{g.label}</span>
+              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{g.label}</span>
               {!readOnly && keys.length > 1 && (
-                <button type="button" onClick={() => toggle(keys, !all)} className="text-[10.5px]" style={{ color: "var(--accent)" }}>{all ? "None" : "All"}</button>
+                <button type="button" onClick={() => toggle(keys, !all)} className="text-xs" style={{ color: "var(--accent)" }}>{all ? "None" : "All"}</button>
               )}
             </legend>
             <div className="flex flex-col gap-1">
               {g.events.map((ev: AlertEvent) => (
-                <label key={ev.key} className="flex cursor-pointer items-start gap-1.5 text-[11.5px]" title={ev.hint}>
+                <label key={ev.key} className="flex cursor-pointer items-start gap-1.5 text-sm" title={ev.hint}>
                   <input type="checkbox" aria-label={ev.label} className="mt-0.5" checked={on.has(ev.key)} disabled={readOnly} onChange={(e) => toggle([ev.key], e.target.checked)} />
                   <span className="min-w-0">
                     <span className="block">{ev.label}</span>
-                    <span className="block text-[10.5px] text-ink-faint">{ev.hint}</span>
+                    <span className="block text-xs text-ink-faint">{ev.hint}</span>
                   </span>
                 </label>
               ))}

@@ -154,7 +154,7 @@ export function Music() {
         />
 
         {error && artists !== null && (
-          <div className="mb-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}
           </div>
         )}
@@ -164,12 +164,12 @@ export function Music() {
             className="mb-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5"
             style={{ background: "var(--panel)", border: "1px solid var(--accent-line, var(--line))" }}
           >
-            <span className="text-[12.5px] font-semibold">
+            <span className="text-base font-semibold">
               {selected.size} selected
             </span>
             <button
               onClick={() => setSelected(new Set(shown.map((a) => a.id)))}
-              className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold"
+              className="rounded-lg px-2.5 py-1 text-sm font-semibold"
               style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
             >
               Select all ({shown.length})
@@ -177,7 +177,7 @@ export function Music() {
             <button
               onClick={clearSelect}
               disabled={selected.size === 0}
-              className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-40"
+              className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
               style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
             >
               Clear
@@ -186,7 +186,7 @@ export function Music() {
               <button
                 disabled={selected.size === 0 || bulkBusy}
                 onClick={() => runBulk("Monitored", (id) => api.setArtistMonitored(id, true))}
-                className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-40"
+                className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
                 style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}
               >
                 Monitor
@@ -194,7 +194,7 @@ export function Music() {
               <button
                 disabled={selected.size === 0 || bulkBusy}
                 onClick={() => runBulk("Unmonitored", (id) => api.setArtistMonitored(id, false))}
-                className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-40"
+                className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
                 style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
               >
                 Unmonitor
@@ -208,7 +208,7 @@ export function Music() {
                   if (v) void runBulk("Set the profile on", (id) => api.setArtistProfile(id, v));
                   e.target.value = "";
                 }}
-                className="rounded-lg px-2 py-1 text-[11.5px] disabled:opacity-40"
+                className="rounded-lg px-2 py-1 text-sm disabled:opacity-40"
                 style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
               >
                 <option value="">Quality profile…</option>
@@ -229,7 +229,7 @@ export function Music() {
                   });
                   if (ok) void runBulk("Removed", (id) => api.deleteArtist(id));
                 }}
-                className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-40"
+                className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
                 style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}
               >
                 Remove
@@ -243,7 +243,7 @@ export function Music() {
         ) : artists.length === 0 ? (
           <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onScan={scanLibrary} scanning={scan.running} />
         ) : shown.length === 0 ? (
-          <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+          <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No artists match this filter.
           </div>
         ) : (
@@ -297,7 +297,7 @@ function ArtistCard({
         <div className="flex min-w-0 items-start gap-2">
           {selectable && (
             <span
-              className="mt-0.5 grid h-4 w-4 flex-none place-items-center rounded text-[10px] font-bold"
+              className="mt-0.5 grid h-4 w-4 flex-none place-items-center rounded text-xs font-bold"
               style={{
                 border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`,
                 background: selected ? "var(--accent)" : "transparent",
@@ -308,8 +308,8 @@ function ArtistCard({
             </span>
           )}
           <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-semibold">{a.name}</div>
-            <div className="mt-0.5 truncate text-[11px] text-ink-faint">
+            <div className="truncate text-md font-semibold">{a.name}</div>
+            <div className="mt-0.5 truncate text-xs text-ink-faint">
               {a.stats?.albums ?? 0} album{(a.stats?.albums ?? 0) === 1 ? "" : "s"}
               {a.genres && a.genres.length > 0 && <> · {a.genres[0]}</>}
             </div>
@@ -323,7 +323,7 @@ function ArtistCard({
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
         </div>
-        <span className="flex-none font-mono text-[10.5px] text-ink-faint">
+        <span className="flex-none font-mono text-xs text-ink-faint">
           {all > 0 ? `${done}/${all}` : "—"}
         </span>
       </div>
@@ -393,12 +393,12 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
   return (
     <Modal onClose={onClose} labelledBy="add-artist-title" size="lg" initialFocus={inputRef} dismissible={saving === null}>
         <div className="mb-1 flex items-center justify-between">
-          <h2 id="add-artist-title" className="m-0 text-[15px] font-bold">Add an artist</h2>
+          <h2 id="add-artist-title" className="m-0 text-lg font-bold">Add an artist</h2>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">
             ✕
           </IconButton>
         </div>
-        <p className="mb-3 text-[12px] text-ink-dim">
+        <p className="mb-3 text-sm text-ink-dim">
           Searches MusicBrainz. Adding an artist brings in their albums; track listings fill in when you open an album.
         </p>
 
@@ -409,7 +409,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Artist name…"
-            className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[13px]"
+            className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md"
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
           />
           <Button type="submit" variant="primary" busy={searching} busyLabel="Searching…" className="disabled:opacity-50">
@@ -418,14 +418,14 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
         </form>
 
         {error && (
-          <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}
           </div>
         )}
 
         {results !== null && (
           results.length === 0 ? (
-            <div className="rounded-xl p-6 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+            <div className="rounded-xl p-6 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
               No artists found.
             </div>
           ) : (
@@ -433,18 +433,18 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
               {results.map((r) => (
                 <div key={r.mbid} className="flex items-center gap-3 border-b py-2.5" style={{ borderColor: "var(--line)" }}>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium">
+                    <div className="truncate text-md font-medium">
                       {r.name}
-                      {r.disambiguation && <span className="ml-2 text-[11.5px] text-ink-faint">({r.disambiguation})</span>}
+                      {r.disambiguation && <span className="ml-2 text-sm text-ink-faint">({r.disambiguation})</span>}
                     </div>
-                    <div className="truncate font-mono text-[10.5px] text-ink-faint">
+                    <div className="truncate font-mono text-xs text-ink-faint">
                       {[r.type, r.country].filter(Boolean).join(" · ") || r.mbid}
                     </div>
                   </div>
                   <button
                     disabled={saving !== null}
                     onClick={() => add(r)}
-                    className="flex-none rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+                    className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
                     style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}
                   >
                     {saving === r.mbid ? "Adding…" : "Add"}
