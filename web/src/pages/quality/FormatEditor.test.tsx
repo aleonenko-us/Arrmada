@@ -162,6 +162,20 @@ describe("CustomFormatsEditor", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("takes a valueless trait condition and says the Unwanted pack already covers it", async () => {
+    render(<Host initial={base} />);
+    await settle();
+    fireEvent.click(screen.getByText("+ New custom format"));
+    fireEvent.change(screen.getByLabelText("Format name"), { target: { value: "Disc" } });
+    fireEvent.change(screen.getByLabelText("Condition 1 type"), { target: { value: "full_disc" } });
+    expect(screen.getByText("is an untouched disc image")).toBeTruthy();
+    expect(screen.getByText(/Unwanted pack in Rules already refuses or avoids this/)).toBeTruthy();
+    await settle();
+    fireEvent.click(screen.getByText("Done"));
+    expect(latest.custom_formats).toEqual([{ name: "Disc", conditions: [{ type: "full_disc", value: "" }] }]);
+    expect(screen.getByText("Full disc (BR-DISK)")).toBeTruthy();
+  });
+
   it("refuses a name another format has, and removes a format with its score", async () => {
     const sp: StoredProfile = { ...base, custom_formats: [{ name: "Groups", conditions: [{ type: "release_group", value: "FLUX" }] }], format_scores: { Groups: 5 } };
     render(<Host initial={sp} />);

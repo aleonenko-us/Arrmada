@@ -58,6 +58,9 @@ type StoredProfile struct {
 	// Unwanted is the profile's Unwanted pack choices (unwanted.go); the zero value is the
 	// defaults. Video profiles only.
 	Unwanted Unwanted `json:"unwanted"`
+	// GroupTiers are the profile's release-group tiers (grouptiers.go); nil means the
+	// built-in suggestions (DefaultGroupTiers). Video profiles only.
+	GroupTiers *GroupTiers `json:"group_tiers,omitempty"`
 }
 
 // Keyword scores releases whose name contains Term (case-insensitive). Positive
@@ -120,7 +123,16 @@ func (sp StoredProfile) ToProfile() Profile {
 		// Likewise the Unwanted pack: book and music names aren't video release names.
 		Unwanted:   sp.Unwanted,
 		NoUnwanted: sp.MediaType != MediaMovie && sp.MediaType != MediaSeries,
+		GroupTiers: sp.groupTiers(),
 	}
+}
+
+// groupTiers is the tiers the engine ranks with: none for book and music profiles.
+func (sp StoredProfile) groupTiers() GroupTiers {
+	if sp.MediaType != MediaMovie && sp.MediaType != MediaSeries {
+		return GroupTiers{}
+	}
+	return effectiveTiers(sp.GroupTiers)
 }
 
 // windows is the target's bitrate windows, for the engine.
@@ -250,6 +262,13 @@ var formatMeta = map[string]struct{ desc, group string }{
 	"HEVC":         {"x265 — smaller files, same quality", "codec"},
 	"AV1":          {"The most efficient codec — needs newer players", "codec"},
 	"H.264":        {"x264 — plays everywhere, biggest files", "codec"},
+	"AMZN":         {"Amazon Prime Video WEB release", "streaming"},
+	"NF":           {"Netflix WEB release", "streaming"},
+	"ATVP":         {"Apple TV+ WEB release", "streaming"},
+	"DSNP":         {"Disney+ WEB release", "streaming"},
+	"HMAX":         {"HBO Max / Max WEB release", "streaming"},
+	"MA":           {"Movies Anywhere WEB release", "streaming"},
+	"PCOK":         {"Peacock WEB release", "streaming"},
 }
 
 // anyOfGroup is the group a built-in format is an alternative within — a release is
@@ -257,7 +276,8 @@ var formatMeta = map[string]struct{ desc, group string }{
 // group means "either". "" for formats that are features (Atmos) or custom formats.
 func anyOfGroup(name string) string {
 	switch g := formatMeta[name].group; g {
-	case "codec", "hdr":
+	case "codec", "hdr", "streaming":
+		// A release comes from one service, so requiring two means "either".
 		return g
 	}
 	return ""

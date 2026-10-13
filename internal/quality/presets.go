@@ -16,6 +16,26 @@ func DefaultFormats() []CustomFormat {
 		{Name: "HEVC", Conditions: []Condition{{Type: CondCodec, Value: "x265"}}},
 		{Name: "AV1", Conditions: []Condition{{Type: CondCodec, Value: "AV1"}}},
 		{Name: "H.264", Conditions: []Condition{{Type: CondCodec, Value: "x264"}}},
+		// Streaming services, for preferring one WEB source over another in Advanced.
+		{Name: "AMZN", Conditions: []Condition{{Type: CondStreaming, Value: "AMZN"}}},
+		{Name: "NF", Conditions: []Condition{{Type: CondStreaming, Value: "NF"}}},
+		{Name: "ATVP", Conditions: []Condition{{Type: CondStreaming, Value: "ATVP"}}},
+		{Name: "DSNP", Conditions: []Condition{{Type: CondStreaming, Value: "DSNP"}}},
+		{Name: "HMAX", Conditions: []Condition{{Type: CondStreaming, Value: "HMAX|MAX"}}},
+		{Name: "MA", Conditions: []Condition{{Type: CondStreaming, Value: "MA"}}},
+		{Name: "PCOK", Conditions: []Condition{{Type: CondStreaming, Value: "PCOK"}}},
+	}
+}
+
+// DefaultGroupTiers are the release-group tiers a profile starts with until it edits its
+// own: a few groups widely trusted for remuxes and WEB releases, as suggestions. They go
+// stale and are a matter of taste, so they are short, shown in the editor and editable,
+// and they only ever order releases — never refuse one. None of them is a low-quality
+// group (DefaultLowQualityGroups).
+func DefaultGroupTiers() GroupTiers {
+	return GroupTiers{
+		Tier1: []string{"FraMeSToR", "EPSiLON", "BLURANiUM", "FLUX", "NTb", "CtrlHD"},
+		Tier2: []string{"CMRG", "TEPES", "playWEB", "NOSiViD", "SiC"},
 	}
 }
 

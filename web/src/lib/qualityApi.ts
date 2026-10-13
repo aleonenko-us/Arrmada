@@ -1,4 +1,4 @@
-import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
+import { req, type FitCounts, type FitItem, type FormatInfo, type GroupTiers, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
 
 // One value a custom-format condition can take (quality.VocabValue): what's stored, and
 // what the editor shows.
@@ -37,7 +37,7 @@ export const qualityApi = {
   qualityProfiles: (media: string) =>
     req<{
       profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[];
-      unwanted?: UnwantedItemInfo[]; unwanted_groups?: string[];
+      unwanted?: UnwantedItemInfo[]; unwanted_groups?: string[]; group_tiers?: GroupTiers;
     }>(`/api/v1/quality/profiles?media=${media}`),
   checkFormats: (formats: QualityCustomFormat[]) =>
     req<FormatReport>("/api/v1/quality/formats/check", { method: "POST", body: JSON.stringify({ custom_formats: formats }) }),

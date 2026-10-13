@@ -427,11 +427,23 @@ func convertSpec(s trashSpec, media string) converted {
 			set(CondSource, "Remux")
 		case 2: // SCREENER: Arrmada files screeners with cams
 			set(CondSource, "CAM")
+		case 4: // BRDISK
+			c.cond = &Condition{Type: CondFullDisc, Negate: s.Negate}
 		default:
-			c.why = "uses a quality modifier (raw HD, regional or BR-DISK) Arrmada doesn't read yet"
+			c.why = "uses a quality modifier (raw HD or regional) Arrmada doesn't read"
 		}
 	case "LanguageSpecification":
-		c.why = "matches on language, which Arrmada's custom formats can't do yet"
+		n, ok := s.intValue()
+		if !ok {
+			c.why = "has no language value"
+			return c
+		}
+		code, why := trashLanguage(n)
+		if why != "" {
+			c.why = why
+			return c
+		}
+		set(CondLanguage, code)
 	case "IndexerFlagSpecification":
 		c.why = "matches on indexer flags, which Arrmada doesn't receive"
 	case "SizeSpecification":
@@ -495,6 +507,32 @@ func literalNames(p string) ([]string, bool) {
 		out = append(out, alt)
 	}
 	return out, len(out) > 0
+}
+
+// trashLanguages maps Radarr/Sonarr language ids (the two share the numbering) onto the
+// ISO 639-1 codes the parser reads. Only languages a release name states as a tag.
+var trashLanguages = map[int]string{
+	2: "fr", 3: "es", 4: "de", 5: "it", 6: "da", 7: "nl", 8: "ja", 10: "zh", 11: "ru", 12: "pl",
+	14: "sv", 15: "no", 16: "fi", 17: "tr", 18: "pt", 21: "ko", 26: "hi", 31: "ar", 32: "uk",
+	37: "es", // Spanish (Latino)
+}
+
+// trashLanguage is the code for a language id, or why it can't be carried over. English,
+// "Original", "Any" and "Unknown" need what a name doesn't say: English releases almost
+// never state their language, so "not English" would hit nearly every release.
+func trashLanguage(n int) (string, string) {
+	switch n {
+	case 1:
+		return "", "matches English, which release names almost never state — Arrmada can't tell an English release from an untagged one"
+	case -2:
+		return "", "matches the title's original language, which Arrmada's custom formats can't compare against (the Unwanted pack's foreign-only rule does)"
+	case -1, 0:
+		return "", "matches any or an unknown language, which a release name can't show"
+	}
+	if code, ok := trashLanguages[n]; ok {
+		return code, ""
+	}
+	return "", fmt.Sprintf("uses language %d, which Arrmada doesn't map", n)
 }
 
 // trashSource maps a Radarr (films) or Sonarr (series) source number onto Arrmada's.

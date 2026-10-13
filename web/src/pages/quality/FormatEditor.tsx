@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { QualityCondition, QualityCustomFormat, StoredProfile } from "../../lib/api";
 import { qualityApi, type FormatProblem, type FormatReport, type VocabValue } from "../../lib/qualityApi";
 import { useQuery } from "../../lib/query";
-import { CONDITION_TYPES, TYPE_LABEL, formatSummary } from "./formatText";
+import { CONDITION_TYPES, TYPE_LABEL, UNWANTED_TYPES, VALUELESS, formatSummary, isValueless } from "./formatText";
 import { TrashImportDialog } from "./TrashImport";
 
 // The custom-format editor in the builder's Advanced area: one card per format, each with
@@ -33,7 +33,7 @@ function tidy(f: QualityCustomFormat): QualityCustomFormat {
   const out: QualityCustomFormat = {
     name: f.name.trim(),
     conditions: f.conditions.map((c) => {
-      const cond: QualityCondition = { type: c.type, value: c.type === "release_title" ? c.value : c.type === "lossless" ? "" : c.value.trim() };
+      const cond: QualityCondition = { type: c.type, value: c.type === "release_title" ? c.value : isValueless(c.type) ? "" : c.value.trim() };
       if (c.negate) cond.negate = true;
       return cond;
     }),
@@ -217,7 +217,7 @@ function FormatForm({ draft, vocab, others, problems, onChange, onCancel, onDone
   const local = !name ? "Give the format a name."
     : others.some((o) => o.trim().toLowerCase() === name.toLowerCase()) ? "Another custom format already has this name."
       : f.conditions.length === 0 ? "Add at least one condition."
-        : f.conditions.some((c) => c.type !== "lossless" && !c.value.trim()) ? "Every condition needs a value."
+        : f.conditions.some((c) => !isValueless(c.type) && !c.value.trim()) ? "Every condition needs a value."
           : null;
   const blocked = !!local || problems.errors.length > 0;
   const formErrors = problems.errors.filter((p) => p.condition < 0);
@@ -277,8 +277,8 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
   const n = index + 1;
   const changeType = (type: string) => onChange({ ...emptyCondition(type, vocab), negate: cond.negate });
   let value: React.ReactNode;
-  if (cond.type === "lossless") {
-    value = <span className="min-w-0 flex-1 text-[11px] text-ink-faint">has a lossless audio track</span>;
+  if (isValueless(cond.type)) {
+    value = <span className="min-w-0 flex-1 text-[11px] text-ink-faint">{VALUELESS[cond.type]}</span>;
   } else if (options.length > 0) {
     // A value saved by hand ("HEVC", "TrueHD|DTS-HD") stays selectable as it was saved.
     const known = options.some((o) => o.value === cond.value);
@@ -311,6 +311,11 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
           style={{ background: cond.negate ? "var(--reject)" : "var(--panel)", color: cond.negate ? "#fff" : "var(--ink-faint)", border: "1px solid var(--line)" }}>NOT</button>
         <button onClick={onRemove} disabled={only} aria-label={`Remove condition ${n}`} className="px-1 text-ink-faint hover:text-[var(--reject)] disabled:opacity-30">✕</button>
       </div>
+      {UNWANTED_TYPES.has(cond.type) && (
+        <p className="mt-1 text-[10.5px] leading-[1.4] text-ink-faint">
+          The Unwanted pack in Rules already refuses or avoids this per profile — a format here only adds a score on top.
+        </p>
+      )}
       <Problems errors={errors} warnings={warnings} />
     </div>
   );

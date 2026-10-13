@@ -106,3 +106,36 @@ func TestCheckFormatsAndVocabulary(t *testing.T) {
 		t.Errorf("vocabulary = %v", list.Vocabulary)
 	}
 }
+
+// Release-group tiers save and come back; a group in both tiers, or one that's also a
+// low-quality group, is a 400. The profile list carries the suggested tiers.
+func TestQualityProfileGroupTiers(t *testing.T) {
+	s := newRouteServer(t, func(d *Deps) { d.Quality = quality.NewService(d.Store.DB()) })
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	for _, bad := range []string{
+		`{"name":"T","media_type":"movie","format_scores":{},"group_tiers":{"tier1":["FLUX"],"tier2":["flux"]}}`,
+		`{"name":"T","media_type":"movie","format_scores":{},"group_tiers":{"tier1":["YTS"],"tier2":[]}}`,
+	} {
+		if rec := s.doBody("POST", "/api/v1/quality/profiles", bad, mgr); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: HTTP %d: %s", bad, rec.Code, rec.Body)
+		}
+	}
+	rec := s.doBody("POST", "/api/v1/quality/profiles", `{"name":"T","media_type":"movie","format_scores":{},"group_tiers":{"tier1":["ALPHA"],"tier2":[]}}`, mgr)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
+	}
+	var sp quality.StoredProfile
+	if err := json.Unmarshal(rec.Body.Bytes(), &sp); err != nil {
+		t.Fatal(err)
+	}
+	if sp.GroupTiers == nil || len(sp.GroupTiers.Tier1) != 1 || sp.GroupTiers.Tier1[0] != "ALPHA" {
+		t.Errorf("tiers = %+v", sp.GroupTiers)
+	}
+	rec = s.do("GET", "/api/v1/quality/profiles?media=movie", mgr)
+	var list struct {
+		GroupTiers quality.GroupTiers `json:"group_tiers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.GroupTiers.Tier1) == 0 {
+		t.Errorf("suggested tiers = %+v, %v", list.GroupTiers, err)
+	}
+}

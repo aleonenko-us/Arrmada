@@ -167,6 +167,8 @@ func (c Condition) matchOne(r parser.Release, v string) bool {
 		hit = strings.EqualFold(r.Group, v)
 	case CondLossless:
 		hit = losslessAudio(r)
+	default:
+		hit = matchTrait(c.Type, r, v) // the parser's newer traits (customformat.go)
 	}
 	return hit
 }
@@ -287,6 +289,8 @@ type Profile struct {
 	// titles and authors, not video tags.
 	Unwanted   Unwanted `json:"unwanted,omitempty"`
 	NoUnwanted bool     `json:"no_unwanted,omitempty"`
+	// GroupTiers order releases by group under ranking v2 (grouptiers.go); never a reject.
+	GroupTiers GroupTiers `json:"group_tiers,omitempty"`
 	// OwnerLanguages are the audio languages the household keeps (Convert's audio
 	// languages); a release in one of them is never foreign-only. Empty means English.
 	OwnerLanguages []string `json:"owner_languages,omitempty"`
@@ -436,7 +440,7 @@ type Evaluation struct {
 	// unstated 0, a cam -1. ProperFix is a PROPER or REPACK.
 	SourceTier int  `json:"source_tier,omitempty"`
 	ProperFix  bool `json:"proper_fix,omitempty"`
-	// GroupTier is the release group's tier (0 until group tiers exist).
+	// GroupTier is the release group's tier: 2 for tier 1, 1 for tier 2, 0 for none.
 	GroupTier int `json:"group_tier,omitempty"`
 	// EffBitrate is the bitrate in H.264-equivalent Mb/s (0 without a runtime), and
 	// InWindow says it is inside the resolution's window (or there is none to judge).

@@ -174,7 +174,7 @@ func v2Reason(p Profile, k RankKey, winner, loser Evaluation) string {
 		}
 		return "it isn't a " + properWord(wr)
 	case KeyGroup:
-		return "a lower-tier release group"
+		return groupLoss(winner)
 	case KeyBitrate:
 		switch {
 		case !loser.InWindow:

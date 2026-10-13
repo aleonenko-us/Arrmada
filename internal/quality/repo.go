@@ -21,19 +21,19 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const profileCols = `id, media_type, name, base, allowed_resolutions, min_source, bitrate_cap_mbps,
 	small_bias, min_format_score, format_scores, custom_formats, keywords, rejected, min_seeders, stall_minutes, max_source,
-	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted`
+	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (StoredProfile, error) {
 	var (
 		sp                                                    StoredProfile
 		allowedJSON, scoresJSON, cfJSON, kwJSON, rejectedJSON string
-		requiredJSON, idealJSON, unwantedJSON                 string
+		requiredJSON, idealJSON, unwantedJSON, tiersJSON      string
 		upgradesEnabled, allowPreRelease                      int
 	)
 	err := row.Scan(&sp.ID, &sp.MediaType, &sp.Name, &sp.Base, &allowedJSON, &sp.MinSource,
 		&sp.BitrateCapMbps, &sp.SmallBias, &sp.MinFormatScore, &scoresJSON, &cfJSON,
 		&kwJSON, &rejectedJSON, &sp.MinSeeders, &sp.StallMinutes, &sp.MaxSource,
-		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger, &unwantedJSON)
+		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger, &unwantedJSON, &tiersJSON)
 	if err != nil {
 		return StoredProfile{}, err
 	}
@@ -56,6 +56,13 @@ func (r *Repo) scan(row interface{ Scan(...any) error }) (StoredProfile, error) 
 		var u Unwanted
 		if json.Unmarshal([]byte(unwantedJSON), &u) == nil {
 			sp.Unwanted = u.normalized()
+		}
+	}
+	if tiersJSON != "" {
+		var g GroupTiers
+		if json.Unmarshal([]byte(tiersJSON), &g) == nil {
+			g = g.normalized()
+			sp.GroupTiers = &g
 		}
 	}
 	if sp.FormatScores == nil {
@@ -104,12 +111,12 @@ func (r *Repo) Create(ctx context.Context, sp StoredProfile) (StoredProfile, err
 		`INSERT INTO quality_profiles (media_type, name, base, allowed_resolutions, min_source,
 			bitrate_cap_mbps, small_bias, min_format_score, format_scores, custom_formats,
 			keywords, rejected, min_seeders, stall_minutes, max_source, upgrades_enabled, upgrade_min_percent,
-			required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sp.MediaType, sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias,
 		sp.MinFormatScore, scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp))
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp))
 	if err != nil {
 		return StoredProfile{}, err
 	}
@@ -126,12 +133,12 @@ func (r *Repo) Update(ctx context.Context, id int64, sp StoredProfile) error {
 			bitrate_cap_mbps = ?, small_bias = ?, min_format_score = ?, format_scores = ?, custom_formats = ?,
 			keywords = ?, rejected = ?, min_seeders = ?, stall_minutes = ?, max_source = ?,
 			upgrades_enabled = ?, upgrade_min_percent = ?, required_formats = ?, ideal = ?, allow_prerelease = ?,
-			upgrade_trigger = ?, unwanted = ?
+			upgrade_trigger = ?, unwanted = ?, group_tiers = ?
 		 WHERE id = ?`,
 		sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias, sp.MinFormatScore,
 		scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), id)
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp), id)
 	if err != nil {
 		return err
 	}
@@ -320,6 +327,20 @@ func marshalUnwanted(sp StoredProfile) string {
 		return ""
 	}
 	b, _ := json.Marshal(u)
+	return string(b)
+}
+
+// marshalTiers encodes the release-group tiers: "" for the built-in suggestions (never set,
+// or set to exactly them), so a profile that never changed them follows the defaults.
+func marshalTiers(sp StoredProfile) string {
+	if sp.GroupTiers == nil {
+		return ""
+	}
+	g := sp.GroupTiers.normalized()
+	if sameTiers(g, DefaultGroupTiers()) {
+		return ""
+	}
+	b, _ := json.Marshal(g)
 	return string(b)
 }
 
