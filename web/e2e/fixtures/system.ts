@@ -1,5 +1,5 @@
 import type {
-  AppSettings, Attention, AuthUser, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
+  AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
   ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
 import type { SetupChecklist } from "../../src/lib/setupApi";
@@ -94,6 +94,13 @@ export function folderCheck(path: string): FolderCheck {
 export const setup: SetupState = {
   needed: false, complete: true, tmdb_configured: true, libraries_chosen: true, keys: [],
   library: paths, running: paths, restart_needed: false, can_restart: true, mounts: ["/media"], suggestions: {},
+};
+
+// Settings → System's Backups card: no copies yet, the nightly on at 3 am.
+export const backups: BackupsState = {
+  backups: [], total_bytes: 0, free_bytes: 5e11, dir: "/appdata/backups",
+  settings: { enabled: true, hour: 3, keep_nightly: 7 },
+  last_nightly_at: null, can_restart: true, pending_restore: null, last_restore: null,
 };
 
 // Every Getting started step is done on this install, so the Dashboard shows no card.
