@@ -237,6 +237,7 @@ GET /api/v1/series/{id}/watch-stats staff -
 GET /api/v1/settings staff -
 GET /api/v1/settings/smtp admin -
 GET /api/v1/setup admin -
+GET /api/v1/setup/checklist admin -
 GET /api/v1/status public ext
 GET /api/v1/subtitles/attention staff -
 GET /api/v1/subtitles/coverage staff -
@@ -426,6 +427,7 @@ POST /api/v1/series/{id}/resume-upgrades staff -
 POST /api/v1/series/{id}/search staff -
 POST /api/v1/series/{id}/seasons/{season}/episodes/{episode}/regrab staff -
 POST /api/v1/settings/smtp/test admin -
+POST /api/v1/setup/checklist/dismiss admin -
 POST /api/v1/setup/complete admin -
 POST /api/v1/subtitles/file/shift staff -
 POST /api/v1/subtitles/jobs/clear staff -

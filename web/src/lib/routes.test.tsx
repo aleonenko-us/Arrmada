@@ -65,6 +65,12 @@ describe("buildRoutes", () => {
     expect(paths(buildRoutes({ role: "manager", external: false }))).not.toContain("/logs");
   });
 
+  it("offers Run setup again to admins only", () => {
+    expect(paths(buildRoutes({ role: "admin", external: false }))).toContain("/setup");
+    expect(paths(buildRoutes({ role: "manager", external: false }))).not.toContain("/setup");
+    expect(paths(buildRoutes({ role: "requester", external: false }))).not.toContain("/setup");
+  });
+
   it("keeps today's staff addresses and redirects", () => {
     const p = paths(buildRoutes({ role: "admin", external: false }));
     for (const want of ["/", "/activity/:tab", "/downloads", "/activity", "/history", "/review", "/blocklist", "/movies/:id", "/series/:id", "/music/album/:id",

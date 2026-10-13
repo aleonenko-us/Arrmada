@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, type UserRole } from "./api";
 
 // Where to go back to after signing in again. When a session ends mid-use, the page the
 // person was on is remembered here, so signing back in returns them to it instead of
@@ -56,9 +56,16 @@ export function takeNext(): string | null {
   return sanitizeNext(fromURL) ?? sanitizeNext(stored);
 }
 
-// nextAfterSignIn is where a successful sign-in goes: takeNext(), else the deep link the
-// login screen was shown on (a reload or a resumed app keeps its URL), else Discover.
-export function nextAfterSignIn(): string {
+// homeFor is where someone lands when nothing asked for a page: staff on the Dashboard
+// (Needs you, and Getting started on a fresh install), everyone else on Discover.
+export function homeFor(role?: UserRole | null): string {
+  return role === "admin" || role === "manager" ? "/" : "/discover";
+}
+
+// askedFor is the page this sign-in should return to, if anything asked for one:
+// takeNext(), else the deep link the login screen was shown on (a reload or a resumed app
+// keeps its URL).
+function askedFor(): string | null {
   const next = takeNext();
   if (next) return next;
   try {
@@ -73,17 +80,25 @@ export function nextAfterSignIn(): string {
   } catch {
     /* no location */
   }
-  return "/discover";
+  return null;
+}
+
+// nextAfterSignIn is where a successful sign-in goes: the page asked for, else the signed-in
+// person's home (homeFor).
+export function nextAfterSignIn(role?: UserRole | null): string {
+  return askedFor() ?? homeFor(role);
 }
 
 // keepNextAcrossRedirect is for a sign-in that leaves the page (Sign in with Plex by
-// redirect, on a phone): it stores where nextAfterSignIn would go now, so the page plex.tv
-// sends back to still lands there.
+// redirect, on a phone): it stores the page asked for now, so the page plex.tv sends back
+// to still lands there. With nothing asked for it stores nothing: who signed in (and so
+// their home) is only known once plex.tv sends them back.
 export function keepNextAcrossRedirect(): void {
-  const next = nextAfterSignIn();
+  const next = askedFor();
+  if (!next) return;
   try {
     sessionStorage.setItem(KEY, next);
   } catch {
-    /* storage blocked: Discover it is */
+    /* storage blocked: their home it is */
   }
 }

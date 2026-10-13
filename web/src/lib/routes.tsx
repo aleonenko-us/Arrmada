@@ -5,6 +5,7 @@ import type { RouteHandle } from "./title";
 import { UserLayout } from "../components/UserLayout";
 import { RouteError } from "../components/RouteError";
 import { ModuleGate } from "../components/ModuleGate";
+import { SetupGate } from "../components/SetupGate";
 import { lazyPage } from "./lazyPage";
 import { LINKS } from "./links";
 import { legacyActivityPath, type LegacyActivityPage } from "./activity";
@@ -13,6 +14,7 @@ import { legacyActivityPath, type LegacyActivityPage } from "./activity";
 // chunk too: a requester's phone loads only the small requester shell with Discover.
 const AppLayout = lazyPage(() => import("../components/AppLayout"), "AppLayout");
 const staffShellLoading = <div className="grid h-full place-items-center text-[13px] text-ink-dim">Loading…</div>;
+const SetupAgain = lazyPage(() => import("../pages/SetupWizard"), "SetupAgain");
 
 // Every page is its own chunk (FE-06): a requester downloads Discover and their few
 // pages, never Quality, Convert, Settings or the rest of the console.
@@ -187,8 +189,19 @@ function staffRoutes(admin: boolean): RouteObject[] {
 export function buildRoutes({ role, external }: { role: UserRole; external: boolean }): RouteObject[] {
   const shell = shellFor(role, external);
   if (shell === "staff") {
-    const frame = <Suspense fallback={staffShellLoading}><AppLayout /></Suspense>;
-    return [{ element: frame, errorElement: <RouteError />, children: staffRoutes(role === "admin") }];
+    // On a fresh install SetupGate shows an admin the first-run wizard in place of the console.
+    const frame = <SetupGate><Suspense fallback={staffShellLoading}><AppLayout /></Suspense></SetupGate>;
+    const staffConsole: RouteObject = { element: frame, errorElement: <RouteError />, children: staffRoutes(role === "admin") };
+    if (role !== "admin") return [staffConsole];
+    // "Run setup again" (Settings → System): the wizard on its own, outside the console's
+    // frame, with what's set filled in; finishing it goes back to Settings → System.
+    const setupAgain: RouteObject = {
+      path: "/setup",
+      element: <Suspense fallback={staffShellLoading}><SetupAgain /></Suspense>,
+      handle: { title: "Setup" } satisfies RouteHandle,
+      errorElement: <RouteError />,
+    };
+    return [setupAgain, staffConsole];
   }
   return [{ element: <UserLayout />, errorElement: <RouteError />, children: requesterRoutes(shell) }];
 }
