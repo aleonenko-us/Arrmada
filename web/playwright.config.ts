@@ -9,8 +9,19 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 4179;
 const preview = `npx vite preview --port ${PORT} --strictPort`;
 
+// e2e/screens.spec.ts (before/after screenshots of every page) runs only on demand,
+// when SCREENS_DIR names a folder outside the repo for its snapshots.
+const SCREENS_DIR = process.env.SCREENS_DIR;
+const screens = SCREENS_DIR
+  ? [
+      { name: "screens-1440", testMatch: /screens\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+      { name: "screens-375", testMatch: /screens\.spec\.ts/, use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
+    ]
+  : [];
+
 export default defineConfig({
   testDir: "./e2e",
+  ...(SCREENS_DIR ? { snapshotPathTemplate: `${SCREENS_DIR}/{arg}{ext}` } : {}),
   // Every request is mocked, so a test that runs long is stuck, not slow.
   timeout: 20_000,
   expect: { timeout: 5_000 },
@@ -39,6 +50,7 @@ export default defineConfig({
       testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|my-shelf|book-authors|books-phone|quality-formats)\.spec\.ts/,
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } },
     },
+    ...screens,
   ],
   webServer: {
     command: process.env.E2E_NO_BUILD ? preview : `npm run build && ${preview}`,
