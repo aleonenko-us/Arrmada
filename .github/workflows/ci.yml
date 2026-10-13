@@ -55,9 +55,11 @@ jobs:
             echo "These files are not gofmt-clean:"; echo "$unformatted"; exit 1
           fi
       - name: Test (race)
-        # internal/httpapi alone takes ~35-40 minutes under -race and internal/automation
-        # ~25 (most tests open a freshly migrated store), so 30m timed out passing
-        # packages. The limit is per package, not per test.
+        # Runs as the non-root `runner` user, so tests that skip as root (permission
+        # checks) run here and nowhere else. A fresh test store is a copy of one migrated
+        # once per test binary (internal/store/testtemplate.go); before that, migrating
+        # every store under -race put internal/httpapi past an hour on these runners. Now
+        # the slowest package takes minutes; the limit is per package, not per test.
         run: go test -race -timeout 60m ./...
 
   scripts:
