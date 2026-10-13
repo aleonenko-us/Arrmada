@@ -5,7 +5,11 @@ import { MeProvider } from "./lib/me";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { reloadOnce } from "./lib/chunkReload";
 import { ConfirmProvider, ToastProvider } from "./ui";
+import { initTheme } from "./lib/theme";
 import "./index.css";
+
+// The remembered theme, and the browser chrome colour that goes with it.
+initTheme();
 
 // Vite fires this when a lazily imported chunk (or its preload) fails to load,
 // typically a tab opened before a deploy asking for a chunk that's gone. Reload

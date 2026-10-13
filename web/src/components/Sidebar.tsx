@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode, type RefObject } from "react";
 import { NavLink } from "react-router-dom";
 import { visibleNav } from "../lib/nav";
 import { useMe, isAdmin } from "../lib/me";
@@ -7,6 +7,7 @@ import { badgeFor, useAttention, type NavBadge } from "../lib/useAttention";
 import { FleetMark } from "./FleetMark";
 import { Icon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
+import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
 import { Scrim } from "../ui/Scrim";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
@@ -35,12 +36,41 @@ function CountPill({ badge }: { badge: NavBadge | null }) {
   );
 }
 
-function toggleTheme() {
-  const root = document.documentElement;
-  const current =
-    root.getAttribute("data-theme") ??
-    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  root.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+// The theme button's face shows the choice in force: a monitor for System (follow the
+// device), a sun for Light, a moon for Dark. Clicking moves to the next one.
+const THEME_ICON: Record<ThemePref, ReactNode> = {
+  system: (
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </>
+  ),
+  light: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </>
+  ),
+  dark: <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />,
+};
+
+function ThemeButton() {
+  const [pref, setPref] = useTheme();
+  const label = `Theme: ${THEME_LABEL[pref]}`;
+  return (
+    <button
+      type="button"
+      onClick={() => setPref(nextTheme(pref))}
+      title={`${label} (click for ${THEME_LABEL[nextTheme(pref)]})`}
+      aria-label={label}
+      className="ml-auto grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
+      style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {THEME_ICON[pref]}
+      </svg>
+    </button>
+  );
 }
 
 // bell: this screen is wide enough that the sidebar is always open, so the inbox bell
@@ -152,17 +182,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
               <div className="font-mono text-[10.5px] capitalize text-ink-faint">{user?.role ?? ""}</div>
             </div>
           </NavLink>
-          <button
-            onClick={toggleTheme}
-            title="Toggle theme"
-            aria-label="Toggle theme"
-            className="ml-auto grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" fill="currentColor" />
-            </svg>
-          </button>
+          <ThemeButton />
           <button
             onClick={signOut}
             title="Sign out"
