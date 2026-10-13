@@ -149,6 +149,7 @@ GET /api/v1/languages user -
 GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
 GET /api/v1/logs admin -
+GET /api/v1/logs/level admin -
 GET /api/v1/me/account user ext
 GET /api/v1/me/apprise user ext
 GET /api/v1/me/audio user ext
@@ -468,6 +469,7 @@ PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -
+PUT /api/v1/logs/level admin -
 PUT /api/v1/me/apprise user ext
 PUT /api/v1/me/audio/password user ext
 PUT /api/v1/me/kindle user ext

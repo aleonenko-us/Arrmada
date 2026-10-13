@@ -1202,6 +1202,7 @@ func main() {
 		Push:         pushSvc,
 		Recycle:      recycleSvc,
 		Logs:         logRing,
+		LogLevel:     logLevel,
 		APIKeys:      keyStore,
 		FlareSolverr: flare,
 		ConnStatus:   connStatus,
@@ -1454,19 +1455,18 @@ func scrubLegacyLogs(logPath string) error {
 	return os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 }
 
+// logLevel is the level every log line is checked against. It starts at the install's
+// ARRMADA_LOG_LEVEL; the Logs page can raise it for a while (it reverts by itself, and a
+// restart starts back at the install's level).
+var logLevel *applog.LevelSwitch
+
 func newLogger(level string) *slog.Logger {
-	var l slog.Level
-	switch level {
-	case "debug":
-		l = slog.LevelDebug
-	case "warn":
-		l = slog.LevelWarn
-	case "error":
-		l = slog.LevelError
-	default:
+	l, ok := applog.ParseLevel(level)
+	if !ok {
 		l = slog.LevelInfo
 	}
-	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: l})
+	logLevel = applog.NewLevelSwitch(l)
+	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel.Leveler()})
 	return slog.New(applog.NewHandler(base, logRing))
 }
 

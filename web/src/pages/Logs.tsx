@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type LogEntry } from "../lib/api";
+import { type LogEntry } from "../lib/api";
+import { systemApi, type LogLevelState } from "../lib/systemApi";
 import { usePoll } from "../lib/usePoll";
+import { Button, useToast } from "../ui";
 
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const LEVEL_STYLE: Record<string, { color: string; label: string }> = {
@@ -20,6 +22,9 @@ const NOISE = "torznab page,indexer search";
 // more in memory and on disk, which the footer says.
 const LOG_LIMIT = 2000;
 
+// The debug button's length; the server allows up to its max_minutes.
+const DEBUG_MINUTES = 30;
+
 function fmtTime(ms: number): string {
   const d = new Date(ms);
   const p = (n: number) => String(n).padStart(2, "0");
@@ -36,10 +41,72 @@ function asText(entries: LogEntry[]): string {
   return entries.map((e) => `${fmtFull(e.time_ms)} ${e.level} ${e.msg}${e.attrs ? " " + e.attrs : ""}`).join("\n");
 }
 
+function fmtLeft(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// DebugSwitch raises the server's log level to debug for a while. The server turns it off
+// by itself when the time is up (and a restart always starts at the install's level), so
+// the countdown here is only a display of the server's deadline.
+function DebugSwitch({ onEnabled }: { onEnabled: () => void }) {
+  const toast = useToast();
+  const [state, setState] = useState<LogLevelState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const load = useCallback(() => systemApi.logLevel().then(setState).catch(() => setState(null)), []);
+  useEffect(() => { load(); }, [load]);
+
+  const until = state?.until ? Date.parse(state.until) : 0;
+  const raised = !!state && state.level !== state.env_level && until > 0;
+  // Tick once a second while raised; at zero, ask the server, which has reverted by then.
+  usePoll(() => {
+    setNow(Date.now());
+    if (until && Date.now() >= until) return load();
+  }, raised ? 1000 : null, { immediate: false });
+
+  const change = async (level: string) => {
+    setBusy(true);
+    try {
+      const next = await systemApi.setLogLevel(level, level ? DEBUG_MINUTES : undefined);
+      setState(next);
+      setNow(Date.now());
+      if (level) onEnabled();
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!state) return null;
+  if (state.env_level === "debug") {
+    return <span className="text-[11.5px] text-ink-faint" title="ARRMADA_LOG_LEVEL is debug for this install">Debug is always on</span>;
+  }
+  if (raised) {
+    return (
+      <span className="flex items-center gap-2">
+        <span className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} title={`Debug lines until ${new Date(until).toLocaleTimeString()}, then back to ${state.env_level}`}>
+          Debug on · {fmtLeft(until - now)} left
+        </span>
+        <Button size="sm" onClick={() => change("")} busy={busy}>Back to normal</Button>
+      </span>
+    );
+  }
+  return (
+    <Button size="sm" onClick={() => change("debug")} busy={busy} title={`Log debug lines for ${DEBUG_MINUTES} minutes, then go back to ${state.env_level} by itself`}>
+      Debug for {DEBUG_MINUTES} min
+    </Button>
+  );
+}
+
 // Logs — a live view of Arrmada's application log (also on stdout/docker logs). Filter by
 // level and search text; auto-refreshes so you can watch things happen.
 export function Logs() {
   const [entries, setEntries] = useState<LogEntry[] | null>(null);
+  const [capacity, setCapacity] = useState<number | null>(null);
   const [level, setLevel] = useState("info");
   const [q, setQ] = useState("");
   const [hide, setHide] = useState("");
@@ -57,8 +124,8 @@ export function Logs() {
   }, [q, hide]);
 
   const load = useCallback(() =>
-    api.logs({ limit: LOG_LIMIT, level, q: dq, hide: dhide })
-      .then((e) => { setEntries(e); setErr(null); })
+    systemApi.logs({ limit: LOG_LIMIT, level, q: dq, hide: dhide })
+      .then((r) => { setEntries(r.entries); setCapacity(r.capacity ?? null); setErr(null); })
       .catch((e: Error) => setErr(e.message)), [level, dq, dhide]);
 
   useEffect(() => { load(); }, [load]);
@@ -98,30 +165,34 @@ export function Logs() {
     URL.revokeObjectURL(url);
   };
 
+  const pill = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent-line)" : "var(--line)"}`, color: on ? "var(--accent)" : "var(--ink-dim)", background: "transparent" });
+
   return (
     <>
       <PageHeader title="Logs" />
       <div className="mx-auto flex max-w-[1100px] flex-col gap-3 px-4 py-5">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex overflow-hidden rounded-lg" style={{ border: "1px solid var(--line)" }}>
+          <div className="flex overflow-hidden rounded-lg" role="group" aria-label="Lowest level shown" style={{ border: "1px solid var(--line)" }}>
             {LEVELS.map((l) => (
-              <button key={l} onClick={() => setLevel(l)} className="px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent)" : "var(--ink-dim)" }}>{l}</button>
+              <button key={l} onClick={() => setLevel(l)} aria-pressed={level === l} className="px-3 py-1.5 text-[11.5px] font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent)" : "var(--ink-dim)" }}>{l}</button>
             ))}
           </div>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Show only lines containing…" className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="Hide lines containing… (comma-separated)" title="Drop noisy lines. Comma-separated; matches the message or any field." className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-          <button
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Show only lines containing" placeholder="Show only lines containing…" className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <input value={hide} onChange={(e) => setHide(e.target.value)} aria-label="Hide lines containing" placeholder="Hide lines containing… (comma-separated)" title="Drop noisy lines. Comma-separated; matches the message or any field." className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-[12.5px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+          <Button
+            size="sm"
             onClick={() => setHide((h) => (h === NOISE ? "" : NOISE))}
+            aria-pressed={hide === NOISE}
             title="Hide per-page indexer tracing, which logs a line per page per indexer per query and buries everything else"
-            className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold"
-            style={{ border: `1px solid ${hide === NOISE ? "var(--accent-line)" : "var(--line)"}`, color: hide === NOISE ? "var(--accent)" : "var(--ink-dim)" }}
+            style={pill(hide === NOISE)}
           >
             {hide === NOISE ? "Noise hidden" : "Hide noise"}
-          </button>
-          <button onClick={() => setAuto((v) => !v)} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: `1px solid ${auto ? "var(--accent-line)" : "var(--line)"}`, color: auto ? "var(--accent)" : "var(--ink-dim)" }}>{auto ? "Live ●" : "Paused"}</button>
-          <button onClick={load} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Refresh</button>
-          <button onClick={copyAll} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>{copied ? "Copied ✓" : "Copy"}</button>
-          <button onClick={download} title="Save the filtered view as a .txt file" className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Download</button>
+          </Button>
+          <Button size="sm" onClick={() => setAuto((v) => !v)} aria-pressed={auto} style={pill(auto)}>{auto ? "Live ●" : "Paused"}</Button>
+          <Button size="sm" onClick={load}>Refresh</Button>
+          <Button size="sm" onClick={copyAll}>{copied ? "Copied ✓" : "Copy"}</Button>
+          <Button size="sm" onClick={download} title="Save the filtered view as a .txt file">Download</Button>
+          <DebugSwitch onEnabled={() => setLevel("debug")} />
         </div>
 
         {err && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{err}</div>}
@@ -150,8 +221,9 @@ export function Logs() {
             })
           )}
         </div>
-        <p className="text-[10.5px] text-ink-faint">
-          Showing the newest {(entries?.length ?? 0).toLocaleString()} lines{dhide ? " (some hidden by your filter)" : ""} — the viewer loads up to {LOG_LIMIT.toLocaleString()}. Arrmada keeps the last 50,000 in memory and also writes them to rotating log files in its data folder. Same stream as the container logs.
+        <p className="text-[11px] text-ink-faint">
+          Showing the newest {(entries?.length ?? 0).toLocaleString()} matching lines{dhide ? " (some hidden by your filter)" : ""}
+          {capacity ? ` of the last ${capacity.toLocaleString()} kept in memory` : ""}. Older lines are in the logs folder on disk (/data/logs in the container). Same stream as the container logs.
         </p>
       </div>
     </>

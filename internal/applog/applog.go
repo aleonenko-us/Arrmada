@@ -37,6 +37,9 @@ func NewRing(max int) *Ring {
 	return &Ring{buf: make([]Entry, max), max: max}
 }
 
+// Cap is how many entries the ring holds before the oldest drop off.
+func (r *Ring) Cap() int { return r.max }
+
 func (r *Ring) add(e Entry) {
 	r.mu.Lock()
 	r.buf[r.next] = e

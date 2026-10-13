@@ -1084,6 +1084,10 @@ export interface LogEntry {
   level: string; // DEBUG | INFO | WARN | ERROR
   msg: string;
   attrs?: string;
+  /** Monotonic within one run of the server: the Live view's cursor. */
+  seq?: number;
+  /** The part of the app that wrote it (convert, indexer, …); absent for core lines. */
+  module?: string;
 }
 // Why a database backup was taken; part of its file name.
 export type BackupKind = "pre-migrate" | "nightly" | "manual" | "pre-restore" | "pre-delete-user" | "pre-delete-empty-user" | "pre-merge-user" | "uploaded" | "pre-insights-repair";
@@ -2718,15 +2722,6 @@ export const api = {
   settings: () => req<AppSettings>("/api/v1/settings"),
   updateSettings: (body: Partial<AppSettings>) =>
     req<AppSettings>("/api/v1/settings", { method: "PUT", body: JSON.stringify(body) }),
-  logs: (opts?: { limit?: number; level?: string; q?: string; hide?: string }) => {
-    const p = new URLSearchParams();
-    if (opts?.limit) p.set("limit", String(opts.limit));
-    if (opts?.level) p.set("level", opts.level);
-    if (opts?.q) p.set("q", opts.q);
-    if (opts?.hide) p.set("hide", opts.hide);
-    const qs = p.toString();
-    return req<{ entries: LogEntry[] }>(`/api/v1/logs${qs ? `?${qs}` : ""}`).then((r) => r.entries);
-  },
   recycleStats: () => req<RecycleStats>("/api/v1/recycle"),
   recycleMode: () => req<RecycleMode>("/api/v1/recycle/mode"),
   // A title's stored search attempts, newest first (staff). since is unix ms.
