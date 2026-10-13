@@ -65,7 +65,14 @@ func orderBy(byDuration bool) string {
 }
 
 func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since int64, byDuration bool, limit int) ([]titleStatRow, error) {
-	q := `SELECT ` + groupCol + ` AS t, MAX(thumb) AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs
+	// An episode's own thumb is a landscape still: a show's row takes its poster, recorded
+	// since PLEX-20, and falls back to the thumb only for older plays and imports (whose
+	// Tautulli thumb is already a poster).
+	thumb := `MAX(thumb)`
+	if mediaType == "episode" {
+		thumb = `COALESCE(NULLIF(MAX(grandparent_thumb),''), MAX(thumb))`
+	}
+	q := `SELECT ` + groupCol + ` AS t, ` + thumb + ` AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs
 		FROM stream_sessions WHERE media_type = ? AND started_at >= ? AND ` + groupCol + ` <> ''
 		GROUP BY ` + groupCol + ` ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, q, mediaType, since, limit)
@@ -218,6 +225,7 @@ func toNameStats(rows []nameStatRow) []NameStat {
 type UserEntry struct {
 	ID           string         `json:"id"`
 	Username     string         `json:"username"`
+	AvatarURL    string         `json:"avatar_url"` // a plex.tv avatar, or "" (see avatarURL)
 	LastSeen     int64          `json:"last_seen"`
 	LastIP       string         `json:"last_ip"`
 	LastPlatform string         `json:"last_platform"`
@@ -237,7 +245,7 @@ func (s *Service) Users(ctx context.Context) ([]UserEntry, error) {
 	out := make([]UserEntry, 0, len(rows))
 	for _, u := range rows {
 		out = append(out, UserEntry{
-			ID: u.ID, Username: u.Username, LastSeen: u.LastSeen, LastIP: u.LastIP,
+			ID: u.ID, Username: u.Username, AvatarURL: avatarURL(u.Thumb), LastSeen: u.LastSeen, LastIP: u.LastIP,
 			LastPlatform: u.LastPlatform, LastPlayer: u.LastPlayer, LastTitle: u.LastTitle,
 			TotalPlays: u.TotalPlays, TotalSecs: u.TotalSecs, Geo: s.geo.Lookup(u.LastIP),
 		})

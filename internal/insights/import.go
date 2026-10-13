@@ -21,16 +21,20 @@ type ImportedSession struct {
 	ParentIndex      int
 	Year             int
 	Thumb            string
-	Player           string
-	Platform         string
-	Product          string
-	IPAddress        string
-	Decision         string
-	StartedAt        int64 // epoch seconds
-	StoppedAt        int64
-	DurationMS       int64 // the MEDIA's runtime, if the source reports one
-	WatchedMS        int64 // actual time watched — Tautulli's `duration`, which is NOT the runtime
-	PausedMS         int64
+	// The show an episode belongs to (Tautulli's grandparent_thumb and
+	// grandparent_rating_key); '' when the source doesn't say.
+	GrandparentThumb     string
+	GrandparentRatingKey string
+	Player               string
+	Platform             string
+	Product              string
+	IPAddress            string
+	Decision             string
+	StartedAt            int64 // epoch seconds
+	StoppedAt            int64
+	DurationMS           int64 // the MEDIA's runtime, if the source reports one
+	WatchedMS            int64 // actual time watched — Tautulli's `duration`, which is NOT the runtime
+	PausedMS             int64
 }
 
 // ImportOptions tunes one import pass.
@@ -164,6 +168,7 @@ func (s *Service) ImportHistory(ctx context.Context, rows []ImportedSession, opt
 			UserID: uid, UserName: r.UserName, RatingKey: r.RatingKey, MediaType: r.MediaType,
 			Title: r.Title, GrandparentTitle: r.GrandparentTitle, ParentTitle: r.ParentTitle,
 			MediaIndex: r.MediaIndex, ParentIndex: r.ParentIndex, Year: r.Year, Thumb: r.Thumb,
+			GrandparentThumb: r.GrandparentThumb, GrandparentRatingKey: r.GrandparentRatingKey,
 			Player: r.Player, Platform: r.Platform, Product: r.Product, IPAddress: r.IPAddress,
 			Decision:  normalizeDecision(r.Decision),
 			StartedAt: r.StartedAt, StoppedAt: stopped, DurationMS: r.DurationMS,

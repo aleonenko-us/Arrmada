@@ -74,6 +74,19 @@ func (s *Service) canonicalUserID(ctx context.Context, id string) string {
 	return id
 }
 
+// knownUserID is canonicalUserID without the plex.tv lookup: the owner placeholder maps
+// to the account id the poller has already resolved, if any. Safe off the poller
+// goroutine (the Activity view uses it to link a stream to its person).
+func (s *Service) knownUserID(ctx context.Context, id string) string {
+	if id != ownerPlaceholderID || s.settings == nil {
+		return id
+	}
+	if real := s.settings.Get(ctx, keyOwnerID, ""); real != "" {
+		return real
+	}
+	return id
+}
+
 // mergeOwnerSessions repoints sessions recorded under the placeholder onto the real account
 // row and retires the placeholder. Idempotent: after the first run there is nothing left
 // under the placeholder, so subsequent calls are no-ops.

@@ -29,7 +29,7 @@ const overflow = (page: Page) => page.evaluate(() => {
 test.describe("admin on a phone", () => {
   test.use({ persona: "admin" });
 
-  for (const tab of ["activity", "history", "people", "graphs", "reliability"]) {
+  for (const tab of ["activity", "history", "people", "graphs", "reliability", "library"]) {
     test(`${tab} fits 375 px`, async ({ page, api }) => {
       await serveInsights(page);
       await page.goto(`/insights?tab=${tab}`);
@@ -38,6 +38,14 @@ test.describe("admin on a phone", () => {
       expect(await overflow(page)).toEqual({ doc: 0, main: 0 });
     });
   }
+
+  test("a person's page fits 375 px", async ({ page, api }) => {
+    await serveInsights(page);
+    await page.goto("/insights/people/7");
+    await expect(page.getByRole("heading", { name: "Jesse" })).toBeVisible();
+    await api.quiet();
+    expect(await overflow(page)).toEqual({ doc: 0, main: 0 });
+  });
 
   test("a deep link opens its tab, scrolled into the bar, and Back returns", async ({ page, api }) => {
     await serveInsights(page);

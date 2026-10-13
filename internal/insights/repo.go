@@ -3,6 +3,7 @@ package insights
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,29 +23,33 @@ type sessionRecord struct {
 	ParentIndex      int
 	Year             int
 	Thumb            string
-	Player           string
-	Platform         string
-	Product          string
-	IPAddress        string
-	Location         string
-	Decision         string
-	StartedAt        int64 // epoch seconds
-	StoppedAt        int64
-	PausedMS         int64
-	ViewOffsetMS     int64
-	DurationMS       int64 // the MEDIA's runtime (progress % denominator), not watch time
-	WatchedMS        int64 // actual time watched, when the source reports it; 0 = derive it
-	VideoSrc         string
-	VideoStream      string
-	VideoSrcBitDepth int    // 8, 10; 0 = not reported
-	VideoSrcProfile  string // "main 10", "high"; "" = not reported
-	AudioSrc         string
-	AudioStream      string
-	ContainerSrc     string
-	ContainerStream  string
-	HWTranscode      bool
-	BufferCount      int
-	ImportRunID      int64 // the Tautulli import run that brought this play in; 0 = live or older import
+	// The show an episode belongs to: its poster and rating key ('' for movies, and for
+	// plays recorded before PLEX-20).
+	GrandparentThumb     string
+	GrandparentRatingKey string
+	Player               string
+	Platform             string
+	Product              string
+	IPAddress            string
+	Location             string
+	Decision             string
+	StartedAt            int64 // epoch seconds
+	StoppedAt            int64
+	PausedMS             int64
+	ViewOffsetMS         int64
+	DurationMS           int64 // the MEDIA's runtime (progress % denominator), not watch time
+	WatchedMS            int64 // actual time watched, when the source reports it; 0 = derive it
+	VideoSrc             string
+	VideoStream          string
+	VideoSrcBitDepth     int    // 8, 10; 0 = not reported
+	VideoSrcProfile      string // "main 10", "high"; "" = not reported
+	AudioSrc             string
+	AudioStream          string
+	ContainerSrc         string
+	ContainerStream      string
+	HWTranscode          bool
+	BufferCount          int
+	ImportRunID          int64 // the Tautulli import run that brought this play in; 0 = live or older import
 }
 
 func (r *repo) insertSession(ctx context.Context, s sessionRecord) (int64, error) {
@@ -59,13 +64,13 @@ func (r *repo) insertSessionEx(ctx context.Context, ex execer, s sessionRecord) 
 		  media_index,parent_index,year,thumb,player,platform,product,ip_address,location,decision,
 		  started_at,stopped_at,paused_ms,view_offset_ms,duration_ms,watched_ms,
 		  video_src,video_stream,audio_src,audio_stream,container_src,container_stream,hw_transcode,buffer_count,import_run_id,
-		  video_src_bitdepth,video_src_profile)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  video_src_bitdepth,video_src_profile,grandparent_thumb,grandparent_rating_key)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		s.SessionKey, s.UserID, s.UserName, s.RatingKey, s.MediaType, s.Title, s.GrandparentTitle, s.ParentTitle,
 		s.MediaIndex, s.ParentIndex, s.Year, s.Thumb, s.Player, s.Platform, s.Product, s.IPAddress, s.Location, s.Decision,
 		s.StartedAt, s.StoppedAt, s.PausedMS, s.ViewOffsetMS, s.DurationMS, s.WatchedMS,
 		s.VideoSrc, s.VideoStream, s.AudioSrc, s.AudioStream, s.ContainerSrc, s.ContainerStream, b2i(s.HWTranscode), s.BufferCount, s.ImportRunID,
-		s.VideoSrcBitDepth, s.VideoSrcProfile)
+		s.VideoSrcBitDepth, s.VideoSrcProfile, s.GrandparentThumb, s.GrandparentRatingKey)
 	if err != nil {
 		return 0, err
 	}
@@ -156,9 +161,20 @@ type HistoryFilter struct {
 	Type     string // movie | episode | track
 	Decision string // direct_play | direct_stream | transcode
 	Query    string // matches title / show / user
-	Limit    int
-	Offset   int
+	// From and To bound the start time (epoch seconds, To exclusive); 0 = open.
+	From int64
+	To   int64
+	// Group folds a person's resumed sittings of one item into one row: a new row starts
+	// when the gap since the previous sitting ended is over resumeGap.
+	Group  bool
+	Limit  int
+	Offset int
 }
+
+// resumeGap is the longest pause between two sittings of the same item by the same person
+// that still counts as one viewing: twenty minutes away is a resume, a film paused
+// overnight is two evenings.
+const resumeGap = 3 * 60 * 60
 
 // HistoryRow is one recorded play, with the fields the table + deep-dive need.
 type HistoryRow struct {
@@ -173,64 +189,187 @@ type HistoryRow struct {
 	Year             int    `json:"year"`
 	MediaType        string `json:"media_type"`
 	Thumb            string `json:"thumb"`
-	Player           string `json:"player"`
-	Platform         string `json:"platform"`
-	Product          string `json:"product"`
-	IPAddress        string `json:"ip_address"`
-	Location         string `json:"location"`
-	Decision         string `json:"decision"`
-	StartedAt        int64  `json:"started_at"`
-	StoppedAt        int64  `json:"stopped_at"`
-	PausedMS         int64  `json:"paused_ms"`
-	ViewOffsetMS     int64  `json:"view_offset_ms"`
-	DurationMS       int64  `json:"duration_ms"`
-	WatchedMS        int64  `json:"watched_ms"`
-	VideoSrc         string `json:"video_src"`
-	VideoStream      string `json:"video_stream"`
-	AudioSrc         string `json:"audio_src"`
-	AudioStream      string `json:"audio_stream"`
-	ContainerSrc     string `json:"container_src"`
-	ContainerStream  string `json:"container_stream"`
-	HWTranscode      bool   `json:"hw_transcode"`
-	BufferCount      int    `json:"buffer_count"`
+	// The show's poster and rating key, for episodes recorded since PLEX-20 ('' otherwise).
+	GrandparentThumb     string `json:"grandparent_thumb"`
+	GrandparentRatingKey string `json:"grandparent_rating_key"`
+	Player               string `json:"player"`
+	Platform             string `json:"platform"`
+	Product              string `json:"product"`
+	IPAddress            string `json:"ip_address"`
+	Location             string `json:"location"`
+	Decision             string `json:"decision"`
+	StartedAt            int64  `json:"started_at"`
+	StoppedAt            int64  `json:"stopped_at"`
+	PausedMS             int64  `json:"paused_ms"`
+	ViewOffsetMS         int64  `json:"view_offset_ms"`
+	DurationMS           int64  `json:"duration_ms"`
+	WatchedMS            int64  `json:"watched_ms"`
+	VideoSrc             string `json:"video_src"`
+	VideoStream          string `json:"video_stream"`
+	AudioSrc             string `json:"audio_src"`
+	AudioStream          string `json:"audio_stream"`
+	ContainerSrc         string `json:"container_src"`
+	ContainerStream      string `json:"container_stream"`
+	HWTranscode          bool   `json:"hw_transcode"`
+	BufferCount          int    `json:"buffer_count"`
 }
 
 const historyCols = `id,user_id,user_name,title,grandparent_title,parent_title,media_index,parent_index,year,
 	media_type,thumb,player,platform,product,ip_address,location,decision,started_at,stopped_at,paused_ms,
 	view_offset_ms,duration_ms,watched_ms,video_src,video_stream,audio_src,audio_stream,container_src,container_stream,
-	hw_transcode,buffer_count`
+	hw_transcode,buffer_count,grandparent_thumb,grandparent_rating_key`
+
+// historyScanDest lists a HistoryRow's fields in historyCols order, for rows.Scan.
+func historyScanDest(h *HistoryRow, hw *int) []any {
+	return []any{&h.ID, &h.UserID, &h.UserName, &h.Title, &h.GrandparentTitle, &h.ParentTitle,
+		&h.MediaIndex, &h.ParentIndex, &h.Year, &h.MediaType, &h.Thumb, &h.Player, &h.Platform, &h.Product,
+		&h.IPAddress, &h.Location, &h.Decision, &h.StartedAt, &h.StoppedAt, &h.PausedMS, &h.ViewOffsetMS,
+		&h.DurationMS, &h.WatchedMS, &h.VideoSrc, &h.VideoStream, &h.AudioSrc, &h.AudioStream, &h.ContainerSrc,
+		&h.ContainerStream, hw, &h.BufferCount, &h.GrandparentThumb, &h.GrandparentRatingKey}
+}
 
 func (r *repo) history(ctx context.Context, f HistoryFilter) ([]HistoryRow, int, error) {
+	var out []HistoryRow
+	total, err := r.historyEach(ctx, f, func(h HistoryRow) error { out = append(out, h); return nil })
+	return out, total, err
+}
+
+// historyEach runs the history query (one page: f.Limit rows from f.Offset, newest first)
+// and hands each row to fn. It returns the total number of rows the filters match, for
+// paging.
+func (r *repo) historyEach(ctx context.Context, f HistoryFilter, fn func(HistoryRow) error) (int, error) {
 	where, args := historyWhere(f)
 	// total count for pagination
 	var total int
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stream_sessions`+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
+		return 0, err
 	}
-	q := `SELECT ` + historyCols + ` FROM stream_sessions` + where + ` ORDER BY started_at DESC LIMIT ? OFFSET ?`
+	q := `SELECT ` + historyCols + ` FROM stream_sessions` + where + ` ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?`
 	rows, err := r.db.QueryContext(ctx, q, append(args, f.Limit, f.Offset)...)
 	if err != nil {
-		return nil, 0, err
+		return 0, err
 	}
 	defer rows.Close()
-	var out []HistoryRow
 	for rows.Next() {
 		var h HistoryRow
 		var hw int
-		if err := rows.Scan(&h.ID, &h.UserID, &h.UserName, &h.Title, &h.GrandparentTitle, &h.ParentTitle,
-			&h.MediaIndex, &h.ParentIndex, &h.Year, &h.MediaType, &h.Thumb, &h.Player, &h.Platform, &h.Product,
-			&h.IPAddress, &h.Location, &h.Decision, &h.StartedAt, &h.StoppedAt, &h.PausedMS, &h.ViewOffsetMS,
-			&h.DurationMS, &h.WatchedMS, &h.VideoSrc, &h.VideoStream, &h.AudioSrc, &h.AudioStream, &h.ContainerSrc,
-			&h.ContainerStream, &hw, &h.BufferCount); err != nil {
-			return nil, 0, err
+		if err := rows.Scan(historyScanDest(&h, &hw)...); err != nil {
+			return 0, err
 		}
 		h.HWTranscode = hw != 0
-		out = append(out, h)
+		if err := fn(h); err != nil {
+			return 0, err
+		}
 	}
-	return out, total, rows.Err()
+	return total, rows.Err()
+}
+
+// GroupedRow is a viewing made of one or more sittings: the latest sitting's row, spanning
+// the first start to the last stop, with the furthest position reached.
+type GroupedRow struct {
+	HistoryRow
+	Sessions    int   // sittings folded into this row
+	WatchedSecs int64 // summed watched time of every sitting (watchedExpr each)
+}
+
+// itemKey identifies "the same item" for grouping. Plays without a rating key (some
+// imports) fall back to their title identity, so they never all merge into one item.
+const itemKey = `CASE WHEN rating_key <> '' THEN rating_key
+	ELSE media_type || '|' || title || '|' || grandparent_title || '|' || parent_index || '|' || media_index END`
+
+// historyGrouped is history with resumed sittings folded together (HistoryFilter.Group).
+// The filters pick the sittings first. LAG over each person's sittings of an item finds
+// the gap since the previous one ended; a sitting after a gap over resumeGap (or the first
+// one) starts a viewing. Viewings are paged by their starting sitting, and only the page's
+// viewings are then summed from their sittings — the sittings between a viewing's start
+// and the next viewing's — so a page costs one pass over the filtered plays, not a sum
+// per viewing across the whole history. The total counts viewings, so paging agrees
+// with what is listed.
+func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
+	conds, args := historyConds(f)
+	where, and := "", ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
+		and = " AND " + strings.Join(conds, " AND ")
+	}
+	gap := strconv.Itoa(resumeGap)
+	// The page's CTE columns are named apart (p_*), so the join's filters and the watched
+	// expression read stream_sessions' own columns unqualified.
+	q := `WITH f AS (
+			SELECT id, user_id, ` + itemKey + ` AS item, started_at,
+				LAG(stopped_at) OVER (PARTITION BY user_id, ` + itemKey + ` ORDER BY started_at, id) AS prev_stop
+			FROM stream_sessions` + where + `),
+		st AS (SELECT id, user_id, item, started_at FROM f WHERE prev_stop IS NULL OR started_at - prev_stop > ` + gap + `),
+		p AS (
+			SELECT id AS p_id, user_id AS p_user, item AS p_item, started_at AS p_start,
+				LEAD(started_at) OVER w AS p_next_start, LEAD(id) OVER w AS p_next_id, COUNT(*) OVER () AS p_total
+			FROM st WINDOW w AS (PARTITION BY user_id, item ORDER BY started_at, id)),
+		page AS (SELECT * FROM p ORDER BY p_start DESC, p_id DESC LIMIT ? OFFSET ?),
+		v AS (
+			SELECT p_id, p_start, p_total, MAX(stopped_at) AS stop, MAX(view_offset_ms) AS off, SUM(buffer_count) AS bufs,
+				SUM(paused_ms) AS paused, SUM(` + watchedExpr + `) AS watched, COUNT(*) AS sessions, MAX(id) AS last_id
+			FROM page JOIN stream_sessions ON user_id = p_user AND ` + itemKey + ` = p_item
+				AND (started_at, id) >= (p_start, p_id)
+				AND (p_next_start IS NULL OR (started_at, id) < (p_next_start, p_next_id))` + and + `
+			GROUP BY p_id)
+		SELECT v.p_start, v.stop, v.off, v.bufs, v.paused, v.watched, v.sessions, v.p_total, ` + prefixed("s.", historyCols) + `
+		FROM v JOIN stream_sessions s ON s.id = v.last_id
+		ORDER BY v.p_start DESC, v.p_id DESC`
+	all := append(append(append([]any{}, args...), f.Limit, f.Offset), args...)
+	rows, err := r.db.QueryContext(ctx, q, all...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	total, seen := 0, false
+	for rows.Next() {
+		var g GroupedRow
+		var hw int
+		var start, stop, off, bufs, paused int64
+		dest := append([]any{&start, &stop, &off, &bufs, &paused, &g.WatchedSecs, &g.Sessions, &total}, historyScanDest(&g.HistoryRow, &hw)...)
+		if err := rows.Scan(dest...); err != nil {
+			return 0, err
+		}
+		seen = true
+		g.HWTranscode = hw != 0
+		g.StartedAt, g.StoppedAt, g.ViewOffsetMS, g.BufferCount, g.PausedMS = start, stop, off, int(bufs), paused
+		if err := fn(g); err != nil {
+			return 0, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if seen || f.Offset == 0 {
+		return total, nil
+	}
+	// A page past the end lists nothing, so the window total isn't there: count apart.
+	err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (
+		SELECT started_at, LAG(stopped_at) OVER (PARTITION BY user_id, `+itemKey+` ORDER BY started_at, id) AS prev_stop
+		FROM stream_sessions`+where+`)
+		WHERE prev_stop IS NULL OR started_at - prev_stop > `+gap, args...).Scan(&total)
+	return total, err
+}
+
+// prefixed qualifies each column of a comma-separated list with a table alias.
+func prefixed(alias, cols string) string {
+	parts := strings.Split(cols, ",")
+	for i, c := range parts {
+		parts[i] = alias + strings.TrimSpace(c)
+	}
+	return strings.Join(parts, ",")
 }
 
 func historyWhere(f HistoryFilter) (string, []any) {
+	conds, args := historyConds(f)
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+// historyConds is History's filters as SQL conditions on stream_sessions' columns.
+func historyConds(f HistoryFilter) ([]string, []any) {
 	var conds []string
 	var args []any
 	if f.UserID != "" {
@@ -250,10 +389,15 @@ func historyWhere(f HistoryFilter) (string, []any) {
 		like := "%" + f.Query + "%"
 		args = append(args, like, like, like)
 	}
-	if len(conds) == 0 {
-		return "", nil
+	if f.From > 0 {
+		conds = append(conds, "started_at >= ?")
+		args = append(args, f.From)
 	}
-	return " WHERE " + strings.Join(conds, " AND "), args
+	if f.To > 0 {
+		conds = append(conds, "started_at < ?")
+		args = append(args, f.To)
+	}
+	return conds, args
 }
 
 func b2i(b bool) int {

@@ -63,7 +63,7 @@ func (r *Resolver) Lookup(ipStr string) Location {
 		loc.Local = true
 		return loc
 	}
-	if r.db != nil {
+	if r != nil && r.db != nil { // a nil resolver (no geo set up) still answers Local
 		if city, country, code, lat, lon, ok := r.db.lookup(ip); ok {
 			loc.City, loc.Country, loc.CountryCode, loc.Lat, loc.Lon = city, country, code, lat, lon
 		}
