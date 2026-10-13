@@ -81,6 +81,27 @@ func (r *Repo) List(ctx context.Context) ([]Series, error) {
 	return out, nil
 }
 
+// ProfileRefs maps each series id to its quality profile.
+func (r *Repo) ProfileRefs(ctx context.Context) (map[int64]string, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, quality_profile FROM series`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var (
+			id  int64
+			ref string
+		)
+		if err := rows.Scan(&id, &ref); err != nil {
+			return nil, err
+		}
+		out[id] = ref
+	}
+	return out, rows.Err()
+}
+
 // ByTMDBIDs returns the series with these TMDB ids, each with its roll-up stats — the
 // same numbers List gives them — in two queries however many there are (a page of
 // requests, say), instead of the whole library.

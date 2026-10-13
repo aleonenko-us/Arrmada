@@ -5,6 +5,7 @@ import { PHONE, useMediaQuery } from "../../lib/useMediaQuery";
 import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
+import { useProgressive } from "./progressive";
 import { compareValues } from "./sort";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
 import { Page } from "../../ui/Page";
@@ -81,6 +82,11 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       .sort((a, b) => (by ? compareValues(by(a), by(b), dir) : 0) || config.compare(a, b));
   }, [list, active, q, config, sort]);
 
+  // The grid renders a few screens and grows as it scrolls; a new filter, search or sort
+  // starts it from the top again. The table does the same in its own order.
+  const listKey = `${active?.key}|${q}`;
+  const grid = useProgressive(visible, "grid", `${listKey}|${sort?.key}`);
+
   // Only titles still in the library count as selected: one removed meanwhile (here or
   // elsewhere) drops out instead of failing the next bulk action.
   const chosen = list.filter((it) => selected.has(it.id));
@@ -142,14 +148,17 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       ) : view.mode === "table" ? (
         <>
           {p.tableNote}
-          <LibraryTable items={visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} />
+          <LibraryTable items={visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} listKey={listKey} />
         </>
       ) : (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-          {visible.map((it) => (
-            <LibraryCard key={it.id} item={it} config={config} selectable={multi} selected={selected.has(it.id)} onToggle={() => sel.toggle(it.id)} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+            {grid.shown.map((it) => (
+              <LibraryCard key={it.id} item={it} config={config} selectable={multi} selected={selected.has(it.id)} onToggle={() => sel.toggle(it.id)} />
+            ))}
+          </div>
+          {grid.sentinel}
+        </>
       )}
     </Page>
   );

@@ -226,6 +226,12 @@ func (s *Service) Collection(ctx context.Context, collectionID int) (string, []C
 // List returns the library.
 func (s *Service) List(ctx context.Context) ([]Movie, error) { return s.repo.List(ctx) }
 
+// ProfileRefs maps every movie to its quality profile, without reading the rest of the
+// row — what the library fit report needs, at a fraction of List's cost.
+func (s *Service) ProfileRefs(ctx context.Context) (map[int64]string, error) {
+	return s.repo.ProfileRefs(ctx)
+}
+
 // RecentlyImported is the movies imported in the last `days` days, newest first.
 func (s *Service) RecentlyImported(ctx context.Context, days, limit int) ([]RecentImport, error) {
 	return s.repo.RecentlyImported(ctx, days, limit)

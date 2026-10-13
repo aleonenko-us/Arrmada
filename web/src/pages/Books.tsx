@@ -18,6 +18,7 @@ import { useQuery } from "../lib/query";
 import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StaleBanner, useToast, type LibraryTool, type MenuItem } from "../ui";
 import { LibraryCard } from "../features/library/LibraryCard";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
+import { useProgressive } from "../features/library/progressive";
 import type { LibraryConfig } from "../features/library/types";
 import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
 import { Page } from "../ui/Page";
@@ -228,6 +229,11 @@ export function Books() {
     [list, filter, q, sort],
   );
   const authors = useMemo(() => sortAuthors(groupByAuthor(filtered, authorImages), sort), [filtered, authorImages, sort]);
+  // The lists render a few screens and grow as they scroll (a big library was all of it
+  // at once); a new filter, search or sort starts them from the top again.
+  const listKey = `${filter}|${q}|${sort}`;
+  const authorList = useProgressive(authors, "authors", listKey);
+  const bookList = useProgressive(filtered, "books", listKey);
 
   // A search runs as a job; when the latest one ends the toast says what it found.
   const [searchJob, setSearchJob] = useState<{ id: number; title: string } | null>(null);
@@ -425,26 +431,35 @@ export function Books() {
         ) : filtered.length === 0 ? (
           <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{q ? <>No books match “<b>{query.trim()}</b>”.</> : <>No books match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}</div>
         ) : mode === "author" ? (
-          view === "table" ? <AuthorTable authors={authors} /> : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-              {authors.map((a) => <AuthorCard key={a.key} group={a} />)}
-            </div>
-          )
+          <>
+            {view === "table" ? <AuthorTable authors={authorList.shown} /> : (
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+                {authorList.shown.map((a) => <AuthorCard key={a.key} group={a} />)}
+              </div>
+            )}
+            {authorList.sentinel}
+          </>
         ) : view === "table" ? (
-          <BooksTable list={filtered} onSearch={search} />
+          <>
+            <BooksTable list={bookList.shown} onSearch={search} />
+            {bookList.sentinel}
+          </>
         ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
-            {filtered.map((b) => (
-              <LibraryCard
-                key={b.id}
-                item={{ ...b, poster_url: b.cover_url }}
-                config={cardConfig}
-                selectable={multiSelect}
-                selected={selected.has(b.id)}
-                onToggle={() => toggleSelect(b.id)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
+              {bookList.shown.map((b) => (
+                <LibraryCard
+                  key={b.id}
+                  item={{ ...b, poster_url: b.cover_url }}
+                  config={cardConfig}
+                  selectable={multiSelect}
+                  selected={selected.has(b.id)}
+                  onToggle={() => toggleSelect(b.id)}
+                />
+              ))}
+            </div>
+            {bookList.sentinel}
+          </>
         )}
 
       </Page>

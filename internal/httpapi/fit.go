@@ -108,12 +108,12 @@ func (a *api) libraryFitMovies(w http.ResponseWriter, ctx context.Context) {
 		a.writeError(w, http.StatusInternalServerError, "could not read the library index")
 		return
 	}
+	// Only each film's profile: reading every full row for it was most of this report's
+	// time on a big library.
 	refs := map[int64]string{}
 	if a.deps.Movies != nil {
-		if ms, err := a.deps.Movies.List(ctx); err == nil {
-			for _, m := range ms {
-				refs[m.ID] = m.QualityProfile
-			}
+		if m, err := a.deps.Movies.ProfileRefs(ctx); err == nil {
+			refs = m
 		}
 	}
 	ideals := newProfileIdeals(ctx, a.deps.Quality, quality.MediaMovie)
@@ -148,12 +148,12 @@ func (a *api) libraryFitSeries(w http.ResponseWriter, r *http.Request, seriesPar
 		a.writeError(w, http.StatusInternalServerError, "could not read the library index")
 		return
 	}
+	// Only each show's profile, not the list's episode roll-ups (which the series page's
+	// own report, for one show, used to pay for the whole library).
 	refs := map[int64]string{}
 	if a.deps.Series != nil {
-		if ss, err := a.deps.Series.List(ctx); err == nil {
-			for _, s := range ss {
-				refs[s.ID] = s.QualityProfile
-			}
+		if m, err := a.deps.Series.ProfileRefs(ctx); err == nil {
+			refs = m
 		}
 	}
 	ideals := newProfileIdeals(ctx, a.deps.Quality, quality.MediaSeries)
