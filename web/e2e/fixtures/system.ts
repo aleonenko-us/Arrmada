@@ -1,7 +1,8 @@
 import type {
-  AppSettings, Attention, AuthUser, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
+  AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
   ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
+import type { SetupChecklist } from "../../src/lib/setupApi";
 import type { PersonaInfo } from "./users";
 import { NOW } from "./clock";
 
@@ -93,6 +94,28 @@ export function folderCheck(path: string): FolderCheck {
 export const setup: SetupState = {
   needed: false, complete: true, tmdb_configured: true, libraries_chosen: true, keys: [],
   library: paths, running: paths, restart_needed: false, can_restart: true, mounts: ["/media"], suggestions: {},
+};
+
+// Settings → System's Backups card: no copies yet, the nightly on at 3 am.
+export const backups: BackupsState = {
+  backups: [], total_bytes: 0, free_bytes: 5e11, dir: "/appdata/backups",
+  settings: { enabled: true, hour: 3, keep_nightly: 7 },
+  last_nightly_at: null, can_restart: true, pending_restore: null, last_restore: null,
+};
+
+// Every Getting started step is done on this install, so the Dashboard shows no card.
+export const setupChecklist: SetupChecklist = {
+  items: [
+    { key: "tmdb", label: "Add your TMDB key, for titles, artwork and Discover", done: true, link: "/settings/connections#api-keys", link_key: "apiKeys" },
+    { key: "folders", label: "Choose your library folders", done: true, link: "/settings/library#media-folders", link_key: "libraryFolders" },
+    { key: "download_client", label: "Connect a download client", done: true, link: "/settings/connections#download-clients", link_key: "downloadClients" },
+    { key: "indexer", label: "Add an indexer, or sync them from Prowlarr", done: true, link: "/settings/connections#search", link_key: "indexers" },
+    { key: "plex", label: "Connect your Plex server", done: true, link: "/settings/connections#plex", link_key: "plexConnection" },
+    { key: "first_title", label: "Add your first movie or show", done: true, link: "/discover" },
+    { key: "first_import", label: "Get your first download into the library", done: true, link: "/activity/history", link_key: "history" },
+  ],
+  done: true,
+  dismissed: false,
 };
 
 export const pendingRestart: PendingRestart = {

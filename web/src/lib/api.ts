@@ -806,6 +806,15 @@ export interface SetupState {
   can_restart: boolean;
   mounts: string[];
   suggestions: Partial<LibraryPaths>;
+  /** The Plex step: a server is connected (address and token saved), and its name. */
+  plex_connected?: boolean;
+  plex_server?: string;
+  /** The family sign-in switches; auto_approve_types is "" until the owner has chosen. */
+  plex_family?: { enabled: boolean; auto_approve_types: string };
+  /** The Indexers step: how many indexers searches can use. */
+  indexers_enabled?: number;
+  /** Whether a Prowlarr answers at the saved address; null unless asked (?prowlarr=1). */
+  prowlarr_available?: boolean | null;
 }
 // path_disabled: the folder on screen holds (or is) Arrmada's data folder, so it can be
 // walked through but not selected.

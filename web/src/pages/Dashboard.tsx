@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { GettingStarted } from "../components/GettingStarted";
 import {
   api,
   type Status,
@@ -70,6 +71,9 @@ export function Dashboard() {
     <>
       <PageHeader title="Dashboard" />
       <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+        {/* A fresh install's steps to the first download, until they're done or dismissed. */}
+        {admin && <GettingStarted />}
+
         {/* What's waiting on a person comes first: requests, held imports, download
             problems, stuck searches and health problems, one line each. */}
         <NeedsYou />

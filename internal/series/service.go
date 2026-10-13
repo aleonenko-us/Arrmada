@@ -1587,7 +1587,10 @@ type ScanResult struct {
 // top-level folder is matched to TMDB, added unmonitored with an unset profile (so the
 // existing 1000-episode library isn't auto-upgraded), and its episode files marked
 // present. Mirrors the movie library scan.
-func (s *Service) ScanLibrary(ctx context.Context, rootOverride string) (ScanResult, error) {
+//
+// progress, when set, hears how many show folders are done out of how many there are:
+// before the first, after each one, and at the end.
+func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress func(done, total int)) (ScanResult, error) {
 	var res ScanResult
 	if !s.meta.Available() {
 		return res, fmt.Errorf("series metadata isn't configured — add a TMDB key in Settings → Connections")
@@ -1611,9 +1614,24 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string) (ScanRes
 	if err != nil {
 		return res, err
 	}
+	var shows []os.DirEntry
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
 			continue // series live in per-show folders; skip the recycle bins and other hidden ones
+		}
+		shows = append(shows, e)
+	}
+	report := func(done int) {
+		if progress != nil {
+			progress(done, len(shows))
+		}
+	}
+	for i, e := range shows {
+		report(i)
+		if err := ctx.Err(); err != nil {
+			// Cancelled, or out of time: stop, rather than file every folder left as
+			// "needs review" because its search couldn't run.
+			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
 		}
 		folder := filepath.Join(root, e.Name())
 		videos, _ := library.FindVideos(folder)
@@ -1646,6 +1664,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string) (ScanRes
 		have[match.TMDBID] = true
 		res.Imported++
 	}
+	report(len(shows))
 	s.setLastUnmatched(res.Unmatched)
 	return res, nil
 }

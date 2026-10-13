@@ -32,6 +32,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/health", sys.health),
     get("/api/v1/health/system", sys.systemHealth),
     get("/api/v1/setup", sys.setup),
+    get("/api/v1/setup/checklist", sys.setupChecklist),
+    get("/api/v1/system/backups", sys.backups),
     get("/api/v1/system/pending-restart", sys.pendingRestart),
     get("/api/v1/system/status", sys.systemStatus),
     // Settings → Status → Updates: the switch answers with the check off; Check now with
