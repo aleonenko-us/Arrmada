@@ -5,6 +5,9 @@ import { systemApi } from "../../lib/systemApi";
 import { restartAndWait, startedAt, waitForRestart } from "../../lib/restart";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { AutoNumber, AutoSelect, AutoToggle, wholeNumber } from "../../components/settings/auto";
+import { Modal } from "../../ui";
+
+const noop = () => {};
 
 // The Backups card (Settings → System, admin only): every database copy with why it was
 // taken, Back up now, Download, Restore (from the list or an uploaded file), Delete and the
@@ -293,22 +296,22 @@ export function Backups() {
         />
       )}
       {restarting && (
-        <div role="alertdialog" aria-modal="true" aria-label="Restarting" className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "var(--bg)" }}>
-          <div className="max-w-[420px] rounded-2xl p-6 text-center" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
-            {restarting === "waiting" ? (
-              <>
-                <h2 className="m-0 text-[15px] font-bold">Restarting…</h2>
-                <p className="mb-0 mt-2 text-[12px] text-ink-dim">Arrmada is restoring the backup and starting again. This page reloads when it's back.</p>
-              </>
-            ) : (
-              <>
-                <h2 className="m-0 text-[15px] font-bold">Still not back</h2>
-                <p className="mt-2 text-[12px] text-ink-dim">Arrmada hasn't answered for two minutes. Check the container is running and look at its log; the card shows how the restore went once it's up.</p>
-                <button onClick={() => window.location.reload()} className={btn} style={btnStyle}>Reload</button>
-              </>
-            )}
-          </div>
-        </div>
+        // Covers the page while the app is away: nothing behind it works until it's back.
+        <Modal onClose={noop} dismissible={false} role="alertdialog" ariaLabel="Restarting" backdrop="var(--bg)"
+          panelClassName="max-w-[420px] rounded-2xl p-6 text-center" panelStyle={{ boxShadow: "var(--shadow)" }}>
+          {restarting === "waiting" ? (
+            <>
+              <h2 className="m-0 text-[15px] font-bold">Restarting…</h2>
+              <p className="mb-0 mt-2 text-[12px] text-ink-dim">Arrmada is restoring the backup and starting again. This page reloads when it's back.</p>
+            </>
+          ) : (
+            <>
+              <h2 className="m-0 text-[15px] font-bold">Still not back</h2>
+              <p className="mt-2 text-[12px] text-ink-dim">Arrmada hasn't answered for two minutes. Check the container is running and look at its log; the card shows how the restore went once it's up.</p>
+              <button onClick={() => window.location.reload()} className={btn} style={btnStyle}>Reload</button>
+            </>
+          )}
+        </Modal>
       )}
     </div>
   );

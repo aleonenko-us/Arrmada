@@ -46,7 +46,7 @@ export function SeriesDetail() {
   const toast = useToast();
 
   // err shows the toast in the error colour: a search that failed says so plainly.
-  const flash = useCallback((msg: string, err = false) => toast(msg, { tone: err ? "error" : "info", ms: 3500 }), [toast]);
+  const say = useCallback((msg: string, err = false) => toast(msg, { tone: err ? "error" : "info", ms: 3500 }), [toast]);
 
   const load = useCallback(() => {
     return api.seriesDetail(sid).then(setS).catch((e: Error) => {
@@ -157,8 +157,8 @@ export function SeriesDetail() {
       <PageHeader title={s.title} />
 
       <Hero series={s}>
-        <HeroActions series={s} onChange={load} flash={flash} />
-        <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={flash} />
+        <HeroActions series={s} onChange={load} flash={say} />
+        <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={say} />
       </Hero>
 
       <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
@@ -174,7 +174,7 @@ export function SeriesDetail() {
             )}
             <div className="mt-4">
               <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
-              {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={flash} />}
+              {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={say} />}
             </div>
             {/* Without a Numbering tab (a standard show with nothing to decide) the
                 alternate titles stay reachable here, collapsed. */}
@@ -184,7 +184,7 @@ export function SeriesDetail() {
         )}
         {tab === "files" && (
           <TabPanel idPrefix="series" value="files">
-            <FilesTab series={s} fits={fits} refreshKey={s.last_event_id} downloading={downloading} onChange={load} flash={flash} />
+            <FilesTab series={s} fits={fits} refreshKey={s.last_event_id} downloading={downloading} onChange={load} flash={say} />
           </TabPanel>
         )}
         {tab === "activity" && (
@@ -194,7 +194,7 @@ export function SeriesDetail() {
         )}
         {tab === "numbering" && (
           <TabPanel idPrefix="series" value="numbering">
-            <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={flash} />
+            <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={say} />
           </TabPanel>
         )}
       </div>

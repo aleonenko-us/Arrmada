@@ -15,7 +15,7 @@ import { KeptTracksNote, RowPoster, card, cardStyle } from "./subtitles/shared";
 import { langName, useLanguages } from "../lib/languages";
 import { ProfileSelect } from "./subtitles/ProfileSelect";
 import { bulkSummary, orphanApi } from "./subtitles/orphanApi";
-import { useConfirm } from "../ui";
+import { useConfirm, useToast } from "../ui";
 import { ACTIVE, ActiveRow, Queue, backlogText, sortActive } from "./subtitles/queue";
 import { queueApi, type SubtitleQueue } from "./subtitles/queueApi";
 import { LazySubtitleDrawer } from "../components/subtitles/LazySubtitleDrawer";
@@ -55,8 +55,8 @@ function SubtitlesPage() {
   const [settings, setSettings] = useState<SubtitleSettings | null>(null);
   const [jobs, setJobs] = useState<SubtitleJob[]>([]);
   const [backlog, setBacklog] = useState<SubtitleQueue | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); }, []);
+  const toast = useToast();
+  const say = useCallback((m: string) => toast(m, { ms: 3500 }), [toast]);
 
   const loadSettings = useCallback(() => api.subtitleSettings().then(setSettings).catch(() => {}), []);
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -70,10 +70,10 @@ function SubtitlesPage() {
     try {
       const [m, tv] = await Promise.all([api.subtitleSweep("movies"), api.subtitleSweep("tv")]);
       const n = m.queued + tv.queued;
-      flash(n ? `Queued ${n} file${n === 1 ? "" : "s"} missing subtitles…` : "Everything already has its subtitles. 🎉");
+      say(n ? `Queued ${n} file${n === 1 ? "" : "s"} missing subtitles…` : "Everything already has its subtitles. 🎉");
       setTab("queue");
       void loadJobs();
-    } catch (e) { flash((e as Error).message); }
+    } catch (e) { toast((e as Error).message, { tone: "error", ms: 3500 }); }
   };
 
   const activeCount = jobs.filter((j) => ACTIVE.has(j.state)).length;
@@ -115,15 +115,14 @@ function SubtitlesPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="subtitles" label="Subtitles sections" />
 
         <TabPanel idPrefix="subtitles" value={tab}>
-          {tab === "overview" && <Overview jobs={jobs} backlog={backlog} settings={settings} flash={flash} onSettings={() => navigate(LINKS.subtitlesSettings)}
-            onLibrary={() => { setTab("library"); flash("Pick the Orphaned filter to adopt or replace them."); }}
+          {tab === "overview" && <Overview jobs={jobs} backlog={backlog} settings={settings} flash={say} onSettings={() => navigate(LINKS.subtitlesSettings)}
+            onLibrary={() => { setTab("library"); say("Pick the Orphaned filter to adopt or replace them."); }}
             onQueued={() => { void loadJobs(); }} />}
-          {tab === "queue" && <Queue jobs={jobs} backlog={backlog} onChange={loadJobs} flash={flash} />}
-          {tab === "library" && <Library flash={flash} onQueued={loadJobs} />}
+          {tab === "queue" && <Queue jobs={jobs} backlog={backlog} onChange={loadJobs} flash={say} />}
+          {tab === "library" && <Library flash={say} onQueued={loadJobs} />}
           {tab === "logs" && <LogsConsole />}
         </TabPanel>
       </div>
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
@@ -293,6 +292,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   const [drawer, setDrawer] = useState<SubFileEntry | null>(null); // the file whose drawer is open
 
   const confirm = useConfirm();
+  const confirmRedo = useConfirmRedo();
   useEffect(() => { setItems(null); setQueued(new Set()); setFilters(new Set()); }, [media]);
   // A reload (after a rescan or an adopt) keeps the filters, and the rows on screen until
   // the new list lands.
@@ -327,7 +327,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
   };
 
   const ensure = async (f: SubFileEntry, redo = false) => {
-    if (redo && !confirmRedo(f.title)) return;
+    if (redo && !(await confirmRedo(f.title))) return;
     const key = rowKey(f);
     setBusy(key);
     try {
@@ -630,6 +630,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued, onProfileCh
   const [busy, setBusy] = useState<string | null>(null);
   const [queued, setQueued] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<SubFileEntry | null>(null);
+  const confirmRedo = useConfirmRedo();
 
   useEffect(() => {
     if (!open || eps !== null) return;
@@ -637,7 +638,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued, onProfileCh
   }, [open, eps, g.series_id]);
 
   const ensure = async (f: SubFileEntry, redo = false) => {
-    if (redo && !confirmRedo(`${g.title} ${f.title}`)) return;
+    if (redo && !(await confirmRedo(`${g.title} ${f.title}`))) return;
     const key = rowKey(f);
     setBusy(key);
     try {
@@ -732,8 +733,13 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued, onProfileCh
 // SubRow is one file's coverage line. Shared by the flat movie table and the per-show
 // episode table, so the two can't drift apart.
 // A redo overwrites the sidecars that are there, so it asks first.
-function confirmRedo(title: string) {
-  return window.confirm(`Redo every language for ${title}?\n\nEach kept language is made again from the next-best source: never the same download, else another track or AI. The old files go to the recycle bin once their replacements are written. To redo one language, click its chip instead.`);
+function useConfirmRedo() {
+  const confirm = useConfirm();
+  return (title: string) => confirm({
+    title: `Redo every language for ${title}?`,
+    body: "Each kept language is made again from the next-best source: never the same download, else another track or AI. The old files go to the recycle bin once their replacements are written. To redo one language, click its chip instead.",
+    confirmLabel: "Redo",
+  });
 }
 
 function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, onQueued, onOrphan, onOpen, onProfileChanged }: {

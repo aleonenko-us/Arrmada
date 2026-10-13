@@ -5,6 +5,8 @@ export interface ConfirmOptions {
   title: ReactNode;
   body?: ReactNode;
   confirmLabel?: string;
+  /** The way out; "Cancel" unless the choice reads better another way ("Keep editing"). */
+  cancelLabel?: string;
   /** danger: the red button, for anything destructive or that tells someone "no". */
   tone?: "danger" | "default";
 }
@@ -46,6 +48,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           title={pending.opts.title}
           body={pending.opts.body}
           confirmLabel={pending.opts.confirmLabel ?? "Confirm"}
+          cancelLabel={pending.opts.cancelLabel}
           tone={pending.opts.tone === "danger" ? "danger" : "accent"}
           onConfirm={() => settle(true)}
           onCancel={() => settle(false)}

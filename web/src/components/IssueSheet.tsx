@@ -24,7 +24,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
   onChanged: () => void;
   onClose: () => void;
 }) {
-  const flash = useToast();
+  const toast = useToast();
   const confirm = useConfirm();
   const [issue, setIssue] = useState<Issue | null>(initial ?? null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
       const done = closing === "resolve" ? await issuesApi.resolve(issue.id, note.trim()) : await issuesApi.dismiss(issue.id, note.trim());
       setIssue(done);
       setClosing(null); setNote("");
-      flash(closing === "resolve" ? "Marked fixed — they’ve been told" : "Closed — they’ve been told");
+      toast(closing === "resolve" ? "Marked fixed — they’ve been told" : "Closed — they’ve been told");
       refreshAttention();
       onChanged();
     } catch (e) {
@@ -88,7 +88,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
     try {
       const started = await issuesApi.fix(issue.id, action);
       setIssue(started);
-      flash(action === "replace" ? "Searching for another copy — it’ll resolve when it lands" : "Making the subtitles again — it’ll resolve when they’re done");
+      toast(action === "replace" ? "Searching for another copy — it’ll resolve when it lands" : "Making the subtitles again — it’ll resolve when they’re done");
       onChanged();
     } catch (e) {
       setError((e as Error).message);

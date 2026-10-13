@@ -54,7 +54,7 @@ const TYPES = [
 export function Requests({ chrome = true }: { chrome?: boolean }) {
   const { user, booksEnabled } = useMe();
   const staff = isStaff(user);
-  const flash = useToast();
+  const toast = useToast();
   const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
 
@@ -146,7 +146,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
     setRowErrors((e) => { const n = { ...e }; delete n[rq.id]; return n; });
     try {
       await api.approveRequest(rq.id);
-      flash(`Approved “${rq.title}” — searching now`);
+      toast(`Approved “${rq.title}” — searching now`);
       refreshAttention(); // the sidebar's waiting count follows at once
       await load();
     } catch (e) {
@@ -173,11 +173,11 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
       const ok = r.results.length - Object.keys(failed).length;
       setRowErrors(failed);
       setSelected(new Set(Object.keys(failed).map(Number)));
-      flash(`${action === "approve" ? "Approved" : "Declined"} ${ok} of ${ids.length}`, Object.keys(failed).length ? { tone: "error" } : undefined);
+      toast(`${action === "approve" ? "Approved" : "Declined"} ${ok} of ${ids.length}`, Object.keys(failed).length ? { tone: "error" } : undefined);
       refreshAttention();
       await load();
     } catch (e) {
-      flash((e as Error).message, { tone: "error" });
+      toast((e as Error).message, { tone: "error" });
     } finally {
       setBusy(null);
     }
