@@ -72,11 +72,10 @@ export const NAV: NavGroup[] = [
   {
     group: "System",
     items: [
-      // Every integration's status, Test and editing (Settings → Connections).
-      { to: "/settings/connections", label: "Connections", icon: "connections" },
       { to: "/quality", label: "Quality profiles", icon: "quality" },
       { to: "/logs", label: "Logs", icon: "logs", adminOnly: true },
-      // Health problems are listed on Settings → Status.
+      // Health problems are listed on Settings → Status. Connections is a Settings section
+      // only: a second sidebar entry for it lit up two items at once.
       { to: "/settings", label: "Settings", icon: "settings", badge: "issues" },
     ],
   },
