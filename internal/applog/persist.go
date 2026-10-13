@@ -43,6 +43,9 @@ type writer struct {
 	ch      chan Entry
 	done    chan struct{}
 	dropped atomic.Int64
+	// flushReq asks the writer to write out everything queued so far and flush it to the
+	// file, then close the channel it was handed (Ring.Flush).
+	flushReq chan chan struct{}
 }
 
 // Persist starts writing entries added to the ring into path. It returns a stop function
@@ -62,6 +65,7 @@ func (r *Ring) Persist(path string) (stop func(), err error) {
 	w := &writer{
 		path: path, f: f, bw: bufio.NewWriterSize(f, 64<<10),
 		ch: make(chan Entry, queueDepth), done: make(chan struct{}),
+		flushReq: make(chan chan struct{}),
 	}
 	if info != nil {
 		w.size = info.Size()
@@ -70,6 +74,7 @@ func (r *Ring) Persist(path string) (stop func(), err error) {
 
 	r.mu.Lock()
 	r.sink = w
+	r.path = path
 	r.mu.Unlock()
 
 	return func() {
@@ -79,6 +84,59 @@ func (r *Ring) Persist(path string) (stop func(), err error) {
 		close(w.ch)
 		<-w.done
 	}, nil
+}
+
+// Flush writes out every entry queued so far and flushes the file, so a copy taken next
+// includes the last second of lines. It gives up after timeout (a stuck disk mustn't hang
+// a download) and does nothing when nothing is persisted.
+func (r *Ring) Flush(timeout time.Duration) {
+	r.mu.RLock()
+	w := r.sink
+	r.mu.RUnlock()
+	if w == nil {
+		return
+	}
+	req := make(chan struct{})
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case w.flushReq <- req:
+	case <-w.done:
+		return
+	case <-t.C:
+		return
+	}
+	select {
+	case <-req:
+	case <-w.done:
+	case <-t.C:
+	}
+}
+
+// Files lists the persisted log files that exist, oldest first: the rotated history
+// (.3, .2, .1) and then the active file. Empty when the log isn't persisted.
+func (r *Ring) Files() []string {
+	r.mu.RLock()
+	path := r.path
+	r.mu.RUnlock()
+	if path == "" {
+		return nil
+	}
+	return logFiles(path)
+}
+
+// logFiles is the persisted log's files that exist, oldest first.
+func logFiles(path string) []string {
+	var out []string
+	for i := FilesKept; i >= 1; i-- {
+		if name := rotatedName(path, i); fileExists(name) {
+			out = append(out, name)
+		}
+	}
+	if fileExists(path) {
+		out = append(out, path)
+	}
+	return out
 }
 
 // Dropped reports how many entries were discarded because the writer couldn't keep up.
@@ -117,13 +175,35 @@ func (w *writer) run() {
 				return
 			}
 			w.write(e)
+		case req := <-w.flushReq:
+			w.drain()
+			w.flush()
+			close(req)
 		case <-tick.C:
 			w.flush()
 		}
 	}
 }
 
+// drain writes whatever is already queued, without waiting for more. A closed queue is
+// left for run's own loop to notice.
+func (w *writer) drain() {
+	for {
+		select {
+		case e, ok := <-w.ch:
+			if !ok {
+				return
+			}
+			w.write(e)
+		default:
+			return
+		}
+	}
+}
+
 func (w *writer) write(e Entry) {
+	// The sequence number only means something within one run; on disk it's noise.
+	e.Seq = 0
 	line, err := json.Marshal(e)
 	if err != nil {
 		return
@@ -180,15 +260,7 @@ func rotatedName(path string, n int) string { return fmt.Sprintf("%s.%d", path, 
 // Malformed lines are skipped: a process killed mid-write leaves a torn final line, and
 // that must not cost you the rest of the file.
 func (r *Ring) Restore(path string) int {
-	files := []string{}
-	for i := FilesKept; i >= 1; i-- {
-		if name := rotatedName(path, i); fileExists(name) {
-			files = append(files, name)
-		}
-	}
-	if fileExists(path) {
-		files = append(files, path)
-	}
+	files := logFiles(path)
 
 	// Only the newest r.max entries can survive in the ring, so read the tail of each
 	// file into one buffer and keep the last window.

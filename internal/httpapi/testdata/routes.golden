@@ -149,6 +149,8 @@ GET /api/v1/languages user -
 GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
 GET /api/v1/logs admin -
+GET /api/v1/logs/download admin -
+GET /api/v1/logs/level admin -
 GET /api/v1/me/account user ext
 GET /api/v1/me/apprise user ext
 GET /api/v1/me/audio user ext
@@ -254,6 +256,7 @@ GET /api/v1/system/library staff -
 GET /api/v1/system/library/check admin -
 GET /api/v1/system/pending-restart staff -
 GET /api/v1/system/status admin -
+GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
 GET /api/v1/users admin -
 GET /api/v1/users/plex-blocks admin -
@@ -471,6 +474,7 @@ PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -
+PUT /api/v1/logs/level admin -
 PUT /api/v1/me/apprise user ext
 PUT /api/v1/me/audio/password user ext
 PUT /api/v1/me/kindle user ext
