@@ -173,8 +173,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/books/duplicates", { groups: [], past_merges: [] }),
     get("/api/v1/music/artists", mod.artists),
     get("/api/v1/quality/profiles", media.qualityProfiles),
-    // The Quality page's ranking card (QUAL-22): no shadow differences recorded yet.
-    get("/api/v1/quality/ranking-shadow", { mode: "v1", decisions: 0, disagreements: 0, days: [], disagreement_rows: [] }),
+    get(/^\/api\/v1\/quality\/ranking-shadow/, { mode: "v1", decisions: 0, disagreements: 0, days: [], disagreement_rows: [] }),
     get("/api/v1/library/fit/profiles", media.fitProfiles),
     get("/api/v1/convert/stats", mod.convertStats),
     get("/api/v1/convert/hardware", mod.convertHardware),
