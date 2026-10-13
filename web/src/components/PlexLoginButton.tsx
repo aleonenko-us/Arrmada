@@ -14,7 +14,8 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
   disabled: boolean;
   onBusy: (busy: boolean) => void;
   onError: (msg: string | null) => void;
-  onSignedIn: () => void;
+  /** Who signed in: staff and requesters land on different pages. */
+  onSignedIn: (user: AuthUser) => void;
 }) {
   const flow = useMemo<PlexFlow<AuthUser>>(() => ({
     kind: "login",

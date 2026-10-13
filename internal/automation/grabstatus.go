@@ -60,3 +60,9 @@ const (
 const pendingTitleWhere = `((status = '` + grabStatusGrabbed + `' AND grabbed_at > datetime('now', '-1 day'))
 		   OR status = '` + grabStatusHeld + `'
 		   OR (status IN ('` + grabStatusRemoved + `', '` + grabStatusDismissed + `') AND grabbed_at > datetime('now', '-30 days')))`
+
+// everImportedWhere: grabs whose download made it into the library. A grab that was
+// imported moves on to seeded once its seed goal is met, so both count. (A dismissed
+// review can also end up seeded; that's rare enough not to matter for "has anything been
+// imported yet".)
+const everImportedWhere = `status IN ('` + grabStatusImported + `', '` + grabStatusSeeded + `')`

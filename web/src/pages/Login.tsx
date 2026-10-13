@@ -1,15 +1,16 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { FleetMark } from "../components/FleetMark";
-import { api, resetSignedOut } from "../lib/api";
+import { api, resetSignedOut, type AuthUser } from "../lib/api";
 import { nextAfterSignIn } from "../lib/session";
 
 const PlexLoginButton = lazy(() => import("../components/PlexLoginButton"));
 
-// After any successful sign-in: back to the page they were on (or ?next=), else Discover.
+// After any successful sign-in: back to the page they were on (or ?next=), else their home —
+// the Dashboard for staff, Discover for everyone else.
 // A full load, so MeProvider and /status start fresh for the new session.
-function continueAfterSignIn() {
+function continueAfterSignIn(user?: AuthUser | null) {
   resetSignedOut();
-  window.location.replace(nextAfterSignIn());
+  window.location.replace(nextAfterSignIn(user?.role));
 }
 
 // Login is shown when auth is enabled and no session is active. It doubles as the
@@ -32,9 +33,9 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      if (mode === "setup") await api.setupAdmin(email.trim(), password);
-      else await api.login(email.trim(), password);
-      continueAfterSignIn();
+      // A new install's first admin lands on "/", where the setup wizard opens.
+      const { user } = mode === "setup" ? await api.setupAdmin(email.trim(), password) : await api.login(email.trim(), password);
+      continueAfterSignIn(user);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
