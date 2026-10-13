@@ -441,11 +441,19 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
   const buffering = s.state === "buffering";
   const pct = s.duration_ms > 0 ? Math.min(100, (offsetMs * 100) / s.duration_ms) : s.progress_pct;
   return (
-    <button onClick={onOpen} className="flex gap-3 rounded-xl p-3 text-left transition-colors" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+    <button onClick={onOpen} className="relative flex gap-3 overflow-hidden rounded-xl p-3 text-left transition-colors" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+      {/* The title's background art, faint under a panel-coloured wash so the text keeps its
+          contrast in both themes. */}
+      {s.art && (
+        <>
+          <img src={s.art} alt="" aria-hidden loading="lazy" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30" />
+          <span aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(90deg, var(--panel) 35%, color-mix(in srgb, var(--panel) 72%, transparent) 100%)" }} />
+        </>
+      )}
       <div className="relative h-[104px] w-[70px] flex-none overflow-hidden rounded-md" style={{ background: "var(--panel-2)" }}>
         {s.thumb ? <img src={s.thumb} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-md font-semibold">{s.title}</div>

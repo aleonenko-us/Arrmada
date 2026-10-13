@@ -2483,7 +2483,8 @@ export interface PlexTestResult { ok: boolean; error?: string; machine_id?: stri
 export interface GeoLocation { ip: string; local: boolean; city?: string; country?: string; country_code?: string; lat?: number; lon?: number }
 export interface StreamDetail { src: string; stream?: string }
 export interface InsightsStream {
-  session_key: string; user: string; title: string; subtitle: string; type: string; thumb: string;
+  /** thumb is the portrait poster (an episode's show poster); still is an episode's own frame, art the background. */
+  session_key: string; user: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
   progress_pct: number; offset_ms: number; duration_ms: number; state: string;
   player: string; platform: string; product: string; decision: string;
   bandwidth_kbps: number; location: string; ip: string; geo: GeoLocation;
@@ -2496,6 +2497,8 @@ export interface InsightsActivity { streams: InsightsStream[]; bandwidth: { tota
 export interface HistoryEntry {
   id: number; user_id: string; user_name: string; title: string; grandparent_title: string; parent_title: string;
   media_index: number; parent_index: number; year: number; media_type: string; thumb: string; thumb_url: string;
+  /** The show an episode belongs to, recorded since PLEX-20 ("" before that and for movies). */
+  grandparent_thumb: string; grandparent_rating_key: string;
   player: string; platform: string; product: string; ip_address: string; location: string; decision: string;
   started_at: number; stopped_at: number; paused_ms: number; view_offset_ms: number; duration_ms: number;
   video_src: string; video_stream: string; audio_src: string; audio_stream: string; container_src: string; container_stream: string;

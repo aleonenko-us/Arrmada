@@ -22,29 +22,33 @@ type sessionRecord struct {
 	ParentIndex      int
 	Year             int
 	Thumb            string
-	Player           string
-	Platform         string
-	Product          string
-	IPAddress        string
-	Location         string
-	Decision         string
-	StartedAt        int64 // epoch seconds
-	StoppedAt        int64
-	PausedMS         int64
-	ViewOffsetMS     int64
-	DurationMS       int64 // the MEDIA's runtime (progress % denominator), not watch time
-	WatchedMS        int64 // actual time watched, when the source reports it; 0 = derive it
-	VideoSrc         string
-	VideoStream      string
-	VideoSrcBitDepth int    // 8, 10; 0 = not reported
-	VideoSrcProfile  string // "main 10", "high"; "" = not reported
-	AudioSrc         string
-	AudioStream      string
-	ContainerSrc     string
-	ContainerStream  string
-	HWTranscode      bool
-	BufferCount      int
-	ImportRunID      int64 // the Tautulli import run that brought this play in; 0 = live or older import
+	// The show an episode belongs to: its poster and rating key ('' for movies, and for
+	// plays recorded before PLEX-20).
+	GrandparentThumb     string
+	GrandparentRatingKey string
+	Player               string
+	Platform             string
+	Product              string
+	IPAddress            string
+	Location             string
+	Decision             string
+	StartedAt            int64 // epoch seconds
+	StoppedAt            int64
+	PausedMS             int64
+	ViewOffsetMS         int64
+	DurationMS           int64 // the MEDIA's runtime (progress % denominator), not watch time
+	WatchedMS            int64 // actual time watched, when the source reports it; 0 = derive it
+	VideoSrc             string
+	VideoStream          string
+	VideoSrcBitDepth     int    // 8, 10; 0 = not reported
+	VideoSrcProfile      string // "main 10", "high"; "" = not reported
+	AudioSrc             string
+	AudioStream          string
+	ContainerSrc         string
+	ContainerStream      string
+	HWTranscode          bool
+	BufferCount          int
+	ImportRunID          int64 // the Tautulli import run that brought this play in; 0 = live or older import
 }
 
 func (r *repo) insertSession(ctx context.Context, s sessionRecord) (int64, error) {
@@ -59,13 +63,13 @@ func (r *repo) insertSessionEx(ctx context.Context, ex execer, s sessionRecord) 
 		  media_index,parent_index,year,thumb,player,platform,product,ip_address,location,decision,
 		  started_at,stopped_at,paused_ms,view_offset_ms,duration_ms,watched_ms,
 		  video_src,video_stream,audio_src,audio_stream,container_src,container_stream,hw_transcode,buffer_count,import_run_id,
-		  video_src_bitdepth,video_src_profile)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  video_src_bitdepth,video_src_profile,grandparent_thumb,grandparent_rating_key)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		s.SessionKey, s.UserID, s.UserName, s.RatingKey, s.MediaType, s.Title, s.GrandparentTitle, s.ParentTitle,
 		s.MediaIndex, s.ParentIndex, s.Year, s.Thumb, s.Player, s.Platform, s.Product, s.IPAddress, s.Location, s.Decision,
 		s.StartedAt, s.StoppedAt, s.PausedMS, s.ViewOffsetMS, s.DurationMS, s.WatchedMS,
 		s.VideoSrc, s.VideoStream, s.AudioSrc, s.AudioStream, s.ContainerSrc, s.ContainerStream, b2i(s.HWTranscode), s.BufferCount, s.ImportRunID,
-		s.VideoSrcBitDepth, s.VideoSrcProfile)
+		s.VideoSrcBitDepth, s.VideoSrcProfile, s.GrandparentThumb, s.GrandparentRatingKey)
 	if err != nil {
 		return 0, err
 	}
@@ -173,32 +177,35 @@ type HistoryRow struct {
 	Year             int    `json:"year"`
 	MediaType        string `json:"media_type"`
 	Thumb            string `json:"thumb"`
-	Player           string `json:"player"`
-	Platform         string `json:"platform"`
-	Product          string `json:"product"`
-	IPAddress        string `json:"ip_address"`
-	Location         string `json:"location"`
-	Decision         string `json:"decision"`
-	StartedAt        int64  `json:"started_at"`
-	StoppedAt        int64  `json:"stopped_at"`
-	PausedMS         int64  `json:"paused_ms"`
-	ViewOffsetMS     int64  `json:"view_offset_ms"`
-	DurationMS       int64  `json:"duration_ms"`
-	WatchedMS        int64  `json:"watched_ms"`
-	VideoSrc         string `json:"video_src"`
-	VideoStream      string `json:"video_stream"`
-	AudioSrc         string `json:"audio_src"`
-	AudioStream      string `json:"audio_stream"`
-	ContainerSrc     string `json:"container_src"`
-	ContainerStream  string `json:"container_stream"`
-	HWTranscode      bool   `json:"hw_transcode"`
-	BufferCount      int    `json:"buffer_count"`
+	// The show's poster and rating key, for episodes recorded since PLEX-20 ('' otherwise).
+	GrandparentThumb     string `json:"grandparent_thumb"`
+	GrandparentRatingKey string `json:"grandparent_rating_key"`
+	Player               string `json:"player"`
+	Platform             string `json:"platform"`
+	Product              string `json:"product"`
+	IPAddress            string `json:"ip_address"`
+	Location             string `json:"location"`
+	Decision             string `json:"decision"`
+	StartedAt            int64  `json:"started_at"`
+	StoppedAt            int64  `json:"stopped_at"`
+	PausedMS             int64  `json:"paused_ms"`
+	ViewOffsetMS         int64  `json:"view_offset_ms"`
+	DurationMS           int64  `json:"duration_ms"`
+	WatchedMS            int64  `json:"watched_ms"`
+	VideoSrc             string `json:"video_src"`
+	VideoStream          string `json:"video_stream"`
+	AudioSrc             string `json:"audio_src"`
+	AudioStream          string `json:"audio_stream"`
+	ContainerSrc         string `json:"container_src"`
+	ContainerStream      string `json:"container_stream"`
+	HWTranscode          bool   `json:"hw_transcode"`
+	BufferCount          int    `json:"buffer_count"`
 }
 
 const historyCols = `id,user_id,user_name,title,grandparent_title,parent_title,media_index,parent_index,year,
 	media_type,thumb,player,platform,product,ip_address,location,decision,started_at,stopped_at,paused_ms,
 	view_offset_ms,duration_ms,watched_ms,video_src,video_stream,audio_src,audio_stream,container_src,container_stream,
-	hw_transcode,buffer_count`
+	hw_transcode,buffer_count,grandparent_thumb,grandparent_rating_key`
 
 func (r *repo) history(ctx context.Context, f HistoryFilter) ([]HistoryRow, int, error) {
 	where, args := historyWhere(f)
@@ -221,7 +228,7 @@ func (r *repo) history(ctx context.Context, f HistoryFilter) ([]HistoryRow, int,
 			&h.MediaIndex, &h.ParentIndex, &h.Year, &h.MediaType, &h.Thumb, &h.Player, &h.Platform, &h.Product,
 			&h.IPAddress, &h.Location, &h.Decision, &h.StartedAt, &h.StoppedAt, &h.PausedMS, &h.ViewOffsetMS,
 			&h.DurationMS, &h.WatchedMS, &h.VideoSrc, &h.VideoStream, &h.AudioSrc, &h.AudioStream, &h.ContainerSrc,
-			&h.ContainerStream, &hw, &h.BufferCount); err != nil {
+			&h.ContainerStream, &hw, &h.BufferCount, &h.GrandparentThumb, &h.GrandparentRatingKey); err != nil {
 			return nil, 0, err
 		}
 		h.HWTranscode = hw != 0

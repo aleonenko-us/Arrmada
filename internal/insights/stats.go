@@ -65,7 +65,14 @@ func orderBy(byDuration bool) string {
 }
 
 func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since int64, byDuration bool, limit int) ([]titleStatRow, error) {
-	q := `SELECT ` + groupCol + ` AS t, MAX(thumb) AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs
+	// An episode's own thumb is a landscape still: a show's row takes its poster, recorded
+	// since PLEX-20, and falls back to the thumb only for older plays and imports (whose
+	// Tautulli thumb is already a poster).
+	thumb := `MAX(thumb)`
+	if mediaType == "episode" {
+		thumb = `COALESCE(NULLIF(MAX(grandparent_thumb),''), MAX(thumb))`
+	}
+	q := `SELECT ` + groupCol + ` AS t, ` + thumb + ` AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs
 		FROM stream_sessions WHERE media_type = ? AND started_at >= ? AND ` + groupCol + ` <> ''
 		GROUP BY ` + groupCol + ` ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, q, mediaType, since, limit)

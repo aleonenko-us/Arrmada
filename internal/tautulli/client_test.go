@@ -37,3 +37,21 @@ func TestHistoryAsksForUngroupedRows(t *testing.T) {
 		t.Fatalf("made %d requests, want 2", len(queries))
 	}
 }
+
+// An episode's show poster and rating key come through, so imported episodes group with
+// live ones by Plex identity.
+func TestHistoryMapsGrandparentFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"response":{"result":"success","data":{"recordsFiltered":1,"data":[
+			{"user_id":7,"user":"amy","title":"Pilot","grandparent_title":"Severance","media_type":"episode","rating_key":"8812",
+			 "grandparent_rating_key":8800,"grandparent_thumb":"/library/metadata/8800/thumb/1","started":1000,"stopped":4000,"duration":2900}]}}}`))
+	}))
+	defer srv.Close()
+	var got []Row
+	if err := New(srv.URL, "k").History(context.Background(), func(p Page) error { got = append(got, p.Rows...); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].GrandparentRatingKey != "8800" || got[0].GrandparentThumb != "/library/metadata/8800/thumb/1" {
+		t.Fatalf("rows = %+v", got)
+	}
+}

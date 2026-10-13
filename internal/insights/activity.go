@@ -18,7 +18,9 @@ type Stream struct {
 	Title       string         `json:"title"`
 	Subtitle    string         `json:"subtitle"` // "Show · S1 · E2" or the year
 	Type        string         `json:"type"`
-	Thumb       string         `json:"thumb"` // proxied poster URL
+	Thumb       string         `json:"thumb"`           // proxied poster URL (the show's, for an episode)
+	Still       string         `json:"still,omitempty"` // an episode's own landscape still
+	Art         string         `json:"art,omitempty"`   // background art
 	ProgressPct int            `json:"progress_pct"`
 	OffsetMS    int64          `json:"offset_ms"`
 	DurationMS  int64          `json:"duration_ms"`
@@ -93,7 +95,7 @@ func (s *Service) enrich(p plex.Session) Stream {
 	}
 	st := Stream{
 		SessionKey: p.SessionKey, User: p.UserName, Title: p.Title, Type: p.Type,
-		Thumb: proxyImage(p.Thumb), OffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
+		Thumb: proxyImage(posterPath(p.Type, p.Thumb, p.ShowThumb)), Art: proxyImage(p.Art), OffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
 		State: p.State, Player: p.PlayerName, Platform: p.Platform, Product: p.Product,
 		Decision: p.Decision(), Bandwidth: p.Bandwidth, Location: p.Location,
 		IP: ip, Geo: s.geo.Lookup(ip),
@@ -102,6 +104,9 @@ func (s *Service) enrich(p plex.Session) Stream {
 	}
 	if p.DurationMS > 0 {
 		st.ProgressPct = int(p.OffsetMS * 100 / p.DurationMS)
+	}
+	if p.Type == "episode" && p.ShowThumb != "" {
+		st.Still = proxyImage(p.Thumb)
 	}
 	st.Subtitle = subtitleFor(p)
 	st.Video = Detail{Src: mediaLabel(p.SrcVideoCodec, p.SrcResolution)}
@@ -199,6 +204,15 @@ func streamRes(h int) string {
 	return ""
 }
 
+// posterPath picks the portrait image for a play: an episode's own thumb is a landscape
+// still, so its show's poster wins when there is one.
+func posterPath(mediaType, thumb, showThumb string) string {
+	if mediaType == "episode" && showThumb != "" {
+		return showThumb
+	}
+	return thumb
+}
+
 // proxyImage turns a Plex image path into an Arrmada-proxied URL (token stays server-side).
 func proxyImage(path string) string {
 	if path == "" {
@@ -269,7 +283,7 @@ func (s *Service) History(ctx context.Context, f HistoryFilter) (HistoryResult, 
 // both go through it, so a play's watch time and progress can't differ between the two — or
 // from the Users and Graphs totals, which watchedSecs mirrors in SQL.
 func (s *Service) toHistoryEntry(r HistoryRow) HistoryEntry {
-	e := HistoryEntry{HistoryRow: r, ThumbURL: proxyImage(r.Thumb), Subtitle: historySubtitle(r), WatchedSecs: watchedSecs(r)}
+	e := HistoryEntry{HistoryRow: r, ThumbURL: proxyImage(posterPath(r.MediaType, r.Thumb, r.GrandparentThumb)), Subtitle: historySubtitle(r), WatchedSecs: watchedSecs(r)}
 	if s.geo != nil {
 		e.Geo = s.geo.Lookup(r.IPAddress)
 	}

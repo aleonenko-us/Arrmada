@@ -254,6 +254,7 @@ func (ls *liveSession) record(now time.Time) sessionRecord {
 		SessionKey: p.SessionKey, UserID: p.UserID, UserName: p.UserName, RatingKey: p.RatingKey,
 		MediaType: p.Type, Title: p.Title, GrandparentTitle: p.ShowTitle, ParentTitle: p.SeasonName,
 		MediaIndex: p.Index, ParentIndex: p.SeasonNum, Year: p.Year, Thumb: p.Thumb,
+		GrandparentThumb: p.ShowThumb, GrandparentRatingKey: p.ShowRatingKey,
 		Player: p.PlayerName, Platform: p.Platform, Product: p.Product,
 		IPAddress: streamIP(p), Location: p.Location, Decision: p.Decision(),
 		StartedAt: ls.started.Unix(), StoppedAt: now.Unix(), PausedMS: ls.pausedMS,
