@@ -270,6 +270,11 @@ export function Quality() {
   // A /quality/:media/new reopened without its template (a fresh visit to the address)
   // comes back here with the picker open.
   const [picking, setPicking] = useState(() => !!(location.state as { pick?: boolean } | null)?.pick);
+  // Once opened, drop the flag from the history entry so a reload of the list doesn't reopen it.
+  useEffect(() => {
+    if ((location.state as { pick?: boolean } | null)?.pick) navigate({ search: location.search }, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // A failed action on a card (the list's own load errors are loadError).
   const [error, setError] = useState<string | null>(null);
   // "Moved 12 films to …" after a delete. It lives here, not on the card, because the
