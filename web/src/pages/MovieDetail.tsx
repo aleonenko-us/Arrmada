@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
@@ -56,18 +56,13 @@ export function MovieDetail() {
   const [movie, setMovie] = useState<Movie | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [toastErr, setToastErr] = useState(false);
   // Bumped by anything that changes this movie's History or Blocklist (a grab, an import,
   // a block, a search), so those panels refresh without leaving the page.
   const [activity, setActivity] = useState(0);
 
   // err shows the toast in the error colour: a search that failed says so plainly.
-  const flash = (msg: string, err = false) => {
-    setToast(msg);
-    setToastErr(err);
-    window.setTimeout(() => setToast(null), 3500);
-  };
+  const toast = useToast();
+  const say = (msg: string, err = false) => toast(msg, { tone: err ? "error" : "info", ms: 3500 });
 
   const load = useCallback(() => {
     return api
@@ -206,9 +201,9 @@ export function MovieDetail() {
                 <AvailabilitySelector movie={movie} onChange={load} />
               </div>
 
-              <AcquisitionStatus movie={movie} onChange={load} flash={flash} searchInfo={{ summary: movie.last_search, nextAt: movie.next_search_at }} />
-              <UpgradeHoldChip movie={movie} onChange={load} flash={flash} />
-              <Toolbar movie={movie} onChange={load} flash={flash} />
+              <AcquisitionStatus movie={movie} onChange={load} flash={say} searchInfo={{ summary: movie.last_search, nextAt: movie.next_search_at }} />
+              <UpgradeHoldChip movie={movie} onChange={load} flash={say} />
+              <Toolbar movie={movie} onChange={load} flash={say} />
             </div>
           </div>
         </div>
@@ -216,17 +211,11 @@ export function MovieDetail() {
 
       <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
         {movie.download && <DownloadBar dl={movie.download} />}
-        <VersionsArea movie={movie} onChange={load} flash={flash} />
+        <VersionsArea movie={movie} onChange={load} flash={say} />
         <CastRow cast={movie.extra?.cast} />
         <BlocklistPanel movieId={movie.id} refreshKey={`${movie.has_file}:${activity}`} />
         <HistoryPanel movieId={movie.id} refreshKey={`${movie.has_file}:${activity}`} />
       </div>
-
-      {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: toastErr ? "var(--reject)" : "var(--ink)" }}>
-          {toast}
-        </div>
-      )}
     </>
   );
 }
@@ -702,6 +691,7 @@ function FactRow({ movie }: { movie: Movie }) {
 
 function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () => void }) {
   const [name, setName] = useState("");
+  const titleId = useId();
   const [members, setMembers] = useState<CollectionMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState("");
@@ -756,46 +746,44 @@ function CollectionModal({ movieId, onClose }: { movieId: number; onClose: () =>
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-12 w-full max-w-[560px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="m-0 text-[15px] font-bold">{name || "Collection"}</h2>
-            <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{members.length} films · {missing.length} not in your library</p>
-          </div>
-          {missing.length > 0 && (
-            <button onClick={addAll} disabled={!profile || adding.size > 0} className="flex-none rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: !profile || adding.size > 0 ? 0.6 : 1 }}>
-              {adding.size > 0 ? "Adding…" : `Add all ${missing.length}`}
-            </button>
-          )}
+    <Modal onClose={onClose} labelledBy={titleId} size="md">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 id={titleId} className="m-0 text-[15px] font-bold">{name || "Collection"}</h2>
+          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{members.length} films · {missing.length} not in your library</p>
         </div>
-        {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
-        {loading ? (
-          <p className="py-6 text-center text-[12.5px] text-ink-dim">Loading collection…</p>
-        ) : (
-          <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto">
-            {members.map((m) => (
-              <div key={m.tmdb_id} className="flex items-center gap-3 rounded-lg p-2" style={{ background: "var(--panel-2)" }}>
-                {m.poster_url
-                  ? <img src={m.poster_url} alt="" className="h-14 w-9 flex-none rounded object-cover" />
-                  : <div className="h-14 w-9 flex-none rounded" style={{ background: "var(--line)" }} />}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold">{m.title}</div>
-                  <div className="text-[11px] text-ink-faint">{m.year || "—"}{m.vote_average ? ` · ★ ${m.vote_average.toFixed(1)}` : ""}</div>
-                </div>
-                {m.in_library ? (
-                  <span className="flex-none rounded px-2 py-1 font-mono text-[10px] uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library</span>
-                ) : (
-                  <button onClick={() => addOne(m.tmdb_id)} disabled={!profile || adding.has(m.tmdb_id)} className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
-                    {adding.has(m.tmdb_id) ? "Adding…" : "Add"}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+        {missing.length > 0 && (
+          <button onClick={addAll} disabled={!profile || adding.size > 0} className="flex-none rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", opacity: !profile || adding.size > 0 ? 0.6 : 1 }}>
+            {adding.size > 0 ? "Adding…" : `Add all ${missing.length}`}
+          </button>
         )}
       </div>
-    </div>
+      {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {loading ? (
+        <p className="py-6 text-center text-[12.5px] text-ink-dim">Loading collection…</p>
+      ) : (
+        <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto">
+          {members.map((m) => (
+            <div key={m.tmdb_id} className="flex items-center gap-3 rounded-lg p-2" style={{ background: "var(--panel-2)" }}>
+              {m.poster_url
+                ? <img src={m.poster_url} alt="" className="h-14 w-9 flex-none rounded object-cover" />
+                : <div className="h-14 w-9 flex-none rounded" style={{ background: "var(--line)" }} />}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold">{m.title}</div>
+                <div className="text-[11px] text-ink-faint">{m.year || "—"}{m.vote_average ? ` · ★ ${m.vote_average.toFixed(1)}` : ""}</div>
+              </div>
+              {m.in_library ? (
+                <span className="flex-none rounded px-2 py-1 font-mono text-[10px] uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library</span>
+              ) : (
+                <button onClick={() => addOne(m.tmdb_id)} disabled={!profile || adding.has(m.tmdb_id)} className="flex-none rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                  {adding.has(m.tmdb_id) ? "Adding…" : "Add"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
