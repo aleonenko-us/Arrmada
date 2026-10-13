@@ -3,8 +3,11 @@ package subtitles
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -31,6 +34,84 @@ type wsToken struct {
 	Offsets wsOffsets `json:"offsets"`
 	TDTW    int64     `json:"t_dtw"`
 	P       float64   `json:"p"`
+
+	// raw is the token's bytes exactly as whisper wrote them. Whisper's tokens are byte
+	// pieces, and a Chinese or Japanese character is often split across two or three of
+	// them; Text has each piece replaced by U+FFFD, raw keeps the bytes so the pieces can
+	// be put back together.
+	raw string
+}
+
+func (t *wsToken) UnmarshalJSON(b []byte) error {
+	type plain wsToken
+	var v struct {
+		plain
+		RawText json.RawMessage `json:"text"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*t = wsToken(v.plain)
+	if len(v.RawText) > 0 {
+		if err := json.Unmarshal(v.RawText, &t.Text); err != nil {
+			return err
+		}
+		t.raw, _ = rawJSONString(v.RawText)
+	}
+	return nil
+}
+
+// rawJSONString unquotes a JSON string without replacing invalid UTF-8 — the one thing
+// encoding/json won't do.
+func rawJSONString(b []byte) (string, bool) {
+	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
+		return "", false
+	}
+	b = b[1 : len(b)-1]
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if b[i] != '\\' {
+			out = append(out, b[i])
+			continue
+		}
+		if i++; i >= len(b) {
+			return "", false
+		}
+		switch b[i] {
+		case 'b':
+			out = append(out, '\b')
+		case 'f':
+			out = append(out, '\f')
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case 'u':
+			if i+4 >= len(b) {
+				return "", false
+			}
+			n, err := strconv.ParseUint(string(b[i+1:i+5]), 16, 32)
+			if err != nil {
+				return "", false
+			}
+			r := rune(n)
+			i += 4
+			if utf16.IsSurrogate(r) && i+6 < len(b) && b[i+1] == '\\' && b[i+2] == 'u' {
+				if lo, err := strconv.ParseUint(string(b[i+3:i+7]), 16, 32); err == nil {
+					if pair := utf16.DecodeRune(r, rune(lo)); pair != utf8.RuneError {
+						r = pair
+						i += 6
+					}
+				}
+			}
+			out = utf8.AppendRune(out, r)
+		default: // \" \\ \/
+			out = append(out, b[i])
+		}
+	}
+	return string(out), true
 }
 
 type wsOffsets struct {
@@ -56,13 +137,17 @@ const (
 // start) to every time. Segments whose DTW times are missing or don't make sense fall
 // back to sharing the segment's time by character count.
 func wordsFromJSON(data []byte, base time.Duration) ([]word, error) {
+	return wordsFromJSONIn(data, base, spacedLayout)
+}
+
+func wordsFromJSONIn(data []byte, base time.Duration, lay cueLayout) ([]word, error) {
 	var js wsJSON
 	if err := json.Unmarshal(data, &js); err != nil {
 		return nil, fmt.Errorf("whisper json: %w", err)
 	}
 	var out []word
 	for _, seg := range js.Transcription {
-		out = append(out, segmentWords(seg, base)...)
+		out = append(out, segmentWords(seg, base, lay.noSpace)...)
 	}
 	return out, nil
 }
@@ -74,8 +159,10 @@ func isSpecialToken(t string) bool {
 }
 
 // segmentWords groups a segment's tokens into words (a token starting with a space
-// starts a word; the rest attach) and times them.
-func segmentWords(seg wsSegment, base time.Duration) []word {
+// starts a word; the rest attach) and times them. Chinese and Japanese (noSpace) have no
+// spaces to go by, so every Han or kana token is a word of its own, and so is the first
+// Latin or digit token after one; punctuation stays on its word.
+func segmentWords(seg wsSegment, base time.Duration, noSpace bool) []word {
 	segFrom := base + time.Duration(seg.Offsets.From)*time.Millisecond
 	segTo := base + time.Duration(seg.Offsets.To)*time.Millisecond
 	type group struct {
@@ -83,14 +170,31 @@ func segmentWords(seg wsSegment, base time.Duration) []word {
 		lastTok int // index into seg.Tokens of the word's last token
 	}
 	var groups []group
+	pending := "" // the first bytes of a character whisper split across tokens
 	for i, t := range seg.Tokens {
 		if isSpecialToken(t.Text) {
 			continue
 		}
-		startsWord := strings.HasPrefix(t.Text, " ") || len(groups) == 0
-		txt := strings.TrimSpace(t.Text)
+		text := t.Text
+		if noSpace && t.raw != "" {
+			text = pending + t.raw
+			if endsMidRune(text) {
+				pending = text
+				continue
+			}
+			pending = ""
+			text = strings.ToValidUTF8(text, string(utf8.RuneError))
+		}
+		startsWord := strings.HasPrefix(text, " ") || len(groups) == 0
+		txt := strings.TrimSpace(text)
 		if txt == "" {
 			continue
+		}
+		if noSpace && !startsWord {
+			first, _ := utf8.DecodeRuneInString(txt)
+			prev, _ := utf8.DecodeLastRuneInString(groups[len(groups)-1].text)
+			startsWord = isNoSpaceScript(first) || unicode.In(first, unicode.Ps, unicode.Pi) ||
+				(noSpaceEdge(prev) && !unicode.IsPunct(first) && !isCJKPunct(first))
 		}
 		if startsWord {
 			groups = append(groups, group{text: txt, lastTok: i})
@@ -98,6 +202,10 @@ func segmentWords(seg wsSegment, base time.Duration) []word {
 			groups[len(groups)-1].text += txt
 			groups[len(groups)-1].lastTok = i
 		}
+	}
+	if pending != "" && len(groups) > 0 {
+		// The segment ended mid-character: keep what there is rather than drop it.
+		groups[len(groups)-1].text += strings.ToValidUTF8(pending, string(utf8.RuneError))
 	}
 	if len(groups) == 0 {
 		return nil
@@ -141,6 +249,16 @@ func segmentWords(seg wsSegment, base time.Duration) []word {
 	return words
 }
 
+// endsMidRune reports whether s stops partway through a multi-byte character.
+func endsMidRune(s string) bool {
+	for i := len(s) - 1; i >= 0 && i > len(s)-utf8.UTFMax; i-- {
+		if utf8.RuneStart(s[i]) {
+			return !utf8.FullRuneInString(s[i:])
+		}
+	}
+	return false
+}
+
 // dtwUnit works out what t_dtw is counted in for this segment — centiseconds by the
 // header's word, but checked against the segment's own millisecond offsets so a build
 // that changes it can't silently shift every cue 10×. Returns 0 when the values are
@@ -176,7 +294,9 @@ func dtwUnit(seg wsSegment, from, to time.Duration) time.Duration {
 // cuesFromWords packs timed words into cues: a new cue at a pause, at a sentence end
 // once there's enough text, when the next word wouldn't fit on two lines, or when the
 // cue would run too long.
-func cuesFromWords(words []word) []cue {
+func cuesFromWords(words []word) []cue { return cuesFromWordsIn(words, spacedLayout) }
+
+func cuesFromWordsIn(words []word, lay cueLayout) []cue {
 	var out []cue
 	var cur *cue
 	var curChars int
@@ -184,10 +304,14 @@ func cuesFromWords(words []word) []cue {
 		wl := utf8.RuneCountInString(w.text)
 		if cur != nil {
 			gap := w.start - cur.end
+			// A Chinese or Japanese segment often runs several sentences, and DTW words
+			// inside a segment have no gap between them, so there a sentence end closes
+			// the cue without waiting for a pause.
+			sentGap := gap >= cueSentGap || lay.noSpace
 			brk := gap > cuePauseBreak ||
-				curChars+1+wl > cueMaxChars ||
+				utf8.RuneCountInString(lay.join(cur.text, w.text)) > lay.cueChars ||
 				w.end-cur.start > cueMaxDur ||
-				(endsSentence(cur.text) && curChars >= cueSentChars && gap >= cueSentGap)
+				(lay.endsSentence(cur.text) && curChars >= lay.sentChars && sentGap)
 			if brk {
 				out = append(out, *cur)
 				cur = nil
@@ -199,9 +323,9 @@ func cuesFromWords(words []word) []cue {
 			curChars = wl
 			continue
 		}
-		cur.text += " " + w.text
+		cur.text = lay.join(cur.text, w.text)
 		cur.end = w.end
-		curChars += 1 + wl
+		curChars = utf8.RuneCountInString(cur.text)
 	}
 	if cur != nil {
 		out = append(out, *cur)
@@ -217,11 +341,13 @@ func endsSentence(text string) bool {
 // padCues holds each cue a beat past its last word and long enough to read (at least
 // a second, or the text's length at a comfortable reading speed), stopping short of
 // the next cue.
-func padCues(cues []cue) {
+func padCues(cues []cue) { padCuesIn(cues, spacedLayout) }
+
+func padCuesIn(cues []cue, lay cueLayout) {
 	for i := range cues {
 		c := &cues[i]
 		end := c.end + cueEndPad
-		if read := c.start + time.Duration(float64(utf8.RuneCountInString(c.text))/cueReadCPS*float64(time.Second)); read > end {
+		if read := c.start + time.Duration(float64(utf8.RuneCountInString(c.text))/lay.readCPS*float64(time.Second)); read > end {
 			end = read
 		}
 		if end-c.start < cueMinDur {
@@ -264,13 +390,15 @@ func dropRepeats(cues []cue) []cue {
 }
 
 // shapeWordCues is the whole pipeline from timed words to laid-out cues.
-func shapeWordCues(words []word) []cue {
-	cues := cuesFromWords(words)
-	cues = mergeFragments(cues)
+func shapeWordCues(words []word) []cue { return shapeWordCuesIn(words, spacedLayout) }
+
+func shapeWordCuesIn(words []word, lay cueLayout) []cue {
+	cues := cuesFromWordsIn(words, lay)
+	cues = mergeFragmentsIn(cues, lay)
 	cues = dropRepeats(cues)
-	padCues(cues)
+	padCuesIn(cues, lay)
 	for i := range cues {
-		cues[i].text = layoutLines(cues[i].text)
+		cues[i].text = lay.layoutLines(cues[i].text)
 	}
 	return cues
 }

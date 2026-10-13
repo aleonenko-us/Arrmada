@@ -18,8 +18,10 @@ const redoApi = {
 
 export const REDO_WORDS: Record<string, string> = { next: "next download", ai: "AI", extract: "embedded track" };
 
-// redoLabel is how a redo job reads in the Queue: "redo en (next download)".
+// redoLabel is how a redo job reads in the Queue: "redo en (next download)". The daily
+// upgrade's jobs read "upgrade en".
 export function redoLabel(j: SubtitleJob): string | null {
+  if (j.mode === "upgrade") return `upgrade ${(j.langs ?? []).join(", ")}`;
   if (!j.mode || !REDO_WORDS[j.mode]) return null;
   return `redo ${(j.langs ?? []).join(", ")} (${REDO_WORDS[j.mode]})`;
 }

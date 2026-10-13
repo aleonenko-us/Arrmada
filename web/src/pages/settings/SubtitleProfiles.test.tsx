@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { clearQueryCache } from "../../lib/query";
 import { ConfirmProvider } from "../../ui";
 import { profileApi, type ProfileList } from "../subtitles/profileApi";
-import { ProfileSelect } from "../subtitles/ProfileSelect";
+import { ProfileSelect, TitleProfilePicker } from "../subtitles/ProfileSelect";
+import { unsavedMessage } from "../../lib/useUnsavedGuard";
 import { SubtitleProfiles } from "./SubtitleProfiles";
 
 // SUB-33: the profile editor sets each language's variant, SDH taste and "only when the
@@ -76,5 +77,37 @@ describe("Subtitle language profiles", () => {
     await act(async () => { fireEvent.change(sel, { target: { value: "2" } }); });
     expect(set).toHaveBeenCalledWith("movie", 3, 2);
     expect(changed).toHaveBeenCalled();
+  });
+
+  // SUB-34: the Movie and Series pages' "Subtitles" selector.
+  it("the detail-page picker shows the title's pin and moves it back to Default", async () => {
+    vi.spyOn(profileApi, "list").mockResolvedValue(defaultOnly);
+    const { unmount } = render(<TitleProfilePicker kind="series" id={7} title="Frieren" />);
+    await act(async () => {});
+    expect(screen.queryByLabelText("Subtitles")).toBeNull();
+    unmount();
+
+    clearQueryCache();
+    vi.spyOn(profileApi, "list").mockResolvedValue(withAnime);
+    const set = vi.spyOn(profileApi, "setOverride").mockResolvedValue(undefined);
+    const changed = vi.fn();
+    render(<TitleProfilePicker kind="series" id={7} title="Frieren" onChanged={changed} />);
+    const sel = (await screen.findByLabelText("Subtitles")) as HTMLSelectElement;
+    expect(sel.value).toBe("2"); // pinned to Anime
+    await act(async () => { fireEvent.change(sel, { target: { value: "1" } }); });
+    expect(set).toHaveBeenCalledWith("series", 7, 0); // Default = no pin
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it("a profile name typed but not saved guards leaving the page", async () => {
+    vi.spyOn(profileApi, "list").mockResolvedValue(withAnime);
+    const update = vi.spyOn(profileApi, "update").mockResolvedValue(withAnime.profiles[1]);
+    editor();
+    const input = await screen.findByLabelText("Profile name");
+    await act(async () => { fireEvent.change(input, { target: { value: "Anime (JP)" } }); });
+    expect(unsavedMessage()).toBe("Discard the profile's new name?");
+    await act(async () => { fireEvent.blur(input); });
+    expect(update).toHaveBeenCalledWith(2, { name: "Anime (JP)" });
+    expect(unsavedMessage()).toBeNull();
   });
 });
