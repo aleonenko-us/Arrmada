@@ -24,6 +24,6 @@ export const insightsApi = {
   insightsUsers: () => req<{ users: UserEntry[] }>("/api/v1/insights/users").then((r) => r.users),
   insightsLibraries: () => req<{ libraries: LibraryStat[] }>("/api/v1/insights/libraries").then((r) => r.libraries),
   insightsRecentlyAdded: (limit = 20) => req<{ items: RecentItem[] }>(`/api/v1/insights/recently-added?limit=${limit}`).then((r) => r.items),
-  insightsGraphs: (window = 30) => req<InsightsGraphs>(`/api/v1/insights/graphs?window=${window}`),
+  insightsGraphs: (window = 30, metric: "plays" | "duration" = "plays") => req<InsightsGraphs>(`/api/v1/insights/graphs?window=${window}&metric=${metric}`),
   insightsReliability: (window = 30) => req<Reliability>(`/api/v1/insights/reliability?window=${window}`),
 };

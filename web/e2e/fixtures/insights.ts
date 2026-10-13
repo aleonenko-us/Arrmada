@@ -45,6 +45,8 @@ export const stats: InsightsStats = {
 
 const days = Array.from({ length: 30 }, (_, i) => new Date(NOW - (29 - i) * 86_400_000).toISOString().slice(0, 10));
 export const graphs: InsightsGraphs = {
+  metric: "plays",
+  daily_direct_play: days.map(() => 0), daily_direct_stream: days.map(() => 0), daily_transcode: days.map((_, i) => (i === 29 ? 2 : 0)),
   days, daily_tv: days.map(() => 0), daily_movies: days.map((_, i) => (i === 29 ? 2 : 0)), daily_music: days.map(() => 0),
   by_day_of_week: [0, 0, 0, 0, 0, 2, 0], by_hour: Array.from({ length: 24 }, (_, i) => (i === 20 ? 2 : 0)),
   top_platforms: [{ id: "webOS", name: "webOS", plays: 2, secs: 10800 }], top_users: [{ id: "7", name: "Jesse", plays: 2, secs: 10800 }],

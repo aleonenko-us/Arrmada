@@ -2512,8 +2512,12 @@ export interface UserEntry { id: string; username: string; last_seen: number; la
 export interface LibraryStat { title: string; type: string; count: number }
 export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number }
 export interface BWPoint { t: string; total_kbps: number; lan_kbps: number; wan_kbps: number }
+// Every play series is in `metric`: plays, or hours watched ("duration").
 export interface InsightsGraphs {
+  metric: "plays" | "duration";
   days: string[]; daily_tv: number[]; daily_movies: number[]; daily_music: number[];
+  /** The same plays by stream type, aligned to days; per day they add up to tv + movies + music. */
+  daily_direct_play: number[]; daily_direct_stream: number[]; daily_transcode: number[];
   by_day_of_week: number[]; by_hour: number[];
   top_platforms: NameStat[]; top_users: NameStat[]; bandwidth: BWPoint[];
 }

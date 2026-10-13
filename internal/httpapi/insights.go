@@ -263,7 +263,7 @@ func (a *api) handleInsightsGraphs(w http.ResponseWriter, r *http.Request) {
 	window := clampWindow(atoiQuery(r, "window"))
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	g, err := a.deps.Insights.Graphs(ctx, window)
+	g, err := a.deps.Insights.Graphs(ctx, window, r.URL.Query().Get("metric"))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not compute graphs")
 		return

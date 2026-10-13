@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
@@ -8,9 +8,12 @@ import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { EmptyState } from "../ui/EmptyState";
 import { IconButton, Modal, useToast } from "../ui";
-import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
+import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
+import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
+import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, type Metric } from "./insights/shared";
+import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
@@ -61,10 +64,6 @@ function MonitoringOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void
     </div>
   );
 }
-
-// InsightsCfg hands the latest Plex settings to deep components (History's HW badge)
-// without threading a prop through every view.
-const InsightsCfg = createContext<PlexConfig | null>(null);
 
 export function Insights() {
   // The old Notifications tab's address (bookmarks, earlier copy) opens Alerts instead.
@@ -149,37 +148,6 @@ function InsightsPage() {
 }
 
 /* ============================= ACTIVITY ============================= */
-function fmtMbps(kbps: number): string {
-  if (!kbps) return "0";
-  const mb = kbps / 1000;
-  return mb >= 10 ? mb.toFixed(0) : mb.toFixed(1);
-}
-function fmtClock(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  const mm = String(m).padStart(2, "0"), sss = String(ss).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${sss}` : `${m}:${sss}`;
-}
-const DECISION: Record<string, { label: string; color: string }> = {
-  direct_play: { label: "Direct Play", color: "var(--good)" },
-  direct_stream: { label: "Direct Stream", color: "var(--accent)" },
-  transcode: { label: "Transcode", color: "var(--avoid)" },
-};
-// Diagnosed buffer-cause styling (keys match BufferEvent.cause / CauseCount.cause).
-const CAUSE: Record<string, { label: string; color: string }> = {
-  transcode: { label: "Transcode overloaded", color: "var(--reject)" },
-  transcode_cpu: { label: "CPU transcode (no HW)", color: "var(--reject)" },
-  transcode_fallback: { label: "Plex fell back to CPU", color: "var(--reject)" },
-  bandwidth: { label: "Bandwidth / network", color: "var(--avoid)" },
-  unknown: { label: "Inconclusive", color: "var(--ink-faint)" },
-};
-function geoLabel(g: InsightsStream["geo"]): string {
-  if (g.local) return "Local";
-  if (g.city && g.country_code) return `${g.city}, ${g.country_code}`;
-  if (g.country) return g.country;
-  return g.ip || "—";
-}
-
 function ActivityView({ connected }: { connected: boolean }) {
   const [act, setAct] = useState<InsightsActivity | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -274,12 +242,6 @@ function ActivityView({ connected }: { connected: boolean }) {
 }
 
 /* ============================= HOME DASHBOARD (stats / libraries / recently added) ============================= */
-function fmtHours(secs: number): string {
-  if (!secs) return "0";
-  const h = secs / 3600;
-  return h >= 10 ? `${h.toFixed(0)}h` : h >= 1 ? `${h.toFixed(1)}h` : `${Math.round(secs / 60)}m`;
-}
-
 // HomeExtras: watch statistics (from the database) plus library counts and recently added,
 // which Plex answers live. Without a server (live=false) the Plex calls are skipped, and the
 // block shows only when there are imported statistics to show.
@@ -535,32 +497,6 @@ function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
 }
 
 /* ============================= HISTORY ============================= */
-function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
-      <div className="flex flex-wrap gap-1">{children}</div>
-    </div>
-  );
-}
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
-      {children}
-    </button>
-  );
-}
-
-function fmtDate(epoch: number): string {
-  if (!epoch) return "—";
-  const d = new Date(epoch * 1000);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-function fmtDur(secs: number): string {
-  if (!secs) return "—";
-  const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
 const TYPE_FILTERS: { key: string; label: string }[] = [
   { key: "", label: "All" }, { key: "movie", label: "Movies" }, { key: "episode", label: "TV" }, { key: "track", label: "Music" },
 ];
@@ -697,30 +633,59 @@ function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void })
 }
 
 /* ============================= GRAPHS ============================= */
-const SERIES_COLORS = { tv: "var(--accent)", movies: "var(--good)", music: "var(--avoid)" };
+const SERIES = {
+  tv: { label: "TV", color: "var(--accent)" },
+  movies: { label: "Movies", color: "var(--good)", dash: "6 3" },
+  music: { label: "Music", color: "var(--avoid)", dash: "2 3" },
+};
+// Stream types keep the decision colours; the dashes tell them apart for readers who
+// can't separate those hues.
+const STREAM_SERIES = {
+  direct_play: { label: "Direct Play", color: DECISION.direct_play.color, dash: "6 3" },
+  direct_stream: { label: "Direct Stream", color: DECISION.direct_stream.color },
+  transcode: { label: "Transcode", color: DECISION.transcode.color, dash: "2 3" },
+};
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WINDOWS = [7, 30, 90] as const;
+const METRICS = ["plays", "duration"] as const;
 
 function GraphsView({ connected }: { connected: boolean }) {
   const [g, setG] = useState<InsightsGraphs | null>(null);
-  const [win, setWin] = useState(30);
+  const [failed, setFailed] = useState(false);
+  // The window and the metric live in the address, so a refresh or a shared link keeps them.
+  const [winParam, setWin] = useSearchParamState<string>("window", "30", { allowed: WINDOWS.map(String) });
+  const [metric, setMetric] = useSearchParamState<Metric>("metric", "plays", { allowed: METRICS });
+  const win = Number(winParam) || 30;
   // Graphs are drawn from recorded plays, so imported history charts before Plex is connected.
-  useEffect(() => { insightsApi.insightsGraphs(win).then(setG).catch(() => setG(null)); }, [win]);
+  useEffect(() => {
+    let live = true;
+    insightsApi.insightsGraphs(win, metric).then((r) => { if (live) { setG(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [win, metric]);
+  if (failed && !g) return <div className="rounded-xl p-10 text-center text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn't load the graphs.</div>;
   if (!g) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
 
+  const hours = g.metric === "duration";
+  const fmt = hours ? fmtHoursValue : (v: number) => String(Math.round(v));
+  const unit = hours ? "Hours watched" : "Plays";
   const anyPlays = g.daily_tv.some(Boolean) || g.daily_movies.some(Boolean) || g.daily_music.some(Boolean);
-  const dayLabels = g.days.map((d) => { const [, m, day] = d.split("-"); return `${+m}/${+day}`; });
+  const dayLabels = g.days.map((d) => dayLabel(d));
+  const dayTips = g.days.map((d) => dayLabel(d, true));
   // Nothing to chart and no server to record from. The window chips stay above it, so an
   // older import is still one click away.
   const nothing = !connected && !anyPlays && g.bandwidth.length === 0;
+  const rank = (rows: NameStat[]) => rows.map((r) => ({ label: r.name, value: hours ? r.secs / 3600 : r.plays }));
 
   return (
     <div className="flex flex-col gap-4">
       {!connected && !nothing && <ImportedNotice />}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>
-        <div className="flex items-center gap-3 text-xs">
-          <Legend c={SERIES_COLORS.tv} label="TV" /><Legend c={SERIES_COLORS.movies} label="Movies" /><Legend c={SERIES_COLORS.music} label="Music" />
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FilterGroup label="Window">{WINDOWS.map((w) => <Chip key={w} active={win === w} onClick={() => setWin(String(w))}>{w}d</Chip>)}</FilterGroup>
+        <FilterGroup label="Show">
+          <Chip active={!hours} onClick={() => setMetric("plays")}>Plays</Chip>
+          <Chip active={hours} onClick={() => setMetric("duration")}>Hours</Chip>
+        </FilterGroup>
       </div>
 
       {nothing ? (
@@ -729,100 +694,42 @@ function GraphsView({ connected }: { connected: boolean }) {
         <div className="rounded-xl p-10 text-center text-sm text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No plays in this window yet — graphs fill in as history accrues.</div>
       ) : (
         <>
-          <ChartCard title="Daily plays by media type">
-            <LineChart xLabels={dayLabels} series={[
-              { color: SERIES_COLORS.tv, values: g.daily_tv },
-              { color: SERIES_COLORS.movies, values: g.daily_movies },
-              { color: SERIES_COLORS.music, values: g.daily_music },
+          <ChartCard title={`Daily ${hours ? "hours watched" : "plays"} by media type`} extra={<Legend items={[SERIES.tv, SERIES.movies, SERIES.music]} />}>
+            <LineChart caption={`Daily ${unit.toLowerCase()} by media type`} xLabels={dayLabels} tipTitles={dayTips} fmt={fmt} series={[
+              { ...SERIES.tv, values: g.daily_tv },
+              { ...SERIES.movies, values: g.daily_movies },
+              { ...SERIES.music, values: g.daily_music },
+            ]} />
+          </ChartCard>
+
+          <ChartCard title="Stream type over time" extra={<Legend items={[STREAM_SERIES.direct_play, STREAM_SERIES.direct_stream, STREAM_SERIES.transcode]} />}>
+            <LineChart caption={`Daily ${unit.toLowerCase()} by stream type`} xLabels={dayLabels} tipTitles={dayTips} fmt={fmt} series={[
+              { ...STREAM_SERIES.direct_play, values: g.daily_direct_play ?? [] },
+              { ...STREAM_SERIES.direct_stream, values: g.daily_direct_stream ?? [] },
+              { ...STREAM_SERIES.transcode, values: g.daily_transcode ?? [] },
             ]} />
           </ChartCard>
 
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))" }}>
-            <ChartCard title="Plays by day of week"><BarChart values={g.by_day_of_week} labels={DOW} /></ChartCard>
-            <ChartCard title="Plays by hour of day"><BarChart values={g.by_hour} labels={g.by_hour.map((_, i) => (i % 3 === 0 ? String(i).padStart(2, "0") : ""))} /></ChartCard>
-            <ChartCard title="Top platforms"><HBarChart rows={g.top_platforms.map((p) => ({ label: p.name, value: p.plays }))} /></ChartCard>
-            <ChartCard title="Top users"><HBarChart rows={g.top_users.map((u) => ({ label: u.name, value: u.plays }))} /></ChartCard>
+            <ChartCard title={`${unit} by day of week`}><BarChart caption={`${unit} by day of week`} values={g.by_day_of_week} labels={DOW} tipTitles={DOW_LONG} fmt={fmt} /></ChartCard>
+            <ChartCard title={`${unit} by hour of day`}><BarChart caption={`${unit} by hour of day`} values={g.by_hour} fmt={fmt}
+              labels={g.by_hour.map((_, i) => (i % 3 === 0 ? String(i).padStart(2, "0") : ""))} tipTitles={g.by_hour.map((_, i) => `${String(i).padStart(2, "0")}:00–${String(i).padStart(2, "0")}:59`)} /></ChartCard>
+            <ChartCard title="Top platforms"><HBarChart rows={rank(g.top_platforms)} fmt={fmt} /></ChartCard>
+            <ChartCard title="Top users"><HBarChart rows={rank(g.top_users)} fmt={fmt} /></ChartCard>
           </div>
         </>
       )}
 
-      {!nothing && <ChartCard title="Bandwidth (peak per hour)">
+      {!nothing && <ChartCard title="Bandwidth (peak per hour)" extra={g.bandwidth.length > 0 ? <Legend items={[{ label: "Total", color: "var(--accent)" }, { label: "LAN", color: "var(--good)", dash: "6 3" }, { label: "WAN", color: "var(--avoid)", dash: "2 3" }]} /> : undefined}>
         {g.bandwidth.length === 0 ? <div className="py-6 text-center text-xs text-ink-faint">No bandwidth recorded yet.</div> : (
-          <>
-            <div className="mb-1 flex items-center gap-3 text-xs"><Legend c="var(--accent)" label="Total" /><Legend c="var(--good)" label="LAN" /><Legend c="var(--avoid)" label="WAN" /></div>
-            <LineChart xLabels={g.bandwidth.map(() => "")} series={[
-              { color: "var(--accent)", values: g.bandwidth.map((p) => p.total_kbps / 1000) },
-              { color: "var(--good)", values: g.bandwidth.map((p) => p.lan_kbps / 1000) },
-              { color: "var(--avoid)", values: g.bandwidth.map((p) => p.wan_kbps / 1000) },
-            ]} unit=" Mb/s" />
-          </>
+          <LineChart caption="Peak bandwidth per hour, Mb/s" xLabels={bandwidthLabels(g.bandwidth.map((p) => p.t))} tipTitles={g.bandwidth.map((p) => `${dayLabel(p.t.slice(0, 10), true)} ${p.t.slice(11)}`)}
+            fmt={(v) => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)} Mb/s`} series={[
+              { label: "Total", color: "var(--accent)", values: g.bandwidth.map((p) => p.total_kbps / 1000) },
+              { label: "LAN", color: "var(--good)", dash: "6 3", values: g.bandwidth.map((p) => p.lan_kbps / 1000) },
+              { label: "WAN", color: "var(--avoid)", dash: "2 3", values: g.bandwidth.map((p) => p.wan_kbps / 1000) },
+            ]} />
         )}
       </ChartCard>}
-    </div>
-  );
-}
-
-function Legend({ c, label }: { c: string; label: string }) {
-  return <span className="inline-flex items-center gap-1 text-ink-dim"><span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />{label}</span>;
-}
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}><div className="mb-2 text-base font-bold">{title}</div>{children}</div>;
-}
-
-function LineChart({ series, xLabels, unit }: { series: { color: string; values: number[] }[]; xLabels: string[]; unit?: string }) {
-  const W = 720, H = 200, padL = 34, padB = 20, padT = 8, padR = 8;
-  const n = Math.max(1, xLabels.length);
-  const max = Math.max(1, ...series.flatMap((s) => s.values));
-  const x = (i: number) => padL + (n <= 1 ? 0 : (i / (n - 1)) * (W - padL - padR));
-  const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
-  const ticks = [0, Math.round(max / 2), max];
-  const labelEvery = Math.max(1, Math.ceil(n / 8));
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto", maxHeight: 240 }} preserveAspectRatio="none">
-      {ticks.map((t, i) => (
-        <g key={i}>
-          <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} />
-          <text x={padL - 5} y={y(t) + 3} textAnchor="end" fontSize={9} fill="var(--ink-faint)">{t}{unit || ""}</text>
-        </g>
-      ))}
-      {series.map((s, si) => (
-        <polyline key={si} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")} />
-      ))}
-      {xLabels.map((l, i) => (l && i % labelEvery === 0 ? <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize={9} fill="var(--ink-faint)">{l}</text> : null))}
-    </svg>
-  );
-}
-
-function BarChart({ values, labels }: { values: number[]; labels: string[] }) {
-  const W = 360, H = 180, padL = 24, padB = 18, padT = 6, padR = 4;
-  const max = Math.max(1, ...values);
-  const bw = (W - padL - padR) / values.length;
-  const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto", maxHeight: 200 }}>
-      <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke="var(--line)" strokeWidth={1} />
-      {values.map((v, i) => (
-        <rect key={i} x={padL + i * bw + bw * 0.15} y={y(v)} width={bw * 0.7} height={Math.max(0, H - padB - y(v))} rx={1.5} fill="var(--accent)" />
-      ))}
-      {labels.map((l, i) => (l ? <text key={i} x={padL + i * bw + bw / 2} y={H - 5} textAnchor="middle" fontSize={8.5} fill="var(--ink-faint)">{l}</text> : null))}
-    </svg>
-  );
-}
-
-function HBarChart({ rows }: { rows: { label: string; value: number }[] }) {
-  if (rows.length === 0) return <div className="py-6 text-center text-xs text-ink-faint">No data yet.</div>;
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  return (
-    <div className="flex flex-col gap-1.5">
-      {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
-          <span className="w-[92px] flex-none truncate text-ink-dim" title={r.label}>{r.label || "—"}</span>
-          <span className="h-3.5 flex-1 overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
-            <span className="block h-full rounded" style={{ width: `${(r.value / max) * 100}%`, background: "var(--accent)" }} />
-          </span>
-          <span className="w-8 flex-none text-right font-mono text-ink-faint">{r.value}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -918,23 +825,6 @@ function ReliabilityView({ connected }: { connected: boolean }) {
       )}
     </div>
   );
-}
-
-function StatTile({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
-  return (
-    <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</div>
-      <div className="mt-1 text-3xl font-extrabold tracking-tight" style={{ color }}>{value}</div>
-      <div className="text-xs text-ink-faint">{sub}</div>
-    </div>
-  );
-}
-
-// fmtStall renders observed stall milliseconds compactly ("47s", "3m 12s").
-function fmtStall(ms: number): string {
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) return `${secs}s`;
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
 function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
