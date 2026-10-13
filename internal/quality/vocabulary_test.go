@@ -85,3 +85,16 @@ func TestCheckFormats(t *testing.T) {
 		t.Error("an empty check should answer empty lists, not null")
 	}
 }
+
+// Every streaming tag the parser reads is offered, and the language list carries "multi".
+func TestConditionVocabularyCoversTraits(t *testing.T) {
+	vocab := ConditionVocabulary()
+	for _, s := range parser.StreamingServices() {
+		if !vocabHas(vocab[CondStreaming], s) {
+			t.Errorf("streaming %q missing", s)
+		}
+	}
+	if !vocabHas(vocab[CondLanguage], "multi") || !vocabHas(vocab[CondLanguage], "fr") {
+		t.Errorf("languages = %v", vocab[CondLanguage])
+	}
+}

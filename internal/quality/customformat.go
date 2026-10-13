@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -31,18 +32,83 @@ const (
 	maxValueLen      = 1000
 )
 
+// Conditions on the traits the parser reads from the tail of a name (parser/unwanted.go).
+// The Unwanted pack already refuses or avoids full discs, 3D, extras, upscales and
+// foreign-only audio per profile; these let a custom format score them on top of that.
+const (
+	CondStreaming ConditionType = "streaming" // Value: a service tag (AMZN, NF, ATVP…)
+	CondLanguage  ConditionType = "language"  // Value: an ISO 639-1 code, or "multi"
+	CondMulti     ConditionType = "multi"     // no value: MULTi, DUAL or German DL/ML
+	CondFullDisc  ConditionType = "full_disc" // no value: a BDMV/ISO disc image
+	CondThreeD    ConditionType = "3d"        // no value: a 3D release
+	CondUpscaled  ConditionType = "upscaled"  // no value: upscaled from a lower resolution
+	CondExtras    ConditionType = "extras"    // no value: bonus material
+)
+
+// languageMulti is the language value that means "several audio languages".
+const languageMulti = "multi"
+
 // knownCondition reports whether the engine can evaluate a condition type.
 func knownCondition(t ConditionType) bool {
 	switch t {
 	case CondDynamicRange, CondAudio, CondCodec, CondSource, CondResolution, CondEdition,
-		CondReleaseGroup, CondLossless, CondReleaseTitle:
+		CondReleaseGroup, CondLossless, CondReleaseTitle,
+		CondStreaming, CondLanguage:
+		return true
+	}
+	return valueless(t)
+}
+
+// valueless reports a condition type that takes no value.
+func valueless(t ConditionType) bool {
+	switch t {
+	case CondLossless, CondMulti, CondFullDisc, CondThreeD, CondUpscaled, CondExtras:
 		return true
 	}
 	return false
 }
 
-// valueless reports a condition type that takes no value.
-func valueless(t ConditionType) bool { return t == CondLossless }
+// matchTrait compares one alternative of a condition on the parser's traits.
+func matchTrait(t ConditionType, r parser.Release, v string) bool {
+	switch t {
+	case CondStreaming:
+		return r.Streaming != "" && strings.EqualFold(r.Streaming, v)
+	case CondLanguage:
+		if strings.EqualFold(v, languageMulti) {
+			return r.Multi
+		}
+		base := langs.Base(v)
+		for _, l := range r.Languages {
+			if base != "" && strings.EqualFold(langs.Base(l), base) {
+				return true
+			}
+		}
+		return false
+	case CondMulti:
+		return r.Multi
+	case CondFullDisc:
+		return r.FullDisc
+	case CondThreeD:
+		return r.ThreeD
+	case CondUpscaled:
+		return r.Upscaled
+	case CondExtras:
+		return r.Extras
+	}
+	return false
+}
+
+// normalizeLanguage is a language value as the engine compares it: its ISO 639-1 code
+// ("French", "fre", "FR" → "fr"), "multi", or as typed when it isn't a language.
+func normalizeLanguage(v string) string {
+	if strings.EqualFold(v, languageMulti) {
+		return languageMulti
+	}
+	if code := langs.ISO1(v); code != "" {
+		return code
+	}
+	return v
+}
 
 // --- Aliases ----------------------------------------------------------------
 
@@ -51,6 +117,20 @@ func valueless(t ConditionType) bool { return t == CondLossless }
 // either WEB label, the same single WEB tier the source gates use. The parser's own labels
 // are listed too, which is what makes "hevc" or "bluray" match regardless of case.
 var conditionAliases = map[ConditionType]map[string]string{
+	CondStreaming: {
+		"amzn": "AMZN", "amazon": "AMZN", "amazonprime": "AMZN", "primevideo": "AMZN",
+		"nf": "NF", "netflix": "NF",
+		"atvp": "ATVP", "appletv": "ATVP", "appletv+": "ATVP", "atv+": "ATVP",
+		"dsnp": "DSNP", "disney": "DSNP", "disney+": "DSNP", "disneyplus": "DSNP",
+		"hmax": "HMAX", "hbo": "HMAX", "hbomax": "HMAX|MAX", "max": "MAX",
+		"pcok": "PCOK", "peacock": "PCOK",
+		"pmtp": "PMTP", "paramount": "PMTP", "paramount+": "PMTP", "paramountplus": "PMTP",
+		"hulu": "HULU",
+		"it":   "iT", "itunes": "iT",
+		"crav": "CRAV", "crave": "CRAV",
+		"stan": "STAN",
+		"ma":   "MA", "moviesanywhere": "MA",
+	},
 	CondCodec: {
 		"x265": "x265", "hevc": "x265", "h265": "x265",
 		"x264": "x264", "avc": "x264", "h264": "x264",
@@ -123,6 +203,8 @@ func normalizeValue(t ConditionType, value string) string {
 		expanded := alt
 		if canon, ok := aliases[aliasKey(alt)]; ok {
 			expanded = canon
+		} else if t == CondLanguage {
+			expanded = normalizeLanguage(alt)
 		}
 		for _, v := range strings.Split(expanded, "|") {
 			if k := strings.ToLower(v); !seen[k] {
@@ -404,6 +486,11 @@ func inVocabulary(t ConditionType, known []VocabValue, v string) bool {
 		if strings.EqualFold(k.Value, v) || (t == CondEdition && sameEdition(k.Value, v)) {
 			return true
 		}
+	}
+	if t == CondLanguage {
+		// The dropdown lists the common ones; any language the table knows can match.
+		_, ok := langs.Lookup(v)
+		return ok
 	}
 	return false
 }

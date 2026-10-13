@@ -398,3 +398,61 @@ func TestStoredFormatsMatchAsBefore(t *testing.T) {
 		}
 	}
 }
+
+// Conditions on the parser's traits: streaming service (with aliases), language (any
+// spelling, or "multi"), and the valueless disc/3D/upscale/extras/multi flags.
+func TestCustomFormatTraitConditions(t *testing.T) {
+	amzn := "Show.S01E01.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb"
+	french := "Film.2019.FRENCH.1080p.WEB.H264-GRP"
+	multi := "Movie.2020.MULTi.1080p.WEB.H264-GRP"
+	disc := "Movie.2020.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-GRP"
+	threeD := "Movie.2020.3D.HSBS.1080p.BluRay.x264-GRP"
+	upscaled := "Movie.2020.2160p.UPSCALED.WEB-DL.x265-GRP"
+	extras := "Movie.2020.EXTRAS.1080p.BluRay.x264-GRP"
+	plain := "Movie.2020.1080p.BluRay.x264-GRP"
+	cases := []struct {
+		c    Condition
+		name string
+		want bool
+	}{
+		{Condition{Type: CondStreaming, Value: "AMZN"}, amzn, true},
+		{Condition{Type: CondStreaming, Value: "Amazon"}, amzn, true},
+		{Condition{Type: CondStreaming, Value: "netflix|amzn"}, amzn, true},
+		{Condition{Type: CondStreaming, Value: "Netflix"}, amzn, false},
+		{Condition{Type: CondStreaming, Value: "AMZN"}, plain, false},
+		{Condition{Type: CondLanguage, Value: "fr"}, french, true},
+		{Condition{Type: CondLanguage, Value: "French"}, french, true},
+		{Condition{Type: CondLanguage, Value: "fre"}, french, true},
+		{Condition{Type: CondLanguage, Value: "de"}, french, false},
+		{Condition{Type: CondLanguage, Value: "fr"}, plain, false},
+		{Condition{Type: CondLanguage, Value: "multi"}, multi, true},
+		{Condition{Type: CondLanguage, Value: "multi"}, french, false},
+		{Condition{Type: CondMulti}, multi, true},
+		{Condition{Type: CondMulti}, plain, false},
+		{Condition{Type: CondFullDisc}, disc, true},
+		{Condition{Type: CondFullDisc}, plain, false},
+		{Condition{Type: CondFullDisc, Negate: true}, plain, true},
+		{Condition{Type: CondThreeD}, threeD, true},
+		{Condition{Type: CondThreeD}, plain, false},
+		{Condition{Type: CondUpscaled}, upscaled, true},
+		{Condition{Type: CondUpscaled}, plain, false},
+		{Condition{Type: CondExtras}, extras, true},
+		{Condition{Type: CondExtras}, plain, false},
+	}
+	for _, c := range cases {
+		if got := fmatch(fmtOf("", c.c), c.name); got != c.want {
+			t.Errorf("%s %q (not %v) on %s: got %v, want %v", c.c.Type, c.c.Value, c.c.Negate, c.name, got, c.want)
+		}
+	}
+	// Valueless trait conditions need no value; a language nobody knows is a warning.
+	fs := []CustomFormat{{Name: "Traits", Conditions: []Condition{{Type: CondFullDisc}, {Type: CondThreeD}, {Type: CondMulti}, {Type: CondLanguage, Value: "klingonese"}}}}
+	if errs := ValidateFormats(fs); len(errs) != 0 {
+		t.Errorf("valueless traits refused: %v", errs)
+	}
+	if w := FormatWarnings(fs); len(w) != 1 || w[0].Condition != 3 {
+		t.Errorf("warnings = %v", w)
+	}
+	if w := FormatWarnings([]CustomFormat{{Name: "Any language", Conditions: []Condition{{Type: CondLanguage, Value: "Icelandic"}}}}); len(w) != 0 {
+		t.Errorf("a known language off the dropdown warned: %v", w)
+	}
+}

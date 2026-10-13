@@ -142,7 +142,7 @@ func TestImportTrashSkipsAnAlternativeWithAWarning(t *testing.T) {
 // exclusion that can't be checked is left out with a loud warning.
 func TestImportTrashExportShape(t *testing.T) {
 	got := importFixture(t, "radarr-export.json", MediaMovie)
-	if len(got.Formats) != 3 {
+	if len(got.Formats) != 4 || len(got.Warnings) != 0 {
 		t.Fatalf("formats = %+v, warnings = %v", got.Formats, got.Warnings)
 	}
 	repack := got.Formats[0]
@@ -151,12 +151,18 @@ func TestImportTrashExportShape(t *testing.T) {
 	}
 	checkMatches(t, repack.Format, []string{"Movie.2020.PROPER.1080p.WEB-DL-GRP", "Movie.2020.REPACK.1080p.WEB-DL-GRP"}, []string{"Movie.2020.1080p.WEB-DL-GRP"})
 
-	av1 := got.Formats[1]
+	french := got.Formats[1]
+	if !reflect.DeepEqual(french.Format.Conditions, []Condition{{Type: CondLanguage, Value: "fr"}}) {
+		t.Errorf("french = %+v", french.Format)
+	}
+	checkMatches(t, french.Format, []string{"Film.2019.FRENCH.1080p.WEB.H264-GRP"}, []string{"Film.2019.1080p.WEB.H264-GRP"})
+
+	av1 := got.Formats[2]
 	if av1.Format.Name != "AV1 (TRaSH)" || len(av1.Warnings) != 1 || !strings.Contains(av1.Warnings[0], "built-in") {
 		t.Errorf("av1 = %+v", av1)
 	}
 
-	scene := got.Formats[2]
+	scene := got.Formats[3]
 	if scene.Format.Match != MatchAny || !reflect.DeepEqual(scene.Format.Conditions, []Condition{
 		{Type: CondSource, Value: "WEB-DL"}, {Type: CondSource, Value: "CAM", Negate: true},
 	}) {
@@ -165,8 +171,27 @@ func TestImportTrashExportShape(t *testing.T) {
 	if len(scene.Warnings) != 1 || !strings.Contains(scene.Warnings[0], "Matches MORE") {
 		t.Errorf("scene warnings = %v", scene.Warnings)
 	}
+}
 
-	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], `"French Audio"`) || !strings.Contains(got.Warnings[0], "language") {
+// The parser's traits: a BR-DISK modifier becomes a full-disc condition, a stated language a
+// language condition, and "not English" is refused — names rarely state English, so it
+// would hit nearly every release.
+func TestImportTrashTraits(t *testing.T) {
+	got := importFixture(t, "traits.json", MediaMovie)
+	if len(got.Formats) != 2 {
+		t.Fatalf("formats = %+v, warnings = %v", got.Formats, got.Warnings)
+	}
+	disc := got.Formats[0]
+	if !reflect.DeepEqual(disc.Format.Conditions, []Condition{{Type: CondFullDisc}}) {
+		t.Errorf("disc = %+v", disc.Format)
+	}
+	checkMatches(t, disc.Format, []string{"Movie.2020.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-GRP"}, []string{"Movie.2020.1080p.BluRay.x264-GRP"})
+	german := got.Formats[1]
+	if !reflect.DeepEqual(german.Format.Conditions, []Condition{{Type: CondLanguage, Value: "de"}, {Type: CondFullDisc, Negate: true}}) {
+		t.Errorf("german = %+v", german.Format)
+	}
+	checkMatches(t, german.Format, []string{"Movie.2020.GERMAN.DL.1080p.BluRay.x264-GRP"}, []string{"Movie.2020.1080p.BluRay.x264-GRP"})
+	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], `"Language: Not English"`) || !strings.Contains(got.Warnings[0], "English") {
 		t.Errorf("warnings = %v", got.Warnings)
 	}
 }

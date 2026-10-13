@@ -10,3 +10,13 @@ func AudioLabels() []string {
 	}
 	return out
 }
+
+// StreamingServices lists the streaming-service tags the parser reads into
+// Release.Streaming ("AMZN", "NF", "ATVP"…), as it writes them, in the order they're checked.
+func StreamingServices() []string {
+	out := make([]string, len(streamingServices))
+	for i, s := range streamingServices {
+		out[i] = s.tag
+	}
+	return out
+}

@@ -167,6 +167,8 @@ func (c Condition) matchOne(r parser.Release, v string) bool {
 		hit = strings.EqualFold(r.Group, v)
 	case CondLossless:
 		hit = losslessAudio(r)
+	default:
+		hit = matchTrait(c.Type, r, v) // the parser's newer traits (customformat.go)
 	}
 	return hit
 }
