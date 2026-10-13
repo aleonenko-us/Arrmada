@@ -8,6 +8,7 @@ import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
 import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
+import { Page } from "../ui/Page";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -130,7 +131,7 @@ export function Music() {
   return (
     <>
       <PageHeader title="Music" />
-      <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <LibraryToolbar
           count={artists === null ? null : artists.length}
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitSelect() : setMultiSelect(true)) }}
@@ -258,7 +259,7 @@ export function Music() {
             ))}
           </div>
         )}
-      </div>
+      </Page>
 
       {adding && (
         <AddArtistModal

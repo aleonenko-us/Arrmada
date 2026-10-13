@@ -39,6 +39,7 @@ import { Switch } from "../ui/Switch";
 import { orphanApi } from "./subtitles/orphanApi";
 import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
+import { Page } from "../ui/Page";
 
 const AVAILABILITY_LABELS: Record<string, string> = {
   announced: "Announced",
@@ -125,10 +126,10 @@ export function MovieDetail() {
     return (
       <>
         <PageHeader title="Movie" />
-        <div className="mx-auto w-full max-w-[900px] px-6 py-10 text-center text-[13px] text-ink-dim">
+        <Page className="py-10 text-center text-[13px] text-ink-dim">
           That movie isn't in your library.{" "}
           <Link to="/movies" className="underline" style={{ color: "var(--accent)" }}>Back to Movies</Link>
-        </div>
+        </Page>
       </>
     );
   }
@@ -137,9 +138,9 @@ export function MovieDetail() {
     return (
       <>
         <PageHeader title="Movie" />
-        <div className="mx-auto w-full max-w-[900px] px-6 py-10 text-[13px] text-ink-dim">
+        <Page className="py-10 text-[13px] text-ink-dim">
           {error ? <span style={{ color: "var(--reject)" }}>{error}</span> : "Loading…"}
-        </div>
+        </Page>
       </>
     );
   }
@@ -162,7 +163,7 @@ export function MovieDetail() {
             <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, transparent, var(--bg))" }} />
           </>
         )}
-        <div className="relative mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+        <Page className="relative py-6">
           <Link to="/movies" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             All movies
@@ -208,16 +209,16 @@ export function MovieDetail() {
               <Toolbar movie={movie} onChange={load} flash={say} />
             </div>
           </div>
-        </div>
+        </Page>
       </div>
 
-      <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
+      <Page className="pb-10">
         {movie.download && <DownloadBar dl={movie.download} />}
         <VersionsArea movie={movie} onChange={load} flash={say} />
         <CastRow cast={movie.extra?.cast} />
         <BlocklistPanel movieId={movie.id} refreshKey={`${movie.has_file}:${activity}`} />
         <HistoryPanel movieId={movie.id} refreshKey={`${movie.has_file}:${activity}`} />
-      </div>
+      </Page>
     </>
   );
 }

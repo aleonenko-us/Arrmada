@@ -23,6 +23,7 @@ import { invalidate, useQuery } from "../lib/query";
 import { useTabParam } from "../lib/useTabParam";
 import { defaultSeason, sortSeasons } from "./series/util";
 import { SeasonPanel, SeasonRail } from "./series/SeasonRail";
+import { Page } from "../ui/Page";
 
 // What the page listens for besides the queue (see SeriesDetail).
 const SERIES_TOPICS = ["series.imported", "series.searched", "search.finished", "release.grabbed"];
@@ -161,7 +162,7 @@ export function SeriesDetail() {
         <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={say} />
       </Hero>
 
-      <div className="mx-auto w-full max-w-[1200px] px-4 pb-10 sm:px-6">
+      <Page className="pb-10">
         <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="series" label="Series sections" className="mb-4 mt-1 border-b" />
 
         {tab === "episodes" && (
@@ -197,7 +198,7 @@ export function SeriesDetail() {
             <NumberingTab series={s} pending={numbering.data?.pending} unplaced={unplaced} onChange={load} onSettled={settleNumbering} flash={say} />
           </TabPanel>
         )}
-      </div>
+      </Page>
     </>
   );
 }
@@ -252,6 +253,6 @@ function UpgradeHoldChip({ series, episodes, onChange, flash }: { series: Series
 
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <><PageHeader title="Series" /><div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">{children}</div></>;
+  return <><PageHeader title="Series" /><Page>{children}</Page></>;
 }
 

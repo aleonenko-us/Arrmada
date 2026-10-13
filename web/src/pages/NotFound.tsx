@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useMe, isStaff } from "../lib/me";
+import { Page } from "../ui/Page";
 
 // NotFound is the answer to a mistyped or stale address. It says plainly that the page
 // doesn't exist (not that it's "coming") and offers the way back.
@@ -10,7 +11,7 @@ export function NotFound() {
   return (
     <>
       <PageHeader title="Page not found" crumb={null} />
-      <div className="mx-auto grid w-full max-w-[900px] place-items-center px-6 py-24">
+      <Page className="grid place-items-center py-24">
         <div className="max-w-[380px] text-center">
           <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -25,7 +26,7 @@ export function NotFound() {
             <Link to="/discover" className={btn} style={staff ? { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } : { background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Discover</Link>
           </div>
         </div>
-      </div>
+      </Page>
     </>
   );
 }

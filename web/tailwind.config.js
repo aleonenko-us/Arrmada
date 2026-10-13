@@ -57,6 +57,13 @@ export default {
         modal: "60",
         toast: "70",
       },
+      // The two page widths and the form column (ui/Page): every page uses one of them,
+      // so the content's left edge doesn't jump from page to page.
+      maxWidth: {
+        page: "1240px",
+        "page-wide": "1600px",
+        form: "760px",
+      },
       backgroundImage: {
         "accent-grad": "linear-gradient(150deg, var(--accent), var(--accent-deep))",
       },

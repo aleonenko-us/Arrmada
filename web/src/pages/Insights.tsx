@@ -10,6 +10,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { IconButton, Modal, useToast } from "../ui";
 import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
+import { Page } from "../ui/Page";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
@@ -109,7 +110,7 @@ function InsightsPage() {
   return (
     <>
       <PageHeader title="Insights" />
-      <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[64ch] text-[12.5px] text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
             {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
@@ -142,7 +143,7 @@ function InsightsPage() {
           )}
         </TabPanel>
         </InsightsCfg.Provider>
-      </div>
+      </Page>
     </>
   );
 }

@@ -16,6 +16,7 @@ import { AllAudiobooks } from "../components/audiobooks/AllAudiobooks";
 import { BookSheet } from "../components/audiobooks/BookSheet";
 import { Cover } from "../components/audiobooks/BookCard";
 import { Card, DailyBars, DaysPicker, Field, Loading, Sessions, Totals, addresses, danger, fmtAgo, fmtClock, ghost, inputStyle, primary } from "./audiobooks/shared";
+import { Page } from "../ui/Page";
 
 // The admin tabs are their own chunk: requesters never download them.
 const AudiobooksAdmin = lazyPage(() => import("./AudiobooksAdmin"), "AudiobooksAdmin");
@@ -59,7 +60,7 @@ function AudiobooksPage({ chrome, admin }: { chrome: boolean; admin: boolean }) 
   return (
     <>
       {chrome && <PageHeader title="Audiobooks" />}
-      <div className="mx-auto w-full max-w-[980px] px-4 py-6 sm:px-6">
+      <Page>
         {!chrome && <h1 className="m-0 mb-1 text-[18px] font-bold">Audiobooks</h1>}
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <p className="m-0 max-w-[70ch] text-[12.5px] text-ink-dim">
@@ -75,7 +76,7 @@ function AudiobooksPage({ chrome, admin }: { chrome: boolean; admin: boolean }) 
             </Suspense>
           )}
         </TabPanel>
-      </div>
+      </Page>
     </>
   );
 }
@@ -185,7 +186,7 @@ function AppsView() {
     </Card>;
   }
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex max-w-form flex-col gap-4">
       <AppSetup data={data} external={external} onData={setData} onPasswordStep={setSetupAsks} />
       {data.devices.length > 0 && <DevicesCard data={data} onChange={load} />}
       {booksEnabled && (

@@ -17,6 +17,7 @@ import { lazyPage } from "../lib/lazyPage";
 import { ISSUE_TOPICS, issuesApi, type IssueCounts } from "../lib/issuesApi";
 import { useLiveRefresh } from "../lib/useLiveRefresh";
 import { Button, EmptyState, ErrorState, StatusChip, useConfirm, useToast } from "../ui";
+import { Page } from "../ui/Page";
 
 // The Requests page: every request in sections, for staff to decide and for requesters to
 // follow their own (and the ones they joined). Everything that shapes the view lives in the
@@ -198,7 +199,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <PageHeader title="Requests" />}
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6">
+      <Page className="py-5">
         {!chrome && <h1 className="m-0 mb-3 text-[17px] font-bold">{staff ? "Requests" : "Your requests"}</h1>}
         {!staff && <QuotaSummary />}
         <Tabs
@@ -282,7 +283,7 @@ export function Requests({ chrome = true }: { chrome?: boolean }) {
             </>
           )}
         </TabPanel>
-      </div>
+      </Page>
 
       {/* The bulk bar sits at the bottom of the screen while anything is ticked. */}
       {selectable && selected.size > 0 && (

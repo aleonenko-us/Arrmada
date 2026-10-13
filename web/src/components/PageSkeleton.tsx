@@ -1,3 +1,4 @@
+import { Page } from "../ui/Page";
 // PageSkeleton holds a page's place while its code downloads (the first visit to each
 // page, since pages are split into their own chunks). The sidebar and top bar stay put;
 // only the content area shows these placeholder blocks.
@@ -10,11 +11,11 @@ export function PageSkeleton() {
           <div className="h-[10px] w-[90px] animate-pulse rounded" style={{ background: "var(--panel-2)" }} />
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 py-6 sm:px-6">
+      <Page className="flex flex-col gap-4 py-6">
         {[96, 180, 140].map((h, i) => (
           <div key={i} className="animate-pulse rounded-xl" style={{ height: h, background: "var(--panel)", border: "1px solid var(--line)" }} />
         ))}
-      </div>
+      </Page>
     </div>
   );
 }

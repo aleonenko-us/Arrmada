@@ -20,6 +20,7 @@ import { LibraryCard } from "../features/library/LibraryCard";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import type { LibraryConfig } from "../features/library/types";
 import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
+import { Page } from "../ui/Page";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -328,7 +329,7 @@ export function Books() {
   return (
     <>
       <PageHeader title="Books" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <LibraryToolbar
           count={booksQ.data ? list.length : null}
           pickers={multiSelect ? [] : [
@@ -446,7 +447,7 @@ export function Books() {
           </div>
         )}
 
-      </div>
+      </Page>
       {adding && <AddBookModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
       {addingAuthor && <AddAuthorModal onClose={() => setAddingAuthor(false)} onAdded={(msg) => { setAddingAuthor(false); refresh(); say(msg); }} />}
       {dupesOpen && (

@@ -12,6 +12,7 @@ import { attemptLine, nextTryText } from "../lib/searchOutcome";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip, useConfirm, useToast } from "../ui";
 import { TabPanel, Tabs } from "../ui/Tabs";
+import { Page } from "../ui/Page";
 
 // Movies → Wanted: what Arrmada is still looking for among the films, why it hasn't found
 // it, and when it tries next. The Wanted tab lists the films badged Wanted (the library's
@@ -44,7 +45,7 @@ export function MoviesWanted() {
   return (
     <>
       <PageHeader title="Wanted movies" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <MoviesSwitch active="wanted" />
           {queueText && <StatusChip tone="accent" title="Movie searches run two at a time; the rest wait their turn.">{queueText}</StatusChip>}
@@ -68,7 +69,7 @@ export function MoviesWanted() {
             <CutoffTab q={cutoff} />
           </TabPanel>
         )}
-      </div>
+      </Page>
     </>
   );
 }

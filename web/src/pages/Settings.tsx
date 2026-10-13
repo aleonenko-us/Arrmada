@@ -18,6 +18,7 @@ import { ConnectionsSettings } from "./settings/Connections";
 import { SubtitlesSettings } from "./settings/SubtitlesSettings";
 import { ConvertSettings } from "./settings/ConvertSettings";
 import { AudiobookServerSettings } from "./settings/AudiobookServer";
+import { Page } from "../ui/Page";
 
 // Settings → Subtitles & Convert: both modules' settings, one after the other.
 function ToolsSettings() {
@@ -94,7 +95,7 @@ function SettingsHub() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:gap-8">
+      <Page className="flex flex-col gap-6 py-6 lg:flex-row lg:items-start lg:gap-8">
         <aside className="flex w-full flex-col gap-3 lg:sticky lg:top-20 lg:w-[200px] lg:flex-none">
           <div className="relative">
             <input
@@ -154,11 +155,11 @@ function SettingsHub() {
           </nav>
         </aside>
 
-        <div className="w-full min-w-0 max-w-[820px] flex-1">
+        <div className="w-full min-w-0 max-w-form flex-1">
           {error && <div className="mb-3 rounded-lg p-3 text-[12.5px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
           {!s ? <p className="text-[12.5px] text-ink-dim">Loading…</p> : <Body />}
         </div>
-      </div>
+      </Page>
     </>
   );
 }

@@ -5,6 +5,7 @@ import { api, type MusicAlbum } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 import { Button, StatusChip } from "../ui";
+import { Page } from "../ui/Page";
 
 function fmtDuration(sec?: number): string {
   if (!sec || sec <= 0) return "";
@@ -60,7 +61,7 @@ export function AlbumDetail() {
   return (
     <>
       <PageHeader title={al.title} />
-      <div className="mx-auto w-full max-w-[1000px] px-4 py-6 sm:px-6">
+      <Page>
         <Link to={`/music/${al.artist_id}`} className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -170,7 +171,7 @@ export function AlbumDetail() {
             ))}
           </div>
         )}
-      </div>
+      </Page>
     </>
   );
 }
@@ -179,7 +180,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <PageHeader title="Music" />
-      <div className="mx-auto w-full max-w-[1000px] px-4 py-6 sm:px-6">{children}</div>
+      <Page>{children}</Page>
     </>
   );
 }

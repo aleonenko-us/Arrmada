@@ -10,6 +10,7 @@ import { libraryStatus } from "../lib/status";
 import { editionsHeld } from "../lib/bookSearch";
 import { Button, StatusChip, useToast, type Tone } from "../ui";
 import { Switch } from "../ui/Switch";
+import { Page } from "../ui/Page";
 
 // AuthorDetail unifies an author's shelf: the books you already own (link through to the
 // full book detail page for grab / auto-grab / etc.) plus the rest of their official
@@ -105,10 +106,10 @@ export function AuthorDetail() {
     return (
       <>
         <PageHeader title="Author" tail="Books" />
-        <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+        <Page width="wide">
           <BackLink />
           <Empty>This author isn’t in your library any more.</Empty>
-        </div>
+        </Page>
       </>
     );
   }
@@ -118,7 +119,7 @@ export function AuthorDetail() {
   return (
     <>
       <PageHeader title={name || "Author"} tail="Author" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <BackLink />
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -194,7 +195,7 @@ export function AuthorDetail() {
             )}
           </>
         )}
-      </div>
+      </Page>
 
     </>
   );
@@ -277,7 +278,7 @@ export function AuthorByName() {
   return (
     <>
       <PageHeader title={name} tail="Author" />
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <Page width="wide">
         <BackLink />
         {candidates === null ? (
           <div className="p-8 text-center text-[12.5px] text-ink-dim">Finding {name}…</div>
@@ -301,7 +302,7 @@ export function AuthorByName() {
             </ul>
           </section>
         )}
-      </div>
+      </Page>
     </>
   );
 }

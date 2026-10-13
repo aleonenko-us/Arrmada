@@ -23,6 +23,7 @@ import { useLiveConnected } from "../lib/live";
 import { useLiveRefresh } from "../lib/useLiveQuery";
 import { QUEUE_CHANGED } from "../lib/queueLive";
 import { hwBadge } from "../lib/plexHw";
+import { Page } from "../ui/Page";
 
 // The dashboard fans out over Plex, the download client and the disks, so it isn't
 // free — but it's the page people leave open. A grab, an import, a scan or a stream
@@ -70,7 +71,7 @@ export function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <Page>
         {/* A fresh install's steps to the first download, until they're done or dismissed. */}
         {admin && <GettingStarted />}
 
@@ -234,7 +235,7 @@ export function Dashboard() {
             {admin && <Stat k="Last backup" v={backup ? backup.text : "—"} tone={backup?.stale ? "avoid" : undefined} to={LINKS.backups} />}
           </dl>
         </Card>
-      </div>
+      </Page>
     </>
   );
 }

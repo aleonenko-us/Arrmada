@@ -36,6 +36,7 @@ import { invalidate, useQuery } from "../lib/query";
 import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner, useToast } from "../ui";
 import { Switch } from "../ui/Switch";
+import { Page } from "../ui/Page";
 
 const NO_PROFILES: QualityProfileInfo[] = [];
 const NO_FORMATS: FormatInfo[] = [];
@@ -316,7 +317,7 @@ export function Quality() {
   return (
     <>
       <PageHeader title="Quality profiles" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <MediaSwitch value={media} onChange={setMedia} />
           <button onClick={openNew} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={primaryStyle}>+ New profile</button>
@@ -356,7 +357,7 @@ export function Quality() {
           </div>
         )}
         {isVideo && <RankingCard />}
-      </div>
+      </Page>
       {picking && (
         <TemplatePicker onClose={() => setPicking(false)} onPick={(sp) => { setPicking(false); navigate(editorPath(media, "new"), { state: { profile: sp } satisfies EditorState }); }} media={media} />
       )}
@@ -443,7 +444,7 @@ function EditorFrame({ children }: { children: React.ReactNode }) {
   return (
     <>
       <PageHeader title="Quality profile" />
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">{children}</div>
+      <Page>{children}</Page>
     </>
   );
 }
@@ -733,7 +734,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   return (
     <>
       <PageHeader title={sp.id > 0 ? "Edit profile" : "New profile"} tail={sp.media_type === "series" ? "Series" : "Movies"} />
-      <div className="mx-auto grid w-full max-w-[1240px] grid-cols-1 gap-7 px-4 pb-4 pt-6 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <Page className="grid grid-cols-1 gap-7 pb-4 pt-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <section className="min-w-0">
           <div className="mb-4">
             <button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button>
@@ -805,7 +806,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
             <TestName sp={sp} />
           </div>
         </aside>
-      </div>
+      </Page>
       <SaveBar dirty={dirty} saving={saving} error={error} onSave={save} onCancel={leave}
         mobileNote={winner ? `Would grab ${winner.candidate.release.resolution} ${winner.candidate.release.source}` : undefined} />
       {impact && (
@@ -1332,7 +1333,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
 function SaveBar({ dirty, saving, error, onSave, onCancel, mobileNote }: { dirty: boolean; saving: boolean; error: string | null; onSave: () => void; onCancel: () => void; mobileNote?: string }) {
   return (
     <div className="sticky bottom-0 z-20 mt-2" style={{ background: "var(--bg)", borderTop: "1px solid var(--line)" }}>
-      <div className="mx-auto flex w-full max-w-[1240px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+      <Page className="flex flex-wrap items-center gap-3 py-3">
         <div className="min-w-0 flex-1 text-[12px]">
           {error ? <span style={{ color: "var(--reject)" }}>{error}</span>
             : dirty ? <span className="text-ink-dim">Unsaved changes</span>
@@ -1341,7 +1342,7 @@ function SaveBar({ dirty, saving, error, onSave, onCancel, mobileNote }: { dirty
         </div>
         <button onClick={onCancel} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
         <button onClick={onSave} disabled={saving} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={primaryStyle}>{saving ? "Saving…" : "Save profile"}</button>
-      </div>
+      </Page>
     </div>
   );
 }
@@ -1462,7 +1463,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
   return (
     <>
       <PageHeader title={sp.id > 0 ? "Edit music profile" : "New music profile"} tail="Music" />
-      <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-6 sm:px-6">
+      <Page className="pb-4 pt-6">
+        <div className="max-w-form">
         <div className="mb-4"><button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
         <label htmlFor="mp-name" className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-wide text-accent">Name</label>
         <input id="mp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Lossless, or the best MP3" className="w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
@@ -1513,6 +1515,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
         <SectionLabel>Reject</SectionLabel>
         <RejectEditor rejected={sp.rejected ?? []} onChange={(r) => patch({ rejected: r })} />
       </div>
+      </Page>
       <SaveBar dirty={dirty} saving={saving} error={error} onSave={save} onCancel={leave} />
     </>
   );
@@ -1556,7 +1559,8 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
   return (
     <>
       <PageHeader title={sp.id > 0 ? "Edit book profile" : "New book profile"} tail="Books" />
-      <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-6 sm:px-6">
+      <Page className="pb-4 pt-6">
+        <div className="max-w-form">
         <div className="mb-4"><button onClick={leave} className="text-[12px] text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
         <label htmlFor="bp-name" className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-wide text-accent">Name</label>
         <input id="bp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Audiobooks — GraphicAudio first" className="mb-1 w-full rounded-lg px-3 py-2 text-[13px]" style={fieldStyle} />
@@ -1587,6 +1591,7 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
         <SectionLabel>Reject</SectionLabel>
         <RejectEditor rejected={sp.rejected ?? []} onChange={(r) => patch({ rejected: r })} />
       </div>
+      </Page>
       <SaveBar dirty={dirty} saving={saving} error={error} onSave={save} onCancel={leave} />
     </>
   );

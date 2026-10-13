@@ -20,6 +20,7 @@ import { ACTIVE, ActiveRow, Queue, backlogText, sortActive } from "./subtitles/q
 import { queueApi, type SubtitleQueue } from "./subtitles/queueApi";
 import { LazySubtitleDrawer } from "../components/subtitles/LazySubtitleDrawer";
 import type { SubMediaRef } from "../lib/subtitleFileApi";
+import { Page } from "../ui/Page";
 
 // The settings live in Settings → Subtitles & Convert; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
@@ -99,7 +100,7 @@ function SubtitlesPage() {
   return (
     <>
       <PageHeader title="Subtitles" />
-      <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[64ch] text-[12.5px] text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Settings</Link>.</p>
           <div className="flex items-center gap-2">
@@ -122,7 +123,7 @@ function SubtitlesPage() {
           {tab === "library" && <Library flash={say} onQueued={loadJobs} />}
           {tab === "logs" && <LogsConsole />}
         </TabPanel>
-      </div>
+      </Page>
     </>
   );
 }

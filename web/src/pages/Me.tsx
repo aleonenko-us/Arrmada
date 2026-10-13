@@ -5,6 +5,7 @@ import { lazyPage } from "../lib/lazyPage";
 import { useMe } from "../lib/me";
 import { signOut } from "../lib/session";
 import type { UserRole } from "../lib/api";
+import { Page } from "../ui/Page";
 
 // "Get notified": push on this device, then a personal Apprise link under Advanced. The
 // bell's Settings button lands here (/me#notifications).
@@ -43,7 +44,8 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <PageHeader title="Me" crumb={null} />}
-      <div className="mx-auto flex w-full max-w-[640px] flex-col gap-5 px-4 py-5 sm:px-6">
+      <Page className="py-5">
+        <div className="flex max-w-form flex-col gap-5">
         <div className="flex items-center gap-3.5">
           <span className="grid h-14 w-14 flex-none place-items-center rounded-full text-[22px] font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }} aria-hidden>
             {(name[0] ?? "?").toUpperCase()}
@@ -92,7 +94,8 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
             Sign out
           </button>
         </MeSection>
-      </div>
+        </div>
+      </Page>
     </>
   );
 }

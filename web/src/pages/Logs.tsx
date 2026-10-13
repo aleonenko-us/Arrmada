@@ -4,6 +4,7 @@ import { type LogEntry } from "../lib/api";
 import { systemApi, type LogLevelState } from "../lib/systemApi";
 import { usePoll } from "../lib/usePoll";
 import { Button, Menu, useToast } from "../ui";
+import { Page } from "../ui/Page";
 
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const LEVEL_STYLE: Record<string, { color: string; label: string }> = {
@@ -228,7 +229,7 @@ export function Logs() {
   return (
     <>
       <PageHeader title="Logs" />
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-3 px-4 py-5">
+      <Page className="flex flex-col gap-3 py-5">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg" role="group" aria-label="Lowest level shown" style={{ border: "1px solid var(--line)" }}>
             {LEVELS.map((l) => (
@@ -298,7 +299,7 @@ export function Logs() {
           Showing the newest {(entries?.length ?? 0).toLocaleString()} matching lines{dhide ? " (some hidden by your filter)" : ""}
           {capacity ? ` of the last ${capacity.toLocaleString()} kept in memory` : ""}. Older lines are in the logs folder on disk (/data/logs in the container); Download → Full log history has them all. Same stream as the container logs.
         </p>
-      </div>
+      </Page>
     </>
   );
 }

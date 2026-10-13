@@ -5,6 +5,7 @@ import type { Series as SeriesT } from "../../lib/api";
 import { libraryStatus } from "../../lib/status";
 import { StatusChip } from "../../ui";
 import { fmtAirDay, fmtSize, nextEpisode, sxe } from "./util";
+import { Page } from "../../ui/Page";
 
 // Hero is the top of a show's page: the backdrop, poster and title, what state the show is
 // in, when the next episode airs, how much of it is here and how big it is. The actions
@@ -30,7 +31,7 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
           <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--bg) 35%, transparent) 0%, color-mix(in srgb, var(--bg) 70%, transparent) 55%, var(--bg) 100%)" }} />
         </>
       )}
-      <div className="relative mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6 sm:py-6">
+      <Page className="relative py-5 sm:py-6">
         <Link to="/series" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           All series
@@ -92,7 +93,7 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
 
           <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">{children}</div>
         </div>
-      </div>
+      </Page>
     </div>
   );
 }

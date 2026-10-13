@@ -20,6 +20,7 @@ import { formatBytes, formatReleaseDay, isUpcoming } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 import { Button, ConfirmDialog, IconButton, Menu, Modal, StatusChip, useToast, type MenuItem, type ToastFn } from "../ui";
 import { Switch } from "../ui/Switch";
+import { Page } from "../ui/Page";
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -85,7 +86,7 @@ export function BookDetail() {
             <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 0%, var(--bg) 65%)" }} />
           </>
         )}
-        <div className="relative mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">
+        <Page className="relative py-6">
           <Link to="/books" className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-[var(--ink)]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             All books
@@ -135,10 +136,10 @@ export function BookDetail() {
               <LastSearches kind="book" id={b.id} />
             </div>
           </div>
-        </div>
+        </Page>
       </div>
 
-      <div className="mx-auto w-full max-w-[1100px] px-4 pb-10 sm:px-6">
+      <Page className="pb-10">
         <h2 className="m-0 mb-3 text-[14px] font-bold">Editions</h2>
         <div className="flex flex-col gap-2.5">
           <EditionPanel label="Ebook" file={b.ebook} wanted={b.want_ebook} bookId={b.id} kind="ebook" onChange={load} toast={toast} search={wantedLine} />
@@ -147,7 +148,7 @@ export function BookDetail() {
           <AddAudioVersion book={b} onAdded={load} />
         </div>
         <HistoryPanel bookId={b.id} refreshKey={b} />
-      </div>
+      </Page>
     </>
   );
 }
@@ -605,7 +606,7 @@ function DeleteButton({ book }: { book: Book }) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <><PageHeader title="Books" /><div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6">{children}</div></>;
+  return <><PageHeader title="Books" /><Page>{children}</Page></>;
 }
 
 // EditMetadataModal lets a user manually correct a book's title/author/year/cover/overview when

@@ -17,6 +17,7 @@ import { HistoryTab, RecentCard } from "./convert/History";
 import { PlanCard, PlanToggle, Poster } from "./convert/PlanCard";
 import { BulkConvertDialog, ConvertNowDialog, SwitchOnDialog } from "./convert/ConfirmConvert";
 import { requestedToast, type Asking } from "./convert/plan";
+import { Page } from "../ui/Page";
 
 // Convert works through the library on its own: switch it on, choose the hours, and it
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
@@ -150,7 +151,7 @@ function ConvertPage() {
   return (
     <>
       <PageHeader title="Convert" />
-      <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[66ch] text-[12.5px] text-ink-dim">
             Makes your library smaller at a quality checked against the original. Wasteful video is re-encoded to HEVC
@@ -180,7 +181,7 @@ function ConvertPage() {
           {tab === "history" && <HistoryTab reload={finished} flash={(m) => { say(m); refresh(); }} />}
           {tab === "activity" && <LogsConsole />}
         </TabPanel>
-      </div>
+      </Page>
       {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await convertApi.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
       {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={say} />}
     </>

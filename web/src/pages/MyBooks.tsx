@@ -10,6 +10,7 @@ import { playAudiobook } from "../lib/playerStub";
 import { requestStage } from "../lib/requestStage";
 import { Button, ErrorState, Skeleton, StaleBanner, StatusChip, type Tone } from "../ui";
 import { PAGE, asRequest, fmtSize, newThisWeek, seriesGroups, seriesLabel } from "./myshelf/shelf";
+import { Page } from "../ui/Page";
 
 // MyBooks ("My shelf") is the requester's view of the book library: every book that has a
 // file, and their own requests still on the way. Deliberately small — no editing, no
@@ -78,7 +79,7 @@ export function MyBooks() {
   const ebooks = books ? books.filter((b) => b.ebook).length : 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6">
+    <Page className="py-5">
       <div className="mb-4">
         {/* "My shelf", not "Books": Discover's Books tab is the catalogue to ask from. */}
         <h1 className="m-0 text-[20px] font-bold">My shelf</h1>
@@ -172,7 +173,7 @@ export function MyBooks() {
           <BookSheet key={open.book_id} book={open} shelf={books} listen={listen} onClose={closeBook} onOpen={openBook} />
         </Suspense>
       )}
-    </div>
+    </Page>
   );
 }
 

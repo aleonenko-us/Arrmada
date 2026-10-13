@@ -7,6 +7,7 @@ import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
 import { compareValues } from "./sort";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
+import { Page } from "../../ui/Page";
 
 export type LibraryViewMode = "grid" | "table";
 const VIEW_OPTIONS = [{ value: "grid", label: "grid" }, { value: "table", label: "table" }];
@@ -96,7 +97,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
 
   const noun = config.noun;
   return (
-    <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+    <Page width="wide">
       <LibraryToolbar
         count={items ? list.length : null}
         lead={p.lead}
@@ -150,6 +151,6 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

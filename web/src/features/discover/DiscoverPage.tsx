@@ -14,6 +14,7 @@ import { discoverPlace, FOLLOWING, type ReqStatus, type RowCtx } from "./shared"
 import { SearchBox } from "./SearchBox";
 import { MyRequestsRow } from "./RequestsRow";
 import { BrowseTab, DiscoverTab } from "./tabs";
+import { Page } from "../../ui/Page";
 
 // Discover is the requester's home: tabs (Discover, Movies, Series, Books), the omnibox,
 // the rows, and whatever is open over them at its own address. Its parts live beside it in
@@ -119,7 +120,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <PageHeader title="Discover" />}
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6">
+      <Page width="wide" className="py-5">
         {/* Tabs + search. On a phone they stack, search on top so the tabs still sit on the
             underline, and the tabs scroll sideways rather than widening the page. Search comes
             first in the DOM as well, so focus order matches what a phone shows; sm:order-last
@@ -165,7 +166,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
             </>
           )}
         </TabPanel>
-      </div>
+      </Page>
       {(overlay?.kind === "movie" || overlay?.kind === "series") && (
         <Suspense fallback={null}><TitleSheet media={overlay.kind} tmdbId={overlay.id} ctx={ctx} /></Suspense>
       )}

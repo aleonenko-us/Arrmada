@@ -8,6 +8,7 @@ import { isStaff, useMe } from "../lib/me";
 import { usePersisted } from "../lib/persist";
 import { pickTab } from "../lib/useTabParam";
 import { Button, ErrorState, Sheet, StaleBanner, StatusChip, type Tone } from "../ui";
+import { Page } from "../ui/Page";
 
 // Calendar — upcoming episodes and movie releases. Visible to everyone (staff and
 // requesters). Two views: a month grid (the desktop default) and an agenda list (the
@@ -122,7 +123,7 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
   return (
     <>
       {chrome && <div ref={head} className="sticky top-0 z-30"><PageHeader title="Calendar" /></div>}
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
+      <Page>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="m-0 text-[18px] font-bold">{view === "month" ? `${MONTHS[monthIdx]} ${cursor.getFullYear()}` : "Coming up"}</h2>
           {/* Wraps on a narrow phone rather than pushing the page sideways. */}
@@ -161,7 +162,7 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
             error={error} markMine={!mine} empty={mine ? <MineEmpty onShowAll={() => setScope("all")} /> : null}
           />
         )}
-      </div>
+      </Page>
 
       {daySheet && (
         <Sheet onClose={() => setDaySheet(null)} title={dayLabel(daySheet, today)} size="md">
