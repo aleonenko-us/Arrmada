@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -78,6 +80,60 @@ func tableNames(t *testing.T, st *Store) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// In a test binary a fresh store is a copy of a template migrated once (testtemplate.go).
+// It must be exactly the database a fresh install builds: the same schema, the same
+// migrations recorded and the same seed rows.
+func TestTestTemplateMatchesFreshMigration(t *testing.T) {
+	copied, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = copied.Close() })
+	built, err := OpenWith(t.TempDir(), Options{noTestTemplate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = built.Close() })
+
+	describe := func(st *Store) []string {
+		var out []string
+		query := func(q string) {
+			rows, err := st.DB().Query(q)
+			if err != nil {
+				t.Fatalf("%s: %v", q, err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var a, b string
+				if err := rows.Scan(&a, &b); err != nil {
+					t.Fatal(err)
+				}
+				out = append(out, a+" | "+b)
+			}
+		}
+		query(`SELECT type || ' ' || name, COALESCE(sql, '') FROM sqlite_master ORDER BY type, name`)
+		query(`SELECT 'migration', version FROM schema_migrations ORDER BY version`)
+		for _, name := range tableNames(t, st) {
+			var n int
+			if err := st.DB().QueryRow(`SELECT COUNT(*) FROM "` + name + `"`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, fmt.Sprintf("rows %s | %d", name, n))
+		}
+		return out
+	}
+	a, b := describe(copied), describe(built)
+	if strings.Join(a, "\n") != strings.Join(b, "\n") {
+		t.Errorf("the template differs from a fresh migration (%d lines against %d)", len(a), len(b))
+		for i := 0; i < len(a) && i < len(b); i++ {
+			if a[i] != b[i] {
+				t.Errorf("first difference:\n  template: %s\n  fresh:    %s", a[i], b[i])
+				break
+			}
+		}
+	}
 }
 
 func contains(xs []string, x string) bool {
