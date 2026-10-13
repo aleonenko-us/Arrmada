@@ -3,6 +3,7 @@ name: Image
 # Builds the Docker image the way update.sh does on the owner's server, without
 # publishing it. A broken apt repository, whisper.cpp tag or oneAPI base image then
 # fails here, on the PR, instead of half-way through an update on the server.
+# Publishing is release.yml's job, and only for a pushed v* tag.
 on:
   push:
     branches: [main]
