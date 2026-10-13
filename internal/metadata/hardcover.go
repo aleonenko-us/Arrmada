@@ -42,6 +42,10 @@ type Hardcover struct {
 	// noReleaseDate: the live schema refused release_date once, so the book query
 	// stops asking for it (see book).
 	noReleaseDate atomic.Bool
+	// noSlug / slugRefused: the book-slug query (hardcover_slug.go) was refused by the
+	// live schema; stop asking until a restart, and warn only the first time.
+	noSlug      atomic.Bool
+	slugRefused atomic.Bool
 }
 
 // NewHardcoverFunc builds a provider that reads the key lazily, so a key pasted in
@@ -104,6 +108,13 @@ func (h *Hardcover) query(ctx context.Context, q string, vars map[string]any, ou
 	return err
 }
 
+// hcAPIError is Hardcover refusing the query itself (the GraphQL errors list), as
+// opposed to the request not getting through. A query asking for a field the live
+// schema doesn't have fails this way, and will keep failing until the query changes.
+type hcAPIError struct{ msg string }
+
+func (e *hcAPIError) Error() string { return "hardcover: " + e.msg }
+
 // queryOnce makes one request. A non-zero wait means "rate limited; try again after".
 func (h *Hardcover) queryOnce(ctx context.Context, q string, vars map[string]any, out any) (time.Duration, error) {
 	if h.budget != nil && !h.budget.take() {
@@ -147,20 +158,25 @@ func (h *Hardcover) queryOnce(ctx context.Context, q string, vars map[string]any
 		}
 		return wait, fmt.Errorf("hardcover: rate limited — try again in a minute")
 	}
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("hardcover: HTTP %d", resp.StatusCode)
-	}
 	var env struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
+	if resp.StatusCode != http.StatusOK {
+		// A refused query can come back as a 400 with the reason in the usual errors
+		// list; keep the API's own words so the log says what it didn't like.
+		if json.Unmarshal(raw, &env) == nil && len(env.Errors) > 0 {
+			return 0, &hcAPIError{msg: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, env.Errors[0].Message)}
+		}
+		return 0, fmt.Errorf("hardcover: HTTP %d", resp.StatusCode)
+	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return 0, fmt.Errorf("hardcover: parse: %w", err)
 	}
 	if len(env.Errors) > 0 {
-		return 0, fmt.Errorf("hardcover: %s", env.Errors[0].Message)
+		return 0, &hcAPIError{msg: env.Errors[0].Message}
 	}
 	if out != nil && len(env.Data) > 0 {
 		if err := json.Unmarshal(env.Data, out); err != nil {

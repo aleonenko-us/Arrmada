@@ -16,7 +16,7 @@ import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
 import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
 import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activity/transfer";
-import { ErrorState, Skeleton, StatusChip, useToast } from "../ui";
+import { EmptyState, ErrorState, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const MEDIA_FILTERS: readonly MediaFilter[] = ["all", "movie", "series", "book", "music"];
@@ -485,12 +485,15 @@ function ResumeBtn({ it, guard, busy, act }: { it: ActivityDownload; guard: Disk
 // client: there is no queue, and nothing can be grabbed until one is added.
 function NoClientCard() {
   return (
-    <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-      <div className="mb-3">No download client yet — Arrmada needs qBittorrent to download anything.</div>
-      <Link to={LINKS.downloadClients} className="inline-block rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
-        Add a download client →
-      </Link>
-    </div>
+    <EmptyState
+      title="No download client yet"
+      body="Arrmada can't grab anything until one is set up: every download goes through qBittorrent."
+      action={
+        <Link to={LINKS.downloadClients} className="inline-block rounded-lg px-3 py-1.5 text-[12px] font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
+          Add a download client →
+        </Link>
+      }
+    />
   );
 }
 

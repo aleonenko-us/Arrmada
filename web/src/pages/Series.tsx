@@ -10,6 +10,7 @@ import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useQuery } from "../lib/query";
 import { useConfirm, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
+import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
@@ -122,7 +123,7 @@ export function Series() {
         primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
-        emptyText={<>No series yet. Click <b>Add series</b>, search for a show, and Arrmada will monitor and grab it.</>}
+        empty={<LibraryEmpty noun="series" folder="TV folder" addLabel="Add series" onScan={scanLibrary} scanning={scanning || scan.running} />}
       />
       {searchFor && (
         <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
