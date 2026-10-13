@@ -443,12 +443,23 @@ func TestOfficialAppConversation(t *testing.T) {
 		map[string]string{"Range": "bytes=0-99"}); code != 206 {
 		t.Fatalf("stream by session: HTTP %d, want 206", code)
 	}
-	for _, bad := range []string{
-		fmt.Sprintf("/public/session/%s/track/99", sid),                                   // no such track
-		"/public/session/00000000-0000-4000-8000-000000000000/track/1",                    // no such session
-		fmt.Sprintf("/public/session/%s/track/x", sid),                                    // not a number
-		fmt.Sprintf("/public/session/%s/track/%d", strings.ToUpper(sid[:8])+sid[8:], idx), // ids are exact
-	} {
+	// Ids are exact: flip the case of the id's letters. (Uppercasing a prefix alone does
+	// nothing when it happens to be all digits, which made this check flaky.)
+	flipped := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'f' {
+			return r - 'a' + 'A'
+		}
+		return r
+	}, sid)
+	badPaths := []string{
+		fmt.Sprintf("/public/session/%s/track/99", sid),                // no such track
+		"/public/session/00000000-0000-4000-8000-000000000000/track/1", // no such session
+		fmt.Sprintf("/public/session/%s/track/x", sid),                 // not a number
+	}
+	if flipped != sid {
+		badPaths = append(badPaths, fmt.Sprintf("/public/session/%s/track/%d", flipped, idx))
+	}
+	for _, bad := range badPaths {
 		if code, _ := h.do("GET", bad, nil, nil); code == 200 || code == 206 {
 			t.Errorf("%s: HTTP %d", bad, code)
 		}
