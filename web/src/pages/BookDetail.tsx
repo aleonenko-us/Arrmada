@@ -11,6 +11,7 @@ import { api, importListNotice, type BookSeriesEntry, type BookSource, type Book
 import { qualityApi } from "../lib/qualityApi";
 import { useCanHover } from "../lib/useCanHover";
 import { usePoll } from "../lib/usePoll";
+import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { LastSearches, refreshSearches } from "../components/LastSearch";
@@ -618,6 +619,8 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
   const [narrator, setNarrator] = useState(book.audiobook_narrator ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useUnsavedGuard(title !== book.title || author !== book.author || year !== String(book.year || "") || cover !== (book.cover_url ?? "")
+    || overview !== (book.description ?? "") || narrator !== (book.audiobook_narrator ?? ""));
 
   const inp = "w-full rounded-lg px-2.5 py-1.5 text-[12.5px]";
   const inpStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;

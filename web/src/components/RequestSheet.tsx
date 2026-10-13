@@ -34,7 +34,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
 }) {
   const { user } = useMe();
   const staff = isStaff(user);
-  const flash = useToast();
+  const toast = useToast();
   const confirm = useConfirm();
   const [rq, setRq] = useState<MediaRequest | null>(initial ?? null);
   const [queueKnown, setQueueKnown] = useState(true);
@@ -99,7 +99,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
     setBusy(key); setError(null);
     try {
       await fn();
-      flash(ok);
+      toast(ok);
       onChanged();
       // A staff Needs-you count may have moved; nothing is asked where nobody shows it.
       refreshAttention();

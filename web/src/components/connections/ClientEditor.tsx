@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { PathMappings } from "./PathMappings";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 
 // The download-client form, moved from the old Download clients page into the cards on
 // Settings → Connections. It adds a client, or edits one in place; the stored password is
@@ -26,6 +27,10 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
   const [priority, setPriority] = useState(String(editing?.priority ?? 25));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Dirty once the form differs from how it opened.
+  const shape = JSON.stringify([name, url, username, password, priority]);
+  const [opened] = useState(shape);
+  const markClean = useUnsavedGuard(shape !== opened);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +45,7 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
       const c = editing
         ? await downloadClientApi.updateDownloadClient(editing.id, { name, kind: editing.kind, url, username, password, enabled: editing.enabled, priority: order })
         : await downloadClientApi.createDownloadClient({ name, kind: "qbittorrent", url, username, password, priority: order });
+      markClean();
       onSaved(c);
     } catch (err) {
       setError((err as Error).message);

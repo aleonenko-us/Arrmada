@@ -35,6 +35,10 @@ export interface ModalProps {
   panelRef?: RefObject<HTMLDivElement>;
   /** Backdrop darkness, 0..1. */
   scrim?: number;
+  /** Replaces the scrim with a background of its own, e.g. var(--bg) for a cover that hides the page entirely. */
+  backdrop?: string;
+  /** alertdialog: something the person must deal with before anything else (a restart in progress). */
+  role?: "dialog" | "alertdialog";
   children?: ReactNode;
 }
 
@@ -44,7 +48,7 @@ export interface ModalProps {
 // Escape and backdrop to close, and the page behind it locked from scrolling.
 export function Modal({
   open = true, onClose, title, labelledBy, ariaLabel, size = "md", variant = "dialog",
-  dismissible = true, initialFocus, footer, panelClassName, panelStyle, panelRef, scrim = 0.6, children,
+  dismissible = true, initialFocus, footer, panelClassName, panelStyle, panelRef, scrim = 0.6, backdrop, role = "dialog", children,
 }: ModalProps) {
   const titleId = useId();
   const ownRef = useRef<HTMLDivElement>(null);
@@ -68,7 +72,7 @@ export function Modal({
     <div
       role="presentation"
       className={overlay}
-      style={{ background: `rgba(0,0,0,${scrim})` }}
+      style={{ background: backdrop ?? `rgba(0,0,0,${scrim})` }}
       // Only a click that starts and ends on the backdrop itself closes: a drag that
       // began inside the panel (selecting text) and ended outside must not.
       onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
@@ -83,7 +87,7 @@ export function Modal({
     >
       <div
         ref={ref}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-labelledby={named}
         aria-label={named ? undefined : ariaLabel}

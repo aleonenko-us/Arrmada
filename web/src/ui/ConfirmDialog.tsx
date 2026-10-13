@@ -14,6 +14,7 @@ interface Props<V extends string> {
   title: ReactNode;
   body?: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   busyLabel?: string;
   tone?: "danger" | "accent";
   // Optional radio list. The caller owns the selection so the confirm label and body can
@@ -41,7 +42,7 @@ interface Props<V extends string> {
 // Escape and a backdrop click cancel; focus starts on Cancel so Enter never destroys
 // anything by accident. For a plain yes/no, useConfirm (./Confirm) is shorter.
 export function ConfirmDialog<V extends string = string>({
-  title, body, confirmLabel, busyLabel, tone = "danger", choices, choice, onChoice, extra,
+  title, body, confirmLabel, cancelLabel = "Cancel", busyLabel, tone = "danger", choices, choice, onChoice, extra,
   typedPhrase, busy = false, error, confirmDisabled = false, onConfirm, onCancel,
 }: Props<V>) {
   const titleId = useId();
@@ -100,7 +101,7 @@ export function ConfirmDialog<V extends string = string>({
       {error && <div role="alert" className="mt-3 whitespace-pre-line rounded-lg p-2.5 text-[12px]" style={{ color: "var(--reject)", background: "var(--reject-soft)" }}>{error}</div>}
 
       <div className="mt-4 flex justify-end gap-2.5">
-        <button ref={cancelRef} onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Cancel</button>
+        <button ref={cancelRef} onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{cancelLabel}</button>
         <button onClick={onConfirm} disabled={!canConfirm} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: solid, color: solidInk }}>{busy ? (busyLabel ?? "Working…") : confirmLabel}</button>
       </div>
     </Modal>

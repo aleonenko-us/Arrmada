@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
@@ -7,6 +7,7 @@ import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { EmptyState } from "../ui/EmptyState";
+import { IconButton, Modal, useToast } from "../ui";
 import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
 
@@ -78,8 +79,8 @@ export function Insights() {
 function InsightsPage() {
   const [tab, setTab] = useTabParam(TABS.map((t) => t.key), "activity");
   const [cfg, setCfg] = useState<PlexConfig | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3500); };
+  const toast = useToast();
+  const say = (m: string, err = false) => toast(m, { tone: err ? "error" : "info", ms: 3500 });
 
   // cfgDone: the connection settings have answered (or failed). Until then the data tabs
   // wait, so a connected server doesn't flash the "imported history" notice or the
@@ -90,7 +91,7 @@ function InsightsPage() {
   // nothing here is being typed into for a poll to overwrite.
   usePoll(() => insightsApi.insightsConfig()
     .then(setCfg)
-    .catch(() => { if (!cfgDone) flash("Could not load Plex settings"); })
+    .catch(() => { if (!cfgDone) say("Could not load Plex settings", true); })
     .finally(() => setCfgDone(true)), 15000);
   const status = cfg?.status;
   const connected = !!status && status !== "unconfigured";
@@ -101,8 +102,8 @@ function InsightsPage() {
   const turnOn = async () => {
     if (!cfg) return;
     setTurningOn(true);
-    try { setCfg(await insightsApi.updateInsightsConfig({ enabled: true })); flash("Monitoring is on"); }
-    catch (e) { flash((e as Error).message); } finally { setTurningOn(false); }
+    try { setCfg(await insightsApi.updateInsightsConfig({ enabled: true })); say("Monitoring is on"); }
+    catch (e) { say((e as Error).message, true); } finally { setTurningOn(false); }
   };
 
   return (
@@ -142,7 +143,6 @@ function InsightsPage() {
         </TabPanel>
         </InsightsCfg.Provider>
       </div>
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
     </>
   );
 }
@@ -475,43 +475,42 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
 function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
   const d = DECISION[s.decision] ?? DECISION.direct_play;
   const hw = hwBadge(s);
+  const titleId = useId();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[560px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="m-0 truncate text-[15px] font-bold">{s.title}</h2>
-            <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{s.subtitle}</p>
-          </div>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+    <Modal onClose={onClose} labelledBy={titleId} size="md">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{s.title}</h2>
+          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{s.subtitle}</p>
         </div>
-
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-          {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" ? ` · ${s.hw_title}` : ""}</span>}
-          {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>Fell back to CPU</span>}
-          {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
-        </div>
-
-        {s.reasons && s.reasons.length > 0 && (
-          <div className="mb-3 rounded-lg p-3 text-[11.5px]" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
-            <div className="mb-1 font-bold uppercase tracking-wide" style={{ fontSize: 9 }}>Why it's transcoding</div>
-            <ul className="list-none space-y-0.5 p-0">{s.reasons.map((r, i) => <li key={i}>• {r}</li>)}</ul>
-          </div>
-        )}
-
-        <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
-          <DDRow label="User" a={s.user} />
-          <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
-          <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
-          <DDRow label="Bandwidth" a={`${fmtMbps(s.bandwidth_kbps)} Mb/s`} />
-          <DDRow label="Video" a={s.video.src} b={s.video.stream} />
-          <DDRow label="Audio" a={s.audio.src} b={s.audio.stream} />
-          <DDRow label="Container" a={s.container.src} b={s.container.stream} />
-          <DDRow label="Progress" a={`${fmtClock(s.offset_ms)} / ${fmtClock(s.duration_ms)} (${s.progress_pct}%)`} />
-        </div>
+        <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
-    </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" ? ` · ${s.hw_title}` : ""}</span>}
+        {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>Fell back to CPU</span>}
+        {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
+      </div>
+
+      {s.reasons && s.reasons.length > 0 && (
+        <div className="mb-3 rounded-lg p-3 text-[11.5px]" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          <div className="mb-1 font-bold uppercase tracking-wide" style={{ fontSize: 9 }}>Why it's transcoding</div>
+          <ul className="list-none space-y-0.5 p-0">{s.reasons.map((r, i) => <li key={i}>• {r}</li>)}</ul>
+        </div>
+      )}
+
+      <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
+        <DDRow label="User" a={s.user} />
+        <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
+        <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
+        <DDRow label="Bandwidth" a={`${fmtMbps(s.bandwidth_kbps)} Mb/s`} />
+        <DDRow label="Video" a={s.video.src} b={s.video.stream} />
+        <DDRow label="Audio" a={s.audio.src} b={s.audio.stream} />
+        <DDRow label="Container" a={s.container.src} b={s.container.stream} />
+        <DDRow label="Progress" a={`${fmtClock(s.offset_ms)} / ${fmtClock(s.duration_ms)} (${s.progress_pct}%)`} />
+      </div>
+    </Modal>
   );
 }
 
@@ -659,33 +658,32 @@ function HistoryHW({ startedAt }: { startedAt: number }) {
 
 function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void }) {
   const d = DECISION[r.decision] ?? DECISION.direct_play;
+  const titleId = useId();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-10 w-full max-w-[560px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="m-0 truncate text-[15px] font-bold">{r.title}</h2>
-            <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{r.subtitle}</p>
-          </div>
-          <button onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+    <Modal onClose={onClose} labelledBy={titleId} size="md">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={titleId} className="m-0 truncate text-[15px] font-bold">{r.title}</h2>
+          <p className="m-0 mt-0.5 text-[11.5px] text-ink-dim">{r.subtitle}</p>
         </div>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-          {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
-          {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
-        </div>
-        <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
-          <DDRow label="User" a={r.user_name} />
-          <DDRow label="Player" a={`${r.player || "—"} · ${r.platform} · ${r.product}`} />
-          <DDRow label="Location" a={`${geoLabel(r.geo)}${r.ip_address ? ` · ${r.ip_address}` : ""} · ${r.location?.toUpperCase() || "—"}`} />
-          <DDRow label="Started" a={fmtDate(r.started_at)} />
-          <DDRow label="Watched" a={`${fmtDur(r.watched_secs)}${r.paused_ms > 0 ? ` (paused ${fmtDur(Math.round(r.paused_ms / 1000))})` : ""}`} />
-          <DDRow label="Video" a={r.video_src} b={r.video_stream} />
-          <DDRow label="Audio" a={r.audio_src} b={r.audio_stream} />
-          <DDRow label="Container" a={r.container_src} b={r.container_stream} />
-        </div>
+        <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
-    </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="rounded-full px-2.5 py-0.5 font-mono text-[9.5px] font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
+        {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
+        {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-lg text-[12px]" style={{ background: "var(--line)" }}>
+        <DDRow label="User" a={r.user_name} />
+        <DDRow label="Player" a={`${r.player || "—"} · ${r.platform} · ${r.product}`} />
+        <DDRow label="Location" a={`${geoLabel(r.geo)}${r.ip_address ? ` · ${r.ip_address}` : ""} · ${r.location?.toUpperCase() || "—"}`} />
+        <DDRow label="Started" a={fmtDate(r.started_at)} />
+        <DDRow label="Watched" a={`${fmtDur(r.watched_secs)}${r.paused_ms > 0 ? ` (paused ${fmtDur(Math.round(r.paused_ms / 1000))})` : ""}`} />
+        <DDRow label="Video" a={r.video_src} b={r.video_stream} />
+        <DDRow label="Audio" a={r.audio_src} b={r.audio_stream} />
+        <DDRow label="Container" a={r.container_src} b={r.container_stream} />
+      </div>
+    </Modal>
   );
 }
 

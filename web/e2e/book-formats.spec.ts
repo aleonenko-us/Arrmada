@@ -63,4 +63,19 @@ test.describe("book formats", () => {
     expect(posted).toHaveLength(1);
     expect(posted[0].body).toMatchObject({ media_type: "book", ol_key: ebookOnlyBook.key, formats: "audiobook" });
   });
+
+  test("the book sheet is a named dialog: focus moves in, Escape and Close shut it", async ({ page, api }) => {
+    await openBooks(page, api);
+    await openSheet(page, requestableBook.title);
+    const sheet = page.getByRole("dialog", { name: requestableBook.title });
+    await expect(sheet).toBeVisible();
+    // Focus is inside the dialog, so a keyboard user starts there.
+    expect(await sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+
+    await openSheet(page, requestableBook.title);
+    await sheet.getByRole("button", { name: "Close" }).tap();
+    await expect(sheet).toHaveCount(0);
+  });
 });

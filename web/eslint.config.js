@@ -1,15 +1,40 @@
 // ESLint 9 flat config for the web UI.
 //
-// Bar for now: `npm run lint` must pass on today's code without a mass rewrite.
-// Errors are reserved for real bugs (rules-of-hooks); rules that would flag a
-// large backlog of existing code start as warnings and are tightened by later
-// roadmap tasks (FE-14 confirm/alert, FE-15 a11y, FE-09 overlays).
+// `npm run lint` must pass with 0 errors. Errors are real bugs (rules-of-hooks) and the
+// UI kit's bans (FE-14): native dialogs, hand-built overlays and page-local toasts.
+// Rules that would flag a large backlog of existing code start as warnings and are
+// tightened by later roadmap tasks (FE-15 a11y).
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 import { defineConfig } from "eslint/config";
+
+// Page-local toasts: a `flash` helper or a [toast, setToast] state with its own timer.
+// useToast() from src/ui is the one live region (stacking, timers, the error tone).
+const NO_LOCAL_TOAST = [
+  {
+    selector: "VariableDeclarator[id.name='flash']",
+    message: "Page-local toast helper: call useToast() from src/ui (name it toast or say, not flash).",
+  },
+  {
+    selector: "VariableDeclarator[init.callee.name='useState'][id.elements.0.name=/^toast/i]",
+    message: "Page-local toast state: use useToast() from src/ui instead of a [toast, setToast] state and a timer.",
+  },
+];
+// Hand-built overlays: the UI kit's Modal (variant dialog or sheet), ConfirmDialog or
+// Scrim owns these now.
+const NO_HAND_BUILT_OVERLAY = [
+  {
+    selector: "Literal[value=/fixed inset-0/]",
+    message: "Hand-built overlay: use <Modal> (variant dialog or sheet), <ConfirmDialog> or <Scrim> from src/ui.",
+  },
+  {
+    selector: "TemplateElement[value.raw=/fixed inset-0/]",
+    message: "Hand-built overlay: use <Modal> (variant dialog or sheet), <ConfirmDialog> or <Scrim> from src/ui.",
+  },
+];
 
 export default defineConfig(
   { ignores: ["dist/**", "node_modules/**"] },
@@ -39,38 +64,33 @@ export default defineConfig(
           .map(([r, v]) => [r, Array.isArray(v) ? ["warn", ...v.slice(1)] : "warn"]),
       ),
 
-      // Native dialogs are being replaced by the UI kit's Confirm/Toast (FE-14 flips to error).
+      // Native dialogs can't be styled, block the tab and some browsers suppress them:
+      // the UI kit's Confirm/Toast replace them everywhere (FE-14).
       "no-restricted-globals": [
-        "warn",
+        "error",
         { name: "confirm", message: "Use useConfirm() from src/ui instead of a native dialog." },
         { name: "alert", message: "Use useToast() from src/ui instead of a native alert." },
+        { name: "prompt", message: "Use a <Modal> with a field from src/ui instead of a native prompt." },
       ],
       "no-restricted-properties": [
-        "warn",
+        "error",
         { object: "window", property: "confirm", message: "Use useConfirm() from src/ui instead of a native dialog." },
         { object: "window", property: "alert", message: "Use useToast() from src/ui instead of a native alert." },
+        { object: "window", property: "prompt", message: "Use a <Modal> with a field from src/ui instead of a native prompt." },
       ],
+      "no-restricted-syntax": ["error", ...NO_LOCAL_TOAST],
 
       // `set.has(k) ? set.delete(k) : set.add(k)` toggles are an established idiom here.
       "@typescript-eslint/no-unused-expressions": ["error", { allowTernary: true }],
     },
   },
   {
-    // Hand-built overlays: the UI kit's Modal (src/ui/Modal.tsx, FE-09) owns these now.
+    // Outside the kit itself, no overlay is hand-built. (A later block's no-restricted-syntax
+    // replaces the earlier one, so the toast bans are repeated here.)
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/ui/**"],
     rules: {
-      "no-restricted-syntax": [
-        "warn",
-        {
-          selector: "Literal[value=/fixed inset-0/]",
-          message: "Hand-built overlay: use <Modal> (variant dialog or sheet) or <ConfirmDialog> from src/ui.",
-        },
-        {
-          selector: "TemplateElement[value.raw=/fixed inset-0/]",
-          message: "Hand-built overlay: use <Modal> (variant dialog or sheet) or <ConfirmDialog> from src/ui.",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...NO_LOCAL_TOAST, ...NO_HAND_BUILT_OVERLAY],
     },
   },
 );

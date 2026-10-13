@@ -5,6 +5,7 @@ import { useTabParam } from "../lib/useTabParam";
 import { useSearchParamState } from "../lib/useSearchState";
 import { usePoll } from "../lib/usePoll";
 import { TabPanel, Tabs } from "../ui/Tabs";
+import { Button, Modal, useToast } from "../ui";
 import { LINKS } from "../lib/links";
 import { RescanButton, ago } from "../components/RescanButton";
 import { backlogLine, fileForecast, restartLoss } from "../lib/convertForecast";
@@ -84,14 +85,8 @@ function ConvertPage() {
   const [settings, setSettings] = useState<ConvertSettings | null>(null);
   const [compareKey, setCompareKey] = useState<string | null>(null);
   const [libReload, setLibReload] = useState(0); // bumped when Compare closes: it may have measured a file
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
-  const flash = useCallback((m: string) => {
-    setToast(m);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
-  }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  const toast = useToast();
+  const say = useCallback((m: string) => toast(m, { ms: 3500 }), [toast]);
 
   const loadStats = useCallback(() => convertApi.convertStats().then(setStats).catch(() => {}), []);
   const loadHw = useCallback(() => convertApi.convertHardware().then(setHw).catch(() => {}), []);
@@ -117,8 +112,8 @@ function ConvertPage() {
 
   const rescanLibrary = useCallback(async (): Promise<boolean> => {
     const r = await convertApi.convertReindex();
-    if (!r.started) { flash(r.reason ?? "A scan is already running."); return false; }
-    flash("Rescanning the library…");
+    if (!r.started) { say(r.reason ?? "A scan is already running."); return false; }
+    say("Rescanning the library…");
     for (let i = 0; i < 240; i++) {
       await new Promise((res) => setTimeout(res, 2000));
       const st = await convertApi.convertReindexStatus().catch(() => ({ running: false }));
@@ -126,22 +121,22 @@ function ConvertPage() {
     }
     await loadStats();
     refresh();
-    flash("Library rescanned.");
+    say("Library rescanned.");
     return true;
-  }, [flash, loadStats, refresh]);
+  }, [say, loadStats, refresh]);
 
   // Switch on asks first, with what it will do across the library (SwitchOnDialog);
   // Switch off is one click.
   const [askSwitchOn, setAskSwitchOn] = useState(false);
   const autoChanged = (s: ConvertSettings) => {
     setSettings(s);
-    flash(s.auto ? "Convert is on — it works through your library during your hours" : "Automatic conversion is off");
+    say(s.auto ? "Convert is on — it works through your library during your hours" : "Automatic conversion is off");
     refresh();
   };
   const toggleAuto = async () => {
     if (!settings) return;
     if (!settings.auto) { setAskSwitchOn(true); return; }
-    try { autoChanged(await convertApi.updateConvertSettings({ auto: false })); } catch (e) { flash((e as Error).message); }
+    try { autoChanged(await convertApi.updateConvertSettings({ auto: false })); } catch (e) { toast((e as Error).message, { tone: "error", ms: 3500 }); }
   };
 
   const TABS: { key: Tab; label: string }[] = [
@@ -179,16 +174,15 @@ function ConvertPage() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="convert" label="Convert sections" />
 
         <TabPanel idPrefix="convert" value={tab}>
-          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={flash} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} onShowHistory={() => setTab("history")} />}
-          {tab === "library" && <Library flash={flash} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} />}
-          {tab === "problems" && <Problems flash={flash} />}
-          {tab === "history" && <HistoryTab reload={finished} flash={(m) => { flash(m); refresh(); }} />}
+          {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={say} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} onShowHistory={() => setTab("history")} />}
+          {tab === "library" && <Library flash={say} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} />}
+          {tab === "problems" && <Problems flash={say} />}
+          {tab === "history" && <HistoryTab reload={finished} flash={(m) => { say(m); refresh(); }} />}
           {tab === "activity" && <LogsConsole />}
         </TabPanel>
       </div>
       {askSwitchOn && <SwitchOnDialog onCancel={() => setAskSwitchOn(false)} switchOn={async () => { const s = await convertApi.updateConvertSettings({ auto: true }); setAskSwitchOn(false); autoChanged(s); }} />}
-      {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={flash} />}
-      {toast && <div role="status" aria-live="polite" className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg px-4 py-2.5 text-[12.5px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", color: "var(--ink)" }}>{toast}</div>}
+      {compareKey && <CompareModal itemKey={compareKey} onClose={() => { setCompareKey(null); setLibReload((n) => n + 1); }} flash={say} />}
     </>
   );
 }
@@ -739,11 +733,6 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
     });
   }, [itemKey, flash]);
   usePoll(() => convertApi.convertCompareStatus().then(setSt).catch(() => {}), 2500, { immediate: false });
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const r = st?.result && st.key === itemKey ? st.result : null;
   const side = (s: { codec: string; encoder: string; bytes: number; ssim: number; est_bytes: number }, win: boolean) => (
@@ -755,35 +744,31 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
     </div>
   );
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="cmp-title" className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="w-full max-w-[560px] rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <h3 id="cmp-title" className="text-[15px] font-bold">HEVC vs AV1{st?.title ? ` — ${st.title}` : ""}</h3>
-        {!r && !st?.error && (
-          <p className="mt-2 text-[12.5px] text-ink-dim">
-            Encoding a few clips both ways at the real settings and scoring each against the original… This takes a few minutes
-            (longer for 4K). You can close this — it keeps going, and the result shows here when you open Compare again.
-          </p>
-        )}
-        {st?.error && st.key === itemKey && <p className="mt-2 text-[12.5px]" style={{ color: "var(--reject)" }}>{st.error}</p>}
-        {r && (
-          <>
-            <div className="mt-3 flex gap-2.5">{side(r.hevc, r.pick === "hevc")}{side(r.av1, r.pick === "av1")}</div>
-            <p className="mt-3 text-[12.5px]">{r.why}</p>
-            <p className="mt-1 text-[11px] text-ink-faint">Original: {fmtSize(r.src_bytes)} · tested on {r.clips} clip{r.clips === 1 ? "" : "s"} ({Math.round(r.seconds)}s). Audio is copied as is, so it adds the same to both. The Library now shows this file's measured size.</p>
-            {r.files && r.files.length > 0 && (
-              <div className="mt-3">
-                <div className={lbl}>Watch the clips (VLC or mpv)</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {r.files.map((f) => <a key={f} href={convertApi.convertCompareFileURL(f)} className="rounded-md px-2 py-1 font-mono text-[11px]" style={ghostBtn}>{f}</a>)}
-                </div>
-                <p className="mt-1.5 text-[10.5px] text-ink-faint">Dark scenes and skies are where codecs differ — look there. The original clip may start a moment earlier than the encoded ones.</p>
+    <Modal onClose={onClose} size="md" title={`HEVC vs AV1${st?.title ? ` — ${st.title}` : ""}`} footer={<Button onClick={onClose}>Close</Button>}>
+      {!r && !st?.error && (
+        <p className="mt-2 text-[12.5px] text-ink-dim">
+          Encoding a few clips both ways at the real settings and scoring each against the original… This takes a few minutes
+          (longer for 4K). You can close this — it keeps going, and the result shows here when you open Compare again.
+        </p>
+      )}
+      {st?.error && st.key === itemKey && <p className="mt-2 text-[12.5px]" style={{ color: "var(--reject)" }}>{st.error}</p>}
+      {r && (
+        <>
+          <div className="mt-3 flex gap-2.5">{side(r.hevc, r.pick === "hevc")}{side(r.av1, r.pick === "av1")}</div>
+          <p className="mt-3 text-[12.5px]">{r.why}</p>
+          <p className="mt-1 text-[11px] text-ink-faint">Original: {fmtSize(r.src_bytes)} · tested on {r.clips} clip{r.clips === 1 ? "" : "s"} ({Math.round(r.seconds)}s). Audio is copied as is, so it adds the same to both. The Library now shows this file's measured size.</p>
+          {r.files && r.files.length > 0 && (
+            <div className="mt-3">
+              <div className={lbl}>Watch the clips (VLC or mpv)</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {r.files.map((f) => <a key={f} href={convertApi.convertCompareFileURL(f)} className="rounded-md px-2 py-1 font-mono text-[11px]" style={ghostBtn}>{f}</a>)}
               </div>
-            )}
-          </>
-        )}
-        <div className="mt-4 flex justify-end"><button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[12.5px] font-semibold" style={ghostBtn}>Close</button></div>
-      </div>
-    </div>
+              <p className="mt-1.5 text-[10.5px] text-ink-faint">Dark scenes and skies are where codecs differ — look there. The original clip may start a moment earlier than the encoded ones.</p>
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
 

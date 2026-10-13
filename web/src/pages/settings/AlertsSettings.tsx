@@ -5,6 +5,7 @@ import { alertsApi } from "../../lib/alertsApi";
 import { ago, until } from "../../lib/taskTime";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery, invalidate } from "../../lib/query";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { pushSupported, subscribeThisDevice, thisDeviceEndpoint } from "../../lib/webpush";
 import { Button, useConfirm, useToast } from "../../ui";
 import { OutgoingEmail } from "./OutgoingEmail";
@@ -188,6 +189,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
   const confirm = useConfirm();
   const set = (patch: Partial<NotificationConn>) => setC((p) => ({ ...p, ...patch }));
   const dirty = JSON.stringify(values) !== JSON.stringify(start);
+  // Anything typed or changed on the card and not yet saved (or a new card not yet added).
+  const edited = dirty || url.trim() !== "" || c.name !== conn.name || c.enabled !== conn.enabled || JSON.stringify(c.events) !== JSON.stringify(conn.events);
+  useUnsavedGuard(edited && !readOnly);
   const savedSecret = (name: string) => !isNew && conn.fields?.[`${name}_set`] === true;
   const body = (): NotificationInput => ({
     name: c.name, kind: c.kind, enabled: c.enabled, events: c.events,

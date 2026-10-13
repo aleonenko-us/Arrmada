@@ -13,7 +13,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
   title: string;
   onClose: () => void;
 }) {
-  const flash = useToast();
+  const toast = useToast();
   const id = useId();
   const [category, setCategory] = useState<IssueCategory | "">("");
   const [note, setNote] = useState("");
@@ -51,7 +51,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
         ...(media === "series" ? { season, episode } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       });
-      flash(r.joined ? "Thanks — someone reported that too. We’ll let you know when it’s fixed." : "Thanks — we’ll let you know when it’s fixed.");
+      toast(r.joined ? "Thanks — someone reported that too. We’ll let you know when it’s fixed." : "Thanks — we’ll let you know when it’s fixed.");
       onClose();
     } catch (e) {
       setError((e as Error).message);
