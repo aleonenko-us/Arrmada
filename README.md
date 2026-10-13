@@ -168,6 +168,20 @@ make it public in its settings, or have each server sign in once with
 `docker login ghcr.io` and a token of its own that can only read packages. Never put a
 token in the repository or in `.env`.
 
+Settings → Status shows when a newer release is out, with its notes (a build of `main`
+shows how many commits behind `main` it is instead). It reads GitHub's public list of
+releases every 12 hours and sends nothing about your server; switch it off on the same
+card and it asks GitHub nothing at all.
+
+### Unraid template
+
+[templates/arrmada.xml](templates/arrmada.xml) runs the app container alone from the
+published `stable` image, for people who already run qBittorrent. It keeps the database in
+`/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, and takes your media share at
+`/storage`. Mount the same share at `/storage` in qBittorrent too, then pick each library
+folder and the Downloads folder in the app. The compose install above bundles qBittorrent
+and FlareSolverr instead.
+
 ## Locked out?
 
 If you've forgotten the admin password, set a new one from the server:
