@@ -40,3 +40,12 @@ func TestFixCasingTidiesDriftedText(t *testing.T) {
 		t.Errorf("punctuation-only cue changed: %q", got[0].text)
 	}
 }
+
+// A two-line cue keeps its line break, and a sentence that ends on the first line still
+// capitalises the start of the second.
+func TestFixCasingKeepsLineBreak(t *testing.T) {
+	cues := fixCasing([]cue{{text: "well i think so.\nthen we go"}}, true)
+	if got, want := cues[0].text, "Well I think so.\nThen we go"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

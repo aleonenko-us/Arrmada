@@ -368,6 +368,7 @@ func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang
 	// 3. Transcribe each chunk. Timestamps come back relative to the chunk; the chunk's
 	// start is added when the words are read.
 	var words []word
+	lay := layoutFor(lang, translate)
 	noGPU := false
 	dtw := w.dtwFlag
 	// Settle which device the oneAPI build should use (and whether it works here)
@@ -448,7 +449,7 @@ func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang
 		if rerr != nil {
 			return fmt.Errorf("whisper produced no output for chunk %d: %s", i+1, tailStr(out, 400))
 		}
-		ws, perr := wordsFromJSON(data, c.start)
+		ws, perr := wordsFromJSONIn(data, c.start, lay)
 		if perr != nil {
 			return perr
 		}
@@ -458,8 +459,14 @@ func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang
 		return fmt.Errorf("whisper found no speech in the audio")
 	}
 
-	// 4. Words → cues → SRT, minus stock-phrase hallucinations, sentences cased.
-	srt := filterStockPhrases(formatSRT(fixCasing(shapeWordCues(words), translate || isEnglish(lang))))
+	// 4. Words → cues → SRT, minus stock-phrase hallucinations, sentences cased. Chinese
+	// and Japanese have no case, and the casing pass re-spaces a cue's words, so it's
+	// skipped for them.
+	cues := shapeWordCuesIn(words, lay)
+	if !lay.noSpace {
+		cues = fixCasing(cues, translate || isEnglish(lang))
+	}
+	srt := filterStockPhrases(formatSRT(cues))
 	return os.WriteFile(srtPath, []byte(srt), 0o644)
 }
 

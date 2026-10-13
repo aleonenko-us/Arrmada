@@ -644,3 +644,67 @@ func (l *Ledger) BlockedFor(ctx context.Context, mediaKey string) ([]BlockEntry,
 	}
 	return out, rows.Err()
 }
+
+// UpgradeCandidates lists the live sidecars the upgrade loop (upgrade.go) may replace:
+// ones Arrmada made with the AI or downloaded without a hash match, created since since,
+// that the owner didn't choose (locked) and that aren't forced subtitles. Adopted, manual,
+// embedded, release and unknown files are never candidates. AI-made ones come first,
+// oldest first within each.
+func (l *Ledger) UpgradeCandidates(ctx context.Context, since time.Time) ([]SubtitleFile, error) {
+	if !l.ok() {
+		return nil, nil
+	}
+	rows, err := l.db.QueryContext(ctx, `SELECT `+fileCols+` FROM subtitle_files
+		WHERE superseded_at IS NULL AND locked = 0 AND variant <> 'forced' AND created_at >= ?
+		  AND (source IN (?, ?) OR (source = ? AND hash_match = 0))
+		ORDER BY CASE WHEN source = ? THEN 1 ELSE 0 END, created_at, id`,
+		since.Unix(), SourceAITranscribe, SourceAITranslate, SourceOpenSubtitles, SourceOpenSubtitles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SubtitleFile
+	for rows.Next() {
+		f, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// LastUpgradeChecks is when the upgrade loop last searched for each media key and
+// language since since, keyed "<media_key>|<lang>".
+func (l *Ledger) LastUpgradeChecks(ctx context.Context, since time.Time) (map[string]int64, error) {
+	out := map[string]int64{}
+	if !l.ok() {
+		return out, nil
+	}
+	rows, err := l.db.QueryContext(ctx, `SELECT media_key, lang, MAX(at) FROM subtitle_attempts
+		WHERE rung = ? AND at >= ? GROUP BY media_key, lang`, string(RungUpgrade), since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key, lang string
+		var at int64
+		if err := rows.Scan(&key, &lang, &at); err != nil {
+			return nil, err
+		}
+		out[key+"|"+lang] = at
+	}
+	return out, rows.Err()
+}
+
+// CountUpgraded is how many subtitles the upgrade loop replaced since since.
+func (l *Ledger) CountUpgraded(ctx context.Context, since time.Time) (int, error) {
+	if !l.ok() {
+		return 0, nil
+	}
+	var n int
+	err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_attempts WHERE rung = ? AND outcome = ? AND at >= ?`,
+		string(RungUpgrade), string(ResultOK), since.Unix()).Scan(&n)
+	return n, err
+}

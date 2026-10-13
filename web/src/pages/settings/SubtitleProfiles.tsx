@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { langName, useLanguages, type Language } from "../../lib/languages";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { Button, IconButton, useConfirm, useToast } from "../../ui";
 import { card, cardStyle } from "../subtitles/shared";
 import {
@@ -72,6 +73,8 @@ function ProfileEditor({ profile, languages, overrides }: { profile: SubtitlePro
   const confirm = useConfirm();
   const [name, setName] = useState(profile.name);
   useEffect(() => setName(profile.name), [profile.name]);
+  // A name typed but not yet saved (it saves when the field loses focus).
+  const markClean = useUnsavedGuard(!profile.is_default && name.trim() !== profile.name, "Discard the profile's new name?");
   const run = async (fn: () => Promise<unknown>, done?: string) => {
     try {
       await fn();
@@ -88,6 +91,7 @@ function ProfileEditor({ profile, languages, overrides }: { profile: SubtitlePro
     void saveItems(codes.map((c) => profile.items.find((it) => it.lang === c) ?? plainItem(c)));
   };
   const rename = () => {
+    markClean(); // saving now: leaving the page mustn't ask about it
     const n = name.trim();
     if (!n || n === profile.name) { setName(profile.name); return; }
     void run(() => profileApi.update(profile.id, { name: n }), `Renamed to ${n}`);
@@ -173,9 +177,11 @@ function NewProfile({ from }: { from?: SubtitleProfile }) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const markClean = useUnsavedGuard(name.trim() !== "", "Discard the new profile you were naming?");
   const create = async () => {
     const n = name.trim();
     if (!n) return;
+    markClean();
     setBusy(true);
     try {
       // A new profile starts as a copy of Default; change it from there.

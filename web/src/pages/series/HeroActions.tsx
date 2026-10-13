@@ -12,7 +12,9 @@ import { Button, Menu, type MenuItem } from "../../ui";
 import { RenameModal } from "./RenameModal";
 import { MONITOR_PRESETS } from "./presets";
 import { ManualImportModal } from "./ManualImportModal";
+import { invalidate } from "../../lib/query";
 import { ProfileSelector } from "./ProfileSelector";
+import { TitleProfilePicker } from "../subtitles/ProfileSelect";
 
 export type Flash = (msg: string, err?: boolean) => void;
 
@@ -99,6 +101,8 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
       <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
         <MonitorMenu series={series} onChange={onChange} flash={flash} />
         <ProfileSelector series={series} onChange={onChange} />
+        {/* The episodes' subtitle chips follow the show's profile. */}
+        <TitleProfilePicker kind="series" id={series.id} title={series.title} onChanged={() => invalidate(`subs-episodes:${series.id}`)} />
       </div>
       <div role="group" aria-label="Show actions" className="mt-2.5 flex flex-nowrap items-center gap-2">
         <Button variant="primary" onClick={searchMissing} busy={searching} busyLabel="Searching…" title="Search every monitored season for what's missing and grab the best fit">

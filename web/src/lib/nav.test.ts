@@ -62,7 +62,7 @@ describe("crumbFor", () => {
     expect(crumbFor("/insights")).toBe("Plex / Insights");
     expect(crumbFor("/discover")).toBe("Home / Discover");
     expect(crumbFor("/settings/system")).toBe("System / Settings");
-    expect(crumbFor("/settings/connections")).toBe("System / Connections");
+    expect(crumbFor("/settings/connections")).toBe("System / Settings");
   });
 
   it("matches whole path segments only", () => {

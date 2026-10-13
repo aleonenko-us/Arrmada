@@ -190,6 +190,12 @@ function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQue
           </div>
           <div className="mt-2.5 border-t pt-2.5 text-sm text-ink-faint" style={{ borderColor: "var(--line-soft)" }}>
             Auto: movies {settings?.movies_auto ? "on" : "off"} · series {settings?.series_auto ? "on" : "off"}
+            {/* The daily upgrade swaps AI and loose downloads for subtitles made for the exact file. */}
+            {settings?.can_download && (
+              <div className="mt-1" title="Each day, recent AI-made subtitles and downloads not made for the exact file are searched again, and replaced when one made for this file appears.">
+                {upgradedLine(settings.upgraded_week ?? 0)}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -237,6 +243,12 @@ function Row2({ label, state, onClick }: { label: string; state: keyof typeof RO
 }
 
 /* QUEUE: the Queue tab (and the rows the Overview shares) live in subtitles/queue.tsx. */
+// upgradedLine is the week's count from the daily upgrade.
+function upgradedLine(n: number): string {
+  if (n === 0) return "No subtitles upgraded this week";
+  return `${n.toLocaleString()} subtitle${n === 1 ? "" : "s"} upgraded this week`;
+}
+
 // retryIn is how far off a backoff's next try is: "in 6 days", "in 3 h", "in 10 min", or
 // "soon" once it's due (the next sweep picks it up).
 function retryIn(at: number): string {
