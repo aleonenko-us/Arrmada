@@ -79,7 +79,7 @@ export function Music() {
       // artist at a request per second — so say so rather than implying it's done.
       say("Scanning your music folder… this runs in the background.");
     } catch (e) {
-      setError((e as Error).message);
+      say((e as Error).message, true); // a toast: `error` is the list's own load state
     }
   };
   useEffect(() => {
