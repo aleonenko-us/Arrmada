@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,7 +134,11 @@ type stallHarness struct {
 	qbit   *fakeQbit
 	ix     *fakeTorznab
 	events <-chan eventbus.Event
+	skew   *atomic.Int64 // how far the coordinator's clock runs ahead of the wall clock
 }
+
+// later moves the coordinator's clock forward by d.
+func (h *stallHarness) later(d time.Duration) { h.skew.Add(int64(d)) }
 
 func newStallHarness(t *testing.T) *stallHarness {
 	t.Helper()
@@ -172,7 +177,9 @@ func newStallHarness(t *testing.T) *stallHarness {
 		series:       series.NewService(st.DB(), nil, t.TempDir(), log),
 		downloadsDir: t.TempDir(),
 	}
-	return &stallHarness{c: c, ctx: ctx, qbit: qb, ix: tz, events: events}
+	skew := &atomic.Int64{}
+	c.now = func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }
+	return &stallHarness{c: c, ctx: ctx, qbit: qb, ix: tz, events: events, skew: skew}
 }
 
 func (h *stallHarness) addMovie(t *testing.T, tmdb int, title string, year int) int64 {
@@ -204,11 +211,15 @@ func (h *stallHarness) tick() {
 	if _, err := h.c.db.Exec(`UPDATE grabs SET progress_at = ? WHERE progress_at > 0`, time.Now().Add(-2*time.Hour).UnixMilli()); err != nil {
 		panic(err)
 	}
+	h.c.downloads.InvalidateSnapshot() // each check reads the client afresh, as two minutes apart would
 	h.c.DetectStalled(h.ctx)
 }
 
 // observe runs the first stall check, which only records each grab's progress.
-func (h *stallHarness) observe() { h.c.DetectStalled(h.ctx) }
+func (h *stallHarness) observe() {
+	h.c.downloads.InvalidateSnapshot()
+	h.c.DetectStalled(h.ctx)
+}
 
 func (h *stallHarness) status(t *testing.T, gid int64) string {
 	t.Helper()
@@ -381,7 +392,14 @@ func TestStallFailoverVanishedTorrent(t *testing.T) {
 	h.qbit.mu.Unlock()
 	h.ix.offer(gone, alt)
 
-	h.observe() // a missing torrent is stalled on sight, no sample needed
+	// Gone on sight is a stall verdict, but one read is not enough to act on.
+	h.observe()
+	if s := h.status(t, gid); s != "grabbed" || h.blocklistCount(t) != 0 || len(h.qbit.callLog()) != 0 {
+		t.Fatalf("acted on the first read that missed the torrent: status %q, blocklist %d, calls %q",
+			s, h.blocklistCount(t), h.qbit.callLog())
+	}
+	h.later(stallEvidenceGrace)
+	h.observe() // still gone half an hour later: now it fails over
 
 	if s := h.status(t, gid); s != "failed" {
 		t.Errorf("grab status = %q, want failed", s)

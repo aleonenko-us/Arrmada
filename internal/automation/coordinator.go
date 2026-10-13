@@ -110,6 +110,11 @@ type Coordinator struct {
 	stallDefaultFn func(ctx context.Context) int
 	guardHeldFn    func(ctx context.Context) map[string]bool
 
+	// stallSeen is when this process first saw each pending grab's torrent gone from
+	// the client or in a hard error, so one read can't condemn it (stallevidence.go).
+	stallSeenMu sync.Mutex
+	stallSeen   map[int64]stallSighting
+
 	// upgradeBudgetFn reads how many upgrades one sweep may grab (Settings → Downloads),
 	// set once at startup; nil means DefaultUpgradeBudget. See upgradebudget.go.
 	upgradeBudgetFn func(ctx context.Context) int
@@ -2063,9 +2068,10 @@ func (c *Coordinator) stalledInQueue(ctx context.Context, g grab, item download.
 		return false
 	}
 	// "missingFiles" isn't tested here: normalizeState already folds it into "error", so a
-	// second check for it could never fire. A hard client error stays an immediate stall —
-	// that's a deliberate call from the stall rewrite, pinned by TestStalledNeedsSustained-
-	// NoProgress, and a full cache drive reaches this code as "paused" above.
+	// second check for it could never fire. A hard client error stays an immediate stall
+	// verdict — a deliberate call from the stall rewrite, pinned by TestStalledNeedsSustained-
+	// NoProgress, and a full cache drive reaches this code as "paused" above. judgeStall only
+	// acts on it once the error has held for stallEvidenceGrace (stallevidence.go).
 	//
 	// A COMPLETE torrent is never a stall, errored or not: the bytes are on disk (often
 	// waiting in Review), and with fail-over on by default a client I/O error on a finished
@@ -2116,6 +2122,7 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 			c.detectStalledMovie(ctx, g, queue, tick)
 		}
 	}
+	c.pruneStallSightings(pending)
 	if tick.deferred > 0 {
 		c.log.Info("automation: deferring stalled downloads to the next check",
 			"deferred", tick.deferred, "limit_per_check", maxStallFailoversPerCheck)
