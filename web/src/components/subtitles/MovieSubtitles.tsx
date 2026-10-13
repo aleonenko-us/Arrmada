@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { subtitleFileApi, type SubFileView } from "../../lib/subtitleFileApi";
+import { useProfiles } from "../../pages/subtitles/profileApi";
 import { LazySubtitleDrawer } from "./LazySubtitleDrawer";
 import { WantChip, sidecarForWant } from "./WantChip";
 
@@ -12,7 +13,9 @@ export function MovieSubtitles({ movieId, fallback, onChanged }: { movieId: numb
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const load = useCallback(() => subtitleFileApi.view({ kind: "movie", movie_id: movieId }).then((v) => { setView(v); setFailed(false); }).catch(() => setFailed(true)), [movieId]);
-  useEffect(() => { void load(); }, [load]);
+  // The chips are the movie's profile's wants: read again when it is pinned elsewhere.
+  const pinned = useProfiles().data?.overrides.find((o) => o.kind === "movie" && o.id === movieId)?.profile_id ?? 0;
+  useEffect(() => { void load(); }, [load, pinned]);
 
   if (failed && !view) return <>{fallback}</>;
   if (!view) return null;
