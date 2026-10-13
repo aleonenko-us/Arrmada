@@ -204,6 +204,7 @@ GET /api/v1/plex/link user ext
 GET /api/v1/quality/preview staff -
 GET /api/v1/quality/profiles staff -
 GET /api/v1/quality/profiles/{ref} staff -
+GET /api/v1/quality/ranking-shadow admin -
 GET /api/v1/queue staff -
 GET /api/v1/queue/{hash}/targets staff -
 GET /api/v1/recycle staff -

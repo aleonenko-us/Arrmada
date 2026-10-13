@@ -57,13 +57,38 @@ type upgradeBar struct {
 // file and, for a converted file, its original), and its gain over the file must be one
 // the profile's "Replace for" trigger counts — or a same-group PROPER of the file.
 func (b upgradeBar) qualityGain(trigger string, cand Evaluation) bool {
+	// Leaving a low-quality group's encode for a clean release that scores no worse is a
+	// gain of its own: such files carried a hidden −180 that any clean release beat, and
+	// only TriggerAny counted it, as it still does. The Unwanted items that are new (an
+	// upscale, Dolby Vision without a fallback) don't reach back into the library like this:
+	// they rank what is grabbed from now on, and never start a wave of re-downloads.
+	if b.ev.lowGroup && !cand.Avoided && cand.Total >= b.total && triggerAllows(trigger, KeyAvoid) {
+		return true
+	}
 	return cand.Total > b.total && qualityGain(trigger, cand, b.ev)
+}
+
+// gainKey names the gain qualityGain accepted cand for: the most significant improvement
+// (improvementKey), else a same-group PROPER, leaving a low-quality group's file
+// (KeyAvoid), or — for a gain only the size lean scores — KeySize.
+func (b upgradeBar) gainKey(cand Evaluation) RankKey {
+	if k := improvementKey(cand, b.ev); k != "" {
+		return k
+	}
+	switch {
+	case sameGroupProper(cand, b.ev):
+		return KeyProper
+	case b.ev.lowGroup && !cand.Avoided:
+		return KeyAvoid
+	}
+	return KeySize
 }
 
 func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 	// No runtime on the file's own candidate: scored as it always was, so a file over a
 	// lowered ceiling isn't treated as worthless and replaced by anything at all.
 	curCand := c.candidate()
+	p.onDisk = true // the file and its original are judged as files, not releases on offer
 	cur := e.Evaluate(p, curCand)
 	b := upgradeBar{
 		total: cur.Total, avoided: cur.Avoided, resRank: resRank[curCand.Release.Resolution],
@@ -295,6 +320,7 @@ func judge(sp *StoredProfile, p Profile, e *Engine, cur CurrentFile) FileVerdict
 		v.Eligible = true
 		return v
 	}
+	p.onDisk = true
 	v.Current = e.Evaluate(p, cur.candidate().WithRuntime(cur.RuntimeMin))
 	v.Eligible = v.Current.Eligible
 	if sp != nil {

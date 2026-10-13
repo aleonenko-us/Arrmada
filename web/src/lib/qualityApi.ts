@@ -1,4 +1,4 @@
-import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile } from "./api";
+import { req, type FitCounts, type FitItem, type FormatInfo, type MusicPreset, type ProfileImpact, type ProfileMoveCounts, type QualityCustomFormat, type QualityExplain, type QualityPreview, type QualityProfileInfo, type ReleaseList, type SeriesFitSummary, type StoredProfile, type UnwantedItemInfo } from "./api";
 
 // One value a custom-format condition can take (quality.VocabValue): what's stored, and
 // what the editor shows.
@@ -19,9 +19,26 @@ export interface TrashImport { formats: TrashFormat[]; warnings: string[] }
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
+// RankingShadowReport mirrors quality.ShadowReport: what ranking v2 would have picked
+// differently while classic ranking decides (GET /api/v1/quality/ranking-shadow, admin).
+export interface RankingShadowReport {
+  mode: "v1" | "v2";
+  decisions: number;
+  disagreements: number;
+  days: { day: string; decisions: number; disagreements: number }[];
+  disagreement_rows: {
+    id: number; profile: string; v1_winner: string; v1_key: string; v2_winner: string; v2_key: string;
+    candidates: number; first_seen: string; last_seen: string; seen: number;
+  }[];
+}
+
 export const qualityApi = {
+  rankingShadow: (limit = 500) => req<RankingShadowReport>(`/api/v1/quality/ranking-shadow?limit=${limit}`),
   qualityProfiles: (media: string) =>
-    req<{ profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[] }>(`/api/v1/quality/profiles?media=${media}`),
+    req<{
+      profiles: QualityProfileInfo[]; formats: FormatInfo[]; vocabulary?: Record<string, VocabValue[]>; music_ladder?: string[]; music_presets?: MusicPreset[];
+      unwanted?: UnwantedItemInfo[]; unwanted_groups?: string[];
+    }>(`/api/v1/quality/profiles?media=${media}`),
   checkFormats: (formats: QualityCustomFormat[]) =>
     req<FormatReport>("/api/v1/quality/formats/check", { method: "POST", body: JSON.stringify({ custom_formats: formats }) }),
   // Converts pasted TRaSH custom-format JSON; saves nothing.

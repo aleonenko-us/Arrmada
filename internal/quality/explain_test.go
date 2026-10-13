@@ -45,10 +45,31 @@ func TestDecideExplainsEveryRank(t *testing.T) {
 		}
 	}
 
-	// Two releases nothing tells apart: the second is an equal match, and nothing decided it.
+	// Two releases nothing tells apart: the second is an equal match, recorded as a tie
+	// (every pick records its deciding key — "tie" is the order they came in).
 	same := NewDefaultEngine().Decide(Profile{}, []Candidate{
 		NewCandidate("Film.2021.1080p.WEB-DL.x264-GRPA", 8, 10), NewCandidate("Film.2021.1080p.WEB-DL.x264-GRPB", 8, 10)})
-	if same.Eligible[1].LostOn != "" || same.Eligible[1].LostOnText != equalMatch || same.DecidedBy != "" {
+	if same.Eligible[1].LostOn != KeyTie || same.Eligible[1].LostOnText != equalMatch || same.DecidedBy != KeyTie {
 		t.Errorf("tie: (%q, %q), decided by %q", same.Eligible[1].LostOn, same.Eligible[1].LostOnText, same.DecidedBy)
+	}
+}
+
+// Under ranking v2 the rows explain v2's order, from its own comparator: the same release
+// list reads differently because it is ranked differently.
+func TestDecideExplainsV2Ranks(t *testing.T) {
+	p := Profile{FormatScores: map[string]int{"HEVC": 50, "Atmos": 50, "HDR10": 50, "HDR10+": 50}}
+	e := NewDefaultEngine()
+	e.Ranking = RankingV2
+	d := e.Decide(p, []Candidate{
+		NewCandidate("Film.2021.1080p.BluRay.HDR10+.TrueHD.Atmos.x265-FHD", 14, 50),
+		NewCandidate("Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD", 20, 50),
+	})
+	if d.Winner == nil || d.Winner.Candidate.Release.Group != "UHD" || d.DecidedBy != KeyResolution ||
+		d.Eligible[1].LostOn != KeyResolution || d.Eligible[1].LostOnText != "lower resolution" {
+		t.Fatalf("v2: winner %+v decided by %q, runner-up (%q, %q)", d.Winner, d.DecidedBy, d.Eligible[1].LostOn, d.Eligible[1].LostOnText)
+	}
+	// A lone release was the only one.
+	if one := e.Decide(p, []Candidate{NewCandidate("Film.2021.2160p.WEB-DL.H.265-UHD", 20, 50)}); one.DecidedBy != KeyOnly {
+		t.Fatalf("lone: %q", one.DecidedBy)
 	}
 }

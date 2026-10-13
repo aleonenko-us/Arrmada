@@ -38,6 +38,8 @@ func TestRejectCodeSetForEveryRejectReason(t *testing.T) {
 			NewCandidate("Film.2020.1080p.BluRay.x264-GRP", 8, 50), RejectMissingRequired, "No Atmos"},
 		{"min format score", Profile{MinFormatScore: 100},
 			NewCandidate("Film.2020.1080p.BluRay.x264-GRP", 8, 50), RejectMinFormatScore, "Below the profile's minimum"},
+		{"unwanted", Profile{},
+			NewCandidate("Film.2020.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-GRP", 30, 50), RejectUnwanted, "A full Blu-ray disc image"},
 	}
 	seen := map[string]bool{}
 	for _, tc := range cases {

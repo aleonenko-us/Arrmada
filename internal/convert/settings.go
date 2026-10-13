@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	langtab "github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // Settings is everything Convert lets you choose — deliberately few things. The quality bar,
@@ -73,6 +75,19 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		PlexWatching: s.watchingKnown(), CanPause: canSuspend,
 		HasGPU: hasHEVC || hasAV1, GPUDoesAV1: hasAV1, HDR10PlusTool: s.hdr10plusTool != "",
 	}
+}
+
+// AudioLanguages are the audio languages Convert keeps, as canonical codes; empty when it
+// keeps every track. The quality engine reads them as the household's own languages: a
+// release dubbed into one of them is never "foreign-only".
+func (s *Service) AudioLanguages(ctx context.Context) []string {
+	var out []string
+	for _, l := range splitCSV(s.settings.Get(ctx, keyKeepAudioLangs, "")) {
+		if c := langtab.Canonical(l); c != "" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // SettingsPatch is a partial update; nil fields are left as they are.

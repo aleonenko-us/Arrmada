@@ -115,6 +115,26 @@ type Release struct {
 	// AudioLossless reports a lossless audio track: TrueHD, FLAC, LPCM, DTS-HD MA or
 	// DTS:X. Not DTS-HD High Resolution, which is lossy despite the "HD".
 	AudioLossless bool `json:"audio_lossless,omitempty"`
+
+	// Traits read from the tail of the name, after the title (unwanted.go). Words in a
+	// title never set them.
+	//
+	// FullDisc is an untouched disc image (BDMV/ISO, "BR-DISK"), which can't be imported.
+	FullDisc bool `json:"full_disc,omitempty"`
+	// ThreeD is a 3D release (3D, SBS, Half-OU…).
+	ThreeD bool `json:"three_d,omitempty"`
+	// Upscaled is an upscale from a lower resolution (UPSCALED, AI.UPSCALE).
+	Upscaled bool `json:"upscaled,omitempty"`
+	// Extras is bonus material rather than the feature (EXTRAS, FEATURETTES, BONUS…).
+	Extras bool `json:"extras,omitempty"`
+	// Languages are the audio languages the name states, as ISO 639-1 codes in the order
+	// written ("FRENCH" → fr); empty when it names none, which is most English releases.
+	Languages []string `json:"languages,omitempty"`
+	// Multi says the release carries several audio languages (MULTi, DUAL, German DL/ML).
+	Multi bool `json:"multi,omitempty"`
+	// Streaming is the streaming service a WEB release was captured from, as the tag is
+	// written: AMZN, NF, ATVP, DSNP, HMAX, MAX, PCOK, PMTP, HULU, iT, CRAV, STAN or MA.
+	Streaming string `json:"streaming,omitempty"`
 }
 
 // StatedResolution is the resolution the name actually states: unknown when it was only
@@ -502,11 +522,16 @@ func Parse(name string) Release {
 		}
 	}
 
+	// Disc, 3D, upscale, extras, language and streaming tags: from the tail after the title
+	// only, so a title word is never one of them (unwanted.go).
+	fansub := fansubTag || reAnimeCRC.MatchString(name)
+	r.detectTraits(tailTokens(name, cut, r.Group, len(r.Episodes) > 0 || len(r.AbsoluteEpisodes) > 0), fansub)
+
 	// Fansub releases almost never say where they came from: simulcast groups rip the
 	// streaming service and name only the resolution. Left unknown, a profile with any
 	// minimum source refused nearly every anime episode, so read the convention instead.
 	// Anything the name does state (BD, WEBRip, DVD…) was already found and wins.
-	if r.Source == SourceUnknown && (fansubTag || reAnimeCRC.MatchString(name)) {
+	if r.Source == SourceUnknown && fansub {
 		r.Source = SourceWebDL
 		r.SourceInferred = true
 	}

@@ -319,6 +319,8 @@ func main() {
 	hardcover.SetDiskCache(diskCache)
 	openlib := metadata.NewBookSources(hardcover, metadata.NewBooksWithFallback(olProvider, metadata.NewGoogleBooks()))
 	qualitySvc := quality.NewServiceWith(st.DB(), settingsSvc)
+	// Ranking v2's shadow-mode disagreements are logged as well as recorded.
+	qualitySvc.SetLogger(log)
 	// Titles left on a profile deleted before deletes reassigned them already run on the
 	// default; point their stored ref there too, so the UI and the database agree. Only
 	// refs naming a missing profile are touched.
@@ -886,6 +888,9 @@ func main() {
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)
+	// The Unwanted pack's foreign-only check: the audio languages Convert keeps are the
+	// household's own, so a release dubbed into one of them is never foreign.
+	qualitySvc.SetOwnerLanguages(convertSvc.AudioLanguages)
 	// A conversion plan warns when dropping a file's Dolby Vision layer would leave it
 	// outside the target of the profile its title runs under.
 	convertSvc.SetProfilePrefersDV(func(ctx context.Context, kind string, id int64) bool {

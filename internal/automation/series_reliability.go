@@ -338,7 +338,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		if len(cands) == 0 {
 			continue
 		}
-		if pick, ok := c.quality.UpgradeCandidate(ctx, profile, ep.cur, cands); ok {
+		if pick, ok := c.upgradePick(ctx, profile, ep.cur, cands); ok {
 			picks = append(picks, episodeUpgrade{season: ep.season, episode: ep.episode, pick: pick})
 		}
 	}

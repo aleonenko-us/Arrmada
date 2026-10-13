@@ -3,24 +3,25 @@ package quality
 // equalMatch is LostOnText for a release nothing told apart from the one above it.
 const equalMatch = "an equal match"
 
-// explainRanks fills LostOn and LostOnText on every eligible release after the first, from
-// the deciding factor against the release ranked just above it, and returns what decided the
-// winner over the runner-up. evs must already be in Decide's order: each pair is explained
-// the way the comparator separated it (decidingFactor walks the same steps), so reading the
-// list top to bottom says exactly why each one sits where it does.
+// explainRanks fills LostOnText on every eligible release after the first and returns what
+// decided the winner over the runner-up. evs must already be in Decide's order, with LostOn
+// filled by the comparator that produced it (sortV1 from decidingFactor, sortV2 from
+// compareV2), so each pair is explained the way it was actually separated and the
+// explanation, the recorded deciding key and ranking v2's shadow record all agree. In
+// shadow mode classic ranking decides, so the rows describe classic's order.
 //
-// Ranking v2's comparator can return the deciding key natively; it then fills the same two
-// fields and the text table stays the one place the words come from.
-func explainRanks(p Profile, evs []Evaluation) RankKey {
+// The words come from one table per mode: decidingFactor's for classic, v2Reason (which
+// uses the same phrases key for key) for ranking v2.
+func explainRanks(p Profile, evs []Evaluation, mode string) RankKey {
 	for i := 1; i < len(evs); i++ {
-		k, why := decidingFactor(p, evs[i-1], evs[i])
-		if k == "" {
-			why = equalMatch
+		switch {
+		case evs[i].LostOn == KeyTie:
+			evs[i].LostOnText = equalMatch
+		case mode == RankingV2:
+			evs[i].LostOnText = v2Reason(p, evs[i].LostOn, evs[i-1], evs[i])
+		default:
+			_, evs[i].LostOnText = decidingFactor(p, evs[i-1], evs[i])
 		}
-		evs[i].LostOn, evs[i].LostOnText = k, why
 	}
-	if len(evs) < 2 {
-		return ""
-	}
-	return evs[1].LostOn
+	return decidedBy(evs)
 }

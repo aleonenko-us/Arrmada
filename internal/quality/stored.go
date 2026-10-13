@@ -55,6 +55,9 @@ type StoredProfile struct {
 	// what the library check judges against. nil = not set up. On save, a missing target
 	// is read from the scores, while an empty one clears it.
 	Ideal *IdealFile `json:"ideal,omitempty"`
+	// Unwanted is the profile's Unwanted pack choices (unwanted.go); the zero value is the
+	// defaults. Video profiles only.
+	Unwanted Unwanted `json:"unwanted"`
 }
 
 // Keyword scores releases whose name contains Term (case-insensitive). Positive
@@ -114,6 +117,9 @@ func (sp StoredProfile) ToProfile() Profile {
 		MinSeeders:         sp.MinSeeders,
 		// Video only: a book titled "TS Eliot…" must not be taken for a telesync.
 		RejectPreRelease: (sp.MediaType == MediaMovie || sp.MediaType == MediaSeries) && !sp.AllowPreRelease,
+		// Likewise the Unwanted pack: book and music names aren't video release names.
+		Unwanted:   sp.Unwanted,
+		NoUnwanted: sp.MediaType != MediaMovie && sp.MediaType != MediaSeries,
 	}
 }
 
@@ -132,7 +138,7 @@ func (sp StoredProfile) Engine() *Engine {
 }
 
 // Summary renders a one-line, plain-language description of the profile.
-func (sp StoredProfile) Summary() string {
+func (sp StoredProfile) Summary() (summary string) {
 	if sp.MediaType == MediaBook {
 		return sp.bookSummary()
 	}
@@ -154,6 +160,9 @@ func (sp StoredProfile) Summary() string {
 		parts = append(parts, minSourceLabel(parser.Source(sp.MinSource))+"+")
 	case sp.MaxSource != "":
 		parts = append(parts, "up to "+minSourceLabel(parser.Source(sp.MaxSource)))
+	}
+	if u := sp.Unwanted.summary(); u != "" {
+		defer func() { summary += " · " + u }()
 	}
 	if sp.Ideal != nil {
 		// The target says it all, in the order it's set up.

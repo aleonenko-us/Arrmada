@@ -182,6 +182,7 @@ func (n *searchNotes) decided(d quality.Decision) {
 	for _, ev := range d.Eligible {
 		n.mark(ev.Candidate.Name, classEligible)
 	}
+	n.notePick(d)
 }
 
 // grabbed records a release sent to the download client. Every record*Grab calls it, so
@@ -760,6 +761,7 @@ var reasonLabels = map[string]string{
 	quality.RejectTerm:            "containing a rejected term",
 	quality.RejectMissingRequired: "missing a required format",
 	quality.RejectMinFormatScore:  "below your minimum format score",
+	quality.RejectUnwanted:        "unwanted (disc images, 3D, extras…)",
 }
 
 // Summary is an outcome as one line for a log or a history entry: "37 releases · 22 for

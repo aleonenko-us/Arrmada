@@ -25,6 +25,7 @@ export const REASON_LABELS: Record<string, string> = {
   rejected_term: "containing a rejected term",
   missing_required: "missing a required format",
   min_format_score: "below your minimum format score",
+  unwanted: "unwanted (disc images, 3D, extras…)",
 };
 
 export function reasonLabel(code: string): string {

@@ -651,6 +651,28 @@ func tagRuntime(cands []quality.Candidate, runtimeMin int) []quality.Candidate {
 	return cands
 }
 
+// tagMovie attaches what the profile needs to know about the movie to each candidate: its
+// runtime (the bitrate window) and its original language (the Unwanted pack's foreign-only
+// check). Every movie decision — the sweep, RSS, upgrades, re-grabs and the interactive
+// list — tags through here, so a release is judged the same wherever it is looked at.
+func tagMovie(cands []quality.Candidate, m movies.Movie) []quality.Candidate {
+	cands = tagRuntime(cands, m.Runtime)
+	if lang := movieOrigLanguage(m); lang != "" {
+		for i := range cands {
+			cands[i] = cands[i].WithLanguage(lang)
+		}
+	}
+	return cands
+}
+
+// movieOrigLanguage is TMDB's original language for the movie, "" when unknown.
+func movieOrigLanguage(m movies.Movie) string {
+	if m.Extra == nil {
+		return ""
+	}
+	return m.Extra.OriginalLanguage
+}
+
 // bitrateMbps is a release's average bitrate from its GiB size and a minutes runtime (0 when the
 // runtime is unknown). Same maths as the quality profile's bitrate ceiling.
 func bitrateMbps(sizeGB float64, runtimeMin int) float64 {
@@ -770,9 +792,9 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		}
 	}
 	profile := c.effectiveProfile(ctx, profileRef, "movie")
-	decision := c.decideWith(ctx, profile, spec, tagRuntime(pool, m.Runtime))
-	others := c.decideWith(ctx, profile, spec, tagRuntime(side, m.Runtime))
-	off := c.decideWith(ctx, profile, spec, tagRuntime(offTrack, m.Runtime))
+	decision := c.decideWith(ctx, profile, spec, tagMovie(pool, m))
+	others := c.decideWith(ctx, profile, spec, tagMovie(side, m))
+	off := c.decideWith(ctx, profile, spec, tagMovie(offTrack, m))
 
 	winnerName := ""
 	if decision.Winner != nil {
@@ -866,6 +888,9 @@ func summarize(r parser.Release) string {
 	}
 	if r.Source != "" {
 		parts = append(parts, string(r.Source))
+	}
+	if r.Streaming != "" {
+		parts = append(parts, r.Streaming)
 	}
 	if r.Edition != "" {
 		parts = append(parts, r.Edition)
@@ -1229,7 +1254,7 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 				"movie", m.Title, "version", v.Label, "edition", v.Edition, "candidates", len(cands))
 			continue
 		}
-		decision := c.quality.Decide(ctx, profile, tagRuntime(mine, m.Runtime))
+		decision := c.quality.Decide(ctx, profile, tagMovie(mine, m))
 		notesFrom(ctx).decided(decision)
 		if decision.Winner == nil {
 			// The profile rejected everything on offer. Silent before, which made a
@@ -1532,7 +1557,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 	}
 	// Runtime on the candidates so the profile's bitrate ceiling applies to upgrades
 	// too — without it a capped profile could "upgrade" to a remux it explicitly forbids.
-	cands = tagRuntime(cands, m.Runtime)
+	cands = tagMovie(cands, m)
 
 	grabbed := map[string]bool{}
 	grabbedGB := 0.0
@@ -1588,7 +1613,7 @@ func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, wan
 		cur := c.currentMovieFile(ctx, m, v)
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
 		// Only releases this track may take: its edition, never another track's file.
-		if pick, ok := c.quality.UpgradeCandidate(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
+		if pick, ok := c.upgradePick(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
 			picks = append(picks, movieUpgrade{v: v, profile: profile, from: cur.Release, pick: pick})
 		}
 	}
@@ -1655,7 +1680,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			continue
 		}
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
-		decision := c.quality.Decide(ctx, profile, tagRuntime(editionFilter(notes, cands, v, versions), m.Runtime))
+		decision := c.quality.Decide(ctx, profile, tagMovie(editionFilter(notes, cands, v, versions), m))
 		notesFrom(ctx).decided(decision)
 		if decision.Winner == nil {
 			continue

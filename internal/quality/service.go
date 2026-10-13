@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,34 @@ type Service struct {
 	// how Impact runs the upgrade decisions against a profile as edited, before it's saved
 	// (see withSpecs). nil on the app's service.
 	specs map[int64]StoredProfile
+	// ownerLangs reads the audio languages the household keeps (Convert's), for the
+	// Unwanted pack's foreign-only item; nil reads as English.
+	ownerLangs func(ctx context.Context) []string
+	// log reports ranking v2's disagreements in shadow mode (shadow.go); nil is silent.
+	log *slog.Logger
+	// shadow buffers shadow mode's day counts. A pointer, so withSpecs' copies share it.
+	shadow *shadowStats
+}
+
+// SetOwnerLanguages tells the service where the household's audio languages come from
+// (Convert's "keep audio" languages). A release in one of them is never foreign-only.
+func (s *Service) SetOwnerLanguages(fn func(ctx context.Context) []string) { s.ownerLangs = fn }
+
+// ownerLanguages is the household's audio languages, English when none are set.
+func (s *Service) ownerLanguages(ctx context.Context) []string {
+	if s.ownerLangs != nil {
+		if l := s.ownerLangs(ctx); len(l) > 0 {
+			return l
+		}
+	}
+	return []string{"en"}
+}
+
+// profileOf is sp's runtime profile with the household's languages attached.
+func (s *Service) profileOf(ctx context.Context, sp StoredProfile) Profile {
+	p := sp.ToProfile()
+	p.OwnerLanguages = s.ownerLanguages(ctx)
+	return p
 }
 
 // NewService wires the quality service over the database with a settings service of its
@@ -30,7 +59,7 @@ func NewService(db *sql.DB) *Service { return NewServiceWith(db, settings.NewSer
 
 // NewServiceWith wires the quality service over the database and the app's settings.
 func NewServiceWith(db *sql.DB, set *settings.Service) *Service {
-	return &Service{repo: NewRepo(db), settings: set}
+	return &Service{repo: NewRepo(db), settings: set, shadow: &shadowStats{}}
 }
 
 // defaultKey is the settings key holding a media type's default profile.
@@ -97,17 +126,26 @@ func (s *Service) Effective(ctx context.Context, ref, media string) string {
 
 // Resolve turns a profile reference into a runnable (Profile, Engine). An unknown
 // reference gets the hidden fallback profile; callers resolve through Effective first,
-// so in practice the fallback only runs when no profile of the media type exists.
+// so in practice the fallback only runs when no profile of the media type exists. The
+// engine ranks in the mode "quality_ranking" says.
 func (s *Service) Resolve(ctx context.Context, ref string) (Profile, *Engine) {
+	p, e := s.resolve(ctx, ref)
+	e.Ranking = s.RankingMode(ctx)
+	return p, e
+}
+
+func (s *Service) resolve(ctx context.Context, ref string) (Profile, *Engine) {
 	if id, ok := customID(ref); ok {
 		if sp, ok := s.specs[id]; ok {
-			return sp.ToProfile(), sp.Engine()
+			return s.profileOf(ctx, sp), sp.Engine()
 		}
 		if sp, err := s.repo.Get(ctx, id); err == nil {
-			return sp.ToProfile(), sp.Engine()
+			return s.profileOf(ctx, sp), sp.Engine()
 		}
 	}
-	return fallbackProfile(), NewDefaultEngine()
+	p := fallbackProfile()
+	p.OwnerLanguages = s.ownerLanguages(ctx)
+	return p, NewDefaultEngine()
 }
 
 // AllowedResolutions returns the resolution strings a profile allows (empty =
@@ -156,10 +194,32 @@ func (s *Service) Known(ctx context.Context, ref string) bool {
 	return false
 }
 
-// Decide resolves the profile reference and ranks the candidates.
+// Decide resolves the profile reference and ranks the candidates. Under classic ranking
+// (the default) it also runs ranking v2 in the shadow — the pick is v1's, and v2's choice
+// rides along in Decision.Shadow and, where the two differ, in the shadow record.
 func (s *Service) Decide(ctx context.Context, ref string, cands []Candidate) Decision {
 	p, e := s.Resolve(ctx, ref)
-	return e.Decide(p, cands)
+	d := e.Decide(p, cands)
+	if d.Ranking == RankingV1 {
+		d.Shadow = shadowV2(p, d)
+		s.recordShadow(ctx, ref, d)
+	}
+	return d
+}
+
+// decideUnsaved ranks for a profile that may not be saved yet (the builder): the ranking
+// mode in effect, and v2's shadow pick shown alongside — but never recorded, since these
+// are samples and edits, not the library's real choices.
+func (s *Service) decideUnsaved(sp StoredProfile, cands []Candidate) Decision {
+	ctx := context.Background()
+	normalize(&sp)
+	p, e := s.profileOf(ctx, sp), sp.Engine()
+	e.Ranking = s.RankingMode(ctx)
+	d := e.Decide(p, cands)
+	if d.Ranking == RankingV1 {
+		d.Shadow = shadowV2(p, d)
+	}
+	return d
 }
 
 // UpgradeCandidate returns the best release that would upgrade the current file
@@ -179,15 +239,24 @@ func (s *Service) Decide(ctx context.Context, ref string, cands []Candidate) Dec
 // current.RuntimeMin is the content length (movie/episode minutes), needed to turn
 // sizes into bitrates; 0 disables the bitrate-based upgrade (quality-only still applies).
 func (s *Service) UpgradeCandidate(ctx context.Context, ref string, current CurrentFile, cands []Candidate) (Candidate, bool) {
+	c, _, ok := s.UpgradePick(ctx, ref, current, cands)
+	return c, ok
+}
+
+// UpgradePick is UpgradeCandidate with the key that decided it, so an upgrade grab records
+// what kind of gain it was: the improvement the profile's trigger accepted (resolution,
+// preferences, custom, source, proper), KeyAvoid for leaving a low-quality group's file,
+// KeySize for a gain only the size lean scores, or KeyBitrate for the bitrate step.
+func (s *Service) UpgradePick(ctx context.Context, ref string, current CurrentFile, cands []Candidate) (Candidate, RankKey, bool) {
 	currentRelease, runtimeMin := current.Release, current.RuntimeMin
 	sp, err := s.GetStored(ctx, ref)
 	if err != nil || !sp.UpgradesEnabled || strings.TrimSpace(currentRelease) == "" {
-		return Candidate{}, false
+		return Candidate{}, "", false
 	}
 	// The file already is the profile's target — "upgrade until it fits" stops here, even
 	// if some release would technically score higher.
 	if sp.JudgeFile(current).TargetMet {
-		return Candidate{}, false
+		return Candidate{}, "", false
 	}
 	p, e := s.Resolve(ctx, ref)
 	// What a candidate has to beat: the file as it is, and for a converted file also what
@@ -221,11 +290,14 @@ func (s *Service) UpgradeCandidate(ctx context.Context, ref string, current Curr
 		bitrateBetter := ev.Total >= bar.total && s.IsBitrateUpgrade(ctx, ref,
 			Encode{SizeGB: sizeOver(ev.Candidate, runtimeMin), Codec: ev.Candidate.Release.Codec},
 			bar.encode, runtimeMin)
-		if qualityBetter || bitrateBetter {
-			return ev.Candidate, true
+		if qualityBetter {
+			return ev.Candidate, bar.gainKey(ev), true
+		}
+		if bitrateBetter {
+			return ev.Candidate, KeyBitrate, true
 		}
 	}
-	return Candidate{}, false
+	return Candidate{}, "", false
 }
 
 // IsQualityUpgrade reports whether a candidate scores strictly higher than the current
@@ -493,8 +565,7 @@ func checkFormats(sp StoredProfile) error {
 // DecideSpec runs the engine for a profile that may not be saved yet — the builder's "test
 // on a real title" uses it with your unsaved edits.
 func (s *Service) DecideSpec(sp StoredProfile, cands []Candidate) Decision {
-	normalize(&sp)
-	return sp.Engine().Decide(sp.ToProfile(), cands)
+	return s.decideUnsaved(sp, cands)
 }
 
 // FormatCheck is one format tested against a release name: whether the name matches it, and
@@ -523,7 +594,7 @@ type Explanation struct {
 // the box answers "would this release fit?", not "is this torrent alive?".
 func (s *Service) Explain(sp StoredProfile, name string, sizeGB float64, runtimeMin int) Explanation {
 	normalize(&sp)
-	p, e := sp.ToProfile(), sp.Engine()
+	p, e := s.profileOf(context.Background(), sp), sp.Engine()
 	c := NewCandidate(name, max(sizeGB, 0), max(p.MinSeeders, 1)).WithRuntime(max(runtimeMin, 0))
 	out := Explanation{Release: c.Release, Evaluation: e.Evaluate(p, c)}
 	custom := map[string]bool{}
@@ -649,9 +720,13 @@ func (s *Service) RepairDanglingRefs(ctx context.Context) (map[string]int, error
 // type (Samples) — the live feedback behind the builder. A series profile is judged on
 // episode-length samples, so its bitrate window means what it will mean on a real grab.
 func (s *Service) Preview(sp StoredProfile) Decision {
-	normalize(&sp) // an edited target takes effect in the preview before it's saved
-	cands, _ := Samples(sp.MediaType)
-	return sp.Engine().Decide(sp.ToProfile(), cands)
+	media := sp.MediaType
+	if media == "" {
+		media = MediaMovie
+	}
+	cands, _ := Samples(media)
+	// decideUnsaved normalizes: an edited target takes effect in the preview before it's saved.
+	return s.decideUnsaved(sp, cands)
 }
 
 func normalize(sp *StoredProfile) {
@@ -670,6 +745,9 @@ func normalize(sp *StoredProfile) {
 			sp.Migrate()
 		}
 		sp.Compile()
+		sp.Unwanted = sp.Unwanted.normalized()
+	} else {
+		sp.Unwanted = Unwanted{} // the pack is video-only
 	}
 }
 

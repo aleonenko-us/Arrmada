@@ -227,7 +227,7 @@ func TestDecidingFactorTracksComparator(t *testing.T) {
 		{"low-quality group", Profile{},
 			NewCandidate("Film.2021.1080p.WEB-DL.x264-GRPA", 8, 10),
 			NewCandidate("Film.2021.2160p.WEB-DL.x264-YTS", 8, 10),
-			KeyGroup, "its group is known for over-compressed encodes"},
+			KeyAvoid, "it has Low-quality group (YTS), which you avoid"},
 		{"source", Profile{},
 			NewCandidate("Film.2021.1080p.BluRay.x264-GRPA", 8, 10),
 			NewCandidate("Film.2021.1080p.WEBRip.x264-GRPB", 20, 10),

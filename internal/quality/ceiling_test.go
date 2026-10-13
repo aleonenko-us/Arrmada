@@ -154,7 +154,11 @@ func TestIsQualityUpgradeMatchesTheSearcher(t *testing.T) {
 // A season pack carries the runtime summed over its episodes, so the ceiling judges its
 // average bitrate, not its size: ten 45-minute episodes in 40 GB are ~12.7 Mb/s.
 func TestPackJudgedAgainstTheCeiling(t *testing.T) {
-	e := NewDefaultEngine()
+	forEachRanking(t, func(t *testing.T, mode string) { packJudgedAgainstTheCeiling(t, mode) })
+}
+
+func packJudgedAgainstTheCeiling(t *testing.T, mode string) {
+	e := engineIn(mode)
 	p := Profile{Windows: map[string]BitrateWindow{"1080p": {Min: 5, Max: 15}}}
 	if ev := e.Evaluate(p, NewCandidate("Show.S01.1080p.BluRay.x265-GRP", 40, 10).WithRuntime(450)); !ev.Eligible {
 		t.Errorf("40 GB pack over 450 minutes: %s", ev.RejectReason)
@@ -167,12 +171,25 @@ func TestPackJudgedAgainstTheCeiling(t *testing.T) {
 	if ev := e.Evaluate(p, NewCandidate("Show.S01.1080p.BluRay.x265-GRP", 80, 10)); !ev.Eligible {
 		t.Errorf("80 GB pack with no runtime: %s", ev.RejectReason)
 	}
+	// Ranked against an episode, a pack is judged by its bitrate, not its size: a 40 GB
+	// ten-episode pack (~12.7 Mb/s) and a 3.9 GB episode (~12.4 Mb/s) are within 10% of
+	// each other, so seeders decide in both rankings — the pack never wins by holding more.
+	pack := NewCandidate("Show.S01.1080p.BluRay.x265-PACK", 40, 10).WithRuntime(450)
+	ep := NewCandidate("Show.S01E01.1080p.BluRay.x265-EP", 3.9, 50).WithRuntime(45)
+	if d := e.Decide(p, []Candidate{pack, ep}); d.Winner == nil || d.Winner.Candidate.Name != ep.Name {
+		t.Errorf("pack vs episode within 10%%: winner %+v", d.Winner)
+	}
 }
 
 // The upgrade sweep weighs a multi-episode release by its share of the episode it would
 // replace: a 4 GB double is a 2 GB episode, not a 2x bitrate jump over a 2 GB file.
 func TestUpgradeWeighsAMultiEpisodeShare(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) { upgradeWeighsAMultiEpisodeShare(t, mode) })
+}
+
+func upgradeWeighsAMultiEpisodeShare(t *testing.T, mode string) {
 	s, ctx := testService(t)
+	setRanking(t, s, mode)
 	sp, err := s.Create(ctx, StoredProfile{
 		MediaType: MediaSeries, Name: "TV", AllowedResolutions: []string{"1080p"},
 		UpgradesEnabled: true, UpgradeMinPercent: 25,

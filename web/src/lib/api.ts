@@ -538,6 +538,39 @@ export interface StoredProfile {
   upgrade_trigger?: UpgradeTrigger;
   allow_prerelease?: boolean; // grab cams/telesyncs/screeners (movie & series; off = refused)
   ideal?: IdealFile; // the target file: drives grabbing, ranking and the library fit check
+  unwanted?: UnwantedSettings; // the Unwanted pack's choices (movie & series)
+}
+
+// The Unwanted pack (quality/unwanted.go): each item refused, avoided or allowed per profile.
+export type UnwantedAction = "reject" | "avoid" | "allow";
+export interface UnwantedSettings {
+  items?: Record<string, UnwantedAction>; // a missing item is its default
+  low_quality_groups: string[] | null; // null = the default list
+}
+export interface UnwantedItemInfo { key: string; label: string; description: string; default: UnwantedAction }
+
+// An Evaluation's rank keys (quality/rankkeys.go): what ranking v2 compares, key by key.
+// Declared apart and merged into Evaluation, for the Advanced raw view and row explanations.
+export interface Evaluation {
+  target_avoided?: boolean; // a target Avoid, the bitrate floor or an Unwanted avoid
+  custom_avoided?: boolean; // a negative custom format or keyword score
+  res_tier?: number; // 2160p 5 … 480p 1
+  pref_count?: number; // the target's preferred/required formats it has (0 when waived)
+  custom_score?: number;
+  source_tier?: number; // Remux 6, BluRay 5, WEB 4, HDTV 2, DVD 1, unstated 0, cam -1
+  proper_fix?: boolean;
+  group_tier?: number;
+  eff_bitrate?: number; // H.264-equivalent Mb/s, 0 without a runtime
+  in_window?: boolean;
+}
+
+// RankKey names a ranking step (quality.RankKey); "only" = the one eligible release.
+export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "source" | "proper" | "group" | "bitrate" | "health" | "size" | "only" | "tie";
+
+// Decision fields from ranking v2 (shadow mode): merged into Decision.
+export interface Decision {
+  ranking?: "v1" | "v2"; // the mode that ordered it
+  shadow?: { winner: string; decided_by: RankKey; differs: boolean; over_key?: RankKey; v1_key?: RankKey }; // v2's pick while v1 decides
 }
 
 export type UpgradeTrigger = "any" | "source" | "format" | "resolution";
@@ -1033,6 +1066,8 @@ export interface AppSettings {
   upgrade_max_grabs_per_sweep: number;
   /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
   books_languages: string[];
+  /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
+  quality_ranking?: "v1" | "v2";
 }
 
 export interface TorrentPreview {

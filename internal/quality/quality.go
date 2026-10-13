@@ -90,21 +90,6 @@ func qualityScore(r parser.Release) int {
 	return s
 }
 
-// lowQualityGroups are release groups widely regarded as over-compressed /
-// low-quality despite carrying legit resolution/source tags. Kept conservative
-// so decent groups (NAHOM, GalaxyRG, FraMeSToR…) are never penalized.
-var lowQualityGroups = []string{"yify", "yts", "megusta"}
-
-// lowQualityGroup reports whether a release name is from a known low-quality group.
-func lowQualityGroup(lcName string) bool {
-	for _, g := range lowQualityGroups {
-		if strings.Contains(lcName, g) {
-			return true
-		}
-	}
-	return false
-}
-
 // --- Custom formats -------------------------------------------------------
 
 // ConditionType is what a custom-format condition matches on.
@@ -297,6 +282,18 @@ type Profile struct {
 	// RejectPreRelease refuses cams, telesyncs, telecines, screeners and workprints
 	// outright (they parse as CAM), rather than only ranking them last.
 	RejectPreRelease bool `json:"reject_prerelease,omitempty"`
+	// Unwanted is the profile's Unwanted pack choices (unwanted.go); the zero value is the
+	// defaults. NoUnwanted turns the pack off — book and music profiles, whose names are
+	// titles and authors, not video tags.
+	Unwanted   Unwanted `json:"unwanted,omitempty"`
+	NoUnwanted bool     `json:"no_unwanted,omitempty"`
+	// OwnerLanguages are the audio languages the household keeps (Convert's audio
+	// languages); a release in one of them is never foreign-only. Empty means English.
+	OwnerLanguages []string `json:"owner_languages,omitempty"`
+	// onDisk judges a file already in the library rather than a release on offer: an
+	// Unwanted item set to reject only avoids it, so a file the pack now refuses (a 3D
+	// copy) isn't treated as worthless and replaced by any release at all (current.go).
+	onDisk bool
 }
 
 // Candidate is a release under consideration (release + indexer metadata).
@@ -306,6 +303,9 @@ type Candidate struct {
 	SizeGB     float64        `json:"size_gb"`
 	Seeders    int            `json:"seeders"`
 	RuntimeMin int            `json:"runtime_min,omitempty"` // content length this release covers; 0 = unknown (bitrate cap can't apply)
+	// OrigLanguage is the title's original language (TMDB's original_language), so a
+	// release dubbed only into another language can be told apart; "" = no judgement.
+	OrigLanguage string `json:"orig_language,omitempty"`
 }
 
 // NewCandidate parses a release name into a Candidate.
@@ -318,6 +318,13 @@ func NewCandidate(name string, sizeGB float64, seeders int) Candidate {
 // the sum across its episodes. 0 leaves the bitrate cap inert for this candidate.
 func (c Candidate) WithRuntime(min int) Candidate {
 	c.RuntimeMin = min
+	return c
+}
+
+// WithLanguage attaches the title's original language, so the Unwanted pack can tell a
+// foreign-only dub. "" (unknown) means no judgement.
+func (c Candidate) WithLanguage(lang string) Candidate {
+	c.OrigLanguage = strings.TrimSpace(lang)
 	return c
 }
 
@@ -410,11 +417,40 @@ type Evaluation struct {
 	// there's an alternative" — not merely a score penalty a better source could overcome.
 	Avoided        bool     `json:"avoided,omitempty"`
 	AvoidedFormats []string `json:"avoided_formats,omitempty"`
+
+	// Rank keys (rankkeys.go): the evaluation taken apart into what ranking v2 compares,
+	// key by key. Pure description — Total and Avoided above are computed exactly as
+	// before. Set on eligible evaluations.
+	//
+	// TargetAvoided: a target-format Avoid, the bitrate floor, or an Unwanted item set to
+	// avoid — the avoids that are a tier of their own. CustomAvoided: a negative custom
+	// format or keyword score, which v2 treats as a score, not a cliff.
+	TargetAvoided bool `json:"target_avoided,omitempty"`
+	CustomAvoided bool `json:"custom_avoided,omitempty"`
+	// ResTier ranks the resolution (2160p 5 … 480p 1, unknown 0); the goal is the top
+	// allowed tier. PrefCount is how many of the target's preferred or required formats
+	// the release has (0 when its bonus was waived for a collapsed bitrate).
+	ResTier   int `json:"res_tier,omitempty"`
+	PrefCount int `json:"pref_count,omitempty"`
+	// SourceTier: Remux 6, BluRay 5, WEB 4 (WEB-DL and WEBRip alike), HDTV 2, DVD 1,
+	// unstated 0, a cam -1. ProperFix is a PROPER or REPACK.
+	SourceTier int  `json:"source_tier,omitempty"`
+	ProperFix  bool `json:"proper_fix,omitempty"`
+	// GroupTier is the release group's tier (0 until group tiers exist).
+	GroupTier int `json:"group_tier,omitempty"`
+	// EffBitrate is the bitrate in H.264-equivalent Mb/s (0 without a runtime), and
+	// InWindow says it is inside the resolution's window (or there is none to judge).
+	EffBitrate float64 `json:"eff_bitrate,omitempty"`
+	InWindow   bool    `json:"in_window,omitempty"`
 	// LostOn and LostOnText say why an eligible release ranked below the one just above it
-	// in Decide's order (explainRanks): the deciding RankKey and the plain-language reason
-	// ("lower resolution", "fewer seeders"). Empty for the winner and for rejected releases.
+	// in Decide's order, in either ranking mode: the deciding RankKey (KeyTie when nothing
+	// told them apart) and the plain-language reason ("lower resolution", "fewer seeders",
+	// explain.go). Empty for the winner and for rejected releases.
 	LostOn     RankKey `json:"lost_on,omitempty"`
 	LostOnText string  `json:"lost_on_text,omitempty"`
+	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
+	// out of it can be told apart (current.go).
+	lowGroup bool
 	// ceiling names the profile ceiling a rejected release is above ("40 Mb/s", "BluRay"),
 	// "" for every other outcome. It lets a downgrade prompt tell "too big for this
 	// profile" from "not what this profile wants" without parsing the reason text.
@@ -428,9 +464,14 @@ type Decision struct {
 	ChosenOver string       `json:"chosen_over,omitempty"`
 	Eligible   []Evaluation `json:"eligible"`
 	Rejected   []Evaluation `json:"rejected"`
-	// DecidedBy is what put the winner above the runner-up ("" with one eligible release,
-	// or when the two were an equal match).
+	// Ranking is the mode that ordered Eligible (RankingV1 or RankingV2), and DecidedBy
+	// the key the winner beat the runner-up on (KeyOnly for a lone release) — every pick
+	// records what decided it.
+	Ranking   string  `json:"ranking,omitempty"`
 	DecidedBy RankKey `json:"decided_by,omitempty"`
+	// Shadow is what ranking v2 would have picked while classic ranking decides (shadow
+	// mode, shadow.go); nil under v2 or with nothing eligible.
+	Shadow *ShadowPick `json:"shadow,omitempty"`
 }
 
 // Why a profile turned a release down: the stable codes behind Evaluation.RejectReason.
@@ -445,12 +486,13 @@ const (
 	RejectTerm            = "rejected_term"    // carries a rejected term
 	RejectMissingRequired = "missing_required" // lacks a required format
 	RejectMinFormatScore  = "min_format_score" // below the minimum format score
+	// RejectUnwanted ("unwanted", unwanted.go): an Unwanted item set to reject.
 )
 
 // RejectCodes lists every code, for tests and for anything that labels them.
 var RejectCodes = []string{
 	RejectResolution, RejectSourceFloor, RejectPrerelease, RejectSourceCeiling, RejectBitrateCeiling,
-	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore,
+	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore, RejectUnwanted,
 }
 
 // reject sets both halves of a rejection: the sentence and its code.
@@ -461,6 +503,9 @@ func (ev *Evaluation) reject(code, reason string) {
 // Engine scores releases using a catalog of custom formats.
 type Engine struct {
 	formats map[string]CustomFormat
+	// Ranking is how Decide orders eligible releases: RankingV1 (classic, also "") or
+	// RankingV2 (ordered keys, rankv2.go). The service sets it from "quality_ranking".
+	Ranking string
 	// regex holds every release_title pattern the formats use, compiled once here rather
 	// than per release (nil for a pattern that doesn't compile: it never matches).
 	regex map[string]*regexp.Regexp
@@ -511,6 +556,15 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		ev.reject(RejectPrerelease, "A cam, telesync or screener copy — this profile never grabs those")
 		return ev
 	}
+	// The Unwanted pack: an item set to reject refuses the release by name, before any
+	// ceiling (a disc image is always "over the ceiling", which would hide why).
+	unwanted := p.unwantedHits(c)
+	for _, h := range unwanted {
+		if p.unwantedAction(h.item) == UnwantedReject && !p.onDisk {
+			ev.reject(RejectUnwanted, h.reject)
+			return ev
+		}
+	}
 	// An unstated source can't be judged against a ceiling, so it passes one.
 	if p.MaxSource != "" && r.Source != parser.SourceUnknown && sourceTier(r.Source) > sourceTier(p.MaxSource) {
 		ev.reject(RejectSourceCeiling, fmt.Sprintf("Above your %s ceiling — this is %s", minSourceLabel(p.MaxSource), sourceLabel(r.Source)))
@@ -548,12 +602,6 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 
 	ev.QualityScore = qualityScore(r)
-	// Baseline quality signal: notorious low-quality groups (over-compressed
-	// rips) rank below proper encodes of the same resolution/source. They stay
-	// eligible — just not the default pick.
-	if lowQualityGroup(lcName) {
-		ev.QualityScore -= 180
-	}
 	for name, score := range p.FormatScores {
 		f, ok := e.formats[name]
 		if !ok || !e.match(f, c.Name, r) {
@@ -575,6 +623,11 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		} else if score < 0 {
 			ev.Avoided = true
 			ev.AvoidedFormats = append(ev.AvoidedFormats, name)
+			if target {
+				ev.TargetAvoided = true
+			} else {
+				ev.CustomAvoided = true
+			}
 		}
 	}
 	for _, k := range p.Keywords {
@@ -588,6 +641,8 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		if k.Score > 0 {
 			ev.Matched = append(ev.Matched, k.Term)
 			ev.PreferBonus += k.Score
+		} else if k.Score < 0 {
+			ev.CustomAvoided = true
 		}
 	}
 	// A required format that carries no score still counts as matched, so the
@@ -606,8 +661,19 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if w, ok := p.Windows[ResolutionKey(r.Resolution)]; ok && w.Min > 0 {
 		if br := c.bitrateMbps(); br > 0 && br < w.Min {
 			ev.Avoided = true
+			ev.TargetAvoided = true
 			// Read as "it has <this>, which you avoid" in the decision's explanation.
 			ev.AvoidedFormats = append(ev.AvoidedFormats, fmt.Sprintf("a bitrate under your %.0f Mbps floor", w.Min))
+		}
+	}
+	// Unwanted items set to avoid join the avoided tier under their own names ("it has
+	// Low-quality group (YTS), which you avoid"), never as a hidden score.
+	for _, h := range unwanted {
+		if a := p.unwantedAction(h.item); a == UnwantedAvoid || (a == UnwantedReject && p.onDisk) {
+			ev.Avoided = true
+			ev.TargetAvoided = true
+			ev.lowGroup = ev.lowGroup || h.item == UnwantedLowQualityGroup
+			ev.AvoidedFormats = append(ev.AvoidedFormats, h.avoid)
 		}
 	}
 
@@ -624,6 +690,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		ev.SizeScore = -int(c.SizeGB * p.SmallBias)
 	}
 	ev.Total = ev.QualityScore + ev.FormatScore + ev.SizeScore
+	ev.fillRankKeys(p)
 	ev.Eligible = true
 	return ev
 }
@@ -669,12 +736,52 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 		}
 	}
 	waiveCollapsedBonuses(d.Eligible)
+	d.Ranking = NormalizeRanking(e.Ranking)
+	if d.Ranking == RankingV2 {
+		sortV2(p, d.Eligible)
+	} else {
+		sortV1(p, d.Eligible)
+	}
+	// Every rank explained (explain.go), from the comparator that actually ordered it.
+	d.DecidedBy = explainRanks(p, d.Eligible, d.Ranking)
+	if len(d.Eligible) > 0 {
+		d.Winner = &d.Eligible[0]
+		d.Why = whyReasons(p, *d.Winner, d.Eligible)
+		// Every eligible release carries a format you avoid — say so, so a Dolby Vision
+		// recommendation doesn't look like the avoid was ignored when it's simply all
+		// there was. Under v2 only the avoids that are a tier count: a negative custom
+		// score there is a score.
+		avoided := d.Winner.Avoided
+		if d.Ranking == RankingV2 {
+			avoided = d.Winner.TargetAvoided
+		}
+		if avoided {
+			d.Why = append([]string{"Only releases with a format you avoid were available"}, d.Why...)
+		}
+		if len(d.Eligible) > 1 {
+			ru := d.Eligible[1]
+			var reason string
+			if d.Ranking == RankingV2 {
+				reason = v2Reason(p, ru.LostOn, *d.Winner, ru)
+			} else {
+				_, reason = decidingFactor(p, *d.Winner, ru)
+			}
+			d.ChosenOver = fmt.Sprintf("Chosen over the %s — %s", releaseLabel(ru.Candidate.Release), reason)
+		}
+	}
+	return d
+}
+
+// sortV1 is classic ranking: the avoided tier, dead torrents last, then the summed score,
+// then magnitude (seeders deciding within 10%), source and seeders. It fills each release's
+// LostOn from decidingFactor, which walks the same steps.
+func sortV1(p Profile, evs []Evaluation) {
 	// Rank by score, then by bitrate. For one movie every candidate is the same
 	// runtime, so a larger file = higher bitrate = better — unless the profile
 	// expresses any small-size preference, in which case smaller wins the tie.
 	preferSmaller := p.SmallBias > 0
-	sort.SliceStable(d.Eligible, func(i, j int) bool {
-		a, b := d.Eligible[i], d.Eligible[j]
+	sort.SliceStable(evs, func(i, j int) bool {
+		a, b := evs[i], evs[j]
 		// Avoided releases are a strictly lower tier: a release carrying an avoided format
 		// never out-ranks one that doesn't, no matter how much better its resolution,
 		// source or bitrate is. This is what makes "Avoid" mean "don't pick it while there's
@@ -709,23 +816,12 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 		}
 		return a.Candidate.Seeders > b.Candidate.Seeders
 	})
-	d.DecidedBy = explainRanks(p, d.Eligible)
-	if len(d.Eligible) > 0 {
-		d.Winner = &d.Eligible[0]
-		d.Why = whyReasons(p, *d.Winner, d.Eligible)
-		// Every eligible release carries a format you avoid — say so, so a Dolby Vision
-		// recommendation doesn't look like the avoid was ignored when it's simply all
-		// there was.
-		if d.Winner.Avoided {
-			d.Why = append([]string{"Only releases with a format you avoid were available"}, d.Why...)
+	fillLostOn(evs, func(above, ev *Evaluation) RankKey {
+		if k, _ := decidingFactor(p, *above, *ev); k != "" {
+			return k
 		}
-		if len(d.Eligible) > 1 {
-			ru := d.Eligible[1]
-			_, reason := decidingFactor(p, *d.Winner, ru)
-			d.ChosenOver = fmt.Sprintf("Chosen over the %s — %s", releaseLabel(ru.Candidate.Release), reason)
-		}
-	}
-	return d
+		return KeyTie
+	})
 }
 
 // nearEqualBand is how close two magnitudes must be for seeders to decide between them.
@@ -782,6 +878,7 @@ func waiveCollapsedBonuses(evs []Evaluation) {
 			ev.TargetScore -= ev.targetBonus
 			ev.CustomScore -= ev.PreferBonus - ev.targetBonus
 			ev.BonusWaived = true
+			ev.PrefCount = 0 // the preferences stopped counting, for the preferences key too
 		}
 	}
 }

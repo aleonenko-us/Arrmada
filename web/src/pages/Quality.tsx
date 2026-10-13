@@ -20,9 +20,12 @@ import {
   type Series,
   type StoredProfile,
   type TargetPref,
+  type UnwantedItemInfo,
   type UpgradeTrigger,
 } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
+import { UnwantedRules, unwantedSummary } from "./quality/UnwantedRules";
+import { RankingCard } from "./quality/RankingCard";
 import { CustomFormatsEditor } from "./quality/FormatEditor";
 import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
@@ -33,6 +36,8 @@ import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
 
 const NO_PROFILES: QualityProfileInfo[] = [];
 const NO_FORMATS: FormatInfo[] = [];
+const NO_UNWANTED: UnwantedItemInfo[] = [];
+const NO_GROUPS: string[] = [];
 const NO_LADDER: string[] = [];
 const NO_PRESETS: MusicPreset[] = [];
 
@@ -256,6 +261,7 @@ export function Quality() {
   const listQ = useQuery(`quality:${media}`, () => qualityApi.qualityProfiles(media), { staleMs: 0 });
   const profiles = listQ.data?.profiles ?? NO_PROFILES;
   const formats = listQ.data?.formats ?? NO_FORMATS;
+  const unwanted = { catalog: listQ.data?.unwanted ?? NO_UNWANTED, groups: listQ.data?.unwanted_groups ?? NO_GROUPS };
   const ladder = listQ.data?.music_ladder ?? NO_LADDER;
   const musicPresets = listQ.data?.music_presets ?? NO_PRESETS;
   const loadError = listQ.error?.message ?? null;
@@ -296,7 +302,7 @@ export function Quality() {
     const done = { onCancel: () => setEditing(null), onSaved: () => { setEditing(null); refresh(); } };
     if (editing.media_type === "book") return <BookBuilder initial={editing} {...done} />;
     if (editing.media_type === "music") return <MusicBuilder initial={editing} ladder={ladder} presets={musicPresets} {...done} />;
-    return <VideoBuilder formats={formats} initial={editing} {...done} />;
+    return <VideoBuilder formats={formats} unwanted={unwanted} initial={editing} {...done} />;
   }
 
   return (
@@ -341,6 +347,7 @@ export function Quality() {
             ))}
           </div>
         )}
+        {isVideo && <RankingCard />}
       </div>
       {picking && (
         <TemplatePicker onClose={() => setPicking(false)} onPick={(sp) => { setPicking(false); setEditing(sp); }} media={media} />
@@ -528,7 +535,10 @@ type DecisionView = { winner: Evaluation | null; why?: string[]; chosen_over?: s
 function withTarget(sp: StoredProfile): StoredProfile {
   // An empty target (not a missing one) is how the builder says "no target": the server
   // reads a missing one from the scores instead.
-  return { ...sp, ideal: sp.ideal ?? {}, required_formats: sp.required_formats ?? [], keywords: sp.keywords ?? [], rejected: sp.rejected ?? [], custom_formats: sp.custom_formats ?? [] };
+  return {
+    ...sp, ideal: sp.ideal ?? {}, required_formats: sp.required_formats ?? [], keywords: sp.keywords ?? [], rejected: sp.rejected ?? [], custom_formats: sp.custom_formats ?? [],
+    unwanted: { items: sp.unwanted?.items ?? {}, low_quality_groups: sp.unwanted?.low_quality_groups ?? null },
+  };
 }
 
 function useUnsaved(dirty: boolean) {
@@ -540,7 +550,7 @@ function useUnsaved(dirty: boolean) {
   }, [dirty]);
 }
 
-function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: FormatInfo[]; initial: StoredProfile; onCancel: () => void; onSaved: () => void }) {
+function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { formats: FormatInfo[]; unwanted: UnwantedCatalog; initial: StoredProfile; onCancel: () => void; onSaved: () => void }) {
   const start = useMemo(() => withTarget(initial), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [decision, setDecision] = useState<DecisionView | null>(null);
@@ -676,10 +686,11 @@ function VideoBuilder({ formats, initial, onCancel, onSaved }: { formats: Format
               <p className="mt-2 text-[10.5px] text-ink-faint">Releases rank by resolution, then your preferences, then source; bitrate breaks ties.</p>
             </Collapsible>
 
-            <Collapsible n={3} title="Rules" summary={rulesSummary(sp)}>
+            <Collapsible n={3} title="Rules" summary={rulesSummary(sp, unwanted)}>
               <div className="mb-1.5 text-[12px] font-semibold">Reject</div>
               <PreReleaseRule allowed={!!sp.allow_prerelease} onChange={(allowed) => patch({ allow_prerelease: allowed })} />
               <RejectEditor rejected={sp.rejected ?? []} onChange={(r) => patch({ rejected: r })} />
+              <UnwantedRules value={sp.unwanted} onChange={(u) => patch({ unwanted: u })} catalog={unwanted.catalog} ideal={sp.ideal} defaultGroups={unwanted.groups} />
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <NumberField label="Minimum seeders" hint="Skip releases with fewer. Some indexers don't report seeders — leave 0 if releases vanish" value={sp.min_seeders} onChange={(v) => patch({ min_seeders: v })} />
                 <StallField value={sp.stall_minutes} onChange={(v) => patch({ stall_minutes: v })} />
@@ -795,10 +806,15 @@ function sourceSummary(sp: StoredProfile): string {
   return `${sp.min_source ? sourceName(sp.min_source) : "Any"} to ${sourceName(sp.max_source)}`;
 }
 
-function rulesSummary(sp: StoredProfile): string {
+// UnwantedCatalog is the Unwanted pack's rows and default low-quality groups, from the list.
+type UnwantedCatalog = { catalog: UnwantedItemInfo[]; groups: string[] };
+
+function rulesSummary(sp: StoredProfile, unwanted: UnwantedCatalog): string {
   const rej = (sp.rejected ?? []).filter((r) => !EXECUTABLE_TYPES.some((t) => t.toLowerCase() === r.toLowerCase()));
   const parts: string[] = [];
   if (!sp.allow_prerelease) parts.push("no cams or screeners");
+  const changed = unwantedSummary(sp.unwanted, unwanted.catalog, sp.ideal, unwanted.groups);
+  if (changed) parts.push(changed);
   if (rej.length) parts.push(`rejects ${rej.slice(0, 3).join(", ")}${rej.length > 3 ? "…" : ""}`);
   if (EXECUTABLE_TYPES.every((t) => (sp.rejected ?? []).some((r) => r.toLowerCase() === t))) parts.push("no executables");
   if (sp.min_seeders > 0) parts.push(`${sp.min_seeders}+ seeders`);

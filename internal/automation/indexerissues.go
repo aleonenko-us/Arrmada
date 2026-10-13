@@ -35,10 +35,11 @@ type searchNotes struct {
 	// What became of each distinct release the search looked at, for a recorded attempt
 	// (searchlog.go). Empty for an interactive list, which shows every release instead.
 	started  time.Time
-	seen     map[string]bool   // release titles considered
-	class    map[string]string // release title -> what happened to it (reject code)
-	examples map[string]string // reject code -> the first release it applied to
-	took     []string          // releases grabbed, in order
+	seen     map[string]bool     // release titles considered
+	class    map[string]string   // release title -> what happened to it (reject code)
+	examples map[string]string   // reject code -> the first release it applied to
+	took     []string            // releases grabbed, in order
+	picks    map[string]pickInfo // release title -> what decided its pick (pickkey.go)
 }
 
 type searchNotesKey struct{}
