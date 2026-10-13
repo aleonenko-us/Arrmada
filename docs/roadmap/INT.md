@@ -652,7 +652,7 @@ The hub UI needs one backend source.
   - **Risk:** This moves a lot of form code, so move it first and then change behaviour, and diff carefully to avoid regressing the seed-rule and pill semantics. The old routes must keep working through redirects, because Dashboard and health links point at them.
   - **Resolves:** integrations-12, frontend-10
 <a id="int-18"></a>
-- [ ] **INT-18 · Add-indexer preset catalogue with test-before-save** — `P3` · `M` · Phase 14
+- [x] **INT-18 · Add-indexer preset catalogue with test-before-save** — `P3` · `M` · Phase 14
   - **Problem:** Adding an indexer gives no guidance and no test:
 - You pick a kind in a generic form and save it untested.
 - Seed rules exist only in Edit (Indexers.tsx:445 vs 312-317), although the backend does default new indexers to 14 days (httpapi/indexers.go:76-89).
@@ -732,7 +732,7 @@ _Prowlarr syncs itself hourly, with managed rows locked and the correct port lin
   - **Risk:** More requests to private trackers: RSS runs every 15 minutes, goes through the same throttle and the recentCache 60s sharing, and must respect INT-08's login backoff. RSS-key URLs embed a secret, so don't ship them before SEC's release tokens.
   - **Resolves:** integrations-8
 <a id="int-21"></a>
-- [ ] **INT-21 · User-started searches jump the Torznab queue; waiting in the throttle doesn't use up the deadline** — `P3` · `M` · Phase 14
+- [x] **INT-21 · User-started searches jump the Torznab queue; waiting in the throttle doesn't use up the deadline** — `P3` · `M` · Phase 14
   - **Problem:** Searches you start yourself can time out behind background sweeps:
 - The Torznab throttle allows one request per second per host (torznab.go:108-152), and every Prowlarr-synced indexer shares one host.
 - The wait happens inside each indexer's 25s context (service.go:390-396), and sweeps and manual searches share the queue.
@@ -838,7 +838,7 @@ _Movies and non-anime TV search by IMDb, TMDB or TVDB id where the indexer suppo
 _A qBittorrent with different mounts works through per-client path mappings, and Test tells you exactly what Arrmada can and can't see._
 
 <a id="int-25"></a>
-- [ ] **INT-25 · Remote path mapping and a path-aware download client Test** — `P3` · `M` · Phase 14
+- [x] **INT-25 · Remote path mapping and a path-aware download client Test** — `P3` · `M` · Phase 14
   - **Problem:** An external or seedbox qBittorrent with different mounts downloads fine, but nothing ever imports:
 - Every add forces savepath to Arrmada's own downloads directory (coordinator.go:154, qbittorrent.go:213-215).
 - Imports read content_path untranslated (main.go:338-341), and there is no path mapping anywhere.

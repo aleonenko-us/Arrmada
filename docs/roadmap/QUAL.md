@@ -641,7 +641,7 @@ _The Why text, 'Chosen over' and the movie profile-change prompt are true. Inter
   - **Risk:** Low. decidingFactor must track the v1 comparator exactly. The comparator tests and decidingFactor tests share fixtures so they can't drift. Ranking v2 (QUAL-22) later returns the deciding key natively and reuses the same text table.
   - **Resolves:** quality-11
 <a id="qual-15"></a>
-- [ ] **QUAL-15 · Explain every row: matched, avoided, waived and 'ranked lower because…' in interactive search and the builder** — `P2` · `M` · Phase 14
+- [x] **QUAL-15 · Explain every row: matched, avoided, waived and 'ranked lower because…' in interactive search and the builder** — `P2` · `M` · Phase 14
   - **Problem:** RankedRelease (coordinator.go:347-376) carries no matched, avoided or waived information, and RankReleasesWith and RankSeriesReleasesWith drop ChosenOver (coordinator.go:472-496; series_interactive.go ~170-200). The interactive search modal therefore only explains rejected releases plus the winner's templated why (ReleaseSearchModal.tsx:279-283). Users can't see why an eligible release ranked where it did.
   - **Approach:** 1. **quality.Decide.** Fill `Evaluation.LostOn` (a RankKey) and `Evaluation.LostOnText` for each eligible release after the first, using decidingFactor ([QUAL-14](#qual-14)) against the release ranked just above it. Fill `Decision.DecidedBy` for winner versus runner-up. Under v2 ([QUAL-22](#qual-22)) these come from compare natively.
     2. **RankedRelease.** Add `Matched []string`, `Avoided []string`, `BonusWaived bool` and `LostOn string`. Add `ReleaseList.ChosenOver`, filled in RankReleasesWith and RankSeriesReleasesWith.
@@ -664,7 +664,7 @@ _The Why text, 'Chosen over' and the movie profile-change prompt are true. Inter
   - **Risk:** Low. More text per row needs a compact layout that stays usable on phones.
   - **Resolves:** quality-11
 <a id="qual-16"></a>
-- [ ] **QUAL-16 · The series profile preview scores episode and season-pack samples, not Dune** — `P2` · `S` · Phase 14
+- [x] **QUAL-16 · The series profile preview scores episode and season-pack samples, not Dune** — `P2` · `S` · Phase 14
   - **Problem:** Service.Preview (service.go:405-408) always scores SampleCandidates() (sample.go: Dune: Part Two releases at 166 minutes). A series profile's 'What you'll get' therefore shows movie picks and judges the ceiling at film length, which does not reflect a real series grab (episode sizes, scene WEB, packs).
   - **Approach:** 1. **sample.go.** Add SeriesSampleCandidates(): about 8 releases for a fictional 50-minute show with fictional groups, each carrying its runtime (packs summed):
        - a 2160p DV/HDR WEB-DL H.265
@@ -686,7 +686,7 @@ _The Why text, 'Chosen over' and the movie profile-change prompt are true. Inter
   - **Risk:** Low. Sample names must use fictional show and group names, so they don't look like real indexer data.
   - **Resolves:** quality-1
 <a id="qual-17"></a>
-- [ ] **QUAL-17 · 'Test a release name' box in the profile builder** — `P2` · `S` · Phase 14
+- [x] **QUAL-17 · 'Test a release name' box in the profile builder** — `P2` · `S` · Phase 14
   - **Problem:** GET /api/v1/parse exists (server.go:174, parse.go), but nothing in web/src calls it. A user who wonders why a release never matches a format, or why it is rejected, cannot check a name against the profile they are editing.
   - **Approach:** 1. **Endpoint.** `POST /api/v1/quality/explain` (RoleManager, like /quality/test). Body: {profile: StoredProfile, name, size_gb?, runtime_min?}. Response: {release: parser.Release, evaluation: quality.Evaluation, formats: [{name, matched, score}]}.
        - Add `quality.Service.Explain(sp, name, sizeGB, runtimeMin)`. It normalizes the unsaved profile, evaluates with sp.Engine(), and checks every built-in and custom format against the parsed release.
@@ -704,7 +704,7 @@ _The Why text, 'Chosen over' and the movie profile-change prompt are true. Inter
   - **Risk:** Low. Keep it manager-only. The chips list grows as parser fields land.
   - **Resolves:** quality-8
 <a id="qual-18"></a>
-- [ ] **QUAL-18 · Warn about contradictory target settings in the profile editor** — `P3` · `S` · Phase 14
+- [x] **QUAL-18 · Warn about contradictory target settings in the profile editor** — `P3` · `S` · Phase 14
   - **Problem:** The editor accepts contradictory states that make a profile silently behave opposite to what the user meant:
 - Prefer HDR10+ with Avoid HDR10 avoids every HDR10+ release, because HDR10+ also tags HDR10 (parser.go:731-733).
 - Must DV with Avoid HDR10 rules out DV/HDR10 hybrids.
@@ -735,7 +735,7 @@ _The Why text, 'Chosen over' and the movie profile-change prompt are true. Inter
 _BR-DISK, 3D and extras are never grabbed. Foreign-only, upscaled, DV-without-fallback and low-quality-group releases are visibly avoided with named reasons. Each item is adjustable per profile._
 
 <a id="qual-19"></a>
-- [ ] **QUAL-19 · Parser: detect full-disc (BR-DISK), 3D, upscaled, extras, release language and streaming service** — `P2` · `M` · Phase 14
+- [x] **QUAL-19 · Parser: detect full-disc (BR-DISK), 3D, upscaled, extras, release language and streaming service** — `P2` · `M` · Phase 14
   - **Problem:** parser.Release has no field for full-disc, 3D, upscale, extras, language or streaming service (parser.go:72-96).
 - 'Movie.2020.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-GRP' parses as a BluRay x264 encode. It is really a disc image the importer can't import, because there is no .m2ts or .iso in the importer's videoExts (importer.go:24-27).
 - FRENCH and iTALiAN-only releases are not recognised.
@@ -769,7 +769,7 @@ _BR-DISK, 3D and extras are never grabbed. Foreign-only, upscaled, DV-without-fa
   - **Risk:** False positives block good releases once QUAL-20 rejects on them, so detection stays conservative and token-bounded and is tested against real-looking names. Short tokens like MA, iT and DL are the riskiest.
   - **Resolves:** quality-7, quality-8
 <a id="qual-20"></a>
-- [ ] **QUAL-20 · A built-in 'Unwanted' pack, on by default and visible: BR-DISK, 3D, extras, upscaled, foreign-only, DV without HDR fallback, low-quality groups** — `P2` · `M` · Phase 14
+- [x] **QUAL-20 · A built-in 'Unwanted' pack, on by default and visible: BR-DISK, 3D, extras, upscaled, foreign-only, DV without HDR fallback, low-quality groups** — `P2` · `M` · Phase 14
   - **Problem:** There are no defences against the TRaSH 'Unwanted' set:
 - Disc images download and then fail to import.
 - A family request can come back French-dubbed.
@@ -816,7 +816,7 @@ _BR-DISK, 3D and extras are never grabbed. Foreign-only, upscaled, DV-without-fa
 _Releases are compared key by key: avoid, resolution, preferences, custom, source, group, bitrate, health, size. Custom negatives no longer act as cliffs, and every pick records its deciding key. v2 is validated in shadow mode, then becomes the default with a one-setting rollback._
 
 <a id="qual-21"></a>
-- [ ] **QUAL-21 · Ranking v2, step 1: decompose each Evaluation into rank keys (no behaviour change)** — `P2` · `M` · Phase 14
+- [x] **QUAL-21 · Ranking v2, step 1: decompose each Evaluation into rank keys (no behaviour change)** — `P2` · `M` · Phase 14
   - **Problem:** Ranking mixes two models:
 - Prefer is additive (+50 each, ideal.go:158; HDR10+ also tags HDR10), so stacked Prefers can outscore a higher goal resolution (the 2160p to 1080p gap is 150).
 - Any negative format score, custom formats included, sets Avoided, which Decide sorts strictly last (quality.go:420-423, 522-524). A custom format scored −5 behaves like a full Avoid, while keywords stay additive.
@@ -843,7 +843,7 @@ The Avoid cliff for target Avoids is intended and documented (Quality.tsx:126), 
   - **Risk:** Low. These are additive fields only. Unwanted avoids must land in TargetAvoided, which is why this depends on QUAL-20.
   - **Resolves:** quality-6
 <a id="qual-22"></a>
-- [ ] **QUAL-22 · Ranking v2, step 2: the ordered comparator records the deciding key; it ships in shadow mode behind 'quality_ranking'** — `P2` · `M` · Phase 14
+- [x] **QUAL-22 · Ranking v2, step 2: the ordered comparator records the deciding key; it ships in shadow mode behind 'quality_ranking'** — `P2` · `M` · Phase 14
   - **Problem:** Even with the decomposed fields, Decide still sorts by summed Total, so the goal resolution and target Avoids can still be outweighed by additive bonuses. The overhaul needs a key-by-key comparator that records what decided each comparison. It must be validated against real indexer results before it changes any grab.
   - **Approach:** 1. **rank.go comparator.** Add `func compare(p Profile, a, b *Evaluation) (int, RankKey)` with this key order:
        1. avoid: TargetAvoided only
@@ -904,7 +904,7 @@ The Avoid cliff for target Avoids is intended and documented (Quality.tsx:126), 
 _Custom formats support regex, any/all, NOT, aliases and validation, and get a proper editor. Release-group tiers and streaming-service formats are available, and TRaSH custom-format JSON can be imported with explicit warnings._
 
 <a id="qual-24"></a>
-- [ ] **QUAL-24 · Custom-format engine: release-title regex, any/all matching, aliases and case-insensitive values, separator-normalised keywords, validation** — `P2` · `M` · Phase 14
+- [x] **QUAL-24 · Custom-format engine: release-title regex, any/all matching, aliases and case-insensitive values, separator-normalised keywords, validation** — `P2` · `M` · Phase 14
   - **Problem:** Custom formats built TRaSH-style silently never fire:
 - matchOne compares exact, case-sensitive internal parser values (quality.go:129-148). Codec must be 'x265', not 'HEVC'; DV, not 'Dolby Vision'.
 - There is no release-title regex type.
@@ -934,7 +934,7 @@ _Custom formats support regex, any/all, NOT, aliases and validation, and get a p
   - **Risk:** Regex cost per release × per format: compile once per Engine. RE2 is linear-time. Alias normalisation must not change matches for existing exact values. The book keyword path shares the helpers, so run the book scoring tests.
   - **Resolves:** quality-8
 <a id="qual-25"></a>
-- [ ] **QUAL-25 · Custom-format editor UI: value dropdowns, several conditions, NOT, any/all, and editing existing formats** — `P2` · `M` · Phase 14
+- [x] **QUAL-25 · Custom-format editor UI: value dropdowns, several conditions, NOT, any/all, and editing existing formats** — `P2` · `M` · Phase 14
   - **Problem:** The builder adds a single condition per format, with a free-text value and the 'FraMeSToR' placeholder for every type (Quality.tsx:819-871). Negate and multiple conditions exist in the backend but aren't exposed, and existing formats can't be edited, only removed and re-added.
   - **Approach:** 1. **Vocabulary.** GET /api/v1/quality/profiles also returns 'vocabulary' from a new quality.ConditionVocabulary(): codec, source, resolution, dynamic_range, audio, edition, streaming and language values, built from parser constants plus the audioTags and editions tables.
     2. **Format cards.** Rewrite the AdvancedPanel custom formats as a list of cards. Each card has:
@@ -955,7 +955,7 @@ _Custom formats support regex, any/all, NOT, aliases and validation, and get a p
   - **Risk:** Low. The UI grows inside an already long editor (Quality.tsx is about 1,475 lines). Consider moving AdvancedPanel into web/src/pages/quality/AdvancedPanel.tsx as part of this task.
   - **Resolves:** quality-8
 <a id="qual-26"></a>
-- [ ] **QUAL-26 · Release-group tiers and streaming-service formats** — `P3` · `M` · Phase 14
+- [x] **QUAL-26 · Release-group tiers and streaming-service formats** — `P3` · `M` · Phase 14
   - **Problem:** Neither of these is possible today, and TRaSH's guides rely on both:
 - Tiering release groups, for example FraMeSToR above other remux groups, or preferring particular WEB groups.
 - Preferring AMZN/MA/ATVP web sources.
@@ -974,7 +974,7 @@ _Custom formats support regex, any/all, NOT, aliases and validation, and get a p
   - **Risk:** Shipped group lists go stale and are opinionated, so keep them minimal and editable, and never use them to reject.
   - **Resolves:** quality-8
 <a id="qual-27"></a>
-- [ ] **QUAL-27 · Import TRaSH custom-format JSON into a profile** — `P3` · `M` · Phase 14
+- [x] **QUAL-27 · Import TRaSH custom-format JSON into a profile** — `P3` · `M` · Phase 14
   - **Problem:** Power users who maintain a TRaSH/Recyclarr setup have to rebuild every custom format by hand in Arrmada's editor.
   - **Approach:** 1. **quality/trash.go.** Add `ImportTrashCF(json []byte) ([]CustomFormat, []string /*warnings*/)`, which maps TRaSH specifications:
        - ReleaseTitleSpecification to CondReleaseTitle. The regex is converted to RE2 where possible; lookarounds are reported as unsupported and that condition is skipped.

@@ -853,7 +853,7 @@ Other costs:
 _Specials released by name are found and imported. Finished shows get BluRay season-pack upgrades, absolute-numbered anime can be upgraded, and every season is searched over successive sweeps._
 
 <a id="ser-21"></a>
-- [ ] **SER-21 · Find and import specials by episode title** — `P2` · `M` · Phase 14
+- [x] **SER-21 · Find and import specials by episode title** — `P2` · `M` · Phase 14
   - **Problem:** Most specials are released by name ('Show.The.Christmas.Special.1080p'), not as S00Exx. After SER-03 the Specials buttons are safe, but they rarely find anything. A special named only by title can't be imported either: its filename has no numbering, so it ends up in the review queue.
   - **Approach:** 1. **Search.** For a season-0 scope (searchSeriesScope with season 0), also query `indexerQuery(title) + " " + indexerQuery(special.Title)` for each wanted special (within [SER-03](#ser-03)'s 5-query cap).
     2. **Pure matcher** `specialTitleMatch(p parser.Release, name string, ep series.Episode) bool`. It requires:
@@ -876,7 +876,7 @@ _Specials released by name are found and imported. Finished shows get BluRay sea
   - **Risk:** Title matching is fuzzy. Keep it strictly limited to season-0 scopes so regular episodes are never routed by title, and limit target placement to single-video downloads.
   - **Resolves:** series-2
 <a id="ser-22"></a>
-- [ ] **SER-22 · Series upgrade sweep: per-season search with a cursor, absolute-numbered anime, and season packs that upgrade most of a season** — `P2` · `M` · Phase 14
+- [x] **SER-22 · Series upgrade sweep: per-season search with a cursor, absolute-numbered anime, and season packs that upgrade most of a season** — `P2` · `M` · Phase 14
   - **Problem:** upgradeSeries runs one title query per show with Limit 100 (series_reliability.go:194). It lacks the per-season fan-out and cursor the missing sweep got. It accepts only single-episode releases with a matching SxxExx (episodeRelease, lines 228, 324-334). So long or finished shows, whose upgrades mostly appear as BluRay season packs, are effectively never upgraded. Neither are anime releases numbered absolutely, which have no SxxExx.
   - **Approach:** 1. **Migration** `NNNN_series_upgrade_cursor.sql`: `ALTER TABLE series ADD COLUMN search_upgrade_cursor INTEGER NOT NULL DEFAULT 0`, with Repo get/set helpers next to SearchCursors.
     2. **Per-season search.** After the existing at-ceiling and source-release filters, collect the seasons that have upgradeable episodes. Query them through searchSeasons with a rotation like rotateSeasons on the new cursor, bounded by maxSeasonQueries, keeping the broad title query too.
