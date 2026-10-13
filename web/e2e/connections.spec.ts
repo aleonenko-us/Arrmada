@@ -8,7 +8,7 @@ import { plexConfig } from "./fixtures/modules";
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
-  test("the old pages redirect and the sidebar has one Connections entry", async ({ page }) => {
+  test("the old pages redirect and Connections lives only in Settings", async ({ page }) => {
     await page.goto("/indexers");
     await expect(page).toHaveURL(/\/settings\/connections#search$/);
     await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
@@ -18,9 +18,11 @@ test.describe("admin", () => {
     await page.goto("/settings/system#api-keys");
     await expect(page).toHaveURL(/\/settings\/connections#api-keys$/);
 
-    // The app sidebar (the Settings rail is an aside too).
+    // The app sidebar has no Connections entry (only Settings, which is the one lit up);
+    // the Settings rail has it. (The Settings rail is an aside too.)
     const sidebar = page.getByRole("complementary").first();
-    await expect(sidebar.getByRole("link", { name: "Connections" })).toHaveAttribute("href", "/settings/connections");
+    await expect(sidebar.locator('a[href="/settings/connections"]')).toHaveCount(0);
+    await expect(sidebar.locator('a[href="/settings"][aria-current="page"]')).toHaveCount(1);
     await expect(sidebar.locator('a[href="/indexers"]')).toHaveCount(0);
     await expect(sidebar.locator('a[href="/downloadclients"]')).toHaveCount(0);
   });

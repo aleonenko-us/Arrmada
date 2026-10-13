@@ -7,7 +7,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 // Cue shaping for AI-generated subtitles: the SRT model, the limits, and the passes
@@ -215,24 +218,26 @@ func endsClause(w string) bool {
 
 // mergeFragments joins a fragment onto the neighbour it's contiguous with — forward
 // first, then back — provided the result still fits on two lines.
-func mergeFragments(cues []cue) []cue {
+func mergeFragments(cues []cue) []cue { return mergeFragmentsIn(cues, spacedLayout) }
+
+func mergeFragmentsIn(cues []cue, lay cueLayout) []cue {
 	if len(cues) < 2 {
 		return cues
 	}
 	out := make([]cue, 0, len(cues))
 	for i := 0; i < len(cues); i++ {
 		c := cues[i]
-		if utf8.RuneCountInString(c.text) >= cueShortChars {
+		if utf8.RuneCountInString(c.text) >= lay.shortChars {
 			out = append(out, c)
 			continue
 		}
-		if i+1 < len(cues) && canMerge(c, cues[i+1]) {
-			cues[i+1] = cue{start: c.start, end: cues[i+1].end, text: c.text + " " + cues[i+1].text}
+		if i+1 < len(cues) && canMergeIn(c, cues[i+1], lay) {
+			cues[i+1] = cue{start: c.start, end: cues[i+1].end, text: lay.join(c.text, cues[i+1].text)}
 			continue
 		}
-		if len(out) > 0 && canMerge(out[len(out)-1], c) {
+		if len(out) > 0 && canMergeIn(out[len(out)-1], c, lay) {
 			p := &out[len(out)-1]
-			p.text += " " + c.text
+			p.text = lay.join(p.text, c.text)
 			p.end = c.end
 			continue
 		}
@@ -241,13 +246,13 @@ func mergeFragments(cues []cue) []cue {
 	return out
 }
 
-func canMerge(a, b cue) bool {
+func canMergeIn(a, b cue, lay cueLayout) bool {
 	gap := b.start - a.end
 	if gap < 0 {
 		gap = 0
 	}
 	return gap <= cueMergeGap &&
-		utf8.RuneCountInString(a.text)+1+utf8.RuneCountInString(b.text) <= cueMaxChars &&
+		utf8.RuneCountInString(lay.join(a.text, b.text)) <= lay.cueChars &&
 		b.end-a.start <= cueMaxDur+cueMergeGap
 }
 
@@ -312,4 +317,162 @@ func layoutLines(text string) string {
 		}
 	}
 	return strings.Join(words[:best+1], " ") + "\n" + strings.Join(words[best+1:], " ")
+}
+
+// Chinese and Japanese are written without spaces between words, so their cues are
+// laid out by characters: words join with nothing between them, a line holds 16
+// characters and a cue two lines, and a line may break between any two characters —
+// best after 、。！？ — rather than only at a space. Every other language keeps the
+// spaced layout above, unchanged.
+type cueLayout struct {
+	noSpace    bool
+	lineChars  int     // per line
+	cueChars   int     // per cue (two lines)
+	shortChars int     // a cue shorter than this is a fragment
+	sentChars  int     // a sentence end closes a cue once it has this much text
+	readCPS    float64 // characters per second a viewer can read
+}
+
+var (
+	spacedLayout  = cueLayout{lineChars: cueLineChars, cueChars: cueMaxChars, shortChars: cueShortChars, sentChars: cueSentChars, readCPS: cueReadCPS}
+	noSpaceLayout = cueLayout{noSpace: true, lineChars: 16, cueChars: 32, shortChars: 10, sentChars: 16, readCPS: 8}
+)
+
+// layoutFor picks the layout for an AI subtitle: by characters for Chinese and
+// Japanese written as spoken; translating always produces English.
+func layoutFor(lang string, translate bool) cueLayout {
+	if !translate {
+		switch langs.Base(lang) {
+		case "zh", "ja":
+			return noSpaceLayout
+		}
+	}
+	return spacedLayout
+}
+
+// join puts two runs of text together the way the layout writes them.
+func (l cueLayout) join(a, b string) string {
+	if l.noSpace {
+		return joinWords(a, b)
+	}
+	return a + " " + b
+}
+
+func (l cueLayout) endsSentence(text string) bool {
+	if endsSentence(text) {
+		return true
+	}
+	if !l.noSpace {
+		return false
+	}
+	t := strings.TrimRight(text, "」』）】〉》\"')]")
+	return strings.HasSuffix(t, "。") || strings.HasSuffix(t, "！") || strings.HasSuffix(t, "？")
+}
+
+func (l cueLayout) layoutLines(text string) string {
+	if l.noSpace {
+		return layoutLinesRunes(text, l.lineChars)
+	}
+	return layoutLines(text)
+}
+
+// isNoSpaceScript reports whether r belongs to a script written without spaces between
+// words: Han, Hiragana and Katakana. Hangul is spaced like Latin and isn't one.
+func isNoSpaceScript(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana)
+}
+
+// isCJKPunct reports whether r is CJK or full-width punctuation (、。「」！？ー…), which
+// sits flush against the characters around it.
+func isCJKPunct(r rune) bool {
+	return (r >= 0x3000 && r <= 0x303F) || r == 0x30FB || r == 0x30FC || (r >= 0xFF01 && r <= 0xFF65)
+}
+
+func noSpaceEdge(r rune) bool { return isNoSpaceScript(r) || isCJKPunct(r) }
+
+// joinWords joins two runs of Chinese or Japanese text: flush when either side of the
+// join is a CJK character or CJK punctuation (so a Latin name inside a Japanese line,
+// "これはiPhoneです", isn't spaced off either), with a space only between two runs of
+// spaced script.
+func joinWords(a, b string) string {
+	if a == "" || b == "" {
+		return a + b
+	}
+	last, _ := utf8.DecodeLastRuneInString(a)
+	first, _ := utf8.DecodeRuneInString(b)
+	if noSpaceEdge(last) || noSpaceEdge(first) || last == ' ' || first == ' ' {
+		return a + b
+	}
+	return a + " " + b
+}
+
+// layoutLinesRunes breaks Chinese or Japanese text over one line into two at the
+// character boundary nearest the middle, preferring one after 、。！？, never inside a
+// Latin word or number, never before closing punctuation and never after an opening
+// bracket.
+func layoutLinesRunes(text string, max int) string {
+	r := []rune(text)
+	if len(r) <= max {
+		return text
+	}
+	bonus := float64(max) / 3 // a break after punctuation is worth a lopsided split
+	best, bestScore := -1, math.MaxFloat64
+	for i := 1; i < len(r); i++ {
+		if !canBreakBefore(r, i) {
+			continue
+		}
+		left, right := lineWidth(r[:i]), lineWidth(r[i:])
+		if left > max || right > max {
+			continue
+		}
+		score := math.Abs(float64(left - right))
+		if strings.ContainsRune("、。！？，,.!?", r[i-1]) {
+			score -= bonus
+		} else if unicode.Is(unicode.Hiragana, r[i-1]) && unicode.In(r[i], unicode.Han, unicode.Katakana) {
+			// Kana into kanji is where a Japanese phrase usually ends (ボタンを|長押し).
+			score -= 2
+		}
+		if score < bestScore {
+			best, bestScore = i, score
+		}
+	}
+	if best < 0 {
+		// Nothing fits in two lines — break at the allowed point nearest the middle.
+		mid := len(r) / 2
+		for d := 0; d < len(r) && best < 0; d++ {
+			for _, i := range []int{mid + d, mid - d} {
+				if i > 0 && i < len(r) && canBreakBefore(r, i) {
+					best = i
+					break
+				}
+			}
+		}
+		if best < 0 {
+			return text
+		}
+	}
+	return strings.TrimRight(string(r[:best]), " ") + "\n" + strings.TrimLeft(string(r[best:]), " ")
+}
+
+// lineWidth counts a line's characters, leaving out the spaces a break trims.
+func lineWidth(r []rune) int {
+	return utf8.RuneCountInString(strings.TrimSpace(string(r)))
+}
+
+func canBreakBefore(r []rune, i int) bool {
+	a, b := r[i-1], r[i]
+	if isWordRune(a) && isWordRune(b) {
+		return false // inside a Latin word or a number
+	}
+	if unicode.In(b, unicode.Pe, unicode.Po, unicode.Pf) || b == 0x30FC || unicode.Is(unicode.Lm, b) {
+		return false // 。、」ー and friends never start a line
+	}
+	if unicode.In(a, unicode.Ps, unicode.Pi) {
+		return false // nor does 「 end one
+	}
+	return true
+}
+
+func isWordRune(r rune) bool {
+	return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r)) || unicode.Is(unicode.Latin, r)
 }

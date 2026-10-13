@@ -105,6 +105,8 @@ type Service struct {
 
 	profiles profileStore // language profiles and per-title overrides, cached (profiles.go)
 	searches searchCache  // the drawer's interactive searches, reused for a few minutes (search.go)
+
+	upgrade upgradeBudget // downloads the upgrade loop may still spend today (upgrade.go)
 }
 
 // NewService wires the module over the shared Movies/Series catalogs + a subtitle provider. db is
@@ -170,6 +172,8 @@ type Settings struct {
 	ProviderDetail   string `json:"provider_detail"`
 	VIP              bool   `json:"vip"`
 	AllowedDownloads int    `json:"allowed_downloads"` // per day; -1 = unknown
+	// UpgradedWeek is how many weak subtitles the upgrade loop replaced in the last 7 days.
+	UpgradedWeek int `json:"upgraded_week"`
 }
 
 // GetSettings returns the current configuration + provider status.
@@ -193,6 +197,9 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 	s.snap.mu.Unlock()
 	st := s.providerStatus()
 	out.ProviderState, out.ProviderDetail, out.VIP, out.AllowedDownloads = st.State, st.Detail, st.VIP, st.Allowed
+	if n, err := s.ledger.CountUpgraded(ctx, time.Now().Add(-7*24*time.Hour)); err == nil {
+		out.UpgradedWeek = n
+	}
 	if q, ok := s.provider.(quotaReporter); ok {
 		remaining, resetAt := q.Quota()
 		out.QuotaRemaining = remaining

@@ -2231,6 +2231,7 @@ export interface SubtitleSettings {
   provider_detail: string;
   vip: boolean;
   allowed_downloads: number; // per day; -1 = unknown
+  upgraded_week?: number; // weak subtitles the daily upgrade replaced in the last 7 days
   stale?: boolean; // the Library/Overview figures were counted for other languages; a recount is under way
 }
 export type SubtitleProviderState = "not_configured" | "needs_account" | "unverified" | "ok" | "auth_failed" | "quota_spent" | "rate_limited";
@@ -2273,7 +2274,7 @@ export interface SubtitleJob {
   stage?: string;    // what a running job is doing
   started_at?: number; // unix seconds the worker picked it up
   redo?: boolean; // replacing the sidecars already there
-  mode?: string; // "next" | "ai" | "extract" for a one-language redo; "repair-forced"
+  mode?: string; // "next" | "ai" | "extract" for a one-language redo; "repair-forced"; "upgrade" for the daily upgrade
   priority: number; // 0 import · 1 manual · 2 sweep — the worker takes the lowest first
   run_id?: string; // this run's rows in GET /subtitles/history?run_id=
   outcomes?: SubtitleOutcome[]; // what each rung did per language, in the order tried
