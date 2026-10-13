@@ -19,8 +19,9 @@ import (
 // HEVC only: hdr10plus_tool reads and writes HEVC, which is why HDR10+ files always
 // convert to HEVC rather than AV1.
 //
-// Dolby Vision is not carried at all — only its HDR10/HLG base layer — so there is no
-// Dolby Vision pipeline; those files go through the standard encode.
+// Dolby Vision is normally not carried — only its HDR10/HLG base layer goes through the
+// standard encode. The "keep" choice carries it around the encode the same way as HDR10+,
+// with dovi_tool (dv.go), reusing this file's raw-stream encode and remux.
 
 // Pulling the HDR10+ dynamic metadata from a file's HEVC stream into a JSON file is two
 // steps. It looks before it reads: hasHDR10Plus checks the first 100 frames, and only then
@@ -88,13 +89,10 @@ func (s *Service) encodeHDR10Plus(ctx context.Context, job *Job, src, dst, scrat
 		return fmt.Errorf("inject HDR10+: %v (%s)", err, tailStr(out))
 	}
 	_ = os.Remove(encoded) // each stage frees the last: a 4K stream is tens of gigabytes
-	// The raw stream's timestamps start at zero. With resumable pieces on, the remux puts
-	// the video back where the original's started against its audio (chunk.go startOffset).
-	var offset []string
-	if s.record(job).resume != nil {
-		offset = startOffset(mi)
-	}
-	if err := s.remuxVideoStream(ctx, injected, src, dst, mi, plan, offset); err != nil {
+	// The raw stream's timestamps start at zero and hold exactly the original's frames
+	// (pieced or not), so the remux puts the video back where the original's started
+	// against its audio (chunk.go startOffset).
+	if err := s.remuxVideoStream(ctx, injected, src, dst, mi, plan, startOffset(mi), false); err != nil {
 		return fmt.Errorf("remux: %w", err)
 	}
 	return nil
@@ -106,7 +104,13 @@ func (s *Service) encodeHDR10Plus(ctx context.Context, job *Job, src, dst, scrat
 // NO frame-rate flattening here, deliberately: the HDR10+ JSON is extracted from the SOURCE
 // frame for frame, and -fps_mode cfr changes the frame count, so every subsequent frame's
 // metadata would land on the wrong picture. (The remux stamps the source's exact average
-// rate, so timing still lines up.)
+// rate, so timing still lines up.) That has to be said out loud: for a raw stream, which
+// has no timestamps, ffmpeg's default IS constant frame rate, and the millisecond
+// timestamps of a Matroska source made it duplicate a frame (measured: 481 from 480) — the
+// HDR10+ metadata then ran a frame late, and keeping Dolby Vision (dv.go) refuses outright.
+// -fps_mode passthrough writes exactly the source's frames; where the original's video
+// starts after its audio, the remux restores that offset (startOffset) instead of the
+// duplicate frame doing it by accident.
 //
 // And NO B-frames. A raw HEVC stream carries no timestamps, so the remux has to invent them
 // from the frame rate — in DECODE order. With B-frames, decode order isn't display order:
@@ -122,7 +126,7 @@ func (s *Service) encodeHEVCStream(ctx context.Context, job *Job, src, dst strin
 	cores := s.cpuCores(ctx)
 	args := []string{"-y", "-hide_banner", "-nostats", "-loglevel", "warning", "-progress", "pipe:1",
 		"-threads", strconv.Itoa(cores),
-		"-i", src, "-map", fmt.Sprintf("0:v:%d", mi.VideoIndex), "-an", "-sn"}
+		"-i", src, "-map", fmt.Sprintf("0:v:%d", mi.VideoIndex), "-an", "-sn", "-fps_mode", "passthrough"}
 	if vf := swFilterChain(mi, plan); vf != "" {
 		args = append(args, "-vf", vf)
 	}
@@ -158,7 +162,14 @@ func (s *Service) encodeHEVCStream(ctx context.Context, job *Job, src, dst strin
 //
 // The frame rate is ffprobe's EXACT RATIONAL (e.g. "24000/1001"). Stamping a rounded float
 // instead re-times every frame slightly, and over a feature the video drifts out of sync.
-func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, mi *MediaInfo, plan Plan, offset []string) error {
+//
+// dovi marks a stream carrying Dolby Vision RPUs (dv.go). A raw stream has no container to
+// say so, and players — Plex among them — go by the container's Dolby Vision configuration
+// record, not the RPUs. ffmpeg's dovi_rpu filter writes that record from the stream's RPUs,
+// and MP4 only stores it with -strict unofficial; the Matroska remux then carries it over.
+// The filter rewrites each RPU on the way, so its metadata compression is off, and the Dolby
+// Vision gate (dv.go) checks what came out against what went in.
+func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, mi *MediaInfo, plan Plan, offset []string, dovi bool) error {
 	r := mi.FrameRateRat
 	if r == "" || r == "0/0" || strings.HasPrefix(r, "0/") {
 		r = "24"
@@ -166,8 +177,12 @@ func (s *Service) remuxVideoStream(ctx context.Context, video, src, dst string, 
 	tmp := video + ".mp4"
 	defer os.Remove(tmp)
 	// 1) Raw HEVC ES → video-only MP4 (the -r generates timestamps for the timestamp-less ES).
-	if out, err := s.tool(ctx, nil, toolrun.Background, s.ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-		"-r", r, "-i", video, "-c", "copy", "-tag:v", "hvc1", tmp).CombinedOutput(); err != nil {
+	pkg := []string{"-y", "-hide_banner", "-loglevel", "error", "-r", r, "-i", video, "-c", "copy"}
+	if dovi {
+		pkg = append(pkg, "-bsf:v", "dovi_rpu=compression=none", "-strict", "unofficial")
+	}
+	pkg = append(pkg, "-tag:v", "hvc1", tmp)
+	if out, err := s.tool(ctx, nil, toolrun.Background, s.ffmpeg, pkg...).CombinedOutput(); err != nil {
 		return fmt.Errorf("package video: %v (%s)", err, tailStr(out))
 	}
 	_ = os.Remove(video)

@@ -195,6 +195,63 @@ test.describe("Dolby Vision choice", () => {
     await group.getByRole("radio", { name: /Leave them alone/ }).check();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ dolby_vision: "skip" }]);
     await expect(group.getByRole("radio", { name: /Leave them alone/ })).toBeChecked();
+    // Without dovi_tool, keeping the layer isn't offered.
+    await expect(group.getByRole("radio", { name: /keep Dolby Vision/ })).toHaveCount(0);
+  });
+
+  // CONV-29: keeping the layer is a third, opt-in choice — a preview — when dovi_tool is there.
+  test("keeping Dolby Vision is offered with dovi_tool, as a preview, and saves", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/settings", body: { ...convertSettings, dovi_tool: true } },
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, dovi_tool: true, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    const group = page.getByRole("radiogroup", { name: "Dolby Vision files" });
+    const keep = group.getByRole("radio", { name: /Convert and keep Dolby Vision \(profile 8\.1\) — preview/ });
+    await expect(keep).not.toBeChecked();
+    await expect(group.getByRole("radio", { name: /Convert and drop the Dolby Vision layer/ })).toBeChecked();
+    await expect(group.getByText(/Not yet checked on a Dolby Vision TV/)).toBeVisible();
+    await keep.check();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ dolby_vision: "keep" }]);
+    await expect(keep).toBeChecked();
+  });
+});
+
+// Insights' Library tab links to /convert?tab=library&media=…&q=<title>: the link lands on
+// the title, whether or not it's worth converting.
+test.describe("Library link from elsewhere", () => {
+  test.use({ persona: "admin" });
+
+  test("q and media from the address find the title among every file", async ({ page, api }) => {
+    const lean = { ...remux, key: "movie:8", movie_id: 8, title: "Lean Film", candidate: false, worth: false, needs: { video: false, subs: false, audio: false, save: 0, worth: false } };
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/library", respond: ({ url }) => ({ items: url.searchParams.get("convertible") ? [remux] : [remux, lean] }) },
+    ]);
+    await page.goto("/convert?tab=library&media=movies&q=Lean+Film");
+    await expect(page.getByRole("searchbox", { name: "Search titles" })).toHaveValue("Lean Film");
+    await expect(page.getByRole("button", { name: "Show the conversion plan for Lean Film" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Only files worth converting" })).not.toBeChecked();
+    await expect(page.getByRole("button", { name: "Show the conversion plan for Remux" })).toHaveCount(0);
+    expect(api.callsTo("GET", "/api/v1/convert/library").map((c) => c.path)).toContain("/api/v1/convert/library");
+  });
+});
+
+// CONV-23: the daily library scan's time is a setting under Advanced, and saves on leaving it.
+test.describe("Daily library scan time", () => {
+  test.use({ persona: "admin" });
+
+  test("round-trips through the settings", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    await page.getByText("Advanced", { exact: true }).click();
+    const field = page.getByLabel("Daily library scan at");
+    await expect(field).toHaveValue("03:00");
+    await field.fill("04:30");
+    await field.press("Enter"); // Tab only steps between a time input's own fields
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ scan_at: "04:30" }]);
+    await expect(field).toHaveValue("04:30");
   });
 });
 

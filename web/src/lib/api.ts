@@ -2459,6 +2459,8 @@ export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;
   auto: boolean; window?: string; watching: boolean;
   requests: ConvertRequest[]; up_next: ConvertUpNext[]; remaining: number;
+  /** Files that would convert but sit in Problems (skipped or failing) — not in remaining. */
+  problems?: number;
   // The time forecast: the remaining list's encoding time (spread over the conversions that
   // run at once) and in nights of the hours; the encoding a restart now would lose.
   backlog_sec?: number; backlog_nights?: number; in_flight_secs?: number;
@@ -2468,8 +2470,11 @@ export interface ConvertSettings {
   keep_audio_langs: string; keep_original_lang: boolean; drop_commentary: boolean; keep_sub_langs: string;
   image_subs: "keep" | "when_text" | "remove"; tidy_tracks: boolean; crop: boolean;
   hold_days: number; hold_max_gb: number;
-  // Dolby Vision files: drop the layer and keep the HDR10/HLG base, or leave them alone.
-  dolby_vision: "drop" | "skip";
+  // Dolby Vision files: drop the layer and keep the HDR10/HLG base, leave them alone, or
+  // (a preview, needs dovi_tool) convert and keep the layer as profile 8.1.
+  dolby_vision: "drop" | "skip" | "keep";
+  /** dovi_tool is installed, so "keep" can be chosen. */
+  dovi_tool?: boolean;
   /** 8-bit SDR sources: "always" written 10-bit, or "match_source" (kept 8-bit). */
   ten_bit?: "always" | "match_source";
   /** Encode long CPU films in pieces a restart can't throw away (off by default). */

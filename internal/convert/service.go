@@ -113,6 +113,7 @@ type Service struct {
 	ffmpeg, ffprobe        string
 	scratchDir, recycleDir string
 	hdr10plusTool          string // HDR10+ metadata tool (empty if not bundled)
+	doviTool               string // Dolby Vision RPU tool, for keeping DV (empty if not bundled)
 
 	// noNumaPools is set when x265's NUMA pool binding is blocked by the container's
 	// seccomp profile — see numaPoolsBlocked. Encodes then run unpooled.
@@ -264,6 +265,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	}
 	s.logBuf = s.logs.recent(context.Background(), maxLogLines) // restore the log after a restart
 	s.hdr10plusTool, _ = exec.LookPath("hdr10plus_tool")
+	s.doviTool, _ = exec.LookPath("dovi_tool")
 	if s.noNumaPools = numaPoolsBlocked(context.Background(), ffmpeg); s.noNumaPools {
 		log.Warn("convert: x265 NUMA thread pools are blocked by the container's seccomp policy — " +
 			"encoding unpooled. Add cap_add: [SYS_NICE] to the container for full threading.")
@@ -275,7 +277,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 		}
 	}
 	s.vmaf = hasLibVMAF(context.Background(), ffmpeg)
-	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "libvmaf", s.vmaf)
+	log.Info("convert: encoders verified", "working", strings.Join(working, ","), "hdr10plus", s.hdr10plusTool != "", "dovi_tool", s.doviTool != "", "libvmaf", s.vmaf)
 	return s
 }
 
@@ -528,6 +530,17 @@ func (s *Service) ClearSkip(ctx context.Context, key string) error {
 	}
 	s.skips.clear(ctx, key)
 	return nil
+}
+
+// ClearSkipKind forgets every skip of one kind — a Problems group's "Try these again" — in
+// one step, and reports how many files that was.
+func (s *Service) ClearSkipKind(ctx context.Context, kind string) int64 {
+	n := s.skips.clearKind(ctx, kind)
+	if n > 0 {
+		s.invalidateLibraryCache()
+		s.wakeUp()
+	}
+	return n
 }
 
 // BinSettingsChanged is told when the recycle bin's cap or retention is saved. Originals no

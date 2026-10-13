@@ -440,7 +440,9 @@ func (s *Service) encodedSecs(job *Job) float64 {
 // setting is off for this job, it's a copy or a hardware encode, or the film can't be cut
 // frame-exactly.
 func (s *Service) piecedSpans(job *Job, mi *MediaInfo, enc Encoder, plan Plan) []chunkSpan {
-	if job == nil || enc.Kind != "cpu" || plan.VideoCodec == "" {
+	// Keeping Dolby Vision encodes in one go: its RPU goes back in frame for frame, and that
+	// pipeline isn't proven across joined pieces (dv.go).
+	if job == nil || enc.Kind != "cpu" || plan.VideoCodec == "" || plan.KeepDV {
 		return nil
 	}
 	if rr := s.record(job).resume; rr == nil || rr.failed {

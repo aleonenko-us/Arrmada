@@ -18,6 +18,10 @@ type Plan struct {
 	// MatchSourceDepth keeps an 8-bit SDR source 8-bit on a CPU encode instead of writing
 	// 10-bit (the convert_ten_bit setting; see tenbit.go outputPixFmt). False = always 10-bit.
 	MatchSourceDepth bool
+	// KeepDV carries a Dolby Vision file's Dolby Vision layer through the re-encode as
+	// profile 8.1 (dv.go) instead of dropping it — the convert_dolby_vision "keep" choice.
+	// Set by planFor; always HEVC, never in pieces, never cropped.
+	KeepDV bool
 
 	Audio AudioPlan
 	Subs  SubPlan

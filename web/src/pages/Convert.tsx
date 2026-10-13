@@ -159,7 +159,9 @@ function ConvertPage() {
             Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link> are removed.
             HDR10, HDR10+ and HLG are kept; {settings?.dolby_vision === "skip"
               ? "Dolby Vision files are left alone, as you chose"
-              : "Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer"}
+              : settings?.dolby_vision === "keep"
+                ? "Dolby Vision files keep their Dolby Vision layer as profile 8.1 (a preview), or are left alone where it can't be kept"
+                : "Dolby Vision files keep their HDR10 or HLG base and lose the Dolby Vision layer"}
             {stats?.total?.dolby_vision_files ? ` (${stats.total.dolby_vision_files.toLocaleString()} in your library)` : ""}.
           </p>
           <div className="flex items-center gap-2">
@@ -176,7 +178,7 @@ function ConvertPage() {
 
         <TabPanel idPrefix="convert" value={tab}>
           {tab === "overview" && <Overview status={status} jobs={jobs} stats={stats} hw={hw} originals={originals} flash={say} onChanged={refresh} onRescan={rescanLibrary} onShowProblems={() => setTab("problems")} onShowHistory={() => setTab("history")} />}
-          {tab === "library" && <Library flash={say} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} />}
+          {tab === "library" && <Library flash={say} onRequested={refresh} onRescan={rescanLibrary} onCompare={setCompareKey} running={jobs} reload={libReload} originals={originals} keepDV={settings?.dolby_vision === "keep"} />}
           {tab === "problems" && <Problems flash={say} />}
           {tab === "history" && <HistoryTab reload={finished} flash={(m) => { say(m); refresh(); }} />}
           {tab === "activity" && <LogsConsole />}
@@ -224,6 +226,9 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           <div className="flex items-center gap-2.5">
             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: STATUS_TONE[status.state] }} />
             <span className="text-md font-semibold">{status.message}</span>
+            {status.state === "done" && (status.problems ?? 0) > 0 && (
+              <button onClick={onShowProblems} className="text-sm font-semibold underline" style={{ color: "var(--avoid)" }}>Open Problems</button>
+            )}
           </div>
           <span className="text-sm text-ink-faint">
             {status.remaining > 0 ? `${status.remaining.toLocaleString()} file${status.remaining === 1 ? "" : "s"} to go` : ""}
@@ -423,19 +428,24 @@ function NeedTag({ children, title }: { children: ReactNode; title?: string }) {
   );
 }
 
-function hdrLabel(c: ConvertCandidate): string {
+function hdrLabel(c: ConvertCandidate, keepDV: boolean): string {
   const h = c.info?.hdr;
   if (!h || h === "SDR") return "—";
-  // "DV → HDR10" only for a file a conversion would actually take down to its base.
-  if (h === "Dolby Vision") return c.needs?.video && c.info?.dv_base && c.info.dv_base !== "SDR" ? `DV → ${c.info.dv_base}` : "DV";
+  // "DV → HDR10" only for a file a conversion would actually take down to its base; with
+  // Dolby Vision kept, "DV → 8.1".
+  if (h === "Dolby Vision") {
+    if (!c.needs?.video || !c.info?.dv_base || c.info.dv_base === "SDR") return "DV";
+    return keepDV ? "DV → 8.1" : `DV → ${c.info.dv_base}`;
+  }
   return h;
 }
 
 // The library list is for movies or shows (?media=tv).
 const MEDIA_KINDS = ["movies", "tv"] as const;
 
-function Library({ flash, onRequested, onRescan, onCompare, running, reload, originals }: {
+function Library({ flash, onRequested, onRescan, onCompare, running, reload, originals, keepDV }: {
   flash: (m: string) => void; onRequested: () => void; onRescan: () => Promise<boolean>; onCompare: (key: string) => void; running: ConvertJob[]; reload: number; originals: string;
+  keepDV: boolean;
 }) {
   const [media, setMedia] = useSearchParamState<"movies" | "tv">("media", "movies", { allowed: MEDIA_KINDS });
   const [shows, setShows] = useState<ConvertSeriesRollup[] | null>(null);
@@ -446,8 +456,10 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "save", dir: "desc" });
   const [showSort, setShowSort] = useState<{ key: ShowSortKey; dir: "asc" | "desc" }>({ key: "save", dir: "desc" });
   const [codecF, setCodecF] = useState<Set<string>>(new Set());
-  const [onlyConvertible, setOnlyConvertible] = useState(true);
   const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
+  // A link that names a title (?q=, from Insights' Library tab) must land on it whether or
+  // not it's worth converting, so it starts with every file shown.
+  const [onlyConvertible, setOnlyConvertible] = useState(() => q === "");
   const [loadErr, setLoadErr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [openPlan, setOpenPlan] = useState<string | null>(null); // the row whose plan card is open
@@ -677,7 +689,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                         </div>
                       </td>
                       <td className="px-3 py-2 font-mono text-ink-dim">{c.info?.resolution ?? "—"}</td>
-                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? (c.needs?.video ? "The Dolby Vision layer is removed when converted" : c.needs?.why) : undefined}>{hdrLabel(c)}</td>
+                      <td className="px-3 py-2 font-mono text-ink-dim" title={c.info?.hdr === "Dolby Vision" ? (c.needs?.video ? (keepDV ? "Kept as Dolby Vision profile 8.1 when converted (preview)" : "The Dolby Vision layer is removed when converted") : c.needs?.why) : undefined}>{hdrLabel(c, keepDV)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{c.info?.bitrate_kbps ? `${(c.info.bitrate_kbps / 1000).toFixed(1)} Mb/s` : "—"}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">{fmtSize(c.info?.size_bytes)}</td>
                       <td className="px-3 py-2 font-mono tabular-nums" title={c.tracks || undefined}>
@@ -776,7 +788,7 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
 /* ============================= PROBLEMS ============================= */
 
 const SKIP_LABEL: Record<string, string> = {
-  hdr_unsupported: "Their HDR can't be carried through a conversion (Dolby Vision profile 5, or HDR10+ that couldn't be read), so they were left as they are",
+  hdr_unsupported: "Their HDR can't be carried through a conversion (Dolby Vision profile 5, HDR10+ that couldn't be read, or Dolby Vision you chose to keep that didn't come through intact), so they were left as they are",
   hardlinked: "Still seeding — Convert won't replace a file your torrent client is sharing. Tried again twice a day",
   not_smaller: "Converting them didn't save enough to be worth it, so the originals were kept",
   quality_gate: "The conversion couldn't match the original's quality, so the originals were kept",
@@ -814,7 +826,8 @@ function Problems({ flash }: { flash: (m: string) => void }) {
     setBusy(key ?? kind ?? "all");
     try {
       if (key) await convertApi.convertSkipsClear(key);
-      else for (const s of (skips ?? []).filter((x) => !kind || x.kind === kind)) await convertApi.convertSkipsClear(s.key);
+      else if (kind) await convertApi.convertSkipsClearKind(kind); // the whole group, one request
+      else await convertApi.convertSkipsClear();
       flash("Cleared — they'll be picked up again");
       load();
     } catch (e) { flash((e as Error).message); } finally { setBusy(null); }

@@ -32,7 +32,7 @@ type candEffects struct {
 func effectsOf(mi *MediaInfo, plan Plan, n Needs, size, seriesID int64, season int) candEffects {
 	e := candEffects{seriesID: seriesID, season: season, estBytes: size - n.Save}
 	reencode := plan.VideoCodec != ""
-	e.dv = reencode && mi.HDR == "Dolby Vision"
+	e.dv = reencode && mi.HDR == "Dolby Vision" && !plan.KeepDV // kept as 8.1 under "keep"
 	e.cc = reencode && mi.HasCC
 	if c := strings.ToUpper(mi.Container); c != "" && c != "MKV" {
 		e.containerChange = true

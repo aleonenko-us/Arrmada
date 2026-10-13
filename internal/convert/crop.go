@@ -207,10 +207,11 @@ func keepsImageSubs(mi *MediaInfo, plan Plan) bool {
 
 // withCrop sets the plan's crop when black bars should be removed: the setting is on, the
 // picture is being re-encoded anyway (a crop is never a reason to re-encode), and no image
-// subtitles stay behind.
+// subtitles stay behind. A Dolby Vision layer being kept (dv.go) keeps the full frame too:
+// its metadata — the letterbox offsets among it — describes the original picture.
 func (s *Service) withCrop(ctx context.Context, src string, mi *MediaInfo, plan Plan, p prefs) Plan {
 	plan.Crop = nil
-	if !p.crop || plan.VideoCodec == "" || keepsImageSubs(mi, plan) {
+	if !p.crop || plan.VideoCodec == "" || keepsImageSubs(mi, plan) || plan.KeepDV {
 		return plan
 	}
 	plan.Crop = s.detectCrop(ctx, src, mi)

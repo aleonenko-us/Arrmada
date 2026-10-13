@@ -29,8 +29,14 @@ RUN CGO_ENABLED=0 go build \
 
 # --- Stage 3: HDR tooling (musl static binaries for HDR10+ / Dolby Vision metadata) ---
 FROM alpine:3.20 AS hdrtools
+# Pinned, and checked: dovi_tool carries Dolby Vision through Convert's "keep" choice and
+# hdr10plus_tool HDR10+ through every HEVC conversion, so a swapped release binary would
+# write the metadata of every converted film. The releases publish no checksums, so these
+# are the SHA-256 of the binaries inside those tarballs; a version bump updates them too.
 ARG DOVI_VERSION=2.3.3
+ARG DOVI_SHA256=871a0a5c44d1fd6baa6b972ec65167095e572f572d6c4da80c4b29483e4dfc1e
 ARG HDR10PLUS_VERSION=1.7.2
+ARG HDR10PLUS_SHA256=7845916b549c36e5d7fe9dbb3d24c124466d7c71ec3442e207551b677949d0be
 RUN apk add --no-cache wget tar && set -eux; \
     wget -qO /tmp/dovi.tgz "https://github.com/quietvoid/dovi_tool/releases/download/${DOVI_VERSION}/dovi_tool-${DOVI_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
     mkdir -p /tmp/dovi && tar -xzf /tmp/dovi.tgz -C /tmp/dovi && \
@@ -38,6 +44,8 @@ RUN apk add --no-cache wget tar && set -eux; \
     wget -qO /tmp/h10.tgz "https://github.com/quietvoid/hdr10plus_tool/releases/download/${HDR10PLUS_VERSION}/hdr10plus_tool-${HDR10PLUS_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
     mkdir -p /tmp/h10 && tar -xzf /tmp/h10.tgz -C /tmp/h10 && \
     cp "$(find /tmp/h10 -type f -name hdr10plus_tool | head -1)" /usr/local/bin/hdr10plus_tool && \
+    echo "${DOVI_SHA256}  /usr/local/bin/dovi_tool" | sha256sum -c - && \
+    echo "${HDR10PLUS_SHA256}  /usr/local/bin/hdr10plus_tool" | sha256sum -c - && \
     chmod +x /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool && \
     /usr/local/bin/dovi_tool --version && /usr/local/bin/hdr10plus_tool --version
 

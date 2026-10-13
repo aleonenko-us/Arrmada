@@ -26,6 +26,9 @@ export const convertApi = {
   convertSkips: () => req<{ items: ConvertSkipped[] }>("/api/v1/convert/skips").then((r) => r.items),
   convertSkipsClear: (key?: string) =>
     req<{ cleared: boolean }>(`/api/v1/convert/skips/clear?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "POST" }),
+  // Every skip of one kind — a Problems group's "Try these again" — in one request.
+  convertSkipsClearKind: (kind: string) =>
+    req<{ cleared: boolean; count: number }>(`/api/v1/convert/skips/clear?kind=${encodeURIComponent(kind)}`, { method: "POST" }),
   convertBlocklistClear: (key?: string) =>
     req<{ cleared: boolean }>(`/api/v1/convert/blocklist/clear?${key ? `key=${encodeURIComponent(key)}` : "all=1"}`, { method: "POST" }),
   convertLibrarySeries: () => req<{ series: ConvertSeriesRollup[] }>("/api/v1/convert/library?media=tv").then((r) => r.series),

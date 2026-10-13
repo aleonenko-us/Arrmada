@@ -23,6 +23,9 @@ type MediaInfo struct {
 	Resolution string `json:"resolution"`           // "2160p" | "1080p" | "720p" | "SD"
 	HDR        string `json:"hdr"`                  // "SDR" | "HDR10" | "HDR10+" | "HLG" | "Dolby Vision"
 	DVProfile  int    `json:"dv_profile,omitempty"` // Dolby Vision profile (5, 7, 8…); 0 = unknown / not DV
+	// DVCompat is the configuration record's base-layer compatibility id: 1 = an HDR10 base
+	// (profile 8.1), 4 = HLG (8.4), 6 = a profile 7 HDR10 base; 0 = no record.
+	DVCompat int `json:"dv_compat,omitempty"`
 	// DVBase is the HDR format UNDER a Dolby Vision layer — what a conversion keeps once the
 	// DV layer is dropped: "HDR10" (profiles 7 and 8.1), "HDR10+" (when the base also carries
 	// dynamic metadata), "HLG" (8.4), or "SDR" when the base isn't a standard HDR grade at all
@@ -115,7 +118,7 @@ type SubStream struct {
 
 // EncodeHDR is the HDR format a conversion carries forward. For everything but Dolby Vision
 // that's the file's own format; a Dolby Vision file keeps its base layer — the DV layer itself
-// is deliberately dropped.
+// is dropped, unless the "keep" choice re-injects it around the encode (dv.go).
 func (mi *MediaInfo) EncodeHDR() string {
 	if mi.HDR == "Dolby Vision" {
 		if mi.DVBase == "" {
@@ -299,6 +302,7 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 			SideDataList []struct {
 				SideDataType string `json:"side_data_type"`
 				DVProfile    int    `json:"dv_profile"` // set on the DOVI configuration record
+				DVCompat     int    `json:"dv_bl_signal_compatibility_id"`
 			} `json:"side_data_list"`
 		} `json:"streams"`
 		Format struct {
@@ -384,7 +388,7 @@ func probe(ctx context.Context, ffprobe, path string) (*MediaInfo, error) {
 				case strings.Contains(t, "dolby vision") || strings.Contains(t, "dovi"):
 					dv = true
 					if sd.DVProfile > 0 {
-						mi.DVProfile = sd.DVProfile
+						mi.DVProfile, mi.DVCompat = sd.DVProfile, sd.DVCompat
 					}
 				case strings.Contains(t, "hdr dynamic") || strings.Contains(t, "hdr10+"):
 					if base == "HDR10" {

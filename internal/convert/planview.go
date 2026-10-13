@@ -125,19 +125,26 @@ func (s *Service) planView(ctx context.Context, p prefs, r indexRow, plan Plan, 
 		v.Video.ToCodec = strings.ToUpper(plan.VideoCodec)
 		v.Video.CRF = plan.Quality
 		v.Video.ToHDR = mi.EncodeHDR()
+		if plan.KeepDV {
+			v.Video.ToHDR = "Dolby Vision 8.1 (" + mi.EncodeHDR() + " base)"
+		}
 		v.Video.ToBits = outputBits(mi, plan, enc)
-		if p.allowAV1 && mi.EncodeHDR() != "HDR10+" {
+		if p.allowAV1 && mi.EncodeHDR() != "HDR10+" && !plan.KeepDV {
 			v.Video.CodecNote = "HEVC or AV1 — a side-by-side test of a few clips picks at conversion time"
 		}
 		switch {
 		case !p.crop:
 			v.Video.CropNote = "black bars are kept (crop is off)"
+		case plan.KeepDV:
+			v.Video.CropNote = "black bars are kept — the Dolby Vision metadata describes the full frame"
 		case keepsImageSubs(mi, plan):
 			v.Video.CropNote = "black bars are kept — image subtitles stay, and they're drawn on the full frame"
 		default:
 			v.Video.CropNote = "black bars are checked at conversion time"
 		}
 		switch hdr := mi.EncodeHDR(); {
+		case plan.KeepDV:
+			v.Video.HDRNote = "Dolby Vision is kept as profile 8.1 (preview), over its " + hdr + " base"
 		case hdr == "HDR10+" || (hdr == "HDR10" && codecClass(mi.VideoCodec) == "hevc"):
 			v.Video.HDRNote = "HDR10+ is checked at conversion time and kept if present (HEVC only)"
 		case isHDR(hdr):
@@ -165,7 +172,7 @@ func planViewWarnings(mi *MediaInfo, plan Plan, p prefs, vid PlanVideo) []string
 	if plan.VideoCodec != "" && vid.ToBits == 10 && !mi.TenBit {
 		w = append(w, "the 8-bit picture is encoded as 10-bit — smoother gradients, but a few older devices can't direct-play 10-bit")
 	}
-	if plan.VideoCodec != "" && p.crop && !keepsImageSubs(mi, plan) {
+	if plan.VideoCodec != "" && p.crop && !keepsImageSubs(mi, plan) && !plan.KeepDV {
 		w = append(w, "black bars are checked at conversion time and removed only where every sampled frame shows them")
 	}
 	if n := sidecarCoveredImageSubs(mi, plan); n > 0 {

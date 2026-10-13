@@ -28,7 +28,7 @@ const (
 	keyImageSubs       = "convert_image_subs"         // keep | when_text | remove
 	keyTidyTracks      = "convert_tidy_tracks"        // also rewrite files whose only gap is their tracks
 	keyCrop            = "convert_crop"               // remove black bars from re-encoded films
-	keyDolbyVision     = "convert_dolby_vision"       // drop | skip: what happens to Dolby Vision files
+	keyDolbyVision     = "convert_dolby_vision"       // drop | skip | keep: what happens to Dolby Vision files
 	keyScratchDir      = "convert_scratch_dir"        // transcode working dir override
 	keyVaapiDevice     = "convert_vaapi_device"       // which /dev/dri/renderD* hardware encodes on
 	keyCPUCores        = "convert_cpu_cores"          // max cores a CPU encode may use (0 = half the box)
@@ -73,8 +73,10 @@ type prefs struct {
 	// crop is off unless you turned it on: a brief wider shot between the samples could
 	// still be trimmed (see crop.go), for about 2% smaller files.
 	crop bool
-	// dolbyVision is DVDrop or DVSkip (see dvpolicy.go).
+	// dolbyVision is DVDrop, DVSkip or DVKeep (see dvpolicy.go); doviTool says dovi_tool,
+	// which DVKeep needs, is installed.
 	dolbyVision string
+	doviTool    bool
 	tenBit      string // TenBitAlways | TenBitMatchSource (tenbit.go)
 	// resumable encodes long films in pieces a restart can't throw away (chunk.go). Off
 	// unless you turned it on.
@@ -103,6 +105,7 @@ func (s *Service) prefs(ctx context.Context) prefs {
 		resumable:      g.GetBool(ctx, keyResumable, false),
 		measured:       s.measured.all(ctx),
 		dolbyVision:    dvPolicy(g.Get(ctx, keyDolbyVision, "")),
+		doviTool:       s.doviTool != "",
 	}
 	p.keepSubs = s.keepSubLangs(ctx, p.keepSubsSaved)
 	switch p.imageSubs {
@@ -254,12 +257,23 @@ func (p prefs) planFor(mi *MediaInfo, path, origLang string, dirCache map[string
 		plan.Audio.OriginalLang = origLang
 	}
 	n := needsOf(mi, plan)
-	if n.Video && mi.HDR == "Dolby Vision" && p.dolbyVision == DVSkip {
-		// You chose to keep Dolby Vision files as they are; their tracks may still be tidied.
-		n.Video, n.Why = false, dvLeftAloneWhy
+	if n.Video && mi.HDR == "Dolby Vision" {
+		switch p.dolbyVision {
+		case DVSkip:
+			// You chose to keep Dolby Vision files as they are; their tracks may still be tidied.
+			n.Video, n.Why = false, dvLeftAloneWhy
+		case DVKeep:
+			// Converted with the layer kept, or — when it can't be — left alone, never
+			// converted without it.
+			if why := dvKeepBlock(mi, p.doviTool); why != "" {
+				n.Video, n.Why = false, why
+			} else {
+				plan.KeepDV = true
+			}
+		}
 	}
 	if n.Video {
-		plan.VideoCodec = p.likelyCodec(mi)
+		plan.VideoCodec = p.likelyCodec(mi, plan)
 		plan.Quality = maxQualityCRF(plan.VideoCodec, mi)
 		plan.VFRToCFR = true
 		// Wasteful by the bitrate test, but would the encode actually pay off? If the
@@ -273,7 +287,7 @@ func (p prefs) planFor(mi *MediaInfo, path, origLang string, dirCache map[string
 			}
 			if est*100 > mi.SizeBytes*int64(100-bar) {
 				n.Video, n.Why = false, fmt.Sprintf(note, savedPct(mi.SizeBytes, est))
-				plan.VideoCodec, plan.Quality, plan.VFRToCFR = "", 0, false
+				plan.VideoCodec, plan.Quality, plan.VFRToCFR, plan.KeepDV = "", 0, false, false
 			}
 		}
 	}
@@ -293,9 +307,10 @@ func (p prefs) planFor(mi *MediaInfo, path, origLang string, dirCache map[string
 }
 
 // likelyCodec is the codec a file will probably end up in, for estimates: AV1 when it's
-// allowed and the file carries nothing AV1 can't hold, else HEVC.
-func (p prefs) likelyCodec(mi *MediaInfo) string {
-	if p.allowAV1 && mi.EncodeHDR() != "HDR10+" {
+// allowed and the file carries nothing AV1 can't hold (HDR10+, or a Dolby Vision layer
+// being kept — dovi_tool writes HEVC only), else HEVC.
+func (p prefs) likelyCodec(mi *MediaInfo, plan Plan) string {
+	if p.allowAV1 && mi.EncodeHDR() != "HDR10+" && !plan.KeepDV {
 		return "av1"
 	}
 	return "hevc"

@@ -123,6 +123,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     validate: (v) => (/^[1-4]$/.test(v.trim()) ? null : "Conversions at once must be 1–4."),
   });
   const resumable = useAutoSave(s.resumable ?? false, put("resumable"));
+  const scanAt = useAutoSave(s.scan_at || "03:00", put("scan_at"), {
+    validate: (v) => (/^\d{1,2}:\d{2}$/.test(v.trim()) ? null : "Pick a time like 03:00."),
+  });
   const holdDays = useAutoSave(String(s.hold_days), (v) => commit({ hold_days: Number(v) }), {
     validate: (v) => (/^\d{1,3}$/.test(v.trim()) && Number(v) <= 365 ? null : "Keep originals for 0 to 365 days."),
   });
@@ -212,12 +215,23 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
             Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
           </div>
-          <div className="mb-1.5 text-xs text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
+          <div className="mb-1.5 text-xs text-ink-faint">A conversion keeps the HDR10 (or HLG) picture under the Dolby Vision layer; the layer itself goes, unless you keep it below. Profile 5 files are never converted — they have no standard picture under the layer.</div>
           {([["skip", "Leave them alone — for a Dolby Vision TV (their tracks are still tidied)"], ["drop", "Convert and drop the Dolby Vision layer (keeps HDR10)"]] as const).map(([v, label]) => (
             <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
               <input type="radio" name="dolby_vision" checked={dolbyVision.value === v} onChange={() => void dolbyVision.commit(v)} />{label}
             </label>
           ))}
+          {(s.dovi_tool || dolbyVision.value === "keep") && (
+            <label className="flex cursor-pointer items-start gap-2 py-0.5 text-sm">
+              <input type="radio" name="dolby_vision" className="mt-0.5" checked={dolbyVision.value === "keep"} onChange={() => void dolbyVision.commit("keep")} />
+              <span>
+                Convert and keep Dolby Vision (profile 8.1) — preview
+                <span className="block text-xs leading-snug text-ink-faint">
+                  The Dolby Vision metadata is read from the original and put back on the new picture, frame for frame, then checked before the swap. Profile 7 discs become 8.1 and lose their enhancement layer; profile 8.4 (HLG) files are left alone. Always HEVC, never cropped, encoded in one go, and about 15% bigger than without. Not yet checked on a Dolby Vision TV — convert one film and watch it before letting it loose on the library.
+                </span>
+              </span>
+            </label>
+          )}
         </div>
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />
@@ -322,6 +336,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </Field>
           <Field label="Conversions at once" hint="1 is right for CPU; 2 can help with a GPU" save={workers}>
             <input aria-label="Conversions at once" inputMode="numeric" className={`${inp} w-[70px]`} {...textProps(workers)} onChange={(e) => workers.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 1))} />
+          </Field>
+          <Field label="Daily library scan at" hint={`Once a day Convert re-reads the library for changes made outside Arrmada (imports are picked up straight away). Read on the server's clock (${s.server_tz}).`} save={scanAt}>
+            <input type="time" aria-label="Daily library scan at" className={inp} {...textProps(scanAt)} />
           </Field>
           <Toggle save={resumable} label="Encode long films in pieces"
             hint="Encodes long films in ~5-minute pieces, so a restart or update during the encode loses at most one piece. Only CPU encodes of constant-frame-rate films are pieced; anything else encodes in one go. Off by default while it's being proven." />
