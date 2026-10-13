@@ -93,7 +93,7 @@ export function LibraryView({ connected }: { connected: boolean }) {
                     <span className="font-mono text-xs text-ink-faint">{h.transcodes} of {h.total_plays} play{h.total_plays === 1 ? "" : "s"} transcoded</span>
                   </div>
                   <div className="text-sm text-ink-dim">
-                    {h.top_pair || "Remux (video and audio copied)"}
+                    {h.top_pair || "Stream details not recorded (imported plays)"}
                     {h.platforms.length > 0 && <span className="text-ink-faint"> · {h.platforms.join(", ")}</span>}
                   </div>
                   {h.cause_label && <div className="text-xs" style={{ color: "var(--avoid-text)" }}>Stalls while transcoding: {h.cause_label}</div>}

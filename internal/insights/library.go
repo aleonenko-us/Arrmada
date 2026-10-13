@@ -237,6 +237,10 @@ func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) 
 			a.pairs[orDash(vsrc)+" → "+vstream]++
 		case astream != "":
 			a.pairs["Audio "+orDash(asrc)+" → "+astream]++
+		case vsrc != "":
+			// Recorded live, nothing converted: the container or protocol was remuxed.
+			// (Imported plays carry no stream details at all and add nothing here.)
+			a.pairs["Remux (video and audio copied)"]++
 		}
 		if platform != "" {
 			a.platforms[platform]++
