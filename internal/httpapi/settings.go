@@ -109,6 +109,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// How releases are ranked: v1 (classic, the default) or v2 (ordered keys, preview).
 		// Under v1, v2 runs in the shadow and its disagreements are recorded for review.
 		"quality_ranking": a.qualityRanking(ctx),
+		// The address people reach Arrmada at from outside (https://arrmada.example.com):
+		// alerts link back with it and the calendar feed's link is built from it.
+		"app_public_url": a.deps.Settings.PublicURL(ctx),
 	})
 }
 
@@ -178,6 +181,7 @@ type settingsUpdate struct {
 	DefaultCategories         *bool     `json:"indexer_default_categories"`
 	BookLanguages             *[]string `json:"books_languages"`
 	QualityRanking            *string   `json:"quality_ranking"`
+	PublicURL                 *string   `json:"app_public_url"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -221,8 +225,17 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 		return "the request limits"
 	case req.QualityRanking != nil && strings.TrimSpace(*req.QualityRanking) != a.qualityRanking(ctx):
 		return "how releases are ranked"
+	case req.PublicURL != nil && publicURLChanged(*req.PublicURL, st.PublicURL(ctx)):
+		return "Arrmada's outside address"
 	}
 	return ""
+}
+
+// publicURLChanged reports whether a sent outside address differs from the one in effect
+// (an address that doesn't pass the check counts as a change, so it's refused as one).
+func publicURLChanged(sent, cur string) bool {
+	v, err := settings.NormalizePublicURL(sent)
+	return err != nil || v != cur
 }
 
 // handleUpdateSettings persists changed preferences (only provided keys change).
@@ -308,6 +321,15 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	var publicURL string
+	if req.PublicURL != nil {
+		v, err := settings.NormalizePublicURL(*req.PublicURL)
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		publicURL = v
+	}
 	var bookLangs string
 	if req.BookLanguages != nil {
 		var msg string
@@ -328,6 +350,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SearchOnAdd != nil && !save(a.deps.Settings.SetBool(ctx, keySearchOnAdd, *req.SearchOnAdd)) {
+		return
+	}
+	if req.PublicURL != nil && !save(a.deps.Settings.Set(ctx, settings.KeyPublicURL, publicURL)) {
 		return
 	}
 	if req.DefaultCategories != nil && !save(a.deps.Settings.SetBool(ctx, indexer.KeyDefaultCategories, *req.DefaultCategories)) {

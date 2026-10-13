@@ -152,6 +152,7 @@ type api struct {
 	deps         Deps
 	start        time.Time
 	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
+	icsLimiter   *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
@@ -164,7 +165,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), plexPins: newPlexPinGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -239,6 +240,8 @@ func (a *api) registerRoutes(mux *router) {
 	// whole-library sweep) is a system action, so Run now is admin-only.
 	mux.HandleFunc("GET /api/v1/system/tasks", a.requireRole(auth.RoleManager, a.handleListTasks))
 	mux.HandleFunc("POST /api/v1/system/tasks/{name}/run", a.requireRole(auth.RoleAdmin, a.handleRunTask))
+	// Recent jobs under the Tasks table, in words and linked to their titles.
+	mux.HandleFunc("GET /api/v1/system/jobs", a.requireRole(auth.RoleManager, a.handleRecentJobs))
 	// Background jobs (searches, scans, imports, Run now): staff follow and cancel them.
 	mux.HandleFunc("GET /api/v1/jobs", a.requireRole(auth.RoleManager, a.handleListJobs))
 	mux.HandleFunc("GET /api/v1/jobs/{id}", a.requireRole(auth.RoleManager, a.handleGetJob))
@@ -769,6 +772,14 @@ func (a *api) registerRoutes(mux *router) {
 
 	// Discover (browse trending/popular/upcoming/by-genre; enriched with library status).
 	mux.HandleFunc("GET /api/v1/calendar", a.signedIn(a.handleCalendar))
+	// The personal calendar feed (calendar_ics.go). Its link carries its own token, so the
+	// feed is public and reachable from outside (Google Calendar fetches from the
+	// internet); the token opens this route only. Making or turning off the link is
+	// signed in and, like the Calendar, LAN-only for requesters.
+	mux.HandleFunc("GET /api/v1/calendar.ics", a.public(a.handleCalendarICS).ext())
+	mux.HandleFunc("GET /api/v1/me/calendar-feed", a.signedIn(a.handleMyCalendarFeed))
+	mux.HandleFunc("POST /api/v1/me/calendar-feed", a.signedIn(a.handleRotateCalendarFeed))
+	mux.HandleFunc("DELETE /api/v1/me/calendar-feed", a.signedIn(a.handleRevokeCalendarFeed))
 	mux.HandleFunc("GET /api/v1/discover/trending", a.signedIn(a.handleDiscoverTrending).ext())
 	mux.HandleFunc("GET /api/v1/discover/popular", a.signedIn(a.handleDiscoverPopular).ext())
 	mux.HandleFunc("GET /api/v1/discover/upcoming", a.signedIn(a.handleDiscoverUpcoming).ext())

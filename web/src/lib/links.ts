@@ -33,6 +33,8 @@ export const LINKS = {
   requests: "/requests",
   requestsWaiting: "/requests?tab=needs",
   backups: "/settings/system#backups",
+  // The outside address alerts and calendar feed links are built from.
+  publicURL: "/settings/system#public-url",
   tautulliImport: "/settings/import#tautulli-import",
   audiobookshelfImport: "/settings/import#audiobookshelf-import",
   audiobookServer: "/settings/audiobook-server",

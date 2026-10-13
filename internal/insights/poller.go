@@ -233,6 +233,11 @@ func (ls *liveSession) observe(sess plex.Session, now time.Time) bool {
 }
 
 // publish emits a Plex watch event to the bus (for notifications). Safe if the bus is nil.
+//
+// Beyond the words of the message, the payload carries what an alert connection's
+// filters key on (notify/filters.go): the Plex user id, whether the stream is from
+// outside the network (the bandwidth split's test), the item and the show, so a binge
+// of autoplayed episodes reads as one sitting; and the item's image for its poster.
 func (s *Service) publish(topic string, sess plex.Session) {
 	if s.bus == nil {
 		return
@@ -241,10 +246,32 @@ func (s *Service) publish(topic string, sess plex.Session) {
 	if sess.Type == "episode" && sess.ShowTitle != "" {
 		title = sess.ShowTitle + " · " + sess.Title
 	}
-	s.bus.Publish(topic, map[string]any{
+	data := map[string]any{
 		"user": sess.UserName, "title": title, "player": sess.PlayerName,
 		"platform": sess.Platform, "decision": sess.Decision(),
-	})
+		"user_id": sess.UserID, "rating_key": sess.RatingKey, "session_key": sess.SessionKey,
+		"grandparent_title": sess.ShowTitle, "media_type": sess.Type, "year": sess.Year,
+		"location": s.streamLocation(sess),
+		// The Plex image path (no token): an alert fetches it server-side for its poster —
+		// the show's portrait poster for an episode, the item's own image otherwise.
+		"thumb": sess.Thumb,
+	}
+	if sess.ShowThumb != "" {
+		data["thumb"] = sess.ShowThumb
+	}
+	if topic == "plex.buffering" {
+		data["cause"], _ = sess.BufferCause()
+	}
+	s.bus.Publish(topic, data)
+}
+
+// streamLocation is "lan" for a stream from inside the network and "wan" otherwise —
+// the same test the bandwidth split uses.
+func (s *Service) streamLocation(sess plex.Session) string {
+	if strings.EqualFold(sess.Location, "lan") || isLocalIP(s, sess) {
+		return "lan"
+	}
+	return "wan"
 }
 
 // record builds the persisted row from the tracked session state (pure — unit-tested).

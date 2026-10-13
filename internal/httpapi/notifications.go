@@ -75,6 +75,8 @@ type notificationInput struct {
 	// ID, on a Test of an unsaved edit, names the saved connection whose stored secrets
 	// fill the fields left blank.
 	ID int64 `json:"id"`
+	// Options are the message choices (Plex stream filters); left out keeps the stored ones.
+	Options *notify.Options `json:"options"`
 }
 
 // presetURL builds a preset connection's URL from the form, filling blank secrets from
@@ -107,24 +109,41 @@ func (in notificationInput) apply(c *notify.Connection) {
 	if in.Events != nil {
 		c.Events = append([]string{}, *in.Events...)
 	}
+	if in.Options != nil {
+		c.Options = *in.Options
+	}
 }
 
-// checkEvents refuses event keys the catalog doesn't know.
-func (a *api) checkEvents(w http.ResponseWriter, in notificationInput) bool {
-	if in.Events == nil {
-		return true
+// checkEvents refuses event keys the catalog doesn't know, and options that don't pass
+// their check (which it tidies in place).
+func (a *api) checkEvents(w http.ResponseWriter, in *notificationInput) bool {
+	if in.Events != nil {
+		if err := notify.ValidEvents(*in.Events); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return false
+		}
 	}
-	if err := notify.ValidEvents(*in.Events); err != nil {
-		a.writeError(w, http.StatusBadRequest, err.Error())
-		return false
+	if in.Options != nil {
+		o, err := in.Options.Clean()
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return false
+		}
+		in.Options = &o
 	}
 	return true
 }
 
 // handleNotificationCatalog lists the events a connection can subscribe to, grouped
-// for the Alerts page.
+// for the Alerts page, with the default message template and the placeholders a
+// connection's own template may use. links says whether alerts can link back to the app
+// (an outside address is set), so the page can say why {link} would be blank.
 func (a *api) handleNotificationCatalog(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"groups": notify.Groups(), "events": notify.Catalog()})
+	a.writeJSON(w, http.StatusOK, map[string]any{
+		"groups": notify.Groups(), "events": notify.Catalog(),
+		"template": notify.DefaultTemplate, "placeholders": notify.Placeholders,
+		"links": a.deps.Settings != nil && a.deps.Settings.PublicURL(r.Context()) != "",
+	})
 }
 
 // handleNotificationPresets lists the "Where should alerts go?" tiles and each one's form.
@@ -173,7 +192,7 @@ func (a *api) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &in) {
 		return
 	}
-	if !a.checkEvents(w, in) {
+	if !a.checkEvents(w, &in) {
 		return
 	}
 	c := notify.Connection{Events: notify.DefaultEvents()}
@@ -244,7 +263,7 @@ func (a *api) handleUpdateNotification(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not load notification")
 		return
 	}
-	if !a.checkEvents(w, in) {
+	if !a.checkEvents(w, &in) {
 		return
 	}
 	stored := c

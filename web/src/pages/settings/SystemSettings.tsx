@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { AutoToggle } from "../../components/settings/auto";
+import { AutoText, AutoToggle } from "../../components/settings/auto";
 import { Section } from "../../components/settings/ui";
 import { api, type PendingRestart } from "../../lib/api";
 import { busyLines, restartAppAndWait } from "../../lib/restart";
@@ -20,10 +20,26 @@ export function SystemSettings() {
         <AutoToggle label="Books" hint="Ebook and audiobook library, and the Books tab in Discover. Metadata comes from Hardcover when a key is set, otherwise Open Library." save={books} />
         <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." save={music} />
       </Section>
+      <PublicURLSection />
       <RestartSection />
       <SetupAgainSection />
       <Backups />
     </div>
+  );
+}
+
+// The outside address: what alerts link back to, and what the calendar feed's link is
+// built from. Arrmada is served at the root of its own hostname, so it's just the address.
+const ADDRESS_RE = /^https?:\/\/[^/\s?#@]+\/?$/i;
+
+function PublicURLSection() {
+  const address = useSetting("app_public_url", {
+    validate: (v) => (v.trim() === "" || ADDRESS_RE.test(v.trim()) ? null : "Give just the address, like https://arrmada.example.com"),
+  });
+  return (
+    <Section id="public-url" title="Outside address" subtitle="The address people use to reach Arrmada from outside your home, such as your tunnel's. Alerts link back to the app with it, and calendar feed links are built from it. Leave it blank if Arrmada is only used at home.">
+      <AutoText label="Address" save={address} placeholder="https://arrmada.example.com" />
+    </Section>
   );
 }
 

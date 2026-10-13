@@ -684,6 +684,18 @@ export interface NotificationConn {
   last_status?: "" | "sent" | "failed" | "retrying";
   last_error?: string;
   last_sent_at?: number;
+  /** The admin's message choices: whose Plex streams, remote or transcodes only. */
+  options?: AlertOptions;
+}
+
+/** A connection's message choices (none of them secret). */
+export interface AlertOptions {
+  /** Plex user ids whose streams alert; empty or absent = everyone. */
+  stream_users?: string[];
+  remote_only?: boolean;
+  transcode_only?: boolean;
+  /** This connection's own message per event key, with {placeholders}. */
+  templates?: Record<string, string>;
 }
 
 // One row of a connection's delivery log.
@@ -696,6 +708,8 @@ export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events
   fields?: Record<string, string>;
   /** On a Test of an unsaved edit: the saved connection whose secrets fill the blanks. */
   id?: number;
+  /** Left out keeps the saved choices. */
+  options?: AlertOptions;
 };
 
 /** One input on an alert preset's form. options = a choice, the first being the default. */
@@ -705,7 +719,15 @@ export interface AlertPreset { kind: string; label: string; hint: string; fields
 
 // The alert event catalog: what a connection can subscribe to, grouped for the page.
 export interface AlertEvent { key: string; group: string; label: string; hint: string; default_on: boolean; module?: "books" | "music" }
-export interface AlertCatalog { groups: { key: string; label: string }[]; events: AlertEvent[] }
+export interface AlertCatalog {
+  groups: { key: string; label: string }[]; events: AlertEvent[];
+  /** The message every event sends unless a connection has its own ("{message}\n{link}"). */
+  template?: string;
+  /** The placeholders a template may use. */
+  placeholders?: string[];
+  /** Whether alerts can link back to the app (an outside address is set). */
+  links?: boolean;
+}
 
 export interface MyApprise { set: boolean; hint: string; blocked_reason?: string }
 
@@ -1081,6 +1103,8 @@ export interface AppSettings {
   books_languages: string[];
   /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
   quality_ranking?: "v1" | "v2";
+  /** The address Arrmada is reached at from outside ("https://arrmada.example.com"; "" = none). Admin-only. */
+  app_public_url: string;
 }
 
 export interface TorrentPreview {
@@ -1289,6 +1313,26 @@ export interface AttemptSummary {
   latest: SearchAttempt;
   empty_tries: number;
   main_reason?: string;
+}
+
+// One row of Recent jobs (GET /api/v1/system/jobs): the work in words, what it was for
+// (target_path opens it), who started it, and how it went.
+export interface RecentJob {
+  id: number;
+  kind: string;
+  label: string;
+  status: JobStatus;
+  message?: string;
+  error?: string;
+  target: string;
+  target_label?: string;
+  target_path?: string;
+  trigger_label: string;
+  trigger_path?: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number;
 }
 
 // One recurring task as GET /api/v1/system/tasks reports it. Times are ISO strings, null

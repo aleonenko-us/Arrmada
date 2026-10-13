@@ -171,6 +171,9 @@ func (s *Service) MergePlexDuplicate(ctx context.Context, targetID, fromID int64
 			// The Plex link: off the duplicate first (plex_id is unique), then onto the target.
 			{"Plex link", `UPDATE users SET plex_id = NULL, plex_username = '' WHERE id = ?`, []any{fromID}},
 			{"Plex link", `UPDATE users SET plex_id = ?, plex_username = ? WHERE id = ?`, []any{plexID, plexName, targetID}},
+			// The duplicate's calendar feed link stops working, like its sessions: it was
+			// made for that account's view, and the person can make a new one in a click.
+			{"calendar feed", `DELETE FROM calendar_feeds WHERE user_id = ?`, []any{fromID}},
 			// Sessions, API keys, listening-app sign-ins and anything not moved go with the
 			// row (ON DELETE CASCADE).
 			{"the duplicate account", `DELETE FROM users WHERE id = ?`, []any{fromID}},
