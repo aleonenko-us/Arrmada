@@ -90,8 +90,9 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	// Resumable pieces (chunk.go): with the setting on, a re-encode keeps its finished
 	// pieces across a restart, and an encode a restart interrupted carries on with the plan
 	// it had settled. With it off, any pieces left from when it was on are no use.
+	// Keeping Dolby Vision encodes in one go (dv.go).
 	var resumed *resumeManifest
-	if p.resumable && needs.Video {
+	if p.resumable && needs.Video && !plan.KeepDV {
 		rec.resume = &resumeRun{cropOn: p.crop}
 		resumed = s.loadResume(ctx, job, src, scratch, mi, plan, p)
 	} else {
@@ -202,9 +203,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 	rec.setPlan(plan)
 
 	// A re-encode is rehearsed on clips first, so a film that wouldn't pass the quality
-	// check or wouldn't shrink enough is found out in minutes rather than after a day.
+	// check or wouldn't shrink enough is found out in minutes rather than after a day. The
+	// HDR10+ and Dolby Vision pipelines run without B-frames, which the projection allows for.
 	if plan.VideoCodec != "" && resumed == nil {
-		v, err := s.preflight(ctx, job, src, mi, enc, plan, h10pJSON != "")
+		v, err := s.preflight(ctx, job, src, mi, enc, plan, h10pJSON != "" || plan.KeepDV)
 		switch {
 		case ctx.Err() != nil:
 			return
@@ -220,6 +222,20 @@ func (s *Service) process(ctx context.Context, job *Job) {
 			s.event("info", fmt.Sprintf("%s: test encode at CRF %d scored SSIM %.4f and predicts ~%s (%d%% smaller)",
 				job.Title, v.quality, v.ssim, humanBytes(v.projected), savedPct(mi.SizeBytes, v.projected)))
 		}
+	}
+
+	// Keeping Dolby Vision: its metadata is read now, after the rehearsal — reading it means
+	// reading the whole film, which a file the rehearsal turns away shouldn't cost.
+	if plan.KeepDV {
+		if !s.waitAllowed(ctx, job) {
+			return
+		}
+		dv, ok := s.readDolbyVision(ctx, job, src, mi, scratch)
+		if !ok {
+			return
+		}
+		defer os.Remove(dv.rpu)
+		rec.dv = dv
 	}
 
 	dst := filepath.Join(scratch, fmt.Sprintf("convert-%d.mkv", job.ID))
@@ -259,6 +275,11 @@ func (s *Service) process(ctx context.Context, job *Job) {
 				s.mu.Unlock()
 				s.finishAfterEncode(job, SkipNotSmaller, fmt.Sprintf("stopped %d%% of the way through — it had already reached %d%% of the original's size, so it couldn't come out %d%% smaller; kept the original",
 					done, 100-minSavingPct, minSavingPct))
+				return
+			}
+			if errors.Is(err, errDVMismatch) {
+				// Fail closed: the same source encodes to the same frames every time.
+				s.finishAfterEncode(job, SkipHDRUnsupported, err.Error()+" — kept the original")
 				return
 			}
 			s.finish(job, StateFailed, "encode failed: "+err.Error())
@@ -369,7 +390,10 @@ func (s *Service) spaceCheck(ctx context.Context, job *Job, src string, mi *Medi
 	if !s.holdRoom(ctx, job, src, mi) {
 		return false
 	}
-	need := scratchNeeded(mi, plan, false)
+	// The library disk takes only the finished file, whatever the pipeline held on the way.
+	finished := plan
+	finished.KeepDV = false
+	need := scratchNeeded(mi, finished, false)
 	encKind := ""
 	if s.record(job).resume != nil {
 		encKind = s.encoderChoice(mi, plan.VideoCodec, s.prefs(ctx).useGPU).Kind // provisional
@@ -428,13 +452,14 @@ func (s *Service) resolveSource(ctx context.Context, job *Job) (src, title, orig
 // chooseCodec settles the format for one file:
 //
 //   - HDR10+ → HEVC: it's the only pipeline that can carry the dynamic metadata.
+//   - Dolby Vision being kept → HEVC, for the same reason (dv.go).
 //   - AV1 not allowed (your devices can't all play it) → HEVC.
 //   - Otherwise a side-by-side test: the same few clips encoded both ways and scored
 //     against the original. AV1 only wins when it's clearly smaller at the same quality —
 //     on dark or grainy footage it often isn't, and then HEVC is the better file.
 func (s *Service) chooseCodec(ctx context.Context, job *Job, src string, mi *MediaInfo, plan Plan, p prefs, hasHDR10Plus bool) string {
 	switch {
-	case hasHDR10Plus:
+	case hasHDR10Plus, plan.KeepDV: // dovi_tool, like hdr10plus_tool, writes HEVC only
 		return "hevc"
 	case !p.allowAV1:
 		return "hevc"
@@ -464,13 +489,18 @@ func (s *Service) chooseCodec(ctx context.Context, job *Job, src string, mi *Med
 
 // canPreserveHDR reports whether this plan converts the file without losing its HDR. A copy
 // always does. Static HDR (HDR10, HLG) is carried by the CPU encoders of both formats;
-// HDR10+ only by the HEVC pipeline. Hardware encoders can't write HDR metadata, which is
-// why pickEncoder sends HDR to the CPU.
+// HDR10+ only by the HEVC pipeline, and a Dolby Vision layer being kept only by the HEVC
+// pipeline with dovi_tool. Hardware encoders can't write HDR metadata, which is why
+// pickEncoder sends HDR to the CPU.
 func (s *Service) canPreserveHDR(mi *MediaInfo, plan Plan, enc Encoder, hasHDR10Plus bool) bool {
 	if plan.VideoCodec == "" {
 		return true
 	}
 	if mi.DVUnconvertible() {
+		return false
+	}
+	// Keeping Dolby Vision: the x265 raw-stream pipeline and dovi_tool, or nothing.
+	if plan.KeepDV && (s.doviTool == "" || plan.VideoCodec != "hevc" || enc.Kind != "cpu" || !cpuWorks("hevc", s.encoders)) {
 		return false
 	}
 	hdr := mi.EncodeHDR()
@@ -560,14 +590,15 @@ func keptAudioBytes(mi *MediaInfo, plan Plan) int64 {
 // scratchNeeded is the scratch space a conversion can use at its peak: the whole output for
 // a track tidy-up, the size cap (plus muxing slack) for a re-encode, and twice that for the
 // HDR10+ pipeline, which holds the stream and its injected copy at once — or a pieced encode
-// (chunk.go), which holds the pieces and the joined film; both pass twoCopies.
+// (chunk.go), which holds the pieces and the joined film; both pass twoCopies. Keeping Dolby
+// Vision (dv.go) holds two copies the same way, so its plan always counts twice.
 func scratchNeeded(mi *MediaInfo, plan Plan, twoCopies bool) int64 {
 	const slack = 512 << 20
 	limit := sizeCap(mi, plan)
 	switch {
 	case limit == 0:
 		return mi.SizeBytes + slack
-	case twoCopies:
+	case twoCopies || plan.KeepDV:
 		return 2*limit + slack
 	}
 	return limit + slack
@@ -604,6 +635,15 @@ func (s *Service) runEncode(ctx context.Context, job *Job, src, dst, scratch str
 // runEncodeOnce dispatches to the standard or HDR10+ pipeline, with one CPU fallback if a
 // hardware encoder fails.
 func (s *Service) runEncodeOnce(ctx context.Context, job *Job, src, dst, scratch string, mi *MediaInfo, enc Encoder, plan Plan, h10pJSON string) error {
+	if plan.KeepDV {
+		// Never a fallback to the standard encode: that would drop the layer you chose to keep.
+		label := "CPU (x265) + Dolby Vision 8.1"
+		if h10pJSON != "" {
+			label = "CPU (x265) + HDR10+ + Dolby Vision 8.1"
+		}
+		s.update(job, func(j *Job) { j.Encoder = label })
+		return s.encodeDolbyVision(ctx, job, src, dst, scratch, mi, plan, h10pJSON, s.record(job).dv)
+	}
 	if h10pJSON != "" && plan.VideoCodec == "hevc" {
 		s.update(job, func(j *Job) { j.Encoder = "CPU (x265) + HDR10+" })
 		return s.encodeHDR10Plus(ctx, job, src, dst, scratch, mi, plan, h10pJSON)
@@ -801,6 +841,21 @@ func (s *Service) finalizeOutput(ctx context.Context, job *Job, src, dst string,
 			s.finish(job, StateFailed, reason+" — kept the original")
 		}
 		return
+	}
+	// A Dolby Vision layer you chose to keep is really there, one RPU per frame (dv.go).
+	if plan.KeepDV {
+		if !s.waitAllowed(ctx, job) {
+			return
+		}
+		kind, reason := s.checkDolbyVision(ctx, job, dst, outInfo, rec.dv)
+		if ctx.Err() != nil {
+			return
+		}
+		if reason != "" {
+			s.event("warn", fmt.Sprintf("%s: Dolby Vision check failed — %s", job.Title, reason))
+			s.finishAfterEncode(job, kind, reason+" — kept the original")
+			return
+		}
 	}
 	// Every frame of the exact file about to go in decodes cleanly, or the original stays.
 	if !s.checkBeforeSwap(ctx, job, src, dst, mi, outInfo, plan) {

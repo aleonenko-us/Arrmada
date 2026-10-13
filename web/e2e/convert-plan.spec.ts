@@ -195,6 +195,25 @@ test.describe("Dolby Vision choice", () => {
     await group.getByRole("radio", { name: /Leave them alone/ }).check();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ dolby_vision: "skip" }]);
     await expect(group.getByRole("radio", { name: /Leave them alone/ })).toBeChecked();
+    // Without dovi_tool, keeping the layer isn't offered.
+    await expect(group.getByRole("radio", { name: /keep Dolby Vision/ })).toHaveCount(0);
+  });
+
+  // CONV-29: keeping the layer is a third, opt-in choice — a preview — when dovi_tool is there.
+  test("keeping Dolby Vision is offered with dovi_tool, as a preview, and saves", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/settings", body: { ...convertSettings, dovi_tool: true } },
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, dovi_tool: true, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    const group = page.getByRole("radiogroup", { name: "Dolby Vision files" });
+    const keep = group.getByRole("radio", { name: /Convert and keep Dolby Vision \(profile 8\.1\) — preview/ });
+    await expect(keep).not.toBeChecked();
+    await expect(group.getByRole("radio", { name: /Convert and drop the Dolby Vision layer/ })).toBeChecked();
+    await expect(group.getByText(/Not yet checked on a Dolby Vision TV/)).toBeVisible();
+    await keep.check();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ dolby_vision: "keep" }]);
+    await expect(keep).toBeChecked();
   });
 });
 
@@ -211,7 +230,7 @@ test.describe("Daily library scan time", () => {
     const field = page.getByLabel("Daily library scan at");
     await expect(field).toHaveValue("03:00");
     await field.fill("04:30");
-    await field.press("Tab");
+    await field.press("Enter"); // Tab only steps between a time input's own fields
     await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ scan_at: "04:30" }]);
     await expect(field).toHaveValue("04:30");
   });

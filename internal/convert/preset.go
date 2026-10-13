@@ -502,8 +502,14 @@ func planWarnings(mi *MediaInfo, plan Plan) []string {
 	if plan.VideoCodec != "" && mi.HasCC {
 		w = append(w, "embedded closed captions (CEA-608/708) are lost on re-encode")
 	}
-	if plan.VideoCodec != "" && mi.HDR == "Dolby Vision" {
+	switch {
+	case plan.VideoCodec == "" || mi.HDR != "Dolby Vision":
+	case !plan.KeepDV:
 		w = append(w, "Dolby Vision layer dropped — kept as "+mi.EncodeHDR())
+	case mi.DVProfile == 7:
+		// Profile 8.1 has no enhancement layer: the picture is the base layer's, with the
+		// Dolby Vision metadata converted to match (dovi_tool mode 2).
+		w = append(w, "Dolby Vision profile 7 becomes profile 8.1 — its enhancement layer is dropped")
 	}
 	if n := forcedLost(mi, plan); n > 0 {
 		w = append(w, fmt.Sprintf("forced subtitles (foreign dialogue) removed — %d track(s)", n))

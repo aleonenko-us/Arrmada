@@ -215,12 +215,23 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
             Dolby Vision files{dvFiles !== null ? ` (${dvFiles.toLocaleString()} in your library)` : ""} <SavedTick save={dolbyVision} />
           </div>
-          <div className="mb-1.5 text-xs text-ink-faint">A conversion can't carry the Dolby Vision layer: it keeps the HDR10 (or HLG) picture underneath. Profile 5 files are never converted — they have no standard picture under the layer.</div>
+          <div className="mb-1.5 text-xs text-ink-faint">A conversion keeps the HDR10 (or HLG) picture under the Dolby Vision layer; the layer itself goes, unless you keep it below. Profile 5 files are never converted — they have no standard picture under the layer.</div>
           {([["skip", "Leave them alone — for a Dolby Vision TV (their tracks are still tidied)"], ["drop", "Convert and drop the Dolby Vision layer (keeps HDR10)"]] as const).map(([v, label]) => (
             <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
               <input type="radio" name="dolby_vision" checked={dolbyVision.value === v} onChange={() => void dolbyVision.commit(v)} />{label}
             </label>
           ))}
+          {(s.dovi_tool || dolbyVision.value === "keep") && (
+            <label className="flex cursor-pointer items-start gap-2 py-0.5 text-sm">
+              <input type="radio" name="dolby_vision" className="mt-0.5" checked={dolbyVision.value === "keep"} onChange={() => void dolbyVision.commit("keep")} />
+              <span>
+                Convert and keep Dolby Vision (profile 8.1) — preview
+                <span className="block text-xs leading-snug text-ink-faint">
+                  The Dolby Vision metadata is read from the original and put back on the new picture, frame for frame, then checked before the swap. Profile 7 discs become 8.1 and lose their enhancement layer; profile 8.4 (HLG) files are left alone. Always HEVC, never cropped, encoded in one go, and about 15% bigger than without. Not yet checked on a Dolby Vision TV — convert one film and watch it before letting it loose on the library.
+                </span>
+              </span>
+            </label>
+          )}
         </div>
         <Toggle save={av1} label="My devices can play AV1"
           hint={<>Turn on only if every TV, phone and streaming box you watch on decodes AV1 — older Apple TVs, Shields and Fire Sticks don't, and Plex would transcode on the fly. When on, each file gets a quick side-by-side test and goes to AV1 only if it's clearly smaller at the same quality; otherwise HEVC. Files with HDR10+ always stay HEVC.</>} />

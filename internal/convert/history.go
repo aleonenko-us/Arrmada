@@ -57,6 +57,8 @@ type jobRecord struct {
 	stallNeed, stallFree int64
 	// resume is set while the job runs with resumable pieces on (chunk.go); nil = in one go.
 	resume *resumeRun
+	// dv is the source's Dolby Vision metadata while a job keeps it (dv.go); nil otherwise.
+	dv *dvRun
 }
 
 // record returns the job's ledger record, creating it on first use. Created under s.mu so

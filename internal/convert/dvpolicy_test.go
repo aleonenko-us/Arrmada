@@ -39,7 +39,7 @@ func TestDolbyVisionPolicyDecides(t *testing.T) {
 	if drop.cacheKey() == (prefs{dolbyVision: DVSkip, imageSubs: ImageSubsKeep}).cacheKey() {
 		t.Error("the cached views must be rebuilt when the choice changes")
 	}
-	if dvPolicy("") != DVDrop || dvPolicy("keep") != DVDrop || dvPolicy(DVSkip) != DVSkip {
+	if dvPolicy("") != DVDrop || dvPolicy("bogus") != DVDrop || dvPolicy(DVSkip) != DVSkip || dvPolicy(DVKeep) != DVKeep {
 		t.Error("unset or unknown must read as today's behaviour (drop)")
 	}
 }
@@ -52,9 +52,13 @@ func TestDolbyVisionPolicySetting(t *testing.T) {
 	if got := s.GetSettings(ctx).DolbyVision; got != DVDrop {
 		t.Fatalf("default = %q, want drop", got)
 	}
-	bad := "keep"
+	bad := "bogus"
 	if _, err := s.UpdateSettings(ctx, SettingsPatch{DolbyVision: &bad}); err == nil {
 		t.Fatal("an unknown choice must be refused")
+	}
+	keep := DVKeep
+	if _, err := s.UpdateSettings(ctx, SettingsPatch{DolbyVision: &keep}); err == nil {
+		t.Fatal("keep must be refused while dovi_tool isn't installed")
 	}
 	indexMovie(t, s, 1, "DV", dvP8(60000))
 	indexMovie(t, s, 2, "DV Two", dvP8(60000))

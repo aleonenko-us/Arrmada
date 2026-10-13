@@ -28,7 +28,7 @@ type Settings struct {
 	ImageSubs        string `json:"image_subs"`     // keep | when_text | remove
 	TidyTracks       bool   `json:"tidy_tracks"`    // rewrite files whose only gap is a few tracks
 	Crop             bool   `json:"crop"`           // remove black bars from re-encoded films
-	DolbyVision      string `json:"dolby_vision"`   // drop (keep the HDR10/HLG base) | skip (leave them alone)
+	DolbyVision      string `json:"dolby_vision"`   // drop (keep the HDR10/HLG base) | skip (leave them alone) | keep (as profile 8.1, preview)
 	TenBit           string `json:"ten_bit"`        // 8-bit SDR sources: "always" 10-bit | "match_source"
 	Resumable        bool   `json:"resumable"`      // encode long films in pieces a restart can't throw away (chunk.go)
 
@@ -52,6 +52,7 @@ type Settings struct {
 	HasGPU        bool   `json:"has_gpu"`             // a working hardware encoder exists
 	GPUDoesAV1    bool   `json:"gpu_does_av1"`
 	HDR10PlusTool bool   `json:"hdr10plus_tool"`
+	DoviTool      bool   `json:"dovi_tool"` // Dolby Vision can be kept through a conversion
 }
 
 // GetSettings reads the current settings.
@@ -73,7 +74,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		CPUCores: cores, Workers: s.workerCount(ctx), ScanAt: g.Get(ctx, keyScanAt, defaultScanAt),
 		ServerTime: time.Now().Format("15:04"), ServerTZ: zone,
 		PlexWatching: s.watchingKnown(), CanPause: canSuspend,
-		HasGPU: hasHEVC || hasAV1, GPUDoesAV1: hasAV1, HDR10PlusTool: s.hdr10plusTool != "",
+		HasGPU: hasHEVC || hasAV1, GPUDoesAV1: hasAV1, HDR10PlusTool: s.hdr10plusTool != "", DoviTool: s.doviTool != "",
 	}
 }
 
@@ -140,8 +141,16 @@ func (s *Service) UpdateSettings(ctx context.Context, p SettingsPatch) (Settings
 			return Settings{}, fmt.Errorf("unknown image-subtitle choice %q", *p.ImageSubs)
 		}
 	}
-	if p.DolbyVision != nil && *p.DolbyVision != DVDrop && *p.DolbyVision != DVSkip {
-		return Settings{}, fmt.Errorf("unknown Dolby Vision choice %q", *p.DolbyVision)
+	if p.DolbyVision != nil {
+		switch *p.DolbyVision {
+		case DVDrop, DVSkip:
+		case DVKeep:
+			if s.doviTool == "" {
+				return Settings{}, fmt.Errorf("keeping Dolby Vision needs dovi_tool, which isn't installed")
+			}
+		default:
+			return Settings{}, fmt.Errorf("unknown Dolby Vision choice %q", *p.DolbyVision)
+		}
 	}
 	if p.TenBit != nil && *p.TenBit != TenBitAlways && *p.TenBit != TenBitMatchSource {
 		return Settings{}, fmt.Errorf("unknown 10-bit choice %q", *p.TenBit)
