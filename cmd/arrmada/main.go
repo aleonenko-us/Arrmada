@@ -65,6 +65,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
+	"github.com/tristenlammi/arrmada/internal/updatecheck"
 	"github.com/tristenlammi/arrmada/internal/xem"
 )
 
@@ -1040,6 +1041,14 @@ func main() {
 	// The jobs table keeps two weeks of finished work, at most 5000 rows.
 	sched.Register("jobs-prune", 24*time.Hour, true, jobRunner.PruneDefault,
 		scheduler.Label("Tidy the job history"), scheduler.Description("Removes finished background jobs older than 14 days."))
+	// "Update available" on Settings → Status: GitHub's public releases, read twice a day
+	// unless switched off there (then it asks nothing).
+	updates := updatecheck.New(updatecheck.Options{
+		Version: buildinfo.Version, Commit: buildinfo.Commit, Log: log,
+		Enabled: func(ctx context.Context) bool { return settingsSvc.GetBool(ctx, updatecheck.KeyEnabled, true) },
+	})
+	sched.Register("update-check", updatecheck.Interval, true, updates.Run,
+		scheduler.Label("Check for updates"), scheduler.Description("Asks GitHub every 12 hours whether a newer Arrmada release is out. Switch it off on Settings → Status."))
 
 	// Audiobook server: listening apps (Lissen and other Audiobookshelf clients) connect to
 	// its own port. Off until an admin switches it on in Books → Audiobook server.
@@ -1228,6 +1237,7 @@ func main() {
 		},
 		RunGroup:  grp,
 		Backups:   backupSvc,
+		Updates:   updates,
 		Health:    healthReg,
 		Scheduler: sched,
 		Jobs:      jobRunner,

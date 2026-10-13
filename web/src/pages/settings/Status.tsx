@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { HealthList } from "../../components/system/HealthList";
 import { TasksTable } from "../../components/system/TasksTable";
+import { UpdateCheck } from "../../components/system/UpdateCheck";
 import { api, type SystemDisk } from "../../lib/api";
 import { fmtBytes } from "../../lib/disposal";
 import { LINKS } from "../../lib/links";
@@ -9,7 +10,7 @@ import { backupAge, versionLabel } from "../../lib/systemStatus";
 
 // System → Status: is everything working, and what's running in the background. The
 // first card says which build is running, how big the database is, when it was last
-// backed up and how full each drive is. Health lists every check with what's wrong and a
+// backed up and how full each drive is; Updates says whether a newer release is out. Health lists every check with what's wrong and a
 // link to fix it; Tasks lists every scheduled job with its last and next run and Run now.
 // Both refresh themselves while the page is open. The ids are deep-link targets
 // (LINKS.status, LINKS.tasks).
@@ -17,6 +18,7 @@ export function StatusSection() {
   return (
     <div className="flex flex-col gap-5">
       <SystemCard />
+      <UpdatesCard />
       <section id="health" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         <h2 className="m-0 text-[14px] font-bold">Health</h2>
         <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">
@@ -33,6 +35,13 @@ export function StatusSection() {
       </section>
     </div>
   );
+}
+
+// UpdatesCard is the update check, from the same /system/status answer as the System
+// card (one request). A server without the check wired shows no card.
+function UpdatesCard() {
+  const { data: st } = useQuery("system:status", api.systemStatus, { staleMs: 30_000 });
+  return st?.update ? <UpdateCheck update={st.update} /> : null;
 }
 
 function uptime(sec: number): string {

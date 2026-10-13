@@ -46,6 +46,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
+	"github.com/tristenlammi/arrmada/internal/updatecheck"
 	"github.com/tristenlammi/arrmada/internal/webui"
 )
 
@@ -114,6 +115,9 @@ type Deps struct {
 	// Backups makes the nightly and manual database copies. nil = no backups wired: the
 	// manual action answers 503 and the health panel says nothing about them.
 	Backups *backup.Service
+	// Updates is the "Update available" check on System → Status. nil = Status says
+	// nothing about updates and its routes answer 503.
+	Updates *updatecheck.Checker
 	// Health holds the background health checks; New registers the ones built from these
 	// deps, and /health/system serves its cached results. nil = an empty, healthy report.
 	Health *health.Registry
@@ -219,6 +223,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
+	// Its "Update available" check: switch it on or off, or check now (CFG-29).
+	mux.HandleFunc("PUT /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleSetUpdateCheck))
+	mux.HandleFunc("POST /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleUpdateCheckNow))
 	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.

@@ -11,6 +11,9 @@ services:
         VERSION: ${ARRMADA_VERSION:-dev}
         COMMIT: ${ARRMADA_COMMIT:-unknown}
     # update.sh keeps the build that ran before as arrmada:previous (./update.sh --rollback).
+    # With ARRMADA_IMAGE in .env (e.g. ghcr.io/tristenlammi/arrmada:stable), update.sh
+    # downloads that published image and tags it arrmada:dev instead of building here, so
+    # this name stays the same either way.
     image: arrmada:dev
     container_name: Arrmada-app
     # x265 binds its worker thread pools to NUMA nodes with set_mempolicy(2), which

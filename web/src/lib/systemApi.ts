@@ -1,4 +1,4 @@
-import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecycleItem, type RestoreStaged, type TaskStatus } from "./api";
+import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateStatus } from "./api";
 
 // System calls: scheduled tasks, database backups and the recycle bins. They live here rather
 // than in api.ts so they only download with the staff pages that use them, not with a
@@ -38,6 +38,10 @@ export const systemApi = {
   logLevel: () => req<LogLevelState>("/api/v1/logs/level"),
   setLogLevel: (level: string, minutes?: number) =>
     req<LogLevelState>("/api/v1/logs/level", { method: "PUT", body: JSON.stringify({ level, minutes }) }),
+  // The "Update available" check on Settings → Status: switch it on or off, or check now.
+  setUpdateCheck: (enabled: boolean) =>
+    req<UpdateStatus>("/api/v1/system/update-check", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  checkForUpdate: () => req<UpdateStatus>("/api/v1/system/update-check", { method: "POST" }),
 };
 
 export interface LogQuery {
