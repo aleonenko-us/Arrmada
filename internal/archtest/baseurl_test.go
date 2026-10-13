@@ -3,6 +3,7 @@ package archtest
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ func TestNoBaseURLSetting(t *testing.T) {
 	skipDirs := map[string]bool{".git": true, ".claude": true, "node_modules": true, "dist": true, "docs": true, "testdata": true}
 	text := map[string]bool{".go": true, ".ts": true, ".tsx": true, ".js": true, ".mjs": true, ".json": true, ".webmanifest": true,
 		".yml": true, ".yaml": true, ".sh": true, ".xml": true, ".html": true, ".md": true, ".example": true, ".conf": true, ".env": true}
+	ignored := gitIgnoredFiles(t, root)
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -42,6 +44,9 @@ func TestNoBaseURLSetting(t *testing.T) {
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(p, root+string(filepath.Separator)))
 		name := d.Name()
+		if ignored[rel] {
+			return nil // a local, git-ignored file (an audit report, a review page) isn't the app
+		}
 		if allowed[rel] || strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, ".test.ts") || strings.HasSuffix(name, ".test.tsx") {
 			return nil
 		}
@@ -60,4 +65,23 @@ func TestNoBaseURLSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// gitIgnoredFiles lists the files git ignores under root, so a local file that never
+// ships (an audit report at the repo root, say) can't fail the check. safe.directory lets
+// it read a checkout owned by another user (a Docker test run). Without git it
+// returns nothing and every file is checked.
+func gitIgnoredFiles(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	out, err := exec.Command("git", "-c", "safe.directory=*", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard").Output()
+	if err != nil {
+		return nil
+	}
+	files := map[string]bool{}
+	for _, f := range strings.Split(string(out), "\n") {
+		if f = strings.TrimSpace(f); f != "" {
+			files[f] = true
+		}
+	}
+	return files
 }
