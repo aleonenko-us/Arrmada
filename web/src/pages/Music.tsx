@@ -239,7 +239,7 @@ export function Music() {
         {artists === null ? (
           error ? <ErrorState what="your artists" message={error} onRetry={load} /> : <Skeleton variant="list" />
         ) : artists.length === 0 ? (
-          <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onAdd={() => setAdding(true)} onScan={scanLibrary} scanning={scan.running} />
+          <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onScan={scanLibrary} scanning={scan.running} />
         ) : shown.length === 0 ? (
           <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No artists match this filter.

@@ -419,7 +419,7 @@ export function Books() {
         {!booksQ.data ? (
           error ? <ErrorState what="your books" message={error} onRetry={refresh} busy={booksQ.loading} /> : <Skeleton variant={view === "table" ? "table" : "grid"} />
         ) : list.length === 0 ? (
-          <LibraryEmpty noun="books" folder="ebook and audiobook folders" addLabel="Add book" onAdd={() => setAdding(true)} addDisabled={!metaOK} onScan={scanLibrary} scanning={scanning || scan.running} />
+          <LibraryEmpty noun="books" folder="ebook and audiobook folders" addLabel="Add book" onScan={scanLibrary} scanning={scanning || scan.running} />
         ) : filtered.length === 0 ? (
           <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{q ? <>No books match “<b>{query.trim()}</b>”.</> : <>No books match the <b>{FILTERS.find((f) => f.key === filter)?.label}</b> filter.</>}</div>
         ) : mode === "author" ? (

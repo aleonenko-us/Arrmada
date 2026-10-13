@@ -154,7 +154,7 @@ export function Movies() {
         </>}
         tableNote={<FitLegend judged={judged} misfits={misfits} />}
         bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
-        empty={<LibraryEmpty noun="movies" folder="movies folder"addLabel="Add movie" onAdd={() => setShowAdd(true)} addDisabled={!metaOK} onScan={() => setShowScan(true)} scanning={scan.running} />}
+        empty={<LibraryEmpty noun="movies" folder="movies folder" addLabel="Add movie" onScan={() => setShowScan(true)} scanning={scan.running} />}
       />
       {searchFor && (
         <ReleaseSearchModal

@@ -123,7 +123,7 @@ export function Series() {
         primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
-        empty={<LibraryEmpty noun="series" folder="TV folder"addLabel="Add series" onAdd={() => setAdding(true)} addDisabled={!metaOK} onScan={scanLibrary} scanning={scanning || scan.running} />}
+        empty={<LibraryEmpty noun="series" folder="TV folder" addLabel="Add series" onScan={scanLibrary} scanning={scanning || scan.running} />}
       />
       {searchFor && (
         <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
