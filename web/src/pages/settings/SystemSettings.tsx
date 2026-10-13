@@ -21,6 +21,7 @@ export function SystemSettings() {
         <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." save={music} />
       </Section>
       <RestartSection />
+      <SetupAgainSection />
       <Backups />
     </div>
   );
@@ -76,6 +77,18 @@ function RestartSection() {
           onCancel={() => setConfirming(false)}
         />
       )}
+    </Section>
+  );
+}
+
+// SetupAgainSection reopens the first-run wizard with everything already set filled in;
+// finishing it comes back here.
+function SetupAgainSection() {
+  return (
+    <Section id="setup" title="Run setup again" subtitle="Walk through the first-run steps again: metadata key, folders, Plex and indexers. What's already set is filled in, and the last step shows what's still left to do.">
+      <div>
+        <Link to="/setup" className="inline-block rounded-lg px-4 py-2 text-[12.5px] font-semibold no-underline" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Run setup again</Link>
+      </div>
     </Section>
   );
 }

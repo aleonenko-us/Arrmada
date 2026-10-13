@@ -93,6 +93,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
   { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },
+  { label: "Run setup again", keywords: "setup wizard first run getting started onboarding", section: "system", anchor: "setup" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
 ];

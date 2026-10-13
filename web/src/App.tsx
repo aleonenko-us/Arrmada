@@ -1,8 +1,7 @@
 import { Suspense, useEffect, useMemo } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { SetupGate } from "./components/SetupGate";
 import { Unreachable } from "./components/Unreachable";
-import { useMe, isStaff } from "./lib/me";
+import { useMe } from "./lib/me";
 import { buildRoutes } from "./lib/routes";
 import { lazyPage } from "./lib/lazyPage";
 import type { UserRole } from "./lib/api";
@@ -55,13 +54,7 @@ export default function App() {
     );
   }
 
-  // Admins see the first-run wizard before the console until setup is done or skipped.
-  if (isStaff(user)) {
-    return (
-      <SetupGate user={user}>
-        <RouterProvider router={router} />
-      </SetupGate>
-    );
-  }
+  // Admins see the first-run wizard before the console until setup is done or skipped:
+  // the staff routes wrap the console's frame in SetupGate (lib/routes.tsx).
   return <RouterProvider router={router} />;
 }

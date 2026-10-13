@@ -2,6 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { api, type APIKeyStatus, type SetupState } from "../lib/api";
+import { MemoryRouter } from "react-router-dom";
+import { clearQueryCache } from "../lib/query";
+import { setupApi } from "../lib/setupApi";
 import { ConfirmProvider } from "../ui";
 import { SetupWizard } from "./SetupWizard";
 
@@ -21,9 +24,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  clearQueryCache();
 });
 
-const page = () => render(<ConfirmProvider><SetupWizard onDone={() => {}} /></ConfirmProvider>);
+const page = (onDone: (to?: string) => void = () => {}) => render(<MemoryRouter><ConfirmProvider><SetupWizard onDone={onDone} /></ConfirmProvider></MemoryRouter>);
 
 describe("SetupWizard TMDB key check", () => {
   it("checks a pasted key before saving and shows TMDB's answer", async () => {
@@ -67,5 +71,55 @@ describe("SetupWizard TMDB key check", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(save).toHaveBeenCalledWith("tmdb", "good-key");
     expect(test).toHaveBeenCalledTimes(1); // the blur and Next shared one check
+  });
+});
+
+// CFG-22: Skip only on the first step; Finish lists the Getting started steps as links.
+describe("SetupWizard steps", () => {
+  const checklist = {
+    items: [
+      { key: "tmdb", label: "Add your TMDB key", done: true, link: "/settings/connections#api-keys", link_key: "apiKeys" },
+      { key: "indexer", label: "Add an indexer", done: false, link: "/settings/connections#search", link_key: "indexers" },
+    ],
+    done: false,
+    dismissed: false,
+  };
+
+  it("offers Skip on the first step only", async () => {
+    vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+    page();
+    expect(await screen.findByText(/Skip for now — you can run it again from Settings → System/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByText("Continue")); });
+    expect(await screen.findByText("Where's your media?")).toBeTruthy();
+    expect(screen.queryByText(/Skip/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
+  });
+
+  it("skipping from the first step finishes setup", async () => {
+    const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
+    const done = vi.fn();
+    page(done);
+    const skip = await screen.findByText(/Skip for now/);
+    await act(async () => { fireEvent.click(skip); });
+    expect(complete).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledWith(undefined);
+  });
+
+  it("ends on the live checklist, whose links finish setup and open the step", async () => {
+    vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+    vi.spyOn(setupApi, "checklist").mockResolvedValue(checklist);
+    const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
+    const done = vi.fn();
+    page(done);
+    const next = await screen.findByText("Continue");
+    await act(async () => { fireEvent.click(next); });
+    const save = await screen.findByText("Save and continue");
+    await act(async () => { fireEvent.click(save); });
+    const todo = await screen.findByRole("link", { name: /Add an indexer \(to do\)/ });
+    expect(todo.getAttribute("href")).toBe("/settings/connections#search");
+    expect(screen.getByRole("link", { name: /Add your TMDB key \(done\)/ })).toBeTruthy();
+    await act(async () => { fireEvent.click(todo); });
+    expect(complete).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledWith("/settings/connections#search");
   });
 });

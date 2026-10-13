@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type APIKeyStatus, type LibraryPaths, type SetupState } from "../lib/api";
 import { FolderChips, FolderPicker } from "./Library";
 import { restartAndWait } from "../lib/restart";
 import { FleetMark } from "../components/FleetMark";
-import { useConfirm } from "../ui";
+import { ChecklistRows, useSetupChecklist } from "../components/GettingStarted";
+import { Button, useConfirm } from "../ui";
 
-// SetupWizard is the first thing an admin sees on a fresh install: the metadata key,
-// then each library folder (pre-filled from what's on the mount). Folders apply live, so
-// the restart step only appears if a startup-only setting is waiting. Everything is optional and
-// can be changed later in Settings; "Skip setup" never nags again.
+// SetupWizard is the first thing an admin sees on a fresh install: the metadata key, then
+// each library folder (pre-filled from what's on the mount), then the Getting started
+// checklist with a link to each step that's left. Folders apply live, so the restart only
+// appears if a startup-only setting is waiting. Only the first step can be skipped
+// outright; Settings → System → Run setup again opens it again with what's set filled in.
 
 type Step = "keys" | "folders" | "finish";
+
+const STEPS: { id: Step; label: string }[] = [
+  { id: "keys", label: "Metadata" },
+  { id: "folders", label: "Folders" },
+  { id: "finish", label: "Finish" },
+];
 
 const FOLDERS: { key: keyof LibraryPaths; label: string; hint: string; optional?: boolean }[] = [
   { key: "movies", label: "Movies", hint: "Where movie folders live" },
@@ -26,7 +35,12 @@ const OPTIONAL_KEYS = ["hardcover", "omdb", "tvdb"];
 // The answer to a pre-save key check, for the value it was asked about.
 interface KeyCheck { value: string; ok: boolean; detail: string; busy?: boolean }
 
-export function SetupWizard({ onDone }: { onDone: () => void }) {
+/**
+ * onDone: setup is finished (or skipped). to: a page the admin picked from the last
+ * step's checklist, to open next.
+ * rerun: opened from Settings → System → Run setup again, not on a fresh install.
+ */
+export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) => void; rerun?: boolean }) {
   const [state, setState] = useState<SetupState | null>(null);
   const [step, setStep] = useState<Step>("keys");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +52,8 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const [blocking, setBlocking] = useState<Partial<Record<keyof LibraryPaths, boolean>>>({});
   const onBlocking = useCallback((k: keyof LibraryPaths, b: boolean) => setBlocking((cur) => (cur[k] === b ? cur : { ...cur, [k]: b })), []);
   const folderBlocked = Object.values(blocking).some(Boolean);
+  // The last step's list, read only once it's on screen (and kept fresh while it is).
+  const checklist = useSetupChecklist(step === "finish");
 
   const load = () => api.setupState().then((s) => {
     setState(s);
@@ -53,7 +69,8 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const finish = () => run(async () => { await api.completeSetup(); onDone(); });
+  const go = (s: Step) => { setError(null); setStep(s); };
+  const finish = (to?: string) => run(async () => { await api.completeSetup(); onDone(to); });
 
   // The TMDB key is checked before it's saved: on paste or when the field loses focus, the
   // typed value goes to TMDB once (never stored) and the answer shows under the field.
@@ -98,13 +115,13 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       if (v.trim()) await api.setAPIKey(id, v.trim());
     }
     await load();
-    setStep("folders");
+    go("folders");
   });
 
   const saveFolders = () => run(async () => {
     if (folders) await api.setLibraryPaths(folders);
     await load();
-    setStep("finish");
+    go("finish");
   });
 
   // Restart and wait for the NEW process (not the old one's last answers), then finish.
@@ -123,24 +140,28 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const keyStatus = (id: string): APIKeyStatus | undefined => state.keys.find((k) => k.id === id);
   const tmdb = keyStatus("tmdb");
   const managedOnly = state.mounts.length > 0 && !state.mounts.includes("/storage");
+  const stepIndex = STEPS.findIndex((s) => s.id === step);
+  const restartFirst = state.restart_needed && state.can_restart;
 
   return (
     <Frame>
-      <div className="mb-5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-        {(["keys", "folders", "finish"] as Step[]).map((s, i) => (
-          <span key={s} style={{ color: s === step ? "var(--accent)" : undefined }}>
-            {i > 0 && <span className="mx-1.5 text-ink-faint">›</span>}
-            {i + 1}. {s === "keys" ? "Metadata" : s === "folders" ? "Folders" : "Finish"}
-          </span>
+      <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+        {STEPS.map((s, i) => (
+          <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent)" : undefined }}>
+            {i > 0 && <span aria-hidden className="mr-1.5 text-ink-faint">›</span>}
+            {i + 1}. {s.label}
+          </li>
         ))}
-      </div>
+      </ol>
 
-      {error && <div className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
 
       {step === "keys" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">Welcome to Arrmada</h1>
-          <p className="mb-4 mt-1 text-[13px] text-ink-dim">Two quick steps and you're ready. Everything here can be changed later in Settings.</p>
+          <h1 className="m-0 text-[20px] font-bold">{rerun ? "Run setup again" : "Welcome to Arrmada"}</h1>
+          <p className="mb-4 mt-1 text-[13px] text-ink-dim">
+            {rerun ? "What's already set is filled in; change anything, or carry on to the next step." : "A few quick steps and you're ready. Everything here can be changed later in Settings."}
+          </p>
 
           <KeyField
             status={tmdb}
@@ -164,7 +185,15 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
               })}
             </div>
           </details>
-          <Nav busy={busy} onSkip={finish} onNext={saveKeys} nextLabel={Object.values(keys).some((v) => v.trim()) ? "Save and continue" : "Continue"} />
+          <Nav
+            busy={busy}
+            skip={{
+              label: rerun ? "Back to Settings → System" : "Skip for now — you can run it again from Settings → System",
+              onClick: () => (rerun ? onDone() : finish()),
+            }}
+            onNext={saveKeys}
+            nextLabel={Object.values(keys).some((v) => v.trim()) ? "Save and continue" : "Continue"}
+          />
         </>
       )}
 
@@ -186,18 +215,19 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
             {FOLDERS.map((f) => (
               <div key={f.key}>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <span className="text-[12.5px] font-semibold">{f.label}</span>
+                  <label htmlFor={`setup-folder-${f.key}`} className="text-[12.5px] font-semibold">{f.label}</label>
                   <span className="text-[11px] text-ink-faint">{f.hint}</span>
                 </div>
                 <div className="flex gap-2">
                   <input
+                    id={`setup-folder-${f.key}`}
                     value={folders[f.key]}
                     onChange={(e) => setFolders({ ...folders, [f.key]: e.target.value })}
                     placeholder={f.optional ? "Leave as is if you don't use it" : "/storage/…"}
                     className="min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-[12px]"
                     style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
                   />
-                  <button onClick={() => setPicking(f.key)} className="flex-none rounded-lg px-3 py-2 text-[12px] font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Browse</button>
+                  <Button onClick={() => setPicking(f.key)} className="flex-none" aria-label={`Browse for the ${f.label} folder`}>Browse</Button>
                 </div>
                 <FolderChips
                   kind={f.key}
@@ -210,7 +240,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
               </div>
             ))}
           </div>
-          <Nav busy={busy} blocked={folderBlocked} onBack={() => setStep("keys")} onSkip={finish} onNext={saveFolders} nextLabel="Save and continue" />
+          <Nav busy={busy} blocked={folderBlocked} onBack={() => go("keys")} onNext={saveFolders} nextLabel="Save and continue" />
           {picking && (
             <FolderPicker
               initial={folders[picking] || state.mounts[0]}
@@ -223,39 +253,44 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
 
       {step === "finish" && (
         <>
-          <h1 className="m-0 text-[20px] font-bold">{state.restart_needed ? "One restart to go" : "You're all set"}</h1>
+          <h1 className="m-0 text-[20px] font-bold">{state.restart_needed ? "One restart to go" : "Here's where you are"}</h1>
           {state.restart_needed ? (
             <p className="mt-1 text-[13px] text-ink-dim">
               Arrmada needs to restart to start using the new folders for downloads and imports.
               {state.can_restart ? " It takes a few seconds." : " Restart the Arrmada container the way you started it (for example docker compose restart arrmada-app)."}
             </p>
           ) : (
-            <p className="mt-1 text-[13px] text-ink-dim">Your folders are in use.</p>
+            <p className="mt-1 text-[13px] text-ink-dim">
+              Each step ticks itself off once it's done; pick one to go there now. The Dashboard keeps this list until everything's ticked.
+            </p>
           )}
-          {!state.tmdb_configured && (
-            <p className="mt-2 text-[12px]" style={{ color: "var(--avoid)" }}>No TMDB key yet — Movies and TV won't find anything until you add one in Settings → Connections. It takes effect straight away.</p>
-          )}
-          <div className="mt-4 rounded-xl p-3.5 text-[12.5px] text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-            <div className="mb-1 font-semibold text-[var(--ink)]">Next:</div>
-            <ul className="m-0 list-disc pl-5">
-              <li>Add your trackers on the <b>Indexers</b> page (or sync them from Prowlarr).</li>
-              <li>Check the default <b>Quality</b> profile.</li>
-              <li>Import what's already on disk from <b>Settings → Library</b>.</li>
-            </ul>
-          </div>
-          <div className="mt-5 flex justify-end gap-2">
-            {state.restart_needed && state.can_restart ? (
-              <button onClick={restart} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
-                {restarting ? "Restarting…" : "Restart and finish"}
-              </button>
+          <div className="mt-4 rounded-xl p-2.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+            {checklist.data ? (
+              // A restart has to come first, so the steps aren't links until it's done.
+              <ChecklistRows items={checklist.data.items} onOpen={restartFirst ? undefined : (to) => finish(to)} />
             ) : (
-              <button onClick={finish} disabled={busy} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>Open Arrmada</button>
+              <p className="m-0 px-2 py-1.5 text-[12px] text-ink-faint">{checklist.error ? "Couldn't read the checklist — the Dashboard shows it too." : "Checking…"}</p>
+            )}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            <Button variant="ghost" onClick={() => go(STEPS[stepIndex - 1].id)} disabled={busy}>Back</Button>
+            {restartFirst ? (
+              <Button variant="primary" onClick={restart} busy={busy} busyLabel={restarting ? "Restarting…" : "Saving…"}>Restart and finish</Button>
+            ) : (
+              <Button variant="primary" onClick={() => finish()} busy={busy} busyLabel="Saving…">{rerun ? "Done" : "Open Arrmada"}</Button>
             )}
           </div>
         </>
       )}
     </Frame>
   );
+}
+
+// SetupAgain is Settings → System → Run setup again: the wizard with what's set filled
+// in. Finishing goes back to Settings → System, or to the step picked on the last page.
+export function SetupAgain() {
+  const navigate = useNavigate();
+  return <SetupWizard rerun onDone={(to) => navigate(to ?? "/settings/system")} />;
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
@@ -305,14 +340,25 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
   );
 }
 
-function Nav({ busy, blocked, onBack, onSkip, onNext, nextLabel }: { busy: boolean; blocked?: boolean; onBack?: () => void; onSkip: () => void; onNext: () => void; nextLabel: string }) {
+// Nav is a step's buttons. skip: the first step's "Skip for now" (the whole wizard), or a
+// later optional step's "Skip this step". Only those two kinds exist.
+function Nav({ busy, blocked, onBack, skip, onNext, nextLabel }: {
+  busy: boolean;
+  blocked?: boolean;
+  onBack?: () => void;
+  skip?: { label: string; onClick: () => void };
+  onNext: () => void;
+  nextLabel: string;
+}) {
   return (
-    <div className="mt-6 flex items-center justify-between gap-2">
-      <button onClick={onSkip} disabled={busy} className="text-[12px] text-ink-faint hover:text-[var(--ink)]" title="Finish now; everything can be set later in Settings">Skip setup</button>
-      <div className="flex gap-2">
-        {onBack && <button onClick={onBack} disabled={busy} className="rounded-lg px-3.5 py-2 text-[12.5px]" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Back</button>}
-        <button onClick={onNext} disabled={busy || blocked} title={blocked ? "Fix the folders marked in red first" : undefined} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{busy ? "Saving…" : nextLabel}</button>
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {onBack && <Button variant="ghost" onClick={onBack} disabled={busy}>Back</Button>}
+        {skip && (
+          <button type="button" onClick={skip.onClick} disabled={busy} className="text-left text-[12px] text-ink-faint hover:text-[var(--ink)]">{skip.label}</button>
+        )}
       </div>
+      <Button variant="primary" onClick={onNext} disabled={blocked} busy={busy} busyLabel="Saving…" title={blocked ? "Fix the folders marked in red first" : undefined}>{nextLabel}</Button>
     </div>
   );
 }
