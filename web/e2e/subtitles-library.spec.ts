@@ -77,6 +77,27 @@ test.describe("Subtitles movie Library", () => {
     await expect.poll(() => api.callsTo("POST", "/api/v1/subtitles/orphans/bulk").map((c) => c.body)).toEqual([{ action: "adopt", movie_ids: [21, 41] }]);
   });
 
+  test("Redo all languages asks first, in the kit's dialog", async ({ page, api }) => {
+    await installExtra(page, api, [
+      ...library,
+      { method: "POST", path: /^\/api\/v1\/subtitles\/library\/movies\/(\d+)$/, status: 202, respond: ({ params }) => ({ id: 10, kind: "movie", movie_id: Number(params[0]), title: "Dune", state: "queued", at: 0, priority: 1 }) },
+    ]);
+    await page.goto("/subtitles?tab=library");
+    await page.getByRole("textbox", { name: "Search movies" }).fill("dune");
+    const redo = page.locator("tbody tr").first().getByRole("button", { name: "Redo all languages…" });
+
+    await redo.click();
+    const dialog = page.getByRole("dialog", { name: "Redo every language for Dune?" });
+    await expect(dialog).toContainText("recycle bin");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(api.callsTo("POST", "/api/v1/subtitles/library/movies/")).toEqual([]);
+
+    await redo.click();
+    await dialog.getByRole("button", { name: "Redo" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/subtitles/library/movies/").map((c) => c.path)).toEqual(["/api/v1/subtitles/library/movies/7?redo=1"]);
+  });
+
   test.describe("phone", () => {
     test.use({ viewport: { width: 375, height: 812 } });
 

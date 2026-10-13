@@ -1,4 +1,4 @@
-import { req, type BackupFile, type BackupSchedule, type BackupsState, type RecycleItem, type RestoreStaged, type TaskStatus } from "./api";
+import { req, type BackupFile, type BackupSchedule, type BackupsState, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateStatus } from "./api";
 
 // System calls: scheduled tasks, database backups and the recycle bins. They live here rather
 // than in api.ts so they only download with the staff pages that use them, not with a
@@ -26,4 +26,8 @@ export const systemApi = {
   emptyRecycle: (bin?: string) => req<{ freed_bytes: number }>("/api/v1/recycle/empty", { method: "POST", body: JSON.stringify(bin ? { bin } : {}) }),
   restoreRecycle: (id: string) => req<{ status: string }>("/api/v1/recycle/restore", { method: "POST", body: JSON.stringify({ id }) }),
   deleteRecycleItem: (id: string) => req<{ status: string }>("/api/v1/recycle/delete", { method: "POST", body: JSON.stringify({ id }) }),
+  // The "Update available" check on Settings → Status: switch it on or off, or check now.
+  setUpdateCheck: (enabled: boolean) =>
+    req<UpdateStatus>("/api/v1/system/update-check", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  checkForUpdate: () => req<UpdateStatus>("/api/v1/system/update-check", { method: "POST" }),
 };

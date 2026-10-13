@@ -448,6 +448,7 @@ POST /api/v1/system/backups/upload admin -
 POST /api/v1/system/backups/{name}/restore admin -
 POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
+POST /api/v1/system/update-check admin -
 POST /api/v1/users admin -
 POST /api/v1/users/{id}/block-plex admin -
 POST /api/v1/users/{id}/plex/merge admin -
@@ -498,4 +499,5 @@ PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -
 PUT /api/v1/system/backups/settings admin -
 PUT /api/v1/system/library admin -
+PUT /api/v1/system/update-check admin -
 PUT /api/v1/users/{id} admin -

@@ -21,6 +21,7 @@ const SetupAgain = lazyPage(() => import("../pages/SetupWizard"), "SetupAgain");
 const MyBooks = lazyPage(() => import("../pages/MyBooks"), "MyBooks");
 const Dashboard = lazyPage(() => import("../pages/Dashboard"), "Dashboard");
 const Quality = lazyPage(() => import("../pages/Quality"), "Quality");
+const QualityEditorRoute = lazyPage(() => import("../pages/Quality"), "QualityEditorRoute");
 const Settings = lazyPage(() => import("../pages/Settings"), "Settings");
 const Activity = lazyPage(() => import("../pages/Activity"), "Activity");
 const Movies = lazyPage(() => import("../pages/Movies"), "Movies");
@@ -172,6 +173,9 @@ function staffRoutes(admin: boolean): RouteObject[] {
     // their own addresses.
     page("/settings/*", "Settings", <Settings />),
     page("/quality", "Quality profiles", <Quality />),
+    // The profile editor has its own addresses (/quality/movie/new, /quality/movie/<key>,
+    // /quality/movie/<key>/copy), so a refresh, Back and the unsaved-edits guard all work on it.
+    page("/quality/:media/*", "Quality profile", <QualityEditorRoute />),
     // The log is admin-only on the server; for a manager the address falls through to Not found.
     ...(admin ? [page("/logs", "Logs", <Logs />)] : []),
     redirect("/library", "/settings/library"),

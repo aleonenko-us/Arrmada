@@ -36,6 +36,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/system/backups", sys.backups),
     get("/api/v1/system/pending-restart", sys.pendingRestart),
     get("/api/v1/system/status", sys.systemStatus),
+    // Settings → Status → Updates: the switch answers with the check off; Check now with
+    // the same answer as Status.
+    { method: "PUT", path: "/api/v1/system/update-check", respond: ({ body }) => ({ ...sys.systemStatus.update, ...(body as object), latest: null, behind: null }) },
+    { method: "POST", path: "/api/v1/system/update-check", body: sys.systemStatus.update },
     get("/api/v1/me/audio", sys.myAudio(p)),
     get("/api/v1/me/audio/listening", sys.myListening),
     // The Listen tab (the player specs answer the rest of the listening API).

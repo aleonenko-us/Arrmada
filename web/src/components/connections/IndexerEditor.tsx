@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 
 // The indexer forms, moved from the old Indexers page into the cards on Settings →
 // Connections: editing one (with its seed rules), testing settings before they are saved,
@@ -103,6 +104,9 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
     seed_hours: seedEnabled ? (seedUnit === "days" ? seedTime * 24 : seedTime) : 0,
     enabled,
   });
+  // Dirty once the form differs from how it opened.
+  const [opened] = useState(() => JSON.stringify(body()));
+  const markClean = useUnsavedGuard(JSON.stringify(body()) !== opened);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +114,7 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
     setError(null);
     try {
       await indexerApi.updateIndexer(idx.id, body());
+      markClean();
       onSaved();
     } catch (err) {
       setError((err as Error).message);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { DEFAULT_SEED_DAYS, INDEXER_PRESETS, type IndexerPreset } from "../../lib/indexerPresets";
 import { Button, Modal } from "../../ui";
 import { ALL_MEDIA, Labeled, MEDIA_TYPES, SeedingRules, TestLine, TIE_BREAK_HELP, field, fieldStyle, type TestState } from "./IndexerEditor";
@@ -97,6 +98,9 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
   });
   // A test answers for exactly what was in the form; change anything and it's stale.
   const sig = JSON.stringify(body());
+  // Dirty once the form differs from the preset it opened with.
+  const [opened] = useState(sig);
+  const markClean = useUnsavedGuard(sig !== opened);
   const current = test.sig === sig ? test : {};
   const passed = current.ok === true;
 
@@ -123,7 +127,9 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
     onSaving(true);
     setError(null);
     try {
-      onAdded(await indexerApi.createIndexer(body()));
+      const added = await indexerApi.createIndexer(body());
+      markClean();
+      onAdded(added);
     } catch (e) {
       setError((e as Error).message);
     } finally {

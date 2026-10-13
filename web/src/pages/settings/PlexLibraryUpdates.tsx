@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AutoToggle } from "../../components/settings/auto";
 import { Note, Section, input, inputStyle } from "../../components/settings/ui";
 import { useAutoSave } from "../../lib/useAutoSave";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { LINKS } from "../../lib/links";
 import { plexLibraryApi, type PlexPathMap, type PlexScanRoot, type PlexScanView } from "../../lib/plexLibraryApi";
 import { ago } from "../../lib/taskTime";
@@ -88,6 +89,7 @@ export function PlexLibraryUpdates() {
     const v = await plexLibraryApi.saveScan({ enabled: on, path_map: view.path_map });
     setView(v);
   });
+  useUnsavedGuard(dirty);
 
   if (loadErr) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><Note tone="warn">{loadErr}</Note></Section>;
   if (!view) return <Section id={PLEX_LIBRARY_UPDATES_ID} title="Plex library updates" subtitle="Tell Plex what changed."><div className="text-[12px] text-ink-faint">Loading…</div></Section>;

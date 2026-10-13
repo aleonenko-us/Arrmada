@@ -96,6 +96,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Run setup again", keywords: "setup wizard first run getting started onboarding", section: "system", anchor: "setup" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
+  { label: "Updates", keywords: "update updates upgrade release releases new version check github notes changelog", section: "status", anchor: "updates" },
 ];
 
 // searchSettings finds the cards whose name or keywords contain every word typed, among

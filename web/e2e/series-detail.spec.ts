@@ -52,6 +52,14 @@ test.describe("desktop", () => {
     await page.getByRole("menuitem", { name: "Refresh & rescan" }).click();
     await expect.poll(() => api.callsTo("POST", "/api/v1/series/1/refresh").length).toBe(1);
 
+    // Rename… opens the preview in the kit's dialog; Escape closes it.
+    await more.click();
+    await page.getByRole("menuitem", { name: "Rename…" }).click();
+    const rename = page.getByRole("dialog", { name: "Rename files" });
+    await expect(rename).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(rename).toHaveCount(0);
+
     // Search missing is the whole-show search.
     await page.getByRole("button", { name: "Search missing" }).click();
     await expect.poll(() => api.callsTo("POST", "/api/v1/series/1/search").length).toBe(1);

@@ -1691,6 +1691,35 @@ export interface SystemStatus {
   db_bytes: number;
   last_backup: { at: string; kind: string; file: string } | null;
   disks: SystemDisk[];
+  /** The "Update available" check; null/absent when the server has none wired. */
+  update?: UpdateStatus | null;
+}
+
+/** The newest published release, as the update check last saw it. */
+export interface UpdateRelease {
+  tag: string;
+  name: string;
+  /** Its github.com page, or "" when GitHub gave anything else. */
+  url: string;
+  /** Markdown as GitHub has it, cut to 4 KB. Show as text, never as HTML. */
+  notes: string;
+  notes_truncated: boolean;
+  published_at: string;
+}
+
+/** GET /system/status `update`, and PUT/POST /system/update-check (admin). */
+export interface UpdateStatus {
+  enabled: boolean;
+  current: string;
+  /** release: a v-tag build, compared with the newest release; main: a commit build, compared with main; dev: neither. */
+  channel: "release" | "main" | "dev";
+  checked_at: string | null;
+  latest: UpdateRelease | null;
+  available: boolean;
+  /** Commits main has that this build lacks; null = unknown or not a build of main. */
+  behind: number | null;
+  /** Why the last attempt couldn't check, in words. */
+  problem?: string;
 }
 
 /**

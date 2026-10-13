@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type DiscoverCard, type DiscoverPage, type Genre, type PersonResult, type WatchProvider } from "../lib/api";
-import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, type RowCtx } from "./discover/shared";
+import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, type RowCtx } from "../features/discover/shared";
 
 // The deeper Discover grids (REQ-19): a filterable browse grid behind every row's
 // "See all" (/discover/browse?list=popular&media=movie), and search results past the first
