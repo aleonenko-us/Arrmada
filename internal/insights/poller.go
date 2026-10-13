@@ -252,8 +252,12 @@ func (s *Service) publish(topic string, sess plex.Session) {
 		"user_id": sess.UserID, "rating_key": sess.RatingKey, "session_key": sess.SessionKey,
 		"grandparent_title": sess.ShowTitle, "media_type": sess.Type, "year": sess.Year,
 		"location": s.streamLocation(sess),
-		// The Plex image path (no token): an alert fetches it server-side for its poster.
+		// The Plex image path (no token): an alert fetches it server-side for its poster —
+		// the show's portrait poster for an episode, the item's own image otherwise.
 		"thumb": sess.Thumb,
+	}
+	if sess.ShowThumb != "" {
+		data["thumb"] = sess.ShowThumb
 	}
 	if topic == "plex.buffering" {
 		data["cause"], _ = sess.BufferCause()

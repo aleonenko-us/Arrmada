@@ -3,6 +3,7 @@ package notify
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"sync"
@@ -194,7 +195,7 @@ var builtinEvents = []EventDef{
 			if title == "" {
 				return Message{}, false
 			}
-			return Message{Title: "Now playing", Body: fmt.Sprintf("▶️ %s started %s", str(d, "user"), title), Link: "/insights"}, true
+			return Message{Title: "Now playing", Body: fmt.Sprintf("▶️ %s started %s", str(d, "user"), title), Link: plexPersonLink(str(d, "user_id"))}, true
 		},
 	},
 	{
@@ -356,6 +357,15 @@ func withYear(title string, year int64) string {
 		return fmt.Sprintf("%s (%d)", title, year)
 	}
 	return title
+}
+
+// plexPersonLink is the Insights page of the Plex user a stream is by, or Insights itself
+// when the event doesn't say who.
+func plexPersonLink(userID string) string {
+	if userID == "" {
+		return "/insights"
+	}
+	return "/insights/people/" + url.PathEscape(userID)
 }
 
 func link(prefix string, id int64) string {

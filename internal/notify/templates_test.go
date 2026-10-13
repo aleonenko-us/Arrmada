@@ -108,6 +108,18 @@ func TestTemplatesPerConnection(t *testing.T) {
 	_ = rec
 }
 
+// A stream alert opens the Insights page of the person watching.
+func TestStreamAlertLinksToPerson(t *testing.T) {
+	def, _ := Lookup(eventStreamStarted)
+	m, ok := def.Format(map[string]any{"title": "Dune", "user": "sam", "user_id": "42"})
+	if !ok || m.Link != "/insights/people/42" {
+		t.Errorf("link = %q", m.Link)
+	}
+	if m, _ := def.Format(map[string]any{"title": "Dune"}); m.Link != "/insights" {
+		t.Errorf("no user id: link = %q", m.Link)
+	}
+}
+
 func TestCleanTemplates(t *testing.T) {
 	got, err := cleanTemplates(map[string]string{"movie.imported": "{title}\r\n{link}", "plex.buffering": "   "})
 	if err != nil || len(got) != 1 || got["movie.imported"] != "{title}\n{link}" {
