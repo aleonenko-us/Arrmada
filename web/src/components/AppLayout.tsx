@@ -95,7 +95,10 @@ export function AppLayout() {
         <UnsavedGuardHost />
         {/* pb-chrome: the last row scrolls clear of the audiobook mini-player and the
             iPhone home indicator. */}
-        <main ref={mainRef} className="pb-chrome min-w-0 flex-1 overflow-y-auto">
+        {/* relative: absolutely placed pieces (a screen-reader-only label) belong to this
+            scroll box. Without it they are placed against the page and stretch it, which
+            adds a second scrollbar. */}
+        <main ref={mainRef} className="pb-chrome relative min-w-0 flex-1 overflow-y-auto">
           {/* Keyed by path: a broken page shows its error card inside the shell, and
               navigating elsewhere clears it. */}
           <ErrorBoundary resetKey={pathname}>

@@ -1,4 +1,8 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./mockApi";
+
+// How far the window itself can scroll: 0 when only the shell's own scroll box does.
+const windowOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
 
 // The staff console at desktop width: every page in the sidebar opens, renders its
 // heading and logs no console errors. A page that throws (and lands on the error
@@ -8,6 +12,8 @@ for (const persona of ["admin", "manager"] as const) {
     test.use({ persona });
 
     test("every sidebar page loads with a heading and no console errors", async ({ page, api }) => {
+      // Every sidebar page and every Settings section: more than the default 20 s on CI.
+      test.setTimeout(90_000);
       const errors: string[] = [];
       page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
       page.on("pageerror", (e) => errors.push(`uncaught: ${e.message}`));
@@ -39,6 +45,25 @@ for (const persona of ["admin", "manager"] as const) {
           // Errors since the last check, so the first step also covers the initial load.
           expect.soft(errors, `console errors on ${href}`).toEqual([]);
           errors.length = 0;
+          // One scrollbar: the page scrolls inside the shell, never the window as well.
+          expect.soft(await windowOverflow(page), `${href} makes the window scroll too`).toBeLessThanOrEqual(1);
+        });
+      }
+
+      // Every Settings section, scrolled to the bottom: a stray absolutely placed piece
+      // (a screen-reader-only label) far down a long section once stretched the window.
+      await page.goto("/settings/library");
+      await page.locator('a[href="/settings/library"]').first().waitFor();
+      const rail = await page.locator('a[href^="/settings/"]').evaluateAll((links) =>
+        [...new Set(links.map((a) => a.getAttribute("href") ?? ""))].filter((h) => /^\/settings\/[a-z-]+$/.test(h)),
+      );
+      expect(rail.length, `settings sections: ${rail.join(", ")}`).toBeGreaterThan(5);
+      for (const href of rail) {
+        await test.step(href, async () => {
+          await page.goto(href);
+          await api.quiet();
+          await page.locator("main").evaluate((m) => m.scrollTo(0, m.scrollHeight));
+          expect.soft(await windowOverflow(page), `${href} makes the window scroll too`).toBeLessThanOrEqual(1);
         });
       }
     });
