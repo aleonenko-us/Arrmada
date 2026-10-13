@@ -50,6 +50,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/me/notifications", discover.notifications),
     { method: "POST", path: /^\/api\/v1\/me\/notifications\/\d+\/read$/, status: 204 },
     get("/api/v1/me/quota", sys.quota(p)),
+    // The Me page's calendar feed card: no link yet (APP-18).
+    get("/api/v1/me/calendar-feed", { enabled: false, mine: p.user.role !== "admin" && p.user.role !== "manager" }),
     // The Me page's notification settings: no push key (it says push isn't set up), no Apprise link.
     get("/api/v1/me/push/key", { key: "" }),
     get("/api/v1/me/apprise", { set: false, hint: "" }),
@@ -224,6 +226,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/logs/level", sys.logLevel),
     get("/api/v1/system/tasks", sys.tasks),
     get("/api/v1/jobs", sys.jobs),
+    get("/api/v1/system/jobs", sys.recentJobs),
 
     // Settings → Alerts
     get("/api/v1/notifications", alerts.connections),

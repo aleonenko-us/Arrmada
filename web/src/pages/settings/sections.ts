@@ -92,6 +92,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
   { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
+  { label: "Outside address", keywords: "public url address domain tunnel external link alerts calendar feed outside", section: "system", anchor: "public-url" },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },
   { label: "Run setup again", keywords: "setup wizard first run getting started onboarding", section: "system", anchor: "setup" },
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },

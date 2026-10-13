@@ -38,6 +38,9 @@ type Connection struct {
 	Enabled bool     `json:"enabled"`
 	// Config holds what a non-Apprise kind needs: {"user_id": N} for KindWebPush.
 	Config json.RawMessage `json:"config"`
+	// Options are the admin's choices about the messages: whose Plex streams, remote
+	// or transcodes only (filters.go). Never secret.
+	Options Options `json:"options"`
 }
 
 // KindWebPush is a connection that delivers as Web Push to one user's subscribed
@@ -101,31 +104,55 @@ type Service struct {
 	wake chan struct{}
 	now  func() time.Time
 	poll time.Duration
+
+	// streams remembers recent Plex alerts per connection (filters.go).
+	streams *streamMemory
+
+	// hooks are the outside address and the poster sources (attach.go); tempDir is where
+	// a fetched Plex poster waits for its send ("" = the system's temp folder).
+	hooks   hooks
+	tempDir string
+	// attachTransport sends a message with a poster attached; nil (after SetTransport)
+	// sends through transport without it.
+	attachTransport AttachTransport
 }
 
 // Transport sends one message to one Apprise URL. An error's text must not quote the
 // URL (Send scrubs its own).
 type Transport func(ctx context.Context, url, title, body string) error
 
+// AttachTransport is Transport with an attachment: a poster URL or a local file.
+type AttachTransport func(ctx context.Context, url, title, body, attach string) error
+
 // NewService wires the notification service.
 func NewService(db *sql.DB, bus *eventbus.Bus, log *slog.Logger) *Service {
-	s := &Service{db: db, bus: bus, log: log, wake: make(chan struct{}, 1), now: time.Now, poll: defaultQueuePoll}
+	s := &Service{db: db, bus: bus, log: log, wake: make(chan struct{}, 1), now: time.Now, poll: defaultQueuePoll, streams: newStreamMemory()}
 	if p, err := exec.LookPath("apprise"); err == nil {
 		s.apprise = p
 	} else {
 		log.Warn("notify: apprise binary not found — notifications will not send")
 	}
-	s.transport = func(ctx context.Context, url, title, body string) error {
+	s.attachTransport = func(ctx context.Context, url, title, body, attach string) error {
 		if s.apprise == "" {
 			return fmt.Errorf("apprise is not installed")
 		}
-		return Send(ctx, s.apprise, title, body, url)
+		return SendAttach(ctx, s.apprise, title, body, attach, url)
+	}
+	s.transport = func(ctx context.Context, url, title, body string) error {
+		return s.attachTransport(ctx, url, title, body, "")
 	}
 	return s
 }
 
-// SetTransport replaces how messages leave the server. For tests.
-func (s *Service) SetTransport(t Transport) { s.transport = t }
+// SetTransport replaces how messages leave the server. For tests: posters are dropped
+// unless SetAttachTransport is used as well.
+func (s *Service) SetTransport(t Transport) { s.transport, s.attachTransport = t, nil }
+
+// SetAttachTransport replaces how messages with a poster leave the server. For tests.
+func (s *Service) SetAttachTransport(t AttachTransport) { s.attachTransport = t }
+
+// SetTempDir sets where fetched Plex posters wait for their send. For tests.
+func (s *Service) SetTempDir(dir string) { s.tempDir = dir }
 
 // Pusher sends Web Push to every device a user subscribed, saying how many took it.
 // Satisfied by *push.Service.
@@ -143,20 +170,22 @@ func (s *Service) SetPusher(p Pusher, allowed func(ctx context.Context, userID i
 // modules (e.g. per-user request-ready pushes) to send directly.
 func (s *Service) AppriseBin() string { return s.apprise }
 
-const cols = `id, name, kind, url, enabled, config`
+const cols = `id, name, kind, url, enabled, config, options`
 
 func scanConn(row interface{ Scan(...any) error }) (Connection, error) {
 	var (
-		c      Connection
-		enabl  int
-		config string
+		c       Connection
+		enabl   int
+		config  string
+		options string
 	)
-	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.URL, &enabl, &config); err != nil {
+	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.URL, &enabl, &config, &options); err != nil {
 		return Connection{}, err
 	}
 	c.Enabled = enabl != 0
 	c.Events = []string{}
 	c.Config = json.RawMessage(config)
+	c.Options = ParseOptions(options)
 	return c, nil
 }
 
@@ -239,8 +268,8 @@ func (s *Service) Create(ctx context.Context, c Connection) (Connection, error) 
 	var id int64
 	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO notifications (name, kind, url, on_grab, on_import, on_stream, on_buffering, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			c.Name, c.Kind, c.URL, grab, imp, stream, buf, b2i(c.Enabled), configOrEmpty(c.Config))
+			`INSERT INTO notifications (name, kind, url, on_grab, on_import, on_stream, on_buffering, enabled, config, options) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			c.Name, c.Kind, c.URL, grab, imp, stream, buf, b2i(c.Enabled), configOrEmpty(c.Config), c.Options.encode())
 		if err != nil {
 			return err
 		}
@@ -260,8 +289,8 @@ func (s *Service) Update(ctx context.Context, id int64, c Connection) error {
 	grab, imp, stream, buf := legacyFlags(c)
 	return store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
-			`UPDATE notifications SET name = ?, kind = ?, url = ?, on_grab = ?, on_import = ?, on_stream = ?, on_buffering = ?, enabled = ?, config = ? WHERE id = ?`,
-			c.Name, c.Kind, c.URL, grab, imp, stream, buf, b2i(c.Enabled), configOrEmpty(c.Config), id)
+			`UPDATE notifications SET name = ?, kind = ?, url = ?, on_grab = ?, on_import = ?, on_stream = ?, on_buffering = ?, enabled = ?, config = ?, options = ? WHERE id = ?`,
+			c.Name, c.Kind, c.URL, grab, imp, stream, buf, b2i(c.Enabled), configOrEmpty(c.Config), c.Options.encode(), id)
 		if err != nil {
 			return err
 		}
@@ -336,7 +365,7 @@ func (s *Service) Run(ctx context.Context) {
 			data := payload(ev.Data)
 			for _, def := range byTopic[ev.Topic] {
 				if m, ok := def.Format(data); ok {
-					if _, err := s.Dispatch(ctx, def.Key, m); err != nil && ctx.Err() == nil {
+					if _, err := s.dispatch(ctx, def.Key, "", m, data); err != nil && ctx.Err() == nil {
 						s.log.Warn("notify: couldn't dispatch an alert", "event", def.Key, "err", err)
 					}
 				}
@@ -362,7 +391,7 @@ func (s *Service) EmitOnce(ctx context.Context, key, dedupe string, data map[str
 	if !ok {
 		return 0, nil
 	}
-	return s.DispatchOnce(ctx, key, dedupe, m)
+	return s.dispatch(ctx, key, dedupe, m, data)
 }
 
 // deliverPush sends a push connection's message to its user's devices; a tap opens
@@ -399,7 +428,15 @@ func (s *Service) deliver(ctx context.Context, c Connection, m Message) error {
 	if c.URL == "" {
 		return fmt.Errorf("no Apprise URL configured")
 	}
-	if err := s.transport(ctx, c.URL, m.Title, m.Body); err != nil {
+	var err error
+	if s.attachTransport != nil {
+		arg, done := s.resolveAttach(ctx, m.Attach)
+		err = s.attachTransport(ctx, c.URL, m.Title, m.Body, arg)
+		done() // the poster file goes after every attempt, sent or not
+	} else {
+		err = s.transport(ctx, c.URL, m.Title, m.Body)
+	}
+	if err != nil {
 		return errors.New(Redact(err.Error(), c.URL))
 	}
 	return nil
@@ -407,12 +444,18 @@ func (s *Service) deliver(ctx context.Context, c Connection, m Message) error {
 
 // Send delivers one notification through the apprise CLI to one or more Apprise URLs.
 func Send(ctx context.Context, appriseBin, title, body string, urls ...string) error {
+	return SendAttach(ctx, appriseBin, title, body, "", urls...)
+}
+
+// SendAttach is Send with an attachment ("" for none): a poster URL from one of the
+// allowed image hosts, or a local file.
+func SendAttach(ctx context.Context, appriseBin, title, body, attach string, urls ...string) error {
 	if appriseBin == "" {
 		return fmt.Errorf("apprise is not installed")
 	}
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, appriseBin, appriseArgs(title, body, urls)...)
+	cmd := exec.CommandContext(cctx, appriseBin, appriseArgs(title, body, attach, urls)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// apprise -v can echo the URL it failed on; the reason is wanted, the token isn't.
@@ -423,9 +466,15 @@ func Send(ctx context.Context, appriseBin, title, body string, urls ...string) e
 
 // appriseArgs builds the apprise CLI argument list. The "--" separator terminates option
 // parsing so a stored URL can never be interpreted as an apprise CLI flag (e.g. a URL
-// crafted to start with "-" smuggling in --config/--attach behavior).
-func appriseArgs(title, body string, urls []string) []string {
-	args := []string{"-v", "-t", title, "-b", body, "--"} // -v surfaces the failure reason on non-zero exit
+// crafted to start with "-" smuggling in --config/--attach behavior). An attachment goes
+// before it, joined to its flag ("--attach=…") so it's read as the flag's value whatever
+// it starts with.
+func appriseArgs(title, body, attach string, urls []string) []string {
+	args := []string{"-v", "-t", title, "-b", body} // -v surfaces the failure reason on non-zero exit
+	if attach != "" {
+		args = append(args, "--attach="+attach)
+	}
+	args = append(args, "--")
 	return append(args, urls...)
 }
 

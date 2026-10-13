@@ -1,4 +1,4 @@
-import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateStatus } from "./api";
+import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecentJob, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateStatus } from "./api";
 
 // System calls: scheduled tasks, database backups and the recycle bins. They live here rather
 // than in api.ts so they only download with the staff pages that use them, not with a
@@ -9,6 +9,8 @@ export const systemApi = {
     req<{ status: string; job_id: number; existing: boolean }>(`/api/v1/system/tasks/${encodeURIComponent(name)}/run`, {
       method: "POST",
     }),
+  // Recent jobs under the tasks: searches, scans, imports and Run nows, newest first.
+  recentJobs: (limit = 50) => req<{ jobs: RecentJob[] }>(`/api/v1/system/jobs?limit=${limit}`).then((r) => r.jobs),
   // Database backups — admin only (a backup holds every secret the app has).
   backups: () => req<BackupsState>("/api/v1/system/backups"),
   // A manual database backup, taken synchronously.
