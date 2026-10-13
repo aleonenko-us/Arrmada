@@ -27,6 +27,8 @@ type Options struct {
 	RemoteOnly bool `json:"remote_only,omitempty"`
 	// TranscodeOnly: only streams Plex is transcoding.
 	TranscodeOnly bool `json:"transcode_only,omitempty"`
+	// Templates are this connection's own message text per event key (templates.go).
+	Templates map[string]string `json:"templates,omitempty"`
 }
 
 const (
@@ -85,6 +87,11 @@ func (o Options) Clean() (Options, error) {
 	if len(out.StreamUsers) > maxStreamUsers {
 		return Options{}, fmt.Errorf("the stream filter takes at most %d people", maxStreamUsers)
 	}
+	t, err := cleanTemplates(o.Templates)
+	if err != nil {
+		return Options{}, err
+	}
+	out.Templates = t
 	return out, nil
 }
 

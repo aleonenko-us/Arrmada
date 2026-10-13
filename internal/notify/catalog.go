@@ -32,6 +32,9 @@ type Message struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Link  string `json:"link"`
+	// Attach is the poster sent with it: an image URL from an allowed host, or a Plex
+	// image path the sender fetches ("plex:/library/…"). "" for none (attach.go).
+	Attach string `json:"attach,omitempty"`
 }
 
 // EventDef is one entry in the catalog.

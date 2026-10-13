@@ -107,11 +107,22 @@ type Service struct {
 
 	// streams remembers recent Plex alerts per connection (filters.go).
 	streams *streamMemory
+
+	// hooks are the outside address and the poster sources (attach.go); tempDir is where
+	// a fetched Plex poster waits for its send ("" = the system's temp folder).
+	hooks   hooks
+	tempDir string
+	// attachTransport sends a message with a poster attached; nil (after SetTransport)
+	// sends through transport without it.
+	attachTransport AttachTransport
 }
 
 // Transport sends one message to one Apprise URL. An error's text must not quote the
 // URL (Send scrubs its own).
 type Transport func(ctx context.Context, url, title, body string) error
+
+// AttachTransport is Transport with an attachment: a poster URL or a local file.
+type AttachTransport func(ctx context.Context, url, title, body, attach string) error
 
 // NewService wires the notification service.
 func NewService(db *sql.DB, bus *eventbus.Bus, log *slog.Logger) *Service {
@@ -121,17 +132,27 @@ func NewService(db *sql.DB, bus *eventbus.Bus, log *slog.Logger) *Service {
 	} else {
 		log.Warn("notify: apprise binary not found — notifications will not send")
 	}
-	s.transport = func(ctx context.Context, url, title, body string) error {
+	s.attachTransport = func(ctx context.Context, url, title, body, attach string) error {
 		if s.apprise == "" {
 			return fmt.Errorf("apprise is not installed")
 		}
-		return Send(ctx, s.apprise, title, body, url)
+		return SendAttach(ctx, s.apprise, title, body, attach, url)
+	}
+	s.transport = func(ctx context.Context, url, title, body string) error {
+		return s.attachTransport(ctx, url, title, body, "")
 	}
 	return s
 }
 
-// SetTransport replaces how messages leave the server. For tests.
-func (s *Service) SetTransport(t Transport) { s.transport = t }
+// SetTransport replaces how messages leave the server. For tests: posters are dropped
+// unless SetAttachTransport is used as well.
+func (s *Service) SetTransport(t Transport) { s.transport, s.attachTransport = t, nil }
+
+// SetAttachTransport replaces how messages with a poster leave the server. For tests.
+func (s *Service) SetAttachTransport(t AttachTransport) { s.attachTransport = t }
+
+// SetTempDir sets where fetched Plex posters wait for their send. For tests.
+func (s *Service) SetTempDir(dir string) { s.tempDir = dir }
 
 // Pusher sends Web Push to every device a user subscribed, saying how many took it.
 // Satisfied by *push.Service.
@@ -407,7 +428,15 @@ func (s *Service) deliver(ctx context.Context, c Connection, m Message) error {
 	if c.URL == "" {
 		return fmt.Errorf("no Apprise URL configured")
 	}
-	if err := s.transport(ctx, c.URL, m.Title, m.Body); err != nil {
+	var err error
+	if s.attachTransport != nil {
+		arg, done := s.resolveAttach(ctx, m.Attach)
+		err = s.attachTransport(ctx, c.URL, m.Title, m.Body, arg)
+		done() // the poster file goes after every attempt, sent or not
+	} else {
+		err = s.transport(ctx, c.URL, m.Title, m.Body)
+	}
+	if err != nil {
 		return errors.New(Redact(err.Error(), c.URL))
 	}
 	return nil
@@ -415,12 +444,18 @@ func (s *Service) deliver(ctx context.Context, c Connection, m Message) error {
 
 // Send delivers one notification through the apprise CLI to one or more Apprise URLs.
 func Send(ctx context.Context, appriseBin, title, body string, urls ...string) error {
+	return SendAttach(ctx, appriseBin, title, body, "", urls...)
+}
+
+// SendAttach is Send with an attachment ("" for none): a poster URL from one of the
+// allowed image hosts, or a local file.
+func SendAttach(ctx context.Context, appriseBin, title, body, attach string, urls ...string) error {
 	if appriseBin == "" {
 		return fmt.Errorf("apprise is not installed")
 	}
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, appriseBin, appriseArgs(title, body, urls)...)
+	cmd := exec.CommandContext(cctx, appriseBin, appriseArgs(title, body, attach, urls)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// apprise -v can echo the URL it failed on; the reason is wanted, the token isn't.
@@ -431,9 +466,15 @@ func Send(ctx context.Context, appriseBin, title, body string, urls ...string) e
 
 // appriseArgs builds the apprise CLI argument list. The "--" separator terminates option
 // parsing so a stored URL can never be interpreted as an apprise CLI flag (e.g. a URL
-// crafted to start with "-" smuggling in --config/--attach behavior).
-func appriseArgs(title, body string, urls []string) []string {
-	args := []string{"-v", "-t", title, "-b", body, "--"} // -v surfaces the failure reason on non-zero exit
+// crafted to start with "-" smuggling in --config/--attach behavior). An attachment goes
+// before it, joined to its flag ("--attach=…") so it's read as the flag's value whatever
+// it starts with.
+func appriseArgs(title, body, attach string, urls []string) []string {
+	args := []string{"-v", "-t", title, "-b", body} // -v surfaces the failure reason on non-zero exit
+	if attach != "" {
+		args = append(args, "--attach="+attach)
+	}
+	args = append(args, "--")
 	return append(args, urls...)
 }
 

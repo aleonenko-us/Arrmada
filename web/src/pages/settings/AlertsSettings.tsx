@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Section, input, inputStyle } from "../../components/settings/ui";
+import { LINKS } from "../../lib/links";
 import { api, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { alertsApi } from "../../lib/alertsApi";
 import { insightsApi } from "../../lib/insightsApi";
@@ -289,6 +291,13 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       {c.events.some((e) => STREAM_EVENTS.has(e)) && (
         <StreamFilters value={c.options ?? {}} readOnly={readOnly} onChange={(options) => set({ options })} />
       )}
+      <MessageTemplates
+        catalog={catalog}
+        events={c.events}
+        value={c.options?.templates ?? {}}
+        readOnly={readOnly}
+        onChange={(templates) => set({ options: { ...(c.options ?? {}), templates: Object.keys(templates).length ? templates : undefined } })}
+      />
       {!isNew && c.id ? <DeliveryLog id={c.id} catalog={catalog} /> : null}
       {!readOnly && (
         <div className="mt-3 flex items-center gap-2">
@@ -441,6 +450,56 @@ function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
                 {d.last_error && d.status !== "sent" && <span className="w-full pl-[80px] text-xs" style={{ color: "var(--reject)" }}>{d.last_error}</span>}
               </div>
             ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// MessageTemplates is "Customise message": this connection's own wording per event it
+// sends, with placeholders. Blank keeps the standard message. Closed until asked for.
+function MessageTemplates({ catalog, events, value, readOnly, onChange }: {
+  catalog: AlertCatalog; events: string[]; value: Record<string, string>; readOnly?: boolean;
+  onChange: (t: Record<string, string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const shown = catalog.events.filter((e) => events.includes(e.key));
+  if (shown.length === 0) return null;
+  const custom = shown.filter((e) => value[e.key]?.trim()).length;
+  const setOne = (key: string, text: string) => {
+    const next = { ...value };
+    if (text.trim()) next[key] = text; else delete next[key];
+    onChange(next);
+  };
+  const placeholders = (catalog.placeholders ?? ["message", "title", "user", "year", "media", "link"]).map((p) => `{${p}}`).join(" ");
+  return (
+    <div className="mt-3">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
+        {open ? "Hide message wording" : `Customise message${custom ? ` (${custom} changed)` : ""}`}
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-2.5">
+          <p className="m-0 text-xs text-ink-faint">
+            Write this connection’s own message for any event, or leave it blank for the standard one. Placeholders: <code>{placeholders}</code>.
+            {!catalog.links && (
+              <> <code>{"{link}"}</code> stays blank until the <Link to={LINKS.publicURL} style={{ color: "var(--accent)" }}>outside address</Link> is set.</>
+            )}
+          </p>
+          {shown.map((ev) => (
+            <label key={ev.key} className="flex min-w-0 flex-col gap-1">
+              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{ev.label}</span>
+              <textarea
+                value={value[ev.key] ?? ""}
+                disabled={readOnly}
+                rows={2}
+                maxLength={1000}
+                placeholder={catalog.template ?? "{message}\n{link}"}
+                onChange={(e) => setOne(ev.key, e.target.value)}
+                className={`${input} resize-y`}
+                style={inputStyle}
+              />
+            </label>
+          ))}
         </div>
       )}
     </div>

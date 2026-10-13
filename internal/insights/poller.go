@@ -237,7 +237,7 @@ func (ls *liveSession) observe(sess plex.Session, now time.Time) bool {
 // Beyond the words of the message, the payload carries what an alert connection's
 // filters key on (notify/filters.go): the Plex user id, whether the stream is from
 // outside the network (the bandwidth split's test), the item and the show, so a binge
-// of autoplayed episodes reads as one sitting.
+// of autoplayed episodes reads as one sitting; and the item's image for its poster.
 func (s *Service) publish(topic string, sess plex.Session) {
 	if s.bus == nil {
 		return
@@ -252,6 +252,8 @@ func (s *Service) publish(topic string, sess plex.Session) {
 		"user_id": sess.UserID, "rating_key": sess.RatingKey, "session_key": sess.SessionKey,
 		"grandparent_title": sess.ShowTitle, "media_type": sess.Type, "year": sess.Year,
 		"location": s.streamLocation(sess),
+		// The Plex image path (no token): an alert fetches it server-side for its poster.
+		"thumb": sess.Thumb,
 	}
 	if topic == "plex.buffering" {
 		data["cause"], _ = sess.BufferCause()

@@ -135,9 +135,15 @@ func (a *api) checkEvents(w http.ResponseWriter, in *notificationInput) bool {
 }
 
 // handleNotificationCatalog lists the events a connection can subscribe to, grouped
-// for the Alerts page.
+// for the Alerts page, with the default message template and the placeholders a
+// connection's own template may use. links says whether alerts can link back to the app
+// (an outside address is set), so the page can say why {link} would be blank.
 func (a *api) handleNotificationCatalog(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"groups": notify.Groups(), "events": notify.Catalog()})
+	a.writeJSON(w, http.StatusOK, map[string]any{
+		"groups": notify.Groups(), "events": notify.Catalog(),
+		"template": notify.DefaultTemplate, "placeholders": notify.Placeholders,
+		"links": a.deps.Settings != nil && a.deps.Settings.PublicURL(r.Context()) != "",
+	})
 }
 
 // handleNotificationPresets lists the "Where should alerts go?" tiles and each one's form.

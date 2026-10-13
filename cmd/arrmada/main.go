@@ -968,6 +968,10 @@ func main() {
 		log.Info("insights: marked imports left unfinished by the last run as interrupted", "runs", n)
 	}
 	grp.Loop("insights: poller", insightsSvc.Run) // Plex watch-monitoring poller (records when enabled + configured)
+	// Alerts link back to the app at its outside address and carry the title's poster:
+	// the library's stored TMDB / Open Library image, or a Plex image fetched server-side.
+	notifySvc.SetPublicURL(settingsSvc.PublicURL)
+	notifySvc.SetPosters(alertPosters(movieSvc, seriesSvc, booksSvc), insightsSvc.Image)
 	// Convert pauses its encodes while someone is watching — which it can only know while
 	// monitoring is on, so its settings page says so when it isn't.
 	convertSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })

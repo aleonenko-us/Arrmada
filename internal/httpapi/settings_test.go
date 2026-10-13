@@ -319,6 +319,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"request_quota_books":             `4`,
 		"books_languages":                 `["en","es"]`,
 		"quality_ranking":                 `"v2"`,
+		"app_public_url":                  `"https://arrmada.example.com"`,
 	}
 	// The legacy all-types switch and the per-type list are two views of one setting.
 	linked := map[string]string{"plex_login_auto_approve": "plex_login_auto_approve_types", "plex_login_auto_approve_types": "plex_login_auto_approve"}

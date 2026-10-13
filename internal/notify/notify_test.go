@@ -8,7 +8,7 @@ import (
 // The "--" separator must sit between the options and the URLs so a stored URL can
 // never be parsed as an apprise CLI option.
 func TestAppriseArgsSeparatorBeforeURLs(t *testing.T) {
-	args := appriseArgs("Title", "Body", []string{"discord://web/token", "-config=/etc/passwd"})
+	args := appriseArgs("Title", "Body", "", []string{"discord://web/token", "-config=/etc/passwd"})
 	sep := -1
 	for i, a := range args {
 		if a == "--" {

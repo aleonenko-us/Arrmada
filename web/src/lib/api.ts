@@ -694,6 +694,8 @@ export interface AlertOptions {
   stream_users?: string[];
   remote_only?: boolean;
   transcode_only?: boolean;
+  /** This connection's own message per event key, with {placeholders}. */
+  templates?: Record<string, string>;
 }
 
 // One row of a connection's delivery log.
@@ -717,7 +719,15 @@ export interface AlertPreset { kind: string; label: string; hint: string; fields
 
 // The alert event catalog: what a connection can subscribe to, grouped for the page.
 export interface AlertEvent { key: string; group: string; label: string; hint: string; default_on: boolean; module?: "books" | "music" }
-export interface AlertCatalog { groups: { key: string; label: string }[]; events: AlertEvent[] }
+export interface AlertCatalog {
+  groups: { key: string; label: string }[]; events: AlertEvent[];
+  /** The message every event sends unless a connection has its own ("{message}\n{link}"). */
+  template?: string;
+  /** The placeholders a template may use. */
+  placeholders?: string[];
+  /** Whether alerts can link back to the app (an outside address is set). */
+  links?: boolean;
+}
 
 export interface MyApprise { set: boolean; hint: string; blocked_reason?: string }
 
@@ -1093,6 +1103,8 @@ export interface AppSettings {
   books_languages: string[];
   /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
   quality_ranking?: "v1" | "v2";
+  /** The address Arrmada is reached at from outside ("https://arrmada.example.com"; "" = none). Admin-only. */
+  app_public_url: string;
 }
 
 export interface TorrentPreview {
