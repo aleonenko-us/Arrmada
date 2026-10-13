@@ -217,6 +217,25 @@ test.describe("Dolby Vision choice", () => {
   });
 });
 
+// Insights' Library tab links to /convert?tab=library&media=…&q=<title>: the link lands on
+// the title, whether or not it's worth converting.
+test.describe("Library link from elsewhere", () => {
+  test.use({ persona: "admin" });
+
+  test("q and media from the address find the title among every file", async ({ page, api }) => {
+    const lean = { ...remux, key: "movie:8", movie_id: 8, title: "Lean Film", candidate: false, worth: false, needs: { video: false, subs: false, audio: false, save: 0, worth: false } };
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/convert/library", respond: ({ url }) => ({ items: url.searchParams.get("convertible") ? [remux] : [remux, lean] }) },
+    ]);
+    await page.goto("/convert?tab=library&media=movies&q=Lean+Film");
+    await expect(page.getByRole("searchbox", { name: "Search titles" })).toHaveValue("Lean Film");
+    await expect(page.getByRole("button", { name: "Show the conversion plan for Lean Film" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Only files worth converting" })).not.toBeChecked();
+    await expect(page.getByRole("button", { name: "Show the conversion plan for Remux" })).toHaveCount(0);
+    expect(api.callsTo("GET", "/api/v1/convert/library").map((c) => c.path)).toContain("/api/v1/convert/library");
+  });
+});
+
 // CONV-23: the daily library scan's time is a setting under Advanced, and saves on leaving it.
 test.describe("Daily library scan time", () => {
   test.use({ persona: "admin" });

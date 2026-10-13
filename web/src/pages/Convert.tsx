@@ -456,8 +456,10 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "save", dir: "desc" });
   const [showSort, setShowSort] = useState<{ key: ShowSortKey; dir: "asc" | "desc" }>({ key: "save", dir: "desc" });
   const [codecF, setCodecF] = useState<Set<string>>(new Set());
-  const [onlyConvertible, setOnlyConvertible] = useState(true);
   const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
+  // A link that names a title (?q=, from Insights' Library tab) must land on it whether or
+  // not it's worth converting, so it starts with every file shown.
+  const [onlyConvertible, setOnlyConvertible] = useState(() => q === "");
   const [loadErr, setLoadErr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [openPlan, setOpenPlan] = useState<string | null>(null); // the row whose plan card is open
