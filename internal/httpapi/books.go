@@ -48,11 +48,19 @@ func (a *api) handleListBooks(w http.ResponseWriter, r *http.Request) {
 		list[i].WantEbook, list[i].WantAudiobook = w2[0], w2[1]
 		list[i].FillNextSearch()
 	}
+	// Counted before the trim below, from the list already read rather than a second
+	// read of the whole table.
+	upgradable := books.UpgradableIn(list)
+	// The library page never shows a book's description or subjects, and they were most
+	// of the list (2.5 MB for 1,500 books); the book's own page still has them.
+	for i := range list {
+		list[i].Description, list[i].Subjects = "", nil
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"books":              list,
 		"metadata_available": a.deps.Books.MetadataAvailable(),
 		"metadata_source":    a.deps.Books.MetadataSource(),
-		"upgradable":         a.deps.Books.Upgradable(r.Context()), // books not yet on Hardcover keys
+		"upgradable":         upgradable, // books not yet on Hardcover keys
 	})
 }
 

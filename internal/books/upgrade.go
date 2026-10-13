@@ -68,6 +68,12 @@ func (s *Service) Upgradable(ctx context.Context) int {
 	if err != nil {
 		return 0
 	}
+	return UpgradableIn(list)
+}
+
+// UpgradableIn counts the books in list that the Hardcover re-match would still try:
+// not on a Hardcover key, and not kept on their catalogue by hand.
+func UpgradableIn(list []Book) int {
 	n := 0
 	for _, b := range list {
 		if !metadata.IsHardcoverKey(b.OLKey) && !b.KeepCatalogue {

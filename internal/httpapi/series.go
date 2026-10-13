@@ -33,6 +33,12 @@ func (a *api) handleListSeries(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []series.Series{}
 	}
+	// The library page shows posters, counts and status, never a show's overview, cast or
+	// alternate titles — and those were four fifths of the list (1.25 MB for 400 shows).
+	// The detail endpoint still carries them.
+	for i := range list {
+		list[i].Overview, list[i].Extra, list[i].Aliases = "", nil, nil
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"series":             list,
 		"metadata_available": a.deps.Series.MetadataAvailable(),
