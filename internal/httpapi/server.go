@@ -83,6 +83,9 @@ type Deps struct {
 	Recycle    *recyclebin.Service
 	Logs       *applog.Ring
 	APIKeys    *apikeys.Store
+	// LogLevel is the level every log line is checked against; the Logs page raises it
+	// for a while (GET/PUT /logs/level). nil = the level can't be changed from the app.
+	LogLevel *applog.LevelSwitch
 	// Resolver checks the hosts in requesters' Apprise URLs (nil: the system resolver).
 	Resolver notify.Resolver
 	// FlareSolverr, whose URL is the "flaresolverr" API key (read on every use).
@@ -567,6 +570,13 @@ func (a *api) registerRoutes(mux *router) {
 	// The log carries whatever any module writes (paths, client names, sign-in lines), so
 	// it's the admin's to read.
 	mux.HandleFunc("GET /api/v1/logs", a.requireRole(auth.RoleAdmin, a.handleLogs))
+	// Debug for a while: raised from the Logs page, back to the install's level by itself.
+	mux.HandleFunc("GET /api/v1/logs/level", a.requireRole(auth.RoleAdmin, a.handleGetLogLevel))
+	mux.HandleFunc("PUT /api/v1/logs/level", a.requireRole(auth.RoleAdmin, a.handleSetLogLevel))
+	// The whole history on disk as a zip (the admin's own copy), and the scrubbed support
+	// bundle meant for sharing.
+	mux.HandleFunc("GET /api/v1/logs/download", a.requireRole(auth.RoleAdmin, a.handleLogsDownload))
+	mux.HandleFunc("GET /api/v1/system/support-bundle", a.requireRole(auth.RoleAdmin, a.handleSupportBundle))
 	mux.HandleFunc("GET /api/v1/recycle", a.requireRole(auth.RoleManager, a.handleRecycleStats))
 	mux.HandleFunc("GET /api/v1/recycle/mode", a.requireRole(auth.RoleManager, a.handleRecycleMode))
 	mux.HandleFunc("GET /api/v1/recycle/items", a.requireRole(auth.RoleManager, a.handleRecycleItems))

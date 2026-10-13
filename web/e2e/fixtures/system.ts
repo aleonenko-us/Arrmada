@@ -1,7 +1,8 @@
 import type {
-  AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, LogEntry, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
+  AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
   ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
+import type { LogLevelState, LogPage } from "../../src/lib/systemApi";
 import type { SetupChecklist } from "../../src/lib/setupApi";
 import type { PersonaInfo } from "./users";
 import { NOW } from "./clock";
@@ -197,12 +198,18 @@ export const tasks: TaskStatus[] = [
 // The job runner (GET /api/v1/jobs): nothing recent.
 export const jobs: { jobs: Job[] } = { jobs: [] };
 
-export const logs: { entries: LogEntry[] } = {
+export const logs: LogPage = {
   entries: [
-    { time_ms: NOW - 60_000, level: "INFO", msg: "library scan finished", attrs: "movies=42" },
-    { time_ms: NOW - 30_000, level: "WARN", msg: "indexer slow to answer", attrs: "indexer=Fixture" },
+    { seq: 1, time_ms: NOW - 60_000, level: "INFO", msg: "library scan finished", attrs: "movies=42" },
+    { seq: 2, time_ms: NOW - 30_000, level: "WARN", msg: "indexer slow to answer", attrs: "indexer=Fixture", module: "indexer" },
   ],
+  last_seq: 2,
+  run: 1,
+  capacity: 50000,
 };
+
+// The Logs page's debug switch: at the install's level.
+export const logLevel: LogLevelState = { level: "info", env_level: "info", max_minutes: 240 };
 
 // Settings → Users: the owner, and a Plex sign-in from before per-type auto-approve who
 // still auto-approves every type (shows included).
