@@ -734,3 +734,43 @@ func TestKeepLanguagesUnion(t *testing.T) {
 		t.Errorf("settings languages = %v, want the default's [en fr]", got)
 	}
 }
+
+// Deleting a profile in use moves exactly its titles back to Default — other profiles'
+// pins stay — and the Default profile itself can't be deleted.
+func TestDeleteProfileResetsOverrides(t *testing.T) {
+	ctx := context.Background()
+	f := newProfileFixture(t, "en")
+	f.movie(t, 1, "/m/1.mkv")
+	f.show(t, 7)
+	f.show(t, 8)
+	anime, err := f.s.CreateProfile(ctx, "Anime", items("ja", "en"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kids, err := f.s.CreateProfile(ctx, "Kids", items("en/full/prefer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range []struct {
+		kind string
+		id   int64
+		p    int64
+	}{{OverrideSeries, 7, anime.ID}, {OverrideMovie, 1, anime.ID}, {OverrideSeries, 8, kids.ID}} {
+		if err := f.s.SetOverride(ctx, o.kind, o.id, o.p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.s.DeleteProfile(ctx, anime.ID); err != nil {
+		t.Fatal(err)
+	}
+	left := f.s.Overrides(ctx)
+	if len(left) != 1 || left[0].ProfileID != kids.ID {
+		t.Errorf("overrides after deleting Anime: %+v, want only the Kids pin", left)
+	}
+	if got := f.s.titleLangs(ctx, "episode", 0, 7); !reflect.DeepEqual(got, []string{"en"}) {
+		t.Errorf("series 7 is back on %v, want the default's [en]", got)
+	}
+	if err := f.s.DeleteProfile(ctx, f.s.Profiles(ctx)[0].ID); !errors.Is(err, ErrDefaultProfile) {
+		t.Errorf("deleting Default: %v, want ErrDefaultProfile", err)
+	}
+}

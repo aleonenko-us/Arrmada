@@ -128,6 +128,10 @@ func (s *Service) process(ctx context.Context, job *Job) {
 		s.processRepair(ctx, job, ref)
 		return
 	}
+	if job.Mode == ModeUpgrade {
+		s.processUpgrade(ctx, job, ref)
+		return
+	}
 	if job.Redo || isRedoMode(job.Mode) {
 		s.processRedo(ctx, job, ref)
 		return

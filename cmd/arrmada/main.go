@@ -867,6 +867,10 @@ func main() {
 		subtitlesSvc.AutoGrab(ctx)
 		return nil
 	}, scheduler.Label("Download missing subtitles"), scheduler.Description("Fetches subtitles for anything still missing a wanted language."))
+	sched.Register("subtitles-upgrade", 24*time.Hour, false, func(ctx context.Context) error {
+		subtitlesSvc.UpgradeSweep(ctx)
+		return nil
+	}, scheduler.Label("Upgrade weak subtitles"), scheduler.Description("Replaces recent AI-made subtitles and loose downloads when a subtitle made for the exact file appears, using a small share of the day's OpenSubtitles downloads."))
 
 	// Convert module (Tdarr replacement): GPU/CPU transcoding over the Movies library.
 	convertScratch := cfg.ConvertScratchDir

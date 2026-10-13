@@ -38,6 +38,7 @@ import { Button, Menu, Modal, StatusChip, useToast } from "../ui";
 import { Switch } from "../ui/Switch";
 import { orphanApi } from "./subtitles/orphanApi";
 import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
+import { TitleProfilePicker } from "./subtitles/ProfileSelect";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 import { Page } from "../ui/Page";
 
@@ -202,6 +203,7 @@ export function MovieDetail() {
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <ProfileSelector movie={movie} onChange={load} />
                 <AvailabilitySelector movie={movie} onChange={load} />
+                <TitleProfilePicker kind="movie" id={movie.id} title={movie.title} />
               </div>
 
               <AcquisitionStatus movie={movie} onChange={load} flash={say} searchInfo={{ summary: movie.last_search, nextAt: movie.next_search_at }} />

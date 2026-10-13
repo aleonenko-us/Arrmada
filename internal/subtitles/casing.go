@@ -33,24 +33,30 @@ func fixCasing(cues []cue, english bool) []cue {
 		if i > 0 && cues[i].start-prevEnd >= casingPauseBreak {
 			sentenceStart = true
 		}
-		words := strings.Fields(cues[i].text)
-		for j, w := range words {
-			core, lead, trail := splitPunct(w)
-			if core == "" {
-				continue
-			}
-			if english {
-				if up, ok := englishI[strings.ToLower(core)]; ok && core == strings.ToLower(core) {
-					core = up
+		// Fix each line on its own and keep the cue's line break: rejoining the whole cue
+		// with spaces used to flatten layoutLines' two lines into one long line.
+		lines := strings.Split(cues[i].text, "\n")
+		for k, line := range lines {
+			words := strings.Fields(line)
+			for j, w := range words {
+				core, lead, trail := splitPunct(w)
+				if core == "" {
+					continue
 				}
+				if english {
+					if up, ok := englishI[strings.ToLower(core)]; ok && core == strings.ToLower(core) {
+						core = up
+					}
+				}
+				if sentenceStart {
+					core = upperFirst(core)
+				}
+				words[j] = lead + core + trail
+				sentenceStart = closesSentence(trail)
 			}
-			if sentenceStart {
-				core = upperFirst(core)
-			}
-			words[j] = lead + core + trail
-			sentenceStart = closesSentence(trail)
+			lines[k] = strings.Join(words, " ")
 		}
-		cues[i].text = strings.Join(words, " ")
+		cues[i].text = strings.Join(lines, "\n")
 		prevEnd = cues[i].end
 	}
 	return cues
