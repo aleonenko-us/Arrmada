@@ -23,4 +23,25 @@ test.describe("account menu", () => {
     await menu.getByRole("menuitem", { name: "Me & notifications" }).click();
     await expect(page).toHaveURL(/\/me$/);
   });
+
+  // FE-05: a requester switches the theme from the avatar menu; it survives a reload
+  // (stamped before first paint) and the browser chrome colour follows it.
+  test("switches the theme in place and remembers it", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/discover");
+    const html = page.locator("html");
+    await expect(html).not.toHaveAttribute("data-theme", /./);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#1f1812");
+    await page.getByRole("button", { name: "Account menu" }).click();
+    const menu = page.getByRole("menu", { name: "Account menu" });
+    await menu.getByRole("menuitem", { name: "Theme: System" }).click();
+    await expect(html).toHaveAttribute("data-theme", "light");
+    // The menu stays open, showing the new choice.
+    await expect(menu.getByRole("menuitem", { name: "Theme: Light" })).toBeVisible();
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#fbf8f1");
+
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "light");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#fbf8f1");
+  });
 });
