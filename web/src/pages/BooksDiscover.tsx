@@ -8,6 +8,9 @@ import { FormatChoice } from "../components/BookFormats";
 import { QuotaHint } from "../components/QuotaHint";
 import { announceRequested } from "../lib/pushPrompt";
 import { IconButton, Modal, StatusChip, TONE_HUE, type Tone } from "../ui";
+import { CardSkeleton, GRID, LoadError } from "../features/discover/shared";
+import { PosterCard } from "../features/discover/PosterCard";
+import { RailArrows, RailStrip, useRail } from "../features/discover/rail";
 
 // BooksDiscover is the Books area of Discover — deliberately separate from the movie/TV
 // experience: its own search (titles + authors), Open Library browse rows, author
@@ -22,25 +25,6 @@ function fmtCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   return String(n);
-}
-
-function LoadError({ message }: { message: string }) {
-  return (
-    <div className="rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-faint)" }}>
-      Couldn’t load — {message}
-    </div>
-  );
-}
-
-// Cover + caption skeleton, matched to a real card so loading → loaded has no shift.
-function BookCardSkeleton({ full }: { full?: boolean }) {
-  return (
-    <div className={full ? "w-full" : "w-[150px] flex-none"}>
-      <div className="rounded-xl" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }} />
-      <div className="mt-2 h-3 w-4/5 rounded" style={{ background: "var(--panel-2)" }} />
-      <div className="mt-1.5 h-2.5 w-2/5 rounded" style={{ background: "var(--panel-2)" }} />
-    </div>
-  );
 }
 
 // initialWork: a book's key from the address (?work=, a notification's link); its sheet
@@ -394,7 +378,7 @@ function BookRow({ title, load, ctx, hideOnError }: { title: string; load: () =>
   // A failed row stays visible with an inline error — silently vanishing (or
   // skeleton-ing forever) hides real Open Library outages from the viewer.
   const [error, setError] = useState<string | null>(null);
-  const scroller = useRef<HTMLDivElement>(null);
+  const rail = useRail();
   useEffect(() => {
     let alive = true;
     load()
@@ -403,7 +387,6 @@ function BookRow({ title, load, ctx, hideOnError }: { title: string; load: () =>
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const scroll = (dir: -1 | 1) => scroller.current?.scrollBy({ left: dir * Math.max(600, scroller.current.clientWidth * 0.8), behavior: "smooth" });
 
   // Genuinely empty (but successful) rows still collapse; errored ones do not —
   // unless the row is one the catalogue may simply not offer (hideOnError).
@@ -414,34 +397,29 @@ function BookRow({ title, load, ctx, hideOnError }: { title: string; load: () =>
       <div className="mb-2.5 flex items-center justify-between">
         <h2 className="m-0 text-[15px] font-bold">{title}</h2>
         {items && items.length > 0 && (
-          <div className="flex gap-1">
-            <ArrowBtn dir={-1} onClick={() => scroll(-1)} />
-            <ArrowBtn dir={1} onClick={() => scroll(1)} />
-          </div>
+          <RailArrows rail={rail} className="flex gap-1" />
         )}
       </div>
       {error ? (
         <LoadError message={error} />
       ) : (
-        <div ref={scroller} className="thin-scroll flex gap-3 overflow-x-auto pb-2" style={{ scrollSnapType: "x proximity" }}>
+        <RailStrip rail={rail}>
           {items === null
-            ? Array.from({ length: 8 }).map((_, i) => <BookCardSkeleton key={i} />)
+            ? Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} />)
             : items.map((b) => <BookCard key={b.key} b={b} ctx={ctx} />)}
-        </div>
+        </RailStrip>
       )}
     </div>
   );
 }
-
-const GRID_COLS = "repeat(auto-fill, minmax(140px, 1fr))";
 
 function BookGrid({ books, ctx, emptyLabel, authorName, error }: { books: BookDiscoverCard[] | null; ctx: BookCtx; emptyLabel: string; authorName?: string; error?: string | null }) {
   // An error is not "no results" — say so instead of showing an empty state.
   if (error) return <LoadError message={error} />;
   if (books === null) {
     return (
-      <div className="grid gap-x-3 gap-y-5" style={{ gridTemplateColumns: GRID_COLS }}>
-        {Array.from({ length: 12 }).map((_, i) => <BookCardSkeleton key={i} full />)}
+      <div className="grid gap-x-3 gap-y-5" style={GRID}>
+        {Array.from({ length: 12 }).map((_, i) => <CardSkeleton key={i} full />)}
       </div>
     );
   }
@@ -449,7 +427,7 @@ function BookGrid({ books, ctx, emptyLabel, authorName, error }: { books: BookDi
     return <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{emptyLabel}</div>;
   }
   return (
-    <div className="grid gap-x-3 gap-y-5" style={{ gridTemplateColumns: GRID_COLS }}>
+    <div className="grid gap-x-3 gap-y-5" style={GRID}>
       {books.map((b) => <BookCard key={b.key} b={b} ctx={ctx} authorName={authorName} full />)}
     </div>
   );
@@ -519,50 +497,21 @@ function BookCard({ b, ctx, authorName, full }: { b: BookDiscoverCard; ctx: Book
   const byline = b.author || authorName || "";
 
   return (
-    <div className={`group ${full ? "w-full" : "w-[150px] flex-none"}`} style={{ scrollSnapAlign: "start" }}>
-      <div
-        className="relative overflow-hidden rounded-xl transition-[transform,box-shadow] duration-200 will-change-transform group-hover:-translate-y-1 group-hover:scale-[1.03] group-hover:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
-        style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}
-      >
-        <button
-          onClick={() => setOpen(true)}
-          aria-label={`View details for ${b.title}`}
-          className="absolute inset-0 block h-full w-full text-left"
-        >
-          {b.cover_url ? (
-            <img src={b.cover_url} alt={b.title} className="h-full w-full object-cover" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center p-2 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}><span className="text-[11.5px] font-bold text-white">{b.title}</span></div>
-          )}
-          {badge && (
-            <StatusChip tone={badge.tone} surface="poster" className="absolute right-1.5 top-1.5 max-w-[calc(100%-12px)] truncate" title={badge.label}>{badge.label}</StatusChip>
-          )}
-          {/* Hover scrim, purely decorative: pointer-events-none so a tap anywhere on the
-              cover opens the sheet, never something the user couldn't see. */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100" style={{ background: "linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.15) 42%, transparent 70%)" }}>
-            {!showQuick && (
-              <span className="self-start rounded-md px-2.5 py-1 text-[10.5px] font-semibold" style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.26)", color: "#fff" }}>Details</span>
-            )}
-          </div>
-        </button>
-        {/* A sibling of the details button, not nested in it (invalid HTML, and its invisible
-            hit area filed requests from stray taps). Clickable only once revealed. */}
-        {showQuick && (
-          <button
-            onClick={quick}
-            disabled={quickBusy}
-            className="pointer-events-none absolute bottom-2 left-2 z-20 rounded-md px-2.5 py-1 text-[10.5px] font-semibold opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:cursor-default"
-            // Dimmed with a filter, not opacity, so the busy look doesn't fight the hover reveal.
-            style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", filter: quickBusy ? "brightness(.8)" : undefined }}
-          >
-            {quickBusy ? "Requesting…" : badge?.missing ? `＋ ${MISSING_LABEL[badge.missing]}` : "＋ Request"}
-          </button>
+    <>
+      <PosterCard
+        title={b.title}
+        full={full}
+        onOpen={() => setOpen(true)}
+        badge={badge}
+        quick={showQuick ? { label: badge?.missing ? `＋ ${MISSING_LABEL[badge.missing]}` : "＋ Request", busy: quickBusy, onClick: quick } : null}
+        art={b.cover_url ? (
+          <img src={b.cover_url} alt={b.title} className="h-full w-full object-cover" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center p-2 text-center" style={{ background: "linear-gradient(150deg, hsl(28 30% 26%), hsl(24 28% 16%))" }}><span className="text-[11.5px] font-bold text-white">{b.title}</span></div>
         )}
-      </div>
-      {/* Always-visible caption strip — many Open Library covers are blank leather
-          with no printed title, so the cover alone can't identify the book. */}
-      <div className="px-0.5 pt-2">
-        <div className="truncate text-[12px] font-semibold" style={{ color: "var(--ink)" }} title={b.title}>{b.title}</div>
+      >
+        {/* Many Open Library covers are blank leather with no printed title, so the
+            caption is what identifies the book. */}
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--ink-faint)" }}>
           <span className="flex-none">{b.year || "—"}</span>
           {!!b.rating && <><span className="flex-none">·</span><span className="flex-none" style={{ color: "var(--accent)" }} title={b.ratings ? `${b.ratings.toLocaleString()} ratings` : undefined}>★ {b.rating.toFixed(1)}</span></>}
@@ -571,9 +520,9 @@ function BookCard({ b, ctx, authorName, full }: { b: BookDiscoverCard; ctx: Book
         {b.genres && b.genres.length > 0 && (
           <div className="mt-1 truncate text-[10px]" style={{ color: "var(--ink-faint)" }} title={b.genres.join(" · ")}>{b.genres.slice(0, 2).join(" · ")}</div>
         )}
-      </div>
+      </PosterCard>
       {open && <BookRequestModal b={b} ctx={ctx} authorName={authorName} onClose={() => setOpen(false)} />}
-    </div>
+    </>
   );
 }
 
@@ -748,13 +697,5 @@ function BookRequestModal({ b, ctx, authorName, onClose }: { b: BookDiscoverCard
         )}
       </div>
     </Modal>
-  );
-}
-
-function ArrowBtn({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="grid h-7 w-7 place-items-center rounded-full" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transform: dir === -1 ? "rotate(180deg)" : "none" }}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-    </button>
   );
 }

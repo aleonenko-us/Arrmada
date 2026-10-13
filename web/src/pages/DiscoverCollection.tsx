@@ -3,7 +3,7 @@ import { api, type ApiError, type CollectionDetail } from "../lib/api";
 import { useMe, isStaff } from "../lib/me";
 import { useTitle } from "../lib/title";
 import { Button, IconButton, Sheet } from "../ui";
-import { badgeFor, CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "./discover/shared";
+import { badgeFor, CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "../features/discover/shared";
 
 // A movie collection's page (REQ-21), at /discover/collection/<id> over the page it was
 // opened from: the backdrop, what the franchise is, how much of it the library has, and

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ApiError, type PersonDetail } from "../lib/api";
 import { useTitle } from "../lib/title";
 import { Button, IconButton, Sheet } from "../ui";
-import { CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "./discover/shared";
+import { CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "../features/discover/shared";
 
 // A person's page (REQ-20), at /discover/person/<id> over the page it was opened from: a
 // cast tile, a director, or a name in search. Photo, department and biography, then what
