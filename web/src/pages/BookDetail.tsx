@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
@@ -19,6 +19,7 @@ import { wantedCopy } from "../lib/bookSearch";
 import { formatBytes, formatReleaseDay, isUpcoming } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 import { Button, ConfirmDialog, IconButton, Menu, Modal, StatusChip, useToast, type MenuItem, type ToastFn } from "../ui";
+import { Switch } from "../ui/Switch";
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -466,12 +467,10 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
   return (
     <>
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
-        <button role="switch" aria-checked={book.monitored} disabled={busy !== null} onClick={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })} className="mr-1 inline-flex min-h-[36px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
-          <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: book.monitored ? "var(--accent)" : "var(--line)" }}>
-            <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: book.monitored ? "19px" : "3px" }} />
-          </span>
-          <span style={{ color: book.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{book.monitored ? "Monitored" : "Monitor"}</span>
-        </button>
+        <Switch size="sm" className="mr-1 min-h-[36px]" checked={book.monitored} disabled={busy !== null}
+          onChange={() => run("monitor", async () => { await api.setBookMonitored(book.id, !book.monitored); onChange(); })}>
+          {book.monitored ? "Monitored" : "Monitor"}
+        </Switch>
         {group("Search", [
           {
             label: searching ? "Searching…" : "Automatic search",
@@ -579,6 +578,7 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
 }
 
 function ProfileSelector({ book, onChange }: { book: Book; onChange: () => void }) {
+  const profileId = useId();
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   useEffect(() => { qualityApi.qualityProfiles("book").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {}); }, []);
   const change = async (p: string) => { if (p === book.quality_profile) return; await api.setBookProfile(book.id, p); onChange(); };
@@ -586,8 +586,8 @@ function ProfileSelector({ book, onChange }: { book: Book; onChange: () => void 
   if (book.quality_profile && !opts.some((o) => o.key === book.quality_profile)) opts.unshift({ key: book.quality_profile, name: book.quality_profile === "n/a" ? "Not set" : book.quality_profile });
   return (
     <div className="flex items-center gap-2">
-      <span className="font-mono text-[10.5px] uppercase text-ink-faint">Format profile</span>
-      <select value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+      <label htmlFor={profileId} className="font-mono text-[10.5px] uppercase text-ink-faint">Format profile</label>
+      <select id={profileId} value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
         {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
       </select>
     </div>

@@ -5,6 +5,7 @@ import { api, type Artist, type MusicAlbum, type MovieEvent } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 import { Button, StatusChip, useConfirm, useToast } from "../ui";
+import { Switch } from "../ui/Switch";
 
 export function ArtistDetail() {
   const { id } = useParams();
@@ -105,18 +106,10 @@ export function ArtistDetail() {
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            role="switch"
-            aria-checked={a.monitored}
-            disabled={busy !== null}
-            onClick={() => run("monitor", async () => { await api.setArtistMonitored(a.id, !a.monitored); load(); })}
-            className="inline-flex items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50"
-          >
-            <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: a.monitored ? "var(--accent)" : "var(--line)" }}>
-              <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: a.monitored ? "19px" : "3px" }} />
-            </span>
-            <span style={{ color: a.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{a.monitored ? "Monitored" : "Monitor"}</span>
-          </button>
+          <Switch size="sm" checked={a.monitored} disabled={busy !== null}
+            onChange={() => run("monitor", async () => { await api.setArtistMonitored(a.id, !a.monitored); load(); })}>
+            {a.monitored ? "Monitored" : "Monitor"}
+          </Switch>
           <Button
             size="sm"
             disabled={busy !== null}

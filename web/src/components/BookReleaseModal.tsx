@@ -176,6 +176,7 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             value={target}
             onChange={(e) => setTarget(Number(e.target.value))}
             title="Which audiobook this download is filed as"
+            aria-label="File the audio as"
             className="rounded-md px-1.5 py-1 text-[11px]"
             style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
           >

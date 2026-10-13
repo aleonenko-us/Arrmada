@@ -250,6 +250,7 @@ function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && search()}
           placeholder="Search a different title…"
+          aria-label="Search a different title"
           className="flex-1 rounded-lg px-2 py-1 text-[11.5px]"
           style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />

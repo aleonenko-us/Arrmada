@@ -35,6 +35,7 @@ import { jobFailed, useJob } from "../lib/useJob";
 import { attemptLine, searchJobLine } from "../lib/searchOutcome";
 import { queuedNote } from "../lib/movieQueue";
 import { Button, Menu, Modal, StatusChip, useToast } from "../ui";
+import { Switch } from "../ui/Switch";
 import { orphanApi } from "./subtitles/orphanApi";
 import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
@@ -804,6 +805,7 @@ function ProfileSelector({ movie, onChange }: { movie: Movie; onChange: () => vo
 
   // Set when the file on disk doesn't fit the newly chosen profile (see DowngradePrompt).
   const [downgrade, setDowngrade] = useState<Downgrade | null>(null);
+  const profileId = useId();
 
   const change = async (profile: string) => {
     if (profile === movie.quality_profile) return;
@@ -828,8 +830,8 @@ function ProfileSelector({ movie, onChange }: { movie: Movie; onChange: () => vo
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</span>
-        <select value={movie.quality_profile} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+        <label htmlFor={profileId} className="font-mono text-[10.5px] uppercase text-ink-faint">Quality</label>
+        <select id={profileId} value={movie.quality_profile} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
           {(() => {
             const opts = [...profiles];
             // Surface an unset ("n/a") profile as a real option so the select shows it.
@@ -893,6 +895,7 @@ function DowngradePrompt({ movieId, downgrade, onClose }: { movieId: number; dow
 }
 
 function AvailabilitySelector({ movie, onChange }: { movie: Movie; onChange: () => void }) {
+  const whenId = useId();
   const [saving, setSaving] = useState(false);
   const change = async (v: string) => {
     if (v === movie.min_availability) return;
@@ -906,8 +909,8 @@ function AvailabilitySelector({ movie, onChange }: { movie: Movie; onChange: () 
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[10.5px] uppercase text-ink-faint">Search when</span>
-      <select value={movie.min_availability} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+      <label htmlFor={whenId} className="font-mono text-[10.5px] uppercase text-ink-faint">Search when</label>
+      <select id={whenId} value={movie.min_availability} onChange={(e) => change(e.target.value)} disabled={saving} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
         {Object.entries(AVAILABILITY_LABELS).map(([key, label]) => (
           <option key={key} value={key}>{label}</option>
         ))}
@@ -1191,19 +1194,11 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
   return (
     <>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          role="switch"
-          aria-checked={movie.monitored}
-          disabled={busy !== null}
-          onClick={() => run("monitor", async () => { await api.setMonitored(movie.id, !movie.monitored); onChange(); })}
-          className="inline-flex items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50"
+        <Switch size="sm" checked={movie.monitored} disabled={busy !== null}
           title={movie.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"}
-        >
-          <span className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors" style={{ background: movie.monitored ? "var(--accent)" : "var(--line)" }}>
-            <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: movie.monitored ? "19px" : "3px" }} />
-          </span>
-          <span style={{ color: movie.monitored ? "var(--ink)" : "var(--ink-dim)" }}>{movie.monitored ? "Monitored" : "Monitor"}</span>
-        </button>
+          onChange={() => run("monitor", async () => { await api.setMonitored(movie.id, !movie.monitored); onChange(); })}>
+          {movie.monitored ? "Monitored" : "Monitor"}
+        </Switch>
         {primary === "search" && (
           <button
             className={btn}

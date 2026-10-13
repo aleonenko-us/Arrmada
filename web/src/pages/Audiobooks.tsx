@@ -387,8 +387,8 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
     >
       {open && (
         <form onSubmit={(e) => { e.preventDefault(); if (!problem && pw && pw === again) save(); }} className="flex max-w-[420px] flex-col gap-2">
-          <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={data.has_password ? "New password" : "Password"} className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
-          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Type it again" className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
+          <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={data.has_password ? "New password" : "Password"} aria-label={data.has_password ? "New password" : "Password"} className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
+          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Type it again" aria-label="Password again" className="rounded-lg px-3 py-1.5 text-[12.5px]" style={inputStyle} />
           {data.has_password && (
             <label className="flex items-center gap-2 text-[12px] text-ink-dim">
               <input type="checkbox" checked={signOut} onChange={(e) => setSignOut(e.target.checked)} />

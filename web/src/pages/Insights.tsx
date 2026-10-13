@@ -599,7 +599,7 @@ function HistoryView({ connected }: { connected: boolean }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => setType(f.key)}>{f.label}</Chip>)}</FilterGroup>
         <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => setDecision(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
+        <input aria-label="Search title or user" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
       </div>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>

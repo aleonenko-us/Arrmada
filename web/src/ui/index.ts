@@ -14,3 +14,6 @@ export { ErrorState, StaleBanner, type ErrorStateProps } from "./ErrorState";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { LibraryToolbar, type LibraryToolbarProps, type LibraryTool, type ToolbarSegment, type ToolbarAction } from "./LibraryToolbar";
 export { FilterBar, type FilterBarProps, type FilterPill } from "./FilterBar";
+// The form pieces (Field, Input, Select, Textarea, Switch) are imported from their own
+// files, not from here: main.tsx imports this barrel, so anything re-exported here and
+// used by any page lands in every requester's first load.

@@ -1,9 +1,11 @@
 // The building blocks every Settings section is made of, shared so the sections (one file
 // each under pages/settings/) look the same. The auto-saving controls (AutoToggle,
 // AutoText, AutoNumber, AutoSelect, SavedTick) are in ./auto.tsx, built on
-// lib/useAutoSave (any endpoint) and lib/useSettings useSetting (the /settings keys).
-import { useEffect } from "react";
+// lib/useAutoSave (any endpoint) and lib/useSettings useSetting (the /settings keys). A
+// labelled control is ui/Field.
+import { useEffect, useId } from "react";
 import { useLocation } from "react-router-dom";
+import { Switch } from "../../ui/Switch";
 
 // useScrollWhenLoaded scrolls a card that fills in after its own fetch back into view when
 // the address names it (/settings/tools#convert): the hub's own scroll ran before the card,
@@ -27,15 +29,6 @@ export function Section({ id, title, subtitle, children }: { id?: string; title:
       <p className="mb-4 mt-0.5 text-[11.5px] text-ink-faint">{subtitle}</p>
       <div className="flex flex-col gap-4">{children}</div>
     </div>
-  );
-}
-
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
-      {children}
-    </label>
   );
 }
 
@@ -65,24 +58,18 @@ export function Note({ tone, children }: { tone: "warn" | "info"; children: Reac
   );
 }
 
+// Toggle is a Settings on/off row: the name and its hint on the left, the switch on the
+// right. The name is the switch's <label> (clicking it flips the switch too) and the hint
+// its description.
 export function Toggle({ label, hint, checked, onChange, disabled }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  const id = useId();
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <div className="text-[12.5px] font-semibold">{label}</div>
-        <div className="text-[10.5px] text-ink-faint">{hint}</div>
+        <label htmlFor={id} className="block text-[12.5px] font-semibold">{label}</label>
+        <div id={`${id}-hint`} className="text-[10.5px] text-ink-faint">{hint}</div>
       </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-60"
-        style={{ background: checked ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}
-      >
-        <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: checked ? "translateX(22px)" : "translateX(3px)" }} />
-      </button>
+      <Switch id={id} checked={checked} onChange={onChange} disabled={disabled} aria-describedby={`${id}-hint`} />
     </div>
   );
 }

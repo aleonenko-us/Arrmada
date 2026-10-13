@@ -16,7 +16,7 @@ import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
 import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
 import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activity/transfer";
-import { EmptyState, ErrorState, Skeleton, StatusChip, useToast } from "../ui";
+import { EmptyState, ErrorState, IconButton, Skeleton, StatusChip, useToast } from "../ui";
 
 type MediaFilter = "all" | "movie" | "series" | "book" | "music";
 const MEDIA_FILTERS: readonly MediaFilter[] = ["all", "movie", "series", "book", "music"];
@@ -806,7 +806,7 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
     <div className="mb-4 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="m-0 text-[13.5px] font-bold">Speed &amp; limits</h2>
-        <button onClick={onClose} className="text-[12px] text-ink-faint">✕</button>
+        <IconButton label="Close" onClick={onClose} className="text-[12px] text-ink-faint">✕</IconButton>
       </div>
       <div className="flex flex-col gap-3">
         <Row label="Download limit" hint="0 = unlimited">
@@ -828,8 +828,8 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
             <Row label="Window">
               <input type="time" className="rounded-lg px-2 py-1.5 text-[13px]" style={numStyle} value={hhmm(s.from_hour, s.from_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ from_hour: h, from_min: m }); }} />
               <span className="text-ink-faint">to</span>
-              <input type="time" className="rounded-lg px-2 py-1.5 text-[13px]" style={numStyle} value={hhmm(s.to_hour, s.to_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ to_hour: h, to_min: m }); }} />
-              <select className="rounded-lg px-2 py-1.5 text-[12.5px]" style={numStyle} value={s.days} onChange={(e) => patch({ days: Number(e.target.value) })}>
+              <input type="time" aria-label="Window ends" className="rounded-lg px-2 py-1.5 text-[13px]" style={numStyle} value={hhmm(s.to_hour, s.to_min)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); patch({ to_hour: h, to_min: m }); }} />
+              <select aria-label="On" className="rounded-lg px-2 py-1.5 text-[12.5px]" style={numStyle} value={s.days} onChange={(e) => patch({ days: Number(e.target.value) })}>
                 <option value={0}>Every day</option>
                 <option value={1}>Weekdays</option>
                 <option value={2}>Weekends</option>
@@ -849,15 +849,17 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
   );
 }
 
+// Row is a <label> around its control, so the name (and hint) is the control's label and
+// clicking it focuses the control.
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-[160px] flex-none">
-        <div className="text-[12.5px]">{label}</div>
-        {hint && <div className="text-[10px] text-ink-faint">{hint}</div>}
-      </div>
-      <div className="flex items-center gap-2">{children}</div>
-    </div>
+    <label className="flex items-center gap-3">
+      <span className="block w-[160px] flex-none">
+        <span className="block text-[12.5px]">{label}</span>
+        {hint && <span className="block text-[10px] text-ink-faint">{hint}</span>}
+      </span>
+      <span className="flex items-center gap-2">{children}</span>
+    </label>
   );
 }
 

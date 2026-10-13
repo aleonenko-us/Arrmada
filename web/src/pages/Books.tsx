@@ -15,7 +15,7 @@ import { LINKS } from "../lib/links";
 import { useMe, isAdmin } from "../lib/me";
 import { usePoll, usePollBurst } from "../lib/usePoll";
 import { useQuery } from "../lib/query";
-import { Button, ErrorState, FilterBar, LibraryToolbar, Modal, Skeleton, StaleBanner, useToast, type LibraryTool, type MenuItem } from "../ui";
+import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StaleBanner, useToast, type LibraryTool, type MenuItem } from "../ui";
 import { LibraryCard } from "../features/library/LibraryCard";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import type { LibraryConfig } from "../features/library/types";
@@ -361,6 +361,7 @@ export function Books() {
             <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
             <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
             <select
+              aria-label="Set the quality profile of the selected books"
               defaultValue=""
               disabled={selected.size === 0 || bulkBusy}
               onChange={(e) => e.target.value && (bulkProfile(e.target.value), (e.target.value = ""))}
@@ -385,7 +386,7 @@ export function Books() {
                 {leftVisible.length > 1 && (
                   <button onClick={() => keepAll()} className="rounded-md px-2 py-1 text-[11px] font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Ignore all</button>
                 )}
-                <button onClick={() => setHideUpgrade(true)} title="Hide this until the next run" className="text-ink-faint hover:text-[var(--ink)]">✕</button>
+                <IconButton label="Hide this until the next run" onClick={() => setHideUpgrade(true)} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
               </div>
             </div>
             {leftVisible.length > 0 ? (
@@ -486,7 +487,7 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
             <th className={th}>Editions</th>
             <th className={`${th} text-right`}>Size</th>
             <th className={th}>Monitored</th>
-            <th className={th}></th>
+            <th className={th}><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>

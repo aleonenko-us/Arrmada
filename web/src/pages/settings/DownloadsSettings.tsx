@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { AutoNumber, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
-import { Field, Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { Note, Section, input, inputStyle } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { api, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
 import { systemApi } from "../../lib/systemApi";
 import { LINKS } from "../../lib/links";
@@ -322,7 +323,7 @@ function DiskGuardSection() {
       {on.value && (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Pause at (% full)">
+            <Field label="Pause at (% full)" hint="Active downloads are paused once the volume is this full.">
               <input
                 inputMode="numeric"
                 value={pair.value.downloads_disk_guard_pause_pct}
@@ -334,9 +335,8 @@ function DiskGuardSection() {
                 className={input}
                 style={fieldStyle}
               />
-              <span className="text-[10.5px] text-ink-faint">Active downloads are paused once the volume is this full.</span>
             </Field>
-            <Field label="Resume at (% full)">
+            <Field label="Resume at (% full)" hint="They restart once it drops back to this. Must be below the pause point.">
               <input
                 inputMode="numeric"
                 value={pair.value.downloads_disk_guard_resume_pct}
@@ -348,7 +348,6 @@ function DiskGuardSection() {
                 className={input}
                 style={fieldStyle}
               />
-              <span className="text-[10.5px] text-ink-faint">They restart once it drops back to this. Must be below the pause point.</span>
             </Field>
           </div>
           <SavedTick save={pair} />

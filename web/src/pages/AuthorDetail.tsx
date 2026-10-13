@@ -9,6 +9,7 @@ import { useCanHover } from "../lib/useCanHover";
 import { libraryStatus } from "../lib/status";
 import { editionsHeld } from "../lib/bookSearch";
 import { Button, StatusChip, useToast, type Tone } from "../ui";
+import { Switch } from "../ui/Switch";
 
 // AuthorDetail unifies an author's shelf: the books you already own (link through to the
 // full book detail page for grab / auto-grab / etc.) plus the rest of their official
@@ -145,10 +146,10 @@ export function AuthorDetail() {
           </div>
           {author && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
-              <Switch label="Monitor" on={author.monitored} disabled={saving}
-                onToggle={() => save({ monitored: !author.monitored }, author.monitored ? "No longer following this author" : "Following this author")} />
-              <Switch label="Add new books automatically" on={author.monitor_new} disabled={saving}
-                onToggle={() => save({ monitor_new: !author.monitor_new })} />
+              <Switch size="sm" className="min-h-[32px]" checked={author.monitored} disabled={saving}
+                onChange={() => save({ monitored: !author.monitored }, author.monitored ? "No longer following this author" : "Following this author")}>Monitor</Switch>
+              <Switch size="sm" className="min-h-[32px]" checked={author.monitor_new} disabled={saving}
+                onChange={() => save({ monitor_new: !author.monitor_new })}>Add new books automatically</Switch>
               <label className="flex items-center gap-2">
                 <span className="font-mono text-[10px] uppercase text-ink-faint">Format</span>
                 <select aria-label="Format" value={profile} disabled={saving} onChange={(e) => save({ quality_profile: e.target.value })} className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
@@ -311,18 +312,6 @@ function BackLink() {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       All books
     </Link>
-  );
-}
-
-// Switch is the Books pages' on/off control (the book page's Monitor switch).
-function Switch({ label, on, onToggle, disabled }: { label: string; on: boolean; onToggle: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={onToggle} className="inline-flex min-h-[32px] items-center gap-2 text-[12.5px] font-semibold disabled:opacity-50">
-      <span className="relative inline-block h-[22px] w-[38px] flex-none rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--line)" }}>
-        <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: on ? "19px" : "3px" }} />
-      </span>
-      <span style={{ color: on ? "var(--ink)" : "var(--ink-dim)" }}>{label}</span>
-    </button>
   );
 }
 

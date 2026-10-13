@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
+import { Field } from "../../ui/Field";
+import { Switch } from "../../ui/Switch";
 
 // The indexer forms, moved from the old Indexers page into the cards on Settings →
 // Connections: editing one (with its seed rules), testing settings before they are saved,
@@ -189,14 +191,6 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
   );
 }
 
-function ToggleSwitch({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={onChange} className="relative inline-block h-[22px] w-[38px] flex-none rounded-full transition-colors" style={{ background: checked ? "var(--accent)" : "var(--line)" }}>
-      <span className="absolute top-[3px] h-[16px] w-[16px] rounded-full bg-white transition-all" style={{ left: checked ? "19px" : "3px" }} />
-    </button>
-  );
-}
-
 function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { v: T; l: string }[]; onChange: (v: T) => void }) {
   return (
     <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
@@ -213,6 +207,7 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
   enabled: boolean; ratio: number; time: number; unit: "hours" | "days";
   onEnabled: (v: boolean) => void; onRatio: (v: number) => void; onTime: (v: number) => void; onUnit: (v: "hours" | "days") => void;
 }) {
+  const timeId = useId();
   return (
     <div className="mt-3 rounded-lg p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
       <div className="flex items-center justify-between">
@@ -220,7 +215,7 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
           <div className="text-[12.5px] font-semibold">Seed rules</div>
           <div className="text-[10.5px] text-ink-faint">{enabled ? "Keep seeding until a ratio or time limit" : "Off — remove the download as soon as it's imported"}</div>
         </div>
-        <ToggleSwitch checked={enabled} onChange={() => onEnabled(!enabled)} label="Seed rules" />
+        <Switch size="sm" checked={enabled} onChange={onEnabled} label="Seed rules" />
       </div>
       {enabled && (
         <>
@@ -228,9 +223,9 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
             <Labeled label="Seed ratio (0 = none)">
               <input type="number" min={0} step={0.1} className={field} style={fieldStyle} value={ratio} onChange={(e) => onRatio(Math.max(0, Number(e.target.value)))} placeholder="e.g. 2.5" />
             </Labeled>
-            <Labeled label="Or after time (0 = none)">
+            <Labeled label="Or after time (0 = none)" controlId={timeId}>
               <div className="flex items-center gap-2">
-                <input type="number" min={0} className={field} style={fieldStyle} value={time} onChange={(e) => onTime(Math.max(0, Number(e.target.value)))} />
+                <input id={timeId} type="number" min={0} className={field} style={fieldStyle} value={time} onChange={(e) => onTime(Math.max(0, Number(e.target.value)))} />
                 <Segmented value={unit} options={[{ v: "hours", l: "Hours" }, { v: "days", l: "Days" }]} onChange={onUnit} />
               </div>
             </Labeled>
@@ -242,14 +237,9 @@ export function SeedingRules({ enabled, ratio, time, unit, onEnabled, onRatio, o
   );
 }
 
-export function Labeled({ label, hint, span2, children }: { label: string; hint?: string; span2?: boolean; children: React.ReactNode }) {
-  return (
-    <label className={`flex flex-col gap-1.5 ${span2 ? "sm:col-span-2" : ""}`}>
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
-      {children}
-      {hint && <span className="text-[10.5px] text-ink-faint">{hint}</span>}
-    </label>
-  );
+// Labeled is ui/Field in the editors' two-column grid: span2 takes both columns.
+export function Labeled({ label, hint, span2, controlId, children }: { label: string; hint?: string; span2?: boolean; controlId?: string; children: React.ReactNode }) {
+  return <Field label={label} hint={hint} controlId={controlId} className={span2 ? "sm:col-span-2" : ""}>{children}</Field>;
 }
 
 export const MEDIA_TYPES = [

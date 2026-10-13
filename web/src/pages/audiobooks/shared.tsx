@@ -156,7 +156,7 @@ export function Sessions({ list, showUser }: { list: AudioListening["sessions"];
 
 export function DaysPicker({ days, setDays }: { days: number; setDays: (d: number) => void }) {
   return (
-    <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
+    <select aria-label="Period" value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
       <option value={14}>14 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
     </select>
   );

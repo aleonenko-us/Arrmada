@@ -35,6 +35,7 @@ import { formatBytes } from "../lib/format";
 import { invalidate, useQuery } from "../lib/query";
 import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { Button, ErrorState, Modal, Skeleton, StaleBanner, useToast } from "../ui";
+import { Switch } from "../ui/Switch";
 
 const NO_PROFILES: QualityProfileInfo[] = [];
 const NO_FORMATS: FormatInfo[] = [];
@@ -1067,13 +1068,13 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
     <div>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[12.5px] font-semibold">Automatically upgrade</div>
+          <label htmlFor="qp-upgrades" className="block text-[12.5px] font-semibold">Automatically upgrade</label>
           <div className="text-[10.5px] leading-[1.45] text-ink-faint">
             After a file is imported, keep watching for a better release and replace it. Stops once the file is the target — the goal resolution,
             everything you prefer, inside a bitrate window that has a floor.
           </div>
         </div>
-        <Switch on={sp.upgrades_enabled} onChange={(v) => patch({ upgrades_enabled: v })} label="Automatically upgrade" />
+        <Switch id="qp-upgrades" checked={sp.upgrades_enabled} onChange={(v) => patch({ upgrades_enabled: v })} />
       </div>
       {sp.upgrades_enabled && (
         <div className="mt-3.5 border-t pt-3" style={{ borderColor: "var(--line)" }}>
@@ -1112,15 +1113,6 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
         </div>
       )}
     </div>
-  );
-}
-
-function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors"
-      style={{ background: on ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}>
-      <span className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" style={{ transform: on ? "translateX(22px)" : "translateX(3px)" }} />
-    </button>
   );
 }
 

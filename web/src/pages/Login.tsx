@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { FleetMark } from "../components/FleetMark";
 import { api, resetSignedOut, type AuthUser } from "../lib/api";
 import { nextAfterSignIn } from "../lib/session";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
 
 const PlexLoginButton = lazy(() => import("../components/PlexLoginButton"));
 
@@ -62,14 +64,14 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
                 You were signed out. Sign in again to carry on.
               </div>
             )}
-            <label className="flex flex-col gap-1.5">
-              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Email</span>
-              <input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="rounded-lg px-3 py-2.5 text-[13px]" style={fieldStyle} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">Password</span>
-              <input type="password" required minLength={setup ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={setup ? "8+ characters" : "••••••••"} className="rounded-lg px-3 py-2.5 text-[13px]" style={fieldStyle} />
-            </label>
+            <Field label="Email">
+              {/* The page is only this form, so the cursor starts where the first thing is typed. */}
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+              <Input type="email" required autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={BOX} />
+            </Field>
+            <Field label="Password">
+              <Input type="password" required minLength={setup ? 8 : undefined} autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={setup ? "8+ characters" : "••••••••"} className={BOX} />
+            </Field>
             {error && <div className="text-[12px]" style={{ color: "var(--reject)" }}>{error}</div>}
             <button type="submit" disabled={busy || plexBusy} className="mt-1 rounded-lg px-4 py-2.5 text-[13px] font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
               {busy ? "…" : setup ? "Create admin & continue" : "Sign in"}
@@ -99,4 +101,4 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
   );
 }
 
-const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
+const BOX = "w-full px-3 py-2.5 text-[13px]";

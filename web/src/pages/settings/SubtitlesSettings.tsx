@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
@@ -9,6 +9,7 @@ import { isAdmin, useMe } from "../../lib/me";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { usePoll } from "../../lib/usePoll";
 import { useToast } from "../../ui";
+import { Switch } from "../../ui/Switch";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { KeptTracksNote, card, cardStyle } from "../subtitles/shared";
 import { SubtitleProfiles } from "./SubtitleProfiles";
@@ -217,14 +218,12 @@ function waitingFor(st: WhisperStatus): string | undefined {
 }
 
 function ToggleRow({ label, save }: { label: string; save: AutoSave<boolean> }) {
-  const on = save.value;
+  const id = useId();
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[12.5px] font-semibold">{label}</span>
-        <button role="switch" aria-checked={on} aria-label={label} onClick={() => void save.commit(!on)} className="relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors" style={{ background: on ? "var(--accent)" : "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <span className="inline-block h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: on ? "translateX(22px)" : "translateX(3px)" }} />
-        </button>
+        <label htmlFor={id} className="text-[12.5px] font-semibold">{label}</label>
+        <Switch id={id} checked={save.value} onChange={(v) => void save.commit(v)} />
       </div>
       {save.status !== "idle" && <div className="flex justify-end"><SavedTick save={save} /></div>}
     </div>

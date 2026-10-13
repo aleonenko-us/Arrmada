@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Field, Note, Section, input, inputStyle, useScrollWhenLoaded } from "../../components/settings/ui";
+import { Note, Section, input, inputStyle, useScrollWhenLoaded } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { DEFAULT_PORT, mailApi, type MailSecurity, type SMTPView } from "../../lib/mailApi";
 import { useQuery, setQueryData } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";

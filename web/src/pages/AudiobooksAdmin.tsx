@@ -87,7 +87,7 @@ function AllListeningView() {
         title="Listening per day"
         right={
           <div className="flex flex-none gap-2">
-            <select value={who} onChange={(e) => setWho(Number(e.target.value))} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
+            <select aria-label="Whose listening" value={who} onChange={(e) => setWho(Number(e.target.value))} className="rounded-lg px-2 py-1 text-[12px]" style={inputStyle}>
               <option value={0}>Everyone</option>
               {data.totals.map((t) => <option key={t.user_id} value={t.user_id}>{t.username || `#${t.user_id}`}</option>)}
             </select>

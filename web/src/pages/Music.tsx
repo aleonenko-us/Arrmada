@@ -199,6 +199,7 @@ export function Music() {
                 Unmonitor
               </button>
               <select
+                aria-label="Set the quality profile of the selected artists"
                 disabled={selected.size === 0 || bulkBusy || profiles.length === 0}
                 value=""
                 onChange={(e) => {

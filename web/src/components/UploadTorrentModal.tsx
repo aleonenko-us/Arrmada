@@ -111,7 +111,7 @@ export function UploadTorrentModal({
               ) : (
                 <>
                   {targets && targets.length > 0 && (
-                    <select value={target} onChange={(e) => setTarget(Number(e.target.value))} title="Which audiobook the download is filed as" className="rounded-lg px-2 py-2 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+                    <select value={target} onChange={(e) => setTarget(Number(e.target.value))} title="Which audiobook the download is filed as" aria-label="File the audio as" className="rounded-lg px-2 py-2 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                       <option value={0}>File audio as Standard</option>
                       {targets.map((t) => <option key={t.id} value={t.id}>File audio as {t.label}</option>)}
                     </select>

@@ -1,15 +1,16 @@
 // ESLint 9 flat config for the web UI.
 //
-// `npm run lint` must pass with 0 errors. Errors are real bugs (rules-of-hooks) and the
-// UI kit's bans (FE-14): native dialogs, hand-built overlays and page-local toasts.
-// Rules that would flag a large backlog of existing code start as warnings and are
-// tightened by later roadmap tasks (FE-15 a11y).
+// `npm run lint` must pass with 0 errors. Errors are real bugs (rules-of-hooks), the
+// UI kit's bans (FE-14): native dialogs, hand-built overlays and page-local toasts, and
+// accessibility (FE-15): every jsx-a11y recommended rule, plus a name on every control.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 import { defineConfig } from "eslint/config";
+
+const ctrlLabel = jsxA11y.flatConfigs.recommended.rules["jsx-a11y/control-has-associated-label"][1];
 
 // Page-local toasts: a `flash` helper or a [toast, setToast] state with its own timer.
 // useToast() from src/ui is the one live region (stacking, timers, the error tone).
@@ -57,12 +58,18 @@ export default defineConfig(
       // Warn only: many existing omissions are deliberate (run-once / run-on-change effects).
       "react-hooks/exhaustive-deps": "warn",
 
-      // jsx-a11y recommended at warn: too many existing hits to fail on yet (FE-15 flips key rules).
-      ...Object.fromEntries(
-        Object.entries(jsxA11y.flatConfigs.recommended.rules)
-          .filter(([, v]) => (Array.isArray(v) ? v[0] : v) !== "off")
-          .map(([r, v]) => [r, Array.isArray(v) ? ["warn", ...v.slice(1)] : "warn"]),
-      ),
+      // jsx-a11y recommended, all at error (FE-15): a field without a label, a control with
+      // no name or a click-only div fails the build, not just a screen reader.
+      ...jsxA11y.flatConfigs.recommended.rules,
+      // Labels here often hold their text a couple of spans deep (a bold name over a faint
+      // hint); depth 3 lets the rule see it.
+      "jsx-a11y/label-has-associated-control": ["error", { depth: 3 }],
+      // Off in recommended: every button, link and option must have a name. Icon-only
+      // buttons use <IconButton label=…>; an empty header cell gets sr-only text.
+      "jsx-a11y/control-has-associated-label": [
+        "error",
+        { ...ctrlLabel, depth: 4 },
+      ],
 
       // Native dialogs can't be styled, block the tab and some browsers suppress them:
       // the UI kit's Confirm/Toast replace them everywhere (FE-14).

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Field, Section, input, inputStyle } from "../../components/settings/ui";
+import { Section, input, inputStyle } from "../../components/settings/ui";
+import { Field } from "../../ui/Field";
 import { type ImportRun } from "../../lib/api";
 import { importApi } from "../../lib/importApi";
 import { invalidate, useQuery } from "../../lib/query";

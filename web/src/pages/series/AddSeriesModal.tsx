@@ -16,6 +16,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [monitor, setMonitor] = useState<MonitorPreset>(DEFAULT_MONITOR_PRESET);
   const [addingId, setAddingId] = useState<number | null>(null);
+  const profileId = useId();
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -73,8 +74,8 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] uppercase text-ink-faint">Quality</span>
-              <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+              <label htmlFor={profileId} className="font-mono text-[10px] uppercase text-ink-faint">Quality</label>
+              <select id={profileId} value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-lg px-2 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                 {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
               </select>
             </div>

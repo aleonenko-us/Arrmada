@@ -41,12 +41,12 @@ export function LibraryTable<T extends LibraryItem>({ items, config, selectable,
       <table className="w-full border-collapse text-[12px]" style={{ minWidth: `${config.tableMinWidth}px` }}>
         <thead>
           <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
-            {selectable && <th className={TH}></th>}
+            {selectable && <th className={TH}><span className="sr-only">Select</span></th>}
             <SortTh label="Title" k="title" sort={sort} onSort={onSort} />
             {cols.map((c) => (c.sort
               ? <SortTh key={c.key} label={c.label} k={c.key} align={c.align} title={c.title} sort={sort} onSort={onSort} />
               : <th key={c.key} className={`${TH}${c.align === "right" ? " text-right" : ""}`} title={c.title}>{c.label}</th>))}
-            {config.rowAction && <th className={TH}></th>}
+            {config.rowAction && <th className={TH}><span className="sr-only">Actions</span></th>}
           </tr>
         </thead>
         <tbody>

@@ -586,6 +586,7 @@ function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search shows…"
+          aria-label="Search shows"
           className="w-[240px] rounded-lg px-3 py-1.5 text-[12.5px]"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />

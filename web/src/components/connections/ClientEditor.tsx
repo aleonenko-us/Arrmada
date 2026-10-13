@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type DownloadCategories, type DownloadClient, type NewDownloadClient } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { PathMappings } from "./PathMappings";
+import { Labeled } from "./IndexerEditor";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 
 // The download-client form, moved from the old Download clients page into the cards on
@@ -146,12 +147,3 @@ export function CategoryLine({ c }: { c: DownloadCategories }) {
   );
 }
 
-function Labeled({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
-      {children}
-      {hint && <span className="text-[10.5px] text-ink-faint">{hint}</span>}
-    </label>
-  );
-}
