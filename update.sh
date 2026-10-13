@@ -11,6 +11,12 @@
 # (qBittorrent, FlareSolverr, and Prowlarr if you opted in) keep running untouched.
 # The build that was running before is kept as the image arrmada:previous, so
 # --rollback has something to go back to.
+#
+# Pull mode (opt-in): with ARRMADA_IMAGE set in .env to a published image, for example
+#   ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
+# the update downloads that image instead of compiling, which takes minutes rather than
+# the better part of an hour. Everything else (the backup, arrmada:previous, --rollback)
+# works the same. --force-local still compiles the code in this folder.
 set -eu
 cd "$(dirname "$0")"
 
@@ -21,7 +27,8 @@ usage() {
   say "       ./update.sh --rollback [--with-db] [-y]"
   say ""
   say "  (no options)    back up the database, pull the latest code, rebuild the app and restart it"
-  say "  --force-local   don't pull; rebuild the code that's in this folder"
+  say "                  (with ARRMADA_IMAGE in .env: download that published image instead of rebuilding)"
+  say "  --force-local   don't pull; rebuild the code that's in this folder (even with ARRMADA_IMAGE set)"
   say "  --no-backup     don't take the pre-update database backup"
   say "  --rollback      start the build that ran before the last update again"
   say "  --with-db       with --rollback: also put back the database backup taken before that update"
@@ -154,6 +161,21 @@ if [ ! -f .env ]; then
   say "✗ No .env found — run ./install.sh first." >&2
   exit 1
 fi
+
+# Pull mode: the published image named by ARRMADA_IMAGE in .env, or nothing to compile
+# here as always. --force-local means "build what's here", so it turns pull mode off for
+# this run. The script's own local tags can't be the source: they're what it manages.
+# --rollback never pulls, so it doesn't read it.
+PULL_IMAGE=""
+if [ -z "$FORCE_LOCAL" ] && [ -z "$ROLLBACK" ]; then
+  PULL_IMAGE=$(grep -E '^ARRMADA_IMAGE=' .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true)
+fi
+case "$PULL_IMAGE" in
+  arrmada | arrmada:*)
+    say "✗ ARRMADA_IMAGE=$PULL_IMAGE in .env names one of this script's own local images." >&2
+    say "  Set it to a published image (e.g. ghcr.io/tristenlammi/arrmada:stable), or remove the line to build here." >&2
+    exit 2 ;;
+esac
 
 # port_in_use PORT -> 0 if something already listens on PORT on this host.
 port_in_use() {
@@ -333,6 +355,8 @@ fi
 # ── pull latest (skip cleanly if this isn't a git checkout) ─────────────────────
 # If the pull changed this script, run the new one: it may know about settings or steps
 # this older copy doesn't, and they should apply now rather than on the next update.
+# Pull mode pulls too: nothing is compiled from it, but it keeps this script and
+# docker-compose.yml current.
 if [ -z "$PULLED" ]; then
   if [ -n "$FORCE_LOCAL" ]; then
     say "Not pulling (--force-local) — building the code that's here."
@@ -352,6 +376,8 @@ if [ -z "$PULLED" ]; then
     if [ "$(cksum < update.sh)" != "$_before" ]; then
       exec sh ./update.sh --pulled "$@"
     fi
+  elif [ -n "$PULL_IMAGE" ]; then
+    say "Not a git checkout — the scripts here stay as they are."
   else
     say "Not a git checkout — building the code that's here."
   fi
@@ -409,13 +435,16 @@ fi
 # which code is running (docker-compose.yml passes these as build args). A tagged
 # release reads as its tag; anything else as the date of its commit, with the short
 # commit beside it — a bare hash says nothing about how old the build is. Every git
-# call is guarded so a copy that isn't a git checkout still builds.
-ARRMADA_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
-ARRMADA_VERSION=$(git describe --tags --exact-match 2>/dev/null || git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo dev)
-if [ "$ARRMADA_COMMIT" != unknown ] && ! git diff --quiet HEAD -- 2>/dev/null; then
-  ARRMADA_VERSION="$ARRMADA_VERSION-dirty"
+# call is guarded so a copy that isn't a git checkout still builds. A published image
+# was stamped by the release build, so pull mode reads its labels afterwards instead.
+if [ -z "$PULL_IMAGE" ]; then
+  ARRMADA_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  ARRMADA_VERSION=$(git describe --tags --exact-match 2>/dev/null || git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo dev)
+  if [ "$ARRMADA_COMMIT" != unknown ] && ! git diff --quiet HEAD -- 2>/dev/null; then
+    ARRMADA_VERSION="$ARRMADA_VERSION-dirty"
+  fi
+  export ARRMADA_VERSION ARRMADA_COMMIT
 fi
-export ARRMADA_VERSION ARRMADA_COMMIT
 
 # Keep the build that's running as arrmada:previous, for --rollback. It has to be
 # tagged before the build: once the new build takes arrmada:dev and the old container
@@ -437,13 +466,35 @@ if grep -qE '^ARRMADA_BASE_URL=.*[^/[:space:]"'"'"']' .env; then
   say "    at the root of its own hostname. Point your reverse proxy at the root, then delete the line."
 fi
 
-say "Rebuilding and restarting Arrmada…"
 # Rebuild + recreate ONLY the app. --no-deps leaves the companions (qBittorrent,
 # Prowlarr, FlareSolverr) running and, crucially, does NOT re-run the one-shot media /
 # qBittorrent init containers — those only need to run once, at install. An update
 # only changes the app image, so nothing else needs touching.
+#
+# In pull mode the published image is downloaded and tagged arrmada:dev, the name
+# docker-compose.yml runs, so the rollback tags and every step after this one work on
+# it exactly as they do on a local build. A failed pull leaves arrmada:dev untouched.
 UP_OK=1
-docker compose up -d --build --no-deps arrmada-app || UP_OK=""
+PULL_FAILED=""
+if [ -n "$PULL_IMAGE" ]; then
+  say "Downloading $PULL_IMAGE and restarting Arrmada…"
+  if docker pull "$PULL_IMAGE"; then
+    if ! docker image tag "$PULL_IMAGE" arrmada:dev || ! docker compose up -d --no-build --no-deps arrmada-app; then
+      UP_OK=""
+    fi
+  else
+    UP_OK=""
+    PULL_FAILED=1
+  fi
+else
+  say "Rebuilding and restarting Arrmada…"
+  docker compose up -d --build --no-deps arrmada-app || UP_OK=""
+fi
+# Whether the pull brought nothing new (already on the newest image).
+SAME_IMAGE=""
+if [ -n "$RUNNING_IMAGE" ] && [ "$(image_id arrmada:dev)" = "$RUNNING_IMAGE" ]; then
+  SAME_IMAGE=1
+fi
 
 if [ -n "$RUNNING_IMAGE" ]; then
   if [ "$(image_id arrmada:dev)" != "$RUNNING_IMAGE" ]; then
@@ -463,6 +514,14 @@ if [ -n "$RUNNING_IMAGE" ]; then
   docker image rm arrmada:previous-old >/dev/null 2>&1 || true
 fi
 
+if [ -n "$PULL_FAILED" ]; then
+  say "" >&2
+  say "✗ Couldn't download $PULL_IMAGE (see above). Nothing was replaced." >&2
+  say "  Check the name in ARRMADA_IMAGE and that this server can reach ghcr.io. If the package" >&2
+  say "  is private, sign this server in once with 'docker login ghcr.io' and a token of its own" >&2
+  say "  that can only read packages. To compile here instead: ./update.sh --force-local" >&2
+  exit 1
+fi
 if [ -z "$UP_OK" ]; then
   if [ -n "$RUNNING_IMAGE" ] && [ "$(image_id arrmada:dev)" = "$RUNNING_IMAGE" ] && app_answers; then
     say "" >&2
@@ -482,7 +541,18 @@ docker image prune -f >/dev/null 2>&1 || true
 WEBPORT=$(grep -E '^ARRMADA_PORT=' .env | cut -d= -f2)
 HOSTIP=$(hostname -I 2>/dev/null | awk '{print $1}')
 say ""
-say "✓ Arrmada updated to ${ARRMADA_VERSION} (${ARRMADA_COMMIT}).  Open http://${HOSTIP:-localhost}:${WEBPORT:-7878}"
+if [ -n "$PULL_IMAGE" ]; then
+  # What the release build stamped on the image (the same labels --rollback reads).
+  ARRMADA_VERSION=$(image_label arrmada:dev org.arrmada.version)
+  ARRMADA_COMMIT=$(image_label arrmada:dev org.arrmada.commit)
+  if [ -n "$SAME_IMAGE" ]; then
+    say "✓ Arrmada is already on the newest $PULL_IMAGE: ${ARRMADA_VERSION:-unknown} (${ARRMADA_COMMIT:-unknown}).  Open http://${HOSTIP:-localhost}:${WEBPORT:-7878}"
+  else
+    say "✓ Arrmada updated to ${ARRMADA_VERSION:-unknown} (${ARRMADA_COMMIT:-unknown}) from $PULL_IMAGE.  Open http://${HOSTIP:-localhost}:${WEBPORT:-7878}"
+  fi
+else
+  say "✓ Arrmada updated to ${ARRMADA_VERSION} (${ARRMADA_COMMIT}).  Open http://${HOSTIP:-localhost}:${WEBPORT:-7878}"
+fi
 say "  A database snapshot is taken automatically before any schema change (<data>/backups, newest 5 kept)."
 if docker image inspect arrmada:previous >/dev/null 2>&1; then
   say "  The build that ran before is kept as arrmada:previous: ./update.sh --rollback goes back to it."

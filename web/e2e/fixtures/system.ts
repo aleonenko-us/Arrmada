@@ -204,6 +204,15 @@ export const systemStatus: SystemStatus = {
     { name: "Downloads", path: "/media/downloads", measurable: true, total: 1e12, free: 0.08e12, used_pct: 92, shared_with: [] },
     { name: "Database & backups", path: "/data", measurable: true, total: 0.5e12, free: 0.4e12, used_pct: 20, shared_with: [] },
   ],
+  // A build of main, three commits behind it; the newest release is v1.3.0.
+  update: {
+    enabled: true, current: "2026.10.08", channel: "main", checked_at: new Date(NOW - 2 * 3_600_000).toISOString(),
+    latest: {
+      tag: "v1.3.0", name: "v1.3.0", url: "https://github.com/tristenlammi/Arrmada/releases/tag/v1.3.0",
+      notes: "## What's Changed\n* Faster imports by @someone", notes_truncated: false, published_at: "2026-10-01T10:00:00Z",
+    },
+    available: false, behind: 3,
+  },
 };
 
 // Settings → People & access: the same two, with when they were last around and their
