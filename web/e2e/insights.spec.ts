@@ -81,12 +81,19 @@ test.describe("admin", () => {
     const cpu = page.getByRole("button", { name: /Harbour Lights/ });
     await expect(cpu.getByText("CPU (fell back)")).toBeVisible();
     await cpu.click();
-    await expect(page.getByText("Fell back to CPU", { exact: true })).toBeVisible();
+    // The stream's deep dive is the kit's dialog: named by the title, Escape closes it.
+    const dive = page.getByRole("dialog", { name: /Harbour Lights/ });
+    await expect(dive.getByText("Fell back to CPU", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dive).toHaveCount(0);
 
     // Recorded plays from before the change say their HW flag was only a request.
     await page.goto("/insights?tab=history");
     await page.getByRole("cell", { name: /The Cartographer/ }).click();
-    await expect(page.getByText("HW requested")).toHaveAttribute("title", /show HW as requested/);
+    const play = page.getByRole("dialog", { name: /The Cartographer/ });
+    await expect(play.getByText("HW requested")).toHaveAttribute("title", /show HW as requested/);
+    await play.getByRole("button", { name: "Close" }).click();
+    await expect(play).toHaveCount(0);
   });
 
   test("without a server, imported plays still show on History, People and Graphs", async ({ page }) => {
