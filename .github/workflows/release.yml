@@ -4,7 +4,7 @@ name: Release
 # container registry (ghcr.io/<owner>/arrmada) and then writes the GitHub release with
 # generated notes, which is what the app's "Update available" check reads.
 #
-# Only a pushed v* tag publishes (git tag v1.2.0 && git push origin v1.2.0). Pushes to
+# Only a pushed v* tag publishes (git tag v0.17.0 && git push origin v0.17.0). Pushes to
 # main and pull requests never do: image.yml builds those without pushing anything. A
 # manual run is only accepted when it's started on a v* tag, for re-publishing one.
 #
@@ -54,8 +54,8 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           echo "image=ghcr.io/${owner}/arrmada" >> "$GITHUB_OUTPUT"
           echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      # Tags: 1.2.0, 1.2, sha-abc1234, and stable for a release that isn't a pre-release
-      # (v1.3.0-rc.1 gets its own version and sha tags only). No "latest": installs pick
+      # Tags: 0.17.0, 0.17, sha-abc1234, and stable for a release that isn't a pre-release
+      # (v0.18.0-rc.1 gets its own version and sha tags only). No "latest": installs pick
       # stable or a version on purpose. The semver tags name their value so a manual
       # re-run on a tag gets them too.
       - name: Image tags and labels
@@ -80,7 +80,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # VERSION is the tag (v1.2.0), so the Dashboard and the update check read it as a
+      # VERSION is the tag (v0.17.0), so the Dashboard and the update check read it as a
       # release. The cache from main's image.yml runs is read, not written: a tag's own
       # cache entries would only ever be used by that tag.
       - name: Build and push
@@ -106,7 +106,7 @@ jobs:
     steps:
       # A release made by hand in GitHub's UI (which also pushes the tag) is left as it
       # is; otherwise one is created with GitHub's generated notes. A tag with a hyphen
-      # (v1.3.0-rc.1) is marked a pre-release, which the update check doesn't offer.
+      # (v0.18.0-rc.1) is marked a pre-release, which the update check doesn't offer.
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

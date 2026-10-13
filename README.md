@@ -139,7 +139,7 @@ ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
 From then on `./update.sh` still backs up the database, keeps the running build as
 `arrmada:previous` for `--rollback` and pulls the latest scripts, but it downloads the
 image rather than building it, usually in a few minutes. `stable` is always the newest
-release; pin one with a version instead (`ghcr.io/tristenlammi/arrmada:1.2.0`). Delete the
+release; pin one with a version instead (`ghcr.io/tristenlammi/arrmada:0.17.0`). Delete the
 line to go back to building here, or run `./update.sh --force-local` to build once without
 changing `.env`.
 
@@ -152,14 +152,14 @@ and let that tool pull it.
 A release is a version tag. From an up-to-date `main`:
 
 ```sh
-git tag -a v1.2.0 -m "Arrmada 1.2.0"
-git push origin v1.2.0
+git tag -a v0.17.0 -m "Arrmada 0.17.0"
+git push origin v0.17.0
 ```
 
 Pushing the tag runs the Release workflow: it builds the image stamped with the version and
-commit, pushes it to `ghcr.io/tristenlammi/arrmada` as `1.2.0`, `1.2`, `sha-<commit>` and
+commit, pushes it to `ghcr.io/tristenlammi/arrmada` as `0.17.0`, `0.17`, `sha-<commit>` and
 `stable`, and then creates the GitHub release with generated notes. A tag with a hyphen
-(`v1.3.0-rc.1`) is published as a pre-release: it gets its own version tag but never
+(`v0.18.0-rc.1`) is published as a pre-release: it gets its own version tag but never
 `stable`, and the in-app update check doesn't offer it. Pushes to `main` and pull requests
 only build the image as a check; they never publish one.
 
