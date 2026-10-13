@@ -1629,7 +1629,9 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 	for i, e := range shows {
 		report(i)
 		if err := ctx.Err(); err != nil {
-			return res, err // cancelled, or out of time: stop rather than search on
+			// Cancelled, or out of time: stop, rather than file every folder left as
+			// "needs review" because its search couldn't run.
+			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
 		}
 		folder := filepath.Join(root, e.Name())
 		videos, _ := library.FindVideos(folder)

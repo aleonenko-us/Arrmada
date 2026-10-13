@@ -133,9 +133,18 @@ func (a *api) anyImported(ctx context.Context) bool {
 	return false
 }
 
-// handleSetupChecklist — GET /api/v1/setup/checklist (admin)
+// handleSetupChecklist — GET /api/v1/setup/checklist (admin). The first time every step
+// reads as done, the card is put away for good: a step that later comes undone (Plex
+// unplugged for a day) is a health warning's job, not a reason to bring "Getting started"
+// back.
 func (a *api) handleSetupChecklist(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, a.setupChecklist(r.Context()))
+	c := a.setupChecklist(r.Context())
+	if c.Done && !c.Dismissed {
+		if err := a.deps.Settings.SetBool(r.Context(), keyGettingStartedDismissed, true); err == nil {
+			c.Dismissed = true
+		}
+	}
+	a.writeJSON(w, http.StatusOK, c)
 }
 
 // handleDismissSetupChecklist — POST /api/v1/setup/checklist/dismiss (admin). Hides the

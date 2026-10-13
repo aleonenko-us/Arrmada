@@ -15,10 +15,12 @@ const CHECKLIST_KEY = "setup:checklist";
 const RECHECK_MS = 30_000;
 
 // useSetupChecklist reads the list and keeps it current while it's on screen: every 30 s
-// while the tab is visible, and straight away when the tab comes back into view.
-export function useSetupChecklist(enabled = true) {
+// while the tab is visible, and straight away when the tab comes back into view. Once
+// everything is done (or put away, when the card is all that uses it) it stops asking.
+export function useSetupChecklist(enabled = true, { stopWhenDismissed = false } = {}) {
   const q = useQuery<SetupChecklist>(CHECKLIST_KEY, setupApi.checklist, { enabled, staleMs: 5_000 });
-  usePoll(q.refetch, enabled ? RECHECK_MS : null, { immediate: false });
+  const settled = !!q.data && (q.data.done || (stopWhenDismissed && q.data.dismissed));
+  usePoll(q.refetch, enabled && !settled ? RECHECK_MS : null, { immediate: false });
   return q;
 }
 
@@ -62,7 +64,7 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
 // admin dismissed it, and nothing while it's loading or if the list can't be read.
 export function GettingStarted() {
   const toast = useToast();
-  const q = useSetupChecklist();
+  const q = useSetupChecklist(true, { stopWhenDismissed: true });
   const [dismissing, setDismissing] = useState(false);
   const c = q.data;
   if (!c || c.done || c.dismissed) return null;

@@ -168,8 +168,15 @@ func TestSetupChecklist(t *testing.T) {
 		t.Fatal(err)
 	}
 	c = getChecklist(t, a)
-	if !c.Done {
-		t.Errorf("everything set up, but not done: %v", checklistDone(c))
+	if !c.Done || !c.Dismissed {
+		t.Errorf("everything set up: done=%v dismissed=%v (%v), want both", c.Done, c.Dismissed, checklistDone(c))
+	}
+	// Done once is put away for good: a step coming undone later doesn't bring the card back.
+	if _, err := db.Exec(`DELETE FROM movies`); err != nil {
+		t.Fatal(err)
+	}
+	if c = getChecklist(t, a); c.Done || !c.Dismissed {
+		t.Errorf("a step undone after finishing: done=%v dismissed=%v, want not done but still dismissed", c.Done, c.Dismissed)
 	}
 }
 
