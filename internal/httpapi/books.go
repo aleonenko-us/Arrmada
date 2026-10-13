@@ -176,7 +176,7 @@ func (a *api) handleGetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.enrichBookWants(r, &b)
-	setBookCatalogue(&b)
+	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
 	a.writeJSON(w, http.StatusOK, b)
 }
@@ -204,10 +204,21 @@ func (a *api) enrichBookWants(r *http.Request, b *books.Book) {
 }
 
 // setBookCatalogue names and links the catalogue the book's metadata came from, for the
-// detail page's badge. No Hardcover slug is stored yet, so a Hardcover book links to a
-// search for its title and author.
-func setBookCatalogue(b *books.Book) {
-	if ref := books.CatalogueLink(b.OLKey, "", b.Title, b.Author); ref.URL != "" {
+// detail page's badge. A Hardcover book links straight to its hardcover.app page when
+// the slug can be had quickly (cached for a day); otherwise to a search for its title and
+// author. The page never waits long or fails because of the link.
+func (a *api) setBookCatalogue(ctx context.Context, b *books.Book) {
+	slug := ""
+	if metadata.IsHardcoverKey(b.OLKey) {
+		sctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		s, err := a.deps.Books.CatalogueSlug(sctx, b.OLKey)
+		cancel()
+		if err != nil {
+			a.deps.Log.Debug("books: no Hardcover slug — linking to a search", "key", b.OLKey, "err", err)
+		}
+		slug = s
+	}
+	if ref := books.CatalogueLink(b.OLKey, slug, b.Title, b.Author); ref.URL != "" {
 		b.Catalogue = &ref
 	}
 }
@@ -229,7 +240,7 @@ func (a *api) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.enrichBookWants(r, &b)
-	setBookCatalogue(&b)
+	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
 	a.writeJSON(w, http.StatusOK, b)
 }
