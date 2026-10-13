@@ -620,7 +620,7 @@ _Insights is a routed, phone-friendly Tautulli replacement. It has People pages,
   - **Risk:** Low.
   - **Resolves:** insights-11
 <a id="plex-20"></a>
-- [ ] **PLEX-20 · Show posters and background art: record grandparentThumb, grandparentRatingKey and art for episodes** — `P3` · `S` · Phase 17
+- [x] **PLEX-20 · Show posters and background art: record grandparentThumb, grandparentRatingKey and art for episodes** — `P3` · `S` · Phase 17
   - **Problem:** rawSession parses only `thumb` (plex/sessions.go:130), which for an episode is the landscape still, so Activity cards and Most watched TV squeeze stills into portrait slots. RecentlyAdded (client.go:152) already prefers grandparentThumb. Most watched TV uses MAX(thumb), mixing imported show posters with live episode stills. Without grandparent_rating_key, shows can't be matched reliably by later features (PLEX-12, PLEX-24).
   - **Approach:** 1. rawSession adds grandparentThumb, grandparentRatingKey, art and grandparentArt. Session gains ShowThumb, ShowRatingKey and Art.
     2. New migration (≥0090): stream_sessions ADD grandparent_thumb and grandparent_rating_key (TEXT NOT NULL DEFAULT ''), plus an index on grandparent_rating_key.
@@ -638,7 +638,7 @@ _Insights is a routed, phone-friendly Tautulli replacement. It has People pages,
   - **Risk:** Low. Old rows keep the episode still until they age out of the stats window.
   - **Resolves:** insights-10
 <a id="plex-21"></a>
-- [ ] **PLEX-21 · People page per Plex user (avatar, totals, top titles, devices, IPs, completion, stalls), with names linked everywhere** — `P2` · `M` · Phase 17
+- [x] **PLEX-21 · People page per Plex user (avatar, totals, top titles, devices, IPs, completion, stalls), with names linked everywhere** — `P2` · `M` · Phase 17
   - **Problem:** Users table rows can't be clicked (Insights.tsx:296-322), and UserEntry (stats.go:218-229) drops the thumb even though users() selects u.thumb. 'Most active users' and 'Top users' link nowhere, despite topNames' comment about drill-down links. Questions like 'what has Mum been watching' or 'which device keeps transcoding' take manual searching.
   - **Approach:** 1. New internal/insights/people.go: `Service.Person(ctx, userID string, windowDays int) (PersonProfile, error)`. PersonProfile is:
        - {ID, Username, AvatarURL, FirstSeen, LastSeen, TotalPlays, TotalSecs (watchedSum)}
@@ -670,7 +670,7 @@ _Insights is a routed, phone-friendly Tautulli replacement. It has People pages,
   - **Risk:** Low. These are read-only queries on indexed columns. Watch query cost on large histories.
   - **Resolves:** insights-10
 <a id="plex-22"></a>
-- [ ] **PLEX-22 · History upgrades: posters, user and date filters, watched/partial badge, grouped resumes, CSV export** — `P2` · `M` · Phase 17
+- [x] **PLEX-22 · History upgrades: posters, user and date filters, watched/partial badge, grouped resumes, CSV export** — `P2` · `M` · Phase 17
   - **Problem:** History never renders thumb_url or progress_pct, though both are computed (activity.go). HistoryFilter.UserID exists in the backend (repo.go:176), but api.insightsHistory (api.ts:1588) has no user parameter, and there is no date range. Each resume of the same title is a separate row, and there is no export.
   - **Approach:** 1. HistoryFilter gains From and To (epoch) and Group bool. historyWhere adds started_at bounds. handleInsightsHistory (insights.go:178) reads user, from, to and group.
     2. Grouping (group=1) is a window-function query:
@@ -699,7 +699,7 @@ _Insights is a routed, phone-friendly Tautulli replacement. It has People pages,
   - **Risk:** The window-function query must keep the paging total consistent, and its speed must be tested on a large seeded DB.
   - **Resolves:** insights-10
 <a id="plex-23"></a>
-- [ ] **PLEX-23 · Graphs: plays/hours toggle, stream type over time, and a time axis on bandwidth** — `P3` · `S` · Phase 17
+- [x] **PLEX-23 · Graphs: plays/hours toggle, stream type over time, and a time axis on bandwidth** — `P3` · `S` · Phase 17
   - **Problem:** Graphs only count plays, with no watch-time view. There is no chart of direct play vs transcode over time. The bandwidth chart passes empty x labels (Insights.tsx:612), so it has no time axis even though BWPoint.T carries the hour.
   - **Approach:** 1. Change the signature to `Service.Graphs(ctx, windowDays int, metric string)`, where metric is plays or duration. The daily, day-of-week, hour, platform and user aggregates (graphs.go:30-100, scanBuckets) use COUNT(*) or watchedSum/3600 accordingly.
     2. Add DailyDirectPlay, DailyDirectStream and DailyTranscode series aligned to Days.
@@ -717,7 +717,7 @@ _Insights is a routed, phone-friendly Tautulli replacement. It has People pages,
   - **Risk:** Low.
   - **Resolves:** insights-10
 <a id="plex-24"></a>
-- [ ] **PLEX-24 · Insights Library tab: most watched, never watched, and transcode hot spots linked to Arrmada and Convert** — `P3` · `M` · Phase 17
+- [x] **PLEX-24 · Insights Library tab: most watched, never watched, and transcode hot spots linked to Arrmada and Convert** — `P3` · `M` · Phase 17
   - **Problem:** There is no library-level view. The owner can't see what has never been watched (cleanup candidates), or which titles keep forcing transcodes, which is exactly what Convert could fix.
   - **Approach:** 1. New internal/insights/library.go: `Service.Library(ctx, windowDays int) (LibraryView, error)`.
        - (a) MostWatched: movies and shows by plays and hours, reusing topTitles with limit 25.

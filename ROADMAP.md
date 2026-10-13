@@ -1497,6 +1497,9 @@ The owner's own install doesn't need the first-run work, so it waits until the p
 
 ### Phase 17 — Backlog: Insights depth, alert extras and engine extras
 
+> **Status: shipped 2026-10-13, except CONV-29** — 13 of 14 tasks merged to main (full race suite, lint, frontend tests, typecheck, build within the size budget at 95.3/97 KB brotli, and Playwright e2e green). Built as 4 lanes. CONV-29 (keep Dolby Vision as profile 8.1) is built and tested on synthetic sources but ships OFF as a preview choice; it is not done until the owner checks it on their DV TV with a non-library sample. Fixed in passing: AI subtitles lost their two-line layout (all non-CJK languages), the one-go HDR10+ encode doubled the first frame on Matroska sources, Connections had a duplicate sidebar entry, and CI itself (gofmt, shellcheck SC2015, a 30m race timeout) had been red since Phase 3. Owner to check: the DV TV test; Tautulli-imported rows' rating keys (the importer may have read numeric keys as empty); set Settings → System → Outside address for alert links and the calendar feed. The owner tests the finished roadmap on their live instance before anything is called v1.
+
+
 **Theme:** Tautulli-depth Insights, a personal calendar feed, alert refinements, and the remaining Convert and Subtitles big bets  
 **Goal:** Finish the remaining P2/P3 depth items once the core is complete:
 - Insights becomes a fully navigable Tautulli replacement

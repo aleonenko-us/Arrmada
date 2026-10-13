@@ -855,7 +855,7 @@ _Downloads are scored on release, source, edition and fps, and weak matches are 
   - **Risk:** Detection costs one model load (a few seconds on the GPU) per untagged file before caching. Check the -dl behaviour against the pinned whisper.cpp build, and don't introduce -ml, -sow or --vad.
   - **Resolves:** subtitles-6
 <a id="sub-22"></a>
-- [ ] **SUB-22 · Upgrade loop: replace AI and weak downloads when a hash-matched subtitle appears** — `P3` · `M` · Phase 17
+- [x] **SUB-22 · Upgrade loop: replace AI and weak downloads when a hash-matched subtitle appears** — `P3` · `M` · Phase 17
   - **Problem:** With the ladder, new episodes get AI subtitles on air night, even though human hash-matched subtitles usually appear on OpenSubtitles within days. Nothing ever revisits an AI or non-hash subtitle, so the library keeps the weaker one forever.
   - **Approach:** 1) A daily scheduled task, 'subtitles-upgrade' (registered in cmd/arrmada/main.go), selects owned rows from subtitle_files:
     - source in (ai-transcribe, ai-translate), or source opensubtitles with hash_match=0;
@@ -1170,7 +1170,7 @@ Now that forced and full are separate variants (SUB-03), coverage and the ladder
   - **Risk:** Coverage semantics change, so the Default profile must reproduce today's numbers exactly before anyone edits it; add a snapshot test comparing old and new coverage on a fixture library. The migration can't read Go defaults, so handle the unset-setting case in Go.
   - **Resolves:** subtitles-2, subtitles-10
 <a id="sub-34"></a>
-- [ ] **SUB-34 · Profile editor and per-title subtitle profile selector** — `P3` · `M` · Phase 17
+- [x] **SUB-34 · Profile editor and per-title subtitle profile selector** — `P3` · `M` · Phase 17
   - **Problem:** Once profiles exist (SUB-33) there's no UI to create them, set forced/SDH preferences, or assign a profile to a movie or series. The kept-languages UI stays a flat list.
   - **Approach:** 1) Subtitles Settings tab: a profile editor listing profiles. Each row uses LanguagePicker ([SUB-31](#sub-31)), with Variant (full/forced/both), SDH (prefer/avoid/any) and an 'Only when the audio is another language' toggle. The Default profile is marked and can't be deleted. The flat kept-languages list becomes 'Default profile'.
     
@@ -1186,7 +1186,7 @@ Now that forced and full are separate variants (SUB-03), coverage and the ladder
   - **Risk:** Low. Keep the editor compact; most owners will only ever edit Default.
   - **Resolves:** subtitles-9, subtitles-2
 <a id="sub-35"></a>
-- [ ] **SUB-35 · Lay out Chinese and Japanese AI subtitles by characters, not spaces** — `P3` · `S` · Phase 17
+- [x] **SUB-35 · Lay out Chinese and Japanese AI subtitles by characters, not spaces** — `P3` · `S` · Phase 17
   - **Problem:** segmentWords starts a new word only on tokens with a leading space (words.go:90). Whisper's CJK tokens have none, so a whole Japanese or Chinese segment collapses into one 'word'. shapeWordCues then joins words with spaces (words.go:202), so AI subtitles come out as long unbroken lines with spaces inserted.
   - **Approach:** 1) words.go: add isNoSpaceScript(rune), true for Han, Hiragana and Katakana (not Hangul). In segmentWords, a token whose first rune is in a no-space script starts its own word.
     

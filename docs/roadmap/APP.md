@@ -807,7 +807,7 @@ _The calendar reads well on a phone as an agenda. Busy days expand, items open t
   - **Risk:** Low. 'Followed' means request_subscribers today. If REQ adds a separate follow model, extend MediaKeysForUser.
   - **Resolves:** discover-11, product-15
 <a id="app-18"></a>
-- [ ] **APP-18 · Personal iCal feed for the Calendar (token-scoped, rotatable)** — `P3` · `M` · Phase 17
+- [x] **APP-18 · Personal iCal feed for the Calendar (token-scoped, rotatable)** — `P3` · `M` · Phase 17
   - **Problem:** There is no iCal output anywhere (no .ics or text/calendar), so nobody can see upcoming episodes and releases in Google or Apple Calendar the way Sonarr and Radarr allow.
   - **Approach:** 1. Migration `internal/store/migrations/NNNN_calendar_feeds.sql` (next free number): `calendar_feeds(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)`.
     2. POST /api/v1/me/calendar-feed creates or rotates the token: 32 random bytes, base64url. It stores only the sha256 hex and returns the plaintext URL once. DELETE revokes it. Both sit under the already-allowed /api/v1/me/ prefix.

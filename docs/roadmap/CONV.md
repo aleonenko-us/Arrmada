@@ -625,7 +625,7 @@ _Convert publishes lifecycle events for notifications and Plex. Up next and the 
   - **Risk:** Estimates for HDR10+ and AV1 vary a lot, so show '~' and round generously. Backlog summing must reuse the cached candidates, never re-probe.
   - **Resolves:** convert-7
 <a id="conv-23"></a>
-- [ ] **CONV-23 · Convert polish: scan time setting, one-call group retry, honest 'done' state** — `P3` · `S` · Phase 17
+- [x] **CONV-23 · Convert polish: scan time setting, one-call group retry, honest 'done' state** — `P3` · `S` · Phase 17
   - **Problem:** scan_at exists in the API (settings.go:35, 88) but is missing from SETTING_KEYS and the form (Convert.tsx:902), while index.go:296 points users to 'Settings → Convert'. 'Try these again' for a group sends one request per item in sequence (Convert.tsx:762). The 'done' status says 'Everything's converted' even when skipped or blocklisted files remain, because Remaining excludes waiting and blocked keys (runner.go:377, 398-399). The freed/held split is handled in CONV-09.
   - **Approach:** - Add 'scan_at' to SETTING_KEYS and an Advanced field 'Daily library scan at' (time input). Fix the index.go:296 hint to 'Convert → Settings → Advanced'.
     - skipStore.clearKind(ctx, kind), plus POST /api/v1/convert/skips/clear?kind= (the existing handler accepts kind). Problems 'Try these again' makes one call.

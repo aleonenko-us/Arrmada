@@ -691,7 +691,7 @@ _Non-technical setup through Discord/Telegram/ntfy/Pushover/email presets with m
   - **Risk:** Apprise URL formats per service must match the bundled Apprise version, so verify each preset with a real Test. Masking must cover every response path (list, get, create echo).
   - **Resolves:** insights-7, product-8
 <a id="obs-17"></a>
-- [ ] **OBS-17 · Stream alert filters (users, remote only, transcode only), autoplay suppression and a buffering cooldown** — `P2` · `S` · Phase 17
+- [x] **OBS-17 · Stream alert filters (users, remote only, transcode only), autoplay suppression and a buffering cooldown** — `P2` · `S` · Phase 17
   - **Problem:** plex.stream.started fires for every autoplayed episode, because the rating_key split at poller.go:110 starts a new session. plex.buffering fires for every counted stall. There are no filters or cooldown, so a binge-watcher produces one ping per episode. publish() (poller.go:216-228) sends only user, title, player, platform and decision, so filters can't key on user id or LAN/WAN.
   - **Approach:** 1. insights publish() payload adds:
        - user_id
@@ -740,7 +740,7 @@ _Non-technical setup through Discord/Telegram/ntfy/Pushover/email presets with m
   - **Risk:** Low. Persist last_sent_date so restarts don't spam. Never run real conversions against the owner's library to test this: use fake events.
   - **Resolves:** convert-11
 <a id="obs-19"></a>
-- [ ] **OBS-19 · Alert templates with an attached poster and a deep link back to the app** — `P3` · `M` · Phase 17
+- [x] **OBS-19 · Alert templates with an attached poster and a deep link back to the app** — `P3` · `M` · Phase 17
   - **Problem:** Messages are fixed emoji strings (notify.go:166-193) with no poster and no link back to the item in Arrmada. There's no setting for the app's public URL, so links can't be built at all.
   - **Approach:** 1. New setting `app_public_url` (Settings → System → General, for example https://arrmada.example.lan), validated as an http(s) URL. CFG may move it later.
     2. Each EventDef gets a default template with the placeholders {title} {user} {year} {media} {link}. An optional per-connection override per event key lives in notifications.config.templates, edited in a collapsible 'Customise message' section.
@@ -757,7 +757,7 @@ _Non-technical setup through Discord/Telegram/ntfy/Pushover/email presets with m
   - **Risk:** Temp files must be removed after the final attempt, not after the first. TMDB poster URLs are public, but the Plex token must never appear in an attach URL; fetch server-side.
   - **Resolves:** insights-7
 <a id="obs-20"></a>
-- [ ] **OBS-20 · Recent jobs list on the Tasks page (after BE's job runner)** — `P3` · `S` · Phase 17
+- [x] **OBS-20 · Recent jobs list on the Tasks page (after BE's job runner)** — `P3` · `S` · Phase 17
   - **Problem:** 'Search now' and other HTTP-triggered work runs in untracked goroutines that report only to the log (handleSearchMovie returns 202 'searching'). Once BE adds a job runner with a jobs table, the owner still needs to see recent jobs next to the scheduled tasks.
   - **Approach:** 1. `GET /api/v1/system/jobs?limit=50` (RoleManager) returns BE's jobs rows: kind in words, a linked target (movie, series or book), trigger (who, or which task), status, duration and error.
     2. TasksTable.tsx gets a 'Recent jobs' section below the tasks, in the same row style, with a link to the target.
