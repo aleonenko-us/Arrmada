@@ -102,7 +102,7 @@ func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability,
 	// Offenders — only groups that actually buffered, worst first.
 	titleExpr := `CASE WHEN media_type='episode' AND grandparent_title<>'' THEN grandparent_title ELSE title END`
 	// People are grouped by account id (a renamed account stays one row), named by their
-	// latest username, and carry the id so the board links to their People page.
+	// username, and carry the id so the board links to their People page.
 	if out.ByUser, err = s.bufferGroups(ctx, "user_id", "user_name", since); err != nil {
 		return Reliability{}, err
 	}
