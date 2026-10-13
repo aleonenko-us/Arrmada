@@ -173,9 +173,12 @@ function AppsView() {
   const { external, booksEnabled } = useMe();
   const [data, setData] = useState<MyAudio | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // While the listening setup shows its password step, the e-reader box points there
-  // rather than showing the same form twice.
-  const [setupAsks, setSetupAsks] = useState(false);
+  // The app picked in the listening setup lives here, not in AppSetup: while the setup
+  // shows its password step, the e-reader box points there rather than showing the same
+  // form twice, and deciding both in one render means the two forms are never on screen
+  // together (an effect syncing it up afterwards left both for a frame).
+  const [pick, setPick] = useState<AudioApp["id"] | null>(null);
+  const setupAsks = pick !== null && pick !== "web";
   const load = () => api.myAudio().then(setData).catch((e) => setError((e as Error).message));
   useEffect(() => { load(); }, []);
   if (!data) return <Loading error={error} />;
@@ -187,7 +190,7 @@ function AppsView() {
   }
   return (
     <div className="flex max-w-form flex-col gap-4">
-      <AppSetup data={data} external={external} onData={setData} onPasswordStep={setSetupAsks} />
+      <AppSetup data={data} external={external} onData={setData} pick={pick} onPick={setPick} />
       {data.devices.length > 0 && <DevicesCard data={data} onChange={load} />}
       {booksEnabled && (
         <Suspense fallback={null}>
@@ -207,21 +210,20 @@ function AppsView() {
 // phone — only apps actually tried with Arrmada are called working), then for an app set
 // the audiobook password, type in the exact fields, and wait for the phone to sign in,
 // which ticks green on its own.
-function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; external: boolean; onData: (d: MyAudio) => void; onPasswordStep: (shown: boolean) => void }) {
+function AppSetup({ data, external, onData, pick, onPick }: {
+  data: MyAudio; external: boolean; onData: (d: MyAudio) => void; pick: AudioApp["id"] | null; onPick: (id: AudioApp["id"] | null) => void;
+}) {
   const [platform, setPlatform] = useState<DevicePlatform>(() => {
     try { return devicePlatform(navigator.userAgent, navigator.maxTouchPoints > 1); } catch { return "other"; }
   });
   const apps = appsFor(platform);
-  const [pick, setPick] = useState<AudioApp["id"] | null>(null);
   const chosen = apps.find((a) => a.id === pick) ?? null;
-  const asksPassword = !!chosen && chosen.id !== "web";
-  useEffect(() => { onPasswordStep(asksPassword); }, [asksPassword, onPasswordStep]);
   const servers = addresses(data, external);
   return (
     <Card title="Set up listening" note="Your place is kept in Arrmada, so you can switch between this page and an app any time.">
       <div role="radiogroup" aria-label="Your device" className="mb-3 flex flex-wrap gap-1.5">
         {([["ios", "iPhone or iPad"], ["android", "Android"], ["other", "Computer"]] as const).map(([k, label]) => (
-          <button key={k} role="radio" aria-checked={platform === k} onClick={() => { setPlatform(k); setPick(null); }}
+          <button key={k} role="radio" aria-checked={platform === k} onClick={() => { setPlatform(k); onPick(null); }}
             className="rounded-full px-3 py-1 text-sm font-semibold"
             style={platform === k ? { background: "var(--accent-soft)", color: "var(--accent-text)", border: "1px solid var(--accent-line)" } : ghost}>
             {label}
@@ -232,7 +234,7 @@ function AppSetup({ data, external, onData, onPasswordStep }: { data: MyAudio; e
         <Step n={1} title="Pick how you'll listen" done={!!chosen}>
           <div role="radiogroup" aria-label="How you'll listen" className="flex flex-col gap-1.5">
             {apps.map((a, i) => (
-              <button key={a.id} role="radio" aria-checked={pick === a.id} onClick={() => setPick(a.id)}
+              <button key={a.id} role="radio" aria-checked={pick === a.id} onClick={() => onPick(a.id)}
                 className="flex items-start justify-between gap-3 rounded-lg px-3 py-2 text-left"
                 style={pick === a.id ? { background: "var(--accent-soft)", border: "1px solid var(--accent-line)" } : { background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>
                 <span className="min-w-0">
