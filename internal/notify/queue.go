@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/safego"
+	"github.com/tristenlammi/arrmada/internal/store"
 )
 
 // The delivery queue. Dispatch writes one notification_deliveries row per subscribed,
@@ -61,20 +62,71 @@ func (s *Service) Dispatch(ctx context.Context, key string, m Message) (int, err
 // connection hears once. Use a key that names the occurrence, e.g.
 // "request.created:42" or "health.problem:qbittorrent:<first_seen>". "" means no dedupe.
 func (s *Service) DispatchOnce(ctx context.Context, key, dedupe string, m Message) (int, error) {
-	res, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO notification_deliveries (connection_id, event_key, title, body, link, dedupe_key, created_at, next_attempt_at)
-		 SELECT n.id, ?, ?, ?, ?, ?, ?, 0 FROM notifications n
-		 JOIN notification_subscriptions sub ON sub.connection_id = n.id AND sub.event_key = ?
-		 WHERE n.enabled != 0`,
-		key, m.Title, m.Body, m.Link, dedupe, s.now().Unix(), key)
+	return s.dispatch(ctx, key, dedupe, m, nil)
+}
+
+// target is one connection an event may be queued for.
+type target struct {
+	id   int64
+	opts Options
+}
+
+// dispatch queues m for every enabled connection subscribed to key that also wants it:
+// data is the event's payload (nil when the producer passed a ready message), which the
+// Plex stream filters and the autoplay and buffering memory read (filters.go).
+func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, data map[string]any) (int, error) {
+	now := s.now()
+	queued := 0
+	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		queued = 0
+		rows, err := tx.QueryContext(ctx,
+			`SELECT n.id, n.options FROM notifications n
+			 JOIN notification_subscriptions sub ON sub.connection_id = n.id AND sub.event_key = ?
+			 WHERE n.enabled != 0 ORDER BY n.id`, key)
+		if err != nil {
+			return err
+		}
+		var targets []target
+		for rows.Next() {
+			var (
+				t    target
+				opts string
+			)
+			if err := rows.Scan(&t.id, &opts); err != nil {
+				rows.Close()
+				return err
+			}
+			t.opts = ParseOptions(opts)
+			targets = append(targets, t)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, t := range targets {
+			if !streamAllowed(t.opts, key, data) || !s.streams.allow(t.id, key, data, now) {
+				continue
+			}
+			res, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO notification_deliveries (connection_id, event_key, title, body, link, dedupe_key, created_at, next_attempt_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+				t.id, key, m.Title, m.Body, m.Link, dedupe, now.Unix())
+			if err != nil {
+				return err
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				queued++
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
-	if n > 0 {
+	if queued > 0 {
 		s.Wake()
 	}
-	return int(n), nil
+	return queued, nil
 }
 
 // Wake nudges the worker to look for due rows now. It never blocks.

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Section, input, inputStyle } from "../../components/settings/ui";
-import { api, type AlertCatalog, type AlertEvent, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
+import { api, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { alertsApi } from "../../lib/alertsApi";
+import { insightsApi } from "../../lib/insightsApi";
 import { ago, until } from "../../lib/taskTime";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery, invalidate } from "../../lib/query";
@@ -190,11 +191,12 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
   const set = (patch: Partial<NotificationConn>) => setC((p) => ({ ...p, ...patch }));
   const dirty = JSON.stringify(values) !== JSON.stringify(start);
   // Anything typed or changed on the card and not yet saved (or a new card not yet added).
-  const edited = dirty || url.trim() !== "" || c.name !== conn.name || c.enabled !== conn.enabled || JSON.stringify(c.events) !== JSON.stringify(conn.events);
+  const edited = dirty || url.trim() !== "" || c.name !== conn.name || c.enabled !== conn.enabled || JSON.stringify(c.events) !== JSON.stringify(conn.events)
+    || JSON.stringify(c.options ?? {}) !== JSON.stringify(conn.options ?? {});
   useUnsavedGuard(edited && !readOnly);
   const savedSecret = (name: string) => !isNew && conn.fields?.[`${name}_set`] === true;
   const body = (): NotificationInput => ({
-    name: c.name, kind: c.kind, enabled: c.enabled, events: c.events,
+    name: c.name, kind: c.kind, enabled: c.enabled, events: c.events, options: c.options ?? {},
     ...(fieldMode ? { fields: values } : url.trim() ? { url: url.trim() } : {}),
   });
   // What's still missing before the form can be saved: a required field that's empty
@@ -284,6 +286,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
         <p className="mt-1 text-xs" style={{ color: "var(--avoid)" }}>The saved link no longer passes the check ({conn.invalid_reason}). It still sends; enter a corrected link to edit this connection’s link.</p>
       )}
       <EventPicker catalog={catalog} value={c.events} readOnly={readOnly} onChange={(events) => set({ events })} />
+      {c.events.some((e) => STREAM_EVENTS.has(e)) && (
+        <StreamFilters value={c.options ?? {}} readOnly={readOnly} onChange={(options) => set({ options })} />
+      )}
       {!isNew && c.id ? <DeliveryLog id={c.id} catalog={catalog} /> : null}
       {!readOnly && (
         <div className="mt-3 flex items-center gap-2">
@@ -439,6 +444,72 @@ function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
         </div>
       )}
     </div>
+  );
+}
+
+// The Plex events the stream filters apply to.
+const STREAM_EVENTS = new Set(["plex.stream.started", "plex.buffering"]);
+
+// StreamFilters narrows a connection's Plex stream alerts: whose streams, and only remote
+// ones or only transcodes. The people are the Plex users Insights has seen; ticking none
+// means everyone. (A binge of autoplayed episodes is one alert, and a stalling stream one
+// buffering alert per quarter hour, whatever is set here.)
+function StreamFilters({ value, readOnly, onChange }: { value: AlertOptions; readOnly?: boolean; onChange: (o: AlertOptions) => void }) {
+  const { data: users, error } = useQuery("insights:users", insightsApi.insightsUsers, { staleMs: 5 * 60_000 });
+  const picked = new Set(value.stream_users ?? []);
+  const setUsers = (ids: string[]) => onChange({ ...value, stream_users: ids.length ? ids : undefined });
+  const toggle = (id: string, on: boolean) => {
+    const next = new Set(picked);
+    if (on) next.add(id); else next.delete(id);
+    setUsers([...next]);
+  };
+  // A saved id Insights no longer lists (its history was cleared) still shows, so it can be unticked.
+  const known = new Set((users ?? []).map((u) => u.id));
+  const gone = [...picked].filter((id) => !known.has(id));
+  return (
+    <fieldset className="mt-3 min-w-0 rounded-lg p-3" style={{ border: "1px solid var(--line-soft)" }}>
+      <legend className="px-1 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Plex stream alerts</legend>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={!!value.remote_only} disabled={readOnly} onChange={(e) => onChange({ ...value, remote_only: e.target.checked || undefined })} />
+          Only remote streams
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={!!value.transcode_only} disabled={readOnly} onChange={(e) => onChange({ ...value, transcode_only: e.target.checked || undefined })} />
+          Only transcodes
+        </label>
+      </div>
+      <div className="mt-2.5">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-xs text-ink-faint">{picked.size === 0 ? "Everyone’s streams — tick people to hear about only theirs." : `Only ${picked.size === 1 ? "this person’s" : "these people’s"} streams:`}</span>
+          {!readOnly && picked.size > 0 && (
+            <button type="button" onClick={() => setUsers([])} className="text-xs" style={{ color: "var(--accent)" }}>Everyone</button>
+          )}
+        </div>
+        {error && !users ? (
+          <p className="text-xs" style={{ color: "var(--reject)" }}>Couldn’t load the Plex users — {error.message}</p>
+        ) : !users ? (
+          <p className="text-xs text-ink-faint">Loading…</p>
+        ) : users.length === 0 && gone.length === 0 ? (
+          <p className="text-xs text-ink-faint">No Plex users yet — they appear once Insights has seen someone watch.</p>
+        ) : (
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {users.map((u) => (
+              <label key={u.id} className="flex cursor-pointer items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={picked.has(u.id)} disabled={readOnly} onChange={(e) => toggle(u.id, e.target.checked)} />
+                {u.username || u.id}
+              </label>
+            ))}
+            {gone.map((id) => (
+              <label key={id} className="flex cursor-pointer items-center gap-1.5 text-sm text-ink-dim">
+                <input type="checkbox" checked disabled={readOnly} onChange={() => toggle(id, false)} />
+                Plex user {id}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </fieldset>
   );
 }
 

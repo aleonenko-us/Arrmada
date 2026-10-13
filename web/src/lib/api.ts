@@ -684,6 +684,16 @@ export interface NotificationConn {
   last_status?: "" | "sent" | "failed" | "retrying";
   last_error?: string;
   last_sent_at?: number;
+  /** The admin's message choices: whose Plex streams, remote or transcodes only. */
+  options?: AlertOptions;
+}
+
+/** A connection's message choices (none of them secret). */
+export interface AlertOptions {
+  /** Plex user ids whose streams alert; empty or absent = everyone. */
+  stream_users?: string[];
+  remote_only?: boolean;
+  transcode_only?: boolean;
 }
 
 // One row of a connection's delivery log.
@@ -696,6 +706,8 @@ export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events
   fields?: Record<string, string>;
   /** On a Test of an unsaved edit: the saved connection whose secrets fill the blanks. */
   id?: number;
+  /** Left out keeps the saved choices. */
+  options?: AlertOptions;
 };
 
 /** One input on an alert preset's form. options = a choice, the first being the default. */
