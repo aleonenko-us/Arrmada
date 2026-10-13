@@ -191,10 +191,13 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 	if !on {
 		return // fail-over off for this grab
 	}
+	item, found := findQueued(queue, g)
+	// Recorded before the age gate, so a grab's evidence is already being watched by the
+	// time it is old enough to judge.
+	settled := c.stallEvidenceHeld(g.ID, stallEvidenceOf(item, found))
 	if time.Since(parseTime(g.GrabbedAt)) < window {
 		return
 	}
-	item, found := findQueued(queue, g)
 	if found && tick != nil && tick.held[strings.ToLower(item.Hash)] {
 		// The disk guard paused it and will resume it once there's room. Usually that
 		// already reads as "paused" below; checked by hash too so a torrent the guard
@@ -203,6 +206,11 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 		return
 	}
 	if !c.stalledInQueue(ctx, g, item, found, window) {
+		return
+	}
+	// Gone or errored is a verdict on sight, but only acted on once it has held for the
+	// grace: one read of a client that is still starting up proves nothing (stallevidence.go).
+	if ev := stallEvidenceOf(item, found); ev != "" && !settled {
 		return
 	}
 	// The last attempt found nothing to replace it with. Try again a window later, not

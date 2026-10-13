@@ -126,6 +126,14 @@ question). If the previous build can't restore a backup itself, the script chang
 and prints the steps to do it by hand. `ARRMADA_ALLOW_NEWER_SCHEMA=1` in `.env` starts an
 older build on a newer database anyway; it's a last resort.
 
+The first rollback after updating an install from before this tooling is the exception: that
+build has no such check (it starts on an upgraded database) and can't restore a backup, and
+the update couldn't take a pre-update backup with it. `--rollback` warns about this before it
+changes anything. Put the database back by hand first: stop the app
+(`docker compose stop arrmada-app`), copy the newest `<data>/backups/arrmada-pre-migrate-*.db`
+(taken by the new build just before it upgraded the tables) over `<data>/arrmada.db`, delete
+`arrmada.db-wal` and `arrmada.db-shm` next to it, then run `./update.sh --rollback`.
+
 ### Updating from a published image
 
 By default `update.sh` compiles the app on your server, which takes a long time (the

@@ -264,6 +264,25 @@ rollback() {
     fi
   fi
 
+  # A build from before this script could ask it about the database (no org.arrmada.cli
+  # label: every build before the backup/rollback tooling) starts on whatever database it
+  # finds. It has no newer-schema check, so on a database the update upgraded it runs old
+  # code against tables it doesn't know. Say so before anything changes: the database has
+  # to be put back by hand, since such a build can't restore one either.
+  _legacy=""
+  if [ -z "$_backup" ] && [ "$(image_label arrmada:previous org.arrmada.cli)" != "1" ]; then
+    _legacy=1
+    say "! The previous build${_prev_commit:+ (commit $_prev_commit)} is older than update.sh's database checks: it starts"
+    say "  on the database as it is now, even if the update upgraded it, and can damage an upgraded one."
+    say "  If the update upgraded the database (<data>/backups has an arrmada-pre-migrate-* copy from it)"
+    say "  and you haven't put that copy back yet, answer no and do this instead:"
+    manual_db_steps "arrmada-pre-migrate-<the newest one>.db"
+    if ! confirm "Start the previous build on the database as it is now?"; then
+      say "Nothing was changed."
+      exit 0
+    fi
+  fi
+
   say "Rolling back to the build that ran before the last update…"
   # Tagged first, so the build being left can never be deleted as untagged meanwhile.
   if [ -n "$_cur" ]; then
@@ -321,6 +340,11 @@ rollback() {
   say "✓ Rolled back. Arrmada is running commit ${_commit:-unknown} again."
   if [ -n "$_backup" ]; then
     say "  The database is back to $_backup; everything recorded after it is gone."
+  elif [ -n "$_legacy" ]; then
+    # --rollback --with-db and System → Backups can't help a build this old (see above).
+    say "  If the update upgraded the database and you haven't put it back yet: docker compose stop arrmada-app,"
+    say "  copy <data>/backups/arrmada-pre-migrate-<the newest one>.db over <data>/arrmada.db, delete"
+    say "  arrmada.db-wal and arrmada.db-shm, then docker compose up -d --no-build --no-deps arrmada-app."
   elif [ -z "$_schema_ok" ]; then
     say "  If this update ran a database migration, also restore the pre-update backup"
     say "  (./update.sh --rollback --with-db, or System → Backups)."
