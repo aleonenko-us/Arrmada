@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTabParam } from "../lib/useTabParam";
+import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { useSearchParamState } from "../lib/useSearchState";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
@@ -775,9 +776,12 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
   const [s, setS] = useState<ClientSettings | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the client last said (or was last saved as), to tell an unsaved edit.
+  const [stored, setStored] = useState("");
+  useUnsavedGuard(!!s && JSON.stringify(s) !== stored);
 
   useEffect(() => {
-    api.clientSettings(clientId).then(setS).catch((e: Error) => setError(e.message));
+    api.clientSettings(clientId).then((v) => { setS(v); setStored(JSON.stringify(v)); }).catch((e: Error) => setError(e.message));
   }, [clientId]);
 
   const patch = (p: Partial<ClientSettings>) => setS((x) => (x ? { ...x, ...p } : x));
@@ -786,6 +790,7 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
     setError(null);
     try {
       await api.setClientSettings(clientId, s);
+      setStored(JSON.stringify(s));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError((e as Error).message); }

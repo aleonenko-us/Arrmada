@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Field, Note, Section, input, inputStyle, useScrollWhenLoaded } from "../../components/settings/ui";
 import { DEFAULT_PORT, mailApi, type MailSecurity, type SMTPView } from "../../lib/mailApi";
 import { useQuery, setQueryData } from "../../lib/query";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { Button, useConfirm, useToast } from "../../ui";
 
 // Settings → Alerts → Outgoing email: the mail account Arrmada sends from (Send to Kindle
@@ -53,6 +54,10 @@ function MailForm({ view }: { view: SMTPView }) {
 
   // A reload (another tab saved) brings the plain fields along; credentials stay blank.
   useEffect(() => { setSecurity(view.security); setPort(String(view.port || DEFAULT_PORT[view.security])); setFrom(view.from); }, [view.security, view.port, view.from]);
+
+  const dirty = host.trim() !== "" || username.trim() !== "" || password !== "" || security !== view.security
+    || Number(port) !== (view.port || DEFAULT_PORT[view.security]) || from !== view.from;
+  useUnsavedGuard(dirty);
 
   const pickSecurity = (s: MailSecurity) => {
     // Moving between the usual ports follows the choice; a custom port is left alone.

@@ -138,4 +138,16 @@ describe("Modal", () => {
     fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("can be a non-dismissible alertdialog that covers the page", () => {
+    const onClose = vi.fn();
+    render(<Modal onClose={onClose} dismissible={false} role="alertdialog" ariaLabel="Restarting" backdrop="var(--bg)"><p>Restarting…</p></Modal>);
+    expect(screen.getByRole("alertdialog", { name: "Restarting" })).toBeTruthy();
+    const backdrop = screen.getByRole("presentation");
+    expect(backdrop.style.background).toBe("var(--bg)");
+    esc();
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

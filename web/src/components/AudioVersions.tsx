@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { api, type AudioVersion, type Book } from "../lib/api";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { formatBytes } from "../lib/format";
+import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { Button, ConfirmDialog, IconButton, Modal, useToast } from "../ui";
 import { BookReleaseModal } from "./BookReleaseModal";
 
@@ -57,6 +58,8 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
   const [narrator, setNarrator] = useState(existing?.narrator ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useUnsavedGuard(label !== (existing?.label ?? "") || terms !== (existing?.terms ?? []).join(", ")
+    || monitored !== (existing?.monitored ?? true) || narrator !== (existing?.narrator ?? ""));
 
   const save = async () => {
     setBusy(true); setError(null);

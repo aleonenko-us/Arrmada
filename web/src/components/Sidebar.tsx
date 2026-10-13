@@ -8,6 +8,7 @@ import { FleetMark } from "./FleetMark";
 import { Icon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
+import { Scrim } from "../ui/Scrim";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
 
@@ -108,7 +109,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
   return (
     <>
       {/* Dim + click-to-close backdrop, only while the drawer is open on narrow windows. */}
-      {open && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={dismiss} />}
+      {open && <Scrim onClose={dismiss} className="z-40 lg:hidden" />}
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[236px] flex-none transform flex-col overflow-y-auto bg-sidebar transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${
