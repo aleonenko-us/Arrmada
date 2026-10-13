@@ -60,7 +60,33 @@ jobs:
         # once per test binary (internal/store/testtemplate.go); before that, migrating
         # every store under -race put internal/httpapi past an hour on these runners. Now
         # the slowest package takes minutes; the limit is per package, not per test.
-        run: go test -race -timeout 60m ./...
+        # -json so the failures can be turned into annotations below: they show on the
+        # run's page and in the API without signing in, where the job log needs a login.
+        run: |
+          set +e
+          go test -race -timeout 60m -json ./... > go-test.json
+          status=$?
+          # The plain test output, as before.
+          jq -rj 'select(.Action=="output") | .Output' go-test.json
+          # One annotation per failing test, with its output (capped), one per package
+          # that failed outside a test (a panic or timeout), and one per build failure.
+          jq -rs '
+            def esc: gsub("%";"%25") | gsub("\r";"") | gsub("\n";"%0A");
+            def tesc: esc | gsub(":";"%3A") | gsub(",";"%2C");
+            ([.[] | select(.Test != null)] | group_by(.Package + " " + .Test)
+              | map(select(any(.[]; .Action == "fail")))
+              | .[] | "::error title=" + ("FAIL " + .[0].Package + " " + .[0].Test | tesc) + "::"
+                + ([.[] | select(.Action == "output") | .Output] | join("") | .[-3000:] | esc)),
+            ([.[] | select(.Test == null)] | group_by(.Package)
+              | map(select(any(.[]; .Action == "fail")))
+              | .[] | "::error title=" + ("FAIL package " + .[0].Package | tesc) + "::"
+                + ([.[] | select(.Action == "output") | .Output] | join("") | .[-3000:] | esc)),
+            ([.[] | select(.ImportPath != null)] | group_by(.ImportPath)
+              | map(select(any(.[]; .Action == "build-fail")))
+              | .[] | "::error title=" + ("BUILD FAIL " + .[0].ImportPath | tesc) + "::"
+                + ([.[] | select(.Action == "build-output") | .Output] | join("") | .[-3000:] | esc))
+          ' go-test.json
+          exit $status
 
   scripts:
     name: Shell scripts (shellcheck)

@@ -28,7 +28,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  // On CI the "github" reporter turns each failure into an annotation on the run, which
+  // can be read without signing in (the job log can't).
+  reporter: process.env.CI ? [["list"], ["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
     // The app registers /sw.js; a service worker would answer fetches itself and
