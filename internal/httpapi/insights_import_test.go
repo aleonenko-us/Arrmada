@@ -65,7 +65,7 @@ func waitJob(t *testing.T, r *jobs.Runner, rec *http.Response, body []byte) jobs
 	if err := json.Unmarshal(body, &ans); err != nil || ans.JobID == 0 {
 		t.Fatalf("HTTP %d %s: no job id", rec.StatusCode, body)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // a ceiling, not a speed check: CI's runners under -race are slow
 	defer cancel()
 	if err := r.Wait(ctx, ans.JobID); err != nil {
 		t.Fatal(err)

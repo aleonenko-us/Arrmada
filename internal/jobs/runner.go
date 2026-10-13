@@ -308,8 +308,10 @@ func (r *Runner) run(e *entry) {
 	}
 	defer func() { <-sem }()
 	// A slot that freed up at the moment the job was cancelled (a shutdown stops the
-	// running job and wakes this one) is not a reason to start it.
-	if e.ctx.Err() != nil {
+	// running job and wakes this one) is not a reason to start it. Check the root too: a
+	// shutdown cancels the root first and each job's context after it, one by one, so the
+	// job that freed the slot can be cancelled while this one's context isn't yet.
+	if e.ctx.Err() != nil || r.root.Err() != nil {
 		abandon()
 		return
 	}

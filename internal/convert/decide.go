@@ -354,6 +354,9 @@ func codecClass(c string) string {
 // isHDR reports whether a probed HDR label means the file carries HDR metadata.
 func isHDR(hdr string) bool { return hdr != "" && hdr != "SDR" }
 
+// numCPU is the machine's core count; tests pin it so estimates don't depend on the runner.
+var numCPU = runtime.NumCPU
+
 // cpuCores is how many cores a CPU encode may use. Default is half the machine: encoding a
 // library takes a long time on a server that is also doing other things, so taking the
 // whole box is never the right default. Combined with the lowest scheduling priority, a CPU
@@ -361,12 +364,12 @@ func isHDR(hdr string) bool { return hdr != "" && hdr != "SDR" }
 func (s *Service) cpuCores(ctx context.Context) int {
 	n, _ := strconv.Atoi(s.settings.Get(ctx, keyCPUCores, "0"))
 	if n <= 0 {
-		n = runtime.NumCPU() / 2
+		n = numCPU() / 2
 	}
 	if n < 1 {
 		n = 1
 	}
-	if max := runtime.NumCPU(); n > max {
+	if max := numCPU(); n > max {
 		n = max
 	}
 	return n

@@ -11,6 +11,11 @@ import (
 // With no history the estimate starts from the measured default (3.8 fps for 4K x265 on 16
 // cores); once three conversions of the kind have run it's their median instead.
 func TestThroughputDefaultsThenMedian(t *testing.T) {
+	// A 16-core setting is capped at the machine's cores; pin a big machine so a 4-core CI
+	// runner doesn't turn "16" into 4.
+	orig := numCPU
+	numCPU = func() int { return 32 }
+	t.Cleanup(func() { numCPU = orig })
 	s := newTestService(t)
 	ctx := context.Background()
 	set(t, s, map[string]string{keyCPUCores: "16"})

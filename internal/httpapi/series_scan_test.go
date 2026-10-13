@@ -92,7 +92,7 @@ func TestScanPublishesProgressAndResult(t *testing.T) {
 		JobID int64 `json:"job_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &started)
-	ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, stop := context.WithTimeout(context.Background(), 60*time.Second) // a ceiling, not a speed check: CI's runners under -race are slow
 	defer stop()
 	if err := runner.Wait(ctx, started.JobID); err != nil {
 		t.Fatalf("scan job never finished: %v", err)

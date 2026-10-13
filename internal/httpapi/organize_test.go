@@ -155,7 +155,7 @@ func TestOrganizeApplySkipsConflictsAndStaleToken(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &started); err != nil || started.JobID == 0 {
 		t.Fatalf("apply reply %s: %v", rec.Body, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // a ceiling, not a speed check: CI's runners under -race are slow
 	defer cancel()
 	if err := s.runner.Wait(ctx, started.JobID); err != nil {
 		t.Fatal(err)
