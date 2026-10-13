@@ -1,4 +1,4 @@
-import { useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { HistoryEntry, UserEntry } from "../../lib/api";
 import { insightsApi } from "../../lib/insightsApi";
 import { useSearchParamState } from "../../lib/useSearchState";
@@ -77,8 +77,17 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
   const bounds = useMemo(() => rangeBounds(range, fromDay, toDay), [range, fromDay, toDay]);
   const filters = useMemo(() => ({ type, decision, q, user, group, from: bounds.from, to: bounds.to }), [type, decision, q, user, group, bounds]);
 
-  // Changing a filter starts again at page 1.
-  const refilter = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage("1"); };
+  // Changing a filter starts again at page 1. It runs after the filter's own address write
+  // has landed: two writes in one click would each start from the same address, and the
+  // second would undo the first. A deep link's page survives the first render.
+  const filtersKey = JSON.stringify(filters);
+  const lastFilters = useRef(filtersKey);
+  useEffect(() => {
+    if (lastFilters.current === filtersKey) return;
+    lastFilters.current = filtersKey;
+    if (page !== 1) setPage("1");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
 
   // History is read from the database, not from Plex, so a Tautulli import is listed even
   // before a server is connected.
@@ -107,13 +116,13 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
     <div className="flex flex-col gap-3">
       {!connected && (total > 0 || !unfiltered) && <ImportedNotice />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => refilter(setType)(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => refilter(setDecision)(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <FilterGroup label="When">{RANGES.map((r) => <Chip key={r} active={range === r} onClick={() => refilter(setRange)(r)}>{RANGE_LABEL[r]}</Chip>)}</FilterGroup>
+        <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => setType(f.key)}>{f.label}</Chip>)}</FilterGroup>
+        <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => setDecision(f.key)}>{f.label}</Chip>)}</FilterGroup>
+        <FilterGroup label="When">{RANGES.map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{RANGE_LABEL[r]}</Chip>)}</FilterGroup>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Person" className="min-w-[160px]">
-          <Select value={user} onChange={(e) => refilter(setUser)(e.target.value)} className="px-3 py-1.5 text-sm">
+          <Select value={user} onChange={(e) => setUser(e.target.value)} className="px-3 py-1.5 text-sm">
             <option value="">Everyone</option>
             {people.map((p) => <option key={p.id} value={p.id}>{p.username || p.id}</option>)}
             {user && !people.some((p) => p.id === user) && <option value={user}>{user}</option>}
@@ -121,21 +130,22 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
         </Field>
         {range === "custom" && (
           <>
-            <Field label="From"><Input type="date" value={fromDay} max={toDay || undefined} onChange={(e) => refilter(setFromDay)(e.target.value)} className="px-3 py-1.5 text-sm" /></Field>
-            <Field label="To"><Input type="date" value={toDay} min={fromDay || undefined} onChange={(e) => refilter(setToDay)(e.target.value)} className="px-3 py-1.5 text-sm" /></Field>
+            <Field label="From"><Input type="date" value={fromDay} max={toDay || undefined} onChange={(e) => setFromDay(e.target.value)} className="px-3 py-1.5 text-sm" /></Field>
+            <Field label="To"><Input type="date" value={toDay} min={fromDay || undefined} onChange={(e) => setToDay(e.target.value)} className="px-3 py-1.5 text-sm" /></Field>
           </>
         )}
         <Field label="Search" className="min-w-[200px] flex-1">
-          <Input type="search" value={q} onChange={(e) => refilter(setQ)(e.target.value)} placeholder="Title or person…" className="px-3 py-1.5 text-sm" />
+          <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title or person…" className="px-3 py-1.5 text-sm" />
         </Field>
-        <Switch checked={group} onChange={(v) => refilter(setGroup)(v ? "1" : "")} size="sm" className="pb-1.5">Group resumed plays</Switch>
+        <Switch checked={group} onChange={(v) => setGroup(v ? "1" : "")} size="sm" className="pb-1.5">Group resumed plays</Switch>
         <a href={csvURL} download className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
           title={`Download the plays these filters match as CSV (up to 50,000)`}>Export CSV</a>
       </div>
 
       {failed && <div role="status" className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn't load the history — this is an error, not an empty history.</div>}
 
-      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
+      {/* relative: the header cells' screen-reader text is positioned inside the scroller, not the page. */}
+      <div className="relative overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
         <table className="w-full border-collapse text-base" style={{ minWidth: 880 }}>
           <thead><tr style={{ background: "var(--panel-2)" }}>
             {["When", "User", "", "Title", "Player", "Location", "Stream", "Watched"].map((h, i) => (
@@ -174,7 +184,7 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
                   <td className="px-3 py-2 font-mono text-xs text-ink-dim">{geoLabel(r.geo)}</td>
                   <td className="px-3 py-2"><span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span></td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono tabular-nums text-ink-dim">{fmtDur(r.watched_secs)}{r.buffer_count > 0 && <span title={`${r.buffer_count} buffer event(s)`} style={{ color: "var(--avoid-text)" }}> · ⚠{r.buffer_count}</span>}</td>
-                  <td className="px-2 py-2 text-right"><IconButton label={`Details for ${r.title}`} onClick={(e) => { e.stopPropagation(); setDetail(r); }} className="text-ink-faint hover:text-[var(--ink)]">›</IconButton></td>
+                  <td className="px-2 py-2 text-right"><IconButton label="Open play details" onClick={(e) => { e.stopPropagation(); setDetail(r); }} className="text-ink-faint hover:text-[var(--ink)]">›</IconButton></td>
                 </tr>
               );
             })}

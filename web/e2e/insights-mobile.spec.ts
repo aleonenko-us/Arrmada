@@ -39,6 +39,14 @@ test.describe("admin on a phone", () => {
     });
   }
 
+  test("a person's page fits 375 px", async ({ page, api }) => {
+    await serveInsights(page);
+    await page.goto("/insights/people/7");
+    await expect(page.getByRole("heading", { name: "Jesse" })).toBeVisible();
+    await api.quiet();
+    expect(await overflow(page)).toEqual({ doc: 0, main: 0 });
+  });
+
   test("a deep link opens its tab, scrolled into the bar, and Back returns", async ({ page, api }) => {
     await serveInsights(page);
     await page.goto("/insights?tab=graphs");

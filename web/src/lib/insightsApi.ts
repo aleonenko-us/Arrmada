@@ -1,4 +1,4 @@
-import { req, type InsightsActivity, type InsightsGraphs, type InsightsHistory, type InsightsStats, type LibraryStat, type PlexConfig, type PlexTestResult, type RecentItem, type Reliability, type UserEntry } from "./api";
+import { req, type InsightsActivity, type InsightsGraphs, type InsightsHistory, type InsightsStats, type LibraryStat, type PersonProfile, type PlexConfig, type PlexTestResult, type RecentItem, type Reliability, type UserEntry } from "./api";
 
 // History's filters: user is a Plex user id, from/to epoch seconds (to exclusive), group
 // folds resumed sittings into one row.
@@ -40,6 +40,8 @@ export const insightsApi = {
   insightsStats: (window = 30, metric?: "plays" | "duration") =>
     req<InsightsStats>(`/api/v1/insights/stats?window=${window}${metric ? `&metric=${metric}` : ""}`),
   insightsUsers: () => req<{ users: UserEntry[] }>("/api/v1/insights/users").then((r) => r.users),
+  // window = days, 0 = all time.
+  insightsPerson: (id: string, window = 0) => req<PersonProfile>(`/api/v1/insights/users/${encodeURIComponent(id)}?window=${window}`),
   insightsLibraries: () => req<{ libraries: LibraryStat[] }>("/api/v1/insights/libraries").then((r) => r.libraries),
   insightsRecentlyAdded: (limit = 20) => req<{ items: RecentItem[] }>(`/api/v1/insights/recently-added?limit=${limit}`).then((r) => r.items),
   insightsGraphs: (window = 30, metric: "plays" | "duration" = "plays") => req<InsightsGraphs>(`/api/v1/insights/graphs?window=${window}&metric=${metric}`),

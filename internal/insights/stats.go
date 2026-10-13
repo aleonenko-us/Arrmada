@@ -225,6 +225,7 @@ func toNameStats(rows []nameStatRow) []NameStat {
 type UserEntry struct {
 	ID           string         `json:"id"`
 	Username     string         `json:"username"`
+	AvatarURL    string         `json:"avatar_url"` // a plex.tv avatar, or "" (see avatarURL)
 	LastSeen     int64          `json:"last_seen"`
 	LastIP       string         `json:"last_ip"`
 	LastPlatform string         `json:"last_platform"`
@@ -244,7 +245,7 @@ func (s *Service) Users(ctx context.Context) ([]UserEntry, error) {
 	out := make([]UserEntry, 0, len(rows))
 	for _, u := range rows {
 		out = append(out, UserEntry{
-			ID: u.ID, Username: u.Username, LastSeen: u.LastSeen, LastIP: u.LastIP,
+			ID: u.ID, Username: u.Username, AvatarURL: avatarURL(u.Thumb), LastSeen: u.LastSeen, LastIP: u.LastIP,
 			LastPlatform: u.LastPlatform, LastPlayer: u.LastPlayer, LastTitle: u.LastTitle,
 			TotalPlays: u.TotalPlays, TotalSecs: u.TotalSecs, Geo: s.geo.Lookup(u.LastIP),
 		})

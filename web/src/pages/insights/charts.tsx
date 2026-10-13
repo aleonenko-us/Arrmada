@@ -198,14 +198,16 @@ export function HBarChart({ rows, fmt = (v) => String(Math.round(v)) }: { rows: 
 }
 
 // DataTable is each chart's numbers for screen readers: the tooltip enhances, it never
-// gates a value.
+// gates a value. (The wrapper is what's visually hidden: a table ignores a 1px width and
+// would widen the page.)
 function DataTable({ caption, heads, rows }: { caption: string; heads: string[]; rows: string[][] }) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead><tr><th scope="col">Point</th>{heads.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
-      <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>))}</tr>)}</tbody>
-    </table>
+    <div className="sr-only">
+      <table aria-label={caption}>
+        <thead><tr><th scope="col">Point</th>{heads.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>))}</tr>)}</tbody>
+      </table>
+    </div>
   );
 }
 

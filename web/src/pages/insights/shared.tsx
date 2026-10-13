@@ -127,6 +127,31 @@ export function StatTile({ label, value, sub, color }: { label: string; value: s
   );
 }
 
+// personPath is a Plex user's People page.
+export function personPath(id: string): string {
+  return `/insights/people/${encodeURIComponent(id)}`;
+}
+
+// UserLink is a person's name, linking to their People page (plain text without an id).
+// It stops the click there, so a link inside a clickable row opens the person, not the row.
+export function UserLink({ id, name, className = "" }: { id?: string; name: string; className?: string }) {
+  if (!id) return <span className={className}>{name || "—"}</span>;
+  return (
+    <Link to={personPath(id)} onClick={(e) => e.stopPropagation()} className={`hover:underline ${className}`}>{name || "Someone"}</Link>
+  );
+}
+
+// Avatar is a Plex account picture (a plex.tv address, or nothing: the initial stands in).
+// It's fetched without a referrer, so plex.tv isn't told which Insights page asked.
+export function Avatar({ url, name, size = 28 }: { url?: string; name: string; size?: number }) {
+  return (
+    <span className={`inline-grid flex-none place-items-center overflow-hidden rounded-full font-semibold text-ink-dim ${size >= 48 ? "text-2xl" : "text-xs"}`} aria-hidden
+      style={{ width: size, height: size, background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+      {url ? <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" /> : (name || "?").slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 // METRIC is how the Graphs (and the People page) count: plays, or hours watched.
 export type Metric = "plays" | "duration";
 

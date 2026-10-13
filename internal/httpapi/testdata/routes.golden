@@ -142,6 +142,7 @@ GET /api/v1/insights/recently-added staff -
 GET /api/v1/insights/reliability staff -
 GET /api/v1/insights/stats staff -
 GET /api/v1/insights/users staff -
+GET /api/v1/insights/users/{id} staff -
 GET /api/v1/issues user ext
 GET /api/v1/issues/episodes/{tmdb} requester ext
 GET /api/v1/jobs staff -

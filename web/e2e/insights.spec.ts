@@ -124,6 +124,41 @@ test.describe("admin", () => {
     await expect(page.getByText(/Plex unreachable — library counts and recently added/)).toBeVisible();
   });
 
+  test("a name in History opens that person's page, whose All plays filters History to them", async ({ page }) => {
+    await serveInsights(page, ins.config("recording"));
+    await page.goto("/insights?tab=history");
+    await page.getByRole("link", { name: "Jesse" }).first().click();
+    await expect(page).toHaveURL(/\/insights\/people\/7$/);
+    await expect(page.getByRole("heading", { name: "Jesse" })).toBeVisible();
+    await expect(page.getByText("Where they watch from")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "192.168.1.20" })).toBeVisible();
+    await page.getByRole("link", { name: "All plays →" }).click();
+    await expect(page).toHaveURL(/tab=history/);
+    await expect(page).toHaveURL(/user=7/);
+    await expect(page.getByRole("combobox", { name: "Person" })).toHaveValue("7");
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Jesse" })).toBeVisible();
+  });
+
+  test("History filters live in the address and the export link carries them", async ({ page }) => {
+    await serveInsights(page, ins.config("recording"));
+    await page.goto("/insights?tab=history");
+    await page.getByRole("button", { name: "Transcode" }).click();
+    await page.getByRole("button", { name: "7d" }).click();
+    await page.getByRole("switch", { name: "Group resumed plays" }).click();
+    await expect(page).toHaveURL(/decision=transcode/);
+    await expect(page).toHaveURL(/range=7d/);
+    await expect(page).toHaveURL(/group=1/);
+    const href = await page.getByRole("link", { name: "Export CSV" }).getAttribute("href");
+    expect(href).toMatch(/^\/api\/v1\/insights\/history\.csv\?/);
+    expect(href).toContain("decision=transcode");
+    expect(href).toContain("group=1");
+    expect(href).toMatch(/from=\d+/);
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Group resumed plays" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByText("Watched", { exact: true }).first()).toBeVisible();
+  });
+
   test("Convert says pausing needs monitoring when it is off", async ({ page }) => {
     await page.goto("/convert?tab=settings");
     await expect(page.getByText(/Needs Plex watch monitoring turned on/)).toBeVisible();

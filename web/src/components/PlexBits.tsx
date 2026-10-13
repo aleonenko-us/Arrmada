@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { plexLibraryApi, type WatchStats } from "../lib/plexLibraryApi";
 import { ago } from "../lib/taskTime";
 
@@ -42,7 +43,8 @@ export function WatchedBy({ kind, id }: { kind: "movies" | "series"; id: number 
       <ul className="m-0 mt-1.5 flex list-none flex-col gap-1 p-0 pl-3">
         {ws.users.map((u, i) => (
           <li key={u.id}>
-            <span className="text-ink">{names[i]}</span>
+            {/* Their People page in Insights (staff, like this line). */}
+            {u.id ? <Link to={`/insights/people/${encodeURIComponent(u.id)}`} className="text-ink hover:underline">{names[i]}</Link> : <span className="text-ink">{names[i]}</span>}
             <span className="text-ink-faint"> · {u.plays} play{u.plays === 1 ? "" : "s"} · {ago(u.last_played)}</span>
           </li>
         ))}

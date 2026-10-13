@@ -1,5 +1,5 @@
 import type {
-  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsStats, InsightsStream, LibraryStat, PlexConfig, RecentItem, Reliability, UserEntry,
+  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
 } from "../../src/lib/api";
 import type { MockRoute } from "./routes";
 import { NOW } from "./clock";
@@ -22,7 +22,7 @@ const geo = { ip: "192.168.1.20", local: true };
 
 const play = (id: number, over: Partial<HistoryEntry> = {}): HistoryEntry => ({
   id, user_id: "7", user_name: "Jesse", title: "The Cartographer", grandparent_title: "", parent_title: "",
-  media_index: 0, parent_index: 0, year: 2024, media_type: "movie", thumb: "", thumb_url: "",
+  media_index: 0, parent_index: 0, year: 2024, media_type: "movie", thumb: "", thumb_url: "", grandparent_thumb: "", grandparent_rating_key: "",
   player: "Living Room TV", platform: "webOS", product: "Plex for LG", ip_address: "192.168.1.20", location: "lan",
   decision: "transcode", started_at: now - id * 3600, stopped_at: now - id * 3600 + 5400, paused_ms: 0,
   view_offset_ms: 5_400_000, duration_ms: 6_000_000,
@@ -35,6 +35,19 @@ export const history = { rows: [play(1), play(2, { title: "Harbour Lights", deci
 
 export const users: { users: UserEntry[] } = {
   users: [{ id: "7", username: "Jesse", last_seen: now - 3600, last_ip: "192.168.1.20", last_platform: "webOS", last_player: "Living Room TV", last_title: "The Cartographer", total_plays: 2, total_secs: 10800, geo }],
+};
+
+// Jesse's People page.
+export const person: PersonProfile = {
+  id: "7", username: "Jesse", avatar_url: "", window_days: 0, first_seen: now - 30 * 86400, last_seen: now - 3600,
+  total_plays: 2, total_secs: 10800, completion_pct: 100, completion_of: 2,
+  top_titles: [{ title: "The Cartographer — a very long title that has to fit on a phone", thumb_url: "", plays: 1, secs: 5400 }, { title: "Harbour Lights", thumb_url: "", plays: 1, secs: 5400 }],
+  platforms: [{ id: "webOS", name: "webOS", plays: 2, secs: 10800 }], players: [{ id: "Living Room TV", name: "Living Room TV", plays: 2, secs: 10800 }],
+  ips: [{ ip: "2001:db8:85a3:0000:0000:8a2e:0370:7334", geo: { ip: "2001:db8:85a3::7334", local: false, city: "Wellington", country_code: "NZ" }, plays: 1, last_seen: now - 3600 },
+    { ip: "192.168.1.20", geo, plays: 1, last_seen: now - 7200 }],
+  decisions: { direct_play: 1, direct_stream: 0, transcode: 1 },
+  stalls: { events: 2, stall_ms: 47_000, rate_pct: 50 },
+  recent: history.rows,
 };
 
 export const stats: InsightsStats = {
@@ -101,6 +114,7 @@ export function routes(cfg: () => PlexConfig, opts: { plexDown?: boolean; empty?
     { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg() },
     { method: "GET", path: "/api/v1/insights/history", body: opts.empty ? { rows: [], total: 0 } : history },
     { method: "GET", path: "/api/v1/insights/users", body: opts.empty ? { users: [] } : users },
+    { method: "GET", path: "/api/v1/insights/users/7", body: person },
     { method: "GET", path: "/api/v1/insights/stats", body: stats },
     { method: "GET", path: "/api/v1/insights/graphs", body: graphs },
     { method: "GET", path: "/api/v1/insights/reliability", body: opts.empty ? emptyReliability : reliability },

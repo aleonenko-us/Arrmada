@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -361,6 +362,24 @@ func (a *api) handleInsightsUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"users": users})
+}
+
+// handleInsightsPerson returns one Plex user's People page (?window=days, 0 = all time).
+// Staff only: it carries their devices and IP addresses.
+func (a *api) handleInsightsPerson(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	p, err := a.deps.Insights.Person(ctx, id, clampWindow(atoiQuery(r, "window")))
+	if errors.Is(err, insights.ErrPersonNotFound) {
+		a.writeError(w, http.StatusNotFound, "no one by that id has watched anything")
+		return
+	}
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not load this person")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, p)
 }
 
 // handleInsightsLibraries returns Plex library sections with counts (live).

@@ -15,6 +15,7 @@ import (
 type Stream struct {
 	SessionKey  string         `json:"session_key"`
 	User        string         `json:"user"`
+	UserID      string         `json:"user_id"` // the Plex account id the People page is under
 	Title       string         `json:"title"`
 	Subtitle    string         `json:"subtitle"` // "Show · S1 · E2" or the year
 	Type        string         `json:"type"`
@@ -77,6 +78,7 @@ func (s *Service) Activity(ctx context.Context) (Activity, error) {
 	out := Activity{Streams: make([]Stream, 0, len(sessions)), GeoActive: s.geo.Enabled()}
 	for _, sess := range sessions {
 		st := s.enrich(sess)
+		st.UserID = s.knownUserID(ctx, sess.UserID)
 		out.Streams = append(out.Streams, st)
 		out.Bandwidth.TotalKbps += st.Bandwidth
 		if strings.EqualFold(sess.Location, "lan") || st.Geo.Local {

@@ -644,6 +644,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/insights/graphs", a.requireRole(auth.RoleManager, a.handleInsightsGraphs))
 	mux.HandleFunc("GET /api/v1/insights/reliability", a.requireRole(auth.RoleManager, a.handleInsightsReliability))
 	mux.HandleFunc("GET /api/v1/insights/users", a.requireRole(auth.RoleManager, a.handleInsightsUsers))
+	mux.HandleFunc("GET /api/v1/insights/users/{id}", a.requireRole(auth.RoleManager, a.handleInsightsPerson))
 	mux.HandleFunc("GET /api/v1/insights/libraries", a.requireRole(auth.RoleManager, a.handleInsightsLibraries))
 	mux.HandleFunc("GET /api/v1/insights/recently-added", a.requireRole(auth.RoleManager, a.handleInsightsRecentlyAdded))
 	mux.HandleFunc("GET /api/v1/insights/image", a.requireRole(auth.RoleManager, a.handleInsightsImage))

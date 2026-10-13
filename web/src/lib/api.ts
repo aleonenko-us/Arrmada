@@ -2484,7 +2484,7 @@ export interface GeoLocation { ip: string; local: boolean; city?: string; countr
 export interface StreamDetail { src: string; stream?: string }
 export interface InsightsStream {
   /** thumb is the portrait poster (an episode's show poster); still is an episode's own frame, art the background. */
-  session_key: string; user: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
+  session_key: string; user: string; user_id?: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
   progress_pct: number; offset_ms: number; duration_ms: number; state: string;
   player: string; platform: string; product: string; decision: string;
   bandwidth_kbps: number; location: string; ip: string; geo: GeoLocation;
@@ -2510,7 +2510,7 @@ export interface InsightsHistory { rows: HistoryEntry[]; total: number }
 export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number }
 export interface NameStat { id: string; name: string; plays: number; secs: number }
 export interface InsightsStats { most_watched_movies: TitleStat[]; most_watched_shows: TitleStat[]; most_active_users: NameStat[]; most_active_platforms: NameStat[]; recently_watched: HistoryEntry[] }
-export interface UserEntry { id: string; username: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
+export interface UserEntry { id: string; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
 export interface LibraryStat { title: string; type: string; count: number }
 export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number }
 export interface BWPoint { t: string; total_kbps: number; lan_kbps: number; wan_kbps: number }
@@ -2524,9 +2524,21 @@ export interface InsightsGraphs {
   top_platforms: NameStat[]; top_users: NameStat[]; bandwidth: BWPoint[];
 }
 export interface ReliabilitySummary { total_sessions: number; buffered_sessions: number; total_events: number; total_stall_ms: number; buffer_rate_pct: number }
-export interface BufferGroup { name: string; sessions: number; buffered_sessions: number; events: number; stall_ms: number; rate_pct: number }
-export interface BufferEvent { at: number; offset_ms: number; duration_ms: number; user: string; title: string; platform: string; decision: string; cause: string; detail: string }
+export interface BufferGroup { id?: string; name: string; sessions: number; buffered_sessions: number; events: number; stall_ms: number; rate_pct: number }
+export interface BufferEvent { at: number; offset_ms: number; duration_ms: number; user: string; user_id?: string; title: string; platform: string; decision: string; cause: string; detail: string }
 export interface CauseCount { cause: string; label: string; count: number; stall_ms: number }
+// One Plex user's People page (GET /insights/users/{id}): Plex video plays only.
+export interface PersonProfile {
+  id: string; username: string; avatar_url: string; window_days: number;
+  first_seen: number; last_seen: number; total_plays: number; total_secs: number;
+  /** Share of plays with a known runtime that reached 90%, out of completion_of plays. */
+  completion_pct: number; completion_of: number;
+  top_titles: TitleStat[]; platforms: NameStat[]; players: NameStat[];
+  ips: { ip: string; geo: GeoLocation; plays: number; last_seen: number }[];
+  decisions: { direct_play: number; direct_stream: number; transcode: number };
+  stalls: { events: number; stall_ms: number; rate_pct: number };
+  recent: HistoryEntry[];
+}
 export interface Reliability { summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[] }
 
 // ApiError is still an Error (every existing catch keeps reading .message), but it also

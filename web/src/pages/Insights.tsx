@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
 import { useTabParam } from "../lib/useTabParam";
@@ -11,8 +11,9 @@ import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsS
 import { insightsApi } from "../lib/insightsApi";
 import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
-import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, type Metric } from "./insights/shared";
+import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, type Metric } from "./insights/shared";
 import { HistoryView } from "./insights/HistoryView";
+import { InsightsPerson } from "./InsightsPerson";
 import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
@@ -66,8 +67,13 @@ function MonitoringOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void
 }
 
 export function Insights() {
+  // /insights/people/:id is a person's People page; any other sub-path is Insights itself.
+  const rest = useParams()["*"] ?? "";
+  const person = /^people\/([^/]+)\/?$/.exec(rest);
   // The old Notifications tab's address (bookmarks, earlier copy) opens Alerts instead.
   const [params] = useSearchParams();
+  if (person) return <InsightsPerson id={decodeURIComponent(person[1])} />;
+  if (rest) return <Navigate to="/insights" replace />;
   if (params.get("tab") === "notifications") return <Navigate to={LINKS.alerts} replace />;
   // Users was renamed People; old links keep working.
   if (params.get("tab") === "users") return <Navigate to="/insights?tab=people" replace />;
@@ -132,7 +138,7 @@ function InsightsPage() {
           ) : tab === "activity" ? (
             <ActivityView connected={!!connected} />
           ) : tab === "history" ? (
-            <HistoryView connected={!!connected} />
+            <HistoryView connected={!!connected} userLink={(id, name) => <UserLink id={id} name={name} />} />
           ) : tab === "people" ? (
             <UsersView connected={!!connected} />
           ) : tab === "graphs" ? (
@@ -282,7 +288,7 @@ function HomeExtras({ live }: { live: boolean }) {
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
             <StatCard title="Most watched movies" rows={stats!.most_watched_movies.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
             <StatCard title="Most watched TV" rows={stats!.most_watched_shows.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
-            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
+            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, to: u.id ? personPath(u.id) : undefined, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
             <StatCard title="Most active platforms" rows={stats!.most_active_platforms.map((p) => ({ label: p.name, v: metric === "plays" ? p.plays : p.secs }))} metric={metric} />
           </div>
         )}
@@ -335,7 +341,7 @@ function libTypeLabel(t: string): string {
   return t === "movie" ? "Movies" : t === "show" ? "TV Shows" : t === "artist" ? "Music" : t;
 }
 
-function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; v: number }[]; metric: "plays" | "duration" }) {
+function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; to?: string; v: number }[]; metric: "plays" | "duration" }) {
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="mb-2 text-base font-bold">{title}</div>
@@ -345,7 +351,7 @@ function StatCard({ title, rows, metric }: { title: string; rows: { label: strin
             <li key={i} className="flex items-center gap-2 text-sm">
               <span className="w-3 flex-none font-mono text-xs text-ink-faint">{i + 1}</span>
               {r.thumb !== undefined && <span className="h-7 w-5 flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>{r.thumb ? <img src={r.thumb} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}</span>}
-              <span className="min-w-0 flex-1 truncate">{r.label}</span>
+              {r.to ? <Link to={r.to} className="min-w-0 flex-1 truncate hover:underline">{r.label}</Link> : <span className="min-w-0 flex-1 truncate">{r.label}</span>}
               <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--accent)" }}>{metric === "plays" ? r.v : fmtHours(r.v)}</span>
             </li>
           ))}
@@ -372,7 +378,9 @@ function UsersView({ connected }: { connected: boolean }) {
           <tbody>
             {users.map((u, i) => (
               <tr key={u.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                <td className="px-3 py-2 font-semibold">{u.username}</td>
+                <td className="px-3 py-2 font-semibold">
+                  <span className="flex items-center gap-2"><Avatar url={u.avatar_url} name={u.username} /><UserLink id={u.id} name={u.username} /></span>
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{u.last_seen ? fmtDate(u.last_seen) : "never"}</td>
                 <td className="px-3 py-2 font-mono text-xs text-ink-dim">{u.last_ip ? geoLabel(u.geo) : "—"}</td>
                 <td className="px-3 py-2 text-ink-dim">{u.last_platform || "—"}</td>
@@ -472,7 +480,10 @@ function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
       )}
 
       <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
-        <DDRow label="User" a={s.user} />
+        <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "var(--panel)" }}>
+          <span className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">User</span>
+          <UserLink id={s.user_id} name={s.user} className="text-right text-ink-dim" />
+        </div>
         <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
         <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
         <DDRow label="Bandwidth" a={`${fmtMbps(s.bandwidth_kbps)} Mb/s`} />
@@ -580,7 +591,7 @@ function GraphsView({ connected }: { connected: boolean }) {
             <ChartCard title={`${unit} by hour of day`}><BarChart caption={`${unit} by hour of day`} values={g.by_hour} fmt={fmt}
               labels={g.by_hour.map((_, i) => (i % 3 === 0 ? String(i).padStart(2, "0") : ""))} tipTitles={g.by_hour.map((_, i) => `${String(i).padStart(2, "0")}:00–${String(i).padStart(2, "0")}:59`)} /></ChartCard>
             <ChartCard title="Top platforms"><HBarChart rows={rank(g.top_platforms)} fmt={fmt} /></ChartCard>
-            <ChartCard title="Top users"><HBarChart rows={rank(g.top_users)} fmt={fmt} /></ChartCard>
+            <ChartCard title="Top users"><HBarChart rows={rank(g.top_users).map((r, i) => ({ ...r, to: g.top_users[i].id ? personPath(g.top_users[i].id) : undefined }))} fmt={fmt} /></ChartCard>
           </div>
         </>
       )}
@@ -640,7 +651,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
       ) : (
         <>
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))" }}>
-            <OffenderCard title="Worst-hit users" rows={r.by_user} />
+            <OffenderCard title="Worst-hit users" rows={r.by_user} people />
             <OffenderCard title="Worst-hit platforms" rows={r.by_platform} />
             <OffenderCard title="Worst-hit titles" rows={r.by_title} />
           </div>
@@ -675,7 +686,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                       <span className="w-2 flex-none"><span className="inline-block h-2 w-2 rounded-full" style={{ background: cc.color }} /></span>
                       <span className="w-[92px] flex-none font-mono text-xs text-ink-faint">{fmtDate(e.at)}</span>
-                      <span className="min-w-[140px] flex-1 truncate"><b className="font-semibold">{e.user}</b> · {e.title}</span>
+                      <span className="min-w-[140px] flex-1 truncate"><UserLink id={e.user_id} name={e.user} className="font-semibold" /> · {e.title}</span>
                       <span className="flex-none font-mono text-xs text-ink-faint">@ {fmtClock(e.offset_ms)}</span>
                       {e.duration_ms > 0 && <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--avoid)" }}>{fmtStall(e.duration_ms)}</span>}
                       <span className="flex-none rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
@@ -692,7 +703,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
   );
 }
 
-function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
+function OffenderCard({ title, rows, people }: { title: string; rows: BufferGroup[]; people?: boolean }) {
   // Rank/scale by observed stall time; legacy rows (pre-duration data) fall back to counts.
   const anyStall = rows.some((r) => r.stall_ms > 0);
   const metric = (r: BufferGroup) => (anyStall ? r.stall_ms : r.events);
@@ -705,7 +716,7 @@ function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
           {rows.map((r, i) => (
             <div key={i} className="text-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate" title={r.name}>{r.name || "—"}</span>
+                <span className="min-w-0 flex-1 truncate" title={r.name}>{people ? <UserLink id={r.id} name={r.name} /> : r.name || "—"}</span>
                 <span className="flex-none font-mono text-ink-dim">
                   {r.stall_ms > 0 ? `${fmtStall(r.stall_ms)} · ` : ""}{r.events} stall{r.events === 1 ? "" : "s"} · {r.rate_pct}%
                 </span>
