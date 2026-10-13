@@ -2527,6 +2527,22 @@ export interface ReliabilitySummary { total_sessions: number; buffered_sessions:
 export interface BufferGroup { id?: string; name: string; sessions: number; buffered_sessions: number; events: number; stall_ms: number; rate_pct: number }
 export interface BufferEvent { at: number; offset_ms: number; duration_ms: number; user: string; user_id?: string; title: string; platform: string; decision: string; cause: string; detail: string }
 export interface CauseCount { cause: string; label: string; count: number; stall_ms: number }
+// The Insights Library tab (GET /insights/library). media/tmdb come from the Plex library
+// index; arrmada_id is set when Arrmada has the title.
+export interface LibraryItem {
+  kind: "movie" | "show"; title: string; year?: number; thumb_url: string; rating_key?: string;
+  media?: "movie" | "series"; tmdb?: number; arrmada_id?: number;
+  plays?: number; secs?: number; added_at?: number;
+}
+export interface HotSpot extends LibraryItem {
+  transcodes: number; total_plays: number; top_pair: string; platforms: string[]; top_cause?: string; cause_label?: string;
+}
+export interface InsightsLibrary {
+  window_days: number; most_watched_movies: LibraryItem[]; most_watched_shows: LibraryItem[];
+  /** Oldest first, capped; never_watched_unavailable = Plex's library list can't be read right now. */
+  never_watched: LibraryItem[]; never_watched_total: number; never_watched_unavailable: boolean;
+  hot_spots: HotSpot[];
+}
 // One Plex user's People page (GET /insights/users/{id}): Plex video plays only.
 export interface PersonProfile {
   id: string; username: string; avatar_url: string; window_days: number;

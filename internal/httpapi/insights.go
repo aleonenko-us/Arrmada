@@ -382,6 +382,70 @@ func (a *api) handleInsightsPerson(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, p)
 }
 
+// handleInsightsLibrary returns the Insights Library tab (?window=days, ?metric=duration),
+// each title linked to its Arrmada page when Arrmada has it. It only links: nothing here
+// queues a conversion.
+func (a *api) handleInsightsLibrary(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	v, err := a.deps.Insights.Library(ctx, clampWindow(atoiQuery(r, "window")), r.URL.Query().Get("metric") == "duration")
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not build the library view")
+		return
+	}
+	var items []*insights.LibraryItem
+	for i := range v.MostWatchedMovies {
+		items = append(items, &v.MostWatchedMovies[i])
+	}
+	for i := range v.MostWatchedShows {
+		items = append(items, &v.MostWatchedShows[i])
+	}
+	for i := range v.NeverWatched {
+		items = append(items, &v.NeverWatched[i])
+	}
+	for i := range v.HotSpots {
+		items = append(items, &v.HotSpots[i].LibraryItem)
+	}
+	a.linkLibraryItems(ctx, items)
+	a.writeJSON(w, http.StatusOK, v)
+}
+
+// linkLibraryItems fills each title's Arrmada id from its TMDB id, one lookup per kind.
+func (a *api) linkLibraryItems(ctx context.Context, items []*insights.LibraryItem) {
+	var movieIDs, seriesIDs []int
+	for _, it := range items {
+		switch {
+		case it.TMDB <= 0:
+		case it.Media == "movie":
+			movieIDs = append(movieIDs, it.TMDB)
+		case it.Media == "series":
+			seriesIDs = append(seriesIDs, it.TMDB)
+		}
+	}
+	movieByTMDB, seriesByTMDB := map[int]int64{}, map[int]int64{}
+	if a.deps.Movies != nil && len(movieIDs) > 0 {
+		if ms, err := a.deps.Movies.ByTMDBIDs(ctx, movieIDs); err == nil {
+			for _, m := range ms {
+				movieByTMDB[m.TMDBID] = m.ID
+			}
+		}
+	}
+	if a.deps.Series != nil && len(seriesIDs) > 0 {
+		if ss, err := a.deps.Series.ByTMDBIDs(ctx, seriesIDs); err == nil {
+			for _, s := range ss {
+				seriesByTMDB[s.TMDBID] = s.ID
+			}
+		}
+	}
+	for _, it := range items {
+		if it.Media == "movie" {
+			it.ArrmadaID = movieByTMDB[it.TMDB]
+		} else if it.Media == "series" {
+			it.ArrmadaID = seriesByTMDB[it.TMDB]
+		}
+	}
+}
+
 // handleInsightsLibraries returns Plex library sections with counts (live).
 func (a *api) handleInsightsLibraries(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)

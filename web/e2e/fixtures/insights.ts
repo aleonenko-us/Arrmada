@@ -1,5 +1,5 @@
 import type {
-  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
+  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsLibrary, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
 } from "../../src/lib/api";
 import type { MockRoute } from "./routes";
 import { NOW } from "./clock";
@@ -48,6 +48,18 @@ export const person: PersonProfile = {
   decisions: { direct_play: 1, direct_stream: 0, transcode: 1 },
   stalls: { events: 2, stall_ms: 47_000, rate_pct: 50 },
   recent: history.rows,
+};
+
+// The Library tab with Plex's library list unavailable (never watched can't be listed).
+export const library: InsightsLibrary = {
+  window_days: 90,
+  most_watched_movies: [{ kind: "movie", title: "The Cartographer", year: 2024, thumb_url: "", media: "movie", tmdb: 1001, arrmada_id: 41, plays: 2, secs: 10800 }],
+  most_watched_shows: [],
+  never_watched: [], never_watched_total: 0, never_watched_unavailable: true,
+  hot_spots: [{
+    kind: "movie", title: "The Cartographer — a very long title that has to fit on a phone", year: 2024, thumb_url: "", media: "movie", tmdb: 1001, arrmada_id: 41,
+    transcodes: 2, total_plays: 2, top_pair: "HEVC 4K → H264 1080p", platforms: ["webOS"], top_cause: "transcode_fallback", cause_label: "Plex fell back to CPU",
+  }],
 };
 
 export const stats: InsightsStats = {
@@ -115,6 +127,7 @@ export function routes(cfg: () => PlexConfig, opts: { plexDown?: boolean; empty?
     { method: "GET", path: "/api/v1/insights/history", body: opts.empty ? { rows: [], total: 0 } : history },
     { method: "GET", path: "/api/v1/insights/users", body: opts.empty ? { users: [] } : users },
     { method: "GET", path: "/api/v1/insights/users/7", body: person },
+    { method: "GET", path: "/api/v1/insights/library", body: library },
     { method: "GET", path: "/api/v1/insights/stats", body: stats },
     { method: "GET", path: "/api/v1/insights/graphs", body: graphs },
     { method: "GET", path: "/api/v1/insights/reliability", body: opts.empty ? emptyReliability : reliability },

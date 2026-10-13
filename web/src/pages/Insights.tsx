@@ -13,23 +13,25 @@ import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
 import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, type Metric } from "./insights/shared";
 import { HistoryView } from "./insights/HistoryView";
+import { LibraryView } from "./insights/LibraryView";
 import { InsightsPerson } from "./InsightsPerson";
 import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
 // tabs here; they live in Settings → Connections (the Plex card) and Settings → Alerts now.
-type Tab = "activity" | "history" | "people" | "graphs" | "reliability";
+type Tab = "activity" | "history" | "people" | "graphs" | "reliability" | "library";
 const TABS: { key: Tab; label: string }[] = [
   { key: "activity", label: "Activity" },
   { key: "history", label: "History" },
   { key: "people", label: "People" },
   { key: "graphs", label: "Graphs" },
   { key: "reliability", label: "Reliability" },
+  { key: "library", label: "Library" },
 ];
 // The tabs that read recorded plays: they only grow while monitoring is on, so they carry
 // the "monitoring is off" banner when it isn't.
-const RECORDED_TABS: Tab[] = ["history", "people", "graphs", "reliability"];
+const RECORDED_TABS: Tab[] = ["history", "people", "graphs", "reliability", "library"];
 
 // The header badge says what monitoring is doing, not just that a URL and token are saved:
 // Activity asks Plex directly and works either way, so a green "connected" used to hide
@@ -143,6 +145,8 @@ function InsightsPage() {
             <UsersView connected={!!connected} />
           ) : tab === "graphs" ? (
             <GraphsView connected={!!connected} />
+          ) : tab === "library" ? (
+            <LibraryView connected={!!connected} />
           ) : (
             <ReliabilityView connected={!!connected} />
           )}

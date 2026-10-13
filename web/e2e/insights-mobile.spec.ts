@@ -29,7 +29,7 @@ const overflow = (page: Page) => page.evaluate(() => {
 test.describe("admin on a phone", () => {
   test.use({ persona: "admin" });
 
-  for (const tab of ["activity", "history", "people", "graphs", "reliability"]) {
+  for (const tab of ["activity", "history", "people", "graphs", "reliability", "library"]) {
     test(`${tab} fits 375 px`, async ({ page, api }) => {
       await serveInsights(page);
       await page.goto(`/insights?tab=${tab}`);

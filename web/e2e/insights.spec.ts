@@ -159,6 +159,17 @@ test.describe("admin", () => {
     await expect(page.getByText("Watched", { exact: true }).first()).toBeVisible();
   });
 
+  test("Library lists hot spots linked to the title and to Convert, and says when never watched can't be listed", async ({ page }) => {
+    await serveInsights(page, ins.config("recording"));
+    await page.goto("/insights?tab=library");
+    await expect(page.getByText("HEVC 4K → H264 1080p")).toBeVisible();
+    await expect(page.getByText(/Needs Plex's library list/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Find in Convert" })).toHaveAttribute("href", /^\/convert\?tab=library&media=movies&q=/);
+    await expect(page.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/movies/41");
+    // Nothing on the tab starts a conversion.
+    await expect(page.getByRole("button", { name: /convert/i })).toHaveCount(0);
+  });
+
   test("Convert says pausing needs monitoring when it is off", async ({ page }) => {
     await page.goto("/convert?tab=settings");
     await expect(page.getByText(/Needs Plex watch monitoring turned on/)).toBeVisible();
