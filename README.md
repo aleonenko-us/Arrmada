@@ -71,7 +71,9 @@ You can skip it and do both later in Settings.
 ./update.sh
 ```
 
-This pulls the latest code, rebuilds only the app, and waits until it's running again. Your
+This pulls the latest code, rebuilds only the app (or downloads a published release, see
+[Updating from a published image](#updating-from-a-published-image)), and waits until it's
+running again. Your
 `.env`, downloads and media files aren't touched, and the companions keep running. The
 database is kept too, but a new version may upgrade its tables when it starts, so a
 snapshot is taken automatically before any schema change (`<data>/backups`, newest 5 kept),
@@ -123,6 +125,62 @@ everything Arrmada recorded since the update is lost, so it asks first (`-y` ski
 question). If the previous build can't restore a backup itself, the script changes nothing
 and prints the steps to do it by hand. `ARRMADA_ALLOW_NEWER_SCHEMA=1` in `.env` starts an
 older build on a newer database anyway; it's a last resort.
+
+### Updating from a published image
+
+By default `update.sh` compiles the app on your server, which takes a long time (the
+subtitle and GPU tooling are built from source). It can download a published release
+instead. Add this line to `.env`:
+
+```sh
+ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
+```
+
+From then on `./update.sh` still backs up the database, keeps the running build as
+`arrmada:previous` for `--rollback` and pulls the latest scripts, but it downloads the
+image rather than building it, usually in a few minutes. `stable` is always the newest
+release; pin one with a version instead (`ghcr.io/tristenlammi/arrmada:1.2.0`). Delete the
+line to go back to building here, or run `./update.sh --force-local` to build once without
+changing `.env`.
+
+If you deploy with Komodo or plain `docker compose` instead of `update.sh`, set the
+`arrmada-app` service's `image:` to the published tag in your `docker-compose.override.yml`
+and let that tool pull it.
+
+## Releases
+
+A release is a version tag. From an up-to-date `main`:
+
+```sh
+git tag -a v1.2.0 -m "Arrmada 1.2.0"
+git push origin v1.2.0
+```
+
+Pushing the tag runs the Release workflow: it builds the image stamped with the version and
+commit, pushes it to `ghcr.io/tristenlammi/arrmada` as `1.2.0`, `1.2`, `sha-<commit>` and
+`stable`, and then creates the GitHub release with generated notes. A tag with a hyphen
+(`v1.3.0-rc.1`) is published as a pre-release: it gets its own version tag but never
+`stable`, and the in-app update check doesn't offer it. Pushes to `main` and pull requests
+only build the image as a check; they never publish one.
+
+The first time, the package is private: open it from the repository's Packages list and
+make it public in its settings, or have each server sign in once with
+`docker login ghcr.io` and a token of its own that can only read packages. Never put a
+token in the repository or in `.env`.
+
+Settings → Status shows when a newer release is out, with its notes (a build of `main`
+shows how many commits behind `main` it is instead). It reads GitHub's public list of
+releases every 12 hours and sends nothing about your server; switch it off on the same
+card and it asks GitHub nothing at all.
+
+### Unraid template
+
+[templates/arrmada.xml](templates/arrmada.xml) runs the app container alone from the
+published `stable` image, for people who already run qBittorrent. It keeps the database in
+`/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, and takes your media share at
+`/storage`. Mount the same share at `/storage` in qBittorrent too, then pick each library
+folder and the Downloads folder in the app. The compose install above bundles qBittorrent
+and FlareSolverr instead.
 
 ## Locked out?
 

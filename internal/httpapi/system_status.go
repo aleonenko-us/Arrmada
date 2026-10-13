@@ -82,6 +82,8 @@ func (a *api) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"db_bytes":       dbBytes,
 		"last_backup":    last,
 		"disks":          groupDisks(folders),
+		// Whether a newer release is out (nil when no check is wired).
+		"update": a.updateStatus(ctx),
 	})
 }
 
