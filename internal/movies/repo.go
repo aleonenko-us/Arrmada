@@ -163,6 +163,27 @@ func (r *Repo) List(ctx context.Context) ([]Movie, error) {
 	return out, rows.Err()
 }
 
+// ProfileRefs maps each movie id to its quality profile.
+func (r *Repo) ProfileRefs(ctx context.Context) (map[int64]string, error) {
+	rows, err := r.q().QueryContext(ctx, `SELECT id, quality_profile FROM movies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var (
+			id  int64
+			ref string
+		)
+		if err := rows.Scan(&id, &ref); err != nil {
+			return nil, err
+		}
+		out[id] = ref
+	}
+	return out, rows.Err()
+}
+
 // ExistingTMDBIDs maps the TMDB ids already in the library to their movie ids, for
 // dedup and links (search results and collection members already added).
 func (r *Repo) ExistingTMDBIDs(ctx context.Context) (map[int]int64, error) {

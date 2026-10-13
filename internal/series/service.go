@@ -185,6 +185,12 @@ func (s *Service) List(ctx context.Context) ([]Series, error) {
 	return all, nil
 }
 
+// ProfileRefs maps every show to its quality profile, without the roll-up stats List
+// counts over every episode — what the library fit report needs.
+func (s *Service) ProfileRefs(ctx context.Context) (map[int64]string, error) {
+	return s.repo.ProfileRefs(ctx)
+}
+
 // ByTMDBIDs returns the library shows with these TMDB ids, each with its Stats roll-up.
 func (s *Service) ByTMDBIDs(ctx context.Context, tmdbIDs []int) ([]Series, error) {
 	return s.repo.ByTMDBIDs(ctx, tmdbIDs)

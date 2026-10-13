@@ -68,3 +68,15 @@ func TestSummariesListFilmsWithoutExtras(t *testing.T) {
 		}
 	}
 }
+
+// The library fit report needs only each film's profile.
+func TestProfileRefs(t *testing.T) {
+	s, ctx := testService(t)
+	if _, err := s.repo.db.Exec(`INSERT INTO movies (id, tmdb_id, title, quality_profile) VALUES (1, 1, 'Heat', 'custom:1'), (2, 2, 'Ran', 'custom:2')`); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := s.ProfileRefs(ctx)
+	if err != nil || len(refs) != 2 || refs[1] != "custom:1" || refs[2] != "custom:2" {
+		t.Fatalf("refs = %v, %v", refs, err)
+	}
+}
