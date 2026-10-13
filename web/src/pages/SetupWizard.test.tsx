@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { api, type APIKeyStatus, type AppSettings, type PlexConfig, type SetupState } from "../lib/api";
+import { api, type APIKeyStatus, type AppSettings, type PlexConfig, type ProwlarrInfo, type ProwlarrSyncResult, type SetupState } from "../lib/api";
+import { indexerApi } from "../lib/indexerApi";
 import { insightsApi } from "../lib/insightsApi";
 import { plexApi } from "../lib/plexApi";
 import { MemoryRouter } from "react-router-dom";
@@ -22,6 +23,8 @@ const state: SetupState = {
 beforeEach(() => {
   vi.spyOn(api, "setupState").mockResolvedValue(state);
   vi.spyOn(api, "checkLibraryFolder").mockReturnValue(new Promise(() => {}));
+  // The Indexers step asks for Prowlarr on its own; by default there is none.
+  vi.spyOn(setupApi, "stateWithProwlarr").mockResolvedValue({ ...state, indexers_enabled: 0, prowlarr_available: false });
 });
 afterEach(() => {
   cleanup();
@@ -116,6 +119,7 @@ describe("SetupWizard steps", () => {
     await click("Continue"); // keys
     await click("Save and continue"); // folders
     await click("Skip this step"); // Plex
+    await click("Skip this step"); // Indexers
     const todo = await screen.findByRole("link", { name: /Add an indexer \(to do\)/ });
     expect(todo.getAttribute("href")).toBe("/settings/connections#search");
     expect(screen.getByRole("link", { name: /Add your TMDB key \(done\)/ })).toBeTruthy();
@@ -165,7 +169,7 @@ describe("SetupWizard Plex step", () => {
     await toPlex();
     await click("Skip this step");
     expect(save).not.toHaveBeenCalled();
-    expect(await screen.findByText("Here's where you are")).toBeTruthy();
+    expect(await screen.findByText("Where releases come from")).toBeTruthy();
   });
 
   it("explains when the server can't reach plex.tv, and still lets you go on", async () => {
@@ -175,5 +179,43 @@ describe("SetupWizard Plex step", () => {
     await click("Sign in with Plex");
     expect(await screen.findByText(/Couldn't reach plex.tv from the server — you can connect later in Settings → Connections/)).toBeTruthy();
     expect(screen.getByText("Skip this step")).toBeTruthy();
+  });
+});
+
+// CFG-24: the Indexers step offers a one-click Prowlarr sync when one answers, and
+// Connections' add-indexer dialog for a single tracker.
+describe("SetupWizard Indexers step", () => {
+  const toIndexers = async () => {
+    vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+    page();
+    await click("Continue");
+    await click("Save and continue");
+    await click("Skip this step"); // Plex
+    expect(await screen.findByText("Where releases come from")).toBeTruthy();
+  };
+  beforeEach(() => {
+    vi.spyOn(insightsApi, "insightsConfig").mockResolvedValue({ url: "", token_set: false, enabled: false, poll_seconds: 30, status: "unconfigured" } as unknown as PlexConfig);
+    vi.spyOn(indexerApi, "prowlarrInfo").mockResolvedValue({ url: "http://arrmada-prowlarr:9696", has_key: true, ui_port: "9696", ui_url: "" } as ProwlarrInfo);
+  });
+
+  it("syncs from a Prowlarr that answers, then shows what's enabled", async () => {
+    const st = vi.spyOn(setupApi, "stateWithProwlarr").mockResolvedValue({ ...state, indexers_enabled: 0, prowlarr_available: true });
+    const sync = vi.spyOn(indexerApi, "syncProwlarr").mockResolvedValue({ added: 3, updated: 0, unchanged: 0, disabled: 0, reenabled: 0, skipped_usenet: 0, flaresolverr_ready: true } as ProwlarrSyncResult);
+    await toIndexers();
+    expect(await screen.findByText(/Prowlarr is running — sync its indexers/)).toBeTruthy();
+    st.mockResolvedValue({ ...state, indexers_enabled: 3, prowlarr_available: true });
+    await click("Sync now");
+    expect(sync).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/✓ 3 indexers enabled/)).toBeTruthy();
+    // With indexers in place there's nothing to skip.
+    expect(screen.queryByText("Skip this step")).toBeNull();
+  });
+
+  it("adds one tracker through the add-indexer dialog when there's no Prowlarr", async () => {
+    vi.spyOn(setupApi, "stateWithProwlarr").mockResolvedValue({ ...state, indexers_enabled: 0, prowlarr_available: false });
+    await toIndexers();
+    expect(await screen.findByText(/No Prowlarr answered at its saved address/)).toBeTruthy();
+    await click("Add a tracker…");
+    expect(await screen.findByRole("dialog", { name: "Add an indexer" })).toBeTruthy();
   });
 });

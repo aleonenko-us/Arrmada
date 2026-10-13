@@ -3,17 +3,58 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/indexer"
 )
 
 // setupStateBody is the part of GET /api/v1/setup the wizard's later steps read.
 type setupStateBody struct {
-	PlexConnected bool       `json:"plex_connected"`
-	PlexServer    string     `json:"plex_server"`
-	PlexFamily    plexFamily `json:"plex_family"`
+	PlexConnected     bool       `json:"plex_connected"`
+	PlexServer        string     `json:"plex_server"`
+	PlexFamily        plexFamily `json:"plex_family"`
+	IndexersEnabled   int        `json:"indexers_enabled"`
+	ProwlarrAvailable *bool      `json:"prowlarr_available"`
+}
+
+// The Indexers step sees how many indexers searches can use, and — only when it asks —
+// whether a Prowlarr answers at the saved address.
+func TestSetupStateIndexerFields(t *testing.T) {
+	a := checklistAPI(t)
+	ctx := context.Background()
+	b, _ := getSetupState(t, a, "")
+	if b.IndexersEnabled != 0 || b.ProwlarrAvailable != nil {
+		t.Fatalf("fresh install: indexers_enabled=%d prowlarr_available=%v, want 0 and not asked", b.IndexersEnabled, b.ProwlarrAvailable)
+	}
+	if _, err := a.deps.Indexers.Create(ctx, indexer.Indexer{Name: "Test", Kind: indexer.KindTorznab, URL: "http://127.0.0.1:1", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := getSetupState(t, a, ""); b.IndexersEnabled != 1 {
+		t.Errorf("one enabled indexer: indexers_enabled = %d", b.IndexersEnabled)
+	}
+
+	// No Prowlarr anywhere: asked, and the answer is no.
+	if b, _ := getSetupState(t, a, "?prowlarr=1"); b.ProwlarrAvailable == nil || *b.ProwlarrAvailable {
+		t.Errorf("no Prowlarr: prowlarr_available = %v, want false", b.ProwlarrAvailable)
+	}
+	prowlarr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" {
+			fmt.Fprint(w, `{"status":"OK"}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(prowlarr.Close)
+	if err := a.deps.Settings.Set(ctx, keyProwlarrURL, prowlarr.URL); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := getSetupState(t, a, "?prowlarr=1"); b.ProwlarrAvailable == nil || !*b.ProwlarrAvailable {
+		t.Errorf("Prowlarr answering: prowlarr_available = %v, want true", b.ProwlarrAvailable)
+	}
 }
 
 func getSetupState(t *testing.T, a *api, query string) (setupStateBody, string) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/config"
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/libroots"
 )
 
@@ -203,11 +204,23 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 	if a.deps.Insights != nil {
 		plexServer = a.deps.Insights.Config(ctx).ServerName
 	}
+	// Whether a Prowlarr answers is only asked for by the wizard's Indexers step
+	// (?prowlarr=1): it can take seconds, and every admin page load reads this endpoint.
+	var prowlarr *bool
+	if r.URL.Query().Get("prowlarr") == "1" {
+		ok := indexer.ProwlarrReachable(ctx, a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL))
+		prowlarr = &ok
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		// The Plex step: whether a server is connected, and the family sign-in choices.
-		"plex_connected":   a.plexConnected(ctx),
-		"plex_server":      plexServer,
-		"plex_family":      a.plexFamilyChoices(ctx),
+		"plex_connected": a.plexConnected(ctx),
+		"plex_server":    plexServer,
+		"plex_family":    a.plexFamilyChoices(ctx),
+		// The Indexers step: how many searches can use, and whether Prowlarr answers
+		// (null when not asked).
+		"indexers_enabled":   a.enabledIndexers(ctx),
+		"prowlarr_available": prowlarr,
+
 		"needed":           !complete && (!tmdb || !chosen),
 		"complete":         complete,
 		"tmdb_configured":  tmdb,

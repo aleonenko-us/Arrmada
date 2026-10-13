@@ -1,4 +1,4 @@
-import { req } from "./api";
+import { req, type SetupState } from "./api";
 
 // First-run calls: the Getting started checklist (the Dashboard card and the wizard's last
 // step). They live here rather than in api.ts so they only download with the admin pages
@@ -24,4 +24,6 @@ export interface SetupChecklist {
 export const setupApi = {
   checklist: () => req<SetupChecklist>("/api/v1/setup/checklist"),
   dismissChecklist: () => req<SetupChecklist>("/api/v1/setup/checklist/dismiss", { method: "POST" }),
+  /** The setup state plus whether a Prowlarr answers (a check of up to 3 s), for the Indexers step. */
+  stateWithProwlarr: () => req<SetupState>("/api/v1/setup?prowlarr=1"),
 };

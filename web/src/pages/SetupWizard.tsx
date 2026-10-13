@@ -1,29 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type APIKeyStatus, type LibraryPaths, type SetupState } from "../lib/api";
 import { FolderChips, FolderPicker } from "./Library";
 import { restartAndWait } from "../lib/restart";
 import { FleetMark } from "../components/FleetMark";
 import { ChecklistRows, useSetupChecklist } from "../components/GettingStarted";
+import { ProwlarrPanel } from "../components/connections/ProwlarrPanel";
 import { useMe } from "../lib/me";
-import { Button, useConfirm } from "../ui";
+import { setupApi } from "../lib/setupApi";
+import { Button, useConfirm, useToast } from "../ui";
 import { PlexConnect } from "./settings/PlexConnection";
 
 // SetupWizard is the first thing an admin sees on a fresh install: the metadata key, then
 // each library folder (pre-filled from what's on the mount), then Plex (Settings →
-// Connections' own sign-in, plus the family switches), then the Getting started checklist
-// with a link to each step that's left. Folders apply live, so the restart only
+// Connections' own sign-in, plus the family switches), then indexers (a Prowlarr sync, or
+// one tracker tested before it's saved — Connections' own dialog), then the Getting
+// started checklist with a link to each step that's left. Folders apply live, so the restart only
 // appears if a startup-only setting is waiting. Only the first step can be skipped
 // outright; Settings → System → Run setup again opens it again with what's set filled in.
 
-type Step = "keys" | "folders" | "plex" | "finish";
+type Step = "keys" | "folders" | "plex" | "indexers" | "finish";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "keys", label: "Metadata" },
   { id: "folders", label: "Folders" },
   { id: "plex", label: "Plex" },
+  { id: "indexers", label: "Indexers" },
   { id: "finish", label: "Finish" },
 ];
+
+// The Indexers step reuses Settings → Connections' add-indexer dialog (presets, Test
+// before saving); it loads when opened.
+const AddIndexerModal = lazy(() => import("../components/connections/AddIndexerModal"));
 
 // The family sign-in choices on the Plex step: off unless the owner turns them on here.
 interface Family { enabled: boolean; types: AutoTypes }
@@ -151,8 +159,23 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     if (family) {
       await api.updateSettings({ plex_login_enabled: family.enabled, plex_login_auto_approve_types: typesCSV(family.types) });
     }
-    go("finish");
+    go("indexers");
   });
+
+  // The Indexers step asks whether a Prowlarr answers (which can take a few seconds) only
+  // when it opens; null while it's asking. showProwlarr: the sync panel is open.
+  const toast = useToast();
+  const [prowlarr, setProwlarr] = useState<boolean | null>(null);
+  const [showProwlarr, setShowProwlarr] = useState(false);
+  const [addingIndexer, setAddingIndexer] = useState(false);
+  const refreshIndexers = useCallback(() => setupApi.stateWithProwlarr().then((s) => {
+    setState(s);
+    setProwlarr(!!s.prowlarr_available);
+    if (s.prowlarr_available) setShowProwlarr(true);
+  }).catch(() => setProwlarr(false)), []);
+  useEffect(() => {
+    if (step === "indexers") void refreshIndexers();
+  }, [step, refreshIndexers]);
 
   // Restart and wait for the NEW process (not the old one's last answers), then finish.
   const restart = () => run(async () => {
@@ -327,9 +350,59 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           <Nav
             busy={busy}
             onBack={() => go("folders")}
-            skip={{ label: "Skip this step", onClick: () => go("finish") }}
+            skip={{ label: "Skip this step", onClick: () => go("indexers") }}
             onNext={savePlex}
             nextLabel="Save and continue"
+          />
+        </>
+      )}
+
+      {step === "indexers" && (
+        <>
+          <h1 className="m-0 text-[20px] font-bold">Where releases come from</h1>
+          <p className="mb-3 mt-1 text-[13px] text-ink-dim">
+            Arrmada searches indexers — your trackers — for releases. Sync them all from Prowlarr in one go, or add one tracker now and test it before it's saved. You can add more any time in Settings → Connections.
+          </p>
+          {(state.indexers_enabled ?? 0) > 0 && (
+            <p role="status" className="m-0 mb-3 text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>
+              ✓ {state.indexers_enabled} {state.indexers_enabled === 1 ? "indexer" : "indexers"} enabled
+            </p>
+          )}
+
+          <div className="flex flex-col gap-3">
+            {prowlarr === null ? (
+              <p className="m-0 text-[12px] text-ink-faint">Looking for Prowlarr…</p>
+            ) : showProwlarr ? (
+              <div>
+                <div className="text-[12.5px] font-semibold">{prowlarr ? "Prowlarr is running — sync its indexers" : "Sync from Prowlarr"}</div>
+                <ProwlarrPanel onSynced={() => void refreshIndexers()} />
+              </div>
+            ) : (
+              <p className="m-0 text-[12px] text-ink-dim">
+                No Prowlarr answered at its saved address.{" "}
+                <button type="button" onClick={() => setShowProwlarr(true)} className="font-semibold" style={{ color: "var(--accent)" }}>Sync from a Prowlarr elsewhere</button>
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => setAddingIndexer(true)}>{(state.indexers_enabled ?? 0) > 0 ? "Add another tracker…" : "Add a tracker…"}</Button>
+              <span className="text-[11.5px] text-ink-faint">Pick it from the list, fill in its key, and Test it first.</span>
+            </div>
+          </div>
+          {addingIndexer && (
+            <Suspense fallback={null}>
+              <AddIndexerModal
+                onClose={() => setAddingIndexer(false)}
+                onAdded={(created) => { setAddingIndexer(false); toast(`Added ${created.name}`, { tone: "good" }); void refreshIndexers(); }}
+                onProwlarr={() => { setAddingIndexer(false); setShowProwlarr(true); }}
+              />
+            </Suspense>
+          )}
+          <Nav
+            busy={busy}
+            onBack={() => go("plex")}
+            skip={(state.indexers_enabled ?? 0) > 0 ? undefined : { label: "Skip this step", onClick: () => go("finish") }}
+            onNext={() => go("finish")}
+            nextLabel="Continue"
           />
         </>
       )}
