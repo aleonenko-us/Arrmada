@@ -15,6 +15,7 @@ import { MoviesSwitch } from "../components/MoviesSwitch";
 import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { StatusChip, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
+import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
@@ -153,7 +154,7 @@ export function Movies() {
         </>}
         tableNote={<FitLegend judged={judged} misfits={misfits} />}
         bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
-        emptyText={<>No movies yet. Click <b>Add movie</b>, search for a film, and Arrmada will monitor and grab it.</>}
+        empty={<LibraryEmpty noun="movies" folder="movies folder"addLabel="Add movie" onAdd={() => setShowAdd(true)} addDisabled={!metaOK} onScan={() => setShowScan(true)} scanning={scan.running} />}
       />
       {searchFor && (
         <ReleaseSearchModal

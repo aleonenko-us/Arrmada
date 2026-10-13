@@ -6,7 +6,8 @@ import { qualityApi } from "../lib/qualityApi";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
-import { Button, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
+import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
+import { LibraryEmpty } from "../features/library/LibraryEmpty";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -63,14 +64,24 @@ export function Music() {
   const scan = useJob(scanJob, {
     onDone: (j) => { setScanJob(null); load(); say(jobToast(j, "Scan finished."), jobFailed(j)); },
   });
+  // A failed first load is an error with Retry, never "No artists yet"; a failed refresh
+  // keeps the last good list under the error banner.
   const load = () =>
     api
       .artists()
-      .then(setArtists)
-      .catch((e: Error) => {
-        setError(e.message);
-        setArtists([]);
-      });
+      .then((a) => { setArtists(a); setError(null); })
+      .catch((e: Error) => setError(e.message));
+  const scanLibrary = async () => {
+    try {
+      const r = await api.scanMusic();
+      if (r.job_id) setScanJob(r.job_id);
+      // The scan runs in the background — one MusicBrainz lookup per unknown
+      // artist at a request per second — so say so rather than implying it's done.
+      say("Scanning your music folder… this runs in the background.");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   useEffect(() => {
     load();
     qualityApi.qualityProfiles("music")
@@ -128,17 +139,7 @@ export function Music() {
             busyLabel: "Scanning…",
             busy: scan.running,
             title: "Find artists already in your music folder and catalog them",
-            onClick: async () => {
-              try {
-                const r = await api.scanMusic();
-                if (r.job_id) setScanJob(r.job_id);
-                // The scan runs in the background — one MusicBrainz lookup per unknown
-                // artist at a request per second — so say so rather than implying it's done.
-                say("Scanning your music folder… this runs in the background.");
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            },
+            onClick: scanLibrary,
           }]}
           primary={{ label: "+ Add artist", onClick: () => setAdding(true) }}
         />
@@ -151,7 +152,7 @@ export function Music() {
           noun="artists"
         />
 
-        {error && (
+        {error && artists !== null && (
           <div className="mb-4 rounded-lg p-3 text-[12px]" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
             {error}
           </div>
@@ -236,10 +237,12 @@ export function Music() {
         )}
 
         {artists === null ? (
-          <Skeleton variant="list" />
+          error ? <ErrorState what="your artists" message={error} onRetry={load} /> : <Skeleton variant="list" />
+        ) : artists.length === 0 ? (
+          <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onAdd={() => setAdding(true)} onScan={scanLibrary} scanning={scan.running} />
         ) : shown.length === 0 ? (
           <div className="rounded-xl p-10 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            {artists.length === 0 ? "No artists yet. Add one to get started." : "No artists match this filter."}
+            No artists match this filter.
           </div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
