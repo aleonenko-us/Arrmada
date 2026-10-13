@@ -8,26 +8,29 @@ import { useAutoSave } from "../lib/useAutoSave";
 import { SavedTick } from "../components/settings/auto";
 import { Modal, useToast } from "../ui";
 import { useLiveEvent, useOnReconnect } from "../lib/live";
+import { scanLine, unmatchedOf, useLibraryScan } from "../lib/useLibraryScan";
 
 // LibraryFolders — points each library at a folder (with an in-app picker) and scans it.
 // Lives inside Settings → Library. Mount your media into the container (see the
 // installer), then browse + select here.
 type PathKey = keyof LibraryPaths;
-const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<unknown> }[] = [
-  { key: "movies", label: "Movies", hint: "folder of movie subfolders", scan: () => api.scanLibrary() },
-  { key: "tv", label: "TV Shows", hint: "folder of show subfolders", scan: () => api.scanSeries() },
-  { key: "ebooks", label: "Ebooks", hint: "folder of book subfolders", scan: () => api.scanBooks() },
-  { key: "audiobooks", label: "Audiobooks", hint: "may share the ebooks folder", scan: () => api.scanBooks() },
-  { key: "music", label: "Music", hint: "folder of artist subfolders", scan: () => api.scanMusic() },
+// job: the kind of job a row's scan runs as, so a scan started anywhere shows on its row.
+// Ebooks and Audiobooks share the one book scan. review: its unmatched folders are listed
+// under the rows ("needs review").
+const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<{ job_id?: number }>; job?: string; review?: boolean }[] = [
+  { key: "movies", label: "Movies", hint: "folder of movie subfolders", scan: () => api.scanLibrary(), job: "movie.scan", review: true },
+  { key: "tv", label: "TV Shows", hint: "folder of show subfolders", scan: () => api.scanSeries(), job: "series.scan", review: true },
+  { key: "ebooks", label: "Ebooks", hint: "folder of book subfolders", scan: () => api.scanBooks(), job: "books.scan" },
+  { key: "audiobooks", label: "Audiobooks", hint: "may share the ebooks folder", scan: () => api.scanBooks(), job: "books.scan" },
+  { key: "music", label: "Music", hint: "folder of artist subfolders", scan: () => api.scanMusic(), job: "music.scan" },
   { key: "downloads", label: "Downloads", hint: "where the download client saves files — the disk guard watches this folder" },
 ];
+const noScan = () => Promise.resolve({});
 
 export function LibraryFolders() {
   const [paths, setPaths] = useState<LibraryPaths | null>(null);
   const [reviewKey, setReviewKey] = useState(0); // bump to reload the unmatched lists
   const toast = useToast();
-  const say = (m: string) => toast(m, { ms: 4500 });
-  const fail = (m: string) => toast(m, { tone: "error", ms: 6000 });
   const { user, musicEnabled } = useMe();
   // Moving a library or browsing the host's folders is the admin's call; a manager sees
   // where each library lives and can still scan it.
@@ -50,13 +53,6 @@ export function LibraryFolders() {
   // A row's save answers with every folder; take them all so each row compares against
   // what's really stored.
   const saved = (p: LibraryPaths) => { setPaths(p); announceFoldersSaved(); };
-  const scan = async (row: typeof ROWS[number]) => {
-    if (!row.scan) return;
-    try {
-      await row.scan();
-      say(`Scanning ${row.label}… matches appear in the library; anything unsure lands in "needs review" below.`);
-    } catch (e) { fail((e as Error).message); }
-  };
 
   return (
     <div>
@@ -72,7 +68,7 @@ export function LibraryFolders() {
             // The folder can be set ahead of switching Music on, but a scan while it's off
             // only hits the gated endpoint and flashes "module is turned off".
             canScan={!!row.scan && (row.key !== "music" || musicEnabled)}
-            onScan={() => scan(row)}
+            onScanned={reloadReview}
             onSaved={saved}
           />
         ))}
@@ -93,14 +89,18 @@ export function LibraryFolders() {
 // picked in Browse, or a typed path confirmed with "Use this folder" or Enter — never on
 // every keystroke or on blur, because a saved folder re-points imports at once. The
 // server's checks (exists, writable, never under /data) answer inline on this row.
-function FolderRow({ row, paths, admin, canScan, onScan, onSaved }: {
+function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
   row: typeof ROWS[number];
   paths: LibraryPaths;
   admin: boolean;
   canScan: boolean;
-  onScan: () => void;
+  /** A scan of this library finished (the review lists may have changed). */
+  onScanned: () => void;
   onSaved: (p: LibraryPaths) => void;
 }) {
+  const scan = useLibraryScan(row.job ?? "", row.scan ?? noScan, onScanned);
+  const line = scanLine(row.label, scan);
+  const unmatched = row.review ? unmatchedOf(scan.job) : 0;
   const [picking, setPicking] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const onBlocking = useCallback((_: PathKey, b: boolean) => setBlocking(b), []);
@@ -118,8 +118,15 @@ function FolderRow({ row, paths, admin, canScan, onScan, onSaved }: {
           <div className="text-[13px] font-semibold">{row.label}</div>
           <div className="text-[10.5px] text-ink-faint">{row.hint}</div>
         </div>
-        {canScan && <button onClick={onScan} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Scan</button>}
+        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
       </div>
+      {(line || scan.note) && (
+        <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]">
+          {line && <span style={{ color: line.tone === "good" ? "var(--good)" : line.tone === "error" ? "var(--reject)" : "var(--ink-dim)" }}>{line.text}</span>}
+          {unmatched > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent)" }}>{unmatched} need review ↓</a>}
+          {scan.note && !scan.note.error && <span className="text-ink-faint">{scan.note.text}</span>}
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap gap-2">
         <input
           aria-label={`${row.label} folder`}
