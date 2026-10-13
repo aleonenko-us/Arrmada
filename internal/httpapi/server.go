@@ -174,8 +174,8 @@ func New(d Deps) *http.Server {
 	}
 
 	// Chain: recover → authenticate (resolves the user) → external gate (LAN vs
-	// outside) → log → routes.
-	handler := a.recoverPanics(a.securityHeaders(a.authenticate(a.externalGate(a.logRequests(rt)))))
+	// outside) → log → gzip for larger JSON → routes.
+	handler := a.recoverPanics(a.securityHeaders(a.authenticate(a.externalGate(a.logRequests(a.compressJSON(rt))))))
 
 	return &http.Server{
 		Addr:              d.Config.Addr(),
