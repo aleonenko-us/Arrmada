@@ -563,6 +563,10 @@ func (a *api) registerRoutes(mux *router) {
 	// Debug for a while: raised from the Logs page, back to the install's level by itself.
 	mux.HandleFunc("GET /api/v1/logs/level", a.requireRole(auth.RoleAdmin, a.handleGetLogLevel))
 	mux.HandleFunc("PUT /api/v1/logs/level", a.requireRole(auth.RoleAdmin, a.handleSetLogLevel))
+	// The whole history on disk as a zip (the admin's own copy), and the scrubbed support
+	// bundle meant for sharing.
+	mux.HandleFunc("GET /api/v1/logs/download", a.requireRole(auth.RoleAdmin, a.handleLogsDownload))
+	mux.HandleFunc("GET /api/v1/system/support-bundle", a.requireRole(auth.RoleAdmin, a.handleSupportBundle))
 	mux.HandleFunc("GET /api/v1/recycle", a.requireRole(auth.RoleManager, a.handleRecycleStats))
 	mux.HandleFunc("GET /api/v1/recycle/mode", a.requireRole(auth.RoleManager, a.handleRecycleMode))
 	mux.HandleFunc("GET /api/v1/recycle/items", a.requireRole(auth.RoleManager, a.handleRecycleItems))

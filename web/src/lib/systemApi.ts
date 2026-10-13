@@ -55,6 +55,8 @@ export interface LogPage {
   last_seq?: number;
   /** The cursor was from before a restart: entries is a fresh window, not an increment. */
   reset?: boolean;
+  /** This run of the server; when it changes, line numbers started over. */
+  run?: number;
   /** The parts of the app that tag their lines, for the module filter. */
   modules?: string[];
   /** How many lines the server keeps in memory (older ones are only in the files on disk). */

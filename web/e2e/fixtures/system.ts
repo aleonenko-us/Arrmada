@@ -181,6 +181,7 @@ export const logs: LogPage = {
     { seq: 2, time_ms: NOW - 30_000, level: "WARN", msg: "indexer slow to answer", attrs: "indexer=Fixture", module: "indexer" },
   ],
   last_seq: 2,
+  run: 1,
   capacity: 50000,
 };
 

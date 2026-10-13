@@ -255,8 +255,8 @@ func main() {
 	// FlareSolverr's URL is a setting like the API keys (ARRMADA_FLARESOLVERR_URL as the
 	// fallback), read on every use, so changing it needs no restart.
 	flare := flaresolverr.NewFunc(keyStore.Func("flaresolverr"))
-	indexers := indexer.NewService(st.DB(), log, flare)
-	downloads := download.NewService(st.DB(), log)
+	indexers := indexer.NewService(st.DB(), modLog(log, "indexer"), flare)
+	downloads := download.NewService(st.DB(), modLog(log, "download"))
 	// How each indexer and download client has been answering, kept across restarts: a
 	// failing indexer backs off for background searches, and the Indexers page and the
 	// health panel show it. Each visible change is announced (no names or error text —
@@ -333,8 +333,8 @@ func main() {
 		}
 		log.Info("quality: repointed titles on deleted profiles to the default", args...)
 	}
-	notifySvc := notify.NewService(st.DB(), bus, log)
-	pushSvc := push.New(st.DB(), settingsSvc, log)
+	notifySvc := notify.NewService(st.DB(), bus, modLog(log, "notify"))
+	pushSvc := push.New(st.DB(), settingsSvc, modLog(log, "notify"))
 	// Episode NUMBERING comes from TVmaze; everything else about a show still comes from
 	// TMDB. TMDB merges two-part episodes into single entries where releases keep them
 	// separate, so its numbering drifts from the way files are actually named and every
@@ -348,14 +348,14 @@ func main() {
 		tvdb,
 		metadata.NewTVmaze(),
 	)
-	seriesSvc := series.NewService(st.DB(), tvSeries, cfg.TVDir, log)
+	seriesSvc := series.NewService(st.DB(), tvSeries, cfg.TVDir, modLog(log, "series"))
 	seriesSvc.SetRootFunc(rootFuncs.TV)                                   // scans and manual imports follow Settings → Library
 	seriesSvc.SetSceneMapper(xem.New(keyStore.Func("flaresolverr"), log)) // TheXEM scene mapping (via FlareSolverr past Cloudflare)
 	// The monitoring preset an add or a request uses when it doesn't pick one.
 	seriesSvc.SetMonitorDefaultFunc(func(ctx context.Context) string {
 		return settingsSvc.Get(ctx, series.KeyMonitorDefault, series.DefaultMonitorPreset)
 	})
-	booksSvc := books.NewService(st.DB(), openlib, log)
+	booksSvc := books.NewService(st.DB(), openlib, modLog(log, "books"))
 	// Hardcover is the catalogue when a key is set; anything still on Open Library keys
 	// is re-matched without being asked. Nothing here merges book rows any more: the old
 	// boot-time fold deleted prefix siblings ('Mistborn: The Final Empire' / 'Mistborn:
@@ -363,7 +363,7 @@ func main() {
 	// Possible duplicates are flagged on the book's timeline for a person to review.
 	grp.Go("books: catalogue upgrade check", func(ctx context.Context) { booksSvc.MaybeSubmitUpgrade(ctx, jobRunner, "system") })
 	// MusicBrainz needs no key, the way Open Library needs none for books.
-	musicSvc := music.NewService(st.DB(), metadata.NewMusicBrainz(), log)
+	musicSvc := music.NewService(st.DB(), metadata.NewMusicBrainz(), modLog(log, "music"))
 	// Music is off by default now (it's a preview), but an install already using it must
 	// not have it switched off underneath it by an upgrade: an unsaved toggle on a library
 	// with artists is pinned on. A saved choice, either way, is never touched.
@@ -390,7 +390,7 @@ func main() {
 	default:
 		bins.Explicit = cfg.RecycleDir
 	}
-	movieSvc := movies.NewService(st.DB(), tmdb, qualitySvc, cfg.MoviesDir, "", bus, log)
+	movieSvc := movies.NewService(st.DB(), tmdb, qualitySvc, cfg.MoviesDir, "", bus, modLog(log, "movies"))
 	movieSvc.SetRootFunc(rootFuncs.Movie) // scans, manual imports and renames follow Settings → Library
 	movieSvc.SetBin(bins)                 // deletes and replaced files go to the bins
 	seriesSvc.SetBin(bins)                // per-episode file deletes go to the recycle bin, like movies
@@ -431,7 +431,7 @@ func main() {
 	// The coordinator is the "add a movie and walk away" brain: it searches
 	// indexers for monitored-but-missing movies, ranks releases, grabs the best,
 	// and attaches finished imports back to the movie.
-	coordinator := automation.New(movieSvc, indexers, downloads, qualitySvc, st.DB(), bus, log, cfg.DownloadsDir)
+	coordinator := automation.New(movieSvc, indexers, downloads, qualitySvc, st.DB(), bus, modLog(log, "automation"), cfg.DownloadsDir)
 	coordinator.SetOutbox(box) // series and book imports queue their follow-up work
 	// Every grab's save path and the free-space check read the downloads folder live.
 	coordinator.SetDownloadsDirFunc(libroots.Func(roots.Downloads))
@@ -462,7 +462,7 @@ func main() {
 	})
 
 	appStart := time.Now()
-	sched := scheduler.New(log)
+	sched := scheduler.New(modLog(log, "scheduler"))
 	// Each task's last run, result and failure streak survive a restart, so the Tasks
 	// table can still say what failed overnight after a deploy.
 	sched.SetStore(scheduler.NewSQLStore(st.DB()))
@@ -489,7 +489,7 @@ func main() {
 		return nil
 	}, scheduler.Hidden())
 	// Import finished downloads into the library.
-	imports := library.NewManager(st.DB(), "", bus, log)
+	imports := library.NewManager(st.DB(), "", bus, modLog(log, "import"))
 	imports.SetNaming(prefs)
 	// Route each media type to its own library folder, resolved on every import. A type
 	// with no folder fails loudly rather than landing in the managed volume.
@@ -522,7 +522,7 @@ func main() {
 	})
 	// Wire the series module into the coordinator: TV downloads land in a separate
 	// category and are hardlinked file-by-file (a season pack yields many episodes).
-	bookImporter := library.NewImporter("", log)
+	bookImporter := library.NewImporter("", modLog(log, "import"))
 	// This importer places TV episodes, book editions and albums, and scans the book
 	// folders; every folder is resolved on each use, so Settings → Library applies live.
 	bookImporter.SetRootFuncs(rootFuncs)
@@ -649,7 +649,7 @@ func main() {
 	// Hold downloads while the downloads volume is too full. A minute is frequent
 	// enough to catch a big torrent filling a cache pool, and the check is a statfs
 	// plus one queue read, so it costs nothing to run often.
-	diskGuard := download.NewDiskGuard(downloads, settingsSvc, log, cfg.DownloadsDir)
+	diskGuard := download.NewDiskGuard(downloads, settingsSvc, modLog(log, "download"), cfg.DownloadsDir)
 	diskGuard.SetDirFunc(libroots.Func(roots.Downloads)) // watches the folder in use now
 	sched.Register("downloads-disk-guard", time.Minute, true, diskGuard.Check, scheduler.Label("Watch download disk space"), scheduler.Description("Pauses downloads while the downloads drive is too full."))
 	// A torrent the guard paused is waiting for space, not stalled: its clock holds.
@@ -751,7 +751,7 @@ func main() {
 	// Requests module sits on top of Movies/Series: an approval adds the media and
 	// triggers a search through the existing acquisition pipeline. Created before
 	// sched.Start so its sweep is in the snapshot the scheduler launches.
-	requestsSvc := requests.NewService(st.DB(), movieSvc, seriesSvc, booksSvc, coordinator, qualitySvc, bus, notifySvc.AppriseBin(), log)
+	requestsSvc := requests.NewService(st.DB(), movieSvc, seriesSvc, booksSvc, coordinator, qualitySvc, bus, notifySvc.AppriseBin(), modLog(log, "requests"))
 	// Every download whose import keeps failing — the movie importer's retry records and
 	// the series sweep's — read by request cards ("being checked"), the Activity queue's
 	// Finishing stages and the Needs-you feed alike.
@@ -848,7 +848,7 @@ func main() {
 	// Subtitles module (Bazarr replacement): grabs external SRT sidecars over the
 	// Movies/Series catalogs via OpenSubtitles.
 	subsProvider := subtitles.NewOpenSubtitlesFunc(keyStore.Func("opensubtitles_api"), keyStore.Func("opensubtitles_username"), keyStore.Func("opensubtitles_password"))
-	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), log)
+	subtitlesSvc := subtitles.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, subsProvider, "ffmpeg", "ffprobe", filepath.Join(cfg.DataDir, "whisper"), modLog(log, "subtitles"))
 	// Replaced and removed sidecars go to the recycle bins, like their videos.
 	subtitlesSvc.SetBin(bins)
 	// A reported problem's subtitles fix resolves once its job has made subtitles. Hooked
@@ -879,7 +879,7 @@ func main() {
 			convertScratch = filepath.Join(cfg.DataDir, "convert")
 		}
 	}
-	convertSvc := convert.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, "ffmpeg", "ffprobe", convertScratch, "", log)
+	convertSvc := convert.NewService(st.DB(), movieSvc, seriesSvc, settingsSvc, "ffmpeg", "ffprobe", convertScratch, "", modLog(log, "convert"))
 	// Converted originals wait in a hidden hold on their own library folder (same drive, a
 	// rename) for the undo window — never in the recycle bin, whose cap would purge them.
 	convertSvc.SetHoldRoots(func() []libroots.Root { return roots.Libraries(context.Background()) }, cfg.DataDir)
@@ -957,7 +957,7 @@ func main() {
 		}
 	}
 	geoResolver := geoip.New(geoDB)
-	insightsSvc := insights.NewService(st.DB(), settingsSvc, geoResolver, bus, log)
+	insightsSvc := insights.NewService(st.DB(), settingsSvc, geoResolver, bus, modLog(log, "insights"))
 	insightsSvc.SeedFromEnv(runCtx, cfg.PlexURL, cfg.PlexToken)
 	// A Tautulli import the last run was in the middle of will never finish: say so,
 	// rather than showing it as running forever.
@@ -1052,13 +1052,13 @@ func main() {
 	})
 	audioSrv := audioserver.New(audioserver.Options{
 		DB: st.DB(), Books: booksSvc, Listen: listenStore, Users: authSvc, Settings: settingsSvc,
-		Log: log, FFprobe: "ffprobe", DataDir: cfg.DataDir,
+		Log: modLog(log, "audioserver"), FFprobe: "ffprobe", DataDir: cfg.DataDir,
 	})
 	audioPort := os.Getenv("ARRMADA_AUDIOBOOK_LISTEN_PORT")
 	if audioPort == "" {
 		audioPort = "13378"
 	}
-	audioMgr := audioserver.NewManager(audioSrv, ":"+audioPort, log)
+	audioMgr := audioserver.NewManager(audioSrv, ":"+audioPort, modLog(log, "audioserver"))
 	audioMgr.Apply(settingsSvc.GetBool(context.Background(), audioserver.KeyEnabled, false))
 	sched.Register("audioserver-prune", 24*time.Hour, false, func(ctx context.Context) error {
 		return listenStore.Prune(ctx)
@@ -1175,7 +1175,7 @@ func main() {
 	restartCh := make(chan struct{}, 1)
 	srv := httpapi.New(httpapi.Deps{
 		Config:       cfg,
-		Log:          log,
+		Log:          modLog(log, "api"),
 		Store:        st,
 		Bus:          bus,
 		Auth:         authSvc,
@@ -1459,6 +1459,10 @@ func scrubLegacyLogs(logPath string) error {
 // ARRMADA_LOG_LEVEL; the Logs page can raise it for a while (it reverts by itself, and a
 // restart starts back at the install's level).
 var logLevel *applog.LevelSwitch
+
+// modLog tags a service's log lines with its module, which the Logs page filters on.
+// applog.Modules lists the names; keep the two in step.
+func modLog(log *slog.Logger, module string) *slog.Logger { return log.With("module", module) }
 
 func newLogger(level string) *slog.Logger {
 	l, ok := applog.ParseLevel(level)

@@ -3,7 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { type LogEntry } from "../lib/api";
 import { systemApi, type LogLevelState } from "../lib/systemApi";
 import { usePoll } from "../lib/usePoll";
-import { Button, useToast } from "../ui";
+import { Button, Menu, useToast } from "../ui";
 
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const LEVEL_STYLE: Record<string, { color: string; label: string }> = {
@@ -21,6 +21,16 @@ const NOISE = "torznab page,indexer search";
 // How many lines the page asks for. It is only the viewer's window: the server keeps far
 // more in memory and on disk, which the footer says.
 const LOG_LIMIT = 2000;
+// Live mode appends what's new; past this many lines the oldest drop off the view.
+const CLIENT_MAX = 5000;
+
+// Saves a server download (the session cookie authenticates it) without leaving the page.
+function saveURL(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  a.click();
+}
 
 // The debug button's length; the server allows up to its max_minutes.
 const DEBUG_MINUTES = 30;
@@ -38,7 +48,7 @@ function fmtFull(ms: number): string {
 }
 
 function asText(entries: LogEntry[]): string {
-  return entries.map((e) => `${fmtFull(e.time_ms)} ${e.level} ${e.msg}${e.attrs ? " " + e.attrs : ""}`).join("\n");
+  return entries.map((e) => `${fmtFull(e.time_ms)} ${e.level} ${e.module ? `[${e.module}] ` : ""}${e.msg}${e.attrs ? " " + e.attrs : ""}`).join("\n");
 }
 
 function fmtLeft(ms: number): string {
@@ -107,7 +117,9 @@ function DebugSwitch({ onEnabled }: { onEnabled: () => void }) {
 export function Logs() {
   const [entries, setEntries] = useState<LogEntry[] | null>(null);
   const [capacity, setCapacity] = useState<number | null>(null);
+  const [modules, setModules] = useState<string[]>([]);
   const [level, setLevel] = useState("info");
+  const [module, setModule] = useState("");
   const [q, setQ] = useState("");
   const [hide, setHide] = useState("");
   const [auto, setAuto] = useState(true);
@@ -123,13 +135,59 @@ export function Logs() {
     return () => window.clearTimeout(t);
   }, [q, hide]);
 
-  const load = useCallback(() =>
-    systemApi.logs({ limit: LOG_LIMIT, level, q: dq, hide: dhide })
-      .then((r) => { setEntries(r.entries); setCapacity(r.capacity ?? null); setErr(null); })
-      .catch((e: Error) => setErr(e.message)), [level, dq, dhide]);
+  // cursor is the newest line the server had at the last answer: Live mode asks only for
+  // what came after it. gen ties an answer to the filters it was asked with, so a poll
+  // that was in flight when the filters changed can't append lines from the old ones.
+  const cursor = useRef(0);
+  const gen = useRef(0);
+  const run = useRef<number | undefined>(undefined);
+  const filters = useCallback(() => ({ level, q: dq, hide: dhide, module }), [level, dq, dhide, module]);
+
+  // A full load: the newest window for these filters.
+  const loading = useRef(false);
+  const load = useCallback(() => {
+    const g = ++gen.current;
+    loading.current = true;
+    return systemApi.logs({ limit: LOG_LIMIT, ...filters() })
+      .finally(() => { if (g === gen.current) loading.current = false; })
+      .then((r) => {
+        if (g !== gen.current) return;
+        setEntries(r.entries);
+        cursor.current = r.last_seq ?? 0;
+        run.current = r.run;
+        setCapacity(r.capacity ?? null);
+        setModules(r.modules ?? []);
+        setErr(null);
+      })
+      .catch((e: Error) => setErr(e.message));
+  }, [filters]);
+
+  // A Live tick: only the lines after the cursor, appended and trimmed to CLIENT_MAX. A
+  // reset answer, or a new run, means the server restarted: the view starts over.
+  const tick = useCallback(() => {
+    if (loading.current) return; // the full load under way brings everything
+    if (!cursor.current) return load();
+    const g = gen.current;
+    return systemApi.logs({ limit: LOG_LIMIT, ...filters(), after_seq: cursor.current })
+      .then((r) => {
+        if (g !== gen.current) return;
+        if (r.run !== run.current) return load(); // restarted: the old cursor means nothing now
+        cursor.current = r.last_seq ?? cursor.current;
+        if (r.reset) {
+          setEntries(r.entries);
+        } else if (r.entries.length) {
+          setEntries((prev) => {
+            const next = [...(prev ?? []), ...r.entries];
+            return next.length > CLIENT_MAX ? next.slice(next.length - CLIENT_MAX) : next;
+          });
+        }
+        setErr(null);
+      })
+      .catch((e: Error) => setErr(e.message));
+  }, [filters, load]);
 
   useEffect(() => { load(); }, [load]);
-  usePoll(load, auto ? 3000 : null, { immediate: false });
+  usePoll(tick, auto ? 3000 : null, { immediate: false });
 
   // Keep the view pinned to the bottom (newest) unless the user scrolls up.
   useEffect(() => {
@@ -188,10 +246,25 @@ export function Logs() {
           >
             {hide === NOISE ? "Noise hidden" : "Hide noise"}
           </Button>
+          <select value={module} onChange={(e) => setModule(e.target.value)} aria-label="Module" title="Only one part of the app's lines" className="rounded-lg px-2.5 py-1.5 text-[12px]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+            <option value="">All modules</option>
+            {modules.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
           <Button size="sm" onClick={() => setAuto((v) => !v)} aria-pressed={auto} style={pill(auto)}>{auto ? "Live ●" : "Paused"}</Button>
           <Button size="sm" onClick={load}>Refresh</Button>
           <Button size="sm" onClick={copyAll}>{copied ? "Copied ✓" : "Copy"}</Button>
-          <Button size="sm" onClick={download} title="Save the filtered view as a .txt file">Download</Button>
+          <Menu
+            trigger="Download ▾"
+            label="Download logs"
+            triggerClassName="rounded-md px-2.5 py-1 text-[11.5px] font-semibold"
+            triggerStyle={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+            menuWidthClassName="min-w-[260px]"
+            items={[
+              { label: "This view (.txt)", title: "The lines shown here, with full timestamps", onSelect: download },
+              { label: "Full log history (.zip)", title: "Every line on disk, including the rotated files. For you: it names your library's titles.", onSelect: () => saveURL("/api/v1/logs/download") },
+              { label: "Support bundle (.zip)", title: "Logs, status, health and safe settings with credentials, people and book names taken out — made to be shared", onSelect: () => saveURL("/api/v1/system/support-bundle") },
+            ]}
+          />
           <DebugSwitch onEnabled={() => setLevel("debug")} />
         </div>
 
@@ -203,17 +276,17 @@ export function Logs() {
           ) : entries.length === 0 ? (
             <div className="p-6 text-center text-ink-dim">
               No log lines match.
-              {(dq || dhide) && <div className="mt-1 text-[11px]">Your filters may be too narrow — clear them to see everything.</div>}
+              {(dq || dhide || module) && <div className="mt-1 text-[11px]">Your filters may be too narrow — clear them to see everything.</div>}
             </div>
           ) : (
             entries.map((e, i) => {
               const ls = LEVEL_STYLE[e.level] ?? LEVEL_STYLE.INFO;
               return (
-                <div key={`${e.time_ms}-${i}`} className="flex gap-2 whitespace-pre-wrap px-1 py-0.5" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
+                <div key={e.seq ?? `${e.time_ms}-${i}`} className="flex gap-2 whitespace-pre-wrap px-1 py-0.5" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                   <span className="flex-none text-ink-faint" title={fmtFull(e.time_ms)}>{fmtTime(e.time_ms)}</span>
                   <span className="w-8 flex-none font-bold" style={{ color: ls.color }}>{ls.label}</span>
                   <span className="min-w-0 flex-1 break-words">
-                    <span style={{ color: "var(--ink)" }}>{e.msg}</span>
+                    {e.module && !module && <span className="text-ink-faint">[{e.module}] </span>}<span style={{ color: "var(--ink)" }}>{e.msg}</span>
                     {e.attrs && <span className="text-ink-faint">  {e.attrs}</span>}
                   </span>
                 </div>
@@ -223,7 +296,7 @@ export function Logs() {
         </div>
         <p className="text-[11px] text-ink-faint">
           Showing the newest {(entries?.length ?? 0).toLocaleString()} matching lines{dhide ? " (some hidden by your filter)" : ""}
-          {capacity ? ` of the last ${capacity.toLocaleString()} kept in memory` : ""}. Older lines are in the logs folder on disk (/data/logs in the container). Same stream as the container logs.
+          {capacity ? ` of the last ${capacity.toLocaleString()} kept in memory` : ""}. Older lines are in the logs folder on disk (/data/logs in the container); Download → Full log history has them all. Same stream as the container logs.
         </p>
       </div>
     </>
