@@ -33,7 +33,7 @@ import { ConflictNotes } from "./quality/ConflictNotes";
 import { ReleaseExplain } from "../components/ReleaseExplain";
 import { formatBytes } from "../lib/format";
 import { useQuery } from "../lib/query";
-import { Button, ErrorState, Modal, Skeleton, StaleBanner } from "../ui";
+import { Button, ErrorState, Modal, Skeleton, StaleBanner, useConfirm } from "../ui";
 
 const NO_PROFILES: QualityProfileInfo[] = [];
 const NO_FORMATS: FormatInfo[] = [];
@@ -504,26 +504,18 @@ function FitBar({ counts }: { counts: FitCounts }) {
 }
 
 function TemplatePicker({ media, onPick, onClose }: { media: string; onPick: (sp: StoredProfile) => void; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="tpl-title" className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto p-6" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
-      <div className="mt-[8vh] w-full max-w-[640px] rounded-xl p-5" style={{ ...panelStyle, boxShadow: "var(--shadow)" }} onClick={(e) => e.stopPropagation()}>
-        <h3 id="tpl-title" className="text-[15px] font-bold">New {media === "series" ? "series" : "movie"} profile</h3>
-        <p className="mt-1 text-[12px] text-ink-dim">Pick a starting point — everything can be changed after.</p>
-        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          {VIDEO_TEMPLATES.map((t) => (
-            <button key={t.key} onClick={() => onPick(t.make(media))} className="rounded-xl p-3.5 text-left transition-colors hover:border-[var(--accent)]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-              <div className="text-[13px] font-semibold">{t.name}</div>
-              <div className="mt-1 text-[11.5px] leading-[1.45] text-ink-dim">{t.desc}</div>
-            </button>
-          ))}
-        </div>
+    <Modal onClose={onClose} size="lg" title={`New ${media === "series" ? "series" : "movie"} profile`}>
+      <p className="mt-1 text-[12px] text-ink-dim">Pick a starting point — everything can be changed after.</p>
+      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {VIDEO_TEMPLATES.map((t) => (
+          <button key={t.key} onClick={() => onPick(t.make(media))} className="rounded-xl p-3.5 text-left transition-colors hover:border-[var(--accent)]" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+            <div className="text-[13px] font-semibold">{t.name}</div>
+            <div className="mt-1 text-[11.5px] leading-[1.45] text-ink-dim">{t.desc}</div>
+          </button>
+        ))}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -551,6 +543,12 @@ function useUnsaved(dirty: boolean) {
   }, [dirty]);
 }
 
+// The builders' ← Back and Cancel ask before throwing a half-built profile away.
+function useDiscardConfirm() {
+  const confirm = useConfirm();
+  return () => confirm({ title: "Discard your changes to this profile?", confirmLabel: "Discard", tone: "danger" });
+}
+
 function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { formats: FormatInfo[]; unwanted: UnwantedCatalog; initial: StoredProfile; onCancel: () => void; onSaved: () => void }) {
   const start = useMemo(() => withTarget(initial), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
@@ -567,6 +565,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
   useUnsaved(dirty);
+  const confirmDiscard = useDiscardConfirm();
 
   // Live preview over the sample releases, debounced.
   useEffect(() => {
@@ -588,8 +587,8 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   // Target edits apply to the latest state, so two quick changes can't overwrite each other.
   const updateIdeal = (fn: (i: IdealFile) => IdealFile) => setSp((s) => ({ ...s, ideal: fn(s.ideal ?? {}) }));
 
-  const leave = () => {
-    if (dirty && !window.confirm("Discard your changes to this profile?")) return;
+  const leave = async () => {
+    if (dirty && !(await confirmDiscard())) return;
     onCancel();
   };
   // write saves body as is; save checks first what saving would set off.
@@ -1356,6 +1355,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
   useUnsaved(dirty);
+  const confirmDiscard = useDiscardConfirm();
   const patch = (p: Partial<StoredProfile>) => setSp((s) => ({ ...s, ...p }));
 
   // Each tier's score: the full-ladder preset's value, else spaced by rank.
@@ -1377,8 +1377,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
   const top = ladder.find((t) => on(t));
   const kept = ladder.filter((t) => on(t)).length;
 
-  const leave = () => {
-    if (dirty && !window.confirm("Discard your changes to this profile?")) return;
+  const leave = async () => {
+    if (dirty && !(await confirmDiscard())) return;
     onCancel();
   };
   const save = async () => {
@@ -1466,6 +1466,7 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
   useUnsaved(dirty);
+  const confirmDiscard = useDiscardConfirm();
   const patch = (p: Partial<StoredProfile>) => setSp((s) => ({ ...s, ...p }));
   const setFormatScore = (name: string, score: number) => {
     const next = { ...sp.format_scores };
@@ -1473,8 +1474,8 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
     else next[name] = score;
     patch({ format_scores: next });
   };
-  const leave = () => {
-    if (dirty && !window.confirm("Discard your changes to this profile?")) return;
+  const leave = async () => {
+    if (dirty && !(await confirmDiscard())) return;
     onCancel();
   };
   const save = async () => {
