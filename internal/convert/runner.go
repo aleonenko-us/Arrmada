@@ -457,6 +457,10 @@ type Status struct {
 	Requests  []Request  `json:"requests"`
 	UpNext    []autoCand `json:"up_next"`
 	Remaining int        `json:"remaining"` // files the runner would still convert
+	// Problems counts the files that would convert but are held back by a skip (waiting to
+	// be retried, or never retried) or by repeated failures — what the Problems tab lists.
+	// They aren't in Remaining, so "done" says how many there are rather than "everything".
+	Problems int `json:"problems"`
 	// The time forecast (throughput.go): the whole remaining list's encoding time, spread
 	// over the conversions that run at once, in seconds and in nights of the encode hours;
 	// and how much encoding the running conversions have done — what a restart would lose.
@@ -506,7 +510,11 @@ func (s *Service) Status(ctx context.Context) Status {
 	st.UpNext = []autoCand{}
 	var remaining []autoCand
 	for _, c := range s.autoCandidates(ctx, p) {
-		if waiting[c.Key] || blocked[c.Key] || running[c.Key] || requested[c.Key] {
+		if running[c.Key] || requested[c.Key] {
+			continue
+		}
+		if waiting[c.Key] || blocked[c.Key] {
+			st.Problems++
 			continue
 		}
 		st.Remaining++
@@ -534,6 +542,10 @@ func (s *Service) Status(ctx context.Context) Status {
 		st.State, st.Message = "starting", "Starting your requested files"
 	case !p.auto:
 		st.State, st.Message = "off", "Automatic conversion is off — switch it on in Settings, or convert files by hand from the Library"
+	case st.Remaining == 0 && st.Problems > 0:
+		// Never "everything's converted" while files sit in Problems: some wait for a retry
+		// (still seeding, a full disk), some need you to look.
+		st.State, st.Message = "done", fmt.Sprintf("Everything convertible is done — %d file%s couldn't be converted (see Problems)", st.Problems, plural(st.Problems))
 	case st.Remaining == 0:
 		st.State, st.Message = "done", "Everything's converted — new files are picked up as they arrive"
 	case !inHours:

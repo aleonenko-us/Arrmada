@@ -2414,6 +2414,8 @@ export interface ConvertStatus {
   state: "working" | "starting" | "paused" | "waiting" | "off" | "done"; message: string;
   auto: boolean; window?: string; watching: boolean;
   requests: ConvertRequest[]; up_next: ConvertUpNext[]; remaining: number;
+  /** Files that would convert but sit in Problems (skipped or failing) — not in remaining. */
+  problems?: number;
   // The time forecast: the remaining list's encoding time (spread over the conversions that
   // run at once) and in nights of the hours; the encoding a restart now would lose.
   backlog_sec?: number; backlog_nights?: number; in_flight_secs?: number;

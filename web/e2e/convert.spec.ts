@@ -110,4 +110,27 @@ test.describe("manager", () => {
     await expect(pieces).toBeChecked();
     await expect.poll(() => puts).toEqual([{ resumable: true }]);
   });
+
+  // CONV-23: "done" with files in Problems says so and links there; a group's "Try these
+  // again" is one request however many files it holds.
+  test("done with problems links to them, and a group retries in one call", async ({ page }) => {
+    await page.route("**/api/v1/convert/status", (route) => route.fulfill({
+      json: { ...convertStatus, state: "done", auto: true, remaining: 0, problems: 3,
+        message: "Everything convertible is done — 3 files couldn't be converted (see Problems)" },
+    }));
+    const seeding = (id: number) => ({ key: `movie:${id}`, kind: "hardlinked", reason: "still seeding", permanent: false, updated_at: "",
+      retry_after: 0, attempts: 1, media_kind: "movie", movie_id: id, season: 0, episode: 0, title: `Film ${id}` });
+    await page.route("**/api/v1/convert/skips", (route) => route.fulfill({ json: { items: [seeding(1), seeding(2), seeding(3)] } }));
+    await page.route("**/api/v1/convert/blocklist", (route) => route.fulfill({ json: { items: [] } }));
+    const clears: string[] = [];
+    await page.route("**/api/v1/convert/skips/clear**", (route) => {
+      clears.push(new URL(route.request().url()).search);
+      return route.fulfill({ json: { cleared: true, count: 3 } });
+    });
+    await page.goto("/convert");
+    await expect(page.getByText("Everything convertible is done — 3 files couldn't be converted (see Problems)")).toBeVisible();
+    await page.getByRole("button", { name: "Open Problems" }).click();
+    await page.getByRole("button", { name: "Try these again" }).click();
+    await expect.poll(() => clears).toEqual(["?kind=hardlinked"]);
+  });
 });

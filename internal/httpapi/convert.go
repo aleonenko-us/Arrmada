@@ -261,11 +261,18 @@ func (a *api) handleConvertSkips(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"items": list})
 }
 
-// handleConvertSkipsClear forgets one skip, or all of them with ?all=1, so they're retried.
+// handleConvertSkipsClear forgets one skip, every skip of one kind with ?kind= (a Problems
+// group's "Try these again", one request however big the group), or all of them with
+// ?all=1, so they're retried.
 func (a *api) handleConvertSkipsClear(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
+	if kind := r.URL.Query().Get("kind"); kind != "" && key == "" && r.URL.Query().Get("all") != "1" {
+		n := a.deps.Convert.ClearSkipKind(r.Context(), kind)
+		a.writeJSON(w, http.StatusOK, map[string]any{"cleared": true, "count": n})
+		return
+	}
 	if r.URL.Query().Get("all") != "1" && key == "" {
-		a.writeError(w, http.StatusBadRequest, "pass key= or all=1")
+		a.writeError(w, http.StatusBadRequest, "pass key=, kind= or all=1")
 		return
 	}
 	if r.URL.Query().Get("all") == "1" {

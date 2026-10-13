@@ -530,6 +530,17 @@ func (s *Service) ClearSkip(ctx context.Context, key string) error {
 	return nil
 }
 
+// ClearSkipKind forgets every skip of one kind — a Problems group's "Try these again" — in
+// one step, and reports how many files that was.
+func (s *Service) ClearSkipKind(ctx context.Context, kind string) int64 {
+	n := s.skips.clearKind(ctx, kind)
+	if n > 0 {
+		s.invalidateLibraryCache()
+		s.wakeUp()
+	}
+	return n
+}
+
 // BinSettingsChanged is told when the recycle bin's cap or retention is saved. Originals no
 // longer go to the bin (they wait in the originals hold), so this only clears bin_full
 // skips an older version left behind, should any still be waiting.

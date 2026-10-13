@@ -224,6 +224,9 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           <div className="flex items-center gap-2.5">
             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: STATUS_TONE[status.state] }} />
             <span className="text-md font-semibold">{status.message}</span>
+            {status.state === "done" && (status.problems ?? 0) > 0 && (
+              <button onClick={onShowProblems} className="text-sm font-semibold underline" style={{ color: "var(--avoid)" }}>Open Problems</button>
+            )}
           </div>
           <span className="text-sm text-ink-faint">
             {status.remaining > 0 ? `${status.remaining.toLocaleString()} file${status.remaining === 1 ? "" : "s"} to go` : ""}
@@ -814,7 +817,8 @@ function Problems({ flash }: { flash: (m: string) => void }) {
     setBusy(key ?? kind ?? "all");
     try {
       if (key) await convertApi.convertSkipsClear(key);
-      else for (const s of (skips ?? []).filter((x) => !kind || x.kind === kind)) await convertApi.convertSkipsClear(s.key);
+      else if (kind) await convertApi.convertSkipsClearKind(kind); // the whole group, one request
+      else await convertApi.convertSkipsClear();
       flash("Cleared — they'll be picked up again");
       load();
     } catch (e) { flash((e as Error).message); } finally { setBusy(null); }

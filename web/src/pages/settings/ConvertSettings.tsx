@@ -123,6 +123,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
     validate: (v) => (/^[1-4]$/.test(v.trim()) ? null : "Conversions at once must be 1–4."),
   });
   const resumable = useAutoSave(s.resumable ?? false, put("resumable"));
+  const scanAt = useAutoSave(s.scan_at || "03:00", put("scan_at"), {
+    validate: (v) => (/^\d{1,2}:\d{2}$/.test(v.trim()) ? null : "Pick a time like 03:00."),
+  });
   const holdDays = useAutoSave(String(s.hold_days), (v) => commit({ hold_days: Number(v) }), {
     validate: (v) => (/^\d{1,3}$/.test(v.trim()) && Number(v) <= 365 ? null : "Keep originals for 0 to 365 days."),
   });
@@ -322,6 +325,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </Field>
           <Field label="Conversions at once" hint="1 is right for CPU; 2 can help with a GPU" save={workers}>
             <input aria-label="Conversions at once" inputMode="numeric" className={`${inp} w-[70px]`} {...textProps(workers)} onChange={(e) => workers.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 1))} />
+          </Field>
+          <Field label="Daily library scan at" hint={`Once a day Convert re-reads the library for changes made outside Arrmada (imports are picked up straight away). Read on the server's clock (${s.server_tz}).`} save={scanAt}>
+            <input type="time" aria-label="Daily library scan at" className={inp} {...textProps(scanAt)} />
           </Field>
           <Toggle save={resumable} label="Encode long films in pieces"
             hint="Encodes long films in ~5-minute pieces, so a restart or update during the encode loses at most one piece. Only CPU encodes of constant-frame-rate films are pieced; anything else encodes in one go. Off by default while it's being proven." />

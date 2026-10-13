@@ -198,6 +198,25 @@ test.describe("Dolby Vision choice", () => {
   });
 });
 
+// CONV-23: the daily library scan's time is a setting under Advanced, and saves on leaving it.
+test.describe("Daily library scan time", () => {
+  test.use({ persona: "admin" });
+
+  test("round-trips through the settings", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
+    ]);
+    await page.goto("/settings/tools#convert");
+    await page.getByText("Advanced", { exact: true }).click();
+    const field = page.getByLabel("Daily library scan at");
+    await expect(field).toHaveValue("03:00");
+    await field.fill("04:30");
+    await field.press("Tab");
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ scan_at: "04:30" }]);
+    await expect(field).toHaveValue("04:30");
+  });
+});
+
 // installExtra puts fixtures in front of the defaults for one test.
 async function installExtra(page: import("@playwright/test").Page, api: MockedApi, extra: MockRoute[]) {
   await page.route((u) => u.pathname.startsWith("/api/"), async (route) => {
