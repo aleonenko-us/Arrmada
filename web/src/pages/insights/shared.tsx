@@ -1,5 +1,8 @@
 import { createContext, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type { GeoLocation, PlexConfig } from "../../lib/api";
+import { LINKS } from "../../lib/links";
+import { EmptyState } from "../../ui/EmptyState";
 
 // Pieces every Insights view shares: the stream-decision and buffer-cause vocabularies,
 // number and date formats, and the small filter chips.
@@ -126,3 +129,36 @@ export function StatTile({ label, value, sub, color }: { label: string; value: s
 
 // METRIC is how the Graphs (and the People page) count: plays, or hours watched.
 export type Metric = "plays" | "duration";
+
+const ABOUT = {
+  activity: "Live now-playing — who's streaming what, on which device, with progress, transcode decision, bandwidth and geolocation.",
+  history: "Every play recorded — a filterable table with stream-type, geolocated IP and a click-through deep-dive.",
+  people: "Per-person activity — last seen, platform, total plays and watch time.",
+  graphs: "Plays by day, hour, platform and user, plus bandwidth over time.",
+  reliability: "The buffering view — see historically when and where streams choked, by user, platform and title.",
+};
+
+// SetupState stands in for a tab only while no Plex server is set up and the database has
+// nothing for it yet (an imported Tautulli history shows without a server). Every tab is
+// built, so it says what the tab will show and links to the Plex settings page.
+export function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
+  return (
+    <EmptyState
+      title={<span className="capitalize">{tab}</span>}
+      body={<p className="mx-auto max-w-[52ch] text-sm">{ABOUT[tab]}</p>}
+      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
+    />
+  );
+}
+
+// ImportedNotice sits above data a tab already has while no server is connected — plays
+// imported from Tautulli, or recorded before the connection was removed. The data is real;
+// it just won't grow until Plex is connected.
+export function ImportedNotice() {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+      <span>Showing imported history — connect Plex to record new plays.</span>
+      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server →</Link>
+    </div>
+  );
+}

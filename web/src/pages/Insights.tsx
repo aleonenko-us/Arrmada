@@ -1,4 +1,4 @@
-import { useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
@@ -6,13 +6,13 @@ import { useTabParam } from "../lib/useTabParam";
 import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
-import { EmptyState } from "../ui/EmptyState";
 import { IconButton, Modal, useToast } from "../ui";
-import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
+import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
 import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
-import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, type Metric } from "./insights/shared";
+import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, type Metric } from "./insights/shared";
+import { HistoryView } from "./insights/HistoryView";
 import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
@@ -497,141 +497,6 @@ function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
 }
 
 /* ============================= HISTORY ============================= */
-const TYPE_FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "All" }, { key: "movie", label: "Movies" }, { key: "episode", label: "TV" }, { key: "track", label: "Music" },
-];
-const DEC_FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "All" }, { key: "direct_play", label: "Direct Play" }, { key: "direct_stream", label: "Direct Stream" }, { key: "transcode", label: "Transcode" },
-];
-
-function HistoryView({ connected }: { connected: boolean }) {
-  const [rows, setRows] = useState<HistoryEntry[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [type, setType] = useState("");
-  const [decision, setDecision] = useState("");
-  const [q, setQ] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [detail, setDetail] = useState<HistoryEntry | null>(null);
-  const pageSize = 50;
-
-  useEffect(() => { setPage(1); }, [type, decision, q]);
-  // History is read from the database, not from Plex, so a Tautulli import is listed even
-  // before a server is connected.
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const run = () => insightsApi.insightsHistory({ type, decision, q, page, page_size: pageSize })
-      .then((r) => { if (alive) { setRows(r.rows ?? []); setTotal(r.total); } })
-      .catch(() => { if (alive) setRows([]); })
-      .finally(() => { if (alive) setLoading(false); });
-    const t = setTimeout(run, q ? 300 : 0); // debounce search
-    return () => { alive = false; clearTimeout(t); };
-  }, [type, decision, q, page]);
-
-  // Nothing recorded at all (not just nothing matching a filter) and no server to record
-  // from: the setup state says more than an empty table.
-  const unfiltered = !type && !decision && !q;
-  if (!connected && !loading && total === 0 && unfiltered) return <SetupState tab="history" />;
-
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-  const maxPage = Math.max(1, Math.ceil(total / pageSize));
-
-  return (
-    <div className="flex flex-col gap-3">
-      {!connected && (total > 0 || !unfiltered) && <ImportedNotice />}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => setType(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => setDecision(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <input aria-label="Search title or user" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
-      </div>
-
-      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-        <table className="w-full border-collapse text-base" style={{ minWidth: 820 }}>
-          <thead><tr style={{ background: "var(--panel-2)" }}>{["When", "User", "Title", "Player", "Location", "Stream", "Watched", ""].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
-          <tbody>
-            {loading && rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-dim">Loading history…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-faint">No plays recorded yet. History fills in as people watch.</td></tr>
-            ) : rows.map((r, i) => {
-              const d = DECISION[r.decision] ?? DECISION.direct_play;
-              return (
-                <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{fmtDate(r.started_at)}</td>
-                  <td className="px-3 py-2">{r.user_name}</td>
-                  <td className="px-3 py-2"><div className="font-semibold">{r.title}</div>{r.subtitle && <div className="text-xs text-ink-faint">{r.subtitle}</div>}</td>
-                  <td className="px-3 py-2 text-ink-dim">{r.player || r.platform}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-ink-dim">{geoLabel(r.geo)}</td>
-                  <td className="px-3 py-2"><span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span></td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono tabular-nums text-ink-dim">{fmtDur(r.watched_secs)}{r.buffer_count > 0 && <span title={`${r.buffer_count} buffer event(s)`} style={{ color: "var(--avoid)" }}> · ⚠{r.buffer_count}</span>}</td>
-                  <td className="px-3 py-2 text-right text-ink-faint">›</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center justify-between text-sm text-ink-faint">
-        <span>{total > 0 ? `${from}–${to} of ${total.toLocaleString()}` : "0 plays"}</span>
-        <span className="flex items-center gap-2">
-          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Prev</button>
-          <span className="font-mono">{page}/{maxPage}</span>
-          <button disabled={page >= maxPage} onClick={() => setPage((p) => p + 1)} className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Next</button>
-        </span>
-      </div>
-
-      {detail && <HistoryDetail r={detail} onClose={() => setDetail(null)} />}
-    </div>
-  );
-}
-
-// HistoryHW is a recorded play's hardware badge. Plays now record a hardware encode Plex
-// really used; older ones recorded "hardware was requested", which a CPU fallback also set.
-function HistoryHW({ startedAt }: { startedAt: number }) {
-  const since = useContext(InsightsCfg)?.hw_since ?? 0;
-  const old = !since || startedAt < since;
-  return (
-    <span title={old ? `Plays before ${since ? fmtDate(since) : "this update"} show HW as requested — Plex may have fallen back to CPU.` : undefined}
-      className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
-      {old ? "HW requested" : "HW enc"}
-    </span>
-  );
-}
-
-function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void }) {
-  const d = DECISION[r.decision] ?? DECISION.direct_play;
-  const titleId = useId();
-  return (
-    <Modal onClose={onClose} labelledBy={titleId} size="md">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id={titleId} className="m-0 truncate text-lg font-bold">{r.title}</h2>
-          <p className="m-0 mt-0.5 text-sm text-ink-dim">{r.subtitle}</p>
-        </div>
-        <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
-        {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
-      </div>
-      <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
-        <DDRow label="User" a={r.user_name} />
-        <DDRow label="Player" a={`${r.player || "—"} · ${r.platform} · ${r.product}`} />
-        <DDRow label="Location" a={`${geoLabel(r.geo)}${r.ip_address ? ` · ${r.ip_address}` : ""} · ${r.location?.toUpperCase() || "—"}`} />
-        <DDRow label="Started" a={fmtDate(r.started_at)} />
-        <DDRow label="Watched" a={`${fmtDur(r.watched_secs)}${r.paused_ms > 0 ? ` (paused ${fmtDur(Math.round(r.paused_ms / 1000))})` : ""}`} />
-        <DDRow label="Video" a={r.video_src} b={r.video_stream} />
-        <DDRow label="Audio" a={r.audio_src} b={r.audio_stream} />
-        <DDRow label="Container" a={r.container_src} b={r.container_stream} />
-      </div>
-    </Modal>
-  );
-}
-
 /* ============================= GRAPHS ============================= */
 const SERIES = {
   tv: { label: "TV", color: "var(--accent)" },
@@ -852,39 +717,6 @@ function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-const ABOUT = {
-  activity: "Live now-playing — who's streaming what, on which device, with progress, transcode decision, bandwidth and geolocation.",
-  history: "Every play recorded — a filterable table with stream-type, geolocated IP and a click-through deep-dive.",
-  people: "Per-person activity — last seen, platform, total plays and watch time.",
-  graphs: "Plays by day, hour, platform and user, plus bandwidth over time.",
-  reliability: "The buffering view — see historically when and where streams choked, by user, platform and title.",
-};
-
-// SetupState stands in for a tab only while no Plex server is set up and the database has
-// nothing for it yet (an imported Tautulli history shows without a server). Every tab is
-// built, so it says what the tab will show and links to the Plex settings page.
-function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
-  return (
-    <EmptyState
-      title={<span className="capitalize">{tab}</span>}
-      body={<p className="mx-auto max-w-[52ch] text-sm">{ABOUT[tab]}</p>}
-      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
-    />
-  );
-}
-
-// ImportedNotice sits above data a tab already has while no server is connected — plays
-// imported from Tautulli, or recorded before the connection was removed. The data is real;
-// it just won't grow until Plex is connected.
-function ImportedNotice() {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <span>Showing imported history — connect Plex to record new plays.</span>
-      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server →</Link>
     </div>
   );
 }

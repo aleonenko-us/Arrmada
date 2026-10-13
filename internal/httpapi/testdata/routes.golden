@@ -129,6 +129,7 @@ GET /api/v1/indexers/prowlarr staff -
 GET /api/v1/insights/activity staff -
 GET /api/v1/insights/graphs staff -
 GET /api/v1/insights/history staff -
+GET /api/v1/insights/history.csv staff -
 GET /api/v1/insights/image staff -
 GET /api/v1/insights/import/overlaps admin -
 GET /api/v1/insights/import/runs admin -

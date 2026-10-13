@@ -9,7 +9,7 @@ import (
 
 // newDataTestService builds an in-package Service backed by a migrated temp DB. Only the repo is wired
 // (settings/bus/geo are unused by the data-layer paths under test).
-func newDataTestService(t *testing.T) *Service {
+func newDataTestService(t testing.TB) *Service {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {

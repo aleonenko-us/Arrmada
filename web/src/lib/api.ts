@@ -2503,6 +2503,8 @@ export interface HistoryEntry {
   started_at: number; stopped_at: number; paused_ms: number; view_offset_ms: number; duration_ms: number;
   video_src: string; video_stream: string; audio_src: string; audio_stream: string; container_src: string; container_stream: string;
   hw_transcode: boolean; buffer_count: number; subtitle: string; geo: GeoLocation; watched_secs: number; progress_pct: number;
+  /** How many sittings a grouped row folds together (History with group=1). */
+  sessions?: number;
 }
 export interface InsightsHistory { rows: HistoryEntry[]; total: number }
 export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number }

@@ -261,6 +261,9 @@ type HistoryEntry struct {
 	Geo         geoip.Location `json:"geo"`
 	WatchedSecs int64          `json:"watched_secs"` // see watchedSecs
 	ProgressPct int            `json:"progress_pct"`
+	// Sessions is how many sittings a grouped row folds together (HistoryFilter.Group);
+	// 0 on an ungrouped row.
+	Sessions int `json:"sessions,omitempty"`
 }
 
 // History returns a page of recorded plays.
@@ -268,15 +271,38 @@ func (s *Service) History(ctx context.Context, f HistoryFilter) (HistoryResult, 
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
-	rows, total, err := s.repo.history(ctx, f)
+	out := HistoryResult{Rows: []HistoryEntry{}}
+	total, err := s.historyEach(ctx, f, func(e HistoryEntry) error { out.Rows = append(out.Rows, e); return nil })
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	out := HistoryResult{Rows: make([]HistoryEntry, 0, len(rows)), Total: total}
-	for _, r := range rows {
-		out.Rows = append(out.Rows, s.toHistoryEntry(r))
-	}
+	out.Total = total
 	return out, nil
+}
+
+// HistoryExportMax caps one CSV export.
+const HistoryExportMax = 50_000
+
+// HistoryExport hands every play the filters match (newest first, at most
+// HistoryExportMax) to fn, enriched as History lists them; f's paging is ignored.
+func (s *Service) HistoryExport(ctx context.Context, f HistoryFilter, fn func(HistoryEntry) error) error {
+	f.Limit, f.Offset = HistoryExportMax, 0
+	_, err := s.historyEach(ctx, f, fn)
+	return err
+}
+
+// historyEach runs one page of the history query, grouped or not, through toHistoryEntry.
+func (s *Service) historyEach(ctx context.Context, f HistoryFilter, fn func(HistoryEntry) error) (int, error) {
+	if f.Group {
+		return s.repo.historyGrouped(ctx, f, func(g GroupedRow) error {
+			e := s.toHistoryEntry(g.HistoryRow)
+			// A viewing's watch time is its sittings' summed: its start-to-stop span also
+			// covers the gaps between them.
+			e.WatchedSecs, e.Sessions = g.WatchedSecs, g.Sessions
+			return fn(e)
+		})
+	}
+	return s.repo.historyEach(ctx, f, func(r HistoryRow) error { return fn(s.toHistoryEntry(r)) })
 }
 
 // toHistoryEntry enriches a recorded play for display. History and the Recently watched card

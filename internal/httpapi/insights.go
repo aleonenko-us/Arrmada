@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/csv"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -226,14 +228,8 @@ func (a *api) handleInsightsHistory(w http.ResponseWriter, r *http.Request) {
 		size = 50
 	}
 	size = clampPageSize(size)
-	f := insights.HistoryFilter{
-		UserID:   q.Get("user"),
-		Type:     q.Get("type"),
-		Decision: q.Get("decision"),
-		Query:    q.Get("q"),
-		Limit:    size,
-		Offset:   (page - 1) * size,
-	}
+	f := historyFilter(r)
+	f.Limit, f.Offset = size, (page-1)*size
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	res, err := a.deps.Insights.History(ctx, f)
@@ -242,6 +238,77 @@ func (a *api) handleInsightsHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSON(w, http.StatusOK, res)
+}
+
+// historyFilter reads History's filters from the query string: user (a Plex user id), type,
+// decision, q, from and to (epoch seconds, to exclusive) and group=1.
+func historyFilter(r *http.Request) insights.HistoryFilter {
+	q := r.URL.Query()
+	epoch := func(k string) int64 {
+		n, err := strconv.ParseInt(q.Get(k), 10, 64)
+		if err != nil || n < 0 {
+			return 0
+		}
+		return n
+	}
+	return insights.HistoryFilter{
+		UserID:   q.Get("user"),
+		Type:     q.Get("type"),
+		Decision: q.Get("decision"),
+		Query:    q.Get("q"),
+		From:     epoch("from"),
+		To:       epoch("to"),
+		Group:    q.Get("group") == "1",
+	}
+}
+
+// handleInsightsHistoryCSV downloads the plays History's filters match (newest first, up to
+// insights.HistoryExportMax) as CSV. Staff only, like the History it mirrors; nothing in it
+// is logged.
+func (a *api) handleInsightsHistoryCSV(w http.ResponseWriter, r *http.Request) {
+	f := historyFilter(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="plex-history-`+time.Now().Format("2006-01-02")+`.csv"`)
+	w.Header().Set("Cache-Control", "no-store")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"when", "user", "title", "show", "season_episode", "player", "platform", "ip", "decision", "watched_secs", "progress_pct", "sessions"})
+	rows := 0
+	err := a.deps.Insights.HistoryExport(ctx, f, func(e insights.HistoryEntry) error {
+		rows++
+		se := ""
+		if e.MediaType == "episode" {
+			se = fmt.Sprintf("S%02dE%02d", e.ParentIndex, e.MediaIndex)
+		}
+		sessions := e.Sessions
+		if sessions == 0 {
+			sessions = 1
+		}
+		return cw.Write([]string{
+			time.Unix(e.StartedAt, 0).UTC().Format(time.RFC3339), csvCell(e.UserName), csvCell(e.Title), csvCell(e.GrandparentTitle), se,
+			csvCell(e.Player), csvCell(e.Platform), csvCell(e.IPAddress), e.Decision,
+			strconv.FormatInt(e.WatchedSecs, 10), strconv.Itoa(e.ProgressPct), strconv.Itoa(sessions),
+		})
+	})
+	if err != nil && rows == 0 {
+		// Nothing has gone out but the header yet: say so as an error instead of a file
+		// that looks like an empty history.
+		w.Header().Del("Content-Disposition")
+		w.Header().Del("Cache-Control")
+		a.writeError(w, http.StatusInternalServerError, "could not export history")
+		return
+	}
+	cw.Flush()
+}
+
+// csvCell keeps a spreadsheet from running a cell as a formula: a value starting with
+// = + - @ (a title, a player name) gets a leading apostrophe.
+func csvCell(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
 }
 
 // handleInsightsStats returns the home watch-statistics cards over a window.

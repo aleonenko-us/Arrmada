@@ -639,6 +639,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/plex/link", a.signedIn(a.handlePlexLink).ext())
 	mux.HandleFunc("GET /api/v1/insights/activity", a.requireRole(auth.RoleManager, a.handleInsightsActivity))
 	mux.HandleFunc("GET /api/v1/insights/history", a.requireRole(auth.RoleManager, a.handleInsightsHistory))
+	mux.HandleFunc("GET /api/v1/insights/history.csv", a.requireRole(auth.RoleManager, a.handleInsightsHistoryCSV))
 	mux.HandleFunc("GET /api/v1/insights/stats", a.requireRole(auth.RoleManager, a.handleInsightsStats))
 	mux.HandleFunc("GET /api/v1/insights/graphs", a.requireRole(auth.RoleManager, a.handleInsightsGraphs))
 	mux.HandleFunc("GET /api/v1/insights/reliability", a.requireRole(auth.RoleManager, a.handleInsightsReliability))
