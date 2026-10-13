@@ -52,6 +52,9 @@ type Options struct {
 
 	// migrations replaces the embedded migration set. Tests only.
 	migrations fs.FS
+
+	// noTestTemplate builds the test template itself (testtemplate.go).
+	noTestTemplate bool
 }
 
 // preMigrateKeep is how many pre-migrate snapshots are kept; older ones are
@@ -84,6 +87,12 @@ func OpenWith(dataDir string, opt Options) (*Store, error) {
 	applyPendingRestore(dataDir, versionsIn(fsys), log)
 
 	st := &Store{dataDir: dataDir, dbPath: filepath.Join(dataDir, "arrmada.db")}
+	if opt.migrations == nil && opt.BeforeMigrate == nil && !opt.noTestTemplate {
+		// A no-op outside `go test`; see testtemplate.go.
+		if err := seedFromTestTemplate(st.dbPath); err != nil {
+			return nil, err
+		}
+	}
 	db, err := openDB(st.dbPath)
 	if err != nil {
 		return nil, err
