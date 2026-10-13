@@ -1,6 +1,6 @@
 import type {
   AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
-  ReviewTarget, TaskStatus, UnmanagedDownload,
+  RecentJob, ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
 import type { LogLevelState, LogPage } from "../../src/lib/systemApi";
 import type { SetupChecklist } from "../../src/lib/setupApi";
@@ -197,6 +197,22 @@ export const tasks: TaskStatus[] = [
 
 // The job runner (GET /api/v1/jobs): nothing recent.
 export const jobs: { jobs: Job[] } = { jobs: [] };
+
+// Recent jobs under the tasks (OBS-20): one search that worked, one that failed.
+export const recentJobs: { jobs: RecentJob[] } = {
+  jobs: [
+    {
+      id: 12, kind: "movie.search", label: "Search for a movie", status: "succeeded", message: "Grabbed a 1080p release", target: "movie:1",
+      target_label: "Arrival (2016)", target_path: "/movies/1", trigger_label: "admin", created_at: iso(NOW - 90_000),
+      started_at: iso(NOW - 90_000), finished_at: iso(NOW - 88_000), duration_ms: 2000,
+    },
+    {
+      id: 11, kind: "series.search", label: "Search for a show", status: "failed", error: "every indexer failed", target: "series:2",
+      target_label: "Severance", target_path: "/series/2", trigger_label: "Request #4", trigger_path: "/requests?id=4",
+      created_at: iso(NOW - 600_000), started_at: iso(NOW - 600_000), finished_at: iso(NOW - 597_000), duration_ms: 3000,
+    },
+  ],
+};
 
 export const logs: LogPage = {
   entries: [

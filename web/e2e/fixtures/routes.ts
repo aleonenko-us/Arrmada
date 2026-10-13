@@ -224,6 +224,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/logs/level", sys.logLevel),
     get("/api/v1/system/tasks", sys.tasks),
     get("/api/v1/jobs", sys.jobs),
+    get("/api/v1/system/jobs", sys.recentJobs),
 
     // Settings → Alerts
     get("/api/v1/notifications", alerts.connections),

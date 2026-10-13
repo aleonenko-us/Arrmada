@@ -4,6 +4,7 @@ import { systemApi } from "../../lib/systemApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { ago, every, took, until } from "../../lib/taskTime";
 import { usePoll } from "../../lib/usePoll";
+import { RecentJobs } from "./RecentJobs";
 
 // TasksTable: every scheduled background job — how often it runs, when it last ran and
 // how that went, when it runs next — with Run now. It re-reads every 10 s while the tab is
@@ -143,6 +144,7 @@ export function TasksTable() {
           </>
         )}
       </div>
+      <RecentJobs />
     </div>
   );
 }

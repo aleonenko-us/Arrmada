@@ -1303,6 +1303,26 @@ export interface AttemptSummary {
   main_reason?: string;
 }
 
+// One row of Recent jobs (GET /api/v1/system/jobs): the work in words, what it was for
+// (target_path opens it), who started it, and how it went.
+export interface RecentJob {
+  id: number;
+  kind: string;
+  label: string;
+  status: JobStatus;
+  message?: string;
+  error?: string;
+  target: string;
+  target_label?: string;
+  target_path?: string;
+  trigger_label: string;
+  trigger_path?: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number;
+}
+
 // One recurring task as GET /api/v1/system/tasks reports it. Times are ISO strings, null
 // until they happen; last_error is empty once a run succeeds.
 export interface TaskStatus {

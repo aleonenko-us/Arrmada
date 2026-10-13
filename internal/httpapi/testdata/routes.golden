@@ -252,6 +252,7 @@ GET /api/v1/subtitles/settings staff -
 GET /api/v1/system/backups admin -
 GET /api/v1/system/backups/{name}/download admin -
 GET /api/v1/system/browse admin -
+GET /api/v1/system/jobs staff -
 GET /api/v1/system/library staff -
 GET /api/v1/system/library/check admin -
 GET /api/v1/system/pending-restart staff -
