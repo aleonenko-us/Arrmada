@@ -176,8 +176,9 @@ func TestJoinWordsMixedScript(t *testing.T) {
 	}
 }
 
-// The English pipeline is byte-identical to before character layout existed: this
-// SRT was produced by the code as it stood before SUB-35, from the same words.
+// The English pipeline is unchanged by character layout: this SRT was produced by the
+// code as it stood before SUB-35, from the same words — except that each cue now keeps
+// its two lines (fixCasing used to rejoin them into one long line).
 func TestShapeEnglishByteIdentical(t *testing.T) {
 	words, _ := wordsFromJSONIn([]byte(dtwSegment), 0, layoutFor("en", false))
 	words = append(words, wordsAt(goldenEnglishWords...)...)
@@ -212,15 +213,18 @@ We should go now. Right?
 
 3
 00:00:15,000 --> 00:00:18,150
-He'll come when he's ready, and if he doesn't we know where we stand.
+He'll come when he's ready, and if
+he doesn't we know where we stand.
 
 4
 00:00:18,200 --> 00:00:21,150
-I told him we'd be there by nine, but the traffic on the bridge was worse than
+I told him we'd be there by nine, but
+the traffic on the bridge was worse than
 
 5
 00:00:21,200 --> 00:00:23,750
-anyone expected, so we missed the whole first act.
+anyone expected, so we
+missed the whole first act.
 
 6
 00:00:24,000 --> 00:00:25,000
@@ -228,7 +232,8 @@ Okay.
 
 7
 00:00:30,000 --> 00:00:35,250
-Thank you. No. No. No. No. What I'm saying is that nobody here really knows what
+Thank you. No. No. No. No. What I'm saying
+is that nobody here really knows what
 
 8
 00:00:35,300 --> 00:00:37,450
