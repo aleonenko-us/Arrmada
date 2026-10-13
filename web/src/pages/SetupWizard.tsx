@@ -5,21 +5,35 @@ import { FolderChips, FolderPicker } from "./Library";
 import { restartAndWait } from "../lib/restart";
 import { FleetMark } from "../components/FleetMark";
 import { ChecklistRows, useSetupChecklist } from "../components/GettingStarted";
+import { useMe } from "../lib/me";
 import { Button, useConfirm } from "../ui";
+import { PlexConnect } from "./settings/PlexConnection";
 
 // SetupWizard is the first thing an admin sees on a fresh install: the metadata key, then
-// each library folder (pre-filled from what's on the mount), then the Getting started
-// checklist with a link to each step that's left. Folders apply live, so the restart only
+// each library folder (pre-filled from what's on the mount), then Plex (Settings →
+// Connections' own sign-in, plus the family switches), then the Getting started checklist
+// with a link to each step that's left. Folders apply live, so the restart only
 // appears if a startup-only setting is waiting. Only the first step can be skipped
 // outright; Settings → System → Run setup again opens it again with what's set filled in.
 
-type Step = "keys" | "folders" | "finish";
+type Step = "keys" | "folders" | "plex" | "finish";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "keys", label: "Metadata" },
   { id: "folders", label: "Folders" },
+  { id: "plex", label: "Plex" },
   { id: "finish", label: "Finish" },
 ];
+
+// The family sign-in choices on the Plex step: off unless the owner turns them on here.
+interface Family { enabled: boolean; types: AutoTypes }
+type AutoTypes = { movie: boolean; series: boolean; book: boolean };
+const TYPE_NAMES: [keyof AutoTypes, string][] = [["movie", "Movies"], ["series", "Series"], ["book", "Books"]];
+const typesFrom = (csv: string): AutoTypes => {
+  const on = csv.split(",").map((t) => t.trim());
+  return { movie: on.includes("movie"), series: on.includes("series"), book: on.includes("book") };
+};
+const typesCSV = (t: AutoTypes) => TYPE_NAMES.filter(([k]) => t[k]).map(([k]) => k).join(",");
 
 const FOLDERS: { key: keyof LibraryPaths; label: string; hint: string; optional?: boolean }[] = [
   { key: "movies", label: "Movies", hint: "Where movie folders live" },
@@ -42,7 +56,9 @@ interface KeyCheck { value: string; ok: boolean; detail: string; busy?: boolean 
  */
 export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) => void; rerun?: boolean }) {
   const [state, setState] = useState<SetupState | null>(null);
-  const [step, setStep] = useState<Step>("keys");
+  // Back from plex.tv after a Plex sign-in by redirect (a phone, or popups blocked): the
+  // address carries ?plexpin=, and the Plex step picks the sign-in up again.
+  const [step, setStep] = useState<Step>(() => (hasPlexPin() ? "plex" : "keys"));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -55,12 +71,17 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   // The last step's list, read only once it's on screen (and kept fresh while it is).
   const checklist = useSetupChecklist(step === "finish");
 
+  const [family, setFamily] = useState<Family | null>(null);
+  const [plexError, setPlexError] = useState<string | null>(null);
+  const { booksEnabled } = useMe();
+
   const load = () => api.setupState().then((s) => {
     setState(s);
     // Pre-fill each folder: what's already chosen, else what the mount looks like it holds.
     setFolders((cur) => cur ?? Object.fromEntries(FOLDERS.map((f) => [
       f.key, s.libraries_chosen ? s.library[f.key] : (s.suggestions[f.key] ?? s.library[f.key] ?? ""),
     ])) as unknown as LibraryPaths);
+    setFamily((cur) => cur ?? { enabled: !!s.plex_family?.enabled, types: typesFrom(s.plex_family?.auto_approve_types ?? "") });
   }).catch((e) => setError((e as Error).message));
   useEffect(() => { load(); }, []);
 
@@ -121,6 +142,15 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const saveFolders = () => run(async () => {
     if (folders) await api.setLibraryPaths(folders);
     await load();
+    go("plex");
+  });
+
+  // The family switches are saved as chosen here, both of them, so the wizard never leaves
+  // a stored default deciding who gets in or what downloads unasked.
+  const savePlex = () => run(async () => {
+    if (family) {
+      await api.updateSettings({ plex_login_enabled: family.enabled, plex_login_auto_approve_types: typesCSV(family.types) });
+    }
     go("finish");
   });
 
@@ -251,6 +281,59 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
         </>
       )}
 
+      {step === "plex" && family && (
+        <>
+          <h1 className="m-0 text-[20px] font-bold">Connect Plex</h1>
+          <p className="mb-3 mt-1 text-[13px] text-ink-dim">
+            Family sign-in, watch stats and pausing conversions while someone's watching all need your Plex server. Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.
+          </p>
+          {state.plex_connected && (
+            <p role="status" className="m-0 mb-1 text-[12.5px] font-semibold" style={{ color: "var(--good)" }}>
+              ✓ Connected{state.plex_server ? ` to ${state.plex_server}` : ""}
+            </p>
+          )}
+          {plexError && (
+            <div role="alert" className="mb-1 rounded-lg p-2.5 text-[12px]" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
+              Couldn't reach plex.tv from the server — you can connect later in Settings → Connections, or enter the server's address below.
+              <span className="mt-1 block break-words text-ink-faint">{plexError}</span>
+            </div>
+          )}
+          <PlexConnect onChanged={() => { setPlexError(null); void load(); }} onError={setPlexError} />
+
+          <fieldset className="m-0 mt-5 flex flex-col gap-2.5 rounded-xl p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+            <legend className="sr-only">Family sign-in</legend>
+            <div className="flex items-start gap-2.5 text-[12.5px]">
+              <input id="setup-plex-family" type="checkbox" className="mt-0.5" aria-describedby="setup-plex-family-hint" checked={family.enabled} onChange={(e) => setFamily({ ...family, enabled: e.target.checked })} />
+              <div>
+                <label htmlFor="setup-plex-family" className="block font-semibold">Let family sign in with Plex</label>
+                <span id="setup-plex-family-hint" className="block text-[11.5px] text-ink-faint">People with access to your Plex server get a requester account the first time they sign in — no accounts to hand out.</span>
+              </div>
+            </div>
+            {family.enabled && (
+              <div role="group" aria-label="Auto-approve their requests" className="ml-6 flex flex-col gap-1.5">
+                <span className="text-[12.5px] font-semibold">Auto-approve their requests</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-ink-dim">
+                  {TYPE_NAMES.filter(([k]) => k !== "book" || booksEnabled).map(([k, name]) => (
+                    <label key={k} className="flex min-h-[28px] items-center gap-1.5">
+                      <input type="checkbox" checked={family.types[k]} onChange={(e) => setFamily({ ...family, types: { ...family.types, [k]: e.target.checked } })} />
+                      {name}
+                    </label>
+                  ))}
+                </div>
+                <span className="text-[11px] text-ink-faint">Ticked types download straight away; the rest wait for you to approve. A series request can pull every season of a long show.</span>
+              </div>
+            )}
+          </fieldset>
+          <Nav
+            busy={busy}
+            onBack={() => go("folders")}
+            skip={{ label: "Skip this step", onClick: () => go("finish") }}
+            onNext={savePlex}
+            nextLabel="Save and continue"
+          />
+        </>
+      )}
+
       {step === "finish" && (
         <>
           <h1 className="m-0 text-[20px] font-bold">{state.restart_needed ? "One restart to go" : "Here's where you are"}</h1>
@@ -284,6 +367,14 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
       )}
     </Frame>
   );
+}
+
+function hasPlexPin(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).has("plexpin");
+  } catch {
+    return false;
+  }
 }
 
 // SetupAgain is Settings → System → Run setup again: the wizard with what's set filled

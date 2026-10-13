@@ -16,7 +16,9 @@ import { useToast } from "../../ui";
 //
 // plex.tv sends a redirect-mode sign-in back to /settings/connections?plexpin=<id>, and
 // the Connections page opens this editor so the PIN is picked up again here.
-export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
+// onError, when given, takes a failed Plex sign-in instead of the toast (the setup wizard
+// explains it in place).
+export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; onError?: (msg: string) => void }) {
   const toast = useToast();
   const [cfg, setCfg] = useState<PlexConfig | null>(null);
   const [url, setUrl] = useState("");
@@ -52,7 +54,7 @@ export function PlexConnect({ onChanged }: { onChanged?: () => void }) {
       else if (r.choices?.length) toast("Signed in with Plex — pick your server below", { tone: "good" });
       else toast("Signed in with Plex, but none of your servers answered — enter its URL below.", { tone: "error" });
     },
-    onError: (m) => toast(m, { tone: "error" }),
+    onError: (m) => (onError ? onError(m) : toast(m, { tone: "error" })),
     resumeParam: "plexpin",
     strip: () => setParams((p) => { p.delete("plexpin"); return p; }, { replace: true }),
   });
