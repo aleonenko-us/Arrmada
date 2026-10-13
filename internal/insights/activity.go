@@ -15,10 +15,13 @@ import (
 type Stream struct {
 	SessionKey  string         `json:"session_key"`
 	User        string         `json:"user"`
+	UserID      string         `json:"user_id"` // the Plex account id the People page is under
 	Title       string         `json:"title"`
 	Subtitle    string         `json:"subtitle"` // "Show · S1 · E2" or the year
 	Type        string         `json:"type"`
-	Thumb       string         `json:"thumb"` // proxied poster URL
+	Thumb       string         `json:"thumb"`           // proxied poster URL (the show's, for an episode)
+	Still       string         `json:"still,omitempty"` // an episode's own landscape still
+	Art         string         `json:"art,omitempty"`   // background art
 	ProgressPct int            `json:"progress_pct"`
 	OffsetMS    int64          `json:"offset_ms"`
 	DurationMS  int64          `json:"duration_ms"`
@@ -75,6 +78,7 @@ func (s *Service) Activity(ctx context.Context) (Activity, error) {
 	out := Activity{Streams: make([]Stream, 0, len(sessions)), GeoActive: s.geo.Enabled()}
 	for _, sess := range sessions {
 		st := s.enrich(sess)
+		st.UserID = s.knownUserID(ctx, sess.UserID)
 		out.Streams = append(out.Streams, st)
 		out.Bandwidth.TotalKbps += st.Bandwidth
 		if strings.EqualFold(sess.Location, "lan") || st.Geo.Local {
@@ -93,7 +97,7 @@ func (s *Service) enrich(p plex.Session) Stream {
 	}
 	st := Stream{
 		SessionKey: p.SessionKey, User: p.UserName, Title: p.Title, Type: p.Type,
-		Thumb: proxyImage(p.Thumb), OffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
+		Thumb: proxyImage(posterPath(p.Type, p.Thumb, p.ShowThumb)), Art: proxyImage(p.Art), OffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
 		State: p.State, Player: p.PlayerName, Platform: p.Platform, Product: p.Product,
 		Decision: p.Decision(), Bandwidth: p.Bandwidth, Location: p.Location,
 		IP: ip, Geo: s.geo.Lookup(ip),
@@ -102,6 +106,9 @@ func (s *Service) enrich(p plex.Session) Stream {
 	}
 	if p.DurationMS > 0 {
 		st.ProgressPct = int(p.OffsetMS * 100 / p.DurationMS)
+	}
+	if p.Type == "episode" && p.ShowThumb != "" {
+		st.Still = proxyImage(p.Thumb)
 	}
 	st.Subtitle = subtitleFor(p)
 	st.Video = Detail{Src: mediaLabel(p.SrcVideoCodec, p.SrcResolution)}
@@ -199,6 +206,15 @@ func streamRes(h int) string {
 	return ""
 }
 
+// posterPath picks the portrait image for a play: an episode's own thumb is a landscape
+// still, so its show's poster wins when there is one.
+func posterPath(mediaType, thumb, showThumb string) string {
+	if mediaType == "episode" && showThumb != "" {
+		return showThumb
+	}
+	return thumb
+}
+
 // proxyImage turns a Plex image path into an Arrmada-proxied URL (token stays server-side).
 func proxyImage(path string) string {
 	if path == "" {
@@ -247,6 +263,9 @@ type HistoryEntry struct {
 	Geo         geoip.Location `json:"geo"`
 	WatchedSecs int64          `json:"watched_secs"` // see watchedSecs
 	ProgressPct int            `json:"progress_pct"`
+	// Sessions is how many sittings a grouped row folds together (HistoryFilter.Group);
+	// 0 on an ungrouped row.
+	Sessions int `json:"sessions,omitempty"`
 }
 
 // History returns a page of recorded plays.
@@ -254,22 +273,45 @@ func (s *Service) History(ctx context.Context, f HistoryFilter) (HistoryResult, 
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
-	rows, total, err := s.repo.history(ctx, f)
+	out := HistoryResult{Rows: []HistoryEntry{}}
+	total, err := s.historyEach(ctx, f, func(e HistoryEntry) error { out.Rows = append(out.Rows, e); return nil })
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	out := HistoryResult{Rows: make([]HistoryEntry, 0, len(rows)), Total: total}
-	for _, r := range rows {
-		out.Rows = append(out.Rows, s.toHistoryEntry(r))
-	}
+	out.Total = total
 	return out, nil
+}
+
+// HistoryExportMax caps one CSV export.
+const HistoryExportMax = 50_000
+
+// HistoryExport hands every play the filters match (newest first, at most
+// HistoryExportMax) to fn, enriched as History lists them; f's paging is ignored.
+func (s *Service) HistoryExport(ctx context.Context, f HistoryFilter, fn func(HistoryEntry) error) error {
+	f.Limit, f.Offset = HistoryExportMax, 0
+	_, err := s.historyEach(ctx, f, fn)
+	return err
+}
+
+// historyEach runs one page of the history query, grouped or not, through toHistoryEntry.
+func (s *Service) historyEach(ctx context.Context, f HistoryFilter, fn func(HistoryEntry) error) (int, error) {
+	if f.Group {
+		return s.repo.historyGrouped(ctx, f, func(g GroupedRow) error {
+			e := s.toHistoryEntry(g.HistoryRow)
+			// A viewing's watch time is its sittings' summed: its start-to-stop span also
+			// covers the gaps between them.
+			e.WatchedSecs, e.Sessions = g.WatchedSecs, g.Sessions
+			return fn(e)
+		})
+	}
+	return s.repo.historyEach(ctx, f, func(r HistoryRow) error { return fn(s.toHistoryEntry(r)) })
 }
 
 // toHistoryEntry enriches a recorded play for display. History and the Recently watched card
 // both go through it, so a play's watch time and progress can't differ between the two — or
 // from the Users and Graphs totals, which watchedSecs mirrors in SQL.
 func (s *Service) toHistoryEntry(r HistoryRow) HistoryEntry {
-	e := HistoryEntry{HistoryRow: r, ThumbURL: proxyImage(r.Thumb), Subtitle: historySubtitle(r), WatchedSecs: watchedSecs(r)}
+	e := HistoryEntry{HistoryRow: r, ThumbURL: proxyImage(posterPath(r.MediaType, r.Thumb, r.GrandparentThumb)), Subtitle: historySubtitle(r), WatchedSecs: watchedSecs(r)}
 	if s.geo != nil {
 		e.Geo = s.geo.Lookup(r.IPAddress)
 	}

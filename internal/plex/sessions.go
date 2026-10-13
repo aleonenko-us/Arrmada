@@ -18,9 +18,15 @@ type Session struct {
 	Index      int    // episode number
 	SeasonNum  int    // parentIndex
 	Year       int
-	Thumb      string
+	Thumb      string // the item's own image: an episode's landscape still, a movie's poster
 	DurationMS int64
 	OffsetMS   int64
+
+	// The show an episode belongs to: its portrait poster and rating key ("" for movies).
+	ShowThumb     string
+	ShowRatingKey string
+	// Art is the background image (the item's art, else the show's).
+	Art string
 
 	UserID    string
 	UserName  string
@@ -147,6 +153,10 @@ type rawSession struct {
 	ParentIndex      flexInt `json:"parentIndex"`
 	Year             flexInt `json:"year"`
 	Thumb            string  `json:"thumb"`
+	GrandparentThumb string  `json:"grandparentThumb"`
+	GrandparentKey   string  `json:"grandparentRatingKey"`
+	Art              string  `json:"art"`
+	GrandparentArt   string  `json:"grandparentArt"`
 	Duration         flexInt `json:"duration"`
 	ViewOffset       flexInt `json:"viewOffset"`
 	User             struct {
@@ -215,12 +225,16 @@ func (m rawSession) flatten() Session {
 		SessionKey: m.SessionKey, RatingKey: m.RatingKey, Type: m.Type, Title: m.Title,
 		ShowTitle: m.GrandparentTitle, SeasonName: m.ParentTitle,
 		Index: int(m.Index), SeasonNum: int(m.ParentIndex), Year: int(m.Year), Thumb: m.Thumb,
+		ShowThumb: m.GrandparentThumb, ShowRatingKey: m.GrandparentKey, Art: m.Art,
 		DurationMS: int64(m.Duration), OffsetMS: int64(m.ViewOffset),
 		UserID: m.User.ID, UserName: m.User.Title, UserThumb: m.User.Thumb,
 		Address: m.Player.Address, PublicIP: m.Player.RemotePublicAddress,
 		Device: m.Player.Device, Platform: m.Player.Platform, Product: m.Player.Product,
 		PlayerName: m.Player.Title, State: m.Player.State, Local: m.Player.Local,
 		Bandwidth: int64(m.Session.Bandwidth), Location: m.Session.Location,
+	}
+	if s.Art == "" {
+		s.Art = m.GrandparentArt
 	}
 	if t := m.TranscodeSession; t != nil {
 		s.Transcoding = true

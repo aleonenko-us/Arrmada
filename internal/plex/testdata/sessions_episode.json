@@ -1,0 +1,30 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Metadata": [
+      {
+        "sessionKey": "51",
+        "ratingKey": "8812",
+        "type": "episode",
+        "title": "Pilot",
+        "grandparentTitle": "Severance",
+        "grandparentRatingKey": "8800",
+        "grandparentThumb": "/library/metadata/8800/thumb/1700000000",
+        "grandparentArt": "/library/metadata/8800/art/1700000000",
+        "parentTitle": "Season 1",
+        "parentIndex": 1,
+        "index": 1,
+        "thumb": "/library/metadata/8812/thumb/1700000001",
+        "duration": 3300000,
+        "viewOffset": 600000,
+        "User": { "id": "7", "title": "Sam", "thumb": "https://plex.tv/users/abc/avatar" },
+        "Player": {
+          "address": "192.168.1.31", "device": "Apple TV", "platform": "tvOS",
+          "product": "Plex for Apple TV", "title": "Living Room", "state": "playing", "local": true
+        },
+        "Session": { "bandwidth": 12000, "location": "lan" },
+        "Media": [ { "videoResolution": "1080", "bitrate": 10000, "container": "mkv", "videoCodec": "hevc", "audioCodec": "eac3" } ]
+      }
+    ]
+  }
+}

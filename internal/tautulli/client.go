@@ -36,7 +36,11 @@ type Row struct {
 	IPAddress        string
 	Decision         string // transcode_decision
 	Thumb            string // media poster
-	UserThumb        string // user avatar (distinct from the media poster)
+	// The show an episode belongs to: its poster and rating key ('' for movies, or when
+	// this Tautulli version doesn't list them).
+	GrandparentThumb     string
+	GrandparentRatingKey string
+	UserThumb            string // user avatar (distinct from the media poster)
 }
 
 // Client talks to a Tautulli instance with an API key.
@@ -139,25 +143,27 @@ func (c *Client) History(ctx context.Context, fn func(Page) error) error {
 				// Prefer the plain title over full_title ("Show - Episode" / "Movie (Year)"): live
 				// rows store the bare title (+ grandparent/parent for episodes), so using full_title
 				// doubled show names and fragmented movie top-lists when grouping across sources.
-				Title:            firstNonEmpty(asStr(m["title"]), asStr(m["full_title"])),
-				GrandparentTitle: asStr(m["grandparent_title"]),
-				ParentTitle:      asStr(m["parent_title"]),
-				MediaType:        asStr(m["media_type"]),
-				Year:             int(asInt(m["year"])),
-				RatingKey:        asStr(m["rating_key"]),
-				MediaIndex:       int(asInt(m["media_index"])),
-				ParentIndex:      int(asInt(m["parent_media_index"])),
-				Started:          asInt(m["started"]),
-				Stopped:          asInt(m["stopped"]),
-				DurationSec:      asInt(m["duration"]),
-				PausedSec:        asInt(m["paused_counter"]),
-				Platform:         asStr(m["platform"]),
-				Player:           asStr(m["player"]),
-				Product:          asStr(m["product"]),
-				IPAddress:        asStr(m["ip_address"]),
-				Decision:         asStr(m["transcode_decision"]),
-				Thumb:            asStr(m["thumb"]),
-				UserThumb:        asStr(m["user_thumb"]),
+				Title:                firstNonEmpty(asStr(m["title"]), asStr(m["full_title"])),
+				GrandparentTitle:     asStr(m["grandparent_title"]),
+				ParentTitle:          asStr(m["parent_title"]),
+				MediaType:            asStr(m["media_type"]),
+				Year:                 int(asInt(m["year"])),
+				RatingKey:            asStr(m["rating_key"]),
+				MediaIndex:           int(asInt(m["media_index"])),
+				ParentIndex:          int(asInt(m["parent_media_index"])),
+				Started:              asInt(m["started"]),
+				Stopped:              asInt(m["stopped"]),
+				DurationSec:          asInt(m["duration"]),
+				PausedSec:            asInt(m["paused_counter"]),
+				Platform:             asStr(m["platform"]),
+				Player:               asStr(m["player"]),
+				Product:              asStr(m["product"]),
+				IPAddress:            asStr(m["ip_address"]),
+				Decision:             asStr(m["transcode_decision"]),
+				Thumb:                asStr(m["thumb"]),
+				GrandparentThumb:     asStr(m["grandparent_thumb"]),
+				GrandparentRatingKey: asKey(m["grandparent_rating_key"]),
+				UserThumb:            asStr(m["user_thumb"]),
 			}
 			if r.Started == 0 {
 				page.Skipped++ // group headers / bad rows
@@ -192,6 +198,16 @@ func asInt(v any) int64 {
 		return i
 	}
 	return 0
+}
+
+// asKey reads a Plex rating key, which Tautulli's API documents as a number but may send
+// as a string. (rating_key itself stays on asStr: earlier imports stored what asStr read,
+// and the import's duplicate check matches on it.)
+func asKey(v any) string {
+	if n := asInt(v); n > 0 {
+		return strconv.FormatInt(n, 10)
+	}
+	return asStr(v)
 }
 
 func asStr(v any) string {
