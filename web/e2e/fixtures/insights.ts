@@ -1,5 +1,5 @@
 import type {
-  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsStats, InsightsStream, LibraryStat, PlexConfig, RecentItem, Reliability, UserEntry,
+  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsLibrary, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
 } from "../../src/lib/api";
 import type { MockRoute } from "./routes";
 import { NOW } from "./clock";
@@ -22,7 +22,7 @@ const geo = { ip: "192.168.1.20", local: true };
 
 const play = (id: number, over: Partial<HistoryEntry> = {}): HistoryEntry => ({
   id, user_id: "7", user_name: "Jesse", title: "The Cartographer", grandparent_title: "", parent_title: "",
-  media_index: 0, parent_index: 0, year: 2024, media_type: "movie", thumb: "", thumb_url: "",
+  media_index: 0, parent_index: 0, year: 2024, media_type: "movie", thumb: "", thumb_url: "", grandparent_thumb: "", grandparent_rating_key: "",
   player: "Living Room TV", platform: "webOS", product: "Plex for LG", ip_address: "192.168.1.20", location: "lan",
   decision: "transcode", started_at: now - id * 3600, stopped_at: now - id * 3600 + 5400, paused_ms: 0,
   view_offset_ms: 5_400_000, duration_ms: 6_000_000,
@@ -37,6 +37,31 @@ export const users: { users: UserEntry[] } = {
   users: [{ id: "7", username: "Jesse", last_seen: now - 3600, last_ip: "192.168.1.20", last_platform: "webOS", last_player: "Living Room TV", last_title: "The Cartographer", total_plays: 2, total_secs: 10800, geo }],
 };
 
+// Jesse's People page.
+export const person: PersonProfile = {
+  id: "7", username: "Jesse", avatar_url: "", window_days: 0, first_seen: now - 30 * 86400, last_seen: now - 3600,
+  total_plays: 2, total_secs: 10800, completion_pct: 100, completion_of: 2,
+  top_titles: [{ title: "The Cartographer — a very long title that has to fit on a phone", thumb_url: "", plays: 1, secs: 5400 }, { title: "Harbour Lights", thumb_url: "", plays: 1, secs: 5400 }],
+  platforms: [{ id: "webOS", name: "webOS", plays: 2, secs: 10800 }], players: [{ id: "Living Room TV", name: "Living Room TV", plays: 2, secs: 10800 }],
+  ips: [{ ip: "2001:db8:85a3:0000:0000:8a2e:0370:7334", geo: { ip: "2001:db8:85a3::7334", local: false, city: "Wellington", country_code: "NZ" }, plays: 1, last_seen: now - 3600 },
+    { ip: "192.168.1.20", geo, plays: 1, last_seen: now - 7200 }],
+  decisions: { direct_play: 1, direct_stream: 0, transcode: 1 },
+  stalls: { events: 2, stall_ms: 47_000, rate_pct: 50 },
+  recent: history.rows,
+};
+
+// The Library tab with Plex's library list unavailable (never watched can't be listed).
+export const library: InsightsLibrary = {
+  window_days: 90,
+  most_watched_movies: [{ kind: "movie", title: "The Cartographer", year: 2024, thumb_url: "", media: "movie", tmdb: 1001, arrmada_id: 41, plays: 2, secs: 10800 }],
+  most_watched_shows: [],
+  never_watched: [], never_watched_total: 0, never_watched_unavailable: true,
+  hot_spots: [{
+    kind: "movie", title: "The Cartographer — a very long title that has to fit on a phone", year: 2024, thumb_url: "", media: "movie", tmdb: 1001, arrmada_id: 41,
+    transcodes: 2, total_plays: 2, top_pair: "HEVC 4K → H264 1080p", platforms: ["webOS"], top_cause: "transcode_fallback", cause_label: "Plex fell back to CPU",
+  }],
+};
+
 export const stats: InsightsStats = {
   most_watched_movies: [{ title: "The Cartographer", thumb_url: "", plays: 2, secs: 10800 }],
   most_watched_shows: [], most_active_users: [{ id: "7", name: "Jesse", plays: 2, secs: 10800 }],
@@ -45,6 +70,8 @@ export const stats: InsightsStats = {
 
 const days = Array.from({ length: 30 }, (_, i) => new Date(NOW - (29 - i) * 86_400_000).toISOString().slice(0, 10));
 export const graphs: InsightsGraphs = {
+  metric: "plays",
+  daily_direct_play: days.map(() => 0), daily_direct_stream: days.map(() => 0), daily_transcode: days.map((_, i) => (i === 29 ? 2 : 0)),
   days, daily_tv: days.map(() => 0), daily_movies: days.map((_, i) => (i === 29 ? 2 : 0)), daily_music: days.map(() => 0),
   by_day_of_week: [0, 0, 0, 0, 0, 2, 0], by_hour: Array.from({ length: 24 }, (_, i) => (i === 20 ? 2 : 0)),
   top_platforms: [{ id: "webOS", name: "webOS", plays: 2, secs: 10800 }], top_users: [{ id: "7", name: "Jesse", plays: 2, secs: 10800 }],
@@ -99,6 +126,8 @@ export function routes(cfg: () => PlexConfig, opts: { plexDown?: boolean; empty?
     { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg() },
     { method: "GET", path: "/api/v1/insights/history", body: opts.empty ? { rows: [], total: 0 } : history },
     { method: "GET", path: "/api/v1/insights/users", body: opts.empty ? { users: [] } : users },
+    { method: "GET", path: "/api/v1/insights/users/7", body: person },
+    { method: "GET", path: "/api/v1/insights/library", body: library },
     { method: "GET", path: "/api/v1/insights/stats", body: stats },
     { method: "GET", path: "/api/v1/insights/graphs", body: graphs },
     { method: "GET", path: "/api/v1/insights/reliability", body: opts.empty ? emptyReliability : reliability },

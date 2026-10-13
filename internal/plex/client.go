@@ -275,6 +275,7 @@ type Item struct {
 	Year       int    `json:"year"`
 	AddedAt    int64  `json:"added_at"`
 	SectionKey string `json:"section_key"`
+	Thumb      string `json:"thumb,omitempty"` // the poster's server path
 	TMDB       int    `json:"tmdb,omitempty"`
 	TVDB       int    `json:"tvdb,omitempty"`
 	IMDB       string `json:"imdb,omitempty"`
@@ -304,6 +305,7 @@ func (c *Client) SectionItems(ctx context.Context, sectionKey string, typ int) (
 					Title     string  `json:"title"`
 					Year      flexInt `json:"year"`
 					AddedAt   flexInt `json:"addedAt"`
+					Thumb     string  `json:"thumb"`
 					GUID      string  `json:"guid"` // the agent's primary match
 					// Guid (capital G, an array) is the new agents' list of outside ids.
 					// encoding/json prefers the exact-case key, so the two don't collide.
@@ -323,7 +325,7 @@ func (c *Client) SectionItems(ctx context.Context, sectionKey string, typ int) (
 			for _, g := range m.Guids {
 				guids = append(guids, g.ID)
 			}
-			it := Item{RatingKey: m.RatingKey, Type: m.Type, Title: m.Title, Year: int(m.Year), AddedAt: int64(m.AddedAt), SectionKey: sectionKey}
+			it := Item{RatingKey: m.RatingKey, Type: m.Type, Title: m.Title, Year: int(m.Year), AddedAt: int64(m.AddedAt), SectionKey: sectionKey, Thumb: m.Thumb}
 			it.TMDB, it.TVDB, it.IMDB = parseGuids(m.GUID, guids)
 			out = append(out, it)
 		}

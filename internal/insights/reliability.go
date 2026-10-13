@@ -35,12 +35,14 @@ type ReliabilitySummary struct {
 
 // BufferGroup is buffering rolled up by user / platform / title.
 type BufferGroup struct {
+	ID               string  `json:"id,omitempty"` // the Plex user id, on the per-user board
 	Name             string  `json:"name"`
 	Sessions         int     `json:"sessions"`
 	BufferedSessions int     `json:"buffered_sessions"`
 	Events           int     `json:"events"`
 	StallMS          int64   `json:"stall_ms"` // observed stall time for the group
 	RatePct          float64 `json:"rate_pct"` // buffered / sessions
+	key              string  // what the group was rolled up by
 }
 
 // BufferEvent is one recorded buffer spell with its stream context and diagnosed cause.
@@ -49,6 +51,7 @@ type BufferEvent struct {
 	OffsetMS   int64  `json:"offset_ms"`
 	DurationMS int64  `json:"duration_ms"` // observed stall time (0 = single-poll blip or legacy row)
 	User       string `json:"user"`
+	UserID     string `json:"user_id"`
 	Title      string `json:"title"`
 	Platform   string `json:"platform"`
 	Decision   string `json:"decision"`
@@ -98,13 +101,18 @@ func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability,
 
 	// Offenders — only groups that actually buffered, worst first.
 	titleExpr := `CASE WHEN media_type='episode' AND grandparent_title<>'' THEN grandparent_title ELSE title END`
-	if out.ByUser, err = s.bufferGroups(ctx, "user_name", since); err != nil {
+	// People are grouped by account id (a renamed account stays one row), named by their
+	// username, and carry the id so the board links to their People page.
+	if out.ByUser, err = s.bufferGroups(ctx, "user_id", "user_name", since); err != nil {
 		return Reliability{}, err
 	}
-	if out.ByPlatform, err = s.bufferGroups(ctx, "platform", since); err != nil {
+	for i := range out.ByUser {
+		out.ByUser[i].ID = out.ByUser[i].key
+	}
+	if out.ByPlatform, err = s.bufferGroups(ctx, "platform", "platform", since); err != nil {
 		return Reliability{}, err
 	}
-	if out.ByTitle, err = s.bufferGroups(ctx, titleExpr, since); err != nil {
+	if out.ByTitle, err = s.bufferGroups(ctx, titleExpr, titleExpr, since); err != nil {
 		return Reliability{}, err
 	}
 
@@ -128,7 +136,7 @@ func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability,
 
 	// Recent buffer-event timeline.
 	rows, err := s.repo.db.QueryContext(ctx, `
-		SELECT b.at, b.view_offset_ms, b.duration_ms, b.cause, b.detail, s.user_name, s.title, s.grandparent_title, s.media_type, s.platform, s.decision
+		SELECT b.at, b.view_offset_ms, b.duration_ms, b.cause, b.detail, s.user_name, s.user_id, s.title, s.grandparent_title, s.media_type, s.platform, s.decision
 		FROM buffer_events b JOIN stream_sessions s ON s.id = b.session_id
 		WHERE b.at >= ? ORDER BY b.at DESC LIMIT 60`, since)
 	if err != nil {
@@ -138,7 +146,7 @@ func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability,
 	for rows.Next() {
 		var e BufferEvent
 		var gp, mt string
-		if err := rows.Scan(&e.At, &e.OffsetMS, &e.DurationMS, &e.Cause, &e.Detail, &e.User, &e.Title, &gp, &mt, &e.Platform, &e.Decision); err != nil {
+		if err := rows.Scan(&e.At, &e.OffsetMS, &e.DurationMS, &e.Cause, &e.Detail, &e.User, &e.UserID, &e.Title, &gp, &mt, &e.Platform, &e.Decision); err != nil {
 			return Reliability{}, err
 		}
 		if mt == "episode" && gp != "" {
@@ -158,10 +166,11 @@ const (
 )
 
 // bufferGroups rolls sessions up by a column/expression, keeping only groups whose
-// buffering clears the offender floor, worst observed stall time first.
-func (s *Service) bufferGroups(ctx context.Context, groupExpr string, since int64) ([]BufferGroup, error) {
-	q := `SELECT g, COUNT(*), SUM(buffered), SUM(events), SUM(stall_ms) FROM (
-			SELECT ` + groupExpr + ` g,
+// buffering clears the offender floor, worst observed stall time first. nameExpr names
+// each group (MAX over the group: one representative value).
+func (s *Service) bufferGroups(ctx context.Context, groupExpr, nameExpr string, since int64) ([]BufferGroup, error) {
+	q := `SELECT g, MAX(n), COUNT(*), SUM(buffered), SUM(events), SUM(stall_ms) FROM (
+			SELECT ` + groupExpr + ` g, ` + nameExpr + ` n,
 				CASE WHEN s.buffer_count>0 THEN 1 ELSE 0 END buffered,
 				s.buffer_count events,
 				COALESCE((SELECT SUM(b.duration_ms) FROM buffer_events b WHERE b.session_id = s.id),0) stall_ms
@@ -178,7 +187,7 @@ func (s *Service) bufferGroups(ctx context.Context, groupExpr string, since int6
 	out := []BufferGroup{} // non-nil so an empty roll-up serializes as [] not null
 	for rows.Next() {
 		var g BufferGroup
-		if err := rows.Scan(&g.Name, &g.Sessions, &g.BufferedSessions, &g.Events, &g.StallMS); err != nil {
+		if err := rows.Scan(&g.key, &g.Name, &g.Sessions, &g.BufferedSessions, &g.Events, &g.StallMS); err != nil {
 			return nil, err
 		}
 		if g.Sessions > 0 {

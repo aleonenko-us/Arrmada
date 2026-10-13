@@ -160,7 +160,9 @@ function staffRoutes(admin: boolean): RouteObject[] {
     page("/books/:id", "Book", books(<BookDetail />)),
     page("/subtitles", "Subtitles", <Subtitles />),
     page("/convert", "Convert", <Convert />),
-    page("/insights", "Insights", <Insights />),
+    // A splat (which also matches plain /insights), so a person's page lives at
+    // /insights/people/:id inside the Insights chunk.
+    page("/insights/*", "Insights", <Insights />),
     page("/audiobooks", "Audiobooks", <Audiobooks />),
     page("/me", "Me", <Me chrome />),
     // The old Indexers and Download clients pages are cards on Settings → Connections now.

@@ -2484,7 +2484,8 @@ export interface PlexTestResult { ok: boolean; error?: string; machine_id?: stri
 export interface GeoLocation { ip: string; local: boolean; city?: string; country?: string; country_code?: string; lat?: number; lon?: number }
 export interface StreamDetail { src: string; stream?: string }
 export interface InsightsStream {
-  session_key: string; user: string; title: string; subtitle: string; type: string; thumb: string;
+  /** thumb is the portrait poster (an episode's show poster); still is an episode's own frame, art the background. */
+  session_key: string; user: string; user_id?: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
   progress_pct: number; offset_ms: number; duration_ms: number; state: string;
   player: string; platform: string; product: string; decision: string;
   bandwidth_kbps: number; location: string; ip: string; geo: GeoLocation;
@@ -2497,28 +2498,64 @@ export interface InsightsActivity { streams: InsightsStream[]; bandwidth: { tota
 export interface HistoryEntry {
   id: number; user_id: string; user_name: string; title: string; grandparent_title: string; parent_title: string;
   media_index: number; parent_index: number; year: number; media_type: string; thumb: string; thumb_url: string;
+  /** The show an episode belongs to, recorded since PLEX-20 ("" before that and for movies). */
+  grandparent_thumb: string; grandparent_rating_key: string;
   player: string; platform: string; product: string; ip_address: string; location: string; decision: string;
   started_at: number; stopped_at: number; paused_ms: number; view_offset_ms: number; duration_ms: number;
   video_src: string; video_stream: string; audio_src: string; audio_stream: string; container_src: string; container_stream: string;
   hw_transcode: boolean; buffer_count: number; subtitle: string; geo: GeoLocation; watched_secs: number; progress_pct: number;
+  /** How many sittings a grouped row folds together (History with group=1). */
+  sessions?: number;
 }
 export interface InsightsHistory { rows: HistoryEntry[]; total: number }
 export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number }
 export interface NameStat { id: string; name: string; plays: number; secs: number }
 export interface InsightsStats { most_watched_movies: TitleStat[]; most_watched_shows: TitleStat[]; most_active_users: NameStat[]; most_active_platforms: NameStat[]; recently_watched: HistoryEntry[] }
-export interface UserEntry { id: string; username: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
+export interface UserEntry { id: string; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
 export interface LibraryStat { title: string; type: string; count: number }
 export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number }
 export interface BWPoint { t: string; total_kbps: number; lan_kbps: number; wan_kbps: number }
+// Every play series is in `metric`: plays, or hours watched ("duration").
 export interface InsightsGraphs {
+  metric: "plays" | "duration";
   days: string[]; daily_tv: number[]; daily_movies: number[]; daily_music: number[];
+  /** The same plays by stream type, aligned to days; per day they add up to tv + movies + music. */
+  daily_direct_play: number[]; daily_direct_stream: number[]; daily_transcode: number[];
   by_day_of_week: number[]; by_hour: number[];
   top_platforms: NameStat[]; top_users: NameStat[]; bandwidth: BWPoint[];
 }
 export interface ReliabilitySummary { total_sessions: number; buffered_sessions: number; total_events: number; total_stall_ms: number; buffer_rate_pct: number }
-export interface BufferGroup { name: string; sessions: number; buffered_sessions: number; events: number; stall_ms: number; rate_pct: number }
-export interface BufferEvent { at: number; offset_ms: number; duration_ms: number; user: string; title: string; platform: string; decision: string; cause: string; detail: string }
+export interface BufferGroup { id?: string; name: string; sessions: number; buffered_sessions: number; events: number; stall_ms: number; rate_pct: number }
+export interface BufferEvent { at: number; offset_ms: number; duration_ms: number; user: string; user_id?: string; title: string; platform: string; decision: string; cause: string; detail: string }
 export interface CauseCount { cause: string; label: string; count: number; stall_ms: number }
+// The Insights Library tab (GET /insights/library). media/tmdb come from the Plex library
+// index; arrmada_id is set when Arrmada has the title.
+export interface LibraryItem {
+  kind: "movie" | "show"; title: string; year?: number; thumb_url: string; rating_key?: string;
+  media?: "movie" | "series"; tmdb?: number; arrmada_id?: number;
+  plays?: number; secs?: number; added_at?: number;
+}
+export interface HotSpot extends LibraryItem {
+  transcodes: number; total_plays: number; top_pair: string; platforms: string[]; top_cause?: string; cause_label?: string;
+}
+export interface InsightsLibrary {
+  window_days: number; most_watched_movies: LibraryItem[]; most_watched_shows: LibraryItem[];
+  /** Oldest first, capped; never_watched_unavailable = Plex's library list can't be read right now. */
+  never_watched: LibraryItem[]; never_watched_total: number; never_watched_unavailable: boolean;
+  hot_spots: HotSpot[];
+}
+// One Plex user's People page (GET /insights/users/{id}): Plex video plays only.
+export interface PersonProfile {
+  id: string; username: string; avatar_url: string; window_days: number;
+  first_seen: number; last_seen: number; total_plays: number; total_secs: number;
+  /** Share of plays with a known runtime that reached 90%, out of completion_of plays. */
+  completion_pct: number; completion_of: number;
+  top_titles: TitleStat[]; platforms: NameStat[]; players: NameStat[];
+  ips: { ip: string; geo: GeoLocation; plays: number; last_seen: number }[];
+  decisions: { direct_play: number; direct_stream: number; transcode: number };
+  stalls: { events: number; stall_ms: number; rate_pct: number };
+  recent: HistoryEntry[];
+}
 export interface Reliability { summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[] }
 
 // ApiError is still an Error (every existing catch keeps reading .message), but it also

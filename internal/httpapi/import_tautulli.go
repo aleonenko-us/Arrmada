@@ -169,6 +169,7 @@ func importedSessions(rows []tautulli.Row) []insights.ImportedSession {
 			UserID: r.UserID, UserName: r.User, UserThumb: r.UserThumb, RatingKey: r.RatingKey, MediaType: r.MediaType,
 			Title: r.Title, GrandparentTitle: r.GrandparentTitle, ParentTitle: r.ParentTitle,
 			MediaIndex: r.MediaIndex, ParentIndex: r.ParentIndex, Year: r.Year, Thumb: r.Thumb,
+			GrandparentThumb: r.GrandparentThumb, GrandparentRatingKey: r.GrandparentRatingKey,
 			Player: r.Player, Platform: r.Platform, Product: r.Product, IPAddress: r.IPAddress, Decision: r.Decision,
 			StartedAt: r.Started, StoppedAt: r.Stopped, PausedMS: r.PausedSec * 1000,
 			// Tautulli's `duration` is how long they WATCHED, not how long the

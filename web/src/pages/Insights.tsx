@@ -1,31 +1,37 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
 import { useTabParam } from "../lib/useTabParam";
 import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
-import { EmptyState } from "../ui/EmptyState";
 import { IconButton, Modal, useToast } from "../ui";
-import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type HistoryEntry, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type Reliability, type BufferGroup } from "../lib/api";
+import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
+import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
+import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, type Metric } from "./insights/shared";
+import { HistoryView } from "./insights/HistoryView";
+import { LibraryView } from "./insights/LibraryView";
+import { InsightsPerson } from "./InsightsPerson";
+import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
 // Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
 // People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
 // tabs here; they live in Settings → Connections (the Plex card) and Settings → Alerts now.
-type Tab = "activity" | "history" | "people" | "graphs" | "reliability";
+type Tab = "activity" | "history" | "people" | "graphs" | "reliability" | "library";
 const TABS: { key: Tab; label: string }[] = [
   { key: "activity", label: "Activity" },
   { key: "history", label: "History" },
   { key: "people", label: "People" },
   { key: "graphs", label: "Graphs" },
   { key: "reliability", label: "Reliability" },
+  { key: "library", label: "Library" },
 ];
 // The tabs that read recorded plays: they only grow while monitoring is on, so they carry
 // the "monitoring is off" banner when it isn't.
-const RECORDED_TABS: Tab[] = ["history", "people", "graphs", "reliability"];
+const RECORDED_TABS: Tab[] = ["history", "people", "graphs", "reliability", "library"];
 
 // The header badge says what monitoring is doing, not just that a URL and token are saved:
 // Activity asks Plex directly and works either way, so a green "connected" used to hide
@@ -62,13 +68,14 @@ function MonitoringOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void
   );
 }
 
-// InsightsCfg hands the latest Plex settings to deep components (History's HW badge)
-// without threading a prop through every view.
-const InsightsCfg = createContext<PlexConfig | null>(null);
-
 export function Insights() {
+  // /insights/people/:id is a person's People page; any other sub-path is Insights itself.
+  const rest = useParams()["*"] ?? "";
+  const person = /^people\/([^/]+)\/?$/.exec(rest);
   // The old Notifications tab's address (bookmarks, earlier copy) opens Alerts instead.
   const [params] = useSearchParams();
+  if (person) return <InsightsPerson id={decodeURIComponent(person[1])} />;
+  if (rest) return <Navigate to="/insights" replace />;
   if (params.get("tab") === "notifications") return <Navigate to={LINKS.alerts} replace />;
   // Users was renamed People; old links keep working.
   if (params.get("tab") === "users") return <Navigate to="/insights?tab=people" replace />;
@@ -133,11 +140,13 @@ function InsightsPage() {
           ) : tab === "activity" ? (
             <ActivityView connected={!!connected} />
           ) : tab === "history" ? (
-            <HistoryView connected={!!connected} />
+            <HistoryView connected={!!connected} userLink={(id, name) => <UserLink id={id} name={name} />} />
           ) : tab === "people" ? (
             <UsersView connected={!!connected} />
           ) : tab === "graphs" ? (
             <GraphsView connected={!!connected} />
+          ) : tab === "library" ? (
+            <LibraryView connected={!!connected} />
           ) : (
             <ReliabilityView connected={!!connected} />
           )}
@@ -149,37 +158,6 @@ function InsightsPage() {
 }
 
 /* ============================= ACTIVITY ============================= */
-function fmtMbps(kbps: number): string {
-  if (!kbps) return "0";
-  const mb = kbps / 1000;
-  return mb >= 10 ? mb.toFixed(0) : mb.toFixed(1);
-}
-function fmtClock(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  const mm = String(m).padStart(2, "0"), sss = String(ss).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${sss}` : `${m}:${sss}`;
-}
-const DECISION: Record<string, { label: string; color: string }> = {
-  direct_play: { label: "Direct Play", color: "var(--good)" },
-  direct_stream: { label: "Direct Stream", color: "var(--accent)" },
-  transcode: { label: "Transcode", color: "var(--avoid)" },
-};
-// Diagnosed buffer-cause styling (keys match BufferEvent.cause / CauseCount.cause).
-const CAUSE: Record<string, { label: string; color: string }> = {
-  transcode: { label: "Transcode overloaded", color: "var(--reject)" },
-  transcode_cpu: { label: "CPU transcode (no HW)", color: "var(--reject)" },
-  transcode_fallback: { label: "Plex fell back to CPU", color: "var(--reject)" },
-  bandwidth: { label: "Bandwidth / network", color: "var(--avoid)" },
-  unknown: { label: "Inconclusive", color: "var(--ink-faint)" },
-};
-function geoLabel(g: InsightsStream["geo"]): string {
-  if (g.local) return "Local";
-  if (g.city && g.country_code) return `${g.city}, ${g.country_code}`;
-  if (g.country) return g.country;
-  return g.ip || "—";
-}
-
 function ActivityView({ connected }: { connected: boolean }) {
   const [act, setAct] = useState<InsightsActivity | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -274,12 +252,6 @@ function ActivityView({ connected }: { connected: boolean }) {
 }
 
 /* ============================= HOME DASHBOARD (stats / libraries / recently added) ============================= */
-function fmtHours(secs: number): string {
-  if (!secs) return "0";
-  const h = secs / 3600;
-  return h >= 10 ? `${h.toFixed(0)}h` : h >= 1 ? `${h.toFixed(1)}h` : `${Math.round(secs / 60)}m`;
-}
-
 // HomeExtras: watch statistics (from the database) plus library counts and recently added,
 // which Plex answers live. Without a server (live=false) the Plex calls are skipped, and the
 // block shows only when there are imported statistics to show.
@@ -320,7 +292,7 @@ function HomeExtras({ live }: { live: boolean }) {
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
             <StatCard title="Most watched movies" rows={stats!.most_watched_movies.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
             <StatCard title="Most watched TV" rows={stats!.most_watched_shows.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
-            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
+            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, to: u.id ? personPath(u.id) : undefined, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
             <StatCard title="Most active platforms" rows={stats!.most_active_platforms.map((p) => ({ label: p.name, v: metric === "plays" ? p.plays : p.secs }))} metric={metric} />
           </div>
         )}
@@ -373,7 +345,7 @@ function libTypeLabel(t: string): string {
   return t === "movie" ? "Movies" : t === "show" ? "TV Shows" : t === "artist" ? "Music" : t;
 }
 
-function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; v: number }[]; metric: "plays" | "duration" }) {
+function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; to?: string; v: number }[]; metric: "plays" | "duration" }) {
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="mb-2 text-base font-bold">{title}</div>
@@ -383,7 +355,7 @@ function StatCard({ title, rows, metric }: { title: string; rows: { label: strin
             <li key={i} className="flex items-center gap-2 text-sm">
               <span className="w-3 flex-none font-mono text-xs text-ink-faint">{i + 1}</span>
               {r.thumb !== undefined && <span className="h-7 w-5 flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>{r.thumb ? <img src={r.thumb} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}</span>}
-              <span className="min-w-0 flex-1 truncate">{r.label}</span>
+              {r.to ? <Link to={r.to} className="min-w-0 flex-1 truncate hover:underline">{r.label}</Link> : <span className="min-w-0 flex-1 truncate">{r.label}</span>}
               <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--accent)" }}>{metric === "plays" ? r.v : fmtHours(r.v)}</span>
             </li>
           ))}
@@ -410,7 +382,9 @@ function UsersView({ connected }: { connected: boolean }) {
           <tbody>
             {users.map((u, i) => (
               <tr key={u.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                <td className="px-3 py-2 font-semibold">{u.username}</td>
+                <td className="px-3 py-2 font-semibold">
+                  <span className="flex items-center gap-2"><Avatar url={u.avatar_url} name={u.username} /><UserLink id={u.id} name={u.username} /></span>
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{u.last_seen ? fmtDate(u.last_seen) : "never"}</td>
                 <td className="px-3 py-2 font-mono text-xs text-ink-dim">{u.last_ip ? geoLabel(u.geo) : "—"}</td>
                 <td className="px-3 py-2 text-ink-dim">{u.last_platform || "—"}</td>
@@ -441,11 +415,19 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
   const buffering = s.state === "buffering";
   const pct = s.duration_ms > 0 ? Math.min(100, (offsetMs * 100) / s.duration_ms) : s.progress_pct;
   return (
-    <button onClick={onOpen} className="flex gap-3 rounded-xl p-3 text-left transition-colors" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+    <button onClick={onOpen} className="relative flex gap-3 overflow-hidden rounded-xl p-3 text-left transition-colors" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+      {/* The title's background art, faint under a panel-coloured wash so the text keeps its
+          contrast in both themes. */}
+      {s.art && (
+        <>
+          <img src={s.art} alt="" aria-hidden loading="lazy" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30" />
+          <span aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(90deg, var(--panel) 35%, color-mix(in srgb, var(--panel) 72%, transparent) 100%)" }} />
+        </>
+      )}
       <div className="relative h-[104px] w-[70px] flex-none overflow-hidden rounded-md" style={{ background: "var(--panel-2)" }}>
         {s.thumb ? <img src={s.thumb} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-md font-semibold">{s.title}</div>
@@ -502,7 +484,10 @@ function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
       )}
 
       <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
-        <DDRow label="User" a={s.user} />
+        <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "var(--panel)" }}>
+          <span className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">User</span>
+          <UserLink id={s.user_id} name={s.user} className="text-right text-ink-dim" />
+        </div>
         <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
         <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
         <DDRow label="Bandwidth" a={`${fmtMbps(s.bandwidth_kbps)} Mb/s`} />
@@ -527,192 +512,60 @@ function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
 }
 
 /* ============================= HISTORY ============================= */
-function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="font-mono text-2xs font-bold uppercase tracking-[0.09em] text-ink-faint">{label}</span>
-      <div className="flex flex-wrap gap-1">{children}</div>
-    </div>
-  );
-}
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
-      {children}
-    </button>
-  );
-}
-
-function fmtDate(epoch: number): string {
-  if (!epoch) return "—";
-  const d = new Date(epoch * 1000);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-function fmtDur(secs: number): string {
-  if (!secs) return "—";
-  const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-const TYPE_FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "All" }, { key: "movie", label: "Movies" }, { key: "episode", label: "TV" }, { key: "track", label: "Music" },
-];
-const DEC_FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "All" }, { key: "direct_play", label: "Direct Play" }, { key: "direct_stream", label: "Direct Stream" }, { key: "transcode", label: "Transcode" },
-];
-
-function HistoryView({ connected }: { connected: boolean }) {
-  const [rows, setRows] = useState<HistoryEntry[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [type, setType] = useState("");
-  const [decision, setDecision] = useState("");
-  const [q, setQ] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [detail, setDetail] = useState<HistoryEntry | null>(null);
-  const pageSize = 50;
-
-  useEffect(() => { setPage(1); }, [type, decision, q]);
-  // History is read from the database, not from Plex, so a Tautulli import is listed even
-  // before a server is connected.
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const run = () => insightsApi.insightsHistory({ type, decision, q, page, page_size: pageSize })
-      .then((r) => { if (alive) { setRows(r.rows ?? []); setTotal(r.total); } })
-      .catch(() => { if (alive) setRows([]); })
-      .finally(() => { if (alive) setLoading(false); });
-    const t = setTimeout(run, q ? 300 : 0); // debounce search
-    return () => { alive = false; clearTimeout(t); };
-  }, [type, decision, q, page]);
-
-  // Nothing recorded at all (not just nothing matching a filter) and no server to record
-  // from: the setup state says more than an empty table.
-  const unfiltered = !type && !decision && !q;
-  if (!connected && !loading && total === 0 && unfiltered) return <SetupState tab="history" />;
-
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-  const maxPage = Math.max(1, Math.ceil(total / pageSize));
-
-  return (
-    <div className="flex flex-col gap-3">
-      {!connected && (total > 0 || !unfiltered) && <ImportedNotice />}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <FilterGroup label="Type">{TYPE_FILTERS.map((f) => <Chip key={f.key} active={type === f.key} onClick={() => setType(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <FilterGroup label="Stream">{DEC_FILTERS.map((f) => <Chip key={f.key} active={decision === f.key} onClick={() => setDecision(f.key)}>{f.label}</Chip>)}</FilterGroup>
-        <input aria-label="Search title or user" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or user…" className="ml-auto rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)", minWidth: 200 }} />
-      </div>
-
-      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-        <table className="w-full border-collapse text-base" style={{ minWidth: 820 }}>
-          <thead><tr style={{ background: "var(--panel-2)" }}>{["When", "User", "Title", "Player", "Location", "Stream", "Watched", ""].map((h) => <th key={h} className="px-3 py-2 text-left font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{h}</th>)}</tr></thead>
-          <tbody>
-            {loading && rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-dim">Loading history…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-ink-faint">No plays recorded yet. History fills in as people watch.</td></tr>
-            ) : rows.map((r, i) => {
-              const d = DECISION[r.decision] ?? DECISION.direct_play;
-              return (
-                <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{fmtDate(r.started_at)}</td>
-                  <td className="px-3 py-2">{r.user_name}</td>
-                  <td className="px-3 py-2"><div className="font-semibold">{r.title}</div>{r.subtitle && <div className="text-xs text-ink-faint">{r.subtitle}</div>}</td>
-                  <td className="px-3 py-2 text-ink-dim">{r.player || r.platform}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-ink-dim">{geoLabel(r.geo)}</td>
-                  <td className="px-3 py-2"><span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span></td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono tabular-nums text-ink-dim">{fmtDur(r.watched_secs)}{r.buffer_count > 0 && <span title={`${r.buffer_count} buffer event(s)`} style={{ color: "var(--avoid)" }}> · ⚠{r.buffer_count}</span>}</td>
-                  <td className="px-3 py-2 text-right text-ink-faint">›</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center justify-between text-sm text-ink-faint">
-        <span>{total > 0 ? `${from}–${to} of ${total.toLocaleString()}` : "0 plays"}</span>
-        <span className="flex items-center gap-2">
-          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Prev</button>
-          <span className="font-mono">{page}/{maxPage}</span>
-          <button disabled={page >= maxPage} onClick={() => setPage((p) => p + 1)} className="rounded-lg px-2.5 py-1 font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Next</button>
-        </span>
-      </div>
-
-      {detail && <HistoryDetail r={detail} onClose={() => setDetail(null)} />}
-    </div>
-  );
-}
-
-// HistoryHW is a recorded play's hardware badge. Plays now record a hardware encode Plex
-// really used; older ones recorded "hardware was requested", which a CPU fallback also set.
-function HistoryHW({ startedAt }: { startedAt: number }) {
-  const since = useContext(InsightsCfg)?.hw_since ?? 0;
-  const old = !since || startedAt < since;
-  return (
-    <span title={old ? `Plays before ${since ? fmtDate(since) : "this update"} show HW as requested — Plex may have fallen back to CPU.` : undefined}
-      className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
-      {old ? "HW requested" : "HW enc"}
-    </span>
-  );
-}
-
-function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void }) {
-  const d = DECISION[r.decision] ?? DECISION.direct_play;
-  const titleId = useId();
-  return (
-    <Modal onClose={onClose} labelledBy={titleId} size="md">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id={titleId} className="m-0 truncate text-lg font-bold">{r.title}</h2>
-          <p className="m-0 mt-0.5 text-sm text-ink-dim">{r.subtitle}</p>
-        </div>
-        <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
-        {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
-      </div>
-      <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
-        <DDRow label="User" a={r.user_name} />
-        <DDRow label="Player" a={`${r.player || "—"} · ${r.platform} · ${r.product}`} />
-        <DDRow label="Location" a={`${geoLabel(r.geo)}${r.ip_address ? ` · ${r.ip_address}` : ""} · ${r.location?.toUpperCase() || "—"}`} />
-        <DDRow label="Started" a={fmtDate(r.started_at)} />
-        <DDRow label="Watched" a={`${fmtDur(r.watched_secs)}${r.paused_ms > 0 ? ` (paused ${fmtDur(Math.round(r.paused_ms / 1000))})` : ""}`} />
-        <DDRow label="Video" a={r.video_src} b={r.video_stream} />
-        <DDRow label="Audio" a={r.audio_src} b={r.audio_stream} />
-        <DDRow label="Container" a={r.container_src} b={r.container_stream} />
-      </div>
-    </Modal>
-  );
-}
-
 /* ============================= GRAPHS ============================= */
-const SERIES_COLORS = { tv: "var(--accent)", movies: "var(--good)", music: "var(--avoid)" };
+const SERIES = {
+  tv: { label: "TV", color: "var(--accent)" },
+  movies: { label: "Movies", color: "var(--good)", dash: "6 3" },
+  music: { label: "Music", color: "var(--avoid)", dash: "2 3" },
+};
+// Stream types keep the decision colours; the dashes tell them apart for readers who
+// can't separate those hues.
+const STREAM_SERIES = {
+  direct_play: { label: "Direct Play", color: DECISION.direct_play.color, dash: "6 3" },
+  direct_stream: { label: "Direct Stream", color: DECISION.direct_stream.color },
+  transcode: { label: "Transcode", color: DECISION.transcode.color, dash: "2 3" },
+};
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WINDOWS = [7, 30, 90] as const;
+const METRICS = ["plays", "duration"] as const;
 
 function GraphsView({ connected }: { connected: boolean }) {
   const [g, setG] = useState<InsightsGraphs | null>(null);
-  const [win, setWin] = useState(30);
+  const [failed, setFailed] = useState(false);
+  // The window and the metric live in the address, so a refresh or a shared link keeps them.
+  const [winParam, setWin] = useSearchParamState<string>("window", "30", { allowed: WINDOWS.map(String) });
+  const [metric, setMetric] = useSearchParamState<Metric>("metric", "plays", { allowed: METRICS });
+  const win = Number(winParam) || 30;
   // Graphs are drawn from recorded plays, so imported history charts before Plex is connected.
-  useEffect(() => { insightsApi.insightsGraphs(win).then(setG).catch(() => setG(null)); }, [win]);
+  useEffect(() => {
+    let live = true;
+    insightsApi.insightsGraphs(win, metric).then((r) => { if (live) { setG(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [win, metric]);
+  if (failed && !g) return <div className="rounded-xl p-10 text-center text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn't load the graphs.</div>;
   if (!g) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
 
+  const hours = g.metric === "duration";
+  const fmt = hours ? fmtHoursValue : (v: number) => String(Math.round(v));
+  const unit = hours ? "Hours watched" : "Plays";
   const anyPlays = g.daily_tv.some(Boolean) || g.daily_movies.some(Boolean) || g.daily_music.some(Boolean);
-  const dayLabels = g.days.map((d) => { const [, m, day] = d.split("-"); return `${+m}/${+day}`; });
+  const dayLabels = g.days.map((d) => dayLabel(d));
+  const dayTips = g.days.map((d) => dayLabel(d, true));
   // Nothing to chart and no server to record from. The window chips stay above it, so an
   // older import is still one click away.
   const nothing = !connected && !anyPlays && g.bandwidth.length === 0;
+  const rank = (rows: NameStat[]) => rows.map((r) => ({ label: r.name, value: hours ? r.secs / 3600 : r.plays }));
 
   return (
     <div className="flex flex-col gap-4">
       {!connected && !nothing && <ImportedNotice />}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>
-        <div className="flex items-center gap-3 text-xs">
-          <Legend c={SERIES_COLORS.tv} label="TV" /><Legend c={SERIES_COLORS.movies} label="Movies" /><Legend c={SERIES_COLORS.music} label="Music" />
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FilterGroup label="Window">{WINDOWS.map((w) => <Chip key={w} active={win === w} onClick={() => setWin(String(w))}>{w}d</Chip>)}</FilterGroup>
+        <FilterGroup label="Show">
+          <Chip active={!hours} onClick={() => setMetric("plays")}>Plays</Chip>
+          <Chip active={hours} onClick={() => setMetric("duration")}>Hours</Chip>
+        </FilterGroup>
       </div>
 
       {nothing ? (
@@ -721,100 +574,42 @@ function GraphsView({ connected }: { connected: boolean }) {
         <div className="rounded-xl p-10 text-center text-sm text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No plays in this window yet — graphs fill in as history accrues.</div>
       ) : (
         <>
-          <ChartCard title="Daily plays by media type">
-            <LineChart xLabels={dayLabels} series={[
-              { color: SERIES_COLORS.tv, values: g.daily_tv },
-              { color: SERIES_COLORS.movies, values: g.daily_movies },
-              { color: SERIES_COLORS.music, values: g.daily_music },
+          <ChartCard title={`Daily ${hours ? "hours watched" : "plays"} by media type`} extra={<Legend items={[SERIES.tv, SERIES.movies, SERIES.music]} />}>
+            <LineChart caption={`Daily ${unit.toLowerCase()} by media type`} xLabels={dayLabels} tipTitles={dayTips} fmt={fmt} series={[
+              { ...SERIES.tv, values: g.daily_tv },
+              { ...SERIES.movies, values: g.daily_movies },
+              { ...SERIES.music, values: g.daily_music },
+            ]} />
+          </ChartCard>
+
+          <ChartCard title="Stream type over time" extra={<Legend items={[STREAM_SERIES.direct_play, STREAM_SERIES.direct_stream, STREAM_SERIES.transcode]} />}>
+            <LineChart caption={`Daily ${unit.toLowerCase()} by stream type`} xLabels={dayLabels} tipTitles={dayTips} fmt={fmt} series={[
+              { ...STREAM_SERIES.direct_play, values: g.daily_direct_play ?? [] },
+              { ...STREAM_SERIES.direct_stream, values: g.daily_direct_stream ?? [] },
+              { ...STREAM_SERIES.transcode, values: g.daily_transcode ?? [] },
             ]} />
           </ChartCard>
 
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))" }}>
-            <ChartCard title="Plays by day of week"><BarChart values={g.by_day_of_week} labels={DOW} /></ChartCard>
-            <ChartCard title="Plays by hour of day"><BarChart values={g.by_hour} labels={g.by_hour.map((_, i) => (i % 3 === 0 ? String(i).padStart(2, "0") : ""))} /></ChartCard>
-            <ChartCard title="Top platforms"><HBarChart rows={g.top_platforms.map((p) => ({ label: p.name, value: p.plays }))} /></ChartCard>
-            <ChartCard title="Top users"><HBarChart rows={g.top_users.map((u) => ({ label: u.name, value: u.plays }))} /></ChartCard>
+            <ChartCard title={`${unit} by day of week`}><BarChart caption={`${unit} by day of week`} values={g.by_day_of_week} labels={DOW} tipTitles={DOW_LONG} fmt={fmt} /></ChartCard>
+            <ChartCard title={`${unit} by hour of day`}><BarChart caption={`${unit} by hour of day`} values={g.by_hour} fmt={fmt}
+              labels={g.by_hour.map((_, i) => (i % 3 === 0 ? String(i).padStart(2, "0") : ""))} tipTitles={g.by_hour.map((_, i) => `${String(i).padStart(2, "0")}:00–${String(i).padStart(2, "0")}:59`)} /></ChartCard>
+            <ChartCard title="Top platforms"><HBarChart rows={rank(g.top_platforms)} fmt={fmt} /></ChartCard>
+            <ChartCard title="Top users"><HBarChart rows={rank(g.top_users).map((r, i) => ({ ...r, to: g.top_users[i].id ? personPath(g.top_users[i].id) : undefined }))} fmt={fmt} /></ChartCard>
           </div>
         </>
       )}
 
-      {!nothing && <ChartCard title="Bandwidth (peak per hour)">
+      {!nothing && <ChartCard title="Bandwidth (peak per hour)" extra={g.bandwidth.length > 0 ? <Legend items={[{ label: "Total", color: "var(--accent)" }, { label: "LAN", color: "var(--good)", dash: "6 3" }, { label: "WAN", color: "var(--avoid)", dash: "2 3" }]} /> : undefined}>
         {g.bandwidth.length === 0 ? <div className="py-6 text-center text-xs text-ink-faint">No bandwidth recorded yet.</div> : (
-          <>
-            <div className="mb-1 flex items-center gap-3 text-xs"><Legend c="var(--accent)" label="Total" /><Legend c="var(--good)" label="LAN" /><Legend c="var(--avoid)" label="WAN" /></div>
-            <LineChart xLabels={g.bandwidth.map(() => "")} series={[
-              { color: "var(--accent)", values: g.bandwidth.map((p) => p.total_kbps / 1000) },
-              { color: "var(--good)", values: g.bandwidth.map((p) => p.lan_kbps / 1000) },
-              { color: "var(--avoid)", values: g.bandwidth.map((p) => p.wan_kbps / 1000) },
-            ]} unit=" Mb/s" />
-          </>
+          <LineChart caption="Peak bandwidth per hour, Mb/s" xLabels={bandwidthLabels(g.bandwidth.map((p) => p.t))} tipTitles={g.bandwidth.map((p) => `${dayLabel(p.t.slice(0, 10), true)} ${p.t.slice(11)}`)}
+            fmt={(v) => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)} Mb/s`} series={[
+              { label: "Total", color: "var(--accent)", values: g.bandwidth.map((p) => p.total_kbps / 1000) },
+              { label: "LAN", color: "var(--good)", dash: "6 3", values: g.bandwidth.map((p) => p.lan_kbps / 1000) },
+              { label: "WAN", color: "var(--avoid)", dash: "2 3", values: g.bandwidth.map((p) => p.wan_kbps / 1000) },
+            ]} />
         )}
       </ChartCard>}
-    </div>
-  );
-}
-
-function Legend({ c, label }: { c: string; label: string }) {
-  return <span className="inline-flex items-center gap-1 text-ink-dim"><span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />{label}</span>;
-}
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}><div className="mb-2 text-base font-bold">{title}</div>{children}</div>;
-}
-
-function LineChart({ series, xLabels, unit }: { series: { color: string; values: number[] }[]; xLabels: string[]; unit?: string }) {
-  const W = 720, H = 200, padL = 34, padB = 20, padT = 8, padR = 8;
-  const n = Math.max(1, xLabels.length);
-  const max = Math.max(1, ...series.flatMap((s) => s.values));
-  const x = (i: number) => padL + (n <= 1 ? 0 : (i / (n - 1)) * (W - padL - padR));
-  const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
-  const ticks = [0, Math.round(max / 2), max];
-  const labelEvery = Math.max(1, Math.ceil(n / 8));
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto", maxHeight: 240 }} preserveAspectRatio="none">
-      {ticks.map((t, i) => (
-        <g key={i}>
-          <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} />
-          <text x={padL - 5} y={y(t) + 3} textAnchor="end" fontSize={9} fill="var(--ink-faint)">{t}{unit || ""}</text>
-        </g>
-      ))}
-      {series.map((s, si) => (
-        <polyline key={si} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")} />
-      ))}
-      {xLabels.map((l, i) => (l && i % labelEvery === 0 ? <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize={9} fill="var(--ink-faint)">{l}</text> : null))}
-    </svg>
-  );
-}
-
-function BarChart({ values, labels }: { values: number[]; labels: string[] }) {
-  const W = 360, H = 180, padL = 24, padB = 18, padT = 6, padR = 4;
-  const max = Math.max(1, ...values);
-  const bw = (W - padL - padR) / values.length;
-  const y = (v: number) => padT + (1 - v / max) * (H - padT - padB);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto", maxHeight: 200 }}>
-      <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke="var(--line)" strokeWidth={1} />
-      {values.map((v, i) => (
-        <rect key={i} x={padL + i * bw + bw * 0.15} y={y(v)} width={bw * 0.7} height={Math.max(0, H - padB - y(v))} rx={1.5} fill="var(--accent)" />
-      ))}
-      {labels.map((l, i) => (l ? <text key={i} x={padL + i * bw + bw / 2} y={H - 5} textAnchor="middle" fontSize={8.5} fill="var(--ink-faint)">{l}</text> : null))}
-    </svg>
-  );
-}
-
-function HBarChart({ rows }: { rows: { label: string; value: number }[] }) {
-  if (rows.length === 0) return <div className="py-6 text-center text-xs text-ink-faint">No data yet.</div>;
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  return (
-    <div className="flex flex-col gap-1.5">
-      {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
-          <span className="w-[92px] flex-none truncate text-ink-dim" title={r.label}>{r.label || "—"}</span>
-          <span className="h-3.5 flex-1 overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
-            <span className="block h-full rounded" style={{ width: `${(r.value / max) * 100}%`, background: "var(--accent)" }} />
-          </span>
-          <span className="w-8 flex-none text-right font-mono text-ink-faint">{r.value}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -860,7 +655,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
       ) : (
         <>
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))" }}>
-            <OffenderCard title="Worst-hit users" rows={r.by_user} />
+            <OffenderCard title="Worst-hit users" rows={r.by_user} people />
             <OffenderCard title="Worst-hit platforms" rows={r.by_platform} />
             <OffenderCard title="Worst-hit titles" rows={r.by_title} />
           </div>
@@ -895,7 +690,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                       <span className="w-2 flex-none"><span className="inline-block h-2 w-2 rounded-full" style={{ background: cc.color }} /></span>
                       <span className="w-[92px] flex-none font-mono text-xs text-ink-faint">{fmtDate(e.at)}</span>
-                      <span className="min-w-[140px] flex-1 truncate"><b className="font-semibold">{e.user}</b> · {e.title}</span>
+                      <span className="min-w-[140px] flex-1 truncate"><UserLink id={e.user_id} name={e.user} className="font-semibold" /> · {e.title}</span>
                       <span className="flex-none font-mono text-xs text-ink-faint">@ {fmtClock(e.offset_ms)}</span>
                       {e.duration_ms > 0 && <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--avoid)" }}>{fmtStall(e.duration_ms)}</span>}
                       <span className="flex-none rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
@@ -912,24 +707,7 @@ function ReliabilityView({ connected }: { connected: boolean }) {
   );
 }
 
-function StatTile({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
-  return (
-    <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</div>
-      <div className="mt-1 text-3xl font-extrabold tracking-tight" style={{ color }}>{value}</div>
-      <div className="text-xs text-ink-faint">{sub}</div>
-    </div>
-  );
-}
-
-// fmtStall renders observed stall milliseconds compactly ("47s", "3m 12s").
-function fmtStall(ms: number): string {
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) return `${secs}s`;
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-}
-
-function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
+function OffenderCard({ title, rows, people }: { title: string; rows: BufferGroup[]; people?: boolean }) {
   // Rank/scale by observed stall time; legacy rows (pre-duration data) fall back to counts.
   const anyStall = rows.some((r) => r.stall_ms > 0);
   const metric = (r: BufferGroup) => (anyStall ? r.stall_ms : r.events);
@@ -942,7 +720,7 @@ function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
           {rows.map((r, i) => (
             <div key={i} className="text-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate" title={r.name}>{r.name || "—"}</span>
+                <span className="min-w-0 flex-1 truncate" title={r.name}>{people ? <UserLink id={r.id} name={r.name} /> : r.name || "—"}</span>
                 <span className="flex-none font-mono text-ink-dim">
                   {r.stall_ms > 0 ? `${fmtStall(r.stall_ms)} · ` : ""}{r.events} stall{r.events === 1 ? "" : "s"} · {r.rate_pct}%
                 </span>
@@ -954,39 +732,6 @@ function OffenderCard({ title, rows }: { title: string; rows: BufferGroup[] }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-const ABOUT = {
-  activity: "Live now-playing — who's streaming what, on which device, with progress, transcode decision, bandwidth and geolocation.",
-  history: "Every play recorded — a filterable table with stream-type, geolocated IP and a click-through deep-dive.",
-  people: "Per-person activity — last seen, platform, total plays and watch time.",
-  graphs: "Plays by day, hour, platform and user, plus bandwidth over time.",
-  reliability: "The buffering view — see historically when and where streams choked, by user, platform and title.",
-};
-
-// SetupState stands in for a tab only while no Plex server is set up and the database has
-// nothing for it yet (an imported Tautulli history shows without a server). Every tab is
-// built, so it says what the tab will show and links to the Plex settings page.
-function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
-  return (
-    <EmptyState
-      title={<span className="capitalize">{tab}</span>}
-      body={<p className="mx-auto max-w-[52ch] text-sm">{ABOUT[tab]}</p>}
-      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
-    />
-  );
-}
-
-// ImportedNotice sits above data a tab already has while no server is connected — plays
-// imported from Tautulli, or recorded before the connection was removed. The data is real;
-// it just won't grow until Plex is connected.
-function ImportedNotice() {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <span>Showing imported history — connect Plex to record new plays.</span>
-      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server →</Link>
     </div>
   );
 }

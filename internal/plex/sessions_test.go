@@ -116,3 +116,23 @@ func TestBufferCauseFallback(t *testing.T) {
 		t.Errorf("captured cpu fallback buffering: got %q", got)
 	}
 }
+
+// An episode's own thumb is its landscape still; the show's poster, rating key and
+// background art come from the grandparent fields, and art falls back to the show's.
+func TestFlattenGrandparentThumb(t *testing.T) {
+	s := sessionsFrom(t, "sessions_episode.json")[0]
+	if s.Thumb != "/library/metadata/8812/thumb/1700000001" {
+		t.Errorf("thumb = %q, want the episode still", s.Thumb)
+	}
+	if s.ShowThumb != "/library/metadata/8800/thumb/1700000000" || s.ShowRatingKey != "8800" {
+		t.Errorf("show poster/key = %q / %q", s.ShowThumb, s.ShowRatingKey)
+	}
+	if s.Art != "/library/metadata/8800/art/1700000000" {
+		t.Errorf("art = %q, want the show's art when the episode has none", s.Art)
+	}
+
+	movie := sessionsFrom(t, "sessions_direct.json")[0]
+	if movie.ShowThumb != "" || movie.ShowRatingKey != "" || movie.Art != "" {
+		t.Errorf("a movie has no show fields: %+v", movie)
+	}
+}
