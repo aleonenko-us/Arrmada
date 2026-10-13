@@ -1435,6 +1435,9 @@ If MUS-03 chose Park, this phase is skipped. If it chose Cut, MUS-25 already shi
 
 ### Phase 16 — First run, releases, logs and a consistent UI
 
+> **Status: shipped 2026-10-13** — all 19 tasks merged to main (full race suite, lint with jsx-a11y and the type-scale and legacy-pattern bans as errors, frontend tests, typecheck, build within the size budget at 95.3/97 KB brotli, and Playwright e2e green). Built as 5 lanes plus a second wave for labels, page widths and the type scale. The owner approved the FE-30 before/after screenshots. Publishing to GHCR runs only on a pushed v* tag; update.sh still compiles by default (pull mode via ARRMADA_IMAGE in .env). ARRMADA_BASE_URL stays removed, kept only in the upgrade warnings. Fixed in passing: the base-URL check scanned git-ignored local files. Owner to check: a fresh install on a spare data folder against real Plex and indexers; the first tagged release (make the GHCR package public, or log servers in with a read-only token); the Unraid template on a test share.
+
+
 **Theme:** A guided first run, published images and 'update available', support-grade logs, and frontend consolidation  
 **Goal:** A fresh install walks from first launch to a working first grab. Releases are built and published by CI, and the app says when an update is available. Logs are useful without exposing privacy or secrets. The last legacy UI patterns are removed so every page is built from the same kit, type scale and grid.  
 **Why now:** Each item polishes something that now exists:

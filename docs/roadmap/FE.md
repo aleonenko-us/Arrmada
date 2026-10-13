@@ -311,7 +311,7 @@ Two latent bugs would bite as soon as the bundle is split (FE-06):
   - **Risk:** The first deploy replaces the 'arrmada-v1' worker. Navigations are already network-first, so the new index.html loads and the new sw.js installs and prunes. Verify this once on a phone PWA. A reverse proxy that already compresses is fine, and Vary keeps its caches correct.
   - **Resolves:** walk-10, frontend-7
 <a id="fe-05"></a>
-- [ ] **FE-05 · Remember the theme (System / Light / Dark), give requesters the switch, and sync the browser chrome colour** — `P3` · `S` · Phase 16
+- [x] **FE-05 · Remember the theme (System / Light / Dark), give requesters the switch, and sync the browser chrome colour** — `P3` · `S` · Phase 16
   - **Problem:** toggleTheme (Sidebar.tsx:8-14) only stamps data-theme on <html>. Nothing persists it, so every reload reverts to the OS preference.
 - The button always shows a moon.
 - UserLayout has no theme control at all.
@@ -662,7 +662,7 @@ Hand-built overlays and toasts:
   - **Risk:** Low. Coordinate the confirmation copy with CFG's connections hub so the wording isn't written twice.
   - **Resolves:** frontend-2, frontend-9, frontend-11
 <a id="fe-14"></a>
-- [ ] **FE-14 · Move the module consoles (Settings, Quality, Convert, Subtitles, Insights, Audiobooks, BooksDiscover) onto the kit, then ban the old patterns** — `P2` · `M` · Phase 16
+- [x] **FE-14 · Move the module consoles (Settings, Quality, Convert, Subtitles, Insights, Audiobooks, BooksDiscover) onto the kit, then ban the old patterns** — `P2` · `M` · Phase 16
   - **Problem:** The module consoles repeat the same hand-built parts:
 - Settings: EditUserModal, plus confirms at :356 and :373.
 - Quality: TemplatePicker, plus confirms at :469, :1114 and :1212.
@@ -690,7 +690,7 @@ Hand-built overlays and toasts:
   - **Risk:** These are big files (Quality is 86 KB, Convert 68 KB, Insights 65 KB) that the QUAL, CONV, SUB, PLEX and AUD epics also edit. Work one page per commit and rebase often.
   - **Resolves:** frontend-2, frontend-11
 <a id="fe-15"></a>
-- [ ] **FE-15 · Real labels on form fields, named icon buttons, switches exposed as switches; jsx-a11y rules to error** — `P2` · `M` · Phase 16
+- [x] **FE-15 · Real labels on form fields, named icon buttons, switches exposed as switches; jsx-a11y rules to error** — `P2` · `M` · Phase 16
   - **Problem:** There are 56 <label> elements but only 3 htmlFor attributes; for example, MovieDetail's 'Add a version' labels sit beside their inputs, not around them. 19 icon-only '✕' buttons have no aria-label. The Settings and Quality toggles aren't exposed as switches. Screen-reader and keyboard users can't tell what a field is for.
   - **Approach:** 1) Add these kit components:
     - ui/Field.tsx: label, hint and error. It uses useId and passes id and aria-describedby to its single child control.
@@ -793,7 +793,7 @@ Any nav change silently desynchronises them.
   - **Risk:** Very low. The dead pages/Requests.tsx has a crumb too; leave it for REQ to delete.
   - **Resolves:** walk-3, frontend-10
 <a id="fe-18"></a>
-- [ ] **FE-18 · Two page widths applied everywhere, with forms in a left-aligned column** — `P3` · `S` · Phase 16
+- [x] **FE-18 · Two page widths applied everywhere, with forms in a left-aligned column** — `P3` · `S` · Phase 16
   - **Problem:** Each page picks its own container width: 820, 960, 980, 1000, 1100, 1200, 1240, 1360, 1440 or 1600px. There are 37 'mx-auto w-full max-w-[…]' containers in pages/. All are centred under a full-width sticky PageHeader whose title sits at the far left, so on wide screens the content's left edge jumps from page to page.
   - **Approach:** 1) tailwind.config.js maxWidth: page 1240px, page-wide 1600px, form 760px.
     
@@ -1030,7 +1030,7 @@ The 404 route renders Placeholder, whose heading reads 'Not found isn't built ye
   - **Risk:** A restore that runs before the content renders gets clamped to 0. The ResizeObserver retry and FE-21's cache handle this; without cached data, the restore gives up after 2s.
   - **Resolves:** frontend-3
 <a id="fe-25"></a>
-- [ ] **FE-25 · Route the Quality editor and guard unsaved edits everywhere** — `P2` · `M` · Phase 16
+- [x] **FE-25 · Route the Quality editor and guard unsaved edits everywhere** — `P2` · `M` · Phase 16
   - **Problem:** The Quality editor is a state swap inside /quality (Quality.tsx:257, 'if (editing) return <VideoBuilder/>'), so it has no URL. useUnsaved (Quality.tsx:430-437) only adds a beforeunload listener, so a sidebar click or Back silently throws away a half-built profile. editRef and duplicate (Quality.tsx:250-254) await api.qualityProfile with no catch, so a failed load shows nothing. Settings has no guard at all.
   - **Approach:** 1) Routes, in the staff table in lib/routes.tsx:
     - /quality: the list, with ?media=.
@@ -1170,7 +1170,7 @@ _One websocket per tab drives Downloads, detail pages, lists, History and the Da
 _ARRMADA_BASE_URL either works end to end or is removed. A named type scale with an 11px floor replaces 26 arbitrary sizes. Movies and Series share one LibraryGrid, and Discover is split into shared pieces that BooksDiscover reuses._
 
 <a id="fe-29"></a>
-- [ ] **FE-29 · Make ARRMADA_BASE_URL (reverse-proxy sub-path) work end to end, or remove it** — `P2` · `M` · Phase 16
+- [x] **FE-29 · Make ARRMADA_BASE_URL (reverse-proxy sub-path) work end to end, or remove it** — `P2` · `M` · Phase 16
   - **Problem:** The backend mounts every route under base (server.go:105, 477-482), and externalGate strips it (pathAfterBase). docker-compose.yml:41, the Dockerfile:198 healthcheck, install.sh:77 and update.sh:18 all pass ARRMADA_BASE_URL through.
 
 The frontend hard-codes root paths:
@@ -1225,7 +1225,7 @@ A sub-path install gets a blank page.
   - **Risk:** Every hard-coded root path has to be found. Grep for '"/api', '`/api', 'location.href', 'href="/' and server-built '/api/v1/' strings. <base href> changes how fragment-only links resolve.
   - **Resolves:** frontend-8, system-15
 <a id="fe-30"></a>
-- [ ] **FE-30 · Named type scale with an 11px floor for text that carries information** — `P3` · `M` · Phase 16
+- [x] **FE-30 · Named type scale with an 11px floor for text that carries information** — `P3` · `M` · Phase 16
   - **Problem:** The UI uses 26 distinct arbitrary font sizes, from 8px to 38px. There are 130 uses of 8-9.5px (text-[9.5px] x70, [9px] x46, [8.5px] x11, [8px] x3) and 117 of 10px, mostly in --ink-faint, carrying timestamps, sizes, hints and counts.
   - **Approach:** 1) tailwind.config.js fontSize tokens, mapped to today's common sizes:
     - 2xs 10.5px, only for uppercase mono eyebrow labels with tracking;
@@ -1288,7 +1288,7 @@ A sub-path install gets a blank page.
   - **Risk:** Subtle per-media differences (episode counts, the Anime toggle). Use slots so neither page loses behaviour. MOV and SER must not be mid-change on these files.
   - **Resolves:** frontend-2
 <a id="fe-32"></a>
-- [ ] **FE-32 · Split Discover.tsx into features/discover and share its row, card and sheet with Books** — `P3` · `M` · Phase 16
+- [x] **FE-32 · Split Discover.tsx into features/discover and share its row, card and sheet with Books** — `P3` · `M` · Phase 16
   - **Problem:** Discover.tsx is 1,421 lines. BooksDiscover re-declares LoadError (23), badgeFor (438) and ArrowBtn (640), plus its own hero, row and skeleton. BADGE_BG and its request modal are handled by FE-14.
   - **Approach:** 1) Pure moves first, into web/src/features/discover/:
     - DiscoverPage, Hero, PosterRow, SearchBox (the omnibox), DetailSheet (already on ui/Modal from [FE-09](#fe-09)), RequestsRow, MediaCard, LoadError, ArrowBtn;

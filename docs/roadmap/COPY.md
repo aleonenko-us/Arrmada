@@ -575,7 +575,7 @@ About 35 PageHeader calls carry their own crumb, so FE's nav regroup would leave
   - **Risk:** Low. If FE's nav regroup lands first, this simply follows it. Requests.tsx is unrouted, so leave it alone; REQ decides its fate.
   - **Resolves:** frontend-10
 <a id="copy-14"></a>
-- [ ] **COPY-14 · Empty states that tell the truth: no download client, unknown free space, scanning existing libraries** — `P3` · `S` · Phase 16
+- [x] **COPY-14 · Empty states that tell the truth: no download client, unknown free space, scanning existing libraries** — `P3` · `S` · Phase 16
   - **Problem:** Some empty pages report a fake value or give incomplete advice:
 - With no measurable downloads folder, Downloads shows 'free 0 GB'. handleDownloadsFeed ignores the ok flag (`freeGB, _ := diskspace.FreeGB(...)`, httpapi/activity.go:~206) and the page renders it (Downloads.tsx:169).
 - With no download client configured, Downloads just looks empty and never says why nothing can be grabbed.
@@ -601,7 +601,7 @@ About 35 PageHeader calls carry their own crumb, so FE's nav regroup would leave
   - **Risk:** Low. The bundled qBittorrent normally re-creates itself (download.Service.EnsureBundled), so the no-client card mostly appears after a deliberate removal. Check it doesn't flash during the first poll.
   - **Resolves:** 
 <a id="copy-15"></a>
-- [ ] **COPY-15 · Hardcover books link straight to their hardcover.app page (slug lookup, isolated and cached)** — `P3` · `S` · Phase 16
+- [x] **COPY-15 · Hardcover books link straight to their hardcover.app page (slug lookup, isolated and cached)** — `P3` · `S` · Phase 16
   - **Problem:** COPY-11 links Hardcover books to a search because Arrmada doesn't store Hardcover's slug. A direct link needs the slug, but adding `slug` to the shared hcBookFields (hardcover.go:173) is risky: if the field name is wrong live, the GraphQL error breaks every Hardcover search, browse and GetBook. The project memory notes that the Hardcover queries are unverified live.
   - **Approach:** 1. internal/metadata/hardcover.go: add `func (h *Hardcover) BookSlug(ctx context.Context, key string) (string, error)` with its own query, `books(where: {id: {_eq: $id}}, limit: 1) { slug }`.
        - It goes through the existing budgeted, cached request path with hcTTLBook (24h).

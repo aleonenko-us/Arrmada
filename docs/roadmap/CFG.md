@@ -805,7 +805,7 @@ Only music resolves live. The Importer also silently falls back to `im.root` (cf
 _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with live ✓/✗ links. Staff land on a Dashboard 'Getting started' card that ticks itself off. Setup can be run again. Library scans report progress and results._
 
 <a id="cfg-21"></a>
-- [ ] **CFG-21 · Getting started: a self-ticking checklist endpoint, a Dashboard card, and staff landing on the Dashboard after login** — `P2` · `S` · Phase 16
+- [x] **CFG-21 · Getting started: a self-ticking checklist endpoint, a Dashboard card, and staff landing on the Dashboard after login** — `P2` · `S` · Phase 16
   - **Problem:** After sign-in, everyone, the admin included, is sent to /discover (Login.tsx:46). The first Dashboard visit offers only a red 'No indexers are enabled' line with no link (health_system.go:36). Getting from a fresh install to the first movie depends on reading text and hunting for pages.
   - **Approach:** 1) internal/httpapi/setup.go: GET /api/v1/setup/checklist (admin) returns `{items:[{key, done, label, link}], dismissed}`. Items:
        - tmdb: APIKeys.Value("tmdb") != "" → /settings/connections#tmdb
@@ -827,7 +827,7 @@ _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with
   - **Risk:** Low. Links point to the hub paths; before CFG-13 lands, use /settings?tab=… with the redirects.
   - **Resolves:** product-9
 <a id="cfg-22"></a>
-- [ ] **CFG-22 · Wizard: Finish shows the live checklist with links, 'Skip' only on step 1, 'Run setup again' from System** — `P2` · `S` · Phase 16
+- [x] **CFG-22 · Wizard: Finish shows the live checklist with links, 'Skip' only on step 1, 'Run setup again' from System** — `P2` · `S` · Phase 16
   - **Problem:** The wizard's Finish 'Next:' list is bold text with no links and never mentions Plex (SetupWizard.tsx:182-189). 'Skip setup' sits on every step and is permanent, and nothing can reopen the wizard.
   - **Approach:** 1) SetupWizard.tsx Finish step:
        - Render the [CFG-21](#cfg-21) checklist items as ✓/✗ rows with react-router Links.
@@ -848,7 +848,7 @@ _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with
   - **Risk:** Low. Keep Skip on step 1 so a headless restore or scripted install isn't blocked.
   - **Resolves:** system-10, product-9
 <a id="cfg-23"></a>
-- [ ] **CFG-23 · Wizard Plex step: sign in with Plex, pick your own server, family sign-in toggles** — `P2` · `M` · Phase 16
+- [x] **CFG-23 · Wizard Plex step: sign in with Plex, pick your own server, family sign-in toggles** — `P2` · `M` · Phase 16
   - **Problem:** A fresh install ends with no Plex connection, though sign-in, recommendations, Insights and Convert's pause all depend on it. The wizard covers only keys and folders, and server discovery can pick a friend's server.
   - **Approach:** 1) internal/plex/account.go: `OwnedServers(ctx, clientID, token) ([]Server{Name, MachineID, URIs []string, Local bool}, error)`, built from the plex.tv resources call that serverIDs(ownedOnly=true) already makes, keeping the connection URIs.
     2) internal/httpapi/insights.go: GET /api/v1/insights/plex/servers (manager+) lists the owned servers for the saved token. Choosing one is PUT /insights/plex {url} (existing), followed by POST /insights/plex/test.
@@ -871,7 +871,7 @@ _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with
   - **Risk:** The PIN flow needs outbound internet. Never log the Plex token. The family toggles default to off in the wizard regardless of the stored default (REQ owns changing that default).
   - **Resolves:** system-10, product-9
 <a id="cfg-24"></a>
-- [ ] **CFG-24 · Wizard Indexers step: one-click Prowlarr sync, or add one tracker and test it** — `P2` · `M` · Phase 16
+- [x] **CFG-24 · Wizard Indexers step: one-click Prowlarr sync, or add one tracker and test it** — `P2` · `M` · Phase 16
   - **Problem:** The wizard ends one step short of the first grab: no indexer is configured. The Dashboard then shows 'No indexers are enabled' with no link.
   - **Approach:** 1) Extract the add/edit form from Indexers.tsx into `web/src/components/IndexerForm.tsx`, so both places use one form. Indexers.tsx keeps using it with no behaviour change.
     2) internal/httpapi/setup.go: GET /setup adds `indexers_enabled` (count) and `prowlarr_available`. The latter comes from the same reachability check handleProwlarrInfo uses, with a 3 s timeout.
@@ -891,7 +891,7 @@ _A fresh install goes Metadata → Folders → Plex → Indexers → Finish with
   - **Risk:** Until INT's fixes land, a Torznab Test can pass on any HTTP 200 and a Prowlarr re-sync re-enables disabled indexers. Show the INT-provided result as-is and don't over-promise in the copy.
   - **Resolves:** product-9
 <a id="cfg-25"></a>
-- [ ] **CFG-25 · Library scans report progress and results instead of reloading after a fixed 5 seconds** — `P3` · `S` · Phase 16
+- [x] **CFG-25 · Library scans report progress and results instead of reloading after a fixed 5 seconds** — `P3` · `S` · Phase 16
   - **Problem:** In Settings → Library, a scan flashes a message and reloads the review list after a fixed 5 s (Library.tsx:41), with no progress or result count. Overlapping movie or series scans aren't prevented, unlike musicScan.
   - **Approach:** 1) movies.Service.ScanLibrary and series.Service.ScanLibrary take an optional `progress func(done, total int)`. The handlers (handleScanLibrary, handleScanSeriesLibrary) publish `library.scan.progress` {media, done, total} on the bus at most every 25 folders, and `library.scanned` {media, imported, skipped, unmatched} at the end.
     2) The api struct gets `movieScan` and `seriesScan` atomic.Bool fields. A concurrent scan returns 409 'A Movies scan is already running'.
@@ -953,7 +953,7 @@ _System → Status shows version, commit, DB size, last backup, disk per library
   - **Risk:** GitHub-hosted runners have about 14 GB free and the oneAPI image is very large, so the base-image split may be needed from the start. Each red push emails the owner, so land this on a branch first.
   - **Resolves:** system-7
 <a id="cfg-28"></a>
-- [ ] **CFG-28 · Publish the image to GHCR with version and commit; update.sh can pull a tag instead of compiling** — `P2` · `M` · Phase 16
+- [x] **CFG-28 · Publish the image to GHCR with version and commit; update.sh can pull a tag instead of compiling** — `P2` · `M` · Phase 16
   - **Problem:** Every update compiles two whisper.cpp builds and the oneAPI stage on the Unraid server from main HEAD. There are no releases and no tags to pin or roll back to.
   - **Approach:** 1) image.yml (from [CFG-27](#cfg-27)):
        - On push to main and on v* tags, log in to ghcr.io with GITHUB_TOKEN (permissions packages: write) and push.
@@ -980,7 +980,7 @@ _System → Status shows version, commit, DB size, last backup, disk per library
   - **Risk:** Image size and storage on GHCR. The package visibility is an owner action, and no token goes in the repo. If deploys go through Komodo, point Komodo at the GHCR tag instead of building.
   - **Resolves:** system-7
 <a id="cfg-29"></a>
-- [ ] **CFG-29 · 'Update available' with release notes in System → Status, and an Unraid template** — `P3` · `S` · Phase 16
+- [x] **CFG-29 · 'Update available' with release notes in System → Status, and an Unraid template** — `P3` · `S` · Phase 16
   - **Problem:** The owner can't tell whether an update exists or what changed. There is no Unraid Community Apps template for app-only installs.
   - **Approach:** 1) New internal/updatecheck package: `Checker{client, version, commit, enabled func() bool}` with `Run(ctx)` registered as scheduler task 'update-check' (12 h, run at start).
        - For semver builds: GET https://api.github.com/repos/tristenlammi/arrmada/releases/latest with If-None-Match/ETag, then compare semver.
@@ -1002,7 +1002,7 @@ _System → Status shows version, commit, DB size, last backup, disk per library
   - **Risk:** GitHub's unauthenticated limit (60/h) is fine at 12 h intervals. The check makes an outbound call, which is why it is visible and has a toggle.
   - **Resolves:** system-7
 <a id="cfg-30"></a>
-- [ ] **CFG-30 · Logs: a runtime debug switch that turns itself off; request logs show the route pattern, not the raw path; honest footer** — `P3` · `S` · Phase 16
+- [x] **CFG-30 · Logs: a runtime debug switch that turns itself off; request logs show the route pattern, not the raw path; honest footer** — `P3` · `S` · Phase 16
   - **Problem:** compose hardcodes `ARRMADA_LOG_LEVEL: "info"` (docker-compose.yml:35), and applog.Handler.Enabled defers to that base level, so the Logs page's Debug filter shows nothing on a standard install. The footer says 'kept in memory, up to 5000' (Logs.tsx:154), while the ring holds 50,000 (main.go:687) and more is on disk.
 
 Turning debug on naively would also log `r.URL.Path` for every request (middleware.go:40). Paths such as /api/v1/books/{id}/audiobook reveal which book someone fetched, which breaks the audiobook-privacy rule.
@@ -1026,7 +1026,7 @@ Turning debug on naively would also log `r.URL.Path` for every request (middlewa
   - **Risk:** Audiobook privacy: the audiobook server has its own request logger (audioserver/server.go:582-599), and SEC must strip item ids there at every level before this switch ships.
   - **Resolves:** system-12
 <a id="cfg-31"></a>
-- [ ] **CFG-31 · Logs: incremental live fetch, module filter, full-history download, and a redacted support bundle** — `P3` · `M` · Phase 16
+- [x] **CFG-31 · Logs: incremental live fetch, module filter, full-history download, and a redacted support bundle** — `P3` · `M` · Phase 16
   - **Problem:** In Live mode the Logs page re-fetches a 2,000-line snapshot every 3 s (Logs.tsx:55-65), which is hundreds of KB through the tunnel. Download exports only what is on screen. Older on-disk lines (about 4×24 MB of JSONL, persist.go:23-27) can't be reached from the app. There is no per-module filter; Convert and Subtitles keep separate log endpoints.
   - **Approach:** 1) internal/applog/applog.go:
        - Entry gains a monotonic `Seq uint64`, assigned in Ring.add under the lock. Re-seeded entries get fresh sequence numbers at Restore.
