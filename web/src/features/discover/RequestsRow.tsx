@@ -127,7 +127,7 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
               <span className="truncate text-xs font-semibold text-white">{rq.requested_by_name}</span>
             </span>
           ) : following ? (
-            <StatusChip tone="faint" surface="poster" className="min-w-0">Following</StatusChip>
+            <StatusChip tone="faint" surface="poster" className="min-w-0 truncate">Following</StatusChip>
           ) : (
             <span />
           )}
