@@ -10,6 +10,8 @@ export interface MenuItem {
   title?: string;
   /** Shown on the item while its onSelect promise is running; the menu stays open until it settles. */
   busyLabel?: ReactNode;
+  /** Leave the menu open after choosing it: a setting that cycles in place (the theme). */
+  keepOpen?: boolean;
 }
 
 export interface MenuProps {
@@ -127,7 +129,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
       setBusy(i);
       try { await r; } catch { /* the caller reports its own failure */ } finally { setBusy(null); }
     }
-    close();
+    if (!it.keepOpen) close();
   };
 
   return (

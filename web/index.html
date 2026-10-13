@@ -4,8 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Arrmada</title>
+    <!-- The remembered theme (lib/theme.ts), stamped before the stylesheet paints anything,
+         so a reload doesn't flash the other theme. If a Content-Security-Policy is ever
+         added, this script needs its sha256 in script-src. -->
+    <script>
+      try { var t = localStorage.getItem("arrmada.theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+    </script>
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#1a1310" />
+    <!-- lib/theme.ts keeps this in step with the theme showing; dark until then. -->
+    <meta name="theme-color" content="#1f1812" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <!-- iOS ignores an SVG touch icon and screenshots the page instead. -->

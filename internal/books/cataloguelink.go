@@ -1,6 +1,7 @@
 package books
 
 import (
+	"context"
 	"net/url"
 	"regexp"
 	"strings"
@@ -47,4 +48,25 @@ func CatalogueLink(key, slug, title, author string) CatalogueRef {
 		return CatalogueRef{Name: "Open Library", URL: "https://openlibrary.org/works/" + id}
 	}
 	return CatalogueRef{}
+}
+
+// slugLookup is a provider that knows Hardcover's page name for a book (metadata.BookSources).
+type slugLookup interface {
+	BookSlug(ctx context.Context, key string) (string, error)
+}
+
+// CatalogueSlug is Hardcover's page name for a book key, for CatalogueLink's direct
+// link. Best effort: "" for any other catalogue, a provider without slugs, or once
+// background work has used most of today's Hardcover budget (the direct link is a
+// nicety; the search link still lands on the book). An error means Hardcover was asked
+// and failed; the caller falls back to the search link.
+func (s *Service) CatalogueSlug(ctx context.Context, key string) (string, error) {
+	if !metadata.IsHardcoverKey(key) || strings.HasPrefix(key, "hc:a:") {
+		return "", nil
+	}
+	sl, ok := s.meta.(slugLookup)
+	if !ok || s.HardcoverBudgetLow() {
+		return "", nil
+	}
+	return sl.BookSlug(ctx, key)
 }

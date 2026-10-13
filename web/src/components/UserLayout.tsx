@@ -13,6 +13,7 @@ import { useDocumentTitle } from "../lib/title";
 import { requesterNav, sectionFor } from "../lib/requesterNav";
 import { Menu } from "../ui/Menu";
 import { useScrollMemory } from "../lib/useScrollMemory";
+import { nextTheme, THEME_LABEL, useTheme } from "../lib/theme";
 
 // UserLayout is the requester-facing shell, and what installs as the PWA on phones. Wider
 // screens get a slim branded top bar with the places inline; a phone gets the mark, the
@@ -21,6 +22,7 @@ export function UserLayout() {
   const { user, external, booksEnabled } = useMe();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const [theme, setTheme] = useTheme();
   useDocumentTitle();
   // The page scrolls inside <main>: Back puts it back where it was, a link opens at the top.
   const mainRef = useRef<HTMLElement>(null);
@@ -68,6 +70,8 @@ export function UserLayout() {
               { label: "Me & notifications", onSelect: () => navigate("/me") },
               { label: "Password & devices", onSelect: () => navigate("/me#account") },
               { label: "Audiobook apps & password", onSelect: () => navigate("/audiobooks?tab=apps") },
+              // Cycles System → Light → Dark in place; the menu stays open to show the result.
+              { label: `Theme: ${THEME_LABEL[theme]}`, title: `Switch to ${THEME_LABEL[nextTheme(theme)]}`, keepOpen: true, onSelect: () => setTheme(nextTheme(theme)) },
               { label: "Sign out", tone: "danger", onSelect: signOut },
             ]}
           />

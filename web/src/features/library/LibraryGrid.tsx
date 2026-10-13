@@ -45,8 +45,8 @@ export interface LibraryGridProps<T extends LibraryItem> {
   tableNote?: ReactNode;
   /** The bulk-action bar's own controls; the grid adds the count, Select all and Clear. */
   bulkActions?: (sel: LibrarySelection<T>) => ReactNode;
-  /** "No movies yet…": the library is really empty. */
-  emptyText: ReactNode;
+  /** The library is really empty: the page's <LibraryEmpty> (scan or add). */
+  empty: ReactNode;
 }
 
 // LibraryGrid is the one library page body for Movies and Series: the toolbar, the filter
@@ -133,7 +133,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       {!items ? (
         error ? <ErrorState what={`your ${noun.many}`} message={error} onRetry={p.onRetry} busy={p.loading} /> : <Skeleton variant={view.mode === "table" ? "table" : "grid"} />
       ) : list.length === 0 ? (
-        <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>{p.emptyText}</div>
+        p.empty
       ) : visible.length === 0 ? (
         <div className="rounded-xl p-12 text-center text-[12.5px] text-ink-dim" style={{ border: "1px solid var(--line)" }}>
           {q ? <>No {noun.many} match “<b>{query.trim()}</b>”.</> : <>No {noun.many} match the <b>{active?.label}</b> filter.</>}

@@ -100,6 +100,14 @@ func (s *BookSources) GetBook(ctx context.Context, key string) (*BookDetails, er
 	return s.byKey(key).GetBook(ctx, key)
 }
 
+// BookSlug is a Hardcover book's page name (hardcover_slug.go); any other key has none.
+func (s *BookSources) BookSlug(ctx context.Context, key string) (string, error) {
+	if !IsHardcoverKey(key) || s.hardcover == nil {
+		return "", nil
+	}
+	return s.hardcover.BookSlug(ctx, key)
+}
+
 func (s *BookSources) Covers(ctx context.Context, key, title, author string) ([]string, error) {
 	return s.byKey(key).Covers(ctx, key, title, author)
 }
