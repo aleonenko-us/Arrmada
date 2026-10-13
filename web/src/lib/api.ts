@@ -539,7 +539,11 @@ export interface StoredProfile {
   allow_prerelease?: boolean; // grab cams/telesyncs/screeners (movie & series; off = refused)
   ideal?: IdealFile; // the target file: drives grabbing, ranking and the library fit check
   unwanted?: UnwantedSettings; // the Unwanted pack's choices (movie & series)
+  group_tiers?: GroupTiers; // release-group tiers (movie & series); missing = the built-in suggestions
 }
+
+// Release-group tiers (quality/grouptiers.go): order releases under ranking v2, never reject.
+export interface GroupTiers { tier1: string[]; tier2: string[] }
 
 // The Unwanted pack (quality/unwanted.go): each item refused, avoided or allowed per profile.
 export type UnwantedAction = "reject" | "avoid" | "allow";

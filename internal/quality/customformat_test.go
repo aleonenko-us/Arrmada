@@ -358,7 +358,13 @@ func legacyMatches(f CustomFormat, r parser.Release) bool {
 // exact parser value per condition, the odd hand-written alternative or negation), match
 // the same releases under the new engine as under the old matcher.
 func TestStoredFormatsMatchAsBefore(t *testing.T) {
-	formats := append(DefaultFormats(),
+	var legacy []CustomFormat // the built-ins that existed before; the streaming ones are new
+	for _, f := range DefaultFormats() {
+		if f.Conditions[0].Type != CondStreaming {
+			legacy = append(legacy, f)
+		}
+	}
+	formats := append(legacy,
 		CustomFormat{Name: "FraMeSToR", Conditions: []Condition{{Type: CondReleaseGroup, Value: "FraMeSToR"}}},
 		CustomFormat{Name: "Remux", Conditions: []Condition{{Type: CondSource, Value: "Remux"}}},
 		CustomFormat{Name: "Web", Conditions: []Condition{{Type: CondSource, Value: "WEB-DL"}}},

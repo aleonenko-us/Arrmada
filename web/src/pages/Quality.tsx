@@ -27,6 +27,7 @@ import { qualityApi } from "../lib/qualityApi";
 import { UnwantedRules, unwantedSummary } from "./quality/UnwantedRules";
 import { RankingCard } from "./quality/RankingCard";
 import { CustomFormatsEditor } from "./quality/FormatEditor";
+import { GroupTiersEditor } from "./quality/GroupTiers";
 import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
 import { ReleaseExplain } from "../components/ReleaseExplain";
@@ -1075,6 +1076,8 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
           ))}
         </div>
       </div>
+
+      <GroupTiersEditor sp={sp} patch={patch} />
 
       <CustomFormatsEditor sp={sp} patch={patch} />
 

@@ -2350,7 +2350,7 @@
       "HEVC — matched",
       "Highest bitrate available"
     ],
-    "chosen_over": "Chosen over the 2160p WEB-DL — lower bitrate",
+    "chosen_over": "Chosen over the 2160p WEB-DL — not a tier-1 release group",
     "eligible": [
       {
         "name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX",
@@ -6549,7 +6549,7 @@
       "Highest quality that matches your goal",
       "Highest bitrate available"
     ],
-    "chosen_over": "Chosen over the 2160p WEB-DL — lower bitrate",
+    "chosen_over": "Chosen over the 2160p WEB-DL — not a tier-1 release group",
     "eligible": [
       {
         "name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX",
@@ -6666,7 +6666,7 @@
       "Highest quality that matches your goal",
       "Highest bitrate available"
     ],
-    "chosen_over": "Chosen over the 2160p WEBRip — lower bitrate",
+    "chosen_over": "Chosen over the 2160p WEBRip — not a tier-1 release group",
     "eligible": [
       {
         "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
@@ -6815,7 +6815,7 @@
       "Highest quality that matches your goal",
       "Highest bitrate available"
     ],
-    "chosen_over": "Chosen over the 2160p WEBRip — smaller file",
+    "chosen_over": "Chosen over the 2160p WEBRip — not a tier-1 release group",
     "eligible": [
       {
         "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",

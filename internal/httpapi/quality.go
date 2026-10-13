@@ -94,6 +94,8 @@ func (a *api) handleListQualityProfiles(w http.ResponseWriter, r *http.Request) 
 		// The Unwanted pack's rows and their defaults, for the Rules section.
 		body["unwanted"] = quality.UnwantedCatalog()
 		body["unwanted_groups"] = quality.DefaultLowQualityGroups
+		// The release-group tiers a profile runs with until it edits its own.
+		body["group_tiers"] = quality.DefaultGroupTiers()
 	}
 	if media == quality.MediaMusic {
 		// Music quality is a ranked ladder rather than a set of preferences, so the builder
@@ -142,6 +144,10 @@ func (a *api) handleCreateQualityProfile(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := quality.GroupTiersError(sp.GroupTiers, sp.Unwanted); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	created, err := a.deps.Quality.Create(r.Context(), sp)
 	if invalid := (*quality.InvalidProfileError)(nil); errors.As(err, &invalid) {
 		a.writeError(w, http.StatusBadRequest, invalid.Error())
@@ -172,6 +178,10 @@ func (a *api) handleUpdateQualityProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if msg := quality.UnwantedError(sp.Unwanted); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if msg := quality.GroupTiersError(sp.GroupTiers, sp.Unwanted); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}

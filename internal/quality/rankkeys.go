@@ -61,7 +61,7 @@ func (ev *Evaluation) fillRankKeys(p Profile) {
 	}
 	ev.SourceTier = rankSourceTier(r.Source)
 	ev.ProperFix = isProper(r)
-	ev.GroupTier = 0 // release-group tiers arrive with QUAL-26
+	ev.GroupTier = p.tierOf(r.Group)
 	ev.EffBitrate = c.effectiveBitrateMbps()
 	ev.InWindow = inWindow(p, c)
 }
