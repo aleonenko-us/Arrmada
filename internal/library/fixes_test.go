@@ -351,10 +351,13 @@ func TestImportBookEditionPartialFailure(t *testing.T) {
 	}
 }
 
-// TestRecycleFileOrphanSidecar pins fix #9's orphan case: when the copy+remove
-// fallback copies into the bin but can't remove the source, the sidecar is still
-// written so the bin copy stays restorable.
-func TestRecycleFileOrphanSidecar(t *testing.T) {
+// TestRecycleFileReadOnlyFolderRefuses: a file in a folder the app can't write to can't
+// be moved out of it, and that rename failure isn't cross-device, so RecycleFile refuses
+// outright: no copy, nothing in the bin, the original untouched. This used to pin fix
+// #9's orphan sidecar (a copy left in the bin beside the original); SAFE-17 replaced that
+// with "a failure always leaves things as they were", but the test only runs as non-root
+// and every local run was root or Windows, so it went stale unnoticed until CI.
+func TestRecycleFileReadOnlyFolderRefuses(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission-based failure injection doesn't work as root")
 	}
@@ -368,24 +371,24 @@ func TestRecycleFileOrphanSidecar(t *testing.T) {
 	if err := os.WriteFile(src, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Read-only parent: rename fails (can't unlink), copy succeeds (file readable),
-	// remove fails → the orphan path.
+	// Read-only parent: the rename can't unlink the source (EACCES, not EXDEV).
 	if err := os.Chmod(sub, 0o555); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(sub, 0o755) })
 
-	_, err := RecycleFile(bin, src)
-	if err == nil {
-		t.Fatal("expected an error — the source could not be removed")
+	if _, err := RecycleFile(bin, src); err == nil {
+		t.Fatal("expected an error — the source could not be moved")
+	}
+	if b, err := os.ReadFile(src); err != nil || string(b) != "data" {
+		t.Fatalf("the original was touched: %q %v", b, err)
 	}
 	binCopy := filepath.Join(bin, "Movie (2024)", "movie.mkv")
-	if b, rerr := os.ReadFile(binCopy); rerr != nil || string(b) != "data" {
-		t.Fatalf("bin copy missing/corrupt: %q %v", b, rerr)
+	if _, err := os.Stat(binCopy); !os.IsNotExist(err) {
+		t.Errorf("a copy was left in the bin beside the original: %v", err)
 	}
-	m := ReadRecycleMeta(binCopy)
-	if m.Orig != src || m.Deleted == 0 {
-		t.Errorf("sidecar = %+v, want origin recorded so the copy is restorable", m)
+	if _, err := os.Stat(binCopy + RecycleMetaExt); !os.IsNotExist(err) {
+		t.Errorf("a sidecar was left in the bin: %v", err)
 	}
 }
 
