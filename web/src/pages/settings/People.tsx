@@ -8,6 +8,7 @@ import { peopleApi } from "../../lib/peopleApi";
 import { accountApi } from "../../lib/accountApi";
 import { LINKS } from "../../lib/links";
 import { useMe } from "../../lib/me";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { ago } from "../../lib/taskTime";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { useLoadedSettings } from "../../lib/useSettings";
@@ -468,6 +469,7 @@ function AddPerson({ onAdded }: { onAdded: () => void }) {
   const [autoApprove, setAutoApprove] = useState<AutoTypes>(NO_TYPES);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useUnsavedGuard(email.trim() !== "" || password !== "");
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null);

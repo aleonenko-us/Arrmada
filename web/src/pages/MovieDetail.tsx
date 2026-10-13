@@ -12,6 +12,7 @@ import { PlexPill, WatchedBy } from "../components/PlexBits";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { PAGE } from "../lib/links";
 import { usePoll } from "../lib/usePoll";
+import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { invalidate } from "../lib/query";
 import {
   api,
@@ -584,6 +585,8 @@ function VersionFormModal({ movieId, version, onClose, onSaved }: { movieId: num
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new version's profile fills in from the default by itself, so only an edit's counts.
+  useUnsavedGuard(label !== (version?.label ?? "") || edition !== (version?.edition ?? "") || (editing && profile !== (version?.quality_profile ?? "")));
 
   useEffect(() => {
     qualityApi.qualityProfiles("movie").then((r) => {

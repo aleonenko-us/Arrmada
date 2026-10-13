@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { SavedTick } from "../settings/auto";
 import { api, type APIKeyStatus } from "../../lib/api";
 import { useMe } from "../../lib/me";
+import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { ago } from "../../lib/taskTime";
 import { useLoadedSettings, useSetting } from "../../lib/useSettings";
 import { useConfirm } from "../../ui";
@@ -160,6 +161,7 @@ export function KeyEditor({ ids, ctl }: { ids: string[]; ctl: KeyControl }) {
 
 function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
   const draft = ctl.drafts[k.id] ?? "";
+  useUnsavedGuard(draft.trim() !== "");
   // A typed value is tested in place of the saved one where the provider allows it, so a
   // wrong key shows before it replaces a working one.
   const typed = k.tests_candidate ? draft.trim() : "";

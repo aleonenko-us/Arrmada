@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { IndexerIssues, emptyReleasesMessage } from "../components/IndexerIssues";
 import { useTabParam } from "../lib/useTabParam";
@@ -32,8 +32,9 @@ import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
 import { ReleaseExplain } from "../components/ReleaseExplain";
 import { formatBytes } from "../lib/format";
-import { useQuery } from "../lib/query";
-import { Button, ErrorState, Modal, Skeleton, StaleBanner, useConfirm } from "../ui";
+import { invalidate, useQuery } from "../lib/query";
+import { useUnsavedGuard } from "../lib/useUnsavedGuard";
+import { Button, ErrorState, Modal, Skeleton, StaleBanner, useToast } from "../ui";
 
 const NO_PROFILES: QualityProfileInfo[] = [];
 const NO_FORMATS: FormatInfo[] = [];
@@ -261,14 +262,14 @@ export function Quality() {
   // editor) shows its profiles at once while they revalidate.
   const listQ = useQuery(`quality:${media}`, () => qualityApi.qualityProfiles(media), { staleMs: 0 });
   const profiles = listQ.data?.profiles ?? NO_PROFILES;
-  const formats = listQ.data?.formats ?? NO_FORMATS;
-  const unwanted = { catalog: listQ.data?.unwanted ?? NO_UNWANTED, groups: listQ.data?.unwanted_groups ?? NO_GROUPS };
-  const ladder = listQ.data?.music_ladder ?? NO_LADDER;
-  const musicPresets = listQ.data?.music_presets ?? NO_PRESETS;
   const loadError = listQ.error?.message ?? null;
   const [fits, setFits] = useState<Record<string, FitCounts>>({});
-  const [editing, setEditing] = useState<StoredProfile | null>(null);
-  const [picking, setPicking] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+  // A /quality/:media/new reopened without its template (a fresh visit to the address)
+  // comes back here with the picker open.
+  const [picking, setPicking] = useState(() => !!(location.state as { pick?: boolean } | null)?.pick);
   // A failed action on a card (the list's own load errors are loadError).
   const [error, setError] = useState<string | null>(null);
   // "Moved 12 films to …" after a delete. It lives here, not on the card, because the
@@ -292,19 +293,19 @@ export function Quality() {
   }, [refetchList, loadFits]);
   useEffect(() => setNotice(null), [media]);
 
-  const openNew = () => (isVideo ? setPicking(true) : setEditing(emptyProfile(media)));
-  const editRef = async (info: QualityProfileInfo) => setEditing(await qualityApi.qualityProfile(info.key));
+  // The editor has its own address (QualityEditorRoute): a refresh or Back keeps it, and
+  // the route guard asks before a sidebar click throws a half-built profile away.
+  const openNew = () => (isVideo ? setPicking(true) : navigate(editorPath(media, "new")));
+  const editRef = (info: QualityProfileInfo) => navigate(editorPath(media, info.key));
+  // Duplicate reads the profile first, so a failure says so here rather than on a blank editor.
   const duplicate = async (info: QualityProfileInfo) => {
-    const sp = await qualityApi.qualityProfile(info.key);
-    setEditing({ ...sp, id: 0, name: `${sp.name} (copy)` });
+    try {
+      const sp = await qualityApi.qualityProfile(info.key);
+      navigate(editorPath(media, info.key, "copy"), { state: { profile: copyOf(sp) } satisfies EditorState });
+    } catch (e) {
+      toast(`Couldn't duplicate ${info.name}: ${(e as Error).message}`, { tone: "error" });
+    }
   };
-
-  if (editing) {
-    const done = { onCancel: () => setEditing(null), onSaved: () => { setEditing(null); refresh(); } };
-    if (editing.media_type === "book") return <BookBuilder initial={editing} {...done} />;
-    if (editing.media_type === "music") return <MusicBuilder initial={editing} ladder={ladder} presets={musicPresets} {...done} />;
-    return <VideoBuilder formats={formats} unwanted={unwanted} initial={editing} {...done} />;
-  }
 
   return (
     <>
@@ -351,8 +352,92 @@ export function Quality() {
         {isVideo && <RankingCard />}
       </div>
       {picking && (
-        <TemplatePicker onClose={() => setPicking(false)} onPick={(sp) => { setPicking(false); setEditing(sp); }} media={media} />
+        <TemplatePicker onClose={() => setPicking(false)} onPick={(sp) => { setPicking(false); navigate(editorPath(media, "new"), { state: { profile: sp } satisfies EditorState }); }} media={media} />
       )}
+    </>
+  );
+}
+
+// =====================================================================================
+// Editor route
+// =====================================================================================
+
+// What the list hands the editor in navigation state: a template's profile for "new", the
+// already-loaded copy for "copy". It lives in the history entry, so it survives a reload;
+// a fresh visit to the address goes without.
+type EditorState = { profile?: StoredProfile };
+
+// editorPath is an editor's address: /quality/movie/new, /quality/movie/<key>, /quality/movie/<key>/copy.
+function editorPath(media: string, key: string, copy?: "copy"): string {
+  return `/quality/${media}/${key === "new" ? "new" : encodeURIComponent(key)}${copy ? "/copy" : ""}`;
+}
+
+const copyOf = (sp: StoredProfile): StoredProfile => ({ ...sp, id: 0, name: `${sp.name} (copy)` });
+
+// QualityEditorRoute is /quality/:media/new, /quality/:media/:key and /quality/:media/:key/copy.
+// It loads what the builder needs (the profile, and the media's formats, rules and music
+// ladder from the list), then hands it to the video, book or music builder. Cancel and
+// Save go back to the list for that media.
+export function QualityEditorRoute() {
+  const params = useParams<{ media: string; "*": string }>();
+  const media = MEDIA_KEYS.find((m) => m === params.media);
+  // The rest of the address: "new", "<key>" or "<key>/copy" (one route keeps the table small).
+  const rest = (params["*"] ?? "").split("/");
+  const key = rest[0] ?? "";
+  const mode: "new" | "edit" | "copy" = key === "new" ? "new" : rest[1] === "copy" ? "copy" : "edit";
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+  const carried = (location.state as EditorState | null)?.profile;
+  const isVideo = media === "movie" || media === "series";
+  const needsList = !!media && media !== "book";
+
+  const listQ = useQuery(`quality:${media}`, () => qualityApi.qualityProfiles(media ?? "movie"), { enabled: needsList });
+  const profileQ = useQuery(`quality-profile:${key}`, () => qualityApi.qualityProfile(key), { enabled: !!media && mode !== "new" && !carried, staleMs: 0 });
+
+  // The profile the builder starts from, fixed for this history entry: a background
+  // revalidation must not reset a half-made edit.
+  const fresh = mode === "new"
+    ? carried ?? (media && !isVideo ? emptyProfile(media) : null)
+    : carried ?? (profileQ.data ? (mode === "copy" ? copyOf(profileQ.data) : profileQ.data) : null);
+  const [held, setHeld] = useState<{ at: string; sp: StoredProfile } | null>(null);
+  if (fresh && held?.at !== location.key) setHeld({ at: location.key, sp: fresh });
+  const initial = held?.at === location.key ? held.sp : fresh;
+
+  const back = () => navigate(`/quality?media=${media ?? "movie"}`);
+  const done = {
+    onCancel: back,
+    onSaved: (sp: StoredProfile) => {
+      invalidate("quality");
+      toast(`Saved ${sp.name.trim() || "the profile"}.`, { tone: "good" });
+      back();
+    },
+  };
+
+  if (!media) return <EditorFrame><ErrorState what="this quality profile" message={`There's no "${params.media}" profile type`} /></EditorFrame>;
+  // A new video profile starts from a template; a fresh visit to its address picks one again.
+  if (mode === "new" && !initial) return <Navigate to={`/quality?media=${media}`} replace state={{ pick: true }} />;
+  if (profileQ.error && !initial) {
+    return <EditorFrame><ErrorState what="this quality profile" message={profileQ.error.message} onRetry={() => void profileQ.refetch()} busy={profileQ.loading} /></EditorFrame>;
+  }
+  if (needsList && listQ.error && !listQ.data) {
+    return <EditorFrame><ErrorState what="the quality settings" message={listQ.error.message} onRetry={() => void listQ.refetch()} busy={listQ.loading} /></EditorFrame>;
+  }
+  if (!initial || (needsList && !listQ.data)) return <EditorFrame><Skeleton variant="list" count={3} /></EditorFrame>;
+
+  if (media === "book") return <BookBuilder key={location.key} initial={initial} {...done} />;
+  const list = listQ.data!;
+  if (media === "music") return <MusicBuilder key={location.key} initial={initial} ladder={list.music_ladder ?? NO_LADDER} presets={list.music_presets ?? NO_PRESETS} {...done} />;
+  const unwanted = { catalog: list.unwanted ?? NO_UNWANTED, groups: list.unwanted_groups ?? NO_GROUPS };
+  return <VideoBuilder key={location.key} formats={list.formats ?? NO_FORMATS} unwanted={unwanted} initial={initial} {...done} />;
+}
+
+// EditorFrame holds the editor route's loading and error states.
+function EditorFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <PageHeader title="Quality profile" />
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">{children}</div>
     </>
   );
 }
@@ -534,22 +619,10 @@ function withTarget(sp: StoredProfile): StoredProfile {
   };
 }
 
-function useUnsaved(dirty: boolean) {
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
-}
+// What leaving a builder with unsaved edits asks (the route guard, lib/useUnsavedGuard).
+const DISCARD = "Discard your changes to this profile?";
 
-// The builders' ← Back and Cancel ask before throwing a half-built profile away.
-function useDiscardConfirm() {
-  const confirm = useConfirm();
-  return () => confirm({ title: "Discard your changes to this profile?", confirmLabel: "Discard", tone: "danger" });
-}
-
-function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { formats: FormatInfo[]; unwanted: UnwantedCatalog; initial: StoredProfile; onCancel: () => void; onSaved: () => void }) {
+function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { formats: FormatInfo[]; unwanted: UnwantedCatalog; initial: StoredProfile; onCancel: () => void; onSaved: (sp: StoredProfile) => void }) {
   const start = useMemo(() => withTarget(initial), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [decision, setDecision] = useState<DecisionView | null>(null);
@@ -564,8 +637,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   const [impact, setImpact] = useState<{ impact?: ProfileImpact; failed?: string } | null>(null);
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
-  useUnsaved(dirty);
-  const confirmDiscard = useDiscardConfirm();
+  const markClean = useUnsavedGuard(dirty, DISCARD);
 
   // Live preview over the sample releases, debounced.
   useEffect(() => {
@@ -587,10 +659,8 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
   // Target edits apply to the latest state, so two quick changes can't overwrite each other.
   const updateIdeal = (fn: (i: IdealFile) => IdealFile) => setSp((s) => ({ ...s, ideal: fn(s.ideal ?? {}) }));
 
-  const leave = async () => {
-    if (dirty && !(await confirmDiscard())) return;
-    onCancel();
-  };
+  // Back and Cancel just leave: the route guard asks first while there are edits.
+  const leave = onCancel;
   // write saves body as is; save checks first what saving would set off.
   const write = async (body: StoredProfile) => {
     setSaving(true);
@@ -599,7 +669,8 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
       if (body.id > 0) await qualityApi.updateQualityProfile(body.id, body);
       else await qualityApi.createQualityProfile(body);
       startJSON.current = JSON.stringify(body);
-      onSaved();
+      markClean();
+      onSaved(body);
     } catch (e) {
       setError((e as Error).message);
       setSaving(false);
@@ -1347,15 +1418,14 @@ function NumberField({ label, hint, value, onChange, allowNegative }: { label: s
 // A music profile is a ladder: each tier on it can be grabbed and the highest available wins.
 // There is no music upgrade sweep yet, so the profile only decides the first grab. Scores follow the ladder's rank, the same spacing
 // the presets use, and anything off the ladder scores nothing — which the engine refuses.
-function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial: StoredProfile; ladder: string[]; presets: MusicPreset[]; onCancel: () => void; onSaved: () => void }) {
+function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial: StoredProfile; ladder: string[]; presets: MusicPreset[]; onCancel: () => void; onSaved: (sp: StoredProfile) => void }) {
   const start = useMemo(() => ({ ...initial, format_scores: initial.format_scores ?? {}, rejected: initial.rejected ?? [] }), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
-  useUnsaved(dirty);
-  const confirmDiscard = useDiscardConfirm();
+  const markClean = useUnsavedGuard(dirty, DISCARD);
   const patch = (p: Partial<StoredProfile>) => setSp((s) => ({ ...s, ...p }));
 
   // Each tier's score: the full-ladder preset's value, else spaced by rank.
@@ -1377,10 +1447,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
   const top = ladder.find((t) => on(t));
   const kept = ladder.filter((t) => on(t)).length;
 
-  const leave = async () => {
-    if (dirty && !(await confirmDiscard())) return;
-    onCancel();
-  };
+  // Back and Cancel just leave: the route guard asks first while there are edits.
+  const leave = onCancel;
   const save = async () => {
     if (!sp.name.trim()) { setError("Give the profile a name."); return; }
     if (kept === 0) { setError("Keep at least one quality tier on the ladder."); return; }
@@ -1389,7 +1457,8 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
     try {
       if (sp.id > 0) await qualityApi.updateQualityProfile(sp.id, sp);
       else await qualityApi.createQualityProfile(sp);
-      onSaved();
+      markClean();
+      onSaved(sp);
     } catch (e) { setError((e as Error).message); setSaving(false); }
   };
 
@@ -1458,15 +1527,14 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
 
 // BookBuilder edits a book quality profile: which formats to grab (per edition) and keyword
 // boosts (e.g. GraphicAudio +100), plus hard-reject terms. No resolution/bitrate.
-function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; onCancel: () => void; onSaved: () => void }) {
+function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; onCancel: () => void; onSaved: (sp: StoredProfile) => void }) {
   const start = useMemo(() => ({ ...initial, format_scores: initial.format_scores ?? {}, keywords: initial.keywords ?? [], rejected: initial.rejected ?? [] }), [initial]);
   const [sp, setSp] = useState<StoredProfile>(start);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startJSON = useRef(JSON.stringify(start));
   const dirty = JSON.stringify(sp) !== startJSON.current;
-  useUnsaved(dirty);
-  const confirmDiscard = useDiscardConfirm();
+  const markClean = useUnsavedGuard(dirty, DISCARD);
   const patch = (p: Partial<StoredProfile>) => setSp((s) => ({ ...s, ...p }));
   const setFormatScore = (name: string, score: number) => {
     const next = { ...sp.format_scores };
@@ -1474,10 +1542,8 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
     else next[name] = score;
     patch({ format_scores: next });
   };
-  const leave = async () => {
-    if (dirty && !(await confirmDiscard())) return;
-    onCancel();
-  };
+  // Back and Cancel just leave: the route guard asks first while there are edits.
+  const leave = onCancel;
   const save = async () => {
     if (!sp.name.trim()) { setError("Give the profile a name."); return; }
     setSaving(true);
@@ -1485,7 +1551,8 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
     try {
       if (sp.id > 0) await qualityApi.updateQualityProfile(sp.id, sp);
       else await qualityApi.createQualityProfile(sp);
-      onSaved();
+      markClean();
+      onSaved(sp);
     } catch (e) { setError((e as Error).message); setSaving(false); }
   };
 
