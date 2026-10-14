@@ -69,7 +69,7 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
           </Suspense>
         </MeSection>
 
-        <MeSection id="plex" title="Media servers">
+        <MeSection id="media-servers" title="Media servers">
           <Suspense fallback={<Loading />}>
             <PlexAccountLink variant="me" />
           </Suspense>
@@ -124,13 +124,17 @@ function Loading() {
   return <div className="px-3.5 py-3 text-sm text-ink-faint">Loading…</div>;
 }
 
+// Older names of a section, for links made before it was renamed: the Plex card became
+// Media servers (Plex and Jellyfin).
+const SECTION_ALIAS: Record<string, string> = { plex: "media-servers" };
+
 // useHashScroll brings /me#notifications (the bell's Settings button) to its section. The
 // router doesn't scroll to a hash, and the bell can send you here from /me itself.
 function useHashScroll() {
   const { hash } = useLocation();
   useEffect(() => {
     const id = hash.slice(1);
-    if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+    if (id) document.getElementById(SECTION_ALIAS[id] ?? id)?.scrollIntoView({ block: "start" });
   }, [hash]);
 }
 

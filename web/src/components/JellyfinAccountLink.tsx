@@ -5,8 +5,8 @@ import { setQueryData, useQuery } from "../lib/query";
 import { useConfirm, useToast } from "../ui";
 import { JellyfinSheet } from "./JellyfinSignInSheet";
 
-// "Jellyfin: Link / Linked as <name> · Unlink" for whoever is signed in, on the Me page next
-// to the Plex line. Linking is signing in to Jellyfin once (password or Quick Connect): the
+// "Jellyfin: Link / Linked as <name> · Unlink" for whoever is signed in, on the Me page and
+// in the staff sidebar's footer, each under the Plex line. Linking is signing in to Jellyfin once (password or Quick Connect): the
 // next Sign in with Jellyfin then lands in this account, and Watch links put Jellyfin first.
 // Its own chunk, with the sheet behind it.
 
@@ -14,7 +14,7 @@ const MergeDialog = lazy(() => import("./PlexMergeDialog"));
 
 const LINK_KEY = "me:jellyfin";
 
-export default function JellyfinAccountLink() {
+export default function JellyfinAccountLink({ variant = "me" }: { variant?: "sidebar" | "me" }) {
   const toast = useToast();
   const confirm = useConfirm();
   const { user } = useMe();
@@ -44,8 +44,15 @@ export default function JellyfinAccountLink() {
     catch (e) { toast((e as Error).message, { tone: "error" }); }
   };
 
-  const box = "flex min-h-[48px] flex-col justify-center gap-1 border-t border-[var(--line-soft)] px-3.5 py-2.5 text-md text-ink-dim";
-  if (!link) return <div className={box}>{loading && !error ? "Loading…" : "Couldn't load your Jellyfin link."}</div>;
+  const sidebar = variant === "sidebar";
+  const box = sidebar
+    ? "-mt-2 flex flex-col gap-1 px-3.5 pb-3 text-xs text-ink-faint"
+    : "flex min-h-[48px] flex-col justify-center gap-1 border-t border-[var(--line-soft)] px-3.5 py-2.5 text-md text-ink-dim";
+  if (!link) {
+    // The sidebar just leaves the line out; the Me page's card says what's going on.
+    if (sidebar) return null;
+    return <div className={box}>{loading && !error ? "Loading…" : "Couldn't load your Jellyfin link."}</div>;
+  }
   // No Jellyfin server connected and nothing linked: nothing to offer.
   if (!link.available && !link.linked) return null;
   const btn = "font-semibold";
@@ -53,7 +60,7 @@ export default function JellyfinAccountLink() {
   return (
     <div className={box}>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <span>Jellyfin:</span>
+        <span>{sidebar ? "Jellyfin account:" : "Jellyfin:"}</span>
         {link.linked ? (
           <>
             <span className="max-w-[160px] truncate" style={{ color: "var(--ink)" }} title={link.jellyfin_username}>Linked{link.jellyfin_username ? ` as ${link.jellyfin_username}` : ""}</span>

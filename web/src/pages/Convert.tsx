@@ -233,11 +233,11 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           <span className="text-sm text-ink-faint">
             {status.remaining > 0 ? `${status.remaining.toLocaleString()} file${status.remaining === 1 ? "" : "s"} to go` : ""}
             {status.window ? ` · hours ${status.window}` : status.auto ? " · any time" : ""}
-            {status.watching ? " · someone is watching Plex" : ""}
+            {status.watching ? " · someone is watching" : ""}
           </span>
           {(backlog || loss) && (
             <div className="flex w-full flex-wrap gap-x-3 gap-y-1 text-sm">
-              {backlog && <span className="text-ink-dim" title="Estimated from this machine's own conversion speed; pauses while someone watches Plex aren't counted">{backlog}</span>}
+              {backlog && <span className="text-ink-dim" title="Estimated from this machine's own conversion speed; pauses while someone watches aren't counted">{backlog}</span>}
               {loss && <span role="status" style={{ color: "var(--avoid-text)" }}>⚠ {loss}</span>}
             </div>
           )}

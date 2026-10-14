@@ -20,6 +20,17 @@ const shots: Shot[] = [
   ...REQUESTER_PAGES.map((path) => ({ persona: "requester" as const, path })),
   // The setup wizard's first step (Run setup again): the keys, required and optional.
   { persona: "admin", path: "/setup" },
+  // Its Media server step with both servers picked (a plex.tv return address opens that
+  // step; a PIN this tab didn't start is ignored), and Media servers with Jellyfin connected.
+  {
+    persona: "admin",
+    path: "/setup?plexpin=0",
+    open: async (page) => {
+      await page.getByRole("group", { name: "Which media server do you use?" }).getByText("Both", { exact: true }).click();
+      await page.getByRole("checkbox", { name: "Let family sign in with Jellyfin" }).check();
+    },
+  },
+  { persona: "admin", path: "/settings/media-servers#jellyfin-server" },
   // Dialogs, sheets and menus: what opens on top of a page is drawn on other surfaces.
   { persona: "requester", path: "/discover/movie/1001" },
   { persona: "admin", path: "/requests?tab=active&type=movie&id=2" },

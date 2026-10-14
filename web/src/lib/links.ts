@@ -10,14 +10,19 @@ export const LINKS = {
   // The folders a library scan couldn't identify, under the folder rows.
   libraryReview: "/settings/library#needs-review",
   users: "/settings/users",
-  // The Plex connection is the Plex card on Connections (it opens its editor there); how
-  // Arrmada uses Plex — library updates, sign-in, linked accounts — is Settings → Plex.
+  // Each media server's connection is its card on Connections (a link opens its editor
+  // there); how Arrmada uses them — library updates, watch monitoring, sign-in, linked
+  // accounts — is Settings → Media servers, one group per server.
   plexConnection: "/settings/connections#plex",
-  plex: "/settings/plex",
-  plexMonitoring: "/settings/plex#plex-monitoring",
-  plexSignIn: "/settings/plex#plex-sign-in",
-  // The Jellyfin card on Connections, like Plex's.
   jellyfinConnection: "/settings/connections#jellyfin",
+  // Both cards side by side, for "connect a media server" when either will do.
+  mediaServerCards: "/settings/connections#media-servers",
+  mediaServers: "/settings/media-servers",
+  // Each server's group starts with its server card.
+  plexServer: "/settings/media-servers#plex-server",
+  jellyfinServer: "/settings/media-servers#jellyfin-server",
+  plexSignIn: "/settings/media-servers#plex-sign-in",
+  jellyfinSignIn: "/settings/media-servers#jellyfin-sign-in",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",
   downloadsSearching: "/activity/wanted",

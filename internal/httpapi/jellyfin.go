@@ -62,6 +62,23 @@ func (a *api) handleJellyfinSave(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, a.deps.Jellyfin.Config(r.Context()))
 }
 
+// handleJellyfinDisconnect answers DELETE /api/v1/jellyfin (admin): the address, the key
+// and the server's identity are forgotten; how Arrmada used it stays for a reconnect.
+// Answers with the (now empty) connection.
+func (a *api) handleJellyfinDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !a.jellyfinReady(w) {
+		return
+	}
+	if err := a.deps.Jellyfin.Disconnect(r.Context()); err != nil {
+		a.deps.Log.Warn("jellyfin: couldn't disconnect", "err", err)
+		a.writeError(w, http.StatusInternalServerError, "could not disconnect Jellyfin")
+		return
+	}
+	a.deps.Log.Info("jellyfin: disconnected")
+	a.recheckHealth(r, jellyfinHealthKey) // an unconfigured server has nothing to warn about
+	a.writeJSON(w, http.StatusOK, a.deps.Jellyfin.Config(r.Context()))
+}
+
 // handleJellyfinTest answers POST /api/v1/jellyfin/test {url?, api_key?}: the typed values
 // (blank = the saved ones) tested without saving. Always 200: ok says how it went.
 func (a *api) handleJellyfinTest(w http.ResponseWriter, r *http.Request) {

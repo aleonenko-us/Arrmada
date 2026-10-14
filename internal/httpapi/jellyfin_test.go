@@ -188,3 +188,71 @@ func TestJellyfinRefusedKeyOnCard(t *testing.T) {
 		t.Fatalf("card = %+v", it)
 	}
 }
+
+// Disconnect (admin only) forgets the address, the key and the identity, and keeps how
+// Arrmada used Jellyfin — library updates and sign-in — for a reconnect.
+func TestJellyfinDisconnect(t *testing.T) {
+	s := newJellyfinRouteServer(t)
+	jf := fakeJellyfinServer(t)
+	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	_, kid := s.user(t, "kid@example.com", auth.RoleRequester)
+	ctx := t.Context()
+
+	body := `{"url":"` + jf.URL + `","public_url":"https://jf.example.com","api_key":"` + secretJellyfinKey + `"}`
+	if rec := s.doJSON("PUT", "/api/v1/jellyfin", admin, body); rec.Code != http.StatusOK {
+		t.Fatalf("save: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if rec := s.doJSON("PUT", "/api/v1/jellyfin/scan", mgr, `{"enabled":false,"path_map":[{"from":"/movies","to":"/media/Movies"}]}`); rec.Code != http.StatusOK {
+		t.Fatalf("scan save: HTTP %d %s", rec.Code, rec.Body)
+	}
+	_ = s.deps.Settings.SetBool(ctx, keyJellyfinLoginEnabled, true)
+	a := &api{deps: s.deps}
+	if !a.jellyfinLoginEnabled(ctx) {
+		t.Fatal("sign-in not offered while connected")
+	}
+
+	for name, c := range map[string]*http.Cookie{"requester": kid, "manager": mgr} {
+		if rec := s.do("DELETE", "/api/v1/jellyfin", c); rec.Code != http.StatusForbidden {
+			t.Errorf("%s DELETE: HTTP %d, want 403", name, rec.Code)
+		}
+	}
+	if !s.deps.Jellyfin.Configured(ctx) {
+		t.Fatal("a refused disconnect still disconnected")
+	}
+
+	rec := s.do("DELETE", "/api/v1/jellyfin", admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin DELETE: HTTP %d %s", rec.Code, rec.Body)
+	}
+	var cfg jellyfinsvc.Config
+	_ = json.Unmarshal(rec.Body.Bytes(), &cfg)
+	if cfg.URL != "" || cfg.PublicURL != "" || cfg.KeySet || cfg.ServerName != "" || cfg.ServerID != "" || cfg.Version != "" {
+		t.Errorf("after disconnect = %+v", cfg)
+	}
+	if s.deps.Jellyfin.Configured(ctx) || s.deps.APIKeys.Value(ctx, apikeys.Jellyfin) != "" {
+		t.Error("the key or the address survived the disconnect")
+	}
+	if strings.Contains(rec.Body.String(), secretJellyfinKey) {
+		t.Fatalf("the answer carries the key: %s", rec.Body)
+	}
+	// Sign in with Jellyfin leaves the login page while nothing is connected, but the
+	// switch and the path mappings wait for a reconnect.
+	if a.jellyfinLoginEnabled(ctx) {
+		t.Error("sign-in still offered with no server")
+	}
+	if !s.deps.Settings.GetBool(ctx, keyJellyfinLoginEnabled, false) || !strings.Contains(s.deps.Settings.Get(ctx, jellyfinsvc.KeyPathMap, ""), "/media/Movies") {
+		t.Error("disconnect forgot how Jellyfin was used")
+	}
+	// The card goes back to "Not connected".
+	rec = s.do("GET", "/api/v1/connections", admin)
+	var list connList
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	if it, ok := list.item("jellyfin", "default"); ok && it.Configured {
+		t.Errorf("card after disconnect = %+v", it)
+	}
+	// Disconnecting again is harmless.
+	if rec := s.do("DELETE", "/api/v1/jellyfin", admin); rec.Code != http.StatusOK {
+		t.Errorf("second DELETE: HTTP %d", rec.Code)
+	}
+}

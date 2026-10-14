@@ -1,8 +1,10 @@
 import { req } from "./api";
+import type { PlexPathMap, PlexScanRoot, PlexScanStatus, PlexScanView } from "./plexLibraryApi";
 
-// The Jellyfin connection's calls (Settings → Connections). They live here rather than in
-// api.ts so they only download with the Connections page, not with every requester's
-// first load. The API key goes up, never comes back: the server answers key_set only.
+// The Jellyfin connection's calls (its card on Settings → Connections, its group on
+// Settings → Media servers). They live here rather than in api.ts so they only download
+// with those pages, not with every requester's first load. The API key goes up, never
+// comes back: the server answers key_set only.
 
 /** GET /api/v1/jellyfin: the saved connection and what the server said about itself. */
 export interface JellyfinConfig {
@@ -37,4 +39,12 @@ export const jellyfinApi = {
   save: (body: JellyfinSave) => req<JellyfinConfig>("/api/v1/jellyfin", { method: "PUT", body: JSON.stringify(body) }),
   test: (body: { url?: string; api_key?: string }) =>
     req<JellyfinTestResult>("/api/v1/jellyfin/test", { method: "POST", body: JSON.stringify(body) }),
+  // Forgets the address, the key and the identity (admin). How Jellyfin was used stays.
+  disconnect: () => req<JellyfinConfig>("/api/v1/jellyfin", { method: "DELETE" }),
+  // Library updates: the same shapes as Plex's (plex_path is the folder on Jellyfin's side).
+  scanView: () => req<PlexScanView>("/api/v1/jellyfin/scan"),
+  saveScan: (body: { enabled: boolean; path_map: PlexPathMap[] }) =>
+    req<PlexScanView>("/api/v1/jellyfin/scan", { method: "PUT", body: JSON.stringify(body) }),
+  testScan: (kind: "movie" | "show", run: boolean) =>
+    req<{ root: PlexScanRoot; last_scan: PlexScanStatus }>("/api/v1/jellyfin/scan/test", { method: "POST", body: JSON.stringify({ kind, run }) }),
 };

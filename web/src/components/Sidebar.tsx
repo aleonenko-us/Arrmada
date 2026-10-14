@@ -11,6 +11,7 @@ import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
 import { Scrim } from "../ui/Scrim";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
+const JellyfinAccountLink = lazy(() => import("./JellyfinAccountLink"));
 
 const PILL_TONE: Record<NavBadge["tone"], { background: string; color: string }> = {
   accent: { background: "var(--accent-soft)", color: "var(--accent-text)" },
@@ -195,8 +196,10 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
             </svg>
           </button>
         </div>
-        {/* Your own Plex link (Discover's recommendations use its watch history). */}
+        {/* Your own Plex link (Discover's recommendations use its watch history), and your
+            Jellyfin link while a Jellyfin server is connected or you're linked to one. */}
         <Suspense fallback={null}><PlexAccountLink variant="sidebar" /></Suspense>
+        <Suspense fallback={null}><JellyfinAccountLink variant="sidebar" /></Suspense>
       </aside>
     </>
   );

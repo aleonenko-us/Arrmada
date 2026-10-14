@@ -73,8 +73,8 @@ const SLOW_POLL_MS = 60_000;
 // download clients and Prowlarr are added, edited, switched off and deleted here (the old
 // Indexers and Download clients pages redirect here); admins edit the metadata keys and the
 // FlareSolverr URL inside their cards. The media servers (Plex and Jellyfin) sit side by
-// side at the top and are connected inside their cards (how Arrmada uses Plex is Settings
-// → Plex); alerts and the audiobook server link to their own pages.
+// side at the top and are connected inside their cards (how Arrmada uses them is Settings
+// → Media servers); alerts and the audiobook server link to their own pages.
 export function ConnectionsSettings() {
   const { user } = useMe();
   const admin = isAdmin(user);
@@ -113,7 +113,7 @@ export function ConnectionsSettings() {
 
   // A link to one card (a health warning's Fix) lands on it once the cards exist; the
   // hub's own scroll ran before they loaded. A link to the Plex card while Plex isn't
-  // connected yet ("Connect your Plex server" in Insights or Settings → Plex) is there to
+  // connected yet ("Connect your Plex server" in Insights or Settings → Media servers) is there to
   // connect it, so its editor opens too.
   const scrolled = useRef("");
   useEffect(() => {

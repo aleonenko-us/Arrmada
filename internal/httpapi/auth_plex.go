@@ -177,7 +177,7 @@ func (a *api) handlePlexLoginPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A Plex account linked to an admin or manager opens that account only when the owner
-	// has said so (Settings → Plex): otherwise anyone who gets hold of the Plex account
+	// has said so (Settings → Media servers): otherwise anyone who gets hold of the Plex account
 	// would have the staff console.
 	if u.Role.AtLeast(auth.RoleManager) && !staffAllowed {
 		a.deps.Log.Warn("users: Plex sign-in into a staff account refused", "user_id", u.ID)
@@ -190,7 +190,7 @@ func (a *api) handlePlexLoginPoll(w http.ResponseWriter, r *http.Request) {
 	a.startSession(w, r, u, http.StatusOK)
 }
 
-// keyPlexSignInStaff (Settings → Plex, admin, default off): whether Sign in with Plex may
+// keyPlexSignInStaff (Settings → Media servers, admin, default off): whether Sign in with Plex may
 // open an admin or manager account linked to that Plex account.
 const keyPlexSignInStaff = "plex_signin_staff"
 

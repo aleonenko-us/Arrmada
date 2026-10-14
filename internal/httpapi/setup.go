@@ -211,11 +211,19 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		ok := indexer.ProwlarrReachable(ctx, a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL))
 		prowlarr = &ok
 	}
+	jellyfinServer := ""
+	if a.deps.Jellyfin != nil {
+		jellyfinServer = a.deps.Jellyfin.Name(ctx)
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		// The Plex step: whether a server is connected, and the family sign-in choices.
-		"plex_connected": a.plexConnected(ctx),
-		"plex_server":    plexServer,
-		"plex_family":    a.plexFamilyChoices(ctx),
+		// The Media server step: whether each server is connected, and each one's family
+		// sign-in choices.
+		"plex_connected":     a.plexConnected(ctx),
+		"plex_server":        plexServer,
+		"plex_family":        a.plexFamilyChoices(ctx),
+		"jellyfin_connected": a.jellyfinConfigured(ctx),
+		"jellyfin_server":    jellyfinServer,
+		"jellyfin_family":    a.jellyfinFamilyChoices(ctx),
 		// The Indexers step: how many searches can use, and whether Prowlarr answers
 		// (null when not asked).
 		"indexers_enabled":   a.enabledIndexers(ctx),
@@ -250,6 +258,16 @@ func (a *api) plexFamilyChoices(ctx context.Context) plexFamily {
 	_, legacy := a.deps.Settings.Lookup("plex_login_auto_approve")
 	if set || legacy {
 		f.AutoApproveTypes = a.plexAutoApproval(ctx).String()
+	}
+	return f
+}
+
+// jellyfinFamilyChoices is plexFamilyChoices for Sign in with Jellyfin: off, with nothing
+// ticked, until the owner has chosen.
+func (a *api) jellyfinFamilyChoices(ctx context.Context) plexFamily {
+	f := plexFamily{Enabled: a.deps.Settings.GetBool(ctx, keyJellyfinLoginEnabled, false)}
+	if _, set := a.deps.Settings.Lookup(keyJellyfinAutoApproveTypes); set {
+		f.AutoApproveTypes = a.jellyfinAutoApproval(ctx).String()
 	}
 	return f
 }

@@ -291,6 +291,35 @@ func (s *Service) Save(ctx context.Context, rawURL, rawPublic, apiKey string) er
 	return nil
 }
 
+// keyClearer is a key store that can forget a key (*apikeys.Store is one). Disconnect
+// needs it; a store without it (a test fake) keeps the key, and the cleared address is
+// enough to leave Jellyfin unconfigured.
+type keyClearer interface {
+	Clear(ctx context.Context, id string) error
+}
+
+// Disconnect forgets the server: its address, public address, API key and what it said
+// about itself, and drops the library index. How Arrmada used it (sign-in switches,
+// monitoring, path mappings) stays, so connecting it again picks up where it was; with no
+// address saved none of it does anything meanwhile. Linked accounts keep their Jellyfin
+// link too. An install-time ARRMADA_JELLYFIN_API_KEY still stands behind the cleared key,
+// which is harmless without an address.
+func (s *Service) Disconnect(ctx context.Context) error {
+	if kc, ok := s.keys.(keyClearer); ok {
+		if err := kc.Clear(ctx, apikeys.Jellyfin); err != nil {
+			return err
+		}
+	}
+	for _, k := range []string{KeyURL, KeyPublicURL, KeyServerID, KeyServerName, KeyVersion} {
+		if err := s.settings.Set(ctx, k, ""); err != nil {
+			return err
+		}
+	}
+	s.health.reset()
+	s.idx.drop()
+	return nil
+}
+
 // TestResult is POST /api/v1/jellyfin/test. Detail is a plain sentence, never the key.
 type TestResult struct {
 	OK         bool   `json:"ok"`

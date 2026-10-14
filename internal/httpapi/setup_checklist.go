@@ -47,7 +47,8 @@ func (a *api) setupChecklist(ctx context.Context) setupChecklist {
 		fixItem("folders", "Choose your library folders", a.librariesChosen(ctx), health.FixLibraryFolders),
 		fixItem("download_client", "Connect a download client", a.downloadClientAnswers(ctx), health.FixDownloadClients),
 		fixItem("indexer", "Add an indexer, or sync them from Prowlarr", a.enabledIndexers(ctx) > 0, health.FixIndexers),
-		fixItem("plex", "Connect your Plex server", a.plexConnected(ctx), health.FixPlexConnection),
+		// Plex, Jellyfin or both: either one ticks it.
+		fixItem("media_server", "Connect your media server (Plex or Jellyfin)", a.plexConnected(ctx) || a.jellyfinConfigured(ctx), health.FixMediaServerCards),
 		{Key: "first_title", Label: "Add your first movie or show", Done: a.hasTitles(ctx), Link: "/discover"},
 		{Key: "first_import", Label: "Get your first download into the library", Done: a.anyImported(ctx), Link: "/activity/history", LinkKey: "history"},
 	}
@@ -104,6 +105,11 @@ func (a *api) plexConnected(ctx context.Context) bool {
 	}
 	cfg := a.deps.Insights.Config(ctx)
 	return cfg.URL != "" && cfg.TokenSet
+}
+
+// jellyfinConfigured: a Jellyfin address and API key are saved (Plex's test, for Jellyfin).
+func (a *api) jellyfinConfigured(ctx context.Context) bool {
+	return a.deps.Jellyfin != nil && a.deps.Jellyfin.Configured(ctx)
 }
 
 // hasTitles: any movie or show in the library, added or scanned in.

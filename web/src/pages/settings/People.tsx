@@ -26,7 +26,7 @@ export function PeopleSettings() {
     <div className="flex flex-col gap-6">
       <PeopleList meId={user?.id} />
       <p className="m-0 text-sm text-ink-faint">
-        Who may sign in with Plex, and what new Plex sign-ins auto-approve, is in <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Settings → Plex</Link>.
+        Who may sign in with Plex or Jellyfin, and what their new sign-ins auto-approve, is in Settings → Media servers: <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Plex sign-in</Link> and <Link to={LINKS.jellyfinSignIn} style={{ color: "var(--accent-text)" }}>Jellyfin sign-in</Link>.
       </p>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
@@ -383,7 +383,7 @@ function useOwnLimit(p: Person, k: keyof UserQuota, label: string, ctx: RowConte
 }
 
 // plexUnlinkConfirm is the question before unlinking someone's Plex account, here and on
-// Settings → Plex's linked accounts: a Plex-only account loses its only way in.
+// Settings → Media servers' linked accounts: a Plex-only account loses its only way in.
 export function plexUnlinkConfirm(p: Person) {
   return {
     title: `Unlink ${p.username}'s Plex account${p.plex_username ? ` (${p.plex_username})` : ""}?`,

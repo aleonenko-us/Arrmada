@@ -204,30 +204,30 @@ const ABOUT = {
   people: "Per-person activity — last seen, platform, total plays and watch time.",
   graphs: "Plays by day, hour, platform and user, plus bandwidth over time.",
   reliability: "The buffering view — see historically when and where streams choked, by user, platform and title.",
-  library: "Your library by what's watched — most watched, never watched, and the titles Plex keeps transcoding, linked to Convert.",
+  library: "Your library by what's watched — most watched, never watched, and the titles your media server keeps transcoding, linked to Convert.",
 };
 
-// SetupState stands in for a tab only while no Plex server is set up and the database has
+// SetupState stands in for a tab only while no media server is set up and the database has
 // nothing for it yet (an imported Tautulli history shows without a server). Every tab is
-// built, so it says what the tab will show and links to the Plex settings page.
+// built, so it says what the tab will show and links to the media server cards.
 export function SetupState({ tab }: { tab: keyof typeof ABOUT }) {
   return (
     <EmptyState
       title={<span className="capitalize">{tab}</span>}
       body={<p className="mx-auto max-w-[52ch] text-sm">{ABOUT[tab]}</p>}
-      action={<Link to={LINKS.plexConnection} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>}
+      action={<Link to={LINKS.mediaServerCards} className="rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect Plex or Jellyfin →</Link>}
     />
   );
 }
 
 // ImportedNotice sits above data a tab already has while no server is connected — plays
 // imported from Tautulli, or recorded before the connection was removed. The data is real;
-// it just won't grow until Plex is connected.
+// it just won't grow until a server is connected.
 export function ImportedNotice() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <span>Showing imported history — connect Plex to record new plays.</span>
-      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect your Plex server →</Link>
+      <span>Showing history already recorded — connect Plex or Jellyfin to record new plays.</span>
+      <Link to={LINKS.mediaServerCards} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect Plex or Jellyfin →</Link>
     </div>
   );
 }

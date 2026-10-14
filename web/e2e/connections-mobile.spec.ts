@@ -65,12 +65,16 @@ test.describe("admin on a phone", () => {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 
-  // PLEX-17: the one Plex page, every card on it, fits a phone too.
-  test("Settings → Plex fits a 375 px screen", async ({ page, api }) => {
-    await page.goto("/settings/plex");
+  // PLEX-17 / J5b: Settings → Media servers, both groups and every card, fits a phone too,
+  // and its jump links reach the Jellyfin group.
+  test("Settings → Media servers fits a 375 px screen", async ({ page, api }) => {
+    await page.goto("/settings/media-servers");
     await expect(page.locator("#plex-accounts").getByText("Plex · grandadplex")).toBeVisible();
     await expect(page.locator("#plex-tautulli")).toBeVisible();
+    await expect(page.locator("#jellyfin-library-updates").getByRole("switch", { name: /Tell Jellyfin to scan after changes/ })).toBeVisible();
     await api.quiet();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+    await page.getByRole("navigation", { name: "Media servers on this page" }).getByRole("link", { name: "Jellyfin" }).click();
+    await expect(page.getByRole("heading", { name: "Jellyfin", exact: true })).toBeInViewport();
   });
 });

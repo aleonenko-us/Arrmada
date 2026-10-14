@@ -151,13 +151,13 @@ function InsightsPage() {
       <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <p className="max-w-[64ch] text-base text-ink-dim">Watch monitoring for your {multi ? "Plex and Jellyfin servers" : jellyfin ? "Jellyfin server" : "Plex server"} — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
-            {!connected && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
+            {!connected && <> <Link to={LINKS.mediaServerCards} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect Plex or Jellyfin in Settings → Connections</Link> to begin.</>}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {cfg && (plexOn || !jellyfin) && <MonitoringBadge c={cfg} marked={multi} />}
             {jellyfin && <MonitoringBadge c={jellyfin} server="jellyfin" marked={multi || !plexOn} />}
-            {/* Monitoring, library updates, sign-in and linked accounts: one Plex page. */}
-            <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
+            {/* Monitoring, library updates, sign-in and linked accounts: one page for both servers. */}
+            <Link to={LINKS.mediaServers} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Media server settings →</Link>
           </div>
         </div>
 

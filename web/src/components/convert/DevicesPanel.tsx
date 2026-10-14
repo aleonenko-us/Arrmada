@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { req, type ConvertDevice, type ConvertDeviceCodec, type ConvertDevices } from "../../lib/api";
 import { formatAgo } from "../../lib/format";
 import { LINKS } from "../../lib/links";
-import { ServerBadge } from "../brand";
+import { SERVER_LABEL, ServerBadge, isMediaServer } from "../brand";
 
-// "Your devices": what each Plex player did with HEVC, HEVC 10-bit and AV1 over the last 90
-// days of plays Insights recorded — so the formats Convert writes are chosen on evidence, not
-// a guess about every TV in the house. A ✗ means Plex transcoded that format's video for the
+// "Your devices": what each Plex or Jellyfin player did with HEVC, HEVC 10-bit and AV1 over
+// the last 90 days of plays Insights recorded — so the formats Convert writes are chosen on
+// evidence, not a guess about every TV in the house. A ✗ means the server transcoded that format's video for the
 // device; it can also be a bandwidth or setting limit, so it's worded "transcoded", never
 // "can't play". Remote plays fitted to the connection don't count either way (server side).
 
@@ -34,12 +34,16 @@ export function deviceName(x: ConvertDevice): string {
   return x.product && x.product !== name ? `${name} (${x.product})` : name;
 }
 
-/** A sentence naming the devices that transcoded a format, for a warning. */
+/** A sentence naming the devices that transcoded a format, for a warning: the server
+ *  that did it when they all play through one, else "your media servers". */
 export function transcodedSentence(list: ConvertDevice[], format: DeviceFormat): string {
   if (list.length === 0) return "";
   const names = list.slice(0, 4).map(deviceName);
   const more = list.length > names.length ? ` and ${list.length - names.length} more` : "";
-  return `In the last 90 days Plex transcoded ${FORMAT_LABEL[format]} video for ${names.join(", ")}${more}. ` +
+  const servers = new Set(list.map((x) => x.server ?? "plex"));
+  const [only] = servers;
+  const who = servers.size === 1 && isMediaServer(only) ? SERVER_LABEL[only] : "your media servers";
+  return `In the last 90 days ${who} transcoded ${FORMAT_LABEL[format]} video for ${names.join(", ")}${more}. ` +
     "Files converted to it would likely be transcoded for them too.";
 }
 
@@ -68,8 +72,8 @@ export function DevicesPanel({ data }: { data: ConvertDevices | null }) {
       </div>
       {!data.monitoring && (
         <div className="text-xs" style={{ color: "var(--avoid-text)" }}>
-          Plex watch monitoring is off, so no new plays are recorded{rows.length ? " — this is what it saw while it was on" : ""}.{" "}
-          <Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent-text)" }}>Turn it on</Link>
+          Watch monitoring is off on every media server, so no new plays are recorded{rows.length ? " — this is what it saw while it was on" : ""}.{" "}
+          <Link to={LINKS.mediaServers} className="font-semibold" style={{ color: "var(--accent-text)" }}>Turn it on</Link>
         </div>
       )}
       {rows.length === 0 ? (

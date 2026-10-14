@@ -100,7 +100,7 @@ test.describe("admin", () => {
     await serveInsights(page, ins.config("unconfigured"));
     await page.goto("/insights?tab=history");
     await expect(page.getByRole("cell", { name: /The Cartographer/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Connect your Plex server →" })).toHaveAttribute("href", "/settings/connections#plex");
+    await expect(page.getByRole("link", { name: "Connect Plex or Jellyfin →" })).toHaveAttribute("href", "/settings/connections#media-servers");
     await page.getByRole("tab", { name: "People" }).click();
     await expect(page.getByRole("cell", { name: "Jesse" })).toBeVisible();
     await page.getByRole("tab", { name: "Graphs" }).click();
@@ -112,7 +112,7 @@ test.describe("admin", () => {
     await serveInsights(page, ins.config("unconfigured"), { empty: true });
     await page.goto("/insights?tab=reliability");
     await expect(page.getByText("The buffering view", { exact: false })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Connect your Plex server →" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Connect Plex or Jellyfin →" })).toBeVisible();
     await expect(page.getByText(/coming soon/i)).toHaveCount(0);
   });
 
@@ -172,7 +172,7 @@ test.describe("admin", () => {
 
   test("Convert says pausing needs monitoring when it is off", async ({ page }) => {
     await page.goto("/convert?tab=settings");
-    await expect(page.getByText(/Needs Plex watch monitoring turned on/)).toBeVisible();
-    await expect(page.getByRole("link", { name: "Settings → Plex" })).toHaveAttribute("href", "/settings/plex#plex-monitoring");
+    await expect(page.getByText(/Needs watch monitoring turned on for your media server/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings → Media servers" })).toHaveAttribute("href", "/settings/media-servers");
   });
 });
