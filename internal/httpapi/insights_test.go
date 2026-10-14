@@ -37,6 +37,42 @@ func TestValidatePlexImagePath(t *testing.T) {
 	}
 }
 
+// A Jellyfin image goes through the proxy only in its exact strict form: an item's or a
+// person's Primary image by a 32-hex id. Nothing is cleaned up into it.
+func TestValidateInsightsImagePathJellyfin(t *testing.T) {
+	const id = "dbc9717de8df66b09eed7dacda39fcc1"
+	for _, ok := range []string{
+		"jellyfin:/Items/" + id + "/Images/Primary",
+		"jellyfin:/Users/" + id + "/Images/Primary",
+	} {
+		if got, valid := validateInsightsImagePath(ok); !valid || got != ok {
+			t.Errorf("%q refused (%q)", ok, got)
+		}
+	}
+	for _, bad := range []string{
+		"jellyfin:",
+		"jellyfin:/Items/" + id + "/Images/Backdrop",
+		"jellyfin:/Items/" + id + "/Images/Primary?ApiKey=x",
+		"jellyfin:/Items/" + id + "/Images/Primary/",
+		"jellyfin:/Items/" + id + "/Images/Primary#x",
+		"jellyfin:/Items/" + id + "/../../System/Info",
+		"jellyfin:/Items/123/Images/Primary",
+		"jellyfin:/Items/DBC9717DE8DF66B09EED7DACDA39FCC1/Images/Primary",
+		"jellyfin://evil/Items/" + id + "/Images/Primary",
+		"jellyfin:/System/Info",
+		"jellyfin:/Users/" + id + "/Policy",
+		" jellyfin:/Items/" + id + "/Images/Primary",
+	} {
+		if _, valid := validateInsightsImagePath(bad); valid {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	// A Plex path still goes through Plex's own check.
+	if got, ok := validateInsightsImagePath("/library/metadata/1/thumb/2"); !ok || got != "/library/metadata/1/thumb/2" {
+		t.Errorf("plex path = %q %v", got, ok)
+	}
+}
+
 func TestClampWindow(t *testing.T) {
 	cases := []struct{ in, want int }{
 		{0, 0},                      // pass through → service applies its 30d default

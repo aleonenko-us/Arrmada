@@ -664,6 +664,10 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanView))
 	mux.HandleFunc("PUT /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanSave))
 	mux.HandleFunc("POST /api/v1/jellyfin/scan/test", a.requireRole(auth.RoleManager, a.handleJellyfinScanTest))
+	// Watch monitoring on Jellyfin: a switch and an interval, a manager's like Plex's.
+	mux.HandleFunc("PUT /api/v1/jellyfin/monitoring", a.requireRole(auth.RoleManager, a.handleJellyfinMonitoring))
+	// Every /insights read takes ?server=plex|jellyfin (both when absent); servers lists them.
+	mux.HandleFunc("GET /api/v1/insights/servers", a.requireRole(auth.RoleManager, a.handleInsightsServers))
 	mux.HandleFunc("GET /api/v1/insights/activity", a.requireRole(auth.RoleManager, a.handleInsightsActivity))
 	mux.HandleFunc("GET /api/v1/insights/history", a.requireRole(auth.RoleManager, a.handleInsightsHistory))
 	mux.HandleFunc("GET /api/v1/insights/history.csv", a.requireRole(auth.RoleManager, a.handleInsightsHistoryCSV))
