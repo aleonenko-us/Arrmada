@@ -19,7 +19,7 @@ wired up.
 ## Requests and people
 
 - **Discover and requests** — browse and request movies, TV and books, Overseerr-style. Auto-approve per user, and import your existing Overseerr requests.
-- **Users** — admin, manager, requester and read-only roles, with optional Plex sign-in. Requesters get Discover, Requests, Calendar, Books and Audiobooks; from outside your network, everything but Calendar.
+- **Users** — admin, manager, requester and read-only roles, with optional Plex or Jellyfin sign-in. Requesters get Discover, Requests, Calendar, Books and Audiobooks; from outside your network, everything but Calendar.
 - **Books shelf** — requesters can download any ebook in the library, or send it to their Kindle.
 - **Calendar** — what's coming up.
 - **Notifications** — Apprise alerts for admins; an in-app inbox and web push for requesters.
@@ -28,5 +28,15 @@ wired up.
 ## Media tools
 
 - **Subtitles** — pulls embedded subtitles out, fetches them from OpenSubtitles, or writes them with local Whisper AI (GPU-accelerated on Intel).
-- **Convert** — switch it on and it works through your library during the hours you choose, re-encoding only wasteful video to HEVC (or AV1, when a quick test shows it's clearly smaller and your devices play it). Every result is checked against the original and must look the same and save at least 20%, or the original stays. Atmos and every audio track are copied untouched, HDR10 and HDR10+ are kept, and Dolby Vision keeps its HDR10 base. Pauses while someone is watching Plex, can use the GPU, and trims audio and subtitle tracks to your languages. Originals are kept for 14 days so a conversion can be undone.
-- **Insights** — Plex watch history, stats and buffering diagnostics, Tautulli-style.
+- **Convert** — switch it on and it works through your library during the hours you choose, re-encoding only wasteful video to HEVC (or AV1, when a quick test shows it's clearly smaller and your devices play it). Every result is checked against the original and must look the same and save at least 20%, or the original stays. Atmos and every audio track are copied untouched, HDR10 and HDR10+ are kept, and Dolby Vision keeps its HDR10 base. Pauses while someone is watching on Plex or Jellyfin, can use the GPU, and trims audio and subtitle tracks to your languages. Originals are kept for 14 days so a conversion can be undone.
+- **Insights** — Plex and Jellyfin watch history and stats, plus Plex buffering diagnostics, Tautulli-style.
+
+## Media servers
+
+Connect Plex, Jellyfin or both (Settings → Connections); how Arrmada uses each is Settings → Media servers.
+
+- **Watch buttons** — a request counts as ready once either server has the title, and the requester's notice and the title's page get a Watch button for each server that has it, their own server's first.
+- **Library updates** — after every import, upgrade, rename, delete or conversion, the server is asked to rescan just that folder, with path mappings when its folders have other names.
+- **Sign-in** — family can sign in with Plex, or with their Jellyfin username and password (or Jellyfin's Quick Connect code); each server has its own switch and auto-approve choices.
+- **Insights** — plays recorded from each server, with a server badge on every stream. Jellyfin keeps no watch history Arrmada can read, so its history starts when its watch monitoring is switched on, and it doesn't report buffering.
+- **Several versions of a movie** — Jellyfin shows them as one title only when every file name starts with the movie folder's name, as Arrmada's default naming does. With a naming scheme that doesn't, Jellyfin lists each version as its own movie; Plex groups them either way.
