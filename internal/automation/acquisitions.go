@@ -297,16 +297,20 @@ func (c *Coordinator) untrackedQueue(ctx context.Context, queue []download.Item)
 }
 
 // busyVersions is which of a movie's versions (0: the default track) have a download in
-// flight, by the record. exceptGrab is left out — the stalled grab a fail-over is
-// replacing.
-func (c *Coordinator) busyVersions(ctx context.Context, movieID, exceptGrab int64) (map[int64]bool, error) {
+// flight, by the record. exceptGrabs are left out — the stalled grab a fail-over is
+// replacing, and any duplicate rows of it.
+func (c *Coordinator) busyVersions(ctx context.Context, movieID int64, exceptGrabs ...int64) (map[int64]bool, error) {
 	acqs, err := c.Active(ctx, "movie", movieID)
 	if err != nil {
 		return nil, err
 	}
+	skip := make(map[int64]bool, len(exceptGrabs))
+	for _, id := range exceptGrabs {
+		skip[id] = true
+	}
 	busy := map[int64]bool{}
 	for _, a := range acqs {
-		if a.GrabID != exceptGrab {
+		if !skip[a.GrabID] {
 			busy[a.VersionID] = true
 		}
 	}
@@ -321,7 +325,7 @@ func (c *Coordinator) wantedVersions(ctx context.Context, movieID int64) (want [
 	if len(missing) == 0 {
 		return nil, false, nil
 	}
-	busy, err := c.busyVersions(ctx, movieID, 0)
+	busy, err := c.busyVersions(ctx, movieID)
 	if err != nil {
 		return nil, false, err
 	}

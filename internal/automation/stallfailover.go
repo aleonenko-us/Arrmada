@@ -139,9 +139,19 @@ func (c *Coordinator) StallInfo(ctx context.Context) map[string]StallState {
 // stallTick is one DetectStalled pass's fail-over budget, and the disk guard's held set
 // read once for the pass.
 type stallTick struct {
-	left     int             // fail-overs this pass may still perform
-	deferred int             // stalled grabs left for the next pass because the budget ran out
-	held     map[string]bool // lowercased hashes the disk guard is holding
+	left       int             // fail-overs this pass may still perform
+	deferred   int             // stalled grabs left for the next pass because the budget ran out
+	held       map[string]bool // lowercased hashes the disk guard is holding
+	closed     int             // grab rows closed without a search (finished, or settled already)
+	failedOver int             // downloads failed over: blocklisted and replaced, or gone and searched for
+}
+
+// noteClosed counts grab g and its duplicates as closed without a search. A nil tick
+// counts nothing.
+func (t *stallTick) noteClosed(g grab) {
+	if t != nil {
+		t.closed += 1 + len(g.Dups)
+	}
 }
 
 // take spends one fail-over from the budget, or counts the grab as deferred when there's
@@ -175,6 +185,11 @@ type stallTarget struct {
 	// why, when set, is what the history says happened instead of "Stalled for 6h" (a
 	// fail-over someone asked for from Needs you).
 	why string
+	// landed, when set, reports whether what the grab was for is already in the library.
+	// Asked only once its torrent has left the client: a vanished download of something the
+	// library has is closed as imported, never failed over. Kinds whose detectStalled*
+	// already tests this before judging leave it nil.
+	landed func(ctx context.Context) bool
 }
 
 // errSearchUnavailable marks a replacement search that couldn't run for a reason the
@@ -191,7 +206,7 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 	if !on {
 		return // fail-over off for this grab
 	}
-	item, found := findQueued(queue, g)
+	item, found := findQueuedGroup(queue, g)
 	// Recorded before the age gate, so a grab's evidence is already being watched by the
 	// time it is old enough to judge.
 	settled := c.stallEvidenceHeld(g.ID, stallEvidenceOf(item, found))
@@ -213,6 +228,11 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 	if ev := stallEvidenceOf(item, found); ev != "" && !settled {
 		return
 	}
+	// Gone for good — but if Arrmada already settled this download under another row (it
+	// seeded out, was imported, removed or failed over), that is the answer: close quietly.
+	if !found && c.settleVanished(ctx, g, tick) {
+		return
+	}
 	// The last attempt found nothing to replace it with. Try again a window later, not
 	// every tick: a torrent in a hard error state reads as stalled on every pass, and each
 	// attempt is a full indexer search.
@@ -223,10 +243,16 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 	if !ok {
 		return
 	}
+	if !found && t.landed != nil && t.landed(ctx) {
+		c.closeStale(ctx, g, grabStatusImported, tick)
+		return
+	}
 	if !tick.take() {
 		return
 	}
-	c.failOver(ctx, g, item, found, window, t)
+	if _, _, failed := c.failOver(ctx, g, item, found, window, t); failed && tick != nil {
+		tick.failedOver++
+	}
 }
 
 // failOver acts on a grab judged stalled. The rule is that a release still in the client
@@ -242,14 +268,18 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 //   - Still there, nothing else found (or the indexers are down): leave it alone, write
 //     nothing to the blocklist, and try again a window later. Its seeder may come back.
 //
-// It returns what replaced the download ("" for nothing) and whether the search couldn't
-// reach the indexers.
-func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, found bool, window time.Duration, t stallTarget) (replacement string, outage bool) {
+// It returns what replaced the download ("" for nothing), whether the search couldn't
+// reach the indexers, and whether the grab was failed (closed out of the stall check).
+// Every duplicate folded onto g goes with it: one download, one decision.
+func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, found bool, window time.Duration, t stallTarget) (replacement string, outage, failed bool) {
 	minutes := int(window / time.Minute)
 	// The stalled release is kept out of the replacement search by name rather than by
 	// the blocklist, which it only joins once replaced. normTitle, so the same release
-	// re-listed on another indexer is excluded too.
+	// re-listed on another indexer is excluded too — under any name its duplicates carry.
 	exclude := map[string]bool{normTitle(g.Title): true}
+	for _, d := range g.Dups {
+		exclude[normTitle(d.Title)] = true
+	}
 	payload := map[string]any{
 		"kind": t.kind, "id": t.id, "title": t.name, "release": g.Title, "minutes": minutes,
 	}
@@ -261,9 +291,9 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 			// Without the blocklist row the search below could grab the same release
 			// straight back. Leave the grab for the next pass.
 			c.log.Warn("automation: stall blocklist failed — leaving the grab for the next check", "release", g.Title, "err", err)
-			return "", false
+			return "", false, false
 		}
-		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+		c.closeGrab(ctx, g, grabStatusFailed)
 		t.event(ctx, g.Title+" disappeared from the download client — searching for another")
 		repl, err := c.replaceRecorded(ctx, t, exclude)
 		if err != nil {
@@ -271,7 +301,7 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 		}
 		payload["vanished"], payload["replaced"], payload["replacement"] = true, repl != "", repl
 		c.publishStall(payload)
-		return repl, indexer.IsOutage(err)
+		return repl, indexer.IsOutage(err), true
 	}
 
 	why, reason := "Stalled for "+stallSpan(minutes), fmt.Sprintf("stalled %d min", minutes)
@@ -300,7 +330,7 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 		t.event(ctx, fmt.Sprintf("%s — %s, still waiting on %s", why, what, g.Title))
 		payload["replaced"] = false
 		c.publishStall(payload)
-		return "", outage
+		return "", outage, false
 	}
 
 	c.log.Info("automation: stalled download replaced", "kind", t.kind, "title", t.name, "release", g.Title, "replacement", repl)
@@ -312,11 +342,11 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 	if err := c.removeStalled(ctx, item.Hash); err != nil {
 		c.log.Warn("automation: couldn't remove the stalled torrent", "release", g.Title, "err", err)
 	}
-	c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+	c.closeGrab(ctx, g, grabStatusFailed)
 	t.event(ctx, fmt.Sprintf("%s — replaced by %s", why, repl))
 	payload["replaced"], payload["replacement"] = true, repl
 	c.publishStall(payload)
-	return repl, false
+	return repl, false, true
 }
 
 // removeStalled deletes a replaced torrent and its data, through the test seam when set.
@@ -350,7 +380,7 @@ func stallSpan(minutes int) string {
 // file is done; otherwise a stall is replaced with another release for that version.
 func (c *Coordinator) detectStalledMovie(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
 	if c.movieHasFileFor(ctx, g) {
-		c.setGrabStatus(ctx, g.ID, grabStatusImported)
+		c.closeStale(ctx, g, grabStatusImported, tick)
 		return
 	}
 	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.movieStallTarget(ctx, g) })
@@ -378,8 +408,9 @@ func (c *Coordinator) movieStallTarget(ctx context.Context, g grab) (stallTarget
 
 // searchAndGrabExcluding is the movie replacement search: the version the stalled grab g
 // was for, never a release in exclude. It ignores the sweep backoff — a fail-over is a
-// single deliberate search, already limited to one per window. g itself doesn't count as
-// in flight for its version (it's what is being replaced); any other grab does.
+// single deliberate search, already limited to one per window. g itself (and any duplicate
+// row of it) doesn't count as in flight for its version — it's what is being replaced; any
+// other grab does.
 func (c *Coordinator) searchAndGrabExcluding(ctx context.Context, m movies.Movie, g grab, exclude map[string]bool) ([]string, error) {
 	var want []movies.Version
 	for _, v := range c.missingVersions(ctx, m.ID) {
@@ -404,11 +435,13 @@ func (c *Coordinator) searchAndGrabExcluding(ctx context.Context, m movies.Movie
 		c.skipUnreadable(m.Title, err)
 		return nil, err
 	}
-	return c.grabMissingTitlesExcept(ctx, m, want, byName, cands, g.ID), nil
+	return c.grabMissingTitlesExcept(ctx, m, want, byName, cands, g.ids()...), nil
 }
 
 // detectStalledSeries is the series kind's stall check. Series grabs have no "landed"
-// test of their own here: the import marks them, and an episode pack can land partly.
+// test before judging: the import marks them, an episode pack can land partly, and an
+// in-flight grab for episodes on disk may be an upgrade. Only a download that has left the
+// client is asked whether the show already has what it covered (stallTarget.landed).
 func (c *Coordinator) detectStalledSeries(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
 	if c.series == nil {
 		return
@@ -432,6 +465,7 @@ func (c *Coordinator) seriesStallTarget(ctx context.Context, g grab) (stallTarge
 		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
 			return c.replaceSeriesGrab(ctx, s, g, exclude)
 		},
+		landed: func(ctx context.Context) bool { return c.seriesReleaseLanded(ctx, s, g.Title) },
 	}, true
 }
 
@@ -460,12 +494,12 @@ func (c *Coordinator) replaceSeriesGrab(ctx context.Context, s series.Series, g 
 // that same edition.
 func (c *Coordinator) detectStalledBook(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
 	if c.books == nil {
-		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
 	b, err := c.books.Get(ctx, g.MovieID) // book id is stored in movie_id on the shared grabs table
 	if err != nil {
-		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
 	// Only the edition THIS grab was for counts as landed. Checking b.HasFile (ebook OR
@@ -486,7 +520,7 @@ func (c *Coordinator) detectStalledBook(ctx context.Context, g grab, queue []dow
 		}
 	}
 	if landed {
-		c.setGrabStatus(ctx, g.ID, grabStatusImported)
+		c.closeStale(ctx, g, grabStatusImported, tick)
 		return
 	}
 	c.judgeStall(ctx, g, queue, tick, func(context.Context) (stallTarget, bool) { return c.bookStallTarget(b, g), true })
@@ -539,16 +573,16 @@ func (c *Coordinator) replaceBookGrab(ctx context.Context, b books.Book, g grab,
 // otherwise replaced with another release of the album.
 func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
 	if c.music == nil {
-		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
 	al, err := c.music.GetAlbum(ctx, g.MovieID) // album id lives in movie_id on the shared table
 	if err != nil {
-		c.setGrabStatus(ctx, g.ID, grabStatusFailed)
+		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
 	if al.Complete() {
-		c.setGrabStatus(ctx, g.ID, grabStatusImported)
+		c.closeStale(ctx, g, grabStatusImported, tick)
 		return
 	}
 	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.musicStallTarget(ctx, al, g) })
