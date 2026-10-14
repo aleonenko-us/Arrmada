@@ -22,6 +22,9 @@ import (
 type clientView struct {
 	download.Client
 	Status *clientStatus `json:"status,omitempty"`
+	// UIPort is the host port the bundled SABnzbd's own web page is published on, for its
+	// card's "Open SABnzbd" link (where the Usenet provider is added). Bundled SABnzbd only.
+	UIPort string `json:"ui_port,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -36,6 +39,9 @@ type clientStatus struct {
 
 func (a *api) clientView(c download.Client) clientView {
 	v := clientView{Client: c}
+	if c.Bundled && c.Kind == download.KindSABnzbd {
+		v.UIPort = sabUIPort()
+	}
 	if st, ok := a.deps.Downloads.Status(c.ID); ok {
 		v.Status = &clientStatus{State: st.Phase(time.Now()), FailingSince: timePtr(st.FailingSince)}
 		if st.ConsecutiveFailures > 0 {
@@ -52,18 +58,24 @@ func (a *api) handleListDownloadClients(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	out := make([]clientView, 0, len(list))
-	hasBundled := false
+	bundled := map[download.Kind]bool{}
 	for _, c := range list {
 		out = append(out, a.clientView(c))
-		hasBundled = hasBundled || c.Bundled
+		if c.Bundled {
+			bundled[c.Kind] = true
+		}
 	}
 	// The categories are Arrmada's, not the client's: the page lists them read-only so
 	// the owner can see what to expect in qBittorrent. can_restore_bundled offers the
-	// bundled qBittorrent back when this install has one and its row is gone.
+	// bundled qBittorrent back when this install has one and its row is gone, and
+	// can_restore_bundled_sabnzbd the same for the optional bundled SABnzbd (switched on,
+	// so its config is there to read the key from). Each kind only counts its own row: a
+	// bundled SABnzbd doesn't hide a removed bundled qBittorrent.
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		"clients":             out,
-		"categories":          download.FixedCategories(a.deps.Config.DownloadCategory),
-		"can_restore_bundled": a.deps.Config.QbittorrentURL != "" && !hasBundled,
+		"clients":                     out,
+		"categories":                  download.FixedCategories(a.deps.Config.DownloadCategory),
+		"can_restore_bundled":         a.deps.Config.QbittorrentURL != "" && !bundled[download.KindQbittorrent],
+		"can_restore_bundled_sabnzbd": !bundled[download.KindSABnzbd] && a.bundledSABKey() != "",
 	})
 }
 
@@ -291,9 +303,14 @@ func (a *api) handleDeleteDownloadClient(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleRestoreBundledClient brings back the packaged qBittorrent after it was deleted:
-// a deleted bundled client now stays deleted across restarts, so this is the way back.
+// handleRestoreBundledClient brings back a packaged client after it was deleted: a deleted
+// bundled client stays deleted across restarts, so this is the way back. ?kind=sabnzbd is
+// the optional bundled SABnzbd; otherwise it's the bundled qBittorrent.
 func (a *api) handleRestoreBundledClient(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("kind") == string(download.KindSABnzbd) {
+		a.restoreBundledSAB(w, r)
+		return
+	}
 	url := a.deps.Config.QbittorrentURL
 	if url == "" {
 		a.writeError(w, http.StatusBadRequest, "this install has no bundled qBittorrent")

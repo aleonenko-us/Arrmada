@@ -289,7 +289,19 @@ describe("a download client's card", () => {
     expect((within(form).getByPlaceholderText(/as reached from the Arrmada container/) as HTMLInputElement).value).toBe("");
     expect(within(form).queryByText("Category")).toBeNull();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Restore bundled qBittorrent" })); });
-    expect(restore).toHaveBeenCalled();
+    expect(restore).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("button", { name: "Restore bundled SABnzbd" })).toBeNull();
+  });
+
+  it("offers a removed bundled SABnzbd back on its own", async () => {
+    serve({});
+    vi.spyOn(downloadClientApi, "downloadClientList").mockResolvedValue({ clients: [], categories: CATS, can_restore_bundled_sabnzbd: true });
+    const restore = vi.spyOn(downloadClientApi, "restoreBundledClient").mockResolvedValue({ restored: true });
+    page();
+    expect(await screen.findByText(/The SABnzbd that runs alongside Arrmada was removed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restore bundled qBittorrent" })).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Restore bundled SABnzbd" })); });
+    expect(restore).toHaveBeenCalledWith("sabnzbd");
   });
 });
 

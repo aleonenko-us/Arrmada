@@ -23,6 +23,9 @@ type UsenetClient struct {
 	Name  string
 	Facts download.UsenetFacts
 	Err   error
+	// BundledPort is set for the bundled SABnzbd: the host port its web page is on, so the
+	// message can say where to add the provider.
+	BundledPort string
 }
 
 func usenetFix(id int64, name string) *Fix {
@@ -60,6 +63,9 @@ func usenetFindings(c UsenetClient) []Finding {
 		out = append(out, Finding{Key: key + what, Level: level, Message: msg, Fix: fix})
 	}
 	switch {
+	case f.ServersConfigured == 0 && c.BundledPort != "":
+		// The bundled SABnzbd arrives without one: the owner's provider is the one step left.
+		add("servers", LevelError, fmt.Sprintf("Add your Usenet provider in SABnzbd: nothing downloads from Usenet until %s has a news server. Open SABnzbd on port %s of this server (its card has the link) → Config → Servers.", c.Name, c.BundledPort))
 	case f.ServersConfigured == 0:
 		add("servers", LevelError, fmt.Sprintf("%s has no news server, so nothing can download from Usenet. Add your Usenet provider in SABnzbd → Config → Servers.", c.Name))
 	case f.ServersWorking == 0:

@@ -153,11 +153,11 @@ export function ConnectionsSettings() {
     void refreshAll().then(() => runTest("download_client", String(c.id), `download_client-${c.id}`));
   };
 
-  const restoreBundled = async () => {
+  const restoreBundled = async (kind?: "sabnzbd") => {
     setRestoring(true);
     setRestoreErr(null);
     try {
-      await downloadClientApi.restoreBundledClient();
+      await downloadClientApi.restoreBundledClient(kind);
       await refreshAll();
     } catch (e) {
       setRestoreErr(`Couldn't restore it: ${(e as Error).message}`);
@@ -311,7 +311,10 @@ export function ConnectionsSettings() {
         return (
           <>
             {dl.data?.can_restore_bundled && (
-              <Button size="sm" variant="secondary" onClick={restoreBundled} busy={restoring} busyLabel="Restoring…">Restore bundled qBittorrent</Button>
+              <Button size="sm" variant="secondary" onClick={() => void restoreBundled()} busy={restoring} busyLabel="Restoring…">Restore bundled qBittorrent</Button>
+            )}
+            {dl.data?.can_restore_bundled_sabnzbd && (
+              <Button size="sm" variant="secondary" onClick={() => void restoreBundled("sabnzbd")} busy={restoring} busyLabel="Restoring…">Restore bundled SABnzbd</Button>
             )}
             <Button size="sm" variant={adding === "client" ? "secondary" : "primary"} onClick={() => setAdding(adding === "client" ? null : "client")}>
               {adding === "client" ? "Cancel" : "+ Add client"}
@@ -329,6 +332,9 @@ export function ConnectionsSettings() {
           {restoreErr && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{restoreErr}</p>}
           {dl.data?.can_restore_bundled && (
             <p className="m-0 text-sm text-ink-dim">The qBittorrent that comes with Arrmada was removed, so it gets no downloads.</p>
+          )}
+          {dl.data?.can_restore_bundled_sabnzbd && (
+            <p className="m-0 text-sm text-ink-dim">The SABnzbd that runs alongside Arrmada was removed, so it gets no Usenet downloads.</p>
           )}
           {adding === "client" && <ClientForm onSaved={clientSaved} />}
         </>

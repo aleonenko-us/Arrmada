@@ -626,8 +626,10 @@ export interface DownloadClient {
   enabled: boolean;
   /** Place in the order new downloads try (1 = first); the next is tried only when this one can't be reached. */
   priority: number;
-  /** The packaged qBittorrent. Deleted, it stays deleted until restored. */
+  /** A packaged client (qBittorrent, or the optional SABnzbd). Deleted, it stays deleted until restored. */
   bundled?: boolean;
+  /** The bundled SABnzbd only: the host port its own web page is on (where the Usenet provider is added). */
+  ui_port?: string;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
   /** Remote → local folder mappings for a client that sees its downloads under another path. */
@@ -660,6 +662,8 @@ export interface DownloadClientList {
   categories?: DownloadCategories;
   /** This install has a bundled qBittorrent and its row was deleted. */
   can_restore_bundled?: boolean;
+  /** This install runs the optional bundled SABnzbd and its row was deleted. */
+  can_restore_bundled_sabnzbd?: boolean;
 }
 
 export interface NewDownloadClient {

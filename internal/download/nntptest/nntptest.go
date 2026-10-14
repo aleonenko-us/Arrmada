@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Server is a running fake news server.
@@ -24,6 +25,24 @@ type Server struct {
 	ln       net.Listener
 	mu       sync.Mutex
 	articles map[string]article // by message id, without <>
+	delay    time.Duration      // before each article body (SetDelay)
+}
+
+// SetDelay makes every article take d to arrive: a slow provider, so a test can do
+// something while a download is under way.
+func (s *Server) SetDelay(d time.Duration) {
+	s.mu.Lock()
+	s.delay = d
+	s.mu.Unlock()
+}
+
+// Drop takes articles away again (a provider that lost them): their ids answer 430.
+func (s *Server) Drop(ids ...string) {
+	s.mu.Lock()
+	for _, id := range ids {
+		delete(s.articles, id)
+	}
+	s.mu.Unlock()
 }
 
 type article struct {
@@ -138,6 +157,7 @@ func (s *Server) serve(c net.Conn) {
 			}
 			s.mu.Lock()
 			a, ok := s.articles[id]
+			delay := s.delay
 			s.mu.Unlock()
 			if !ok {
 				say("430 No Such Article")
@@ -150,6 +170,9 @@ func (s *Server) serve(c net.Conn) {
 			case "HEAD":
 				say("221 0 <" + id + ">\r\nSubject: " + a.name + "\r\n.")
 			default:
+				if delay > 0 {
+					time.Sleep(delay)
+				}
 				code := "222"
 				head := ""
 				if cmd == "ARTICLE" {

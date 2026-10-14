@@ -47,7 +47,11 @@ func (a *api) usenetClientFacts(ctx context.Context) ([]health.UsenetClient, err
 			continue
 		}
 		f, err := a.deps.Downloads.UsenetFacts(ctx, c.ID)
-		out = append(out, health.UsenetClient{ID: c.ID, Name: c.Name, Facts: f, Err: err})
+		uc := health.UsenetClient{ID: c.ID, Name: c.Name, Facts: f, Err: err}
+		if c.Bundled && c.Kind == download.KindSABnzbd {
+			uc.BundledPort = sabUIPort()
+		}
+		out = append(out, uc)
 	}
 	return out, nil
 }

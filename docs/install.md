@@ -77,6 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.s
 | `--tz ZONE` | Timezone, e.g. `Europe/London` ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `--puid N --pgid N` | Run as this user and group |
 | `--with-prowlarr` | Also run the optional Prowlarr indexer manager |
+| `--with-sabnzbd` | Also run SABnzbd, for Usenet. Arrmada connects to it by itself; you add your own Usenet provider in SABnzbd and your Newznab indexers in Arrmada ([Usenet](configuration.md#usenet-sabnzbd)) |
 | `--channel main` | Follow main instead of the releases: the newest code, compiled on your server at install and on every update (for developers; see [Following main](updating.md#following-main-developers)). `--channel stable` is the default |
 | `--build` | The same as `--channel main` |
 | `--image REF` | On the stable channel, run a specific published image, e.g. `ghcr.io/tristenlammi/arrmada:0.18.0` |
@@ -90,6 +91,9 @@ Run the same line again with an option, on the server that has Arrmada:
   started on managed storage). The old mounts are kept in `docker-compose.override.yml.bak`.
 - `--transcode /mnt/cache/transcode` — move Convert's scratch folder.
 - `--with-prowlarr` — add Prowlarr.
+- `--with-sabnzbd` — add SABnzbd for Usenet. Nothing else is restarted, and it's
+  added to whatever `COMPOSE_PROFILES` already lists (`prowlarr,sabnzbd`, say). An install
+  whose files are older than the bundled SABnzbd is told to run `sh update.sh` first.
 
 With no option it [updates](updating.md) instead. Ports, timezone and the run-as user live
 in `.env` in Arrmada's folder: change a line there, then run `sh update.sh`.
@@ -124,6 +128,7 @@ and FlareSolverr instead.
 | `Arrmada-qbittorrent` | The download client, already wired up |
 | `Arrmada-flaresolverr` | Gets past Cloudflare on trackers that use it (no port published) |
 | `Arrmada-prowlarr` | Only with `--with-prowlarr` |
+| `Arrmada-sabnzbd` | Only with `--with-sabnzbd`: the Usenet downloader, already wired up (`Arrmada-sabnzbd-init` writes its first settings once) |
 
 Arrmada's folder holds `docker-compose.yml`, your settings in `.env`, the mounts in
 `docker-compose.override.yml`, the scripts, and `data/` (the database and its backups).
@@ -151,8 +156,9 @@ Open it and change the lines marked `←`:
 
 Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
 follow the setup (TMDB key, library folders under `/storage`, Plex, indexers). The bundled
-qBittorrent is already connected; FlareSolverr runs beside it; Prowlarr is in the file,
-commented out, if you want it. For a GPU, uncomment the `devices` line.
+qBittorrent is already connected; FlareSolverr runs beside it; Prowlarr and SABnzbd (for
+Usenet) are in the file, commented out, if you want them. For a GPU, uncomment the
+`devices` line.
 
 Update with `docker compose pull && docker compose up -d`. This way has no pre-update backup
 and no automatic roll-back (that's `update.sh`); the app still copies its database to

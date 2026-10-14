@@ -15,6 +15,9 @@ type composeService struct {
 	env           map[string]string
 	volumes       []string
 	ports         []string
+	// optional: the service is under a compose profile (Prowlarr, SABnzbd), started only
+	// when asked for.
+	optional bool
 }
 
 // interpDefault matches a ${VAR:-default} with a plain default.
@@ -82,6 +85,8 @@ func readCompose(t *testing.T, path string) map[string]*composeService {
 				s.image = unquote(v)
 			case "container_name":
 				s.containerName = unquote(v)
+			case "profiles":
+				s.optional = true
 			case "environment":
 				if strings.HasPrefix(v, "*") {
 					for ek, ev := range anchors[v[1:]] {
@@ -122,6 +127,83 @@ func readCompose(t *testing.T, path string) map[string]*composeService {
 	return services
 }
 
+// readText is a file's text with LF line ends.
+func readText(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
+}
+
+// serviceScript is the `- |` shell script in a service's command, its lines unindented.
+// commented reads it from a commented-out service ("  # name:"), as the example has it.
+func serviceScript(text, name string, commented bool) []string {
+	prefix := func(s string) (string, bool) {
+		if !commented {
+			return s, true
+		}
+		t := strings.TrimLeft(s, " ")
+		if !strings.HasPrefix(t, "#") {
+			return "", false
+		}
+		return "  " + strings.TrimPrefix(strings.TrimPrefix(t, "#"), " "), true
+	}
+	var out []string
+	in, script, indent := false, false, 0
+	for _, line := range strings.Split(text, "\n") {
+		l, ok := prefix(line)
+		if !ok {
+			if in {
+				break
+			}
+			continue
+		}
+		if !in {
+			in = strings.TrimSpace(l) == name+":" && strings.HasPrefix(l, "  "+name)
+			continue
+		}
+		if !script {
+			if strings.TrimSpace(l) == "- |" {
+				script, indent = true, -1
+			}
+			continue
+		}
+		cur := len(l) - len(strings.TrimLeft(l, " "))
+		if indent < 0 {
+			indent = cur
+		}
+		if strings.TrimSpace(l) != "" && cur < indent {
+			break
+		}
+		out = append(out, strings.TrimPrefix(l, strings.Repeat(" ", indent)))
+	}
+	return out
+}
+
+// TestComposeExampleSABnzbdInit: the example's commented-out SABnzbd init writes the same
+// first settings as docker-compose.yml's — the same key generation, folders, categories and
+// pp=3 — so uncommenting it gives the same SABnzbd an install.sh --with-sabnzbd does.
+func TestComposeExampleSABnzbdInit(t *testing.T) {
+	root := repoRoot(t)
+	main := serviceScript(readText(t, filepath.Join(root, "docker-compose.yml")), "arrmada-sabnzbd-init", false)
+	ex := serviceScript(readText(t, filepath.Join(root, "docker-compose.example.yml")), "arrmada-sabnzbd-init", true)
+	if len(main) < 10 {
+		t.Fatalf("docker-compose.yml's arrmada-sabnzbd-init script not found (%d lines)", len(main))
+	}
+	if strings.Join(main, "\n") != strings.Join(ex, "\n") {
+		t.Errorf("the example's arrmada-sabnzbd-init script differs from docker-compose.yml's:\n--- docker-compose.yml\n%s\n--- example\n%s",
+			strings.Join(main, "\n"), strings.Join(ex, "\n"))
+	}
+	joined := strings.Join(main, "\n")
+	for _, want := range []string{"api_key = $$key", "language = en", "host_whitelist = arrmada-sabnzbd,", "pp = 3", "[[arrmada-tv]]", "[[arrmada-books]]", "[[arrmada-music]]", "[[arrmada]]"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the SABnzbd init script has no %q", want)
+		}
+	}
+}
+
 // mountTarget is the path inside the container a volume line mounts at.
 func mountTarget(v string) string {
 	parts := strings.Split(v, ":")
@@ -149,10 +231,17 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 		t.Errorf("docker-compose.example.yml runs %q, want %s", got, published)
 	}
 
-	// Every service the app needs to work out of the box (Prowlarr is optional, and
-	// commented out in the example).
+	// Every service the app needs to work out of the box. The optional ones (a compose
+	// profile: Prowlarr, SABnzbd) are commented out in the example, with the same image and
+	// container name.
+	exText := readText(t, filepath.Join(root, "docker-compose.example.yml"))
 	for name, m := range main {
-		if name == "arrmada-prowlarr" {
+		if m.optional {
+			for _, want := range []string{"# " + name + ":", "#   image: " + m.image, "#   container_name: " + m.containerName} {
+				if !strings.Contains(exText, want) {
+					t.Errorf("%s is optional in docker-compose.yml; the example should carry it commented out with %q", name, want)
+				}
+			}
 			continue
 		}
 		e, ok := ex[name]

@@ -8,7 +8,8 @@
 #
 # Your .env, database, and media volumes are preserved. Run it any time to upgrade
 # or to apply changes you made to .env. Only the app image is rebuilt; the companions
-# (qBittorrent, FlareSolverr, and Prowlarr if you opted in) keep running untouched.
+# (qBittorrent, FlareSolverr, and Prowlarr or SABnzbd if you opted in) keep running
+# untouched, and which ones run (COMPOSE_PROFILES in .env) is never changed here.
 # The build that was running before is kept as the image arrmada:previous, so
 # --rollback has something to go back to — and if the new build doesn't start, the
 # script goes back to it by itself.

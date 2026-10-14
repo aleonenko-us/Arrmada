@@ -84,8 +84,9 @@ export const downloadClientApi = {
     req<DownloadClient>("/api/v1/downloadclients", { method: "POST", body: JSON.stringify(body) }),
   updateDownloadClient: (id: number, body: NewDownloadClient) =>
     req<DownloadClient>(`/api/v1/downloadclients/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  restoreBundledClient: () =>
-    req<{ restored: boolean }>("/api/v1/downloadclients/restore-bundled", { method: "POST" }),
+  /** Brings back the bundled qBittorrent, or with "sabnzbd" the optional bundled SABnzbd. */
+  restoreBundledClient: (kind?: "sabnzbd") =>
+    req<{ restored: boolean }>(`/api/v1/downloadclients/restore-bundled${kind ? `?kind=${kind}` : ""}`, { method: "POST" }),
   deleteDownloadClient: (id: number) =>
     req<void>(`/api/v1/downloadclients/${id}`, { method: "DELETE" }),
   /** For a usenet client this asks SABnzbd four or five things: read it once, never poll. */
