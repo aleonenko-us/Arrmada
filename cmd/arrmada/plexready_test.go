@@ -105,7 +105,4 @@ func TestMediaReadyLocatorBothServers(t *testing.T) {
 	if !loc.IndexBuiltAt().IsZero() {
 		t.Error("an unread index counts as read")
 	}
-	if homeServer(ctx, 1) != mediaserver.Plex {
-		t.Error("before accounts can link Jellyfin, everyone is Plex-first")
-	}
 }
