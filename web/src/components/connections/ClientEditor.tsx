@@ -321,6 +321,7 @@ function UsenetPanel({ client, onChanged }: { client: DownloadClient; onChanged?
           <div key={s.name} className="break-words text-xs text-ink-dim">{s.name}: {s.error}</div>
         ))}
       </div>
+      {client.bundled && client.ui_port && <OpenBundledSAB port={client.ui_port} noServer={facts.servers_configured === 0} />}
 
       {facts.warnings.length > 0 && (
         <ul aria-label="Needs a look" className="m-0 flex list-none flex-col gap-1 p-0">
@@ -330,6 +331,24 @@ function UsenetPanel({ client, onChanged }: { client: DownloadClient; onChanged?
         </ul>
       )}
     </section>
+  );
+}
+
+// bundledSABLink is the bundled SABnzbd's own page as the browser reaches it: this host on
+// the port it's published on (not the container name Arrmada talks to it by).
+export function bundledSABLink(port: string, loc: { protocol: string; hostname: string }): string {
+  return `${loc.protocol}//${loc.hostname}:${port}`;
+}
+
+// OpenBundledSAB is where the bundled SABnzbd's news server is added: SABnzbd's own page.
+// Arrmada never asks for the provider's login.
+function OpenBundledSAB({ port, noServer }: { port: string; noServer: boolean }) {
+  const href = bundledSABLink(port, window.location);
+  return (
+    <div className="break-words text-sm">
+      <span className="text-ink-dim">{noServer ? "Add your Usenet provider in SABnzbd (Config → Servers):" : "SABnzbd's own page:"}</span>{" "}
+      <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+    </div>
   );
 }
 

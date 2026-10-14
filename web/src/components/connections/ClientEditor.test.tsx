@@ -97,6 +97,20 @@ describe("the SABnzbd card", () => {
     render(<ClientEditor client={sab()} onSaved={() => {}} />);
     expect((await screen.findByRole("alert")).textContent).toBe("Couldn't read SABnzbd: API Key Incorrect");
   });
+
+  // U5: the bundled SABnzbd arrives without a news server; its card links to SABnzbd's own
+  // page on this host, where the provider is added. Someone's own SABnzbd gets no link.
+  it("links the bundled SABnzbd's own page, saying to add the provider while it has none", async () => {
+    vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 0, usenet: facts({ servers: [], servers_configured: 0, servers_working: 0 }) });
+    render(<ClientEditor client={sab({ bundled: true, ui_port: "8086" })} onSaved={() => {}} />);
+    const link = await screen.findByRole("link", { name: /:8086/ });
+    expect(link.getAttribute("href")).toBe(`${window.location.protocol}//${window.location.hostname}:8086`);
+    expect(screen.getByText(/Add your Usenet provider in SABnzbd/)).toBeTruthy();
+    cleanup();
+    render(<ClientEditor client={sab()} onSaved={() => {}} />);
+    await screen.findByText(/Usenet servers:/);
+    expect(screen.queryByRole("link", { name: /↗/ })).toBeNull();
+  });
 });
 
 describe("serversLine", () => {
