@@ -2183,6 +2183,12 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		if !over {
 			continue
 		}
+		// The same torrent can be held for review under a later grab (re-grabbed for
+		// another item, or an audiobook version). Removing it — with its data — would take
+		// away the files that review is waiting on. Leave it until the review is decided.
+		if c.heldForReview(ctx, it.Hash) {
+			continue
+		}
 		// Only data whose content Arrmada imported is deleted with the torrent.
 		deleteData := g.Status == grabStatusImported
 		if err := c.dropTorrent(ctx, it.Hash, deleteData); err != nil {
@@ -2205,6 +2211,22 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 			"delete_data", deleteData, "ratio", ratio, "uploaded_bytes", it.UploadedBytes, "seed_time_s", it.SeedingTime)
 		c.addMediaEvent(ctx, g, "seeded", g.Title+" — "+reason+", "+what)
 	}
+}
+
+// heldForReview reports whether a download is waiting on a decision in Review: a pending
+// review for its hash, or any grab of it held for review. Seed cleanup must not remove it.
+func (c *Coordinator) heldForReview(ctx context.Context, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	if c.hasReview(ctx, hash) {
+		return true
+	}
+	var n int
+	_ = c.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM grabs WHERE status = ? AND info_hash != '' AND lower(info_hash) = lower(?)`,
+		grabStatusHeld, hash).Scan(&n)
+	return n > 0
 }
 
 // dropTorrent removes a torrent from the client through the test seam when one is set.
