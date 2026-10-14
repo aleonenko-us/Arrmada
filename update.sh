@@ -430,7 +430,7 @@ rollback() {
     docker compose stop arrmada-app
     docker image tag arrmada:previous arrmada:dev
     # Staged with the build that will boot on it: the swap happens as it starts.
-    if ! docker compose run --rm --no-deps arrmada-app restore "$_backup" </dev/null; then
+    if ! docker compose run --rm --no-deps -T arrmada-app restore "$_backup" </dev/null; then
       say "✗ Restoring $_backup failed (see above)." >&2
       if [ -n "$_cur" ]; then
         docker image tag arrmada:rolled-back arrmada:dev
@@ -740,6 +740,10 @@ docker image prune -f >/dev/null 2>&1 || true
 
 WEBPORT=$(grep -E '^ARRMADA_PORT=' .env | cut -d= -f2)
 HOSTIP=$(hostname -I 2>/dev/null | awk '{print $1}')
+# Not every hostname knows -I (Unraid's, busybox's); the route to the internet names it too.
+if [ -z "$HOSTIP" ] && command -v ip >/dev/null 2>&1; then
+  HOSTIP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')
+fi
 say ""
 if [ -n "$PULL_IMAGE" ]; then
   # What the release build stamped on the image (the same labels --rollback reads).

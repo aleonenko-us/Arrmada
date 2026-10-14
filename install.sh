@@ -447,10 +447,6 @@ new_install() {
   elif [ -n "$MEDIA" ] && [ ! -d "$MEDIA" ]; then
     die "$MEDIA doesn't exist. Check the path (it's case-sensitive)."
   fi
-  case "$MEDIA" in
-    /data | /data/*) die "Media can't go in /data — that's where Arrmada keeps its database. Use another folder." ;;
-  esac
-
   # Everything else is worked out, shown, and can be changed later.
   DATA="$_dir/data"
   if [ -z "$TRANSCODE_SET" ]; then TRANSCODE="$_dir/transcode"; fi
@@ -691,9 +687,9 @@ main() {
     _found=$(existing_dir)
     if [ -n "$_found" ]; then existing_install "$_found"; return; fi
   fi
-  # A container named Arrmada-app whose folder can't be found is still an install: a
-  # second one would collide with it.
-  if docker inspect Arrmada-app >/dev/null 2>&1 && [ -z "$DIR_SET" ]; then
+  # A container named Arrmada-app whose folder can't be found (or isn't the --dir given)
+  # is still an install: a second one would collide with it.
+  if docker inspect Arrmada-app >/dev/null 2>&1; then
     _wd=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' Arrmada-app 2>/dev/null || true)
     err "✗ Arrmada is already installed here (container Arrmada-app${_wd:+, started from $_wd}),"
     err "  but its folder wasn't found. Run update.sh in that folder to update it, or point"
