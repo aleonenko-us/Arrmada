@@ -148,7 +148,7 @@ func (c *Client) History(ctx context.Context, fn func(Page) error) error {
 				ParentTitle:          asStr(m["parent_title"]),
 				MediaType:            asStr(m["media_type"]),
 				Year:                 int(asInt(m["year"])),
-				RatingKey:            asStr(m["rating_key"]),
+				RatingKey:            asKey(m["rating_key"]),
 				MediaIndex:           int(asInt(m["media_index"])),
 				ParentIndex:          int(asInt(m["parent_media_index"])),
 				Started:              asInt(m["started"]),
@@ -200,9 +200,10 @@ func asInt(v any) int64 {
 	return 0
 }
 
-// asKey reads a Plex rating key, which Tautulli's API documents as a number but may send
-// as a string. (rating_key itself stays on asStr: earlier imports stored what asStr read,
-// and the import's duplicate check matches on it.)
+// asKey reads a Plex rating key, which Tautulli sends as a number in some versions and as
+// a string in others. Reading only the string form left rating_key empty on every play
+// from a version that sends numbers; the importer fills those in on the next run
+// (insights.ImportHistory) rather than importing the plays a second time.
 func asKey(v any) string {
 	if n := asInt(v); n > 0 {
 		return strconv.FormatInt(n, 10)

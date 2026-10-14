@@ -214,3 +214,50 @@ func TestPruneBandwidth(t *testing.T) {
 		t.Errorf("remaining = %d, want 1", remaining)
 	}
 }
+
+// A play an earlier import stored without its rating key is the same play when person,
+// start and title match: the import fills the key (and an empty show key) in rather than
+// adding it again. A different title at the same second is a different play, and a live
+// row is never rewritten.
+func TestImportFillsEmptyRatingKeys(t *testing.T) {
+	ctx := context.Background()
+	s := newDataTestService(t)
+	const at = int64(1_750_000_000)
+	seedRows(t, s,
+		sessionRecord{UserID: "1", MediaType: "episode", Title: "Pilot", GrandparentTitle: "Severance", StartedAt: at, StoppedAt: at + 3000, WatchedMS: 2900_000},
+		sessionRecord{UserID: "1", MediaType: "movie", Title: "Heat", StartedAt: at + 10_000, StoppedAt: at + 13_000},
+		sessionRecord{SessionKey: "live-9", UserID: "1", MediaType: "movie", Title: "Ronin", StartedAt: at + 20_000, StoppedAt: at + 23_000},
+	)
+	c := s.ImportHistory(ctx, []ImportedSession{
+		{UserID: 1, RatingKey: "8812", GrandparentRatingKey: "8800", MediaType: "episode", Title: "Pilot", GrandparentTitle: "Severance", StartedAt: at, StoppedAt: at + 3000, WatchedMS: 2900_000},
+		{UserID: 1, RatingKey: "500", MediaType: "movie", Title: "Arrival", StartedAt: at + 10_000, StoppedAt: at + 13_000},
+		{UserID: 1, RatingKey: "600", MediaType: "movie", Title: "Ronin", StartedAt: at + 20_000, StoppedAt: at + 23_000},
+	}, ImportOptions{})
+	// Ronin overlaps the live row, so it's skipped as recorded live — but the live row
+	// keeps its empty key: only imported rows are repaired.
+	if c.Duplicate != 1 || c.KeysFilled != 1 || c.Imported != 1 || c.Overlap != 1 || c.Failed != 0 {
+		t.Fatalf("counts = %+v; want Pilot filled, Arrival imported, Ronin recorded live", c)
+	}
+	var key, show string
+	if err := s.repo.db.QueryRowContext(ctx, `SELECT rating_key, grandparent_rating_key FROM stream_sessions WHERE title = 'Pilot'`).Scan(&key, &show); err != nil {
+		t.Fatal(err)
+	}
+	if key != "8812" || show != "8800" {
+		t.Errorf("Pilot keys = %q/%q, want 8812/8800", key, show)
+	}
+	var heat, ronin string
+	_ = s.repo.db.QueryRowContext(ctx, `SELECT rating_key FROM stream_sessions WHERE title = 'Heat'`).Scan(&heat)
+	_ = s.repo.db.QueryRowContext(ctx, `SELECT rating_key FROM stream_sessions WHERE title = 'Ronin'`).Scan(&ronin)
+	if heat != "" || ronin != "" {
+		t.Errorf("Heat %q, Ronin %q: a different title or a live row must keep its key", heat, ronin)
+	}
+	var n int
+	_ = s.repo.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stream_sessions`).Scan(&n)
+	if n != 4 {
+		t.Errorf("%d plays, want 4", n)
+	}
+	// Again: Pilot now matches on its key, nothing is filled twice.
+	if c := s.ImportHistory(ctx, []ImportedSession{{UserID: 1, RatingKey: "8812", MediaType: "episode", Title: "Pilot", StartedAt: at, StoppedAt: at + 3000}}, ImportOptions{}); c.Duplicate != 1 || c.KeysFilled != 0 {
+		t.Errorf("second pass = %+v", c)
+	}
+}

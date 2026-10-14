@@ -3,6 +3,7 @@ package insights
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,28 @@ func (r *repo) sessionExists(ctx context.Context, userID, ratingKey string, star
 		`SELECT COUNT(*) FROM stream_sessions WHERE user_id = ? AND rating_key = ? AND started_at = ?`,
 		userID, ratingKey, startedAt).Scan(&n)
 	return n > 0, err
+}
+
+// fillEmptyRatingKey looks for an imported play (no session key) by this user at this start
+// second, with this title and no rating key — imported before the Tautulli client read
+// numeric keys — and gives it ratingKey, plus the show's key when that is empty too. It
+// reports whether it found one. rating_key = '' keeps the lookup on the (user_id,
+// rating_key, started_at) dedupe index.
+func (r *repo) fillEmptyRatingKey(ctx context.Context, userID string, startedAt int64, title, ratingKey, grandparentKey string) (bool, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM stream_sessions
+		WHERE user_id = ? AND rating_key = '' AND started_at = ? AND session_key = '' AND title = ?
+		ORDER BY id LIMIT 1`, userID, startedAt, title).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE stream_sessions SET rating_key = ?,
+		grandparent_rating_key = CASE WHEN grandparent_rating_key = '' THEN ? ELSE grandparent_rating_key END
+		WHERE id = ?`, ratingKey, grandparentKey, id)
+	return err == nil, err
 }
 
 func (r *repo) insertBufferEvent(ctx context.Context, sessionID, at, offsetMS, durationMS int64, cause, detail string) error {

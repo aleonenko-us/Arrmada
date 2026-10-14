@@ -151,7 +151,7 @@ func (a *api) tautulliImportJob(url, key string, before int64) jobs.Spec {
 			cancel()
 			a.deps.Log.Info("tautulli import "+status, "run", runID, "imported", counts.Imported, "duplicates", counts.Duplicate,
 				"recorded_live", counts.Overlap, "invalid", counts.Invalid, "after_cutoff", counts.AfterCutoff,
-				"failed", counts.Failed, "first_error", counts.FirstError, "err", errText)
+				"failed", counts.Failed, "keys_filled", counts.KeysFilled, "first_error", counts.FirstError, "err", errText)
 			result := map[string]any{"run_id": runID, "total": total, "counts": counts}
 			if err != nil {
 				return result, errors.New(errText)
