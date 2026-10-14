@@ -9,6 +9,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/notify"
 	"github.com/tristenlammi/arrmada/internal/requests"
 )
@@ -28,7 +29,7 @@ func (a *api) handleMyNotifications(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []requests.UserNotification{}
 	}
-	a.inboxPlexLinks(r.Context(), items)
+	a.inboxWatchLinks(r.Context(), items, u)
 	unread := 0
 	for _, n := range items {
 		if !n.Read {
@@ -38,24 +39,33 @@ func (a *api) handleMyNotifications(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"notifications": items, "unread": unread})
 }
 
-// inboxPlexLinks gives each 'ready' notice its Watch on Plex link: the title's page as the
-// Plex index has it now (from memory — a notice sent during the grace period gains one
-// once Plex has the title), else the one saved when it was sent. While Plex isn't set up
-// or its index isn't built, every link is hidden, so the bell never offers a Watch button
-// that can't work.
-func (a *api) inboxPlexLinks(ctx context.Context, items []requests.UserNotification) {
-	ready := a.plexReady(ctx)
+// inboxWatchLinks gives each 'ready' notice its Watch buttons, one per media server: the
+// title's page as that server's index has it now (from memory — a notice sent during the
+// grace period gains one once the server has the title), else the one saved when it was
+// sent. A server that isn't set up or whose index isn't built shows no link, so the bell
+// never offers a Watch button that can't work. The reader's own server comes first;
+// plex_url stays for older pages.
+func (a *api) inboxWatchLinks(ctx context.Context, items []requests.UserNotification, reader *auth.User) {
+	srcs := a.linkSources(ctx)
 	for i := range items {
 		n := &items[i]
-		if !ready {
-			n.PlexURL = ""
+		saved := map[mediaserver.Kind]string{mediaserver.Plex: n.PlexURL, mediaserver.Jellyfin: n.JellyfinURL}
+		n.PlexURL, n.JellyfinURL, n.WatchLinks = "", "", nil
+		if len(srcs) == 0 {
 			continue
 		}
+		urls := make([]string, len(srcs))
 		if media, id, ok := requests.ReadyRef(n.Ref); ok {
-			if u := a.watchURL(ctx, media, insights.ExternalIDs{TMDB: id}); u != "" {
-				n.PlexURL = u
+			urls = lookupLinks(ctx, srcs, media, insights.ExternalIDs{TMDB: id})
+		}
+		for j, s := range srcs {
+			if urls[j] == "" {
+				urls[j] = saved[s.kind]
 			}
 		}
+		links := collectLinks(srcs, urls)
+		n.PlexURL = linkFor(links, mediaserver.Plex)
+		n.WatchLinks = a.leadWith(ctx, links, reader)
 	}
 }
 

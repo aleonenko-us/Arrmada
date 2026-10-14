@@ -108,3 +108,31 @@ func TestKindLabel(t *testing.T) {
 		}
 	}
 }
+
+// Someone linked only to Jellyfin sees its Watch link first; everyone else keeps Plex
+// first. The rest keep their order, and the input isn't changed.
+func TestHomeAndLeadWith(t *testing.T) {
+	for _, tc := range []struct {
+		plex, jf bool
+		want     Kind
+	}{{false, false, Plex}, {true, false, Plex}, {true, true, Plex}, {false, true, Jellyfin}} {
+		if got := Home(tc.plex, tc.jf); got != tc.want {
+			t.Errorf("Home(%v, %v) = %q, want %q", tc.plex, tc.jf, got, tc.want)
+		}
+	}
+	links := []WatchLink{{Server: Plex, Label: "Plex", URL: "p"}, {Server: Jellyfin, Label: "Jellyfin", URL: "j"}}
+	got := LeadWith(links, Jellyfin)
+	if len(got) != 2 || got[0].Server != Jellyfin || got[1].Server != Plex {
+		t.Errorf("LeadWith(jellyfin) = %+v", got)
+	}
+	if links[0].Server != Plex {
+		t.Error("LeadWith changed its input")
+	}
+	if got := LeadWith(links, Plex); !reflect.DeepEqual(got, links) {
+		t.Errorf("LeadWith(plex) = %+v", got)
+	}
+	only := []WatchLink{{Server: Plex, URL: "p"}}
+	if got := LeadWith(only, Jellyfin); !reflect.DeepEqual(got, only) {
+		t.Errorf("one link reordered: %+v", got)
+	}
+}

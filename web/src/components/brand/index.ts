@@ -5,6 +5,6 @@ export { ServerBadge, ServerTile } from "./ServerBadge";
 export { WatchButton, WatchPills } from "./WatchPills";
 export {
   MEDIA_SERVERS, SERVER_LABEL, SERVER_FILL, SERVER_INK,
-  isMediaServer, watchLabel, safeWatchURL,
+  isMediaServer, watchLabel, safeWatchURL, watchLinksOf,
   type MediaServerKind, type WatchLink,
 } from "./servers";

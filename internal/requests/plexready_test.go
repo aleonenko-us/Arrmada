@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
@@ -30,18 +31,23 @@ func (f *fakeLocator) Configured(context.Context) bool {
 	return f.configured
 }
 
-func (f *fakeLocator) Find(_ context.Context, media string, ids PlexIDs) (string, bool) {
+func (f *fakeLocator) Servers(context.Context) []mediaserver.Kind {
+	return []mediaserver.Kind{mediaserver.Plex}
+}
+
+func (f *fakeLocator) Find(_ context.Context, media string, ids PlexIDs) []Sighting {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.built.IsZero() {
-		return "", false // the index hasn't been read yet
+		return nil // the index hasn't been read yet
 	}
 	for _, k := range []string{fmt.Sprintf("%s:%d", media, ids.TMDB), "imdb:" + ids.IMDB} {
 		if f.have[k] {
-			return "https://app.plex.tv/desktop/#!/server/m1/details?key=" + k, true
+			return []Sighting{{Link: mediaserver.WatchLink{Server: mediaserver.Plex, Label: "Plex",
+				URL: "https://app.plex.tv/desktop/#!/server/m1/details?key=" + k}, IndexBuiltAt: f.built}}
 		}
 	}
-	return "", false
+	return nil
 }
 
 func (f *fakeLocator) IndexBuiltAt() time.Time {

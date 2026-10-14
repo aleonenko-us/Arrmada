@@ -1019,15 +1019,17 @@ func main() {
 	// every 30 minutes and about 90 seconds after each scan, once Plex has added the files.
 	grp.Loop("plex: library index", insightsSvc.RunPlexIndex)
 	plexScanner.OnRefreshed(func(string, string, string) { insightsSvc.PlexIndexStale(90 * time.Second) })
-	// 'Ready' means watchable in Plex: with Plex set up, a request's notice waits until the
-	// index shows the title (looked at again after every rebuild, and every two minutes so
-	// the 30-minute fallback fires even if the index never builds).
-	requestsSvc.SetPlexLocator(plexReadyLocator{insightsSvc})
-	insightsSvc.OnPlexIndexRebuilt(requestsSvc.KickPlexCheck)
+	// 'Ready' means watchable on a media server: with Plex or Jellyfin set up, a request's
+	// notice waits until either server's index shows the title (looked at again after
+	// every rebuild of either, and every two minutes so the 30-minute fallback fires even
+	// if no index ever builds). Watch links lead with each person's own server.
+	requestsSvc.SetPlexLocator(mediaReadyLocator{media.Registry})
+	requestsSvc.SetHomeServer(homeServer)
+	media.Registry.OnIndexRebuilt(requestsSvc.KickPlexCheck)
 	grp.Loop("requests: plex check", requestsSvc.RunPlexChecks)
 	sched.Register("request-plex-check", 2*time.Minute, false, requestsSvc.CheckPlexWaiting,
-		scheduler.Label("Tell requesters once Plex has their title"),
-		scheduler.Description("Sends the 'ready' notice for requests waiting for Plex to add the title, or after 30 minutes if Plex never shows it."))
+		scheduler.Label("Tell requesters once their title is on Plex or Jellyfin"),
+		scheduler.Description("Sends the 'ready' notice for requests waiting for Plex or Jellyfin to add the title, or after 30 minutes if neither shows it."))
 	// Imports, upgrades and movie renames/deletes reach it through the outbox (registered
 	// below); the changes that don't go through the outbox call it directly.
 	seriesSvc.SetLibraryChanged(media.Request)   // episode and show deletes
@@ -1269,6 +1271,7 @@ func main() {
 		Jellyfin:     media.Jellyfin,
 		JellyfinScan: media.JellyfinScan,
 		MediaServers: media.Registry,
+		HomeServer:   homeServer, // whose Watch link a person sees first
 		// Everything else reads the folders live; the bundled qBittorrent's default save
 		// path is the one thing that has to be told. Same retries as at boot — the client
 		// may be restarting — and each try reads the folder afresh, so of two quick saves
