@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
 
@@ -27,12 +28,9 @@ const (
 	plexIndexTimeout  = 3 * time.Minute
 )
 
-// ExternalIDs are the outside ids a title is known by. Zero / "" = unknown.
-type ExternalIDs struct {
-	TMDB int
-	TVDB int
-	IMDB string
-}
+// ExternalIDs are the outside ids a title is known by. Zero / "" = unknown. The Plex index
+// looks titles up by id only; the Folder field is for servers that can match by path.
+type ExternalIDs = mediaserver.ExternalIDs
 
 type plexIndex struct {
 	machineID   string
@@ -387,11 +385,7 @@ func (s *Service) TMDBForRatingKey(key string) (media string, tmdb int, ok bool)
 // RecentTMDB is one title Plex added recently, by TMDB id: what Discover's "Recently
 // added" row can show without saying anything about Plex itself (no library names,
 // paths or users).
-type RecentTMDB struct {
-	Media   string // movie | series
-	TMDB    int
-	AddedAt int64 // unix seconds
-}
+type RecentTMDB = mediaserver.RecentTMDB
 
 // RecentlyAddedTMDB is Plex's recently added list mapped to TMDB ids through the library
 // index: an episode or season counts as its show, and anything the index can't name (not

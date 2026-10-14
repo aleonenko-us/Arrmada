@@ -28,11 +28,27 @@ const (
 // MaxPathMaps bounds how many mappings can be saved: a handful covers any real setup.
 const MaxPathMaps = 20
 
-// Client is the part of the Plex client the scanner uses (*plex.Client is one).
+// Client is the part of the Plex client the scanner uses (*plex.Client is one). Another
+// server fits through an adapter (Jellyfin's lives in internal/jellyfinsvc).
 type Client interface {
 	Libraries(ctx context.Context) ([]plex.Library, error)
 	RefreshPath(ctx context.Context, sectionKey, dir string) error
 	RefreshSection(ctx context.Context, sectionKey string) error
+}
+
+// PathBatcher is a Client that takes several folders in one request. The scanner then
+// sends every folder that's due at the same moment in one call instead of one call each.
+// Jellyfin wants this: it waits until no new report has come for a minute before it
+// scans, so separate calls only push each other back.
+type PathBatcher interface {
+	RefreshPaths(ctx context.Context, paths []string) error
+}
+
+// Keys names the settings a scanner keeps its switch and mappings under. Empty fields
+// take Plex's (KeyEnabled, KeyPathMap).
+type Keys struct {
+	Enabled string
+	PathMap string
 }
 
 // Settings is where the toggle and the mappings live (*settings.Service is one).
@@ -54,6 +70,10 @@ type Options struct {
 	// Roots returns Arrmada's library folder per kind (KindMovie, KindShow), read live.
 	Roots func(ctx context.Context) map[string]string
 	Log   *slog.Logger
+	// Keys are the settings for the switch and the mappings (Plex's when empty).
+	Keys Keys
+	// Server is the server's name in log lines and messages ("Plex" when empty).
+	Server string
 }
 
 // Timings. A season pack lands episode by episode over a few seconds, Convert swaps and
@@ -99,6 +119,9 @@ type Scanner struct {
 	settings   Settings
 	roots      func(ctx context.Context) map[string]string
 	log        *slog.Logger
+	keys       Keys
+	server     string // "Plex", "Jellyfin"
+	logPrefix  string // "plex: "
 
 	now        func() time.Time
 	exists     func(dir string) bool
@@ -126,12 +149,26 @@ func New(o Options) *Scanner {
 	if log == nil {
 		log = slog.Default()
 	}
+	keys := o.Keys
+	if keys.Enabled == "" {
+		keys.Enabled = KeyEnabled
+	}
+	if keys.PathMap == "" {
+		keys.PathMap = KeyPathMap
+	}
+	server := o.Server
+	if server == "" {
+		server = "Plex"
+	}
 	return &Scanner{
 		client:     o.Client,
 		configured: o.Configured,
 		settings:   o.Settings,
 		roots:      o.Roots,
 		log:        log,
+		keys:       keys,
+		server:     server,
+		logPrefix:  strings.ToLower(server) + ": ",
 		now:        time.Now,
 		exists:     dirExists,
 		debounce:   defaultDebounce,
@@ -156,7 +193,7 @@ func (s *Scanner) OnRefreshed(fn func(kind, sectionKey, plexPath string)) {
 
 // Enabled reports the "Tell Plex to scan after changes" toggle.
 func (s *Scanner) Enabled(ctx context.Context) bool {
-	return s.settings == nil || s.settings.GetBool(ctx, KeyEnabled, true)
+	return s.settings == nil || s.settings.GetBool(ctx, s.keys.Enabled, true)
 }
 
 // Configured reports whether a Plex server is set up.
@@ -173,7 +210,7 @@ func (s *Scanner) PathMaps(ctx context.Context) []PathMap {
 	if s.settings == nil {
 		return []PathMap{}
 	}
-	raw := s.settings.Get(ctx, KeyPathMap, "")
+	raw := s.settings.Get(ctx, s.keys.PathMap, "")
 	var maps []PathMap
 	if raw == "" || json.Unmarshal([]byte(raw), &maps) != nil {
 		return []PathMap{}
@@ -192,7 +229,7 @@ func (s *Scanner) Save(ctx context.Context, enabled bool, maps []PathMap) error 
 			continue
 		}
 		if f == "" || t == "" {
-			return fmt.Errorf("each mapping needs both an Arrmada folder and a Plex folder")
+			return fmt.Errorf("each mapping needs both an Arrmada folder and a %s folder", s.server)
 		}
 		if !Absolute(f) || !Absolute(t) {
 			return fmt.Errorf("%q → %q: both sides must be full paths, like /movies or D:\\Media\\Movies", f, t)
@@ -206,10 +243,10 @@ func (s *Scanner) Save(ctx context.Context, enabled bool, maps []PathMap) error 
 	if err != nil {
 		return err
 	}
-	if err := s.settings.Set(ctx, KeyPathMap, string(b)); err != nil {
+	if err := s.settings.Set(ctx, s.keys.PathMap, string(b)); err != nil {
 		return err
 	}
-	if err := s.settings.SetBool(ctx, KeyEnabled, enabled); err != nil {
+	if err := s.settings.SetBool(ctx, s.keys.Enabled, enabled); err != nil {
 		return err
 	}
 	if !enabled {
@@ -375,7 +412,7 @@ func (s *Scanner) runDue(ctx context.Context) {
 		for _, p := range due {
 			s.retry(p, now)
 		}
-		s.recordFailure(Status{At: now, Kind: due[0].kind, Error: err.Error()}, "plex: couldn't read the Plex libraries to send a scan", err)
+		s.recordFailure(Status{At: now, Kind: due[0].kind, Error: err.Error()}, s.logPrefix+"couldn't read the "+s.server+" libraries to send a scan", err)
 		return
 	}
 	roots := map[string]string{}
@@ -384,15 +421,20 @@ func (s *Scanner) runDue(ctx context.Context) {
 	}
 	maps := s.PathMaps(ctx)
 	sent := map[target]bool{}
+	// A client that takes several folders in one request gets every due folder in one
+	// call, sent after the loop. Asked once, and only when a folder is about to go out.
+	var batch []batched
+	var batcher PathBatcher
+	askedBatcher := false
 	for _, p := range due {
 		res := Resolve(p.kind, s.existing(p.dir, roots[p.kind]), roots[p.kind], secs, maps)
 		if len(res.SectionKeys) == 0 {
-			s.logOnce("none:"+p.kind, "plex: no Plex library to scan for this change", "kind", p.kind, "note", res.Note)
+			s.logOnce("none:"+p.kind, s.logPrefix+"no "+s.server+" library to scan for this change", "kind", p.kind, "note", s.note(res.Note))
 			continue
 		}
 		if res.How == HowSection {
 			s.logOnce("whole:"+p.kind+":"+roots[p.kind],
-				"plex: scanning the whole Plex library because this folder couldn't be matched to Plex's — add a path mapping in the Plex settings for faster scans",
+				s.logPrefix+"scanning the whole "+s.server+" library because this folder couldn't be matched to "+s.server+"'s — add a path mapping in the "+s.server+" settings for faster scans",
 				"kind", p.kind, "arrmada_folder", roots[p.kind])
 		}
 		targets := make([]target, 0, len(res.SectionKeys))
@@ -420,13 +462,23 @@ func (s *Scanner) runDue(ctx context.Context) {
 			sent[t] = true
 			title := sectionTitle(secs, t.section)
 			st := Status{At: now, Kind: p.kind, Path: t.path, Section: title, How: res.How}
+			if t.path != "" && !askedBatcher {
+				askedBatcher = true
+				if c := s.client(ctx); c != nil {
+					batcher, _ = c.(PathBatcher)
+				}
+			}
+			if t.path != "" && batcher != nil {
+				batch = append(batch, batched{p: p, t: t, st: st})
+				continue
+			}
 			if err := s.refresh(ctx, t); err != nil {
 				if errors.Is(err, errNotFound) {
 					s.dropSections() // the section went away: read them again next time
 				}
 				s.retry(p, now)
 				st.Error = err.Error()
-				s.recordFailure(st, "plex: scan request failed", err, "section", title, "path", t.path)
+				s.recordFailure(st, s.logPrefix+"scan request failed", err, "section", title, "path", t.path)
 				break
 			}
 			s.mu.Lock()
@@ -435,12 +487,78 @@ func (s *Scanner) runDue(ctx context.Context) {
 			s.failing = false
 			listeners := append([]func(string, string, string){}, s.listeners...)
 			s.mu.Unlock()
-			s.log.Info("plex: asked Plex to scan", "kind", p.kind, "section", title, "path", displayPath(t.path), "how", res.How, "changes", p.reqsCovered)
+			s.log.Info(s.logPrefix+"asked "+s.server+" to scan", "kind", p.kind, "section", title, "path", displayPath(t.path), "how", res.How, "changes", p.reqsCovered)
 			for _, fn := range listeners {
 				fn(p.kind, t.section, t.path)
 			}
 		}
 	}
+	if len(batch) > 0 {
+		s.sendBatch(ctx, batcher, batch, now)
+	}
+}
+
+// batched is one folder waiting for a PathBatcher's single call.
+type batched struct {
+	p  *pending
+	t  target
+	st Status
+}
+
+// sendBatch reports every batched folder in one request. It succeeds or fails as one:
+// on failure each folder goes back for a retry, as a failed single scan would.
+func (s *Scanner) sendBatch(ctx context.Context, b PathBatcher, batch []batched, now time.Time) {
+	paths := make([]string, 0, len(batch))
+	seen := map[string]bool{}
+	for _, q := range batch {
+		if !seen[q.t.path] {
+			seen[q.t.path] = true
+			paths = append(paths, q.t.path)
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	err := b.RefreshPaths(cctx, paths)
+	cancel()
+	if err != nil {
+		for _, q := range batch {
+			s.retry(q.p, now)
+		}
+		st := batch[0].st
+		st.Error = err.Error()
+		s.recordFailure(st, s.logPrefix+"scan request failed", err, "folders", len(paths))
+		return
+	}
+	s.mu.Lock()
+	for _, q := range batch {
+		s.lastRun[q.t] = now
+	}
+	s.status = batch[len(batch)-1].st
+	s.failing = false
+	listeners := append([]func(string, string, string){}, s.listeners...)
+	s.mu.Unlock()
+	for _, q := range batch {
+		s.log.Info(s.logPrefix+"asked "+s.server+" to scan", "kind", q.p.kind, "section", q.st.Section,
+			"path", displayPath(q.t.path), "how", q.st.How, "changes", q.p.reqsCovered, "batch", len(paths))
+		for _, fn := range listeners {
+			fn(q.p.kind, q.t.section, q.t.path)
+		}
+	}
+}
+
+// notConfigured is the error for a scan with no server to send it to.
+func (s *Scanner) notConfigured() error {
+	if s.server == "Plex" {
+		return plex.ErrNotConfigured
+	}
+	return fmt.Errorf("%s is not configured", strings.ToLower(s.server))
+}
+
+// note words a Resolution's note for this scanner's server: Resolve writes them for Plex.
+func (s *Scanner) note(n string) string {
+	if s.server == "Plex" {
+		return n
+	}
+	return strings.ReplaceAll(n, "Plex", s.server)
 }
 
 // dirExists reports whether dir is still there. Only a definite "doesn't exist" counts
@@ -473,7 +591,7 @@ var errNotFound = errors.New("plex returned HTTP 404")
 func (s *Scanner) refresh(ctx context.Context, t target) error {
 	c := s.client(ctx)
 	if c == nil {
-		return plex.ErrNotConfigured
+		return s.notConfigured()
 	}
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -551,7 +669,7 @@ func (s *Scanner) sections(ctx context.Context, fresh bool) ([]plex.Library, err
 	s.mu.Unlock()
 	c := s.client(ctx)
 	if c == nil {
-		return nil, plex.ErrNotConfigured
+		return nil, s.notConfigured()
 	}
 	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -642,6 +760,7 @@ func (s *Scanner) View(ctx context.Context) View {
 		rv := RootView{Kind: kind, ArrmadaRoot: roots[kind]}
 		if v.Configured && v.Error == "" && rv.ArrmadaRoot != "" {
 			rv.Resolution = Resolve(kind, rv.ArrmadaRoot, rv.ArrmadaRoot, secs, v.PathMap)
+			rv.Note = s.note(rv.Note)
 		}
 		if rv.Sections == nil {
 			rv.Sections = []string{}
@@ -662,7 +781,7 @@ func (s *Scanner) ScanNow(ctx context.Context, kind string, run bool) (RootView,
 		return RootView{}, fmt.Errorf("%w: unknown library kind %q", ErrUnavailable, kind)
 	}
 	if !s.Configured(ctx) || s.client == nil {
-		return RootView{}, fmt.Errorf("%w: Plex isn't connected", ErrUnavailable)
+		return RootView{}, fmt.Errorf("%w: %s isn't connected", ErrUnavailable, s.server)
 	}
 	root := ""
 	if s.roots != nil {
@@ -676,6 +795,7 @@ func (s *Scanner) ScanNow(ctx context.Context, kind string, run bool) (RootView,
 		return RootView{}, err
 	}
 	rv := RootView{Kind: kind, ArrmadaRoot: root, Resolution: Resolve(kind, root, root, secs, s.PathMaps(ctx))}
+	rv.Note = s.note(rv.Note)
 	if rv.Sections == nil {
 		rv.Sections = []string{}
 	}
@@ -699,7 +819,7 @@ func (s *Scanner) ScanNow(ctx context.Context, kind string, run bool) (RootView,
 		s.failing = false
 		listeners := append([]func(string, string, string){}, s.listeners...)
 		s.mu.Unlock()
-		s.log.Info("plex: asked Plex to scan (Scan now)", "kind", kind, "section", st.Section, "path", displayPath(t.path), "how", rv.How)
+		s.log.Info(s.logPrefix+"asked "+s.server+" to scan (Scan now)", "kind", kind, "section", st.Section, "path", displayPath(t.path), "how", rv.How)
 		for _, fn := range listeners {
 			fn(kind, key, t.path)
 		}
