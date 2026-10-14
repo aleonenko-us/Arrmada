@@ -44,7 +44,7 @@ export function buildChannel(version: string, commit: string, update?: UpdateSta
 
 // versionBadge is the sidebar's quiet build line: "v0.2.0" for a release, "main · c9d20ec"
 // for a build of a commit (both channels that follow a commit compile main), "dev" for a
-// build that doesn't know its commit. A build with local edits keeps update.sh's -dirty
+// build that doesn't know its commit. A build with local edits keeps its version's -dirty
 // mark. update says whether the check found something newer for this install's channel
 // (the Updates card's headline, so the two never disagree); title is the badge's full name.
 export function versionBadge(version: string, commit: string, update?: UpdateStatus | null): { label: string; update: boolean; title: string } {
