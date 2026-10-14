@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "./api";
-import { noteBlocks, updateHeadline, updateHint } from "./updateStatus";
+import { INSTALL_LINE, noteBlocks, updateHeadline, updateHint } from "./updateStatus";
 
 const base: UpdateStatus = {
   enabled: true, current: "v1.2.0", channel: "release", checked_at: "2026-10-13T09:00:00Z",
@@ -44,11 +44,11 @@ describe("a build on an install that follows the releases", () => {
 
 describe("updateHint", () => {
   it("names the way to update for each channel", () => {
-    expect(updateHint(base)).toMatch(/update\.sh.*docker compose pull/);
+    expect(updateHint(base)).toEqual({ text: expect.stringMatching(/install line.*docker compose pull/), command: INSTALL_LINE });
     expect(updateHint({ ...base, available: false })).toBeNull();
-    expect(updateHint({ ...base, channel: "build", available: true, ahead: 0 })).toMatch(/moves this server to that release/);
-    expect(updateHint({ ...base, channel: "build", available: false, ahead: 3 })).toMatch(/ARRMADA_CHANNEL=main/);
-    expect(updateHint({ ...base, channel: "main", available: false, behind: 4 })).toMatch(/pulls main/);
+    expect(updateHint({ ...base, channel: "build", available: true, ahead: 0 })?.text).toMatch(/move it to that release/);
+    expect(updateHint({ ...base, channel: "build", available: false, ahead: 3 })?.command).toBe("ARRMADA_CHANNEL=main");
+    expect(updateHint({ ...base, channel: "main", available: false, behind: 4 })).toEqual({ text: expect.stringMatching(/pulls the newest code/), command: INSTALL_LINE });
     expect(updateHint({ ...base, channel: "main", available: false, behind: 0 })).toBeNull();
     expect(updateHint({ ...base, enabled: false })).toBeNull();
   });

@@ -45,7 +45,12 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
           )}
         </div>
         {update.enabled && update.problem && <p className="m-0 text-sm text-ink-dim">{update.problem}</p>}
-        {hint && <p className="m-0 text-sm text-ink-dim">{hint}</p>}
+        {hint && (
+          <div className="flex flex-col gap-1">
+            <p className="m-0 text-sm text-ink-dim">{hint.text}</p>
+            <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{hint.command}</code>
+          </div>
+        )}
         {latest && <ReleaseNotes release={latest} open={update.available} label={update.available ? "What changed" : `Newest release: ${latest.tag}`} />}
         {err && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text, var(--reject))" }}>{err}</p>}
         <div className="flex flex-wrap items-center gap-3">

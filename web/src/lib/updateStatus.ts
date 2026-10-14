@@ -31,22 +31,34 @@ export function updateHeadline(u: UpdateStatus): { text: string; tone: UpdateTon
   return { text: "This build doesn't say which commit it's from, so it can't be compared.", tone: "muted" };
 }
 
-// updateHint is how this server gets the update on offer, for the channel it follows, or
-// null when there's nothing to do. update.sh is in Arrmada's folder (a git checkout or the
-// installer's folder); an install from the compose file alone updates through compose.
-export function updateHint(u: UpdateStatus): string | null {
+// The install line: run again on the server, it finds the install and updates it the way
+// its channel says (the latest release, or main compiled there).
+export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";
+
+// updateHint is how this server gets the update on offer, for the channel it follows (the
+// words, and the command or line to use), or null when there's nothing to do.
+export function updateHint(u: UpdateStatus): { text: string; command: string } | null {
   if (!u.enabled) return null;
   if (u.channel === "release" && u.available) {
-    return "To update, run ./update.sh in Arrmada's folder, or the install line again. Installed with just the compose file: docker compose pull && docker compose up -d.";
+    return {
+      text: "To update, run the install line again on the server; it backs up the database first. Installed with just the compose file: docker compose pull && docker compose up -d.",
+      command: INSTALL_LINE,
+    };
   }
   if (u.channel === "build" && u.available) {
-    return "./update.sh in Arrmada's folder moves this server to that release; from then on updates download each release.";
+    return {
+      text: "Run the install line again on the server to move it to that release; from then on updates download each release.",
+      command: INSTALL_LINE,
+    };
   }
   if (u.channel === "build" && (u.ahead ?? 0) > 0) {
-    return "./update.sh keeps this build until a release includes it. To follow main instead, add ARRMADA_CHANNEL=main to .env and run ./update.sh.";
+    return {
+      text: "Updates keep this build until a release includes it. To follow main instead, add this line to .env in Arrmada's folder, then run the install line again:",
+      command: "ARRMADA_CHANNEL=main",
+    };
   }
   if (u.channel === "main" && (u.behind ?? 0) > 0) {
-    return "To update, run ./update.sh in Arrmada's folder: it pulls main and compiles it.";
+    return { text: "To update, run the install line again on the server: on main it pulls the newest code and compiles it.", command: INSTALL_LINE };
   }
   return null;
 }

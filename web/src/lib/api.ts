@@ -1762,7 +1762,7 @@ export interface UpdateStatus {
   /**
    * release: a v-tag build, compared with the newest release; main: a commit build on an install
    * that follows main, compared with main; build: a commit build on an install that follows the
-   * releases (update.sh keeps it until a release includes it), compared with the newest release;
+   * releases (updates keep it until a release includes it), compared with the newest release;
    * dev: none of these.
    */
   channel: "release" | "main" | "build" | "dev";
