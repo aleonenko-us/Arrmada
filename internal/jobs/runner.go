@@ -400,12 +400,15 @@ func (r *Runner) finish(e *entry, ctx context.Context, result any, err error) {
 	e.mu.Unlock()
 	delete(r.byID, e.id)
 	r.mu.Unlock()
-	close(e.done)
 
 	if status != StatusSucceeded && status != StatusCancelled {
 		r.log.Warn("job "+status, "kind", e.spec.Kind, "target", e.spec.Target, "err", errText)
 	}
+	// Publish the final state before waking Wait: whoever was waiting can rely on the last
+	// event being out (the result is already stored, so a listener that reads it back finds
+	// the job finished).
 	r.publish(e, status, pct, msg, errText)
+	close(e.done)
 }
 
 // Cancel stops a queued or running job. ErrFinished for one that already ended,
