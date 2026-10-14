@@ -23,7 +23,7 @@ import { Page } from "../ui/Page";
 // re-encodes wasteful video to HEVC or AV1 at the same quality, one file at a time, pausing
 // while someone watches Plex. There's no queue to manage — the Overview shows what it's
 // doing, what's next and what it did; the Library lets you pick a file to do right now.
-// The settings live in Settings → Subtitles & Convert; this page is the working view.
+// The settings live in Settings → Convert; this page is the working view.
 type Tab = "overview" | "library" | "problems" | "history" | "activity";
 const TAB_KEYS: readonly Tab[] = ["overview", "library", "problems", "history", "activity"];
 const ACTIVE = new Set(["preparing", "testing", "encoding", "verifying", "replacing"]);

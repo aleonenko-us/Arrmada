@@ -64,7 +64,7 @@ var bannedCopy = []bannedPhrase{
 	phrase(`Settings → System → (Recycle bin|Disk guard|Download disk guard)`, "the recycle bin and disk guard live in Settings → Downloads (LINKS.recycleBin, LINKS.diskGuard)"),
 	webPhrase(`/settings\?tab=`, "each Settings section has its own URL — link through LINKS (/settings/<section>#card)"),
 	// CFG-17: module settings moved out of their pages' Settings tabs into the hub.
-	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles & Convert and Settings → Audiobook server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
+	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles, Settings → Convert and Settings → Audiobook server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
 	webPhrase(`/(convert|subtitles)\?tab=settings|/audiobooks\?tab=server`, "the old Settings tabs only redirect now — link through LINKS"),
 	// CFG-18: Users became People & access.
 	phrase(`Settings → Users`, "the section is Settings → People & access (LINKS.users)"),

@@ -6,8 +6,8 @@ const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
 
 describe("visibleSections", () => {
-  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles & Convert, Alerts (read-only) and the Plex connection", () => {
-    expect(manager).toEqual(["library", "media", "connections", "tools", "alerts", "plex"]);
+  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles, Convert, Alerts (read-only) and the Plex connection", () => {
+    expect(manager).toEqual(["library", "media", "connections", "subtitles", "convert", "alerts", "plex"]);
   });
 
   it("gives an admin every section, Status included", () => {
@@ -21,6 +21,13 @@ describe("settingsRedirect", () => {
     expect(settingsRedirect("/settings/system", "", "#backups", admin)).toBeNull();
     expect(settingsRedirect("/settings/connections", "", "#indexer-12", manager)).toBeNull();
     expect(settingsRedirect("/settings/library", "", "", manager)).toBeNull();
+  });
+
+  it("splits the old Subtitles & Convert section by its card anchor", () => {
+    expect(settingsRedirect("/settings/tools", "", "#subtitles", manager)).toBe("/settings/subtitles#subtitles");
+    expect(settingsRedirect("/settings/tools", "", "#convert", manager)).toBe("/settings/convert#convert");
+    expect(settingsRedirect("/settings/tools", "", "", admin)).toBe("/settings/subtitles");
+    expect(settingsRedirect("/settings/tools", "?x=1", "#convert", admin)).toBe("/settings/convert?x=1#convert");
   });
 
   it("opens Library for bare /settings", () => {

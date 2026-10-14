@@ -387,7 +387,7 @@ func (s *Service) IndexAll(ctx context.Context) {
 }
 
 // MaybeIndexSweep is the scheduler entry point. It ticks often but only sweeps once a day,
-// at the admin-configured time (Settings → Subtitles & Convert → Convert → Advanced, "Daily
+// at the admin-configured time (Settings → Convert → Advanced, "Daily
 // library scan at"; default 03:00), so the array isn't woken at an arbitrary hour. Imports
 // keep the index fresh in between — this only catches changes made outside Arrmada.
 func (s *Service) MaybeIndexSweep(ctx context.Context) {

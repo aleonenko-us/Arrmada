@@ -14,7 +14,7 @@ import { LanguagePicker } from "../../components/LanguagePicker";
 import { KeptTracksNote, card, cardStyle } from "../subtitles/shared";
 import { SubtitleProfiles } from "./SubtitleProfiles";
 
-// Settings → Subtitles & Convert → Subtitles: which languages are kept, whether new files
+// Settings → Subtitles: which languages are kept, whether new files
 // get them automatically, the local AI models, and where OpenSubtitles stands. It used to
 // be the Subtitles page's Settings tab; that page now links here (Configure →). Each
 // control saves itself.

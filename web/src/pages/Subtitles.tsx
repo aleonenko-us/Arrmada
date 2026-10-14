@@ -22,7 +22,7 @@ import { LazySubtitleDrawer } from "../components/subtitles/LazySubtitleDrawer";
 import type { SubMediaRef } from "../lib/subtitleFileApi";
 import { Page } from "../ui/Page";
 
-// The settings live in Settings → Subtitles & Convert; this page is the working view.
+// The settings live in Settings → Subtitles; this page is the working view.
 type Tab = "overview" | "queue" | "library" | "logs";
 const TAB_KEYS: readonly Tab[] = ["overview", "queue", "library", "logs"];
 

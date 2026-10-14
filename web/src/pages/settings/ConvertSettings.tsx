@@ -14,7 +14,7 @@ import { SAME_AS_SUBTITLES } from "../../lib/convertKeepSubs";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
 import { SwitchOnDialog } from "../convert/ConfirmConvert";
 
-// Settings → Subtitles & Convert → Convert: when Convert runs, what it converts to, which
+// Settings → Convert: when Convert runs, what it converts to, which
 // tracks it keeps, and where it works. It used to be the Convert page's Settings tab; that
 // page now links here (Configure →) and reads these through its own GET. Each control saves
 // itself — switches and choices at once, text when you leave the field — except the

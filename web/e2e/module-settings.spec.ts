@@ -17,12 +17,20 @@ test.describe("admin", () => {
   test("old Settings-tab addresses land on the hub sections", async ({ page, api }) => {
     await installExtra(page, api, [{ method: "GET", path: "/api/v1/audioserver", body: audioServer }]);
     await page.goto("/subtitles?tab=settings");
-    await expect(page).toHaveURL(/\/settings\/tools#subtitles$/);
+    await expect(page).toHaveURL(/\/settings\/subtitles$/);
     await expect(page.getByRole("heading", { name: "Subtitles", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Convert", exact: true })).toBeVisible();
+    // Subtitles and Convert are separate sections now.
+    await expect(page.getByRole("heading", { name: "Convert", exact: true })).toHaveCount(0);
 
     await page.goto("/convert?tab=settings");
-    await expect(page).toHaveURL(/\/settings\/tools#convert$/);
+    await expect(page).toHaveURL(/\/settings\/convert$/);
+    await expect(page.getByRole("heading", { name: "Convert", exact: true })).toBeVisible();
+
+    // The old combined section's addresses (bookmarks, old links) land on the right half.
+    await page.goto("/settings/tools#convert");
+    await expect(page).toHaveURL(/\/settings\/convert#convert$/);
+    await page.goto("/settings/tools#subtitles");
+    await expect(page).toHaveURL(/\/settings\/subtitles#subtitles$/);
 
     await page.goto("/audiobooks?tab=server");
     await expect(page).toHaveURL(/\/settings\/audiobook-server$/);
@@ -33,12 +41,12 @@ test.describe("admin", () => {
     await page.goto("/subtitles");
     await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
     await page.getByRole("link", { name: "Configure →" }).click();
-    await expect(page).toHaveURL(/\/settings\/tools#subtitles$/);
+    await expect(page).toHaveURL(/\/settings\/subtitles$/);
 
     await page.goto("/convert");
     await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
     await page.getByRole("link", { name: "Configure →" }).click();
-    await expect(page).toHaveURL(/\/settings\/tools#convert$/);
+    await expect(page).toHaveURL(/\/settings\/convert$/);
   });
 
   test("a Subtitles and a Convert setting changed in the hub are saved to their modules", async ({ page, api }) => {
@@ -46,10 +54,11 @@ test.describe("admin", () => {
       { method: "PUT", path: "/api/v1/subtitles/settings", respond: ({ body }) => ({ ...subtitleSettings, ...(body as object) }) },
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools");
+    await page.goto("/settings/subtitles");
     await page.getByRole("switch", { name: "Auto-ensure movies" }).click();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/subtitles/settings").map((c) => c.body)).toEqual([{ movies_auto: true }]);
 
+    await page.goto("/settings/convert");
     const audio = page.getByRole("textbox", { name: "Keep audio in" });
     await audio.fill("en, ja");
     await audio.press("Enter");
@@ -62,7 +71,7 @@ test.describe("admin", () => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/subtitles/settings", respond: ({ body }) => ({ ...subtitleSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools");
+    await page.goto("/settings/subtitles");
     const sw = page.getByRole("switch", { name: "Auto-ensure movies" });
     await expect(sw).toHaveAttribute("aria-checked", "false");
     await sw.focus();
@@ -79,7 +88,7 @@ test.describe("admin", () => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/subtitles/settings", respond: ({ body }) => ({ ...subtitleSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools");
+    await page.goto("/settings/subtitles");
     const box = page.getByRole("combobox", { name: "Add a kept language" });
     await box.fill("port");
     await expect(page.getByRole("listbox", { name: "Matching languages" }).getByRole("option")).toHaveText(["Portuguesept", "Portuguese (Brazil)pt-br", "Portuguese (Portugal)pt-pt"]);
@@ -95,7 +104,7 @@ test.describe("admin", () => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools");
+    await page.goto("/settings/convert");
     await page.getByRole("radiogroup", { name: "Keep subtitles in" }).getByRole("radio", { name: /Same as Subtitles/ }).check();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/convert/settings").map((c) => c.body)).toEqual([{ keep_sub_langs: "@subtitles" }]);
     await expect(page.getByText("Same as Subtitles — English")).toBeVisible();

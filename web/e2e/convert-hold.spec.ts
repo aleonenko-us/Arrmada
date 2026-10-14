@@ -92,7 +92,7 @@ test.describe("admin", () => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     await expect(page.getByText("instant move ✓")).toBeVisible();
     const days = page.getByRole("textbox", { name: "Keep originals for (days)" });
     await days.fill("0");

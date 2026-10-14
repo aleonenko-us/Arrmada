@@ -148,7 +148,7 @@ test.describe("confirm before converting", () => {
       { method: "GET", path: "/api/v1/convert/auto-preview", body: preview() },
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     await page.getByRole("checkbox", { name: /Convert my library automatically/ }).click();
     const dialog = page.getByRole("dialog", { name: "Switch on automatic conversion?" });
     await expect(dialog.getByText("• 3 files lose Dolby Vision (kept as HDR10 or HLG)")).toBeVisible();
@@ -188,7 +188,7 @@ test.describe("Dolby Vision choice", () => {
       { method: "GET", path: "/api/v1/convert/stats", body: { ...convertStats, total: { ...convertStats.total, dolby_vision_files: 47 } } },
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     const group = page.getByRole("radiogroup", { name: "Dolby Vision files" });
     await expect(group.getByText("Dolby Vision files (47 in your library)")).toBeVisible();
     await expect(group.getByRole("radio", { name: /Convert and drop the Dolby Vision layer/ })).toBeChecked();
@@ -205,7 +205,7 @@ test.describe("Dolby Vision choice", () => {
       { method: "GET", path: "/api/v1/convert/settings", body: { ...convertSettings, dovi_tool: true } },
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, dovi_tool: true, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     const group = page.getByRole("radiogroup", { name: "Dolby Vision files" });
     const keep = group.getByRole("radio", { name: /Convert and keep Dolby Vision \(profile 8\.1\) — preview/ });
     await expect(keep).not.toBeChecked();
@@ -244,7 +244,7 @@ test.describe("Daily library scan time", () => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/convert/settings", respond: ({ body }) => ({ ...convertSettings, ...(body as object) }) },
     ]);
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     await page.getByText("Advanced", { exact: true }).click();
     const field = page.getByLabel("Daily library scan at");
     await expect(field).toHaveValue("03:00");

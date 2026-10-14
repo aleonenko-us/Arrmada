@@ -25,7 +25,7 @@ test.describe("manager", () => {
     await page.route("**/api/v1/convert/settings", (route) => route.request().method() === "GET"
       ? route.fallback()
       : route.fulfill({ json: { ...convertSettings, ...(route.request().postDataJSON() as object) } }));
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     await expect(page.getByText("At these hours: Backlog ≈ 4 nights at 01:00–07:00")).toBeVisible();
     await page.getByLabel("End", { exact: true }).fill("09:00");
     await expect(page.getByText("At these hours: Backlog ≈ 3 nights at 01:00–09:00")).toBeVisible();
@@ -47,7 +47,7 @@ test.describe("manager", () => {
     await page.route("**/api/v1/convert/settings", (route) => route.request().method() === "GET"
       ? route.fallback()
       : route.fulfill({ json: { ...convertSettings, ...(route.request().postDataJSON() as object) } }));
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     const panel = page.getByRole("region", { name: "Your devices" });
     await expect(panel.getByText("Bedroom Roku (Plex for Roku)")).toBeVisible();
     await expect(panel.getByLabel("Bedroom Roku (Plex for Roku): HEVC 10-bit was transcoded (2×)")).toHaveText("✗");
@@ -82,7 +82,7 @@ test.describe("manager", () => {
       puts.push(body);
       return route.fulfill({ json: { ...convertSettings, ...body } });
     });
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     const group = page.getByRole("radiogroup", { name: "8-bit sources" });
     await expect(group.getByText("Now: 8-bit sources stay 8-bit; 10-bit and HDR files are always 10-bit.")).toBeVisible();
     await expect(group.getByText(/Plex transcoded HEVC 10-bit video for Chrome \(Plex Web\)/)).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("manager", () => {
       puts.push(body);
       return route.fulfill({ json: { ...convertSettings, ...body } });
     });
-    await page.goto("/settings/tools#convert");
+    await page.goto("/settings/convert");
     await page.getByText("Advanced", { exact: true }).click();
     const pieces = page.getByRole("checkbox", { name: /Encode long films in pieces/ });
     await expect(pieces).not.toBeChecked();

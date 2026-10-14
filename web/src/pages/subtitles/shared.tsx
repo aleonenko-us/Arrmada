@@ -7,7 +7,7 @@ import { langName, useLanguages } from "../../lib/languages";
 import { LINKS } from "../../lib/links";
 import { posterThumb } from "../../lib/img";
 
-// What the Subtitles page and its settings (Settings → Subtitles & Convert) share.
+// What the Subtitles page and its settings (Settings → Subtitles) share.
 
 export const card = "rounded-xl p-4";
 export const cardStyle = { border: "1px solid var(--line)", background: "var(--panel)" } as const;

@@ -8,7 +8,7 @@ import { useLocation } from "react-router-dom";
 import { Switch } from "../../ui/Switch";
 
 // useScrollWhenLoaded scrolls a card that fills in after its own fetch back into view when
-// the address names it (/settings/tools#convert): the hub's own scroll ran before the card,
+// the address names it (/settings/convert#…): the hub's own scroll ran before the card,
 // or the ones above it, had their full height.
 export function useScrollWhenLoaded(id: string, loaded: boolean) {
   const { hash } = useLocation();

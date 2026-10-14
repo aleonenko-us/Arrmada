@@ -20,23 +20,14 @@ import { ConvertSettings } from "./settings/ConvertSettings";
 import { AudiobookServerSettings } from "./settings/AudiobookServer";
 import { Page } from "../ui/Page";
 
-// Settings → Subtitles & Convert: both modules' settings, one after the other.
-function ToolsSettings() {
-  return (
-    <div className="flex flex-col gap-8">
-      <SubtitlesSettings />
-      <ConvertSettings />
-    </div>
-  );
-}
-
 // What each section renders; sections.ts says who sees it and where its cards are.
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   library: LibrarySettings,
   media: NamingSettings,
   connections: ConnectionsSettings,
   downloads: DownloadsSettings,
-  tools: ToolsSettings,
+  subtitles: SubtitlesSettings,
+  convert: ConvertSettings,
   alerts: AlertsSettings,
   plex: PlexSettings,
   "audiobook-server": AudiobookServerSettings,

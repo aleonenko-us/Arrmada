@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "connections" | "downloads" | "tools" | "alerts" | "plex" | "audiobook-server" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "connections" | "downloads" | "subtitles" | "convert" | "alerts" | "plex" | "audiobook-server" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -20,8 +20,9 @@ export const SECTIONS: readonly SettingsSection[] = [
   // day to day; the metadata keys on it are read-only for them.
   { id: "connections", label: "Connections", adminOnly: false },
   { id: "downloads", label: "Downloads", adminOnly: true },
-  // The Subtitles and Convert modules' settings (#subtitles, #convert); managers run both.
-  { id: "tools", label: "Subtitles & Convert", adminOnly: false },
+  // The Subtitles and Convert modules' settings, one section each; managers run both.
+  { id: "subtitles", label: "Subtitles", adminOnly: false },
+  { id: "convert", label: "Convert", adminOnly: false },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
   // How Arrmada uses Plex: library updates for managers, sign-in for admins. The connection
@@ -74,8 +75,8 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Stalled downloads", keywords: "stall stuck timeout no progress replacement fail over hours", section: "downloads", anchor: "stalled-downloads" },
   { label: "Upgrades per sweep", keywords: "upgrade limit budget sweep quality profile replace better release grabs at once", section: "downloads", anchor: "upgrade-limit" },
   { label: "Recycle bin", keywords: "trash deleted restore empty retention size cap purge undo", section: "downloads", anchor: "recycle-bin" },
-  { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles minimum match score", section: "tools", anchor: "subtitles" },
-  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores dolby vision dv hdr daily library scan time", section: "tools", anchor: "convert" },
+  { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles minimum match score", section: "subtitles", anchor: "subtitles" },
+  { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores dolby vision dv hdr daily library scan time", section: "convert", anchor: "convert" },
   { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
   { label: "Outgoing email", keywords: "email mail smtp send outgoing server gmail app password from address kindle test", section: "alerts", anchor: "outgoing-email", adminOnly: true },
@@ -122,6 +123,10 @@ const ANCHOR_SECTION: Record<string, SectionId> = Object.fromEntries(SEARCH_INDE
 const RENAMED_ANCHOR: Record<string, { section: SectionId; anchor: string }> = {
   "plex-connection": { section: "connections", anchor: "plex" },
 };
+// Sections that were split or renamed: an old address with no card anchor lands here.
+// "Subtitles & Convert" (/settings/tools) became Subtitles and Convert; its #subtitles and
+// #convert anchors find their own section through the search index.
+const RENAMED_SECTION: Record<string, SectionId> = { tools: "subtitles" };
 
 // sectionFromPath is the section named in /settings/<section>[/…], or "" for bare /settings.
 export function sectionFromPath(pathname: string): string {
@@ -150,7 +155,8 @@ export function settingsRedirect(pathname: string, search: string, hash: string,
   if (current && visible.includes(current) && (!fromAnchor || fromAnchor === current || !visible.includes(fromAnchor))) return null;
   const params = new URLSearchParams(search);
   const fromTab = TAB_SECTION[params.get("tab") ?? ""];
-  const target = [fromAnchor, fromTab].find((s) => s && visible.includes(s)) ?? DEFAULT_SECTION;
+  const fromRename = RENAMED_SECTION[current];
+  const target = [fromAnchor, fromTab, fromRename].find((s) => s && visible.includes(s)) ?? DEFAULT_SECTION;
   params.delete("tab");
   const qs = params.toString();
   return `/settings/${target}${qs ? `?${qs}` : ""}${hash}`;

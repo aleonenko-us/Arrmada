@@ -112,7 +112,7 @@ export const languages: Language[] = [
   { code: "pt-pt", name: "Portuguese (Portugal)", regional: true },
 ];
 
-// Settings → Subtitles & Convert: whisper is in the build, with no model downloaded yet.
+// Settings → Subtitles: whisper is in the build, with no model downloaded yet.
 export const subtitleModels: WhisperStatus = {
   binary_ready: true, ready: false,
   models: [{ name: "ggml-large-v3-turbo.bin", label: "Turbo (English)", size_mb: 1600, present: false, downloading: false }],
