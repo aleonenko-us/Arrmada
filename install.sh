@@ -62,6 +62,9 @@ ask() {
   [ -z "$_a" ] && _a="${2:-}"
   printf '%s' "$_a"
 }
+# tell "text": a line that belongs to a question, shown only when someone can answer it
+# (with -y or no terminal the default is taken silently and shown in the summary).
+tell() { [ -n "$TTY" ] && say "$@"; return 0; }
 # ask_yes "question" -> 0 for yes. Enter is yes; no terminal is yes.
 ask_yes() {
   [ -n "$TTY" ] || return 0
@@ -394,8 +397,9 @@ new_install() {
   # 1. Where the files go (asked only when piped in; a checkout installs where it is).
   if [ -z "$_from_checkout" ]; then
     if [ -z "$DIR_SET" ]; then
-      say "1/2  Where should Arrmada keep its settings and database?"
+      tell "1/2  Where should Arrmada keep its settings and database?"
       _dir=$(ask "     Folder [Enter = $_dir]: " "$_dir")
+      tell ""
     fi
     case "$_dir" in /*) ;; *) _dir="$(pwd)/$_dir" ;; esac
     if [ -f "$_dir/arrmada.db" ]; then
@@ -407,7 +411,6 @@ new_install() {
     elif [ -d "$_dir" ] && [ -n "$(ls -A "$_dir" 2>/dev/null)" ]; then
       die "$_dir isn't empty. Pick a new or empty folder with --dir."
     fi
-    say ""
   fi
 
   # 2. The media folder: the one thing only you know. It has to be mounted before the
@@ -420,9 +423,9 @@ new_install() {
       done
     fi
     _n="2/2"; [ -n "$_from_checkout" ] && _n="1/1"
-    say "$_n  Where does your media live? Give the folder that CONTAINS your libraries and"
-    say "     downloads (e.g. /mnt/user/data), so imports can hardlink instead of copying."
-    say "     It's mounted at /storage; you pick each library inside it in the app."
+    tell "$_n  Where does your media live? Give the folder that CONTAINS your libraries and"
+    tell "     downloads (e.g. /mnt/user/data), so imports can hardlink instead of copying."
+    tell "     It's mounted at /storage; you pick each library inside it in the app."
     if [ -n "$_suggest" ]; then
       MEDIA=$(ask "     Media folder [Enter = $_suggest, \"none\" = managed storage]: " "$_suggest")
     else
@@ -454,8 +457,8 @@ new_install() {
   TZONE="$TZ_ARG"
   [ -z "$TZONE" ] && TZONE=$(detect_tz)
   if [ -z "$TZONE" ]; then
-    say "What's your timezone? Schedules like overnight encoding run on this clock."
-    say "Region/City, e.g. Australia/Brisbane, America/New_York, Europe/London."
+    tell "What's your timezone? Schedules like overnight encoding run on this clock."
+    tell "Region/City, e.g. Australia/Brisbane, America/New_York, Europe/London."
     TZONE=$(ask "Timezone [Enter = Etc/UTC]: " "Etc/UTC")
   fi
   if ! valid_tz "$TZONE"; then
