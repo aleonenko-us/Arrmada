@@ -10,7 +10,11 @@
 # or to apply changes you made to .env. Only the app image is rebuilt; the companions
 # (qBittorrent, FlareSolverr, and Prowlarr if you opted in) keep running untouched.
 # The build that was running before is kept as the image arrmada:previous, so
-# --rollback has something to go back to.
+# --rollback has something to go back to — and if the new build doesn't start, the
+# script goes back to it by itself.
+#
+# An install made by the one-line installer without git (it has .arrmada-source) gets its
+# newer files as a download instead of a git pull; everything else is the same.
 #
 # Pull mode (opt-in): with ARRMADA_IMAGE set in .env to a published image, for example
 #   ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
@@ -41,6 +45,8 @@ ROLLBACK=""
 WITH_DB=""
 NO_BACKUP=""
 YES=""
+# Set while the script goes back on its own after an update that didn't start.
+AUTO_ROLLBACK=""
 for _arg in "$@"; do
   case "$_arg" in
     --pulled) PULLED=1 ;;
@@ -92,6 +98,90 @@ json_num() {
   sed -n "s/.*\"$1\":\([0-9][0-9]*\).*/\1/p"
 }
 
+# Where an install downloaded without git (install.sh writes .arrmada-source then) gets
+# its newer files. Overridable for forks and the installer's own tests.
+REPO="tristenlammi/Arrmada"
+API_URL="${ARRMADA_API_URL:-https://api.github.com/repos/$REPO}"
+TARBALL_BASE="${ARRMADA_TARBALL_BASE:-https://codeload.github.com/$REPO/tar.gz}"
+
+# fetch URL -> the body on stdout (curl or wget, whichever is here).
+fetch() {
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$1"; else wget -qO- "$1"; fi
+}
+
+# source_get KEY -> a value from .arrmada-source.
+source_get() {
+  sed -n "s/^$1=//p" .arrmada-source 2>/dev/null | head -n 1
+}
+
+# under PATH NAME -> 0 if host folder PATH is this folder's NAME or inside it.
+under() {
+  case "$1" in
+    "") return 1 ;;
+    /*) _abs="$1" ;;
+    *) _abs="$(pwd)/${1#./}" ;;
+  esac
+  case "${_abs%/}/" in "$(pwd)/$2/"*) return 0 ;; esac
+  return 1
+}
+
+# refresh_download: an install downloaded without git gets the newer files the same way —
+# the branch's newest download, unpacked over this folder. Only what the download
+# contains is replaced: .env, the override, the data and transcode folders and anything
+# else of yours are never touched.
+refresh_download() {
+  _branch=$(source_get branch)
+  _branch=${_branch:-main}
+  _json=$(fetch "$API_URL/commits/$_branch" 2>/dev/null || true)
+  _sha=$(printf '%s\n' "$_json" | sed -n 's/^  "sha": "\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)
+  _date=$(printf '%s\n' "$_json" | sed -n 's/.*"date": *"\([0-9]\{4\}\)-\([0-9]\{2\}\)-\([0-9]\{2\}\)T.*/\1.\2.\3/p' | sed -n '2p')
+  _short=$(printf '%s' "$_sha" | cut -c1-7)
+  if [ -n "$_short" ] && [ "$_short" = "$(source_get commit)" ]; then
+    say "The files here are already the newest ($_short)."
+    return 0
+  fi
+  say "Downloading the latest files…"
+  # Unpacked next to the install (same disk, so each swap is a rename), under a name the
+  # loop below never touches.
+  _tmp=$(mktemp -d ./.arrmada-download.XXXXXX)
+  _url="$TARBALL_BASE/${_sha:-refs/heads/$_branch}"
+  if ! fetch "$_url" | tar -xz -C "$_tmp"; then
+    rm -rf "$_tmp"
+    say "" >&2
+    say "✗ Couldn't download $_url. Nothing was changed; Arrmada is still running the version it was." >&2
+    say "  Check this server can reach github.com, then run update.sh again." >&2
+    exit 1
+  fi
+  _top=$(find "$_tmp" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+  if [ -z "$_top" ] || [ ! -f "$_top/docker-compose.yml" ] || [ ! -f "$_top/update.sh" ]; then
+    rm -rf "$_tmp"
+    say "✗ The download from $_url didn't contain Arrmada. Nothing was changed." >&2
+    exit 1
+  fi
+  _data=$(grep -E '^ARRMADA_DATA_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ')
+  _media=$(grep -E '^ARRMADA_STORAGE_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ')
+  for _src in "$_top"/* "$_top"/.[!.]*; do
+    [ -e "$_src" ] || continue
+    _name=$(basename "$_src")
+    case "$_name" in
+      .env | .env.* | docker-compose.override.yml* | data | transcode | .arrmada-* | .git) continue ;;
+    esac
+    if under "$_data" "$_name" || under "$_media" "$_name"; then
+      continue
+    fi
+    rm -rf "./$_name"
+    mv "$_src" "./$_name"
+  done
+  rm -rf "$_tmp"
+  {
+    say "# Written by install.sh: this install was downloaded, not cloned with git."
+    say "# update.sh downloads the newer files from here."
+    say "branch=$_branch"
+    say "commit=$_short"
+    say "date=$_date"
+  } > .arrmada-source
+}
+
 # image_id REF -> the image's ID, or nothing if there's no such image.
 image_id() {
   docker image inspect -f '{{.Id}}' "$1" 2>/dev/null || true
@@ -116,15 +206,26 @@ confirm() {
   return 1
 }
 
-# wait_healthy -> 0 once the app answers its health check, 1 if it crashed or never came up.
+# wait_healthy -> 0 once the app answers its health check, 1 if it crashed, keeps
+# restarting (Docker's restart policy brings a crashing build straight back, so it never
+# reads as stopped), or never came up.
 wait_healthy() {
   _i=0
+  _restarts0=""
   printf 'Waiting for Arrmada to start' >&2
   while [ "$_i" -lt 90 ]; do
-    _state=$(docker inspect -f '{{.State.Status}}' Arrmada-app 2>/dev/null || echo missing)
+    _state=$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' Arrmada-app 2>/dev/null || echo "missing 0")
     case "$_state" in
-      exited|dead) printf '\n' >&2; return 1 ;;
+      exited* | dead*) printf '\n' >&2; return 1 ;;
     esac
+    # Counted from here: a container that wasn't replaced keeps its count, and every
+    # restart from the app's own Settings adds one.
+    _restarts="${_state#* }"
+    case "$_restarts" in "" | *[!0-9]*) _restarts=0 ;; esac
+    [ -z "$_restarts0" ] && _restarts0="$_restarts"
+    if [ "$((_restarts - _restarts0))" -ge 3 ]; then
+      printf '\n' >&2; return 1
+    fi
     if app_answers; then
       printf ' ready\n' >&2; return 0
     fi
@@ -271,6 +372,13 @@ rollback() {
   # to be put back by hand, since such a build can't restore one either.
   _legacy=""
   if [ -z "$_backup" ] && [ "$(image_label arrmada:previous org.arrmada.cli)" != "1" ]; then
+    # Going back on its own after a failed update, the script can't ask, so it doesn't.
+    if [ -n "$AUTO_ROLLBACK" ]; then
+      say "✗ The previous build${_prev_commit:+ (commit $_prev_commit)} is too old to go back to automatically" >&2
+      say "  (it can't check the database). To go back by hand:" >&2
+      manual_db_steps "arrmada-pre-migrate-<the newest one>.db"
+      exit 1
+    fi
     _legacy=1
     say "! The previous build${_prev_commit:+ (commit $_prev_commit)} is older than update.sh's database checks: it starts"
     say "  on the database as it is now, even if the update upgraded it, and can damage an upgraded one."
@@ -312,6 +420,8 @@ rollback() {
       say "✗ The previous build can't run on the database as it is now: the update upgraded it." >&2
       say "  Nothing was changed. To go back together with the database from before the update" >&2
       say "  (everything recorded since is lost): ./update.sh --rollback --with-db" >&2
+      # An automatic go-back (a failed update) tells its caller why, to offer exactly that.
+      if [ -n "$AUTO_ROLLBACK" ]; then exit 3; fi
       exit 1
     fi
   fi
@@ -400,6 +510,12 @@ if [ -z "$PULLED" ]; then
     if [ "$(cksum < update.sh)" != "$_before" ]; then
       exec sh ./update.sh --pulled "$@"
     fi
+  elif [ -f .arrmada-source ]; then
+    _before=$(cksum < update.sh)
+    refresh_download
+    if [ "$(cksum < update.sh)" != "$_before" ]; then
+      exec sh ./update.sh --pulled "$@"
+    fi
   elif [ -n "$PULL_IMAGE" ]; then
     say "Not a git checkout — the scripts here stay as they are."
   else
@@ -462,10 +578,18 @@ fi
 # call is guarded so a copy that isn't a git checkout still builds. A published image
 # was stamped by the release build, so pull mode reads its labels afterwards instead.
 if [ -z "$PULL_IMAGE" ]; then
-  ARRMADA_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
-  ARRMADA_VERSION=$(git describe --tags --exact-match 2>/dev/null || git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo dev)
-  if [ "$ARRMADA_COMMIT" != unknown ] && ! git diff --quiet HEAD -- 2>/dev/null; then
-    ARRMADA_VERSION="$ARRMADA_VERSION-dirty"
+  if [ ! -d .git ] && [ -f .arrmada-source ]; then
+    # Downloaded without git: the download recorded which commit it is.
+    ARRMADA_COMMIT=$(source_get commit)
+    ARRMADA_VERSION=$(source_get date)
+    ARRMADA_COMMIT=${ARRMADA_COMMIT:-unknown}
+    ARRMADA_VERSION=${ARRMADA_VERSION:-dev}
+  else
+    ARRMADA_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    ARRMADA_VERSION=$(git describe --tags --exact-match 2>/dev/null || git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo dev)
+    if [ "$ARRMADA_COMMIT" != unknown ] && ! git diff --quiet HEAD -- 2>/dev/null; then
+      ARRMADA_VERSION="$ARRMADA_VERSION-dirty"
+    fi
   fi
   export ARRMADA_VERSION ARRMADA_COMMIT
 fi
@@ -546,15 +670,67 @@ if [ -n "$PULL_FAILED" ]; then
   say "  that can only read packages. To compile here instead: ./update.sh --force-local" >&2
   exit 1
 fi
+# update_failed: the new version replaced the running one and didn't start. Go back to
+# the one that was running (kept as arrmada:previous a moment ago) rather than leave
+# Arrmada down. The rollback checks the database first: if the new version already
+# upgraded it, going back also needs the backup taken at the start of this update, which
+# loses whatever happened in the last few minutes, so that is only ever done when someone
+# at the terminal says yes.
+update_failed() {
+  say "" >&2
+  say "✗ The new version of Arrmada didn't start. The last lines of its log:" >&2
+  show_log
+  if [ -z "$RUNNING_IMAGE" ] || [ "$(image_id arrmada:previous)" != "$RUNNING_IMAGE" ] || [ "$(image_id arrmada:dev)" = "$RUNNING_IMAGE" ]; then
+    say "" >&2
+    say "  There's no earlier running version to go back to. Fix what the log says, then run the" >&2
+    say "  script again. Full log: docker compose logs arrmada-app" >&2
+    exit 1
+  fi
+  say "" >&2
+  say "Going back to the version that was running before the update…" >&2
+  AUTO_ROLLBACK=1
+  _rc=0
+  ( rollback ) || _rc=$?
+  if [ "$_rc" = 3 ] && [ -f "$PREVIOUS_DB_FILE" ]; then
+    _answer=""
+    if [ -z "$YES" ] && [ -t 0 ]; then
+      say "" >&2
+      say "The new version had already upgraded the database. Going back needs the backup taken at" >&2
+      say "the start of this update ($(cat "$PREVIOUS_DB_FILE")); anything Arrmada recorded since then is lost." >&2
+      printf 'Put it back and start the previous version? [y/N] ' >&2
+      read -r _answer || _answer=""
+    fi
+    case "$_answer" in
+      y | Y | yes | YES | Yes)
+        _rc=0
+        ( WITH_DB=1; YES=1; rollback ) || _rc=$? ;;
+      *)
+        say "  Arrmada is down. Either go back with the database: ./update.sh --rollback --with-db" >&2
+        say "  or fix what the log says and run ./update.sh again." >&2
+        exit 1 ;;
+    esac
+  fi
+  say "" >&2
+  if [ "$_rc" = 0 ]; then
+    say "✗ The update didn't go through, so Arrmada is back on the version it was running." >&2
+    say "  Nothing else was changed. The new version's log is above; please report it at" >&2
+    say "  https://github.com/$REPO/issues" >&2
+  else
+    say "✗ The update didn't go through, and going back didn't work either (see above)." >&2
+    say "  Full log: docker compose logs arrmada-app" >&2
+  fi
+  exit 1
+}
+
 if [ -z "$UP_OK" ]; then
   if [ -n "$RUNNING_IMAGE" ] && [ "$(image_id arrmada:dev)" = "$RUNNING_IMAGE" ] && app_answers; then
     say "" >&2
     say "✗ The build failed (see above). Nothing was replaced; Arrmada is still running the version it was." >&2
     exit 1
   fi
-  fail_start
+  update_failed
 fi
-wait_healthy || fail_start
+wait_healthy || update_failed
 
 # A build kept by an earlier --rollback is superseded by this one.
 docker image rm arrmada:rolled-back >/dev/null 2>&1 || true

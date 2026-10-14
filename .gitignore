@@ -43,6 +43,12 @@ docker-compose.override.yml
 .arrmada-previous
 # update.sh: the database backup taken before the last update (for --rollback --with-db)
 .arrmada-previous-db
+# install.sh: Convert's default scratch folder, the downloaded-install marker, and
+# update.sh's download staging and override backup
+/transcode/
+.arrmada-source
+.arrmada-download.*
+docker-compose.override.yml.bak
 
 # Playwright (web/e2e) run output
 /web/test-results/
