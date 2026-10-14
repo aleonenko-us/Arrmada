@@ -1834,7 +1834,17 @@ func (c *Coordinator) Blocklist(ctx context.Context, movieID int64, title, index
 
 // Blocklisted lists a movie's blocklisted releases.
 func (c *Coordinator) Blocklisted(ctx context.Context, movieID int64) ([]BlockEntry, error) {
-	return c.listBlocks(ctx, movieID)
+	out, err := c.listBlocks(ctx, movieID)
+	return c.withNetwork(ctx, out, err)
+}
+
+// withNetwork marks the usenet releases among blocklist entries.
+func (c *Coordinator) withNetwork(ctx context.Context, out []BlockEntry, err error) ([]BlockEntry, error) {
+	if err != nil {
+		return out, err
+	}
+	c.markUsenetBlocks(ctx, len(out), func(i int) string { return out[i].Title }, func(i int, n string) { out[i].Network = n })
+	return out, nil
 }
 
 // Unblock removes a blocklist entry.
@@ -2090,7 +2100,8 @@ func (c *Coordinator) BlocklistAndSearch(ctx context.Context, movieID int64, tit
 
 // BlocklistedSeries lists a series' blocklisted releases.
 func (c *Coordinator) BlocklistedSeries(ctx context.Context, seriesID int64) ([]BlockEntry, error) {
-	return c.listBlocksSeries(ctx, seriesID)
+	out, err := c.listBlocksSeries(ctx, seriesID)
+	return c.withNetwork(ctx, out, err)
 }
 
 // BlocklistSeries adds a release to a series' blocklist (so a re-search won't pick it again).

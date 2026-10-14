@@ -153,6 +153,8 @@ type historyEvent struct {
 	AtMS      int64  `json:"at_ms"`
 	// ID is the event's row id within its kind's table; with kind it keys the row.
 	ID int64 `json:"id"`
+	// Network is "usenet" when the line is about a release grabbed from Usenet.
+	Network string `json:"network,omitempty"`
 }
 
 func (e historyEvent) cursor() eventsCursor {
@@ -380,6 +382,17 @@ func (a *api) handleHistory(w http.ResponseWriter, r *http.Request) {
 	next := ""
 	if len(events) == f.Limit {
 		next = events[len(events)-1].cursor().String()
+	}
+	// Which lines are about a usenet release, for the page's Usenet chip. Decoration: an
+	// unreadable grabs table leaves the lines unmarked.
+	if a.deps.Automation != nil && len(events) > 0 {
+		if u, err := a.deps.Automation.UsenetReleases(r.Context()); err == nil {
+			for i := range events {
+				if u.Mentions(events[i].Kind, events[i].ItemID, events[i].Detail) {
+					events[i].Network = "usenet"
+				}
+			}
+		}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"events": events, "next_before": next})
 }

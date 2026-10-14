@@ -162,6 +162,17 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		in := pipeline.Input{
 			Phase: phase, Complete: it.Complete(), Linked: managed, Imported: imported[it.Hash] || imported[h],
 			OwnCategory: fin.own[it.Category], HeldByGuard: guardHeld[h], Category: it.Category, Now: now,
+			Usenet: it.Transport == download.TransportUsenet,
+		}
+		// The network, so the page can mark a usenet job and leave out what only a torrent
+		// has (seeds, ratio, reannounce). A failed usenet job's reason, and whether it's the
+		// release (Arrmada replaces it) or where SABnzbd writes (a person must fix it).
+		entry["transport"] = it.Transport
+		entry["remaining_bytes"] = it.RemainingBytes
+		if in.Usenet && phase == "error" {
+			f := automation.ClassifyUsenetFailure(it.FailMessage)
+			entry["fail_message"], entry["fail_kind"] = it.FailMessage, f.Kind
+			in.FailMessage, in.FailFix = it.FailMessage, f.Fix
 		}
 		if managed {
 			in.GrabStatus = acq.Status

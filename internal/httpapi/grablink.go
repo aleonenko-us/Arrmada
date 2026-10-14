@@ -46,6 +46,17 @@ func (a *api) handleGrabPreview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// An .nzb goes to the usenet client on grab (Coordinator.addTorrentFile), so it's
+	// previewed too, and says which network it is.
+	if torrentmeta.LooksLikeNZB(data) {
+		info, err := torrentmeta.ParseNZB(data, req.Filename)
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.writeJSON(w, http.StatusOK, map[string]any{"name": info.Name, "size_bytes": info.SizeBytes, "files": info.Files, "network": "usenet"})
+		return
+	}
 	info, err := torrentmeta.ParseTorrent(data)
 	if err != nil {
 		a.writeError(w, http.StatusBadRequest, err.Error())

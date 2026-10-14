@@ -20,6 +20,8 @@ type BlockEntry struct {
 	Indexer   string `json:"indexer,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 	CreatedAt string `json:"created_at"`
+	// Network is "usenet" for a release grabbed from Usenet, absent otherwise.
+	Network string `json:"network,omitempty"`
 }
 
 // grab is a recorded automatic grab, tracked for stall detection and seed
