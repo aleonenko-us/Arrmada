@@ -1,6 +1,7 @@
-import { createContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { GeoLocation, PlexConfig } from "../../lib/api";
+import { ServerBadge, ServerMark, SERVER_LABEL, isMediaServer } from "../../components/brand";
+import type { GeoLocation, InsightsServer, PlexConfig } from "../../lib/api";
 import { LINKS } from "../../lib/links";
 import { EmptyState } from "../../ui/EmptyState";
 
@@ -25,6 +26,48 @@ export const CAUSE: Record<string, { label: string; color: string }> = {
 // InsightsCfg hands the latest Plex settings to deep components (History's HW badge)
 // without threading a prop through every view.
 export const InsightsCfg = createContext<PlexConfig | null>(null);
+
+// InsightsServers says which media servers are in play: multi when Plex and Jellyfin are
+// both connected (then every row names its server and the server chips show).
+export const InsightsServers = createContext<{ multi: boolean }>({ multi: false });
+
+// The server filter: "all" in the address is both servers (the API's ?server= absent).
+export const SERVER_FILTERS = ["all", "plex", "jellyfin"] as const;
+export type ServerFilter = (typeof SERVER_FILTERS)[number];
+export function serverArg(f: ServerFilter): InsightsServer | undefined {
+  return f === "all" ? undefined : f;
+}
+
+// ServerChips is the "Server: All · Plex · Jellyfin" filter, shown while both are connected.
+export function ServerChips({ value, onChange }: { value: ServerFilter; onChange: (v: ServerFilter) => void }) {
+  return (
+    <FilterGroup label="Server">
+      {SERVER_FILTERS.map((s) => (
+        <Chip key={s} active={value === s} onClick={() => onChange(s)}>
+          {s === "all" ? "All" : <span className="inline-flex items-center gap-1"><ServerMark server={s} size={11} />{SERVER_LABEL[s]}</span>}
+        </Chip>
+      ))}
+    </FilterGroup>
+  );
+}
+
+// RowServer is the server badge on a stream, play or person. With only Plex connected the
+// page looks as it always did; a Jellyfin row always says so.
+export function RowServer({ server, className }: { server?: string | null; className?: string }) {
+  const { multi } = useContext(InsightsServers);
+  if (!isMediaServer(server) || (!multi && server !== "jellyfin")) return null;
+  return <ServerBadge server={server} className={className} />;
+}
+
+// JellyfinNoBuffering is the Reliability note: Jellyfin plays are left out of every rate.
+export function JellyfinNoBuffering({ plays }: { plays?: number }) {
+  return (
+    <div role="note" className="flex flex-wrap items-center gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+      <ServerBadge server="jellyfin" />
+      <span>Jellyfin doesn't report buffering, so {plays ? `its ${plays.toLocaleString()} play${plays === 1 ? " in this window isn't" : "s in this window aren't"}` : "its plays aren't"} counted here.</span>
+    </div>
+  );
+}
 
 export function geoLabel(g: GeoLocation): string {
   if (g.local) return "Local";

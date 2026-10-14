@@ -76,6 +76,8 @@ var bannedCopy = []bannedPhrase{
 	webPhrase(`/settings/plex#plex-connection|/audiobooks\?tab=import`, "those cards moved (Settings → Connections' Plex card, Settings → Import & migrate) — link through LINKS"),
 	// COPY-08: the Insights intro only asks to connect while Plex isn't connected.
 	webPhrase(`Connect your server in`, "the intro's call to action is the 'Connect your Plex server in the Settings tab' button, shown only while not connected"),
+	// J2: Insights watches Plex and Jellyfin, so its sidebar group is "Watching".
+	webPhrase(`group: "Plex"`, "the sidebar group holding Insights is 'Watching' — it covers Plex and Jellyfin (lib/nav.ts)"),
 	// COPY-10: system strings that described an older build.
 	webPhrase(`auth_enabled`, "sign-in is always enforced, so a constant Auth stat says nothing — leave it off the Dashboard"),
 	phrase(`kept in memory, up to`, "the viewer loads up to LOG_LIMIT lines; Arrmada keeps 50,000 in memory and writes rotating log files"),
@@ -246,6 +248,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`connect your Plex server in Insights first`,
 		`<Link to="/settings/plex#plex-connection">Plex connection</Link>`,
 		`Connect your server in <b>Settings</b> to begin.`,
+		`    group: "Plex",`,
 		`<Stat k="Auth" v={status?.auth_enabled ? "enabled" : "disabled"} />`,
 		`lines — kept in memory, up to 5000.`,
 		`set ARRMADA_BASE_URL to serve under a path`,
@@ -288,6 +291,7 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`Settings → Downloads → Recycle bin`,
 		`/settings/system#api-keys`,
 		`Connect your Plex server in Settings → Connections`,
+		`    group: "Watching",`,
 		"flash(`${selected.size} ${mon ? \"monitored\" : \"unmonitored\"}.`);",
 		`{ key: "wanted", label: "Wanted" },`,
 		`turbo transcribes any language; it can't translate`,

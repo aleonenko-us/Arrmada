@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { req, type ConvertDevice, type ConvertDeviceCodec, type ConvertDevices } from "../../lib/api";
 import { formatAgo } from "../../lib/format";
 import { LINKS } from "../../lib/links";
+import { ServerBadge } from "../brand";
 
 // "Your devices": what each Plex player did with HEVC, HEVC 10-bit and AV1 over the last 90
 // days of plays Insights recorded — so the formats Convert writes are chosen on evidence, not
@@ -56,11 +57,13 @@ function Cell({ c, format, device }: { c: ConvertDeviceCodec; format: DeviceForm
 export function DevicesPanel({ data }: { data: ConvertDevices | null }) {
   if (!data) return null;
   const rows = data.devices;
+  // With plays from both servers, each device names whose app it was (the same TV runs both).
+  const multi = rows.some((x) => x.server === "jellyfin");
   return (
     <div className="flex flex-col gap-1.5" aria-label="Your devices" role="region">
       <div className="text-sm font-semibold">Your devices</div>
       <div className="text-xs text-ink-faint">
-        From the plays Plex reported over the last 90 days: ✓ played as it was, ✗ Plex transcoded it, ? not seen yet.
+        From the plays recorded over the last 90 days: ✓ played as it was, ✗ the server transcoded it, ? not seen yet.
         10-bit is known only for plays recorded since this update.
       </div>
       {!data.monitoring && (
@@ -87,8 +90,8 @@ export function DevicesPanel({ data }: { data: ConvertDevices | null }) {
               {rows.map((x) => {
                 const name = deviceName(x);
                 return (
-                  <tr key={`${x.product}|${x.platform}|${x.player}`} className="border-t" style={{ borderColor: "var(--line-soft)" }}>
-                    <td className="py-1 pr-2">{name}</td>
+                  <tr key={`${x.server ?? "plex"}|${x.product}|${x.platform}|${x.player}`} className="border-t" style={{ borderColor: "var(--line-soft)" }}>
+                    <td className="py-1 pr-2"><span className="inline-flex flex-wrap items-center gap-1.5">{name}{multi && x.server && <ServerBadge server={x.server} />}</span></td>
                     <td className="whitespace-nowrap px-2 py-1 text-ink-faint">{formatAgo(x.last_seen * 1000)}</td>
                     <Cell c={x.hevc} format="hevc" device={name} />
                     <Cell c={x.hevc10} format="hevc10" device={name} />

@@ -1,5 +1,5 @@
 import { useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { HistoryEntry, UserEntry } from "../../lib/api";
+import type { HistoryEntry, InsightsServer, UserEntry } from "../../lib/api";
 import { insightsApi } from "../../lib/insightsApi";
 import { useSearchParamState } from "../../lib/useSearchState";
 import { IconButton, Modal } from "../../ui";
@@ -7,7 +7,7 @@ import { Field } from "../../ui/Field";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
-import { Chip, DECISION, FilterGroup, ImportedNotice, InsightsCfg, SetupState, fmtDate, fmtDur, geoLabel } from "./shared";
+import { Chip, DECISION, FilterGroup, ImportedNotice, InsightsCfg, RowServer, SetupState, fmtDate, fmtDur, geoLabel } from "./shared";
 
 // History: every recorded play, filterable by type, stream, person and date, optionally
 // with a person's resumed sittings of one title folded into one row, and exportable as
@@ -53,7 +53,8 @@ export function progressBadge(r: Pick<HistoryEntry, "duration_ms" | "progress_pc
   return r.progress_pct >= 90 ? { label: "Watched", done: true } : { label: `Partial ${r.progress_pct}%`, done: false };
 }
 
-export function HistoryView({ connected, userLink }: { connected: boolean; userLink?: (id: string, name: string) => ReactNode }) {
+// server narrows to one server's plays (the page's server chips; undefined = both).
+export function HistoryView({ connected, server, userLink }: { connected: boolean; server?: InsightsServer; userLink?: (id: string, name: string) => ReactNode }) {
   const [type, setType] = useSearchParamState<string>("type", "", { allowed: TYPE_FILTERS.map((f) => f.key) });
   const [decision, setDecision] = useSearchParamState<string>("decision", "", { allowed: DEC_FILTERS.map((f) => f.key) });
   const [q, setQ] = useSearchParamState<string>("q", "", { debounceMs: 300 });
@@ -72,10 +73,10 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
   const [failed, setFailed] = useState(false);
   const [detail, setDetail] = useState<HistoryEntry | null>(null);
   const [people, setPeople] = useState<UserEntry[]>([]);
-  useEffect(() => { insightsApi.insightsUsers().then(setPeople).catch(() => setPeople([])); }, []);
+  useEffect(() => { insightsApi.insightsUsers(server).then(setPeople).catch(() => setPeople([])); }, [server]);
 
   const bounds = useMemo(() => rangeBounds(range, fromDay, toDay), [range, fromDay, toDay]);
-  const filters = useMemo(() => ({ type, decision, q, user, group, from: bounds.from, to: bounds.to }), [type, decision, q, user, group, bounds]);
+  const filters = useMemo(() => ({ type, decision, q, user, group, from: bounds.from, to: bounds.to, server }), [type, decision, q, user, group, bounds, server]);
 
   // Changing a filter starts again at page 1. It runs after the filter's own address write
   // has landed: two writes in one click would each start from the same address, and the
@@ -166,7 +167,7 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
                 // keyboard's way in).
                 <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer" style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)", opacity: loading ? 0.6 : 1 }}>
                   <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{fmtDate(r.started_at)}</td>
-                  <td className="px-3 py-2">{name(r)}</td>
+                  <td className="px-3 py-2"><span className="inline-flex flex-wrap items-center gap-1.5">{name(r)}<RowServer server={r.server} /></span></td>
                   <td className="py-1.5 pl-3">
                     <span className="block h-12 w-8 overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
                       {r.thumb_url ? <img src={r.thumb_url} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
@@ -208,8 +209,15 @@ export function HistoryView({ connected, userLink }: { connected: boolean; userL
 
 // HistoryHW is a recorded play's hardware badge. Plays now record a hardware encode Plex
 // really used; older ones recorded "hardware was requested", which a CPU fallback also set.
-function HistoryHW({ startedAt }: { startedAt: number }) {
+// A Jellyfin play records the hardware acceleration Jellyfin had configured.
+function HistoryHW({ startedAt, server }: { startedAt: number; server?: string }) {
   const since = useContext(InsightsCfg)?.hw_since ?? 0;
+  if (server === "jellyfin") {
+    return (
+      <span title="Jellyfin's configured hardware acceleration — it doesn't say whether the GPU took this stream."
+        className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>HW</span>
+    );
+  }
   const old = !since || startedAt < since;
   return (
     <span title={old ? `Plays before ${since ? fmtDate(since) : "this update"} show HW as requested — Plex may have fallen back to CPU.` : undefined}
@@ -246,7 +254,8 @@ function HistoryDetail({ r, onClose }: { r: HistoryEntry; onClose: () => void })
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {r.hw_transcode && <HistoryHW startedAt={r.started_at} />}
+        <RowServer server={r.server} />
+        {r.hw_transcode && <HistoryHW startedAt={r.started_at} server={r.server} />}
         {badge && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={badge.done ? { background: "var(--good-soft)", color: "var(--good-text)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{badge.label}</span>}
         {r.buffer_count > 0 && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>{r.buffer_count} buffer event{r.buffer_count === 1 ? "" : "s"}</span>}
       </div>

@@ -981,6 +981,8 @@ export interface DashboardData {
   streams_note?: string;
   /** A Plex URL and token are set; without them streams_note stays empty. */
   plex_configured: boolean;
+  /** A Jellyfin address and key are set: streams then include Jellyfin's, each with its server. */
+  jellyfin_configured?: boolean;
   queue: QueueSummary;
   queue_note?: string;
   library: LibraryCounts;
@@ -2453,6 +2455,8 @@ export interface ConvertRequest { key: string; title: string; requested_at: numb
 // "no" = only ever had its video transcoded, "unknown" = never played that format.
 export interface ConvertDeviceCodec { state: "yes" | "no" | "unknown"; direct: number; transcoded: number }
 export interface ConvertDevice {
+  /** The server whose app it is: the same TV plays through Plex's app and Jellyfin's. */
+  server?: InsightsServer;
   product: string; platform: string; player: string; last_seen: number; plays: number;
   hevc: ConvertDeviceCodec; hevc10: ConvertDeviceCodec; av1: ConvertDeviceCodec;
 }
@@ -2534,7 +2538,15 @@ export interface PlexConfig {
 export interface PlexTestResult { ok: boolean; error?: string; machine_id?: string; server_name?: string; version?: string; libraries?: PlexLibrary[] }
 export interface GeoLocation { ip: string; local: boolean; city?: string; country?: string; country_code?: string; lat?: number; lon?: number }
 export interface StreamDetail { src: string; stream?: string }
+/** The media server a stream, play, person or title row belongs to ("" = both, on a title watched on each). */
+export type InsightsServer = "plex" | "jellyfin";
+/** Each media server Insights can watch (GET /insights/servers): connected, and what its monitoring is doing. */
+export interface InsightsServerStatus {
+  server: InsightsServer; name?: string; configured: boolean; monitoring: boolean; status: PlexStatus;
+  poll_seconds: number; last_poll_at?: number; last_error?: string;
+}
 export interface InsightsStream {
+  server?: InsightsServer;
   /** thumb is the portrait poster (an episode's show poster); still is an episode's own frame, art the background. */
   session_key: string; user: string; user_id?: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
   progress_pct: number; offset_ms: number; duration_ms: number; state: string;
@@ -2542,11 +2554,17 @@ export interface InsightsStream {
   bandwidth_kbps: number; location: string; ip: string; geo: GeoLocation;
   video: StreamDetail; audio: StreamDetail; container: StreamDetail;
   hw_transcode: boolean; throttled: boolean; reasons: string[];
-  /** What Plex is really running on the GPU; hw_requested without hw_encode = fell back to CPU. */
+  /** What Plex is really running on the GPU; hw_requested without hw_encode = fell back to CPU.
+   *  Jellyfin: hw_transcode with hw_title = its configured acceleration ("vaapi"); it doesn't say more. */
   hw_decode: boolean; hw_encode: boolean; hw_requested: boolean; hw_title?: string;
 }
-export interface InsightsActivity { streams: InsightsStream[]; bandwidth: { total_kbps: number; lan_kbps: number; wan_kbps: number }; geo_active: boolean }
+export interface InsightsActivity {
+  streams: InsightsStream[]; bandwidth: { total_kbps: number; lan_kbps: number; wan_kbps: number }; geo_active: boolean;
+  /** A connected server that didn't answer, by server, while another did. */
+  errors?: Partial<Record<InsightsServer, string>>;
+}
 export interface HistoryEntry {
+  server?: InsightsServer;
   id: number; user_id: string; user_name: string; title: string; grandparent_title: string; parent_title: string;
   media_index: number; parent_index: number; year: number; media_type: string; thumb: string; thumb_url: string;
   /** The show an episode belongs to, recorded since PLEX-20 ("" before that and for movies). */
@@ -2559,12 +2577,12 @@ export interface HistoryEntry {
   sessions?: number;
 }
 export interface InsightsHistory { rows: HistoryEntry[]; total: number }
-export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number }
-export interface NameStat { id: string; name: string; plays: number; secs: number }
+export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number; server?: InsightsServer | "" }
+export interface NameStat { id: string; name: string; plays: number; secs: number; server?: InsightsServer | "" }
 export interface InsightsStats { most_watched_movies: TitleStat[]; most_watched_shows: TitleStat[]; most_active_users: NameStat[]; most_active_platforms: NameStat[]; recently_watched: HistoryEntry[] }
-export interface UserEntry { id: string; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
-export interface LibraryStat { title: string; type: string; count: number }
-export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number }
+export interface UserEntry { id: string; server?: InsightsServer; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
+export interface LibraryStat { title: string; type: string; count: number; server?: InsightsServer }
+export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number; server?: InsightsServer }
 export interface BWPoint { t: string; total_kbps: number; lan_kbps: number; wan_kbps: number }
 // Every play series is in `metric`: plays, or hours watched ("duration").
 export interface InsightsGraphs {
@@ -2585,6 +2603,7 @@ export interface LibraryItem {
   kind: "movie" | "show"; title: string; year?: number; thumb_url: string; rating_key?: string;
   media?: "movie" | "series"; tmdb?: number; arrmada_id?: number;
   plays?: number; secs?: number; added_at?: number;
+  server?: InsightsServer | "";
 }
 export interface HotSpot extends LibraryItem {
   transcodes: number; total_plays: number; top_pair: string; platforms: string[]; top_cause?: string; cause_label?: string;
@@ -2595,9 +2614,11 @@ export interface InsightsLibrary {
   never_watched: LibraryItem[]; never_watched_total: number; never_watched_unavailable: boolean;
   hot_spots: HotSpot[];
 }
-// One Plex user's People page (GET /insights/users/{id}): Plex video plays only.
+// One person's People page (GET /insights/users/{id}): their video plays on one server
+// (someone on both servers has a page per server). Jellyfin reports no buffering, so a
+// Jellyfin person's stalls stay zero.
 export interface PersonProfile {
-  id: string; username: string; avatar_url: string; window_days: number;
+  id: string; server?: InsightsServer; username: string; avatar_url: string; window_days: number;
   first_seen: number; last_seen: number; total_plays: number; total_secs: number;
   /** Share of plays with a known runtime that reached 90%, out of completion_of plays. */
   completion_pct: number; completion_of: number;
@@ -2607,7 +2628,11 @@ export interface PersonProfile {
   stalls: { events: number; stall_ms: number; rate_pct: number };
   recent: HistoryEntry[];
 }
-export interface Reliability { summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[] }
+export interface Reliability {
+  summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[];
+  /** Jellyfin plays in the window, left out of every figure (Jellyfin reports no buffering). */
+  jellyfin_plays?: number;
+}
 
 // ApiError is still an Error (every existing catch keeps reading .message), but it also
 // carries the status and the decoded body, so a refusal can show its details — e.g.

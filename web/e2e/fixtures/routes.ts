@@ -209,6 +209,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/subtitles/library", { items: [], groups: [], scanning: false, stale: false }),
     get("/api/v1/languages", mod.languages),
     get("/api/v1/insights/plex", mod.plexConfig),
+    // The media servers Insights can watch: Plex only, not connected (Jellyfin isn't wired).
+    get("/api/v1/insights/servers", { servers: [{ server: "plex", configured: false, monitoring: false, status: "unconfigured", poll_seconds: 30 }] }),
     get("/api/v1/insights/plex/scan", mod.plexScan),
     // Watch on Plex: no Plex connected, so no title is in it.
     { method: "GET", path: "/api/v1/plex/link", status: 204 },
