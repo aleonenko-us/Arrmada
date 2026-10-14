@@ -111,9 +111,9 @@ export function Dashboard() {
                 "Loading…"
               ) : !data.plex_configured && !data.jellyfin_configured ? (
                 <>
-                  Plex isn't connected yet.{" "}
-                  <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>
-                    Connect Plex
+                  No media server is connected yet.{" "}
+                  <Link to={LINKS.mediaServerCards} className="font-semibold" style={{ color: "var(--accent-text)" }}>
+                    Connect Plex or Jellyfin
                   </Link>
                 </>
               ) : data.streams_note ? (

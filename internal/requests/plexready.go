@@ -286,6 +286,9 @@ func readyBody(req Request, v plexVerdict, note readyNote) string {
 func readyWords(what string, v plexVerdict, note readyNote) string {
 	switch v {
 	case plexHas:
+		if len(note.where) == 0 {
+			break // "ready to watch on your library" doesn't read; plain "ready to watch" does
+		}
 		return what + " is ready to watch on " + serverNames(note.where) + "."
 	case plexLate:
 		return what + " is ready — it may take a few more minutes to show up in " + serverNames(note.where) + "."

@@ -147,7 +147,7 @@ func (a *api) handleInsightsConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdateInsightsConfig persists the Plex connection settings. Every field is
-// optional: Settings → Plex's monitoring switch and poll interval each save on their own
+// optional: Settings → Media servers' Plex monitoring switch and poll interval each save on their own
 // ({"enabled": false}), without sending the server address back; a missing url keeps the
 // saved one, like a missing token does.
 func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request) {

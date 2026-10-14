@@ -38,12 +38,13 @@ export interface PlexScanView {
   error?: string;
 }
 
-/** Who has played a title on Plex (staff only). available is false without Plex. */
+/** Who has played a title on Plex or Jellyfin (staff only). available is false with no
+ *  server connected. Each person is one server identity, with the server it's on. */
 export interface WatchStats {
   available: boolean;
   plays: number;
   last_played: number; // unix seconds
-  users: { id: string; name: string; plays: number; last_played: number }[];
+  users: { id: string; name: string; plays: number; last_played: number; server?: string }[];
 }
 
 export const plexLibraryApi = {
