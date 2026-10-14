@@ -62,6 +62,8 @@ To update: `docker compose pull && docker compose up -d`. That skips the install
 pre-update backup and automatic roll-back; the app still copies its database before any
 upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
 
+Using Portainer? The same file works as a stack: [Using Portainer →](docs/install.md#using-portainer)
+
 ## Update
 
 Run the same line again:

@@ -146,7 +146,7 @@ Open it and change the lines marked `←`:
 | `PUID` / `PGID` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
 | `TZ` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
 | `- "7878:7878"` | The left number is the web page's port; change it if something (Radarr) already has 7878 |
-| `- ./data:/data` | Where the database lives (left side). Its own folder — never your media |
+| `- /path/to/arrmada/data:/data` | Where the database lives (left side, a full path, e.g. `/mnt/user/appdata/arrmada/data` on Unraid). Its own folder — never your media |
 | `- &media /path/to/your/media:/storage` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
 
 Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
@@ -157,6 +157,22 @@ commented out, if you want it. For a GPU, uncomment the `devices` line.
 Update with `docker compose pull && docker compose up -d`. This way has no pre-update backup
 and no automatic roll-back (that's `update.sh`); the app still copies its database to
 `<data>/backups` before any upgrade of its tables, and backs up nightly.
+
+### Using Portainer
+
+The same file works as a Portainer stack:
+
+1. **Stacks → Add stack**, give it a name, and either pick **Web editor** and paste
+   [`docker-compose.example.yml`](../docker-compose.example.yml), or pick **Repository** with
+   `https://github.com/tristenlammi/Arrmada` and compose path `docker-compose.example.yml`.
+2. Change the lines marked `←` as above. Keep the folders full paths (`/mnt/user/…`): a stack
+   has no folder of its own, so a relative path like `./data` would end up inside Portainer's
+   own volume, hidden, and gone with the stack.
+3. **Deploy the stack**, then open `http://<server>:7878`.
+
+To update, use the stack's **Pull and redeploy** (re-pull the image). Like plain
+`docker compose`, that skips `update.sh`'s pre-update backup and roll-back; the app still
+copies its database to `<data>/backups` before any upgrade of its tables.
 
 ### From a git checkout
 

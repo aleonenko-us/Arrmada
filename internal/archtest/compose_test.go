@@ -221,6 +221,17 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 	if d := ex["arrmada-app"].volumes; len(d) == 0 || mountTarget(d[0]) != "/data" || strings.Contains(d[0], "media") {
 		t.Errorf("arrmada-app: the example's first mount should be its own data folder at /data, got %v", d)
 	}
+	// The example is also a Portainer stack, which has no folder of its own: a relative
+	// host path there resolves inside Portainer's data volume, hidden and lost with the
+	// stack. Every host folder has to be a full path (named volumes are fine).
+	for name, s := range ex {
+		for _, v := range s.volumes {
+			src, _, _ := strings.Cut(v, ":")
+			if strings.HasPrefix(src, ".") || strings.HasPrefix(src, "~") {
+				t.Errorf("%s: the example mounts %q, a relative path; use a full one", name, v)
+			}
+		}
+	}
 	var appStorage string
 	for _, v := range ex["arrmada-app"].volumes {
 		if mountTarget(v) == "/storage" {
