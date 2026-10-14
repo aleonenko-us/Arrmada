@@ -1,0 +1,29 @@
+The Vulkan backend embeds its compiled shaders as C++ arrays written {0x3,0x2,...}: one
+generated file, mul_mm.comp.cpp, is 97 MB of that, and g++ needs about 4.5 GB of memory
+to compile an initializer list that long. Written as string literals the same bytes take
+g++ a fraction of that (and of the time). The array gets one extra byte for the string's
+terminating NUL; every user reads the length from the matching _len, which is unchanged.
+Applied by the Dockerfile with `git apply`, which fails the build if it ever stops
+matching (a whisper.cpp upgrade).
+
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+@@ -1176,13 +1176,14 @@
+             }
+
+             src << "const uint64_t " << name << "_len = " << data.size() << ";\n";
+-            src << "const unsigned char " << name << "_data[" << data.size() << "] = {\n" << std::hex;
++            src << "const unsigned char " << name << "_data[" << data.size() + 1 << "] =\n\"";
++            static const char hexdigits[] = "0123456789abcdef";
+             auto bytes = reinterpret_cast<const uint8_t*>(data.data());
+             for (size_t i = 0; i < data.size(); ++i) {
+-                src << "0x" << static_cast<int>(bytes[i]) << ",";
+-                if ((i + 1) % 12 == 0) src << "\n";
++                src << "\\x" << hexdigits[bytes[i] >> 4] << hexdigits[bytes[i] & 15];
++                if ((i + 1) % 64 == 0 && i + 1 < data.size()) src << "\"\n\"";
+             }
+-            src << std::dec << "\n};\n\n";
++            src << "\";\n\n";
+         }
+     }
+

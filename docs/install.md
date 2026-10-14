@@ -185,8 +185,9 @@ checkout, Compose then tries to compile instead, which fails too.
 
 `docker compose up -d --build` compiles the code in the folder instead (30–60 minutes the
 first time: the subtitle and GPU tooling are built from source too). It needs **about
-7 GB of memory free for the build** on a four-core machine (measured peak 6.5 GB); with
-less, a compiler is killed part-way and the build fails (see
+2 GB of memory free for the build** (4 GB is comfortable): the big compiles take turns and
+use as many parallel jobs as the free memory allows. If a compiler is still killed, the
+build says so plainly (see
 [Troubleshooting](troubleshooting.md#the-build-fails-or-gets-killed)). Put
 `ARRMADA_APP_IMAGE=arrmada:dev` in `.env` first, so your build is kept under its own name
 rather than the published image's.
