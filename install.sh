@@ -22,12 +22,16 @@
 #   --puid N --pgid N  run as this user and group (default: your media folder's owner;
 #                      99/100 on Unraid)
 #   --with-prowlarr    also run the optional Prowlarr indexer manager
-#   --image REF        run this published image (default: ghcr.io/tristenlammi/arrmada:stable)
-#   --build            compile the app on this server instead of downloading it
+#   --channel CHANNEL  which Arrmada to run and update to: stable (the default) is the
+#                      published releases, downloaded; main is the newest code, compiled on
+#                      this server every update (for developers)
+#   --build            the same as --channel main
+#   --image REF        on the stable channel, run this published image instead of
+#                      ghcr.io/tristenlammi/arrmada:stable
 #   -y, --yes          don't ask anything; take the suggestions and the options given
 #
-# On an existing install, --media / --transcode change its mounts and --with-prowlarr
-# adds Prowlarr; with none of them it updates.
+# On an existing install, --media / --transcode change its mounts, --with-prowlarr adds
+# Prowlarr and --channel switches its channel; with none of them it updates.
 #
 # Nothing secret is asked or written here: API keys and passwords go in the app.
 set -eu
@@ -193,12 +197,15 @@ usage() {
   say "  --tz ZONE          timezone, e.g. Europe/London (default: this machine's)"
   say "  --puid N --pgid N  run as this user and group (default: the media folder's owner)"
   say "  --with-prowlarr    also run the optional Prowlarr indexer manager"
-  say "  --image REF        run this published image (default: $DEFAULT_IMAGE)"
-  say "  --build            compile the app on this server instead of downloading it"
+  say "  --channel stable   the published releases, downloaded (the default)"
+  say "  --channel main     the newest code, compiled on this server every update (developers)"
+  say "  --build            the same as --channel main"
+  say "  --image REF        on the stable channel, run this image (default: $DEFAULT_IMAGE)"
   say "  -y, --yes          don't ask anything; take the suggestions and the options given"
   say ""
   say "On an existing install, --media / --transcode change its mounts, --with-prowlarr adds"
-  say "Prowlarr, and with none of them it updates (the same as its update.sh)."
+  say "Prowlarr, --channel switches its channel, and with none of them it updates (the same as"
+  say "its update.sh)."
 }
 
 # ── where an install already is ─────────────────────────────────────────────────
@@ -383,6 +390,30 @@ existing_install() {
     say "✓ Mounts updated${_m:+: media $_m → /storage}${_t:+, transcode $_t → /transcode}"
     _changed=1
   fi
+  # --channel (or --image) switches what updates bring. update.sh does the switching, and
+  # never steps back: a server already running newer code than the latest release keeps
+  # it until a release includes it.
+  if [ -n "$CHANNEL_ARG" ] || [ -n "$IMAGE_ARG" ]; then
+    _ch="${CHANNEL_ARG:-stable}"
+    _bak=".env.bak-$(date +%Y%m%d-%H%M%S)"
+    cp -p .env "$_bak"
+    grep -v '^ARRMADA_CHANNEL=' .env > .env.tmp || true
+    if [ -n "$IMAGE_ARG" ]; then
+      grep -v '^ARRMADA_IMAGE=' .env.tmp > .env.tmp2 || true
+      mv .env.tmp2 .env.tmp
+    fi
+    {
+      say ""
+      say "# Which Arrmada updates bring: stable = the published releases, downloaded; main = the"
+      say "# newest code, compiled here on every update (for developers). See docs/updating.md."
+      say "ARRMADA_CHANNEL=$_ch"
+      if [ -n "$IMAGE_ARG" ]; then say "ARRMADA_IMAGE=$IMAGE_ARG"; fi
+    } >> .env.tmp
+    # Written over the same file, so its owner and permissions stay as they are.
+    cat .env.tmp > .env
+    rm -f .env.tmp
+    say "✓ ARRMADA_CHANNEL=$_ch${IMAGE_ARG:+, ARRMADA_IMAGE=$IMAGE_ARG} in .env (the one before is $_bak)."
+  fi
   if [ -n "$PROWLARR" ] && [ "$(env_get COMPOSE_PROFILES)" != prowlarr ]; then
     if grep -qE '^COMPOSE_PROFILES=' .env; then
       die "COMPOSE_PROFILES is already set in .env; add prowlarr to it yourself, then run: docker compose up -d"
@@ -397,6 +428,10 @@ existing_install() {
     # the image it already has. A stack that has never been built builds or downloads now.
     if ! docker image inspect arrmada:dev >/dev/null 2>&1; then
       _img=$(env_get ARRMADA_IMAGE)
+      case "$(env_get ARRMADA_CHANNEL)" in
+        stable) _img=${_img:-$DEFAULT_IMAGE} ;;
+        main) _img="" ;;
+      esac
       if [ -n "$_img" ]; then pull_image "$_img" || die "Couldn't download $_img."; else stamp_build; fi
     fi
     say "Starting Arrmada…"
@@ -411,6 +446,15 @@ existing_install() {
   # running version for --rollback, and goes back to it if the new one doesn't start.
   say "Updating it (the same as running $_dir/update.sh)…"
   say ""
+  # An update.sh from before release channels compiles the newest code itself, and one from
+  # before September 2026 doesn't even run the newer copy its own pull brings. So a checkout
+  # with one gets the newer files first, and the update.sh that runs is the current one. It
+  # is told where the checkout was, which says which code an unstamped build is.
+  if [ -d .git ] && have git && ! grep -q ARRMADA_CHANNEL update.sh 2>/dev/null; then
+    ARRMADA_PRE_PULL=$(git rev-parse HEAD 2>/dev/null || true)
+    export ARRMADA_PRE_PULL
+    git pull --quiet --ff-only </dev/null || true
+  fi
   set --
   if [ -n "$YES" ]; then set -- -y; fi
   if [ -n "$TTY" ]; then
@@ -551,7 +595,11 @@ new_install() {
   say "   • Run as:        $PUID:$PGID"
   if [ -n "$GPU" ]; then say "   • GPU:           /dev/dri found → hardware transcoding"; else say "   • GPU:           none found → Convert uses the CPU"; fi
   [ -n "$PROWLARR" ] && say "   • Prowlarr:      yes"
-  if [ -n "$IMAGE_REF" ]; then say "   • App:           the published image ($IMAGE_REF)"; else say "   • App:           compiled on this server (--build)"; fi
+  if [ -n "$IMAGE_REF" ]; then
+    say "   • App:           the published releases ($IMAGE_REF)"
+  else
+    say "   • App:           main, compiled on this server on every update (--channel main)"
+  fi
   say ""
   if ! ask_yes "Go ahead?"; then
     say "Nothing was installed. Run the installer again to change the answers, or see its options with --help."
@@ -572,8 +620,9 @@ new_install() {
       die "Couldn't download $IMAGE_REF. Check the name, or run without --image."
     fi
     say ""
-    say "! The published image isn't available yet, so Arrmada will be compiled on this server."
-    say "  That takes 30–60 minutes the first time. Updates switch to the image once it's published."
+    say "! The published image couldn't be downloaded, so Arrmada will be compiled on this server."
+    say "  That takes 30–60 minutes. This install still follows the published releases: update.sh"
+    say "  moves it to the release image once one includes the code compiled now."
     IMAGE_REF=""
   fi
 
@@ -581,15 +630,16 @@ new_install() {
     say "# ─── Arrmada settings ─── change a value, then run update.sh to apply ───"
     say "# API keys and passwords are entered in the app, never here."
     say ""
-    if [ -n "$IMAGE_REF" ]; then
-      say "# The published image update.sh downloads (delete the line to compile here instead)."
-      say "ARRMADA_IMAGE=$IMAGE_REF"
-      say ""
-    elif [ -z "$BUILD" ]; then
-      say "# When a release is published, uncomment this so updates download it instead of compiling:"
-      say "# ARRMADA_IMAGE=$DEFAULT_IMAGE"
-      say ""
+    say "# Which Arrmada updates bring: stable = the published releases, downloaded; main = the"
+    say "# newest code, compiled here on every update (for developers). See docs/updating.md."
+    if [ -n "$BUILD" ]; then
+      say "ARRMADA_CHANNEL=main"
+    else
+      say "ARRMADA_CHANNEL=stable"
+      say "# The published image update.sh downloads on the stable channel."
+      say "ARRMADA_IMAGE=${IMAGE_REF:-$DEFAULT_IMAGE}"
     fi
+    say ""
     say "# The image docker compose runs: update.sh's own build or download, kept as arrmada:dev"
     say "# with the one before as arrmada:previous for --rollback (keep this line)."
     say "ARRMADA_APP_IMAGE=arrmada:dev"
@@ -661,7 +711,7 @@ new_install() {
 
 main() {
   DIR_ARG=""; DIR_SET=""; MEDIA=""; MEDIA_SET=""; TRANSCODE=""; TRANSCODE_SET=""
-  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; IMAGE_ARG=""; BUILD=""; YES=""
+  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; IMAGE_ARG=""; BUILD=""; CHANNEL_ARG=""; YES=""
   _self="$0"
   while [ $# -gt 0 ]; do
     _opt="$1"; _val=""
@@ -669,7 +719,7 @@ main() {
       --*=*) _val="${_opt#*=}"; _opt="${_opt%%=*}" ;;
     esac
     case "$_opt" in
-      --dir | --media | --transcode | --tz | --puid | --pgid | --image)
+      --dir | --media | --transcode | --tz | --puid | --pgid | --image | --channel)
         if [ -z "$_val" ]; then
           [ $# -ge 2 ] || die "$_opt needs a value."
           _val="$2"; shift
@@ -685,6 +735,11 @@ main() {
       --pgid) PGID="$_val" ;;
       --with-prowlarr) PROWLARR=1 ;;
       --image) IMAGE_ARG="$_val" ;;
+      --channel)
+        case "$_val" in
+          stable | main) CHANNEL_ARG="$_val" ;;
+          *) die "--channel is stable (the published releases) or main (compile the newest code), not \"$_val\"." ;;
+        esac ;;
       --build) BUILD=1 ;;
       -y | --yes) YES=1 ;;
       -h | --help) usage; exit 0 ;;
@@ -692,7 +747,13 @@ main() {
     esac
     shift
   done
-  [ -n "$BUILD" ] && [ -n "$IMAGE_ARG" ] && die "--build and --image don't go together."
+  # --build is the main channel by its older name.
+  if [ -n "$BUILD" ]; then
+    [ "$CHANNEL_ARG" = stable ] && die "--build means --channel main, so it doesn't go with --channel stable."
+    CHANNEL_ARG=main
+  fi
+  [ "$CHANNEL_ARG" = main ] && BUILD=1
+  [ -n "$BUILD" ] && [ -n "$IMAGE_ARG" ] && die "--image is for the stable channel; it doesn't go with --channel main (or --build)."
   tty_init
 
   say "⛵ Arrmada installer"

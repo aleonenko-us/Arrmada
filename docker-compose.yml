@@ -60,6 +60,10 @@ services:
       # An older build refuses to start on a database a newer one has upgraded (after a
       # rollback without --with-db, say). Set this to 1 in .env only to start it anyway.
       ARRMADA_ALLOW_NEWER_SCHEMA: "${ARRMADA_ALLOW_NEWER_SCHEMA:-}"
+      # Which Arrmada updates bring: stable (the published releases) or main (the newest
+      # code, compiled here). install.sh and update.sh keep it in .env; the in-app update
+      # check compares the running build with the same thing.
+      ARRMADA_CHANNEL: "${ARRMADA_CHANNEL:-stable}"
       # The host's timezone (install.sh writes it to .env). Schedules — the Convert encode
       # window, the nightly sweeps, listening-per-day — run on this clock; without it the
       # app ran on UTC while its companions below were already on local time.
