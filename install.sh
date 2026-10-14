@@ -691,6 +691,11 @@ main() {
   # is still an install: a second one would collide with it.
   if docker inspect Arrmada-app >/dev/null 2>&1; then
     _wd=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' Arrmada-app 2>/dev/null || true)
+    if [ -n "$_wd" ] && is_install "$_wd"; then
+      err "✗ Arrmada is already installed in $_wd, and one server runs one Arrmada."
+      err "  To update it, run the install line without --dir, or:  sh $_wd/update.sh"
+      exit 1
+    fi
     err "✗ Arrmada is already installed here (container Arrmada-app${_wd:+, started from $_wd}),"
     err "  but its folder wasn't found. Run update.sh in that folder to update it, or point"
     err "  the installer at it:  $ONE_LINER -s -- --dir /path/to/it"
