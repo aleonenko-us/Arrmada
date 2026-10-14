@@ -19,6 +19,15 @@ const screens = SCREENS_DIR
     ]
   : [];
 
+// e2e/readme-shots.spec.ts (the README and website pictures in docs/images) runs only on
+// demand, with README_SHOTS=1.
+const readmeShots = process.env.README_SHOTS
+  ? [
+      { name: "readme-shots", testMatch: /readme-shots\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },
+      { name: "readme-shots-phone", testMatch: /readme-shots\.spec\.ts/, use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 } },
+    ]
+  : [];
+
 export default defineConfig({
   testDir: "./e2e",
   ...(SCREENS_DIR ? { snapshotPathTemplate: `${SCREENS_DIR}/{arg}{ext}` } : {}),
@@ -57,6 +66,7 @@ export default defineConfig({
     { name: "contrast-1440", testMatch: /contrast\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "contrast-375", testMatch: /contrast\.spec\.ts/, use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
     ...screens,
+    ...readmeShots,
   ],
   webServer: {
     command: process.env.E2E_NO_BUILD ? preview : `npm run build && ${preview}`,
