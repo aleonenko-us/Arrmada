@@ -22,6 +22,8 @@
 #   --puid N --pgid N  run as this user and group (default: your media folder's owner;
 #                      99/100 on Unraid)
 #   --with-prowlarr    also run the optional Prowlarr indexer manager
+#   --with-sabnzbd     also run SABnzbd, for Usenet (you need your own Usenet provider and
+#                      indexers); Arrmada sets it up and connects to it by itself
 #   --channel CHANNEL  which Arrmada to run and update to: stable (the default) is the
 #                      published releases, downloaded; main is the newest code, compiled on
 #                      this server every update (for developers)
@@ -30,8 +32,9 @@
 #                      ghcr.io/tristenlammi/arrmada:stable
 #   -y, --yes          don't ask anything; take the suggestions and the options given
 #
-# On an existing install, --media / --transcode change its mounts, --with-prowlarr adds
-# Prowlarr and --channel switches its channel; with none of them it updates.
+# On an existing install, --media / --transcode change its mounts, --with-prowlarr and
+# --with-sabnzbd add those companions and --channel switches its channel; with none of
+# them it updates.
 #
 # Nothing secret is asked or written here: API keys and passwords go in the app.
 set -eu
@@ -145,6 +148,37 @@ env_get() {
   grep -E "^$1=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'" || true
 }
 
+# env_set KEY VALUE "comment": KEY=VALUE in ./.env, replacing any line for KEY; the line
+# (after the comment) goes at the end. Written over the same file, so its owner and
+# permissions stay as they are.
+env_set() {
+  grep -v "^$1=" .env > .env.tmp || true
+  { say ""; say "$3"; say "$1=$2"; } >> .env.tmp
+  cat .env.tmp > .env
+  rm -f .env.tmp
+}
+
+# profiles_with NAME... -> the compose profiles in .env (COMPOSE_PROFILES, a comma list)
+# with each NAME added once, in order. Profiles someone added by hand stay.
+profiles_with() {
+  _list=$(env_get COMPOSE_PROFILES | tr -d ' ')
+  for _p in "$@"; do
+    case ",$_list," in
+      *",$_p,"*) ;;
+      *) _list="${_list:+$_list,}$_p" ;;
+    esac
+  done
+  printf '%s' "$_list"
+}
+
+# sabnzbd_note PORT: where to add the Usenet provider. Arrmada connects to SABnzbd by
+# itself; the provider's login goes into SABnzbd, never Arrmada.
+sabnzbd_note() {
+  say "  SABnzbd (Usenet): Arrmada connects to it by itself. Add your Usenet provider there:"
+  say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit)"
+  say "  then add your Newznab indexers in Arrmada (Settings → Connections)."
+}
+
 # wait_healthy -> 0 once the app answers its health check; 1 if it crashed, keeps
 # restarting, or never came up. It asks from inside the container, so it works whatever
 # host port was picked and needs nothing on the host.
@@ -197,15 +231,16 @@ usage() {
   say "  --tz ZONE          timezone, e.g. Europe/London (default: this machine's)"
   say "  --puid N --pgid N  run as this user and group (default: the media folder's owner)"
   say "  --with-prowlarr    also run the optional Prowlarr indexer manager"
+  say "  --with-sabnzbd     also run SABnzbd, for Usenet (bring your own provider and indexers)"
   say "  --channel stable   the published releases, downloaded (the default)"
   say "  --channel main     the newest code, compiled on this server every update (developers)"
   say "  --build            the same as --channel main"
   say "  --image REF        on the stable channel, run this image (default: $DEFAULT_IMAGE)"
   say "  -y, --yes          don't ask anything; take the suggestions and the options given"
   say ""
-  say "On an existing install, --media / --transcode change its mounts, --with-prowlarr adds"
-  say "Prowlarr, --channel switches its channel, and with none of them it updates (the same as"
-  say "its update.sh)."
+  say "On an existing install, --media / --transcode change its mounts, --with-prowlarr and"
+  say "--with-sabnzbd add those companions, --channel switches its channel, and with none of"
+  say "them it updates (the same as its update.sh)."
 }
 
 # ── where an install already is ─────────────────────────────────────────────────
@@ -302,8 +337,18 @@ write_override() {
       say "  arrmada-qbittorrent:"
       say "    volumes:"
       say "      - \"$_m:/storage\""
+      # The optional SABnzbd sees the media folder at the same path, so Arrmada can put its
+      # downloads in the downloads folder there. Nothing starts it unless it's switched on.
+      say "  arrmada-sabnzbd:"
+      say "    volumes:"
+      say "      - \"$_m:/storage\""
     fi
   } > docker-compose.override.yml
+}
+
+# override_generated -> 0 if there's no override, or the installer wrote it.
+override_generated() {
+  [ ! -f docker-compose.override.yml ] || head -n 1 docker-compose.override.yml | grep -q "^$OVERRIDE_MARK"
 }
 
 # override_value TARGET -> the host folder the generated override mounts at TARGET.
@@ -370,8 +415,13 @@ existing_install() {
   ensure_app_image
 
   _changed=""
+  # SABnzbd is a service in docker-compose.yml: an install whose files are older than that
+  # has to update first (which brings the newer files), and only then can it be switched on.
+  if [ -n "$SABNZBD" ] && ! grep -q '^  arrmada-sabnzbd:' docker-compose.yml; then
+    die "This install's files are older than the bundled SABnzbd. Update it first (sh $_dir/update.sh), then run the installer with --with-sabnzbd again."
+  fi
   if [ -n "$MEDIA_SET" ] || [ -n "$TRANSCODE_SET" ]; then
-    if [ -f docker-compose.override.yml ] && ! head -n 1 docker-compose.override.yml | grep -q "^$OVERRIDE_MARK"; then
+    if ! override_generated; then
       die "docker-compose.override.yml here was written by hand, so the installer won't change it. Edit its mounts yourself, then run update.sh."
     fi
     _m=$(override_value /storage); _t=$(override_value /transcode)
@@ -414,13 +464,39 @@ existing_install() {
     rm -f .env.tmp
     say "✓ ARRMADA_CHANNEL=$_ch${IMAGE_ARG:+, ARRMADA_IMAGE=$IMAGE_ARG} in .env (the one before is $_bak)."
   fi
-  if [ -n "$PROWLARR" ] && [ "$(env_get COMPOSE_PROFILES)" != prowlarr ]; then
-    if grep -qE '^COMPOSE_PROFILES=' .env; then
-      die "COMPOSE_PROFILES is already set in .env; add prowlarr to it yourself, then run: docker compose up -d"
+  # --with-prowlarr / --with-sabnzbd: the companion's compose profile joins COMPOSE_PROFILES
+  # (a comma list; whatever is there already stays).
+  if [ -n "$SABNZBD" ]; then
+    if [ -z "$(env_get ARRMADA_SABNZBD_PORT)" ]; then
+      env_set ARRMADA_SABNZBD_PORT "$(free_port 8085 8086 8087)" "# SABnzbd's web page (where your Usenet provider goes), picked free by install.sh."
+      _changed=1
     fi
-    { say ""; say "# Optional companions to run (added by install.sh --with-prowlarr)."; say "COMPOSE_PROFILES=prowlarr"; } >> .env
-    say "✓ Prowlarr added."
-    _changed=1
+    # It sees the media folder where Arrmada does: the generated override gets the mount;
+    # one written by hand is left alone, with a word on what to add.
+    _m=$(override_value /storage)
+    if [ -n "$_m" ] && override_generated && ! grep -q '^  arrmada-sabnzbd:' docker-compose.override.yml; then
+      _t=$(override_value /transcode)
+      _g=""; grep -q '/dev/dri:/dev/dri' docker-compose.override.yml 2>/dev/null && _g=1
+      cp docker-compose.override.yml docker-compose.override.yml.bak
+      write_override "$_m" "$_t" "$_g"
+      _changed=1
+    elif ! override_generated && ! grep -q 'arrmada-sabnzbd' docker-compose.override.yml; then
+      say "! docker-compose.override.yml was written by hand. If it mounts your media folder into"
+      say "  arrmada-app, mount it into arrmada-sabnzbd at the same path too, so SABnzbd's downloads"
+      say "  can go in your downloads folder (until then they stay in Arrmada's own storage)."
+    fi
+  fi
+  _want=""
+  [ -n "$PROWLARR" ] && _want="prowlarr"
+  [ -n "$SABNZBD" ] && _want="$_want sabnzbd"
+  if [ -n "$_want" ]; then
+    # shellcheck disable=SC2086 # the list of profiles is meant to split
+    _profiles=$(profiles_with $_want)
+    if [ "$_profiles" != "$(env_get COMPOSE_PROFILES | tr -d ' ')" ]; then
+      env_set COMPOSE_PROFILES "$_profiles" "# Optional companions to run (install.sh --with-prowlarr / --with-sabnzbd)."
+      say "✓ COMPOSE_PROFILES=$_profiles in .env."
+      _changed=1
+    fi
   fi
 
   if [ -n "$_changed" ] || ! docker inspect Arrmada-app >/dev/null 2>&1; then
@@ -439,6 +515,10 @@ existing_install() {
     wait_healthy || fail_start
     say ""
     say "✓ Arrmada is running.  Open http://$(host_ip):$(env_get ARRMADA_PORT)"
+    if [ -n "$SABNZBD" ]; then
+      say ""
+      sabnzbd_note "$(env_get ARRMADA_SABNZBD_PORT)"
+    fi
     return
   fi
 
@@ -568,6 +648,8 @@ new_install() {
   WEBPORT=$(free_port 7878 7979 8790 8385)
   QBWEB=$(free_port 8080 8081 8082)
   PROWPORT=$(free_port 9696 9697 9698)
+  SABPORT=""
+  [ -n "$SABNZBD" ] && SABPORT=$(free_port 8085 8086 8087)
   AUDIOPORT=$(free_port 13379 13380 13381 13382)
   BTPORT=$(rand_port)
   GPU=""
@@ -595,6 +677,7 @@ new_install() {
   say "   • Run as:        $PUID:$PGID"
   if [ -n "$GPU" ]; then say "   • GPU:           /dev/dri found → hardware transcoding"; else say "   • GPU:           none found → Convert uses the CPU"; fi
   [ -n "$PROWLARR" ] && say "   • Prowlarr:      yes"
+  [ -n "$SABNZBD" ] && say "   • SABnzbd:       yes, for Usenet (web page on port $SABPORT)"
   if [ -n "$IMAGE_REF" ]; then
     say "   • App:           the published releases ($IMAGE_REF)"
   else
@@ -648,6 +731,10 @@ new_install() {
     say "ARRMADA_PORT=$WEBPORT"
     say "ARRMADA_QBIT_WEBUI_PORT=$QBWEB"
     say "ARRMADA_PROWLARR_PORT=$PROWPORT"
+    if [ -n "$SABPORT" ]; then
+      say "# SABnzbd's web page (where your Usenet provider goes)."
+      say "ARRMADA_SABNZBD_PORT=$SABPORT"
+    fi
     say "# Audiobook server for listening apps (off until switched on in the app)."
     say "ARRMADA_AUDIOBOOK_PORT=$AUDIOPORT"
     say "# BitTorrent: forward this port on your router (TCP and UDP)."
@@ -673,10 +760,13 @@ new_install() {
       say "# Your media folder, mounted at /storage (see docker-compose.override.yml)."
       say "ARRMADA_STORAGE_HOST=$MEDIA"
     fi
-    if [ -n "$PROWLARR" ]; then
+    _profiles=""
+    [ -n "$PROWLARR" ] && _profiles="prowlarr"
+    [ -n "$SABNZBD" ] && _profiles="${_profiles:+$_profiles,}sabnzbd"
+    if [ -n "$_profiles" ]; then
       say ""
-      say "# Optional companions to run."
-      say "COMPOSE_PROFILES=prowlarr"
+      say "# Optional companions to run (a comma list)."
+      say "COMPOSE_PROFILES=$_profiles"
     fi
   } > .env
   write_override "$MEDIA" "$TRANSCODE" "$GPU"
@@ -707,11 +797,15 @@ new_install() {
   if [ -z "$PROWLARR" ]; then
     say "  Prowlarr wasn't installed (it's optional). To add it:  sh $_dir/install.sh --with-prowlarr"
   fi
+  if [ -n "$SABNZBD" ]; then
+    say ""
+    sabnzbd_note "$SABPORT"
+  fi
 }
 
 main() {
   DIR_ARG=""; DIR_SET=""; MEDIA=""; MEDIA_SET=""; TRANSCODE=""; TRANSCODE_SET=""
-  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; IMAGE_ARG=""; BUILD=""; CHANNEL_ARG=""; YES=""
+  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; SABNZBD=""; IMAGE_ARG=""; BUILD=""; CHANNEL_ARG=""; YES=""
   _self="$0"
   while [ $# -gt 0 ]; do
     _opt="$1"; _val=""
@@ -734,6 +828,7 @@ main() {
       --puid) PUID="$_val" ;;
       --pgid) PGID="$_val" ;;
       --with-prowlarr) PROWLARR=1 ;;
+      --with-sabnzbd) SABNZBD=1 ;;
       --image) IMAGE_ARG="$_val" ;;
       --channel)
         case "$_val" in
