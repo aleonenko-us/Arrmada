@@ -367,7 +367,7 @@ func (c *Coordinator) grabBookEditionCounted(ctx context.Context, b books.Book, 
 	st.usable = len(res.Releases)
 	allowed := c.bookLanguages(ctx)
 	noteBookVerdicts(notes, sp, allowed, res.Releases, kind)
-	best := pickBestBookForKind(sp, allowed, res.Releases, kind, b.Title)
+	best := pickBestBookForKind(c.networks(ctx), sp, allowed, res.Releases, kind, b.Title)
 	if best == nil {
 		c.log.Info("book: no matching-format release", "title", b.Title, "edition", kind)
 		return "", st, nil
@@ -660,8 +660,9 @@ func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition stri
 // language the owner doesn't read are skipped.
 //
 // wantTitle is the book being searched for; a release that bundles it with others (an
-// omnibus, a trilogy) ranks below one of just that book — see bookShape.
-func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind, wantTitle string) *indexer.Release {
+// omnibus, a trilogy) ranks below one of just that book — see bookShape. nets decides
+// between a usenet and a torrent release that score the same (netPolicy.beats).
+func pickBestBookForKind(nets netPolicy, sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind, wantTitle string) *indexer.Release {
 	var best *indexer.Release
 	var bestScore, bestShape int
 	for i := range releases {
@@ -673,7 +674,7 @@ func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases [
 			continue
 		}
 		shape := bookShape(releases[i].Title, wantTitle)
-		if best == nil || betterBook(shape, score, bestShape, bestScore) {
+		if best == nil || nets.betterBook(releases[i], shape, score, *best, bestShape, bestScore) {
 			best, bestScore, bestShape = &releases[i], score, shape
 		}
 	}
@@ -709,15 +710,15 @@ func bookShape(title, wantTitle string) int {
 // reBookCollection matches the words trackers use for a multi-book release.
 var reBookCollection = regexp.MustCompile(`(?i)\b(?:omnibus|duology|trilogy|quartet|quadrilogy|box\s*set|boxset|collection|complete\s+series|books?\s*\d+\s*(?:-|–|to)\s*\d+)\b`)
 
-// betterBook reports whether a candidate (shape, score) should replace the current best
-// (bshape, bs): the better shape always wins, then the higher score. This keeps a
-// "(Part 1 of 6)" split from being grabbed over the complete book, and a trilogy over
-// the one book that was asked for.
-func betterBook(shape, score, bshape, bs int) bool {
+// betterBook reports whether a candidate rel (shape, score) should replace the current
+// best (bshape, bs): the better shape always wins, then the higher score (beats: seeders
+// only between two torrents). This keeps a "(Part 1 of 6)" split from being grabbed over
+// the complete book, and a trilogy over the one book that was asked for.
+func (p netPolicy) betterBook(rel indexer.Release, shape, score int, best indexer.Release, bshape, bs int) bool {
 	if shape != bshape {
 		return shape < bshape
 	}
-	return score > bs
+	return p.beats(rel, score, best, bs)
 }
 
 // rePartialBook matches the "N of M" / "Part N of M" markers trackers use for a
@@ -1256,8 +1257,10 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 
 	// Score each release once (keyword scoring now spans narrator/series/author,
 	// so a GraphicAudio preference actually fires) and keep the score for ordering.
+	nets := c.networks(ctx)
 	type ranked struct {
 		rr       RankedRelease
+		rel      indexer.Release
 		score    int
 		eligible bool
 		partial  bool
@@ -1284,7 +1287,7 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 		if !allowed.allows(rel.Language) {
 			reject = bookLangRejectReason(rel.Language)
 		}
-		if rel.Transport == indexer.TransportUsenet {
+		if !nets.canGrab(rel) {
 			eligible = false // no client can take it, so it is never the recommended pick
 		}
 		narrator := rel.Narrator
@@ -1298,7 +1301,8 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 				Seeders: rel.Seeders, Summary: summarizeBook(f), RejectReason: reject,
 				Eligible: eligible, Edition: edition, Format: f, Narrator: narrator,
 				Author: rel.Author, Series: rel.Series, Language: rel.Language,
-			}, rel),
+			}, rel, nets),
+			rel: rel,
 			version: func() *books.AudioVersion {
 				if edition != books.KindAudiobook {
 					return nil
@@ -1317,7 +1321,7 @@ func (c *Coordinator) RankBookReleases(ctx context.Context, bookID int64) (Relea
 		if items[i].partial != items[j].partial {
 			return !items[i].partial
 		}
-		return items[i].score > items[j].score
+		return nets.beats(items[i].rel, items[i].score, items[j].rel, items[j].score)
 	})
 	// Mark the best eligible release of each edition — and of each audiobook version —
 	// as the recommended pick.
@@ -1877,6 +1881,7 @@ func (c *Coordinator) pendingBookGrabTitles(ctx context.Context, bookID int64) (
 // everything already grabbed for it and still in flight. An error means one of those
 // lists couldn't be read; the caller grabs nothing for the book this round.
 func (c *Coordinator) dropUngrabbableBook(ctx context.Context, bookID int64, releases []indexer.Release) ([]indexer.Release, error) {
+	releases = c.networks(ctx).grabbable(releases) // what no client can take never competes
 	releases, err := c.dropBlockedBook(ctx, bookID, releases)
 	if err != nil {
 		return nil, err
@@ -1894,7 +1899,11 @@ func (c *Coordinator) dropUngrabbableBook(ctx context.Context, bookID int64, rel
 // array, so each step compares against a copy.
 func (c *Coordinator) dropUngrabbableNoted(ctx context.Context, bookID int64, releases []indexer.Release, exclude map[string]bool) ([]indexer.Release, error) {
 	notes := notesFrom(ctx)
+	nets := c.networks(ctx)
 	before := append([]indexer.Release(nil), releases...)
+	releases = nets.grabbable(releases) // what no client can take never competes
+	nets.noteDropped(notes, before, releases)
+	before = append(before[:0], releases...)
 	kept, err := c.dropBlockedBook(ctx, bookID, releases)
 	if err != nil {
 		return nil, err
@@ -2071,6 +2080,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 	match := books.MatcherOver(all)
 	downloading := booksDownloading(queue, match)
 	allowed := c.bookLanguages(ctx)
+	nets := c.networks(ctx)
 	for _, b := range all {
 		if !b.Monitored {
 			continue
@@ -2105,7 +2115,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if kind == books.KindAudiobook {
 				pool = dropVersionReleases(b, matched)
 			}
-			best := pickBestBookForKind(sp, allowed, pool, kind, b.Title)
+			best := pickBestBookForKind(nets, sp, allowed, pool, kind, b.Title)
 			if best == nil {
 				continue
 			}
@@ -2124,7 +2134,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if !versionWanted(v) {
 				continue
 			}
-			best := pickBestBookForKind(versionProfile(sp, v), allowed, releasesForVersion(v, matched), books.KindAudiobook, b.Title)
+			best := pickBestBookForKind(nets, versionProfile(sp, v), allowed, releasesForVersion(v, matched), books.KindAudiobook, b.Title)
 			if best == nil {
 				continue
 			}

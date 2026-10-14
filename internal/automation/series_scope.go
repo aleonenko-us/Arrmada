@@ -287,12 +287,10 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 	byName := make(map[string]indexer.Release, len(releases))
 	cands := make([]quality.Candidate, 0, len(releases))
 	rts := newRuntimeIndex(s)
-	torrents := grabbable(releases)
-	notes.dropped(releases, torrents, DropNotTorrent)
 	// Specials found by title rather than S00Exx, each grabbed under its own special's
 	// scope so the import knows where its unnumbered file goes.
 	byTitle := map[string]GrabScope{}
-	for _, rel := range bestByTitle(torrents) {
+	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		out.Found++
 		special := 0
 		if sc.Season == 0 {

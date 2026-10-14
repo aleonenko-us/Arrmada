@@ -43,8 +43,9 @@ type SyncResult struct {
 	Unchanged int `json:"unchanged"` // existing rows left as they were
 	Disabled  int `json:"disabled"`  // turned off: disabled or removed in Prowlarr, or usenet
 	Reenabled int `json:"reenabled"` // turned back on: enabled again in Prowlarr
-	// SkippedUsenet counts Prowlarr's usenet indexers, which aren't imported: Arrmada has
-	// no usenet download client, so nothing they find could be downloaded.
+	// SkippedUsenet counts Prowlarr's usenet indexers that weren't imported because no
+	// usenet download client is set up, so nothing they find could be downloaded. With one,
+	// they're imported like the torrent indexers and this stays 0.
 	SkippedUsenet int `json:"skipped_usenet"`
 	// FlareSolverrReady is true only when Prowlarr, asked after the sync, lists a
 	// FlareSolverr proxy — never just because adding one didn't error.
@@ -70,7 +71,7 @@ type ProwlarrSync struct {
 const (
 	noteDisabledInProwlarr  = "Disabled in Prowlarr"
 	noteRemovedFromProwlarr = "Removed from Prowlarr"
-	noteNeedsUsenetClient   = "Needs a usenet download client"
+	NoteNeedsUsenetClient   = "Needs a usenet download client"
 )
 
 // prowlarrNamePrefix starts the name of every row a sync creates.
@@ -294,6 +295,9 @@ func (s *Service) applyProwlarr(ctx context.Context, tx *sql.Tx, base, key strin
 		return nil
 	}
 
+	// Usenet indexers come in only once a usenet download client exists; until then nothing
+	// they find could be downloaded.
+	usenetOK := s.usenetAvailable != nil && s.usenetAvailable()
 	matched := map[int64]bool{}
 	for _, pi := range remote {
 		name := prowlarrNamePrefix + pi.Name
@@ -308,12 +312,14 @@ func (s *Service) applyProwlarr(ctx context.Context, tx *sql.Tx, base, key strin
 			matched[ex.ID] = true
 		}
 
-		if strings.EqualFold(pi.Protocol, "usenet") {
-			// Nothing can download what a usenet indexer finds; one synced before this check
-			// existed is switched off with the reason.
+		usenet := strings.EqualFold(pi.Protocol, "usenet")
+		if usenet && !usenetOK {
+			// Nothing can download what a usenet indexer finds; one synced earlier is
+			// switched off with the reason, and switched back on by the first sync after a
+			// usenet client is added (the re-enable below: it was a sync that turned it off).
 			res.SkippedUsenet++
 			if found {
-				if err := s.syncOff(ctx, tx, ex, noteNeedsUsenetClient, res); err != nil {
+				if err := s.syncOff(ctx, tx, ex, NoteNeedsUsenetClient, res); err != nil {
 					return err
 				}
 			}
@@ -336,6 +342,11 @@ func (s *Service) applyProwlarr(ctx context.Context, tx *sql.Tx, base, key strin
 				MediaTypes:  mediaTypesFor(pi.Capabilities.Categories),
 				SeedEnabled: true, SeedHours: DefaultSeedHours, Enabled: true, ProwlarrID: pi.ID,
 			}
+			if usenet {
+				// Prowlarr serves a usenet indexer as Newznab at the same address. Usenet
+				// never seeds, so there's no seed goal to give it.
+				idx.Kind, idx.SeedEnabled, idx.SeedHours = KindNewznab, false, 0
+			}
 			created, err := createIn(ctx, tx, idx)
 			if err != nil {
 				return err
@@ -345,6 +356,14 @@ func (s *Service) applyProwlarr(ctx context.Context, tx *sql.Tx, base, key strin
 			continue
 		}
 
+		if want := prowlarrKind(usenet); ex.Kind != want && (ex.Kind == KindTorznab || ex.Kind == KindNewznab) {
+			// The row's kind is what decides its transport; a usenet row synced as Torznab
+			// long ago would otherwise hand its NZBs to the torrent client.
+			if err := setKind(ctx, tx, ex.ID, want); err != nil {
+				return err
+			}
+			*resets = append(*resets, ex.ID)
+		}
 		if ex.Name != name || ex.URL != feed || ex.APIKey != key || ex.ProwlarrID != pi.ID {
 			if err := updateManaged(ctx, tx, ex.ID, pi.ID, name, feed, key); err != nil {
 				return err
@@ -387,6 +406,14 @@ func (s *Service) applyProwlarr(ctx context.Context, tx *sql.Tx, base, key strin
 		}
 	}
 	return nil
+}
+
+// prowlarrKind is the kind a synced row gets: Newznab for a usenet indexer, else Torznab.
+func prowlarrKind(usenet bool) Kind {
+	if usenet {
+		return KindNewznab
+	}
+	return KindTorznab
 }
 
 // syncOff switches a row off for a sync with note. A row already off for the owner's own

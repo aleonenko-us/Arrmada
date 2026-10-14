@@ -50,9 +50,13 @@ type ReleaseRef struct {
 	DownloadURL string
 	Title       string
 	InfoHash    string // from the indexer's listing, when it gave one
-	MediaKind   string // ReleaseKindMovie | ReleaseKindSeries | ReleaseKindBook
-	MediaID     int64
-	VersionID   int64 // books: the audiobook version the release was matched to (0 = standard)
+	// Transport is the release's network as the listing showed it ("torrent" | "usenet").
+	// The grab itself routes by the indexer (grabTo), so a stale token can't send an NZB
+	// to a torrent client; this is what the release was offered as.
+	Transport string
+	MediaKind string // ReleaseKindMovie | ReleaseKindSeries | ReleaseKindBook
+	MediaID   int64
+	VersionID int64 // books: the audiobook version the release was matched to (0 = standard)
 	// Series: the search the result came from — a negative Season is the whole show,
 	// Episode 0 the whole season. It is the grab's scope, so the import gate's exemption
 	// can't be widened by the browser.

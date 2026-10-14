@@ -58,8 +58,9 @@ const KeyDefaultCategories = "indexer_default_categories"
 // SetDefaultCategories wires the indexer_default_categories setting (see defaultCats).
 func (s *Service) SetDefaultCategories(fn func(ctx context.Context) bool) { s.defaultCats = fn }
 
-// SetUsenetAvailable wires whether a usenet download client exists. Arrmada has none
-// today; wire it from the download service if a usenet client kind is ever added.
+// SetUsenetAvailable wires whether a usenet download client exists (main wires it to the
+// download service's HasTransport). It's asked on every search, so adding or removing a
+// usenet client takes effect on the next one.
 func (s *Service) SetUsenetAvailable(fn func() bool) { s.usenetAvailable = fn }
 
 // usenetUnusable reports whether idx is a usenet indexer with no usenet client to use it.
@@ -78,7 +79,7 @@ func (s *Service) skipUsenet(idx Indexer) bool {
 		return false
 	}
 	if _, logged := s.usenetSkipLogged.LoadOrStore(idx.ID, true); !logged {
-		s.log.Info("indexer: not searching a usenet indexer; Arrmada has no usenet download client", "indexer", idx.Name)
+		s.log.Info("indexer: not searching a usenet indexer until a usenet download client (SABnzbd) is added", "indexer", idx.Name)
 	}
 	return true
 }
@@ -292,9 +293,11 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 	if f, ok := searcher.(Fetcher); ok {
 		return f.Fetch(ctx, *found, downloadURL)
 	}
-	// Usenet (newznab): the download client fetches the NZB URL itself.
+	// Usenet (newznab): the NZB is downloaded here and handed over as a file, so the API key
+	// in its link never reaches the usenet client (nzb.go). There's no fallback to the
+	// link: a failure fails the grab.
 	if found.Transport() == TransportUsenet {
-		return FetchResult{URL: downloadURL}, nil
+		return fetchNZBPayload(ctx, *found, downloadURL)
 	}
 	// Torrent-transport URLs (torznab) are resolved server-side so downstream
 	// gets an infohash-bearing payload (.torrent bytes or a magnet) instead of a

@@ -53,13 +53,14 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 
 	byName := make(map[string]indexer.Release, len(releases))
 	cands := make([]quality.Candidate, 0, len(releases))
-	var usenet []quality.Candidate // listed, but ranked apart: no client can take them
+	var unusable []quality.Candidate // listed, but ranked apart: no client can take them
 	var droppedTitle, droppedScope int
 	var sampleDropped, sampleScope []string
 	rts := newRuntimeIndex(s)
-	torrents, nzbs := splitTransport(releases)
+	nets := c.networks(ctx)
+	usable, others := nets.split(releases)
 	byTitle := map[string]int{} // specials found by their title rather than S00Exx
-	for _, rel := range append(torrents, nzbs...) {
+	for _, rel := range append(usable, others...) {
 		p := parser.Parse(rel.Title)
 		if season == 0 {
 			// A special named by its title: its name is the show plus that title, so the
@@ -73,8 +74,8 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 				byName[rel.Title] = rel
 				byTitle[rel.Title] = n
 				cand := c.specialCandidate(c.newSeriesCandidate(ctx, s, rts, rel), rts, n)
-				if rel.Transport == indexer.TransportUsenet {
-					usenet = append(usenet, cand)
+				if !nets.canGrab(rel) {
+					unusable = append(unusable, cand)
 				} else {
 					cands = append(cands, cand)
 				}
@@ -103,8 +104,8 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 			continue // not relevant to the requested season/episode scope
 		}
 		byName[rel.Title] = rel
-		if rel.Transport == indexer.TransportUsenet {
-			usenet = append(usenet, c.newSeriesCandidate(ctx, s, rts, rel))
+		if !nets.canGrab(rel) {
+			unusable = append(unusable, c.newSeriesCandidate(ctx, s, rts, rel))
 			continue
 		}
 		cands = append(cands, c.newSeriesCandidate(ctx, s, rts, rel))
@@ -120,7 +121,7 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	}
 	profile := c.effectiveProfile(ctx, s.QualityProfile, quality.MediaSeries)
 	decision := c.decideWith(ctx, profile, spec, cands)
-	others := c.decideWith(ctx, profile, spec, usenet)
+	apart := c.decideWith(ctx, profile, spec, unusable)
 
 	winnerName := ""
 	if decision.Winner != nil {
@@ -135,7 +136,8 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	out := make([]RankedRelease, 0, len(cands))
 	// Each candidate carries the runtime it covers — summed across a pack's episodes — so
 	// packs and multi-episode files show a real bitrate too, not only single episodes.
-	// ranked: the release is in the main ranking (torrents), so its place there can be explained.
+	// ranked: the release is in the main ranking (what a client can take), so its place
+	// there can be explained.
 	appendEval := func(ev quality.Evaluation, ranked bool) {
 		rel := byName[ev.Candidate.Name]
 		resolves := c.resolvesLabel(ctx, s, ev.Candidate.Release)
@@ -157,12 +159,12 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 			Recommended:  ev.Candidate.Name == winnerName,
 			Blocklisted:  blocked[normTitle(ev.Candidate.Name)],
 			Resolves:     resolves,
-		}, rel), ev, ranked))
+		}, rel, nets), ev, ranked))
 	}
 	for _, ev := range decision.Eligible {
 		appendEval(ev, true)
 	}
-	for _, evs := range [][]quality.Evaluation{decision.Rejected, others.Eligible, others.Rejected} {
+	for _, evs := range [][]quality.Evaluation{decision.Rejected, apart.Eligible, apart.Rejected} {
 		for _, ev := range evs {
 			appendEval(ev, false)
 		}

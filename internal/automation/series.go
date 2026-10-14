@@ -563,9 +563,7 @@ func (c *Coordinator) grabSeriesScoped(ctx context.Context, s series.Series, rel
 	var exampleWrongTitle string
 	rts := newRuntimeIndex(s)
 	notes := notesFrom(ctx)
-	torrents := grabbable(releases)
-	notes.dropped(releases, torrents, DropNotTorrent)
-	for _, rel := range bestByTitle(torrents) {
+	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		if blocked[normTitle(rel.Title)] || exclude[normTitle(rel.Title)] {
 			nBlocked++
 			notes.mark(rel.Title, DropBlocklisted)
