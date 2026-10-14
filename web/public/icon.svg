@@ -6,9 +6,9 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <g fill="#fdf1e7" transform="translate(106 106) scale(12.5)">
-    <path d="M12 2 L20 7 L12 12 L4 7 Z"/>
-    <path d="M12 9 L20 14 L12 19 L4 14 Z" opacity="0.62"/>
-    <path d="M12 16 L20 21 L12 24 L4 21 Z" opacity="0.34"/>
-  </g>
+  <!-- The A-sail: two sails back to back make an "A" over a hull. Kept inside the
+       maskable safe circle so the same art serves as Android's adaptive icon. -->
+  <path d="M244 92 L244 352 L128 352 Q176 212 244 92 Z" fill="#fdf1e7" opacity="0.72"/>
+  <path d="M268 92 L268 352 L384 352 Q336 212 268 92 Z" fill="#fdf1e7"/>
+  <path d="M128 376 L384 376 Q368 420 330 420 L182 420 Q144 420 128 376 Z" fill="#fdf1e7"/>
 </svg>

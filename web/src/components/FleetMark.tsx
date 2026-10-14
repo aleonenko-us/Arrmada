@@ -1,9 +1,11 @@
+// The Arrmada mark (the "A-sail"): two sails back to back form an "A" over a hull.
+// Same paths as web/public/icon.svg, framed tight on the mark; drawn in currentColor.
 export function FleetMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-      <path d="M12 2 L20 7 L12 12 L4 7 Z" fill="currentColor" />
-      <path d="M12 9 L20 14 L12 19 L4 14 Z" fill="currentColor" opacity="0.6" />
-      <path d="M12 16 L20 21 L12 24 L4 21 Z" fill="currentColor" opacity="0.32" />
+    <svg viewBox="72 72 368 368" fill="none" className={className} aria-hidden>
+      <path d="M244 92 L244 352 L128 352 Q176 212 244 92 Z" fill="currentColor" opacity="0.72" />
+      <path d="M268 92 L268 352 L384 352 Q336 212 268 92 Z" fill="currentColor" />
+      <path d="M128 376 L384 376 Q368 420 330 420 L182 420 Q144 420 128 376 Z" fill="currentColor" />
     </svg>
   );
 }
