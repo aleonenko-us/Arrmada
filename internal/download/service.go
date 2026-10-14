@@ -173,35 +173,98 @@ func (s *Service) EnsureBundled(ctx context.Context, url string) error {
 // for the bundled qBittorrent nor brings it back. An existing row is recognised by URL
 // only among clients of the same kind.
 func (s *Service) EnsureBundledOf(ctx context.Context, kind Kind, url string) error {
+	_, err := s.ensureBundled(ctx, Client{Kind: kind, URL: url})
+	return err
+}
+
+// ensureBundled is EnsureBundledOf for a template carrying the kind, the URL and, for a
+// client that needs one, its key (Password). added says a new row was made.
+func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, err error) {
+	kind, url := want.Kind, want.URL
 	if _, ok, err := s.repo.BundledOf(ctx, kind); err != nil || ok {
-		return err
+		return false, err
 	}
 	if s.bundledRemoved(ctx, kind) {
-		return nil
+		return false, nil
 	}
 	clients, err := s.repo.List(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, c := range clients {
 		if c.URL == url && c.Kind == kind {
-			return s.repo.MarkBundled(ctx, c.ID)
+			if err := s.repo.MarkBundled(ctx, c.ID); err != nil {
+				return false, err
+			}
+			if want.Password != "" && c.Password != want.Password {
+				c.Password = want.Password
+				_, err = s.Update(ctx, c)
+			}
+			return false, err
 		}
 	}
 	defer s.invalidateSnapshot() // a new client: the next queue read must ask it too
 	defer s.invalidateTransports()
 	name := bundledName(kind)
 	_, err = s.repo.Create(ctx, Client{
-		Name:    name,
-		Kind:    kind,
-		URL:     url,
-		Enabled: true,
-		Bundled: true,
+		Name:     name,
+		Kind:     kind,
+		URL:      url,
+		Password: want.Password,
+		Enabled:  true,
+		Bundled:  true,
 	})
-	if err == nil {
-		s.log.Info("registered bundled download client", "name", name, "url", url)
+	if err != nil {
+		return false, err
 	}
+	s.log.Info("registered bundled download client", "name", name, "url", url)
+	return true, nil
+}
+
+// EnsureBundledSAB registers the optional bundled SABnzbd (docker-compose.yml's "sabnzbd"
+// profile) with the API key read from its config (ReadSABAPIKey), and keeps a registered
+// one's key in step when SABnzbd's own changes. A bundled row its owner pointed at another
+// address is left alone: that key isn't this one. Nothing is added while the owner has
+// deleted it. added says a new row was made, so the caller can run the Prowlarr sync.
+func (s *Service) EnsureBundledSAB(ctx context.Context, url, key string) (added bool, err error) {
+	if key == "" {
+		return false, errNoSABKey
+	}
+	c, ok, err := s.repo.BundledOf(ctx, KindSABnzbd)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return s.ensureBundled(ctx, Client{Kind: KindSABnzbd, URL: url, Password: key})
+	}
+	if c.URL != url || c.Password == key {
+		return false, nil
+	}
+	c.Password = key
+	if _, err := s.Update(ctx, c); err != nil {
+		return false, err
+	}
+	s.log.Info("bundled SABnzbd's API key changed in SABnzbd; using the new one", "name", c.Name)
+	return false, nil
+}
+
+// RestoreBundledSAB brings back a deleted bundled SABnzbd, with the key from its config.
+func (s *Service) RestoreBundledSAB(ctx context.Context, url, key string) error {
+	if key == "" {
+		return errNoSABKey
+	}
+	if s.flags != nil {
+		if err := s.flags.Set(ctx, bundledRemovedKey(KindSABnzbd), ""); err != nil {
+			return err
+		}
+	}
+	_, err := s.EnsureBundledSAB(ctx, url, key)
 	return err
+}
+
+// BundledClient is the bundled client of a kind, switched off or not; false when none.
+func (s *Service) BundledClient(ctx context.Context, kind Kind) (Client, bool, error) {
+	return s.repo.BundledOf(ctx, kind)
 }
 
 // RestoreBundled brings back a deleted bundled qBittorrent: it clears the removed flag

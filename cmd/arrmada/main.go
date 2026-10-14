@@ -635,6 +635,24 @@ func main() {
 			log.Warn("couldn't start the first Prowlarr sync", "err", err)
 		}
 	})
+	// The optional bundled SABnzbd registers itself once its config (with the API key its
+	// init container generated) shows up, and gets its categories and folders. Adding it
+	// runs the Prowlarr sync, as adding one by hand does: usenet indexers only come in
+	// while a usenet client exists.
+	var sab *bundledSAB
+	if cfg.SABnzbdURL != "" && cfg.SABnzbdConfig != "" {
+		sab = &bundledSAB{
+			url: cfg.SABnzbdURL, config: cfg.SABnzbdConfig, downloads: downloads,
+			downloadsDir: roots.Downloads, log: modLog(log, "download"),
+			interval: 30 * time.Second, tuneTries: 20,
+			added: func() {
+				if _, _, err := sched.RunNow("prowlarr-sync", scheduler.TriggerSchedule); err != nil && !errors.Is(err, scheduler.ErrBusy) {
+					log.Warn("couldn't start a Prowlarr sync for the bundled SABnzbd", "err", err)
+				}
+			},
+		}
+		grp.Go("sabnzbd: bundled", sab.run)
+	}
 	sched.Register("rss-sync", 15*time.Minute, false, func(ctx context.Context) error {
 		coordinator.RSSSync(ctx)
 		return nil
@@ -1290,6 +1308,9 @@ func main() {
 		// the later one wins.
 		OnFoldersChanged: func(ctx context.Context, changed []string) {
 			for _, name := range changed {
+				if name == "downloads" && sab != nil {
+					sab.foldersChanged(ctx) // the bundled SABnzbd's folders follow it too
+				}
 				if name != "downloads" || cfg.QbittorrentURL == "" {
 					continue
 				}

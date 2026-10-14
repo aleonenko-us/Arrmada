@@ -90,3 +90,23 @@ func TestUsenetProgressAndLeftoversChecks(t *testing.T) {
 		t.Errorf("leftovers = %+v", left)
 	}
 }
+
+// The bundled SABnzbd arrives without a news server: its finding says to add the provider
+// and where SABnzbd's own page is; someone's own SABnzbd keeps the plain wording.
+func TestUsenetClientsCheckBundledNoServer(t *testing.T) {
+	none := download.UsenetFacts{Language: "en", CompleteFolder: download.PathCheck{Remote: "/media/downloads/usenet/complete", Visible: true}}
+	check := UsenetClientsCheck(func(context.Context) ([]UsenetClient, error) {
+		return []UsenetClient{
+			{ID: 1, Name: "SABnzbd (bundled)", Facts: none, BundledPort: "8085"},
+			{ID: 2, Name: "Mine", Facts: none},
+		}, nil
+	})
+	got := findingsByKey(check.Run(context.Background()))
+	b, own := got["downloads.usenet.1.servers"], got["downloads.usenet.2.servers"]
+	if !strings.HasPrefix(b.Message, "Add your Usenet provider in SABnzbd") || !strings.Contains(b.Message, "port 8085") || b.Level != LevelError || b.Fix == nil {
+		t.Errorf("bundled = %+v", b)
+	}
+	if !strings.Contains(own.Message, "Mine has no news server") || strings.Contains(own.Message, "port") {
+		t.Errorf("own = %+v", own)
+	}
+}
