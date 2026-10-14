@@ -3,7 +3,7 @@ import { test, expect, type MockedApi } from "./mockApi";
 import type { MockRoute } from "./fixtures/routes";
 import { freshKeys, setup as configuredSetup, setupChecklist as allDone } from "./fixtures/system";
 
-// CFG-21/22/23/24: a fresh install walks Keys → Folders → Plex → Indexers → Finish,
+// CFG-21/22/23/24: a fresh install walks Keys → Folders → Media server → Indexers → Finish,
 // ending on the Getting started checklist as links; Skip is on the first step only; Run
 // setup again reopens the wizard from Settings → System; the Dashboard card ticks itself.
 
@@ -30,6 +30,7 @@ const fresh = {
   ...configuredSetup, needed: true, complete: false, tmdb_configured: false, libraries_chosen: false, keys: freshKeys,
   library: blank, running: blank, suggestions: {},
   plex_connected: false, plex_server: "", plex_family: { enabled: false, auto_approve_types: "" },
+  jellyfin_connected: false, jellyfin_server: "", jellyfin_family: { enabled: false, auto_approve_types: "" },
   indexers_enabled: 0, prowlarr_available: false,
 };
 // Half done: the folders are chosen; indexers and the rest are still to do.
@@ -65,8 +66,8 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/system/library")).toHaveLength(0);
     await noFolders.getByRole("button", { name: "Continue without them" }).click();
 
-    await expect(page.getByRole("heading", { name: "Connect Plex" })).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: "Let family sign in with Plex" })).not.toBeChecked();
+    // The Media server step (setup-media-server.spec.ts walks its choices); skipped here.
+    await expect(page.getByRole("heading", { name: "Connect your media server" })).toBeVisible();
     await page.getByText("Skip this step").click();
 
     await expect(page.getByRole("heading", { name: "Where releases come from" })).toBeVisible();
@@ -96,7 +97,7 @@ test.describe("admin", () => {
     await expect(page.getByRole("heading", { name: "Welcome to Arrmada" })).toBeVisible();
     await page.getByRole("button", { name: "Finish setup later" }).click();
     const dialog = page.getByRole("dialog", { name: "Finish setup later?" });
-    await expect(dialog.getByText(/The TMDB key, library folders, Plex and indexers aren't set up yet/)).toBeVisible();
+    await expect(dialog.getByText(/The TMDB key, library folders, a media server and indexers aren't set up yet/)).toBeVisible();
     await dialog.getByRole("button", { name: "Keep going" }).click();
     await expect(page.getByRole("heading", { name: "Welcome to Arrmada" })).toBeVisible();
     expect(api.callsTo("POST", "/api/v1/setup/complete")).toHaveLength(0);

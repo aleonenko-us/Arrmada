@@ -123,7 +123,7 @@ export const setupChecklist: SetupChecklist = {
     { key: "folders", label: "Choose your library folders", done: true, link: "/settings/library#media-folders", link_key: "libraryFolders" },
     { key: "download_client", label: "Connect a download client", done: true, link: "/settings/connections#download-clients", link_key: "downloadClients" },
     { key: "indexer", label: "Add an indexer, or sync them from Prowlarr", done: true, link: "/settings/connections#search", link_key: "indexers" },
-    { key: "plex", label: "Connect your Plex server", done: true, link: "/settings/connections#plex", link_key: "plexConnection" },
+    { key: "media_server", label: "Connect your media server (Plex or Jellyfin)", done: true, link: "/settings/connections#media-servers", link_key: "mediaServerCards" },
     { key: "first_title", label: "Add your first movie or show", done: true, link: "/discover" },
     { key: "first_import", label: "Get your first download into the library", done: true, link: "/activity/history", link_key: "history" },
   ],

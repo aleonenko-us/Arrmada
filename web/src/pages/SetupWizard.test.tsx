@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { api, type APIKeyStatus, type AppSettings, type PlexConfig, type ProwlarrInfo, type ProwlarrSyncResult, type SetupState } from "../lib/api";
 import { indexerApi } from "../lib/indexerApi";
 import { insightsApi } from "../lib/insightsApi";
+import { jellyfinApi, type JellyfinConfig } from "../lib/jellyfinApi";
 import { plexApi } from "../lib/plexApi";
 import { MemoryRouter } from "react-router-dom";
 import { clearQueryCache } from "../lib/query";
@@ -219,7 +220,7 @@ describe("SetupWizard steps", () => {
     const later = await screen.findByText("Finish setup later");
     await act(async () => { fireEvent.click(later); });
     const dialog = await screen.findByRole("dialog", { name: "Finish setup later?" });
-    expect(within(dialog).getByText(/The TMDB key, library folders, Plex and indexers aren't set up yet/)).toBeTruthy();
+    expect(within(dialog).getByText(/The TMDB key, library folders, a media server and indexers aren't set up yet/)).toBeTruthy();
     await act(async () => { fireEvent.click(within(dialog).getByText("Keep going")); });
     expect(complete).not.toHaveBeenCalled();
 
@@ -243,7 +244,7 @@ describe("SetupWizard steps", () => {
     await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
     await act(async () => { fireEvent.click(within(await screen.findByRole("dialog")).getByText("Continue without them")); });
     expect(savePaths).toHaveBeenCalledOnce();
-    expect(await screen.findByText("Connect Plex")).toBeTruthy();
+    expect(await screen.findByText("Connect your media server")).toBeTruthy();
   });
 
   it("ends on the live checklist, whose links finish setup and open the step", async () => {
@@ -254,7 +255,7 @@ describe("SetupWizard steps", () => {
     page(done);
     await click("Continue"); // keys
     await click("Save and continue"); // folders
-    await click("Skip this step"); // Plex
+    await click("Skip this step"); // Media server
     await click("Skip this step"); // Indexers
     const todo = await screen.findByRole("link", { name: /Add an indexer \(to do\)/ });
     expect(todo.getAttribute("href")).toBe("/settings/connections#search");
@@ -271,19 +272,38 @@ async function click(text: string | RegExp) {
   await act(async () => { fireEvent.click(el); });
 }
 
-// CFG-23: the Plex step reuses the Connections sign-in and saves the family switches as
-// chosen — both off unless turned on here.
-describe("SetupWizard Plex step", () => {
-  const toPlex = async () => {
+// CFG-23 / J5b: the Media server step — Plex, Jellyfin, Both or Later. Each server reuses
+// its Connections editor and saves its own family switches as chosen — both off unless
+// turned on here.
+describe("SetupWizard Media server step", () => {
+  const toMedia = async () => {
     vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
     page();
     await click("Continue");
     await click("Save and continue");
-    expect(await screen.findByText("Connect Plex")).toBeTruthy();
+    expect(await screen.findByText("Connect your media server")).toBeTruthy();
   };
+  const pick = async (name: "Plex" | "Jellyfin" | "Both" | "Later") => {
+    await act(async () => { fireEvent.click(screen.getByRole("radio", { name: new RegExp(`^${name}`) })); });
+  };
+  const toPlex = async () => {
+    await toMedia();
+    await pick("Plex");
+  };
+  const noJellyfin: JellyfinConfig = { url: "", public_url: "", key_set: false, server_name: "", server_id: "", version: "", monitoring_enabled: false, poll_seconds: 10 };
   beforeEach(() => {
     vi.spyOn(insightsApi, "insightsConfig").mockResolvedValue({ url: "", token_set: false, enabled: false, poll_seconds: 30, status: "unconfigured" } as unknown as PlexConfig);
     vi.spyOn(setupApi, "checklist").mockResolvedValue({ items: [], done: false, dismissed: false });
+    vi.spyOn(jellyfinApi, "get").mockResolvedValue(noJellyfin);
+  });
+
+  it("offers Plex, Jellyfin, Both and Later with nothing picked, and no editor until one is", async () => {
+    await toMedia();
+    for (const name of ["Plex", "Jellyfin", "Both", "Later"]) {
+      expect((screen.getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLInputElement).checked).toBe(false);
+    }
+    expect(screen.queryByRole("checkbox", { name: /Let family sign in/ })).toBeNull();
+    expect(screen.getByText("Skip this step")).toBeTruthy();
   });
 
   it("starts with family sign-in off and saves exactly what was chosen", async () => {
@@ -291,21 +311,83 @@ describe("SetupWizard Plex step", () => {
     await toPlex();
     const allow = screen.getByRole("checkbox", { name: /Let family sign in with Plex/ }) as HTMLInputElement;
     expect(allow.checked).toBe(false);
-    expect(screen.queryByRole("group", { name: "Auto-approve their requests" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Auto-approve their requests (Plex)" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Let family sign in with Jellyfin/ })).toBeNull();
     await act(async () => { fireEvent.click(allow); });
-    const group = screen.getByRole("group", { name: "Auto-approve their requests" });
+    const group = screen.getByRole("group", { name: "Auto-approve their requests (Plex)" });
     for (const box of within(group).getAllByRole("checkbox")) expect((box as HTMLInputElement).checked).toBe(false);
     await act(async () => { fireEvent.click(within(group).getByRole("checkbox", { name: "Movies" })); });
     await click("Save and continue");
     expect(save).toHaveBeenCalledWith({ plex_login_enabled: true, plex_login_auto_approve_types: "movie" });
   });
 
-  it("can be skipped without saving anything", async () => {
+  it("can be skipped, or put off with Later, without saving anything", async () => {
     const save = vi.spyOn(api, "updateSettings").mockResolvedValue({} as AppSettings);
-    await toPlex();
+    await toMedia();
     await click("Skip this step");
     expect(save).not.toHaveBeenCalled();
     expect(await screen.findByText("Where releases come from")).toBeTruthy();
+
+    await click("Back");
+    await pick("Later");
+    expect(screen.getByText(/Nothing to do here for now/)).toBeTruthy();
+    expect(screen.queryByText("Skip this step")).toBeNull();
+    await click("Continue");
+    expect(await screen.findByText("Where releases come from")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("Jellyfin: tests the address and key before saving them, and saves its own family choices", async () => {
+    const test = vi.spyOn(jellyfinApi, "test").mockResolvedValue({ ok: true, detail: "Connected", server_name: "Attic", version: "10.10.3" });
+    const saveJF = vi.spyOn(jellyfinApi, "save").mockResolvedValue({ ...noJellyfin, url: "http://jellyfin:8096", key_set: true, server_name: "Attic" });
+    const save = vi.spyOn(api, "updateSettings").mockResolvedValue({} as AppSettings);
+    await toMedia();
+    await pick("Jellyfin");
+    expect(screen.queryByText("Sign in with Plex")).toBeNull();
+    const form = await screen.findByRole("form", { name: "Jellyfin connection" });
+    fireEvent.change(within(form).getByLabelText("Server URL"), { target: { value: "http://jellyfin:8096" } });
+    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "jf-key-1" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Save" })); });
+    expect(test).toHaveBeenCalledWith({ url: "http://jellyfin:8096", api_key: "jf-key-1" });
+    expect(saveJF).toHaveBeenCalledWith({ url: "http://jellyfin:8096", public_url: "http://jellyfin:8096", api_key: "jf-key-1" });
+    expect(test.mock.invocationCallOrder[0]).toBeLessThan(saveJF.mock.invocationCallOrder[0]);
+    expect((within(form).getByLabelText("API key") as HTMLInputElement).value).toBe("");
+
+    await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: /Let family sign in with Jellyfin/ })); });
+    const group = screen.getByRole("group", { name: "Auto-approve their requests (Jellyfin)" });
+    await act(async () => { fireEvent.click(within(group).getByRole("checkbox", { name: "Series" })); });
+    await click("Save and continue");
+    // Only Jellyfin's switches: Plex wasn't picked, so its stay as they were.
+    expect(save.mock.calls).toEqual([[{ jellyfin_login_enabled: true, jellyfin_login_auto_approve_types: "series" }]]);
+  });
+
+  it("Jellyfin: asks before saving an address or key Jellyfin turned down", async () => {
+    vi.spyOn(jellyfinApi, "test").mockResolvedValue({ ok: false, detail: "Jellyfin rejected the API key." });
+    const saveJF = vi.spyOn(jellyfinApi, "save").mockResolvedValue(noJellyfin);
+    await toMedia();
+    await pick("Jellyfin");
+    const form = await screen.findByRole("form", { name: "Jellyfin connection" });
+    fireEvent.change(within(form).getByLabelText("Server URL"), { target: { value: "http://jellyfin:8096" } });
+    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "bad-key" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Save" })); });
+    const dialog = await screen.findByRole("dialog", { name: "Save it anyway?" });
+    expect(within(dialog).getByText(/Jellyfin rejected the API key/)).toBeTruthy();
+    await act(async () => { fireEvent.click(within(dialog).getByText("Keep editing")); });
+    expect(saveJF).not.toHaveBeenCalled();
+  });
+
+  it("Both shows each server and saves each one's family choices", async () => {
+    const save = vi.spyOn(api, "updateSettings").mockResolvedValue({} as AppSettings);
+    await toMedia();
+    await pick("Both");
+    expect(await screen.findByText("Sign in with Plex")).toBeTruthy();
+    expect(await screen.findByRole("form", { name: "Jellyfin connection" })).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: /Let family sign in with Plex/ })); });
+    await click("Save and continue");
+    expect(save.mock.calls).toEqual([
+      [{ plex_login_enabled: true, plex_login_auto_approve_types: "" }],
+      [{ jellyfin_login_enabled: false, jellyfin_login_auto_approve_types: "" }],
+    ]);
   });
 
   it("explains when the server can't reach plex.tv, and still lets you go on", async () => {
@@ -314,7 +396,7 @@ describe("SetupWizard Plex step", () => {
     await toPlex();
     await click("Sign in with Plex");
     expect(await screen.findByText(/Couldn't reach plex.tv from the server — you can connect later in Settings → Connections/)).toBeTruthy();
-    expect(screen.getByText("Skip this step")).toBeTruthy();
+    expect(screen.getByText("Save and continue")).toBeTruthy();
   });
 });
 
@@ -326,7 +408,7 @@ describe("SetupWizard Indexers step", () => {
     page();
     await click("Continue");
     await click("Save and continue");
-    await click("Skip this step"); // Plex
+    await click("Skip this step"); // Media server
     expect(await screen.findByText("Where releases come from")).toBeTruthy();
   };
   beforeEach(() => {
