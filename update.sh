@@ -16,11 +16,17 @@
 # An install made by the one-line installer without git (it has .arrmada-source) gets its
 # newer files as a download instead of a git pull; everything else is the same.
 #
-# Pull mode (opt-in): with ARRMADA_IMAGE set in .env to a published image, for example
-#   ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
-# the update downloads that image instead of compiling, which takes minutes rather than
-# the better part of an hour. Everything else (the backup, arrmada:previous, --rollback)
-# works the same. --force-local still compiles the code in this folder.
+# Which Arrmada an update brings is ARRMADA_CHANNEL in .env:
+#   ARRMADA_CHANNEL=stable   the published releases (the default): the image ARRMADA_IMAGE
+#                            names, ghcr.io/tristenlammi/arrmada:stable when it's unset, is
+#                            downloaded, which takes minutes. It never goes backwards: a
+#                            server running newer code than the latest release keeps it
+#                            until a release includes it.
+#   ARRMADA_CHANNEL=main     the newest code on main, compiled here on every update
+#                            (developers; the better part of an hour each time).
+# Everything else (the backup, arrmada:previous, --rollback) works the same either way.
+# --force-local still compiles the code in this folder. An install from before the line
+# existed gets it on its next update, without going backwards (see choose_channel).
 set -eu
 cd "$(dirname "$0")"
 
@@ -30,8 +36,9 @@ usage() {
   say "Usage: ./update.sh [--force-local] [--no-backup] [-y]"
   say "       ./update.sh --rollback [--with-db] [-y]"
   say ""
-  say "  (no options)    back up the database, pull the latest code, rebuild the app and restart it"
-  say "                  (with ARRMADA_IMAGE in .env: download that published image instead of rebuilding)"
+  say "  (no options)    back up the database, get the newest version and restart the app with it:"
+  say "                  the latest release (ARRMADA_CHANNEL=stable in .env, the default), or main"
+  say "                  compiled here (ARRMADA_CHANNEL=main)"
   say "  --force-local   don't pull; rebuild the code that's in this folder (even with ARRMADA_IMAGE set)"
   say "  --no-backup     don't take the pre-update database backup"
   say "  --rollback      start the build that ran before the last update again"
@@ -312,13 +319,34 @@ fi
 ARRMADA_APP_IMAGE=arrmada:dev
 export ARRMADA_APP_IMAGE
 
-# Pull mode: the published image named by ARRMADA_IMAGE in .env, or nothing to compile
-# here as always. --force-local means "build what's here", so it turns pull mode off for
-# this run. The script's own local tags can't be the source: they're what it manages.
-# --rollback never pulls, so it doesn't read it.
+# ── which Arrmada this server follows ───────────────────────────────────────────
+# ARRMADA_CHANNEL: stable downloads the published image (ARRMADA_IMAGE, or the :stable
+# release when that's unset); main compiles the code here, whatever ARRMADA_IMAGE says.
+# Without the line (an install from before it existed) ARRMADA_IMAGE decides, as it always
+# did, until choose_channel below writes one.
+CHANNEL=$(env_get ARRMADA_CHANNEL)
+case "$CHANNEL" in
+  "" | stable | main) ;;
+  *)
+    say "✗ ARRMADA_CHANNEL=$CHANNEL in .env: it's stable (the published releases) or main (compile the newest code here)." >&2
+    exit 2 ;;
+esac
+ENV_IMAGE=$(env_get ARRMADA_IMAGE)
+
+# Pull mode: the published image to download, or nothing to compile here. --force-local
+# means "build what's here", so it turns pull mode off for this run. The script's own
+# local tags can't be the source: they're what it manages. --rollback never pulls, so it
+# doesn't read it.
 PULL_IMAGE=""
 if [ -z "$FORCE_LOCAL" ] && [ -z "$ROLLBACK" ]; then
-  PULL_IMAGE=$(grep -E '^ARRMADA_IMAGE=' .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true)
+  case "$CHANNEL" in
+    stable) PULL_IMAGE=${ENV_IMAGE:-$DEFAULT_IMAGE} ;;
+    main)
+      if [ -n "$ENV_IMAGE" ]; then
+        say "ARRMADA_CHANNEL=main: compiling main here (ARRMADA_IMAGE in .env is for the stable channel, so it isn't used)."
+      fi ;;
+    *) PULL_IMAGE=$ENV_IMAGE ;;
+  esac
 fi
 case "$PULL_IMAGE" in
   arrmada | arrmada:*)
@@ -540,14 +568,22 @@ fi
 # this older copy doesn't, and they should apply now rather than on the next update.
 # Pull mode pulls too: nothing is compiled from it, but it keeps this script and
 # docker-compose.yml current.
+#
+# PRE_PULL is the commit the files were at before the pull. A build from before builds
+# were stamped with their commit is that code, or older, so it's what choose_channel goes
+# by for one. It's handed to the copy run after the pull (and by the install line, which
+# may pull first); an older copy of this script hands nothing over, but its pull leaves
+# the commit before it in git's ORIG_HEAD.
+PRE_PULL="${ARRMADA_PRE_PULL:-}"
 if [ -z "$PULLED" ]; then
   if [ -n "$FORCE_LOCAL" ]; then
     say "Not pulling (--force-local) — building the code that's here."
   elif [ -d .git ] && command -v git >/dev/null 2>&1; then
     say "Pulling latest changes…"
+    [ -z "$PRE_PULL" ] && PRE_PULL=$(git rev-parse HEAD 2>/dev/null || true)
     # The commit this checkout was on before the pull: the code that's running now, if the
     # last update went through. Kept for reference (git checkout it to rebuild that code).
-    git rev-parse --short HEAD > .arrmada-previous 2>/dev/null || true
+    git rev-parse --short "${PRE_PULL:-HEAD}" > .arrmada-previous 2>/dev/null || true
     _before=$(cksum < update.sh)
     if ! git pull --ff-only; then
       say "" >&2
@@ -557,12 +593,17 @@ if [ -z "$PULLED" ]; then
       exit 1
     fi
     if [ "$(cksum < update.sh)" != "$_before" ]; then
+      ARRMADA_PRE_PULL=$PRE_PULL
+      export ARRMADA_PRE_PULL
       exec sh ./update.sh --pulled "$@"
     fi
   elif [ -f .arrmada-source ]; then
+    [ -z "$PRE_PULL" ] && PRE_PULL=$(source_get commit)
     _before=$(cksum < update.sh)
     refresh_download
     if [ "$(cksum < update.sh)" != "$_before" ]; then
+      ARRMADA_PRE_PULL=$PRE_PULL
+      export ARRMADA_PRE_PULL
       exec sh ./update.sh --pulled "$@"
     fi
   elif [ -n "$PULL_IMAGE" ]; then
@@ -570,6 +611,8 @@ if [ -z "$PULLED" ]; then
   else
     say "Not a git checkout — building the code that's here."
   fi
+elif [ -z "$PRE_PULL" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
+  PRE_PULL=$(git rev-parse -q --verify ORIG_HEAD 2>/dev/null || true)
 fi
 
 # Settings added since this install: give each a free value once, never overwrite.
@@ -593,6 +636,253 @@ fi
 RUNNING_IMAGE=""
 if app_answers; then
   RUNNING_IMAGE=$(docker inspect -f '{{.Image}}' Arrmada-app 2>/dev/null || true)
+fi
+
+# ── the release this update would run ──────────────────────────────────────────
+# is_sha S -> 0 if S is a commit, as builds are stamped with one.
+is_sha() {
+  case "$1" in "" | *[!0-9a-f]*) return 1 ;; esac
+  [ "${#1}" -ge 7 ] && [ "${#1}" -le 40 ]
+}
+
+# is_release V -> 0 for a release version as the release build stamps it (v0.2.0,
+# v0.3.0-rc.1). A local build of a tag with edits in it (-dirty) isn't one.
+is_release() {
+  case "$1" in *-dirty) return 1 ;; esac
+  printf '%s\n' "$1" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+}
+
+# semver_cmp A B -> -1, 0 or 1 as release A is older than, the same as or newer than B.
+# A pre-release comes before its release; two pre-releases of one version go by text.
+semver_cmp() {
+  awk -v a="${1#v}" -v b="${2#v}" 'BEGIN {
+    ca = a; pa = ""; i = index(a, "-"); if (i) { ca = substr(a, 1, i - 1); pa = substr(a, i + 1) }
+    cb = b; pb = ""; i = index(b, "-"); if (i) { cb = substr(b, 1, i - 1); pb = substr(b, i + 1) }
+    split(ca, x, "."); split(cb, y, ".")
+    for (k = 1; k <= 3; k++) {
+      if (x[k] + 0 < y[k] + 0) { print -1; exit }
+      if (x[k] + 0 > y[k] + 0) { print 1; exit }
+    }
+    if (pa == pb) print 0
+    else if (pa == "") print 1
+    else if (pb == "") print -1
+    else if (pa < pb) print -1
+    else print 1
+  }'
+}
+
+# env_set KEY VALUE COMMENT -> KEY=VALUE in .env: the KEY line replaced, or added with
+# COMMENT above it. The .env from before this run's first change is kept as .env.bak-<time>.
+ENV_BACKUP=""
+env_set() {
+  if [ -z "$ENV_BACKUP" ]; then
+    ENV_BACKUP=".env.bak-$(date +%Y%m%d-%H%M%S)"
+    cp -p .env "$ENV_BACKUP"
+  fi
+  if grep -qE "^$1=" .env; then
+    _tmp=$(mktemp ./.env.tmp.XXXXXX)
+    sed "s|^$1=.*|$1=$2|" .env > "$_tmp"
+    # Written back over the same file, so its owner and permissions stay as they are.
+    cat "$_tmp" > .env
+    rm -f "$_tmp"
+  else
+    { say ""; say "$3"; say "$1=$2"; } >> .env
+  fi
+}
+CHANNEL_COMMENT="# Which Arrmada updates bring: stable = the published releases, main = the newest code compiled here."
+
+# running_build sets RUN_VERSION and RUN_COMMIT to the build that's running (or, with the
+# app stopped, the one compose starts): as stamped on its image, else as the app reports
+# them. A build from before builds were stamped says neither; it was built from the files
+# as they were before this update's pull (PRE_PULL) or from older ones, and "this commit
+# or older" is all the checks below need.
+RUN_VERSION=""
+RUN_COMMIT=""
+running_build() {
+  _img=${RUNNING_IMAGE:-$(image_id arrmada:dev)}
+  if [ -n "$_img" ]; then
+    RUN_VERSION=$(image_label "$_img" org.arrmada.version)
+    RUN_COMMIT=$(image_label "$_img" org.arrmada.commit)
+  fi
+  if ! is_sha "$RUN_COMMIT" && [ -n "$RUNNING_IMAGE" ]; then
+    _health=$(health_json)
+    RUN_COMMIT=$(printf '%s\n' "$_health" | json_str commit)
+    RUN_VERSION=$(printf '%s\n' "$_health" | json_str version)
+  fi
+  if ! is_sha "$RUN_COMMIT" && is_sha "$PRE_PULL"; then
+    RUN_COMMIT=$PRE_PULL
+    RUN_VERSION=""
+  fi
+  return 0
+}
+
+# have_git -> 0 in a git checkout this server can run git in.
+have_git() { [ -d .git ] && command -v git >/dev/null 2>&1; }
+
+# contains RELEASE_COMMIT RELEASE_VERSION BUILD_COMMIT -> 0 if the release includes the
+# build's code (built from that commit or a later one), 1 if the build has code the
+# release doesn't (newer, or on a branch of its own), 2 if it can't tell. The checkout
+# answers when it has both commits (it fetches the release's tag if need be); else GitHub.
+contains() {
+  if have_git; then
+    if ! git cat-file -e "$1^{commit}" 2>/dev/null && is_release "$2"; then
+      GIT_TERMINAL_PROMPT=0 git fetch -q origin "refs/tags/$2:refs/tags/$2" </dev/null >/dev/null 2>&1 || true
+    fi
+    if git cat-file -e "$1^{commit}" 2>/dev/null && git cat-file -e "$3^{commit}" 2>/dev/null; then
+      if git merge-base --is-ancestor "$3" "$1" 2>/dev/null; then return 0; fi
+      return 1
+    fi
+  fi
+  _status=$(fetch "$API_URL/compare/$3...$1?per_page=1" 2>/dev/null | sed -n 's/^  "status": "\([a-z]*\)".*/\1/p' | head -n 1)
+  case "$_status" in
+    ahead | identical) return 0 ;;
+    behind | diverged) return 1 ;;
+  esac
+  return 2
+}
+
+# newest_tag -> the newest release tag the checkout knows once it has fetched tags (never
+# a pre-release: those don't become stable), or nothing.
+newest_tag() {
+  GIT_TERMINAL_PROMPT=0 git fetch -q --tags origin </dev/null >/dev/null 2>&1 || true
+  _best=""
+  for _t in $(git tag -l 'v[0-9]*' 2>/dev/null); do
+    case "$_t" in *-*) continue ;; esac
+    is_release "$_t" || continue
+    if [ -z "$_best" ] || [ "$(semver_cmp "$_t" "$_best")" = 1 ]; then _best=$_t; fi
+  done
+  printf '%s' "$_best"
+}
+
+# stay_put WHY: this update leaves Arrmada on the build it's running, says why, and ends
+# the script. Nothing has been changed by then (bar the .env lines added above), and the
+# next update checks again.
+REL_VERSION=""
+REL_COMMIT=""
+stay_put() {
+  _build="${RUN_VERSION:+$RUN_VERSION, }commit $(printf '%.9s' "${RUN_COMMIT:-unknown}")"
+  _release=${REL_VERSION:-the published release}
+  say ""
+  case "$1" in
+    newer)
+      say "Arrmada stays on the build it's running ($_build): it has code the latest"
+      say "release ($_release) doesn't, so moving to that would be a step back. Nothing was changed." ;;
+    edits)
+      say "Arrmada stays on the build it's running ($_build): it was built with local"
+      say "edits no release has, so moving to a release would be a step back. Nothing was changed." ;;
+    unknown)
+      say "Arrmada stays on the build it's running: it doesn't say which code it was built from, so"
+      say "there's no telling whether the latest release would be a step back. Nothing was changed."
+      say "  To move it to the published releases anyway, add ARRMADA_CHANNEL=stable to .env and run"
+      say "  ./update.sh again (a release still never starts on a database newer than it)." ;;
+    schema)
+      say "✗ The database is newer than $_release: a newer build of Arrmada has already upgraded it," >&2
+      say "  and the release can't run on it. Nothing was changed; Arrmada keeps the build it's running." >&2 ;;
+  esac
+  if [ "$1" = schema ]; then
+    say "  Every ./update.sh checks again, and moves to the published releases once one can run on this database." >&2
+  else
+    say "  Every ./update.sh checks again, and moves to the published releases once one includes this build."
+  fi
+  say "  To follow main instead (compiled here on every update): add ARRMADA_CHANNEL=main to .env, then ./update.sh."
+  if [ "$1" = schema ]; then exit 1; fi
+  exit 0
+}
+
+# choose_channel: an install without ARRMADA_CHANNEL that compiles here (made before the
+# line existed) moves to the published releases, but only if that isn't a step back:
+# when the latest release includes the code it's running. One running newer code (main
+# since the last release, or local work) keeps the build it has, and the next update
+# looks again. Nothing ever puts an install on main by itself: that's for its owner to
+# choose. A first look at the checkout's release tags spares the download of a release
+# that clearly can't be used; the release itself is checked once it's here.
+MIGRATE=""
+choose_channel() {
+  running_build
+  _why=""
+  case "$RUN_VERSION" in *-dirty) _why=edits ;; esac
+  if [ -z "$_why" ] && ! is_sha "$RUN_COMMIT"; then _why=unknown; fi
+  if [ -z "$_why" ] && have_git; then
+    _tag=$(newest_tag)
+    if [ -n "$_tag" ] && git cat-file -e "$_tag^{commit}" 2>/dev/null && git cat-file -e "$RUN_COMMIT^{commit}" 2>/dev/null &&
+      ! git merge-base --is-ancestor "$RUN_COMMIT" "$_tag" 2>/dev/null; then
+      REL_VERSION=$_tag
+      _why=newer
+    fi
+  fi
+  if [ -n "$_why" ]; then stay_put "$_why"; fi
+  PULL_IMAGE=$DEFAULT_IMAGE
+}
+
+# release_check: the downloaded release replaces the running build only if that isn't a
+# step back. Its code has to include the running build's (or, both being releases, be the
+# same version or newer), and the database mustn't be newer than the release, which would
+# stop it from starting. An image that says nothing about itself (a fork's, say) is taken
+# on trust on the stable channel, as ARRMADA_IMAGE always was; the database check still
+# applies to it.
+release_check() {
+  REL_VERSION=$(image_label "$PULL_IMAGE" org.arrmada.version)
+  REL_COMMIT=$(image_label "$PULL_IMAGE" org.arrmada.commit)
+  running_build
+  _rc=2
+  case "$RUN_VERSION" in *-dirty) stay_put edits ;; esac
+  if is_release "$RUN_VERSION" && is_release "$REL_VERSION"; then
+    _rc=0
+    if [ "$(semver_cmp "$REL_VERSION" "$RUN_VERSION")" = -1 ]; then _rc=1; fi
+  elif is_sha "$RUN_COMMIT" && is_sha "$REL_COMMIT"; then
+    _rc=0
+    contains "$REL_COMMIT" "$REL_VERSION" "$RUN_COMMIT" || _rc=$?
+  fi
+  if [ "$_rc" = 1 ]; then stay_put newer; fi
+  if [ "$_rc" = 2 ] && [ -n "$MIGRATE" ]; then stay_put unknown; fi
+
+  # Asked of the release's own binary, on the database as it is, before anything stops.
+  # Only an image labelled with the CLI is given arguments (an older one starts a server).
+  if [ "$(image_label "$PULL_IMAGE" org.arrmada.cli)" = 1 ]; then
+    _rc=0
+    _check=$(ARRMADA_APP_IMAGE="$PULL_IMAGE" docker compose run --rm --no-deps -T --user "$RUN_AS" \
+      --entrypoint /usr/local/bin/arrmada arrmada-app schema 2>&1 </dev/null) || _rc=$?
+    case "$_rc" in
+      0) ;;
+      3)
+        say "$_check" | grep -E '^(database|this build|A newer)' | sed 's/^/  /' >&2
+        stay_put schema ;;
+      *)
+        say "  ! Couldn't compare the database with ${REL_VERSION:-the new version} ($(printf '%s\n' "$_check" | tail -n 1))."
+        say "    Going ahead: a release won't start on a database newer than it, and the update then goes back by itself." ;;
+    esac
+  fi
+}
+
+if [ -z "$CHANNEL" ] && [ -z "$FORCE_LOCAL" ]; then
+  if [ -n "$PULL_IMAGE" ]; then
+    # It already downloads a published image, which is what the stable channel is.
+    env_set ARRMADA_CHANNEL stable "$CHANNEL_COMMENT"
+    CHANNEL=stable
+    say "Added ARRMADA_CHANNEL=stable to .env: this install already downloads the published releases."
+  else
+    MIGRATE=1
+    choose_channel
+  fi
+fi
+
+# Pull mode: the image is downloaded before anything else changes, and checked.
+if [ -n "$PULL_IMAGE" ]; then
+  say "Downloading $PULL_IMAGE…"
+  if ! docker pull "$PULL_IMAGE"; then
+    say "" >&2
+    say "✗ Couldn't download $PULL_IMAGE (see above). Nothing was changed; Arrmada is still running the version it was." >&2
+    if [ -n "$MIGRATE" ]; then
+      say "  (This update would have moved it from compiling here to the published releases. The next one tries again.)" >&2
+    fi
+    say "  Check the name in ARRMADA_IMAGE and that this server can reach ghcr.io. If the package" >&2
+    say "  is private, sign this server in once with 'docker login ghcr.io' and a token of its own" >&2
+    say "  that can only read packages. To compile here instead: ./update.sh --force-local" >&2
+    exit 1
+  fi
+  if [ "$(image_id "$PULL_IMAGE")" != "$RUNNING_IMAGE" ]; then
+    release_check
+  fi
 fi
 
 # ── pre-update database backup ─────────────────────────────────────────────────
@@ -668,20 +958,19 @@ fi
 # qBittorrent init containers — those only need to run once, at install. An update
 # only changes the app image, so nothing else needs touching.
 #
-# In pull mode the published image is downloaded and tagged arrmada:dev, the name
-# docker-compose.yml runs, so the rollback tags and every step after this one work on
-# it exactly as they do on a local build. A failed pull leaves arrmada:dev untouched.
+# In pull mode the published image (downloaded and checked above) is tagged arrmada:dev,
+# the name docker-compose.yml runs, so the rollback tags and every step after this one
+# work on it exactly as they do on a local build. A switch to the releases runs as the
+# stable channel straight away; its .env lines are written once it's up.
 UP_OK=1
-PULL_FAILED=""
+if [ -n "$MIGRATE" ]; then
+  ARRMADA_CHANNEL=stable
+  export ARRMADA_CHANNEL
+fi
 if [ -n "$PULL_IMAGE" ]; then
-  say "Downloading $PULL_IMAGE and restarting Arrmada…"
-  if docker pull "$PULL_IMAGE"; then
-    if ! docker image tag "$PULL_IMAGE" arrmada:dev || ! docker compose up -d --no-build --no-deps arrmada-app; then
-      UP_OK=""
-    fi
-  else
+  say "Restarting Arrmada on $PULL_IMAGE…"
+  if ! docker image tag "$PULL_IMAGE" arrmada:dev || ! docker compose up -d --no-build --no-deps arrmada-app; then
     UP_OK=""
-    PULL_FAILED=1
   fi
 else
   say "Rebuilding and restarting Arrmada…"
@@ -711,14 +1000,6 @@ if [ -n "$RUNNING_IMAGE" ]; then
   docker image rm arrmada:previous-old >/dev/null 2>&1 || true
 fi
 
-if [ -n "$PULL_FAILED" ]; then
-  say "" >&2
-  say "✗ Couldn't download $PULL_IMAGE (see above). Nothing was replaced." >&2
-  say "  Check the name in ARRMADA_IMAGE and that this server can reach ghcr.io. If the package" >&2
-  say "  is private, sign this server in once with 'docker login ghcr.io' and a token of its own" >&2
-  say "  that can only read packages. To compile here instead: ./update.sh --force-local" >&2
-  exit 1
-fi
 # update_failed: the new version replaced the running one and didn't start. Go back to
 # the one that was running (kept as arrmada:previous a moment ago) rather than leave
 # Arrmada down. The rollback checks the database first: if the new version already
@@ -792,6 +1073,19 @@ if [ "$_waited" = 2 ]; then
   exit 1
 elif [ "$_waited" != 0 ]; then
   update_failed
+fi
+
+# A switch to the published releases is recorded now it has worked. (Had it failed, .env
+# would still say what it did before, and the next update would look again.)
+if [ -n "$MIGRATE" ]; then
+  env_set ARRMADA_CHANNEL stable "$CHANNEL_COMMENT"
+  if [ -z "$ENV_IMAGE" ]; then
+    env_set ARRMADA_IMAGE "$DEFAULT_IMAGE" "# The published image update.sh downloads on the stable channel."
+  fi
+  say ""
+  say "This install now follows the published releases: ARRMADA_CHANNEL=stable is in .env (the"
+  say "  .env from before is $ENV_BACKUP). Updates download each new release instead of compiling."
+  say "  To follow main instead (compiled here on every update): ARRMADA_CHANNEL=main in .env."
 fi
 
 # A build kept by an earlier --rollback is superseded by this one.

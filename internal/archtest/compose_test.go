@@ -170,13 +170,15 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 
 	// The app's settings: the example sets the same ones to docker-compose.yml's defaults,
 	// except the ones that are API keys (entered in the app), legacy fallbacks, starting
-	// library folders (picked in the setup) and last-resort switches.
+	// library folders (picked in the setup), last-resort switches, and the update channel
+	// (update.sh's; the example runs the stable release, which the app knows by itself).
 	notInExample := map[string]bool{
 		"ARRMADA_TMDB_API_KEY": true, "ARRMADA_OMDB_API_KEY": true, "ARRMADA_HARDCOVER_API_KEY": true,
 		"ARRMADA_PLEX_URL": true, "ARRMADA_PLEX_TOKEN": true,
 		"ARRMADA_LIBRARY_DIR": true, "ARRMADA_DOWNLOADS_DIR": true, "ARRMADA_MOVIES_DIR": true,
 		"ARRMADA_TV_DIR": true, "ARRMADA_EBOOKS_DIR": true, "ARRMADA_AUDIOBOOKS_DIR": true, "ARRMADA_MUSIC_DIR": true,
 		"ARRMADA_SKIP_MIGRATION_SNAPSHOT": true, "ARRMADA_ALLOW_NEWER_SCHEMA": true,
+		"ARRMADA_CHANNEL": true,
 	}
 	for _, svc := range []string{"arrmada-app", "arrmada-qbittorrent"} {
 		for k, mv := range main[svc].env {
@@ -218,6 +220,17 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 	}
 	if d := ex["arrmada-app"].volumes; len(d) == 0 || mountTarget(d[0]) != "/data" || strings.Contains(d[0], "media") {
 		t.Errorf("arrmada-app: the example's first mount should be its own data folder at /data, got %v", d)
+	}
+	// The example is also a Portainer stack, which has no folder of its own: a relative
+	// host path there resolves inside Portainer's data volume, hidden and lost with the
+	// stack. Every host folder has to be a full path (named volumes are fine).
+	for name, s := range ex {
+		for _, v := range s.volumes {
+			src, _, _ := strings.Cut(v, ":")
+			if strings.HasPrefix(src, ".") || strings.HasPrefix(src, "~") {
+				t.Errorf("%s: the example mounts %q, a relative path; use a full one", name, v)
+			}
+		}
 	}
 	var appStorage string
 	for _, v := range ex["arrmada-app"].volumes {

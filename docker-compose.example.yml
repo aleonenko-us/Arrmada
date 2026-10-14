@@ -8,6 +8,9 @@
 #
 # Update:  docker compose pull && docker compose up -d
 #
+# Works as a Portainer stack too (Stacks → Add stack → Web editor, paste this file):
+# every folder here is an absolute path, since a stack has no folder of its own.
+#
 # 64-bit Intel/AMD (x86-64) servers only. Kept in step with the repository's
 # docker-compose.yml (internal/archtest/compose_test.go checks the two agree).
 
@@ -36,8 +39,10 @@ services:
       ARRMADA_PROWLARR_HOST_PORT: "9696"
       ARRMADA_QBIT_PORT: "6881"
     volumes:
-      # ← Where Arrmada keeps its database and settings. Its own folder, never your media.
-      - ./data:/data
+      # ← Where Arrmada keeps its database and settings (e.g. /mnt/user/appdata/arrmada/data
+      #   on Unraid). Its own folder, never your media. A full path: in a Portainer stack a
+      #   relative one (./data) would land inside Portainer's own volume and go with the stack.
+      - /path/to/arrmada/data:/data
       # ← The folder that holds your libraries AND downloads (e.g. /mnt/user/data with
       #   media/movies, media/tv and torrents inside), so imports hardlink instead of
       #   copying. It's /storage inside: pick each library there during setup. Never

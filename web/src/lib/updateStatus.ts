@@ -20,7 +20,47 @@ export function updateHeadline(u: UpdateStatus): { text: string; tone: UpdateTon
     if (u.behind === 0) return { text: "Up to date with main.", tone: "ok" };
     return { text: `${u.behind} commit${u.behind === 1 ? "" : "s"} behind main.`, tone: "update" };
   }
+  if (u.channel === "build") {
+    if (!u.latest) return { text: "No release has been published yet.", tone: "muted" };
+    if (u.available) return { text: `Update available: ${u.latest.tag}`, tone: "update" };
+    const ahead = u.ahead ?? null;
+    if (ahead === null) return { text: "This build's commit isn't on GitHub, so it can't be compared with the latest release.", tone: "muted" };
+    if (ahead > 0) return { text: `This build is newer than the latest release (${u.latest.tag}).`, tone: "ok" };
+    return { text: `Up to date: this build is ${u.latest.tag}.`, tone: "ok" };
+  }
   return { text: "This build doesn't say which commit it's from, so it can't be compared.", tone: "muted" };
+}
+
+// The install line: run again on the server, it finds the install and updates it the way
+// its channel says (the latest release, or main compiled there).
+export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";
+
+// updateHint is how this server gets the update on offer, for the channel it follows (the
+// words, and the command or line to use), or null when there's nothing to do.
+export function updateHint(u: UpdateStatus): { text: string; command: string } | null {
+  if (!u.enabled) return null;
+  if (u.channel === "release" && u.available) {
+    return {
+      text: "To update, run the install line again on the server; it backs up the database first. Installed with just the compose file: docker compose pull && docker compose up -d.",
+      command: INSTALL_LINE,
+    };
+  }
+  if (u.channel === "build" && u.available) {
+    return {
+      text: "Run the install line again on the server to move it to that release; from then on updates download each release.",
+      command: INSTALL_LINE,
+    };
+  }
+  if (u.channel === "build" && (u.ahead ?? 0) > 0) {
+    return {
+      text: "Updates keep this build until a release includes it. To follow main instead, add this line to .env in Arrmada's folder, then run the install line again:",
+      command: "ARRMADA_CHANNEL=main",
+    };
+  }
+  if (u.channel === "main" && (u.behind ?? 0) > 0) {
+    return { text: "To update, run the install line again on the server: on main it pulls the newest code and compiles it.", command: INSTALL_LINE };
+  }
+  return null;
 }
 
 // A block of release notes: a heading, a bullet or a plain line. Notes are Markdown from

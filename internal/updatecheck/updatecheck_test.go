@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -329,17 +330,118 @@ func TestSemverOrder(t *testing.T) {
 }
 
 func TestChannelOf(t *testing.T) {
-	for _, tc := range []struct{ version, commit, want string }{
-		{"v1.2.0", "abc1234", ChannelRelease},
-		{"v1.3.0-rc.1", "abc1234", ChannelRelease},
-		{"2026.10.13", "abc1234", ChannelMain},
-		{"2026.10.13-dirty", "abc1234", ChannelMain},
-		{"main-abc1234", "abc1234", ChannelMain},
-		{"0.0.0-dev", "unknown", ChannelDev},
-		{"docker", "unknown", ChannelDev},
+	for _, tc := range []struct{ version, commit, install, want string }{
+		{"v1.2.0", "abc1234", "", ChannelRelease},
+		{"v1.3.0-rc.1", "abc1234", "", ChannelRelease},
+		{"2026.10.13", "abc1234", "", ChannelMain},
+		{"2026.10.13-dirty", "abc1234", "", ChannelMain},
+		{"main-abc1234", "abc1234", "", ChannelMain},
+		{"0.0.0-dev", "unknown", "", ChannelDev},
+		{"docker", "unknown", "", ChannelDev},
+		// An install on the releases: the published image is a release; a build of a
+		// commit (kept by update.sh until a release includes it) is compared with one.
+		{"v1.2.0", "abc1234", InstallStable, ChannelRelease},
+		{"2026.10.13", "abc1234", InstallStable, ChannelBuild},
+		{"2026.10.13-dirty", "abc1234", InstallStable, ChannelBuild},
+		{"docker", "unknown", InstallStable, ChannelDev},
+		// An install on main compares with main, even a build of a release's commit
+		// (stamped with the tag).
+		{"2026.10.13", "abc1234", InstallMain, ChannelMain},
+		{"v1.2.0", "abc1234", InstallMain, ChannelMain},
+		{"v1.2.0", "unknown", InstallMain, ChannelRelease},
+		{"docker", "unknown", InstallMain, ChannelDev},
 	} {
-		if got := channelOf(tc.version, tc.commit); got != tc.want {
-			t.Errorf("channelOf(%q, %q) = %q, want %q", tc.version, tc.commit, got, tc.want)
+		if got := channelOf(tc.version, tc.commit, tc.install); got != tc.want {
+			t.Errorf("channelOf(%q, %q, %q) = %q, want %q", tc.version, tc.commit, tc.install, got, tc.want)
 		}
+	}
+}
+
+// A build of a commit on an install that follows the releases is compared with the
+// latest release: offered it when the release includes the build's code, told it's newer
+// when it has code the release doesn't.
+func TestUpdateCheckBuildOnStable(t *testing.T) {
+	var asked atomic.Value
+	answer := func(ahead, behind int) func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
+			asked.Store(r.URL.Path + "?" + r.URL.RawQuery)
+			_, _ = w.Write([]byte(`{"url":"x","base_commit":{"sha":"abc1234"},"status":"s",` +
+				`"ahead_by":` + strconv.Itoa(ahead) + `,"behind_by":` + strconv.Itoa(behind) + `,"commits":[{"sha":"1"}],"files":[]}`))
+		}
+	}
+	gh := &fakeGitHub{latest: release("v1.3.0", "notes"), compare: answer(4, 0)}
+	srv := gh.server(t)
+	check := func(version string) Status {
+		t.Helper()
+		c := New(Options{Client: srv.Client(), BaseURL: srv.URL, Version: version, Commit: "abc1234", Install: InstallStable})
+		_ = c.Run(context.Background())
+		return c.Status(context.Background())
+	}
+
+	// The release has the build's code and 4 commits more: update.sh moves to it.
+	st := check("2026.10.08")
+	if st.Channel != ChannelBuild || !st.Available || st.Ahead == nil || *st.Ahead != 0 || st.Behind != nil || st.Problem != "" {
+		t.Fatalf("status = %+v, want v1.3.0 offered to an older build", st)
+	}
+	if got, _ := asked.Load().(string); got != "/repos/tristenlammi/Arrmada/compare/abc1234...v1.3.0?per_page=1" {
+		t.Errorf("compare asked %q", got)
+	}
+	// The build has 6 commits the release doesn't: newer, nothing offered.
+	gh.setCompare(answer(2, 6))
+	if st := check("2026.10.14"); st.Available || st.Ahead == nil || *st.Ahead != 6 {
+		t.Errorf("status = %+v, want 6 ahead and nothing offered", st)
+	}
+	// The release's own commit, built here: up to date.
+	gh.setCompare(answer(0, 0))
+	if st := check("2026.10.14"); st.Available || st.Ahead == nil || *st.Ahead != 0 {
+		t.Errorf("status = %+v, want up to date", st)
+	}
+	// Local edits: never offered a release, whatever GitHub says of the commit.
+	gh.setCompare(answer(4, 0))
+	if st := check("2026.10.08-dirty"); st.Available {
+		t.Errorf("status = %+v, want a -dirty build offered nothing", st)
+	}
+	// A commit GitHub doesn't know: unknown, not a problem.
+	gh.setCompare(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	if st := check("2026.10.14"); st.Available || st.Ahead != nil || st.Problem != "" {
+		t.Errorf("status = %+v, want unknown", st)
+	}
+	// No release published: nothing compared.
+	gh.setLatest(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	gh.setCompare(func(w http.ResponseWriter, _ *http.Request) { t.Error("compared with no release published") })
+	if st := check("2026.10.14"); st.Latest != nil || st.Available || st.Ahead != nil {
+		t.Errorf("status = %+v", st)
+	}
+}
+
+// An install on main compares a build with main, not with the releases.
+func TestUpdateCheckMainInstall(t *testing.T) {
+	var asked atomic.Value
+	gh := &fakeGitHub{
+		latest: release("v1.3.0", "notes"),
+		compare: func(w http.ResponseWriter, r *http.Request) {
+			asked.Store(r.URL.Path)
+			_, _ = w.Write([]byte(`{"ahead_by":3,"behind_by":0}`))
+		},
+	}
+	srv := gh.server(t)
+	c := New(Options{Client: srv.Client(), BaseURL: srv.URL, Version: "v1.2.0", Commit: "abc1234", Install: InstallMain})
+	_ = c.Run(context.Background())
+	st := c.Status(context.Background())
+	if st.Channel != ChannelMain || st.Behind == nil || *st.Behind != 3 || st.Available || st.Ahead != nil {
+		t.Fatalf("status = %+v, want 3 behind main and no release offered", st)
+	}
+	if got, _ := asked.Load().(string); got != "/repos/tristenlammi/Arrmada/compare/abc1234...main" {
+		t.Errorf("compare asked %q", got)
+	}
+}
+
+func TestReadCompareNeedsBothCounts(t *testing.T) {
+	if _, err := readCompare(strings.NewReader(`{"ahead_by":1}`)); err == nil {
+		t.Error("an answer without behind_by read as a comparison")
+	}
+	cmp, err := readCompare(strings.NewReader(`{"behind_by":2,"ahead_by":1,"files":[`))
+	if err != nil || cmp.Ahead != 1 || cmp.Behind != 2 {
+		t.Errorf("readCompare = %+v, %v (it should stop once both are read)", cmp, err)
 	}
 }

@@ -1,6 +1,7 @@
 // Package updatecheck asks GitHub whether a newer Arrmada release is out, for System →
-// Status. It reads the repository's public releases (and, for a build made from main,
-// how far main has moved on) with plain unauthenticated GETs: nothing about the server,
+// Status. It reads the repository's public releases (and, for a build of a commit, how
+// it compares with main or with the latest release, whichever its install follows) with
+// plain unauthenticated GETs: nothing about the server,
 // its library or its users is sent, not even the version, and the User-Agent is just
 // "Arrmada". It is on by default, says what it does, and can be switched off; while off
 // it makes no requests at all.
@@ -50,10 +51,21 @@ const (
 const (
 	// ChannelRelease: a build of a release tag (v1.2.0), compared with the latest release.
 	ChannelRelease = "release"
-	// ChannelMain: a build of a commit (update.sh's default), compared with main.
+	// ChannelMain: a build of a commit on an install that follows main
+	// (ARRMADA_CHANNEL=main), compared with main.
 	ChannelMain = "main"
+	// ChannelBuild: a build of a commit on an install that follows the releases
+	// (ARRMADA_CHANNEL=stable): update.sh keeps it until a release includes its code, so
+	// it's compared with the latest release.
+	ChannelBuild = "build"
 	// ChannelDev: a build that doesn't know its commit (go run, an old image).
 	ChannelDev = "dev"
+)
+
+// The install's channel, as ARRMADA_CHANNEL names it.
+const (
+	InstallStable = "stable"
+	InstallMain   = "main"
 )
 
 // Release is the newest published (non-draft, non-pre-release) release.
@@ -79,11 +91,16 @@ type Status struct {
 	CheckedAt *time.Time `json:"checked_at"`
 	// Latest is the newest release; nil when none is published (or it isn't known yet).
 	Latest *Release `json:"latest"`
-	// Available: Latest is newer than this release build.
+	// Available: Latest is newer than this release build, or (channel build) Latest
+	// includes this build's code and more, so update.sh moves the install to it.
 	Available bool `json:"available"`
 	// Behind is how many commits main has that this build doesn't; nil = unknown or
 	// not a build of main.
 	Behind *int `json:"behind"`
+	// Ahead is how many commits this build has that Latest doesn't (channel build only):
+	// more than 0 and update.sh keeps the build until a release includes it. nil =
+	// unknown or not compared.
+	Ahead *int `json:"ahead"`
 	// Problem says why the last attempt couldn't check, in plain words; "" = it could.
 	Problem string `json:"problem,omitempty"`
 }
@@ -96,6 +113,9 @@ type Options struct {
 	Repo    string
 	Version string
 	Commit  string
+	// Install is the install's channel (ARRMADA_CHANNEL): InstallStable, InstallMain or
+	// "" when it isn't known, which compares a build of a commit with main as before.
+	Install string
 	// Enabled reads the setting on each use. nil = always on.
 	Enabled func(ctx context.Context) bool
 	Log     *slog.Logger
@@ -133,7 +153,7 @@ func New(o Options) *Checker {
 		o.Now = time.Now
 	}
 	c := &Checker{o: o}
-	c.last = Status{Current: o.Version, Channel: channelOf(o.Version, o.Commit)}
+	c.last = Status{Current: o.Version, Channel: channelOf(o.Version, o.Commit, o.Install)}
 	return c
 }
 
@@ -148,7 +168,7 @@ func (c *Checker) Status(ctx context.Context) Status {
 		return Status{}
 	}
 	if !c.Enabled(ctx) {
-		return Status{Enabled: false, Current: c.o.Version, Channel: channelOf(c.o.Version, c.o.Commit)}
+		return Status{Enabled: false, Current: c.o.Version, Channel: channelOf(c.o.Version, c.o.Commit, c.o.Install)}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -193,15 +213,34 @@ func (c *Checker) check(ctx context.Context) {
 	now := c.o.Now()
 	c.mu.Lock()
 	c.tried = now
+	lastTag := ""
+	if c.last.Latest != nil {
+		lastTag = c.last.Latest.Tag
+	}
 	c.mu.Unlock()
 
-	channel := channelOf(c.o.Version, c.o.Commit)
+	channel := channelOf(c.o.Version, c.o.Commit, c.o.Install)
 	rel, relErr := c.latestRelease(ctx)
 
 	var behind *int
+	var vsRelease *comparison
 	var cmpErr error
-	if channel == ChannelMain {
+	switch channel {
+	case ChannelMain:
 		behind, cmpErr = c.behindMain(ctx)
+	case ChannelBuild:
+		// Compared with the release this check found, or, when GitHub didn't answer for
+		// it, the one the last good check found (which is the one still shown).
+		tag := lastTag
+		if relErr == nil {
+			tag = ""
+			if rel != nil {
+				tag = rel.Tag
+			}
+		}
+		if tag != "" {
+			vsRelease, cmpErr = c.compare(ctx, c.o.Commit, tag)
+		}
 	}
 
 	c.mu.Lock()
@@ -219,7 +258,8 @@ func (c *Checker) check(ctx context.Context) {
 		t := now
 		st.CheckedAt = &t
 	}
-	if channel == ChannelMain {
+	switch channel {
+	case ChannelMain:
 		if cmpErr != nil {
 			if problem == "" {
 				problem = describe(cmpErr)
@@ -227,6 +267,24 @@ func (c *Checker) check(ctx context.Context) {
 			c.o.Log.Debug("update check: compare with main", "err", cmpErr)
 		} else {
 			st.Behind = behind
+		}
+	case ChannelBuild:
+		if cmpErr != nil {
+			if problem == "" {
+				problem = describe(cmpErr)
+			}
+			c.o.Log.Debug("update check: compare with the latest release", "err", cmpErr)
+		} else {
+			// base = this build, head = the release: Behind is what the build has that the
+			// release doesn't. None, and the release has more: it's an update.
+			st.Ahead, st.Available = nil, false
+			if vsRelease != nil {
+				ahead := vsRelease.Behind
+				st.Ahead = &ahead
+				// A build with local edits (-dirty) has code GitHub has never seen, and
+				// update.sh keeps it, so no release is offered as its update.
+				st.Available = vsRelease.Behind == 0 && vsRelease.Ahead > 0 && !strings.HasSuffix(c.o.Version, "-dirty")
+			}
 		}
 	}
 	st.Problem = problem
@@ -344,7 +402,22 @@ var shaRE = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 // behindMain is how many commits main has that this build's commit doesn't. A commit
 // GitHub doesn't know (built from local, unpushed work) is unknown, not an error.
 func (c *Checker) behindMain(ctx context.Context) (*int, error) {
-	resp, err := c.get(ctx, "/repos/"+c.o.Repo+"/compare/"+url.PathEscape(c.o.Commit)+"...main?per_page=1", "")
+	cmp, err := c.compare(ctx, c.o.Commit, "main")
+	if err != nil || cmp == nil {
+		return nil, err
+	}
+	n := cmp.Ahead
+	return &n, nil
+}
+
+// comparison is GitHub's compare of base...head: Ahead is how many commits head has that
+// base doesn't, Behind how many base has that head doesn't.
+type comparison struct{ Ahead, Behind int }
+
+// compare asks GitHub how base and head (commits, tags or branches) differ. Either one
+// unknown to GitHub (local, unpushed work) is nil, not an error.
+func (c *Checker) compare(ctx context.Context, base, head string) (*comparison, error) {
+	resp, err := c.get(ctx, "/repos/"+c.o.Repo+"/compare/"+url.PathEscape(base)+"..."+url.PathEscape(head)+"?per_page=1", "")
 	if err != nil {
 		return nil, err
 	}
@@ -356,50 +429,70 @@ func (c *Checker) behindMain(ctx context.Context) (*int, error) {
 	default:
 		return nil, httpError{resp.StatusCode}
 	}
-	n, err := aheadBy(io.LimitReader(resp.Body, 8*maxBody))
-	if err != nil {
-		return nil, err
-	}
-	return &n, nil
+	return readCompare(io.LimitReader(resp.Body, 8*maxBody))
 }
 
-// aheadBy reads ahead_by from a compare answer (base = this build, head = main, so
-// ahead_by is what main has that this build lacks). The answer can be large (it lists
-// commits and files), so it's read field by field and left as soon as ahead_by is found.
-func aheadBy(r io.Reader) (int, error) {
+// readCompare reads ahead_by and behind_by from a compare answer. The answer can be
+// large (it lists commits and files), so it's read field by field and left as soon as
+// both are found (GitHub puts them near the top).
+func readCompare(r io.Reader) (*comparison, error) {
 	dec := json.NewDecoder(r)
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return 0, fmt.Errorf("compare: not an object")
+		return nil, fmt.Errorf("compare: not an object")
 	}
-	for dec.More() {
+	var cmp comparison
+	var gotAhead, gotBehind bool
+	for dec.More() && !(gotAhead && gotBehind) {
 		tok, err := dec.Token()
 		if err != nil {
-			return 0, fmt.Errorf("compare: %w", err)
+			return nil, fmt.Errorf("compare: %w", err)
 		}
 		key, _ := tok.(string)
-		if key == "ahead_by" {
-			var n int
-			if err := dec.Decode(&n); err != nil {
-				return 0, fmt.Errorf("compare: ahead_by: %w", err)
+		switch key {
+		case "ahead_by":
+			if err := dec.Decode(&cmp.Ahead); err != nil {
+				return nil, fmt.Errorf("compare: ahead_by: %w", err)
 			}
-			return n, nil
-		}
-		var skip json.RawMessage
-		if err := dec.Decode(&skip); err != nil {
-			return 0, fmt.Errorf("compare: %w", err)
+			gotAhead = true
+		case "behind_by":
+			if err := dec.Decode(&cmp.Behind); err != nil {
+				return nil, fmt.Errorf("compare: behind_by: %w", err)
+			}
+			gotBehind = true
+		default:
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return nil, fmt.Errorf("compare: %w", err)
+			}
 		}
 	}
-	return 0, fmt.Errorf("compare: no ahead_by")
+	if !gotAhead || !gotBehind {
+		return nil, fmt.Errorf("compare: no ahead_by/behind_by")
+	}
+	return &cmp, nil
 }
 
 // channelOf says what a build is compared with. Only a "v"-prefixed version is a release:
 // update.sh stamps other builds with their commit date (2026.10.13), which would
-// otherwise read as version 2026.
-func channelOf(version, commit string) string {
+// otherwise read as version 2026. On an install that follows main, a build of a commit
+// is compared with main even when that commit is a release's (update.sh then stamps it
+// with the tag). On one that follows the releases, a build of a commit is one update.sh
+// keeps until a release includes it, so it's compared with the latest release. An
+// install that doesn't say compares a build of a commit with main, as it always did.
+func channelOf(version, commit, install string) string {
+	release := false
 	if _, ok := parseSemver(version); ok && strings.HasPrefix(version, "v") {
-		return ChannelRelease
+		release = true
 	}
-	if shaRE.MatchString(commit) {
+	known := shaRE.MatchString(commit)
+	switch {
+	case install == InstallMain && known:
+		return ChannelMain
+	case release:
+		return ChannelRelease
+	case install == InstallStable && known:
+		return ChannelBuild
+	case known:
 		return ChannelMain
 	}
 	return ChannelDev
