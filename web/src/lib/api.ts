@@ -556,7 +556,7 @@ export interface UnwantedItemInfo { key: string; label: string; description: str
 // An Evaluation's rank keys (quality/rankkeys.go): what ranking v2 compares, key by key.
 // Declared apart and merged into Evaluation, for the Advanced raw view and row explanations.
 export interface Evaluation {
-  target_avoided?: boolean; // a target Avoid, the bitrate floor or an Unwanted avoid
+  target_avoided?: boolean; // a built-in format Avoid (target or Other formats), the bitrate floor or an Unwanted avoid
   custom_avoided?: boolean; // a negative custom format or keyword score
   res_tier?: number; // 2160p 5 … 480p 1
   pref_count?: number; // the target's preferred/required formats it has (0 when waived)

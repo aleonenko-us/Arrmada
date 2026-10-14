@@ -144,6 +144,12 @@ func rankFixtures() []rankFixture {
 		return storedFixture(StoredProfile{Name: "avoid-dv", AllowedResolutions: []string{"2160p", "1080p", "720p"},
 			Ideal: &IdealFile{HDR: map[string]string{"DV": PrefAvoid}}})
 	}
+	// The "Other formats" Avoid button (-50) on built-ins the target doesn't cover: the
+	// avoided tier at the default floor, like a target Avoid — never a reject.
+	profiles["avoid-other"] = func() (Profile, *Engine) {
+		return storedFixture(StoredProfile{Name: "avoid-other", AllowedResolutions: []string{"2160p", "1080p", "720p"},
+			FormatScores: map[string]int{"AMZN": -50, "DTS-HD": -50}})
+	}
 	profiles["must-hevc"] = func() (Profile, *Engine) {
 		return storedFixture(StoredProfile{Name: "must-hevc", Ideal: &IdealFile{Codec: map[string]string{"hevc": PrefMust, "av1": PrefMust}}})
 	}

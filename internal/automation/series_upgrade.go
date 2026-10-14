@@ -145,9 +145,12 @@ func fileResRank(cur quality.CurrentFile) int {
 	return rank
 }
 
-// seriesGrabbedTitles is every release ever grabbed for a show, by normTitle. A season pack
-// is offered as an upgrade once: after it imports, the episodes it didn't beat keep their
-// files, and the same pack mustn't come round again every sweep for them.
+// seriesGrabbedTitles is every release ever grabbed for a show, by normTitle. An upgrade —
+// a season pack or one episode's release — is offered once: after a pack imports, the
+// episodes it didn't beat keep their files, and after an episode's upgrade arrives the
+// import gate may still keep the old file (or find the download already imported). Either
+// way the same release mustn't come round again every sweep: Reacher's S04E06 was grabbed
+// ten times, every six hours, by an older build.
 func (c *Coordinator) seriesGrabbedTitles(ctx context.Context, seriesID int64) (map[string]bool, error) {
 	rows, err := c.db.QueryContext(ctx,
 		`SELECT title FROM grabs WHERE movie_id = ? AND media_type = 'series'`, seriesID)
@@ -168,12 +171,9 @@ func (c *Coordinator) seriesGrabbedTitles(ctx context.Context, seriesID int64) (
 
 // packUpgrades finds, for each season in seasons, the season pack that would upgrade the
 // most of it (packUpgradeDecision). Only single-season packs of fully aired seasons, never
-// one grabbed before or one an episode was already imported or converted from.
-func (c *Coordinator) packUpgrades(ctx context.Context, s series.Series, idx runtimeIndex, profile string, byName map[string]indexer.Release, seasons map[int]bool) ([]episodeUpgrade, error) {
-	before, err := c.seriesGrabbedTitles(ctx, s.ID)
-	if err != nil {
-		return nil, err
-	}
+// one grabbed before (before, seriesGrabbedTitles) or one an episode was already imported
+// or converted from.
+func (c *Coordinator) packUpgrades(ctx context.Context, s series.Series, idx runtimeIndex, profile string, byName map[string]indexer.Release, seasons map[int]bool, before map[string]bool) []episodeUpgrade {
 	eps := map[epKey]series.Episode{}
 	for _, sn := range s.Seasons {
 		for _, e := range sn.Episodes {
@@ -238,7 +238,18 @@ func (c *Coordinator) packUpgrades(ctx context.Context, s series.Series, idx run
 	for _, sn := range sortedSeasons(seasonSet(best)) {
 		out = append(out, best[sn])
 	}
-	return out, nil
+	return out
+}
+
+// untried is names without the releases grabbed for the show before (seriesGrabbedTitles).
+func untried(names []string, before map[string]bool) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if !before[normTitle(n)] {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // singleSeason is the one season every key is in; false for none or several.

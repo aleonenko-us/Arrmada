@@ -1137,7 +1137,7 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
             <input type="checkbox" checked={scores} onChange={(e) => setScores(e.target.checked)} /> show raw scores
           </label>
         </div>
-        <div className="mb-2 text-xs text-ink-faint">Formats the target doesn't cover, scored directly.</div>
+        <div className="mb-2 text-xs text-ink-faint">Formats the target doesn't cover, scored directly. Avoid works like the target's: grabbed only when nothing else is available.</div>
         <div className="flex flex-col gap-2">
           {otherFormats.map((f) => (
             <FormatToggle key={f.name} format={f} score={sp.format_scores[f.name] ?? 0} required={(sp.required_formats ?? []).includes(f.name)} advanced={scores} onChange={(s, req) => setFormat(f.name, s, req)} />
@@ -1163,7 +1163,7 @@ function AdvancedPanel({ sp, patch, otherFormats }: { sp: StoredProfile; patch: 
             {SIZE_LEANS.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
           </select>
         </label>
-        <NumberField label="Minimum total score" hint="Refuse releases scoring below this" value={sp.min_format_score} onChange={(v) => patch({ min_format_score: v })} allowNegative />
+        <NumberField label="Minimum total score" hint="Refuse releases scoring below this. Prefer, custom formats and Name contains count; an Avoid only ranks a release last." value={sp.min_format_score} onChange={(v) => patch({ min_format_score: v })} allowNegative />
       </div>
     </div>
   );
