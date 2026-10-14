@@ -11,6 +11,10 @@ type Kind string
 
 const (
 	KindQbittorrent Kind = "qbittorrent"
+	// KindSABnzbd is a SABnzbd usenet client. Its implementation is registered separately
+	// (sabnzbd.go); until it is, a row of this kind reads as "no downloader" and is sent
+	// nothing.
+	KindSABnzbd Kind = "sabnzbd"
 )
 
 // Client is a configured download client.
@@ -28,8 +32,8 @@ type Client struct {
 	// Priority orders the clients for new downloads: the lowest number is tried first,
 	// and the next only when the first can't be reached at all (Service.Add).
 	Priority int `json:"priority"`
-	// Bundled marks the packaged qBittorrent. Startup re-adds it only while no row is
-	// marked and the owner hasn't removed it (Service.EnsureBundled).
+	// Bundled marks a packaged client, at most one per kind. Startup re-adds it only while
+	// no row of its kind is marked and the owner hasn't removed it (Service.EnsureBundled).
 	Bundled bool `json:"bundled"`
 	// PathMaps translate the paths this client reports into the ones Arrmada reads, for a
 	// client that sees its downloads under a different path (pathmap.go). Empty for most.
@@ -40,7 +44,7 @@ type Client struct {
 const DefaultPriority = 25
 
 // AddRequest asks a client to start a download. Provide either URL (the client
-// fetches it) or File bytes (Arrmada already fetched an auth-gated .torrent).
+// fetches it) or File bytes (Arrmada already fetched an auth-gated .torrent, or an .nzb).
 type AddRequest struct {
 	Name     string // release title, for logging
 	URL      string
@@ -49,6 +53,17 @@ type AddRequest struct {
 	Category string
 	SavePath string // where the client should save (matches Arrmada's downloads dir)
 	Paused   bool
+	// Transport picks which clients may take it (Service.AddDownload): a torrent never goes
+	// to a usenet client, nor an NZB to a torrent client. Empty means torrent — all Add has
+	// ever sent.
+	Transport Transport
+}
+
+// Added is where a download went and the key it is known by there (key.go). Key may be
+// empty for a torrent whose hash couldn't be read from its link, as before.
+type Added struct {
+	ClientID int64
+	Key      string
 }
 
 // Item is a download's live status, normalized across clients.
@@ -97,17 +112,38 @@ type Item struct {
 	Availability float64 `json:"availability"`
 	// ClientID is the download client this torrent was read from (set by the queue read).
 	ClientID int64 `json:"client_id,omitempty"`
+	// Transport is the client's transport, set by the queue read from its kind. Hash is
+	// the download key (key.go): an info hash for a torrent, "sab-…" for a usenet job.
+	Transport Transport `json:"transport,omitempty"`
+	// FailMessage is a usenet client's own reason for a failed job ("out of retention",
+	// "CRC error"); empty otherwise.
+	FailMessage string `json:"fail_message,omitempty"`
+	// Labels are a usenet client's flags on a job (DUPLICATE, ENCRYPTED, …) as it gives them.
+	Labels []string `json:"labels,omitempty"`
 }
 
 // Phase is a finer reading of the torrent's state than State, for the places that need to
 // tell a dead download from a live one: "stalled" (no peers sending), "metadata" (a magnet
 // still fetching its file list), "queued" (held by the client's active-download limit),
-// "checking", "moving", "allocating", "downloading", "seeding", "paused" or "error".
+// "checking", "moving", "allocating", "downloading", "seeding", "paused" or "error" — and,
+// for a usenet job, "unpacking" (being verified, repaired or extracted after the download:
+// the files aren't ready yet, but nothing is stuck).
 //
 // State keeps its old meaning for every existing caller; this only adds information. A
 // raw state this doesn't know (a future client version, or a client that doesn't report
 // one) falls back to State, so nothing reads as a phase it isn't.
 func (i Item) Phase() string {
+	if i.State == PhaseUnpacking {
+		return PhaseUnpacking
+	}
+	if i.Transport == TransportUsenet {
+		// SABnzbd's post-processing stages. Read only for usenet: qBittorrent's states are
+		// lowercase ("moving") and keep their own meaning.
+		switch i.RawState {
+		case "QuickCheck", "Verifying", "Repairing", "Extracting", "Moving", "Running":
+			return PhaseUnpacking
+		}
+	}
 	switch i.RawState {
 	case "metaDL", "forcedMetaDL":
 		return "metadata"
@@ -132,6 +168,9 @@ func (i Item) Phase() string {
 	}
 	return i.State
 }
+
+// PhaseUnpacking is a usenet job being verified, repaired or extracted (see Phase).
+const PhaseUnpacking = "unpacking"
 
 // Complete reports whether everything this torrent was told to fetch is on disk.
 //
@@ -193,7 +232,9 @@ type ClientSettings struct {
 	MaxActiveUploads   int   `json:"max_active_uploads"`
 }
 
-// Downloader is one download-client implementation.
+// Downloader is one download-client implementation. "hash" is the download key (key.go)
+// the client's List reports as Item.Hash. Pause and Resume also take PauseAll, meaning
+// every download in that client; nothing else may receive it.
 type Downloader interface {
 	Add(ctx context.Context, dc Client, req AddRequest) error
 	List(ctx context.Context, dc Client) ([]Item, error)
@@ -204,6 +245,13 @@ type Downloader interface {
 	// "prio_up", "prio_down".
 	TorrentAction(ctx context.Context, dc Client, hash, action string) error
 	Test(ctx context.Context, dc Client) error
+}
+
+// keyedAdder is a client that says which key the download it took is known by (a usenet
+// client's job id, as UsenetKey). A client without it is a torrent client, whose key is
+// the info hash read from the request (torrentKey).
+type keyedAdder interface {
+	AddKeyed(ctx context.Context, dc Client, req AddRequest) (string, error)
 }
 
 // categorySetter is implemented by clients that can re-file a torrent under another
@@ -229,6 +277,9 @@ func NewRegistry() *Registry {
 		KindQbittorrent: NewQBittorrent(),
 	}}
 }
+
+// Register sets the implementation for a kind (the usenet client, and fakes in tests).
+func (r *Registry) Register(kind Kind, d Downloader) { r.impls[kind] = d }
 
 // For returns the downloader for a kind.
 func (r *Registry) For(kind Kind) (Downloader, bool) {
