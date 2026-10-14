@@ -233,7 +233,9 @@ wait_healthy() {
     _i=$((_i + 1)); sleep 2
   done
   printf '\n' >&2
-  return 1
+  # Still running, just not answering yet (a big database upgrade can take a while):
+  # told apart from a crash, so nothing is stopped in the middle of it.
+  return 2
 }
 
 # show_log prints the last lines of the app's log.
@@ -730,7 +732,20 @@ if [ -z "$UP_OK" ]; then
   fi
   update_failed
 fi
-wait_healthy || update_failed
+_waited=0
+wait_healthy || _waited=$?
+if [ "$_waited" = 2 ]; then
+  # Not crashed, only slow: going back now would stop it in the middle of whatever it's
+  # doing (an upgrade of the database's tables, say), so leave it running and say how to
+  # follow it.
+  say "" >&2
+  say "! The new version is running but hasn't answered for 3 minutes. It may still be upgrading" >&2
+  say "  the database. Follow it with: docker compose logs -f arrmada-app" >&2
+  say "  If it doesn't come up, go back with: ./update.sh --rollback" >&2
+  exit 1
+elif [ "$_waited" != 0 ]; then
+  update_failed
+fi
 
 # A build kept by an earlier --rollback is superseded by this one.
 docker image rm arrmada:rolled-back >/dev/null 2>&1 || true
