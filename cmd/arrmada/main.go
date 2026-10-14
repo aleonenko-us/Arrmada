@@ -286,6 +286,7 @@ func main() {
 	}
 	downloads.SetStatus(connStatus)
 	downloads.SetFlags(settingsSvc) // remembers that the owner removed the bundled qBittorrent
+	wireUsenet(indexers, downloads)
 	// FlareSolverr answering or not is recorded like any integration (no backoff: the
 	// searches that need it are already paced by their indexers' own status).
 	flare.OnResult(func(err error) {
