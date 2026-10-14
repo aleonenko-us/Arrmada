@@ -78,8 +78,8 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
           <p className="m-0 mb-3 text-sm text-ink-dim">
             Password: your <b>audiobook &amp; e-reader password</b> — not your Arrmada password.{" "}
             {passwordCard ? null : known?.has === false
-              ? <>You haven't set one yet: <Link to="/audiobooks?tab=apps" className="font-semibold" style={{ color: "var(--accent)" }}>set it in Audiobooks → Apps &amp; devices</Link>.</>
-              : <>Change it in <Link to="/audiobooks?tab=apps" className="font-semibold" style={{ color: "var(--accent)" }}>Audiobooks → Apps &amp; devices</Link>; it's the one listening apps use too.</>}
+              ? <>You haven't set one yet: <Link to="/audiobooks?tab=apps" className="font-semibold" style={{ color: "var(--accent-text)" }}>set it in Audiobooks → Apps &amp; devices</Link>.</>
+              : <>Change it in <Link to="/audiobooks?tab=apps" className="font-semibold" style={{ color: "var(--accent-text)" }}>Audiobooks → Apps &amp; devices</Link>; it's the one listening apps use too.</>}
           </p>
           {passwordCard && <div className="mb-3">{passwordCard}</div>}
           <ul className="m-0 mb-3 flex list-none flex-col gap-1.5 p-0">

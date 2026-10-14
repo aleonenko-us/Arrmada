@@ -53,14 +53,16 @@ export function SeasonRail({ seasons, selected, onSelect }: { seasons: Season[];
             aria-pressed={active}
             onClick={() => onSelect(sn.season_number)}
             className="flex w-[156px] flex-none items-center gap-2.5 rounded-xl p-1.5 pr-3 text-left"
-            style={{ background: active ? "var(--accent-soft)" : "var(--panel)", border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, opacity: c.total === 0 ? 0.65 : 1 }}
+            style={{ background: active ? "var(--accent-soft)" : "var(--panel)", border: `1px solid ${active ? "var(--accent)" : "var(--line)"}` }}
           >
-            <span className="h-[54px] w-[36px] flex-none overflow-hidden rounded-md" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
+            {/* An unreleased season fades its artwork only: fading the card took its words
+                below a readable contrast. */}
+            <span className="h-[54px] w-[36px] flex-none overflow-hidden rounded-md" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))", opacity: c.total === 0 ? 0.65 : 1 }}>
               {thumb && <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-base font-semibold" style={{ color: active ? "var(--accent-text)" : "var(--ink)" }}>{seasonName(sn.season_number)}</span>
-              <span className="block font-mono text-xs text-ink-faint">
+              <span className={`block font-mono text-xs ${active ? "text-ink-dim" : "text-ink-faint"}`}>
                 {c.total === 0 ? "Not yet released" : c.airedCount === 0 ? "Upcoming" : `${c.have}/${c.counted}`}
               </span>
               {c.total > 0 && c.airedCount > 0 && (
@@ -160,7 +162,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
               busy={searching}
               busyLabel="Searching…"
               title={last ? `${attemptLine(last)}. Click to search again.` : `Grabs ${name}'s missing episodes — a season pack when most of the season is missing or no single episodes exist`}
-              style={{ border: "1px solid var(--accent-line)", color: "var(--accent)", background: "transparent" }}
+              style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)", background: "transparent" }}
             >
               {last ? "Grab again" : "Grab missing"}
             </Button>
@@ -177,7 +179,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
             disabled={busy === "monitor"}
             aria-pressed={season.monitored}
             title={series.monitored ? (season.monitored ? `${name} is monitored — click to stop` : `Monitor all of ${name}`) : "Series paused — nothing is searched. This choice applies when you resume."}
-            style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent)" : "var(--ink-faint)", background: "transparent", opacity: series.monitored ? 1 : 0.6 }}
+            style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent-text)" : "var(--ink-faint)", background: "transparent", opacity: series.monitored ? 1 : 0.6 }}
           >
             {season.monitored ? "Monitored" : "Monitor"}
           </Button>

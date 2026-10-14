@@ -23,7 +23,7 @@ export function LibraryEmpty({ noun, folder, addLabel, onScan, scanning }: Libra
       title={`No ${noun} yet`}
       body={<>
         Already have {noun} on disk? <b>Scan library</b> catalogs what's in your {folder}
-        (set in <Link to={LINKS.libraryFolders} className="underline" style={{ color: "var(--accent)" }}>Settings → Library</Link>).
+        (set in <Link to={LINKS.libraryFolders} className="underline" style={{ color: "var(--accent-text)" }}>Settings → Library</Link>).
         {" "}Or use <b>+ {addLabel}</b> above to search for one, and Arrmada will monitor and grab it.
       </>}
       action={<Button onClick={onScan} busy={scanning} busyLabel="Scanning…">Scan library</Button>}

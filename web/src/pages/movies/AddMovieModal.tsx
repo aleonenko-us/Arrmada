@@ -72,7 +72,7 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
             <input ref={inputRef} aria-label="Search TMDB for a movie" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies — e.g. Dune Part Two" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={field} />
             <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
           </form>
-          {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+          {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
           <div className="max-h-[52vh] overflow-y-auto">
             {results.map((r) => (
               <ResultRow key={r.tmdb_id} r={r} onPick={() => setPicked(r)} onOpen={onClose} />
@@ -108,14 +108,14 @@ function ResultRow({ r, onPick, onOpen }: { r: MovieLookup; onPick: () => void; 
     return (
       <Link to={`/movies/${r.library_id}`} onClick={onOpen} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
         {body}
-        <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--good-soft)", color: "var(--good)" }}>In library →</span>
+        <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>In library →</span>
       </Link>
     );
   }
   return (
     <button onClick={onPick} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
       {body}
-      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add…</span>
+      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Add…</span>
     </button>
   );
 }
@@ -197,7 +197,7 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
         )}
       </fieldset>
 
-      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={onBack} disabled={busy}>Back</Button>
         <Button variant="primary" onClick={add} disabled={busy}>{busy ? "Adding…" : "Add movie"}</Button>

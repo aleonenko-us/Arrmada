@@ -119,10 +119,10 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
       // How complete the show is, then how big: 151/163 sorts below 8/8.
       { key: "episodes", label: "Episodes", align: "right", descFirst: true, className: "font-mono text-xs", sort: (s) => { const st = statsOf(s); return st.episodes > 0 ? st.have_files / st.episodes + st.episodes / 1e6 : undefined; }, cell: (s) => {
         const st = statsOf(s);
-        return <><span style={{ color: st.missing === 0 && st.episodes > 0 ? "var(--good)" : "var(--ink-dim)" }}>{st.have_files}/{st.episodes}</span><NotMonitored n={st.unmonitored_missing} /></>;
+        return <><span style={{ color: st.missing === 0 && st.episodes > 0 ? "var(--good-text)" : "var(--ink-dim)" }}>{st.have_files}/{st.episodes}</span><NotMonitored n={st.unmonitored_missing} /></>;
       } },
       { key: "size", label: "Size", align: "right", descFirst: true, className: "font-mono text-xs text-ink-dim", sort: (s) => statsOf(s).size_bytes || undefined, cell: (s) => gb(statsOf(s).size_bytes) },
-      { key: "monitored", label: "Monitored", sort: (s) => (s.monitored ? 0 : 1), cell: (s) => <span className="font-mono text-2xs uppercase" style={{ color: s.monitored ? "var(--accent)" : "var(--ink-faint)" }}>{s.monitored ? "Yes" : "No"}</span> },
+      { key: "monitored", label: "Monitored", sort: (s) => (s.monitored ? 0 : 1), cell: (s) => <span className="font-mono text-2xs uppercase" style={{ color: s.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>{s.monitored ? "Yes" : "No"}</span> },
       // Share of judged episodes that fit: ascending puts the worst shows first.
       { key: "fit", label: "Fit", title: "How the episode files fit this show's profile — sort ascending for the worst first; open a show for each episode's reasons", sort: (s) => { const f = fits.get(s.id); return f && f.checked > 0 ? f.fits / f.checked : undefined; }, cell: (s) => <SeriesFit f={fits.get(s.id)} /> },
     ],

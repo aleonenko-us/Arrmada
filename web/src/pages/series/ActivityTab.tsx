@@ -27,12 +27,12 @@ const CATEGORY: Record<string, TypeKey> = {
 };
 
 const TONES: Record<string, string> = {
-  grabbed: "var(--accent)",
-  imported: "var(--good)",
-  upgraded: "var(--good)",
-  failed: "var(--avoid)",
-  blocklisted: "var(--avoid)",
-  deleted: "var(--reject)",
+  grabbed: "var(--accent-text)",
+  imported: "var(--good-text)",
+  upgraded: "var(--good-text)",
+  failed: "var(--avoid-text)",
+  blocklisted: "var(--avoid-text)",
+  deleted: "var(--reject-text)",
 };
 
 export interface ActivityRow {
@@ -146,7 +146,7 @@ function Row({ row }: { row: ActivityRow }) {
               {reasons.map(([code, n]) => <li key={code}>{n} {reasonLabel(code)}</li>)}
               {a.example && <li className="truncate font-mono text-xs text-ink-faint" title={a.example}>e.g. {a.example}</li>}
               {(a.grabbed_titles ?? []).map((t) => <li key={t} className="truncate font-mono text-xs" title={t}>↓ {t}</li>)}
-              {errors.map(([ix, msg]) => <li key={ix} style={{ color: "var(--avoid)" }}>{ix}: {msg}</li>)}
+              {errors.map(([ix, msg]) => <li key={ix} style={{ color: "var(--avoid-text)" }}>{ix}: {msg}</li>)}
             </ul>
           )}
         </div>

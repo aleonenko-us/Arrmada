@@ -63,7 +63,7 @@ export function RedoChip({ f, l, flash, onQueued }: { f: SubFileEntry; l: SubLan
       label={`Redo ${l.lang}`}
       items={items}
       triggerClassName="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase"
-      triggerStyle={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}
+      triggerStyle={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good-text)" }}
       trigger={<span title={`${file} — click to replace it`}>✓ {l.lang} ▾</span>}
     />
   );

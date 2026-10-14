@@ -72,7 +72,7 @@ export function Hero({ ctx }: { ctx: RowCtx }) {
         <h2 className="m-0 line-clamp-2 text-3xl font-extrabold leading-[1.08] sm:text-display-lg" style={{ color: "#fff", textShadow: "0 2px 18px rgba(0,0,0,.55)" }}>{cur.title}</h2>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium" style={{ color: "rgba(255,255,255,.82)" }}>
           {cur.year ? <span>{cur.year}</span> : null}
-          {cur.vote_average > 0 && <span style={{ color: "var(--accent)" }}>★ {cur.vote_average.toFixed(1)}</span>}
+          {cur.vote_average > 0 && <span style={{ color: "var(--accent-text)" }}>★ {cur.vote_average.toFixed(1)}</span>}
           <span className="rounded px-1.5 py-px text-xs uppercase" style={{ background: "rgba(255,255,255,.14)" }}>{cur.media_type === "series" ? "TV" : "Movie"}</span>
         </div>
         {cur.overview && <p className="m-0 line-clamp-2 max-w-[560px] text-md leading-relaxed sm:line-clamp-3" style={{ color: "rgba(255,255,255,.78)" }}>{cur.overview}</p>}

@@ -41,7 +41,7 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
       {(phase === "waiting" || phase === "slow") && (
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">
           {phase === "slow" && (
-            <button type="button" onClick={continueHere} className="font-semibold" style={{ color: "var(--accent)" }}>
+            <button type="button" onClick={continueHere} className="font-semibold" style={{ color: "var(--accent-text)" }}>
               Plex window didn't open? Continue in this tab
             </button>
           )}

@@ -76,7 +76,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
           <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(deleteFiles)}>
             <input type="checkbox" checked={deleteFiles} disabled={busy} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
             <span className="min-w-0">
-              <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete files from disk</span>
+              <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject-text)" : "var(--ink)" }}>Also delete files from disk</span>
               <span className="mt-0.5 block break-words text-xs text-ink-faint">{filesHint}</span>
             </span>
           </label>
@@ -84,7 +84,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
             <label key={d.hash || d.title} className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(cancelDownloads)}>
               <input type="checkbox" checked={cancelDownloads} disabled={busy} onChange={(e) => setCancelDownloads(e.target.checked)} className="mt-0.5" />
               <span className="min-w-0">
-                <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject)" : "var(--ink)" }}>Cancel the download in progress and delete its partial data</span>
+                <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject-text)" : "var(--ink)" }}>Cancel the download in progress and delete its partial data</span>
                 <span className="mt-0.5 block break-all text-xs text-ink-faint">{d.title} · {Math.round(d.progress * 100)}%</span>
                 {!cancelDownloads && <span className="mt-0.5 block text-xs text-ink-faint">Left running, it waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
               </span>
@@ -156,14 +156,14 @@ export function DeleteMoviesDialog({ movies, onClose, onDone }: {
           <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(deleteFiles)}>
             <input type="checkbox" checked={deleteFiles} disabled={busy || done} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
             <span className="min-w-0">
-              <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete their files from disk</span>
+              <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject-text)" : "var(--ink)" }}>Also delete their files from disk</span>
               <span className="mt-0.5 block break-words text-xs text-ink-faint">{filesHint}</span>
             </span>
           </label>
           <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={box(cancelDownloads)}>
             <input type="checkbox" checked={cancelDownloads} disabled={busy || done} onChange={(e) => setCancelDownloads(e.target.checked)} className="mt-0.5" />
             <span className="min-w-0">
-              <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject)" : "var(--ink)" }}>Cancel their downloads in progress and delete the partial data</span>
+              <span className="font-semibold" style={{ color: cancelDownloads ? "var(--reject-text)" : "var(--ink)" }}>Cancel their downloads in progress and delete the partial data</span>
               {!cancelDownloads && <span className="mt-0.5 block text-xs text-ink-faint">Left running, each waits in Activity → Needs you when it finishes instead of coming back into the library.</span>}
             </span>
           </label>

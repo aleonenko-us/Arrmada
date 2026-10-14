@@ -17,7 +17,7 @@ function Lines({ lines, warnings }: { lines: string[]; warnings?: string[] }) {
   return (
     <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
       {lines.map((l) => <li key={l} className="text-sm text-ink">• {l}</li>)}
-      {warnings?.map((w) => <li key={w} className="text-sm" style={{ color: "var(--avoid)" }}>⚠ {w}</li>)}
+      {warnings?.map((w) => <li key={w} className="text-sm" style={{ color: "var(--avoid-text)" }}>⚠ {w}</li>)}
     </ul>
   );
 }
@@ -145,7 +145,7 @@ export function SwitchOnDialog({ onCancel, switchOn, deviceWarnings = [] }: { on
               <Lines lines={lines} />
             </>
           )}
-          {deviceWarnings.map((w) => <p key={w} className="m-0 mt-2 text-sm" style={{ color: "var(--avoid)" }}>⚠ {w}</p>)}
+          {deviceWarnings.map((w) => <p key={w} className="m-0 mt-2 text-sm" style={{ color: "var(--avoid-text)" }}>⚠ {w}</p>)}
           <p className="m-0 mt-2.5 text-sm text-ink-faint">Counts are from the last library scan, so they can be a few minutes behind a settings change. Switching off again is one click.</p>
         </>
       }

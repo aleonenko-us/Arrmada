@@ -63,12 +63,12 @@ export function PlaceTimeline({ history, busy, onRestore }: { history: AudioHist
               <span className="block"><b className="font-semibold" style={{ color: "var(--ink)" }}>{fmtClock(h.position)}</b> · {timelineReason(h)}</span>
               <span className="block text-xs text-ink-faint">{new Date(h.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
             </span>
-            <button onClick={() => onRestore(h)} disabled={busy} className="flex-none rounded px-2 py-1 font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Go back here</button>
+            <button onClick={() => onRestore(h)} disabled={busy} className="flex-none rounded px-2 py-1 font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Go back here</button>
           </div>
         );
       })}
       {history.length > SHOW && (
-        <button onClick={() => setAll(!all)} className="self-start text-sm font-semibold" style={{ color: "var(--accent)" }}>
+        <button onClick={() => setAll(!all)} className="self-start text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
           {all ? "Show fewer" : `Show all (${history.length})`}
         </button>
       )}

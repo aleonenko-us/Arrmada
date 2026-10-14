@@ -166,14 +166,14 @@ export function ReleaseSearchModal({
             {tabs.map((t) => {
               const active = t.key === tab;
               return (
-                <button key={t.key} onClick={() => onTab?.(t.key)} disabled={loading && !active} className="rounded-md px-2.5 py-1 text-sm font-semibold transition-colors" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)", border: `1px solid ${active ? "var(--accent-line)" : "transparent"}` }}>
+                <button key={t.key} onClick={() => onTab?.(t.key)} disabled={loading && !active} className="rounded-md px-2.5 py-1 text-sm font-semibold transition-colors" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-text)" : "var(--ink-dim)", border: `1px solid ${active ? "var(--accent-line)" : "transparent"}` }}>
                   {t.label}
                 </button>
               );
             })}
           </div>
         )}
-        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
         {!loading && <IndexerIssues list={list} />}
         {!loading && list && list.releases.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3" style={{ borderColor: "var(--line)" }}>
@@ -207,7 +207,7 @@ export function ReleaseSearchModal({
           ) : view.length === 0 ? (
             <div className="p-8 text-center text-base text-ink-dim">
               No releases match these filters.
-              <button onClick={() => { setResFilter(new Set()); setFeatFilter(new Set()); }} className="ml-1.5 font-semibold" style={{ color: "var(--accent)" }}>Clear filters</button>
+              <button onClick={() => { setResFilter(new Set()); setFeatFilter(new Set()); }} className="ml-1.5 font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -248,7 +248,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       style={{
         border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
         background: active ? "var(--accent-soft)" : "var(--panel-2)",
-        color: active ? "var(--accent)" : "var(--ink-dim)",
+        color: active ? "var(--accent-text)" : "var(--ink-dim)",
       }}
     >
       {children}
@@ -276,7 +276,7 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
             {rel.resolves && (
               <span
                 className="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
-                style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}
+                style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good-text)" }}
                 title="Which episode of your library this release actually maps to"
               >
                 → {rel.resolves}
@@ -286,18 +286,18 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
           <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={rel.title}>{rel.title}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-3 font-mono text-xs text-ink-dim">
             <span>{rel.size_gb.toFixed(1)} GB</span>
-            {rel.bitrate_mbps ? <span title="Average bitrate (size ÷ runtime)" style={{ color: "var(--accent)" }}>{rel.bitrate_mbps.toFixed(1)} Mb/s</span> : null}
+            {rel.bitrate_mbps ? <span title="Average bitrate (size ÷ runtime)" style={{ color: "var(--accent-text)" }}>{rel.bitrate_mbps.toFixed(1)} Mb/s</span> : null}
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
             {age && <span title={rel.published_at ? `Posted ${new Date(rel.published_at).toLocaleString()}` : undefined}>{age} old</span>}
             <span>{rel.indexer}</span>
-            {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>view ↗</a>}
+            {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline" style={{ color: "var(--accent-text)" }}>view ↗</a>}
           </div>
-          {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-xs" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
+          {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-xs" style={{ color: "var(--avoid-text)" }}>{rel.reject_reason}</div>}
           {rel.eligible && (
             <ReleaseExplain className="mt-1.5" matched={rel.matched} avoided={rel.avoided} waived={rel.bonus_waived} lostOn={rel.recommended ? undefined : rel.lost_on} />
           )}
           {why && why.length > 0 && (
-            <ul className="mt-2 list-none space-y-0.5 p-0 text-sm" style={{ color: "var(--accent)" }}>
+            <ul className="mt-2 list-none space-y-0.5 p-0 text-sm" style={{ color: "var(--accent-text)" }}>
               {why.map((w, i) => <li key={i}>✓ {w}</li>)}
             </ul>
           )}

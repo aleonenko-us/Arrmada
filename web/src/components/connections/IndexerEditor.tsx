@@ -22,7 +22,7 @@ export const fieldStyle = { background: "var(--panel-2)", border: "1px solid var
 // TestLine is a Test's answer: connected (with what the indexer supports) or why not.
 export function TestLine({ state }: { state: TestState }) {
   return (
-    <div className="mt-2.5 break-words font-mono text-xs" style={{ color: state.ok ? "var(--good)" : "var(--reject)" }}>
+    <div className="mt-2.5 break-words font-mono text-xs" style={{ color: state.ok ? "var(--good-text)" : "var(--reject-text)" }}>
       {state.ok ? `✓ Connected${state.caps ? ` · ${state.caps}` : ""}` : `✕ ${state.error ?? "failed"}`}
     </div>
   );
@@ -178,7 +178,7 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
         Enabled
       </label>
       <TestSettings body={() => ({ ...body(), id: idx.id })} />
-      {error && <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
       <button
         type="submit"
         disabled={saving}
@@ -325,7 +325,7 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
             style={{
               border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
               background: active ? "var(--accent-soft)" : "var(--panel-2)",
-              color: active ? "var(--accent)" : "var(--ink-faint)",
+              color: active ? "var(--accent-text)" : "var(--ink-faint)",
             }}
           >
             {m.label}
@@ -333,7 +333,7 @@ function MediaPills({ idx, onChange }: { idx: Indexer; onChange: () => void | Pr
         );
       })}
       {allLit && <span className="text-xs text-ink-faint">· all areas</span>}
-      {error && <span role="alert" className="basis-full text-xs" style={{ color: "var(--reject)" }}>{error}</span>}
+      {error && <span role="alert" className="basis-full text-xs" style={{ color: "var(--reject-text)" }}>{error}</span>}
     </div>
   );
 }

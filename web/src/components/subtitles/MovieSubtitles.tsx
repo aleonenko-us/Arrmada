@@ -35,7 +35,7 @@ export function MovieSubtitles({ movieId, fallback, onChanged }: { movieId: numb
         type="button"
         onClick={() => setOpen(true)}
         className="rounded-md px-2 py-0.5 text-xs font-semibold"
-        style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+        style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
         title="See this file's subtitles: previews, where each came from, timing and delete"
       >
         Find subtitles

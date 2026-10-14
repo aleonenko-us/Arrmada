@@ -61,11 +61,11 @@ export function RankingCard() {
             ? "The ordered ranking runs alongside classic on every automatic pick; nothing to compare yet."
             : `Alongside classic, the ordered ranking would have picked differently ${report.disagreements} time${report.disagreements === 1 ? "" : "s"} in ${report.decisions} decision${report.decisions === 1 ? "" : "s"}.`}
           {report.disagreement_rows.length > 0 && (
-            <> <a href="/api/v1/quality/ranking-shadow?format=csv" className="text-accent underline-offset-2 hover:underline">Download the differences (CSV)</a></>
+            <> <a href="/api/v1/quality/ranking-shadow?format=csv" className="text-accent-text underline-offset-2 hover:underline">Download the differences (CSV)</a></>
           )}
         </p>
       )}
-      {error && <p className="mt-2 text-xs" style={{ color: "var(--reject)" }}>{error}</p>}
+      {error && <p className="mt-2 text-xs" style={{ color: "var(--reject-text)" }}>{error}</p>}
     </div>
   );
 }

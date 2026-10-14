@@ -41,7 +41,7 @@ export function AlbumDetail() {
       <Shell>
         <div className="py-10 text-center text-md text-ink-dim">
           That album isn't in your library.{" "}
-          <Link to="/music" className="underline" style={{ color: "var(--accent)" }}>
+          <Link to="/music" className="underline" style={{ color: "var(--accent-text)" }}>
             Back to Music
           </Link>
         </div>
@@ -120,7 +120,7 @@ export function AlbumDetail() {
                   }
                 }}
                 className="disabled:opacity-50"
-                style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, background: "transparent", color: al.monitored ? "var(--accent)" : "var(--ink-dim)" }}
+                style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, background: "transparent", color: al.monitored ? "var(--accent-text)" : "var(--ink-dim)" }}
               >
                 {al.monitored ? "Monitored" : "Monitor"}
               </Button>
@@ -129,7 +129,7 @@ export function AlbumDetail() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
             {error}
           </div>
         )}
@@ -156,14 +156,14 @@ export function AlbumDetail() {
                   {t.title}
                 </span>
                 {t.format ? (
-                  <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>
+                  <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good-text)" }}>
                     {t.format}
                   </span>
                 ) : null}
                 <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
                 <span
                   className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
-                  style={{ color: t.has_file ? "var(--good)" : "var(--avoid)" }}
+                  style={{ color: t.has_file ? "var(--good-text)" : "var(--avoid-text)" }}
                 >
                   {t.has_file ? "downloaded" : "wanted"}
                 </span>

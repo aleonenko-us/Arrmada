@@ -91,7 +91,7 @@ export function MapFilesModal({ review, onClose, onDone }: {
       <TargetPicker review={review} target={target} picking={picking} onPicking={setPicking} onPick={(t) => { setTarget(t); setPicking(false); }} />
 
       {loadError ? (
-        <div className="p-4 text-sm" style={{ color: "var(--reject)" }}>{loadError}</div>
+        <div className="p-4 text-sm" style={{ color: "var(--reject-text)" }}>{loadError}</div>
       ) : rows === null ? (
         <div className="p-4 text-sm text-ink-faint">Listing files…</div>
       ) : rows.length === 0 ? (
@@ -118,8 +118,8 @@ export function MapFilesModal({ review, onClose, onDone }: {
         </div>
       )}
       {truncated && <p className="mb-0 mt-2 text-xs text-ink-faint">Only the first files of this download are listed.</p>}
-      {invalid > 0 && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{invalid} row{invalid === 1 ? " needs" : "s need"} a season and episode numbers like 3, 3,4 or 3-4.</p>}
-      {error && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</p>}
+      {invalid > 0 && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{invalid} row{invalid === 1 ? " needs" : "s need"} a season and episode numbers like 3, 3,4 or 3-4.</p>}
+      {error && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
     </Modal>
   );
 }
@@ -151,7 +151,7 @@ function TargetPicker({ review, target, picking, onPicking, onPick }: {
       <div className="flex items-center gap-2 text-sm">
         <span className="text-ink-dim">Into:</span>
         <b>{target ? target.title : "choose a show"}</b>
-        {!picking && <button onClick={() => onPicking(true)} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Change…</button>}
+        {!picking && <button onClick={() => onPicking(true)} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Change…</button>}
       </div>
       {picking && (
         <div className="mt-2">

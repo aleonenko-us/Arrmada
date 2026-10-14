@@ -13,7 +13,7 @@ export function NotFound() {
       <PageHeader title="Page not found" crumb={null} />
       <Page className="grid place-items-center py-24">
         <div className="max-w-[380px] text-center">
-          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
               <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

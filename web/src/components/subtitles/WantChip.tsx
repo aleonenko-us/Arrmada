@@ -83,9 +83,9 @@ export function sidecarForWant(l: SubLangStatus, sidecars: SubSidecar[], first: 
 }
 
 const TONE: Record<"good" | "bad" | "warn", { background: string; color: string; border?: string }> = {
-  good: { background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" },
-  bad: { background: "var(--avoid-soft)", color: "var(--avoid)" },
-  warn: { background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" },
+  good: { background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good-text)" },
+  bad: { background: "var(--avoid-soft)", color: "var(--avoid-text)" },
+  warn: { background: "var(--panel-2)", color: "var(--avoid-text)", border: "1px dashed var(--avoid)" },
 };
 
 // WantChip is one kept language's chip.

@@ -246,9 +246,11 @@ function MonthGrid({ cells, monthIdx, todayStr, items, staff, onMore }: {
           const isToday = key === todayStr;
           const dayItems = byDate[key] ?? [];
           return (
-            <div key={key} className="flex min-h-[92px] min-w-0 flex-col gap-1 rounded-lg p-1.5" style={{ border: `1px solid ${isToday ? "var(--accent)" : "var(--line)"}`, background: inMonth ? "var(--panel)" : "transparent", opacity: inMonth ? 1 : 0.45 }}>
+            <div key={key} className="flex min-h-[92px] min-w-0 flex-col gap-1 rounded-lg p-1.5" style={{ border: `1px solid ${isToday ? "var(--accent)" : inMonth ? "var(--line)" : "var(--line-soft)"}`, background: inMonth ? "var(--panel)" : "transparent" }}>
               <div className="flex items-center justify-between px-0.5">
-                <span className="text-xs font-semibold" style={{ color: isToday ? "var(--accent)" : "var(--ink-dim)" }}>{d.getDate()}</span>
+                {/* The neighbouring months' days step back by colour, not opacity, so their
+                    numbers stay readable. */}
+                <span className="text-xs font-semibold" style={{ color: isToday ? "var(--accent-text)" : inMonth ? "var(--ink-dim)" : "var(--ink-faint)" }}>{d.getDate()}</span>
               </div>
               <div className="flex flex-col gap-1">
                 {dayItems.slice(0, 3).map((it, i) => <DayItem key={i} it={it} staff={staff} />)}
@@ -269,11 +271,14 @@ function MonthGrid({ cells, monthIdx, todayStr, items, staff, onMore }: {
 function DayItem({ it, staff }: { it: CalendarItem; staff: boolean }) {
   const color = it.type === "movie" ? "var(--good)" : "var(--accent)";
   const label = `${it.title} — ${itemLine(it)}`;
+  // Something nobody is waiting for steps back with a fainter tint and bar and dimmer
+  // words, not opacity, which took the title below a readable contrast.
+  const quiet = !it.monitored && !it.has_file;
   const body = (
-    <div className="flex items-center gap-1 overflow-hidden rounded px-1 py-0.5 text-xs" style={{ background: it.has_file ? "var(--panel-2)" : "color-mix(in srgb, " + color + " 14%, transparent)", opacity: it.monitored || it.has_file ? 1 : 0.65 }} title={label}>
-      <span className="h-2.5 w-[3px] flex-none rounded-full" style={{ background: color }} />
-      <span className="truncate" style={{ color: "var(--ink)" }}>{it.title}</span>
-      {it.has_file && <span className="flex-none" style={{ color: "var(--good)" }}>✓</span>}
+    <div className="flex items-center gap-1 overflow-hidden rounded px-1 py-0.5 text-xs" style={{ background: it.has_file ? "var(--panel-2)" : "color-mix(in srgb, " + color + (quiet ? " 7%" : " 14%") + ", transparent)" }} title={label}>
+      <span className="h-2.5 w-[3px] flex-none rounded-full" style={{ background: color, opacity: quiet ? 0.5 : 1 }} />
+      <span className="truncate" style={{ color: quiet ? "var(--ink-dim)" : "var(--ink)" }}>{it.title}</span>
+      {it.has_file && <span className="flex-none" style={{ color: "var(--good-text)" }}>✓</span>}
     </div>
   );
   const href = itemHref(it, staff);
@@ -347,13 +352,16 @@ function AgendaList({ items, today, end, staff, stickyTop, loadingMore, onMore, 
 function AgendaRow({ it, staff, todayStr, markMine, replace }: { it: CalendarItem; staff: boolean; todayStr: string; markMine?: boolean; replace?: boolean }) {
   const status = itemStatus(it, todayStr);
   const href = itemHref(it, staff);
+  // An unmonitored title steps back with a faded poster and a dimmer title; fading the
+  // whole row took its words below a readable contrast.
+  const quiet = status === "Unmonitored";
   const body = (
     <>
-      <div className="h-10 w-[27px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>
+      <div className="h-10 w-[27px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)", opacity: quiet ? 0.6 : 1 }}>
         {it.poster_url && <img src={posterThumb(it.poster_url)} alt="" loading="lazy" className="h-full w-full object-cover" />}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{it.title}</div>
+        <div className="truncate text-md font-semibold" style={{ color: quiet ? "var(--ink-dim)" : "var(--ink)" }}>{it.title}</div>
         <div className="truncate text-sm text-ink-dim">{itemLine(it)}</div>
         {markMine && it.requested_by_me && <StatusChip tone="accent" size="xs" className="mt-0.5 inline-block">You asked for this</StatusChip>}
       </div>
@@ -361,9 +369,8 @@ function AgendaRow({ it, staff, todayStr, markMine, replace }: { it: CalendarIte
     </>
   );
   const className = "flex min-h-[44px] items-center gap-3 rounded-lg px-2 py-1.5";
-  const style: CSSProperties = { opacity: status === "Unmonitored" ? 0.6 : 1 };
-  if (!href) return <div className={className} style={style}>{body}</div>;
+  if (!href) return <div className={className}>{body}</div>;
   // replace: from the day sheet, the title takes the sheet's place in history, so Back
   // from the title returns to the calendar rather than to a sheet that's gone.
-  return <Link to={href} replace={replace} className={className} style={style}>{body}</Link>;
+  return <Link to={href} replace={replace} className={className}>{body}</Link>;
 }

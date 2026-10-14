@@ -33,7 +33,7 @@ export function Section({ id, title, subtitle, children }: { id?: string; title:
 }
 
 export function Preview({ children }: { children: React.ReactNode }) {
-  return <span className="text-xs text-ink-dim">→ <span className="font-mono" style={{ color: "var(--accent)" }}>{children}</span></span>;
+  return <span className="text-xs text-ink-dim">→ <span className="font-mono" style={{ color: "var(--accent-text)" }}>{children}</span></span>;
 }
 
 export function TokenList({ tokens }: { tokens: string[] }) {

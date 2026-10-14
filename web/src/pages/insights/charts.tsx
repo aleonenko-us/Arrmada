@@ -169,7 +169,7 @@ export function BarChart({ values, labels, tipTitles, fmt = (v) => String(Math.r
         </svg>
       )}
       {hover !== null && width > 0 && (
-        <Tip x={padL + hover * bw + bw / 2} width={W} title={(tipTitles ?? labels)[hover] || labels[hover] || ""} rows={[{ label: caption, color: "var(--accent)", value: fmt(values[hover] ?? 0) }]} />
+        <Tip x={padL + hover * bw + bw / 2} width={W} title={(tipTitles ?? labels)[hover] || labels[hover] || ""} rows={[{ label: caption, color: "var(--accent-text)", value: fmt(values[hover] ?? 0) }]} />
       )}
       <DataTable caption={caption} heads={["Value"]} rows={values.map((v, i) => [(tipTitles ?? labels)[i] || labels[i] || String(i), fmt(v)])} />
     </div>

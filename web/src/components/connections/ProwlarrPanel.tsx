@@ -90,7 +90,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
           <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://arrmada-prowlarr:9696" />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">API key {hasKey && <span className="text-xs normal-case" style={{ color: "var(--good)" }}>· saved</span>}</span>
+          <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">API key {hasKey && <span className="text-xs normal-case" style={{ color: "var(--good-text)" }}>· saved</span>}</span>
           <input
             type="password"
             className={field}
@@ -109,7 +109,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
       <div className="mt-3 flex flex-col gap-1.5 rounded-lg p-3 text-sm" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         <div className="break-words">
           <span className="text-ink-faint">Open Prowlarr to add trackers:</span>{" "}
-          <a href={prowlarrUI} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent)" }}>{prowlarrUI} ↗</a>
+          <a href={prowlarrUI} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{prowlarrUI} ↗</a>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -123,11 +123,11 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
           <button type="button" onClick={saveUiUrl} className="rounded-lg px-3 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>
             Save address
           </button>
-          {uiMsg && <span className="text-xs" style={{ color: uiMsg.ok ? "var(--good)" : "var(--reject)" }}>{uiMsg.msg}</span>}
+          {uiMsg && <span className="text-xs" style={{ color: uiMsg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{uiMsg.msg}</span>}
         </div>
         <div className="text-ink-dim">
           For a Cloudflare-protected tracker, add the{" "}
-          <code className="rounded px-1 py-0.5 font-mono text-xs" style={{ background: "var(--panel-2)", color: "var(--accent)" }}>flaresolverr</code>{" "}
+          <code className="rounded px-1 py-0.5 font-mono text-xs" style={{ background: "var(--panel-2)", color: "var(--accent-text)" }}>flaresolverr</code>{" "}
           tag to that tracker in Prowlarr; syncing the bundled Prowlarr sets up the FlareSolverr proxy it uses. Public indexers don't need it.
         </div>
       </div>
@@ -140,7 +140,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
       )}
 
       {result && (
-        <div role="status" className="mt-2.5 break-words text-sm" style={{ color: result.ok ? "var(--good)" : "var(--reject)" }}>
+        <div role="status" className="mt-2.5 break-words text-sm" style={{ color: result.ok ? "var(--good-text)" : "var(--reject-text)" }}>
           {result.ok ? "✓ " : "✕ "}{result.msg}
         </div>
       )}

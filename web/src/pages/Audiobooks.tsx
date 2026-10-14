@@ -160,7 +160,7 @@ function CheckPlaces({ places, onOpen }: { places: AudioPlace[]; onOpen: (key: s
                 : <>A jump to <b>{fmtClock(p.pending_position ?? 0)}</b> is waiting to be kept</>}
             </span>
           </span>
-          <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>Open</span>
+          <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Open</span>
         </button>
       ))}
     </Card>
@@ -253,7 +253,7 @@ function AppSetup({ data, external, onData, pick, onPick }: {
         {chosen?.id === "web" && (
           <Step n={2} title="Open Listen and press play" done={false}>
             <p className="m-0 text-sm text-ink-dim">
-              Nothing to install and no password: pick a book on the <Link to="/audiobooks" className="font-semibold" style={{ color: "var(--accent)" }}>Listen</Link> tab.
+              Nothing to install and no password: pick a book on the <Link to="/audiobooks" className="font-semibold" style={{ color: "var(--accent-text)" }}>Listen</Link> tab.
               {platform === "ios" && <> On an iPhone, add Arrmada to your Home Screen first (Share → Add to Home Screen) and listen from there: it keeps playing with the screen locked, with the controls on the lock screen.</>}
               {platform === "android" && <> On Android, Add to Home screen from the browser's menu gives you an app icon and lock-screen controls.</>}
             </p>
@@ -274,7 +274,7 @@ function AppSetup({ data, external, onData, pick, onPick }: {
             <Step n={3} title={`Enter these in ${chosen.name}`} done={false}>
               {!data.enabled && <div className="mb-2 text-sm" style={{ color: "var(--avoid-text)" }}>The audiobook server is switched off at the moment, so apps can't connect yet.</div>}
               {data.enabled && !data.running && <div className="mb-2 text-sm" style={{ color: "var(--avoid-text)" }}>The server is switched on but not running{data.error ? `: ${data.error}` : ""}.</div>}
-              {chosen.url && <p className="m-0 mb-2 text-sm text-ink-dim">Get it from <a href={chosen.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>{chosen.url.replace(/^https?:\/\//, "")}</a>, then sign in with:</p>}
+              {chosen.url && <p className="m-0 mb-2 text-sm text-ink-dim">Get it from <a href={chosen.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>{chosen.url.replace(/^https?:\/\//, "")}</a>, then sign in with:</p>}
               <Field label="Server type" value="Audiobookshelf" />
               {servers.map((s, i) => <Field key={i} label={s.label} value={s.value} note={s.note} />)}
               {external && !data.public_url && <div className="mb-2 text-sm text-ink-dim">The server address works on the home network. Open this page at home to see it.</div>}
@@ -328,7 +328,7 @@ function WaitForDevice({ data, onData }: { data: MyAudio; onData: (d: MyAudio) =
         <div role="status" className="text-sm text-ink-dim">Sign in from the app; this ticks green as soon as it connects.</div>
       ) : (
         <div className="text-sm text-ink-dim">
-          Nothing signed in yet. <button onClick={() => { const t = performance.now(); setSince(t); setNow(t); }} className="font-semibold" style={{ color: "var(--accent)" }}>Keep waiting</button>
+          Nothing signed in yet. <button onClick={() => { const t = performance.now(); setSince(t); setNow(t); }} className="font-semibold" style={{ color: "var(--accent-text)" }}>Keep waiting</button>
         </div>
       )}
     </Step>
@@ -398,14 +398,14 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
               Sign out my apps (they'll need the new password)
             </label>
           )}
-          {problem && <div className="text-sm" style={{ color: "var(--avoid)" }}>{problem}</div>}
+          {problem && <div className="text-sm" style={{ color: "var(--avoid-text)" }}>{problem}</div>}
           <div className="flex gap-2">
             <button type="submit" disabled={busy || !!problem || !pw || pw !== again} className="rounded-lg px-3.5 py-1.5 text-base font-semibold disabled:opacity-50" style={primary}>{data.has_password ? "Change password" : "Set password"}</button>
             {data.has_password && <button type="button" onClick={() => { setOpen(false); setPw(""); setAgain(""); }} className="rounded-lg px-3 py-1.5 text-base font-semibold" style={ghost}>Cancel</button>}
           </div>
         </form>
       )}
-      {msg && <div className="mt-2 text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</div>}
+      {msg && <div className="mt-2 text-sm" style={{ color: msg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{msg.text}</div>}
     </Card>
   );
 }
@@ -433,7 +433,7 @@ function RemovedCard({ removed, onChange }: { removed: AudioRemoved[]; onChange:
           <button onClick={() => restore(r.item_key)} disabled={busy !== null} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-60" style={primary}>{busy === r.item_key ? "Restoring…" : "Restore"}</button>
         </div>
       ))}
-      {error && <div className="mt-1 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </Card>
   );
 }

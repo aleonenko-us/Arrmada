@@ -103,7 +103,7 @@ export function BlocklistPanel() {
             return (
               <button key={t.key || "all"} onClick={() => { setType(t.key); setPage(0); }} aria-pressed={on}
                 className="rounded-full px-3 py-1 text-sm font-semibold"
-                style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+                style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
                 {t.label}
               </button>
             );
@@ -135,9 +135,9 @@ export function BlocklistPanel() {
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-dim">
                             {r.type === "global" ? (
-                              <span style={{ color: "var(--avoid)" }}>Blocks this release for every title</span>
+                              <span style={{ color: "var(--avoid-text)" }}>Blocks this release for every title</span>
                             ) : link && r.item_title ? (
-                              <span>For <Link to={link} className="font-semibold" style={{ color: "var(--accent)" }}>{r.item_title}</Link></span>
+                              <span>For <Link to={link} className="font-semibold" style={{ color: "var(--accent-text)" }}>{r.item_title}</Link></span>
                             ) : (
                               <span className="text-ink-faint">For a {KIND_LABEL[r.type]} no longer in the library</span>
                             )}

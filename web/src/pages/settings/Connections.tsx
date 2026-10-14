@@ -292,7 +292,7 @@ export function ConnectionsSettings() {
     if (id === "downloads") {
       return (
         <>
-          {restoreErr && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>{restoreErr}</p>}
+          {restoreErr && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{restoreErr}</p>}
           {dl.data?.can_restore_bundled && (
             <p className="m-0 text-sm text-ink-dim">The qBittorrent that comes with Arrmada was removed, so it gets no downloads.</p>
           )}

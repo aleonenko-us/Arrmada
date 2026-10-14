@@ -102,7 +102,7 @@ function SubtitlesPage() {
       <PageHeader title="Subtitles" />
       <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <p className="max-w-[64ch] text-base text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Settings</Link>.</p>
+          <p className="max-w-[64ch] text-base text-ink-dim">One external <code>.srt</code> per language next to every video, made from the best source available: an embedded text track, an OpenSubtitles download, or local AI transcription when a model is installed. Pick languages in <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent-text)" }}>Settings</Link>.</p>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold" title={settings?.provider_detail || undefined} style={{ border: `1px solid ${pillTone ? `var(--${pillTone})` : "var(--line)"}`, background: pillTone ? `var(--${pillTone}-soft)` : "var(--panel-2)" }}>
               <span className="h-2 w-2 rounded-full" style={{ background: pillTone ? `var(--${pillTone})` : "var(--ink-faint)" }} />
@@ -169,14 +169,14 @@ function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQue
             {recounting
               ? "Recounting for your new languages…"
               : scanned
-              ? <><b style={{ color: "var(--good)" }}>{cov.covered.toLocaleString()}</b> fully subtitled · <b style={{ color: cov.missing ? "var(--avoid)" : "var(--ink)" }}>{cov.missing.toLocaleString()}</b> missing a language · {cov.files.toLocaleString()} files</>
+              ? <><b style={{ color: "var(--good-text)" }}>{cov.covered.toLocaleString()}</b> fully subtitled · <b style={{ color: cov.missing ? "var(--avoid-text)" : "var(--ink)" }}>{cov.missing.toLocaleString()}</b> missing a language · {cov.files.toLocaleString()} files</>
               : "Scanning your library — the first pass after startup takes a few minutes."}
           </div>
         </div>
         <div className={card} style={cardStyle}>
           <div className={lbl}>Kept languages</div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {(settings?.languages ?? []).map((c) => <span key={c} className="rounded-full px-2.5 py-1 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{langName(c, languages)}</span>)}
+            {(settings?.languages ?? []).map((c) => <span key={c} className="rounded-full px-2.5 py-1 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{langName(c, languages)}</span>)}
           </div>
           <div className="mt-3 text-sm text-ink-faint">Each of these gets an external <code>.srt</code>. <KeptTracksNote /></div>
         </div>
@@ -231,12 +231,12 @@ function providerRow(ps?: SubtitleProviderState): keyof typeof ROW_LABEL {
 function Row2({ label, state, onClick }: { label: string; state: keyof typeof ROW_LABEL; onClick?: () => void }) {
   const on = state === "on";
   const chip = "rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase";
-  const style = { background: on ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: on ? "var(--good)" : "var(--ink-faint)" };
+  const style = { background: on ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: on ? "var(--good-text)" : "var(--ink-faint)" };
   return (
     <div className="flex items-center justify-between">
       <span>{label}</span>
       {!on && onClick
-        ? <button onClick={onClick} className={chip} style={{ ...style, color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{ROW_LABEL[state]}</button>
+        ? <button onClick={onClick} className={chip} style={{ ...style, color: "var(--accent-text)", border: "1px solid var(--accent-line)" }}>{ROW_LABEL[state]}</button>
         : <span className={chip} style={style}>{ROW_LABEL[state]}</span>}
     </div>
   );
@@ -490,7 +490,7 @@ function Library({ flash, onQueued }: { flash: (m: string) => void; onQueued: ()
             {filtering && <button onClick={() => { setFilters(new Set()); setQuery(""); }} className="ml-1 text-xs text-ink-faint underline hover:text-[var(--ink)]">clear</button>}
             {filters.has("orphaned") && view.some((f) => orphanCount(f) > 0) && (
               <span className="ml-auto flex items-center gap-1.5">
-                <button type="button" onClick={() => bulkOrphans("adopt")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Adopt all</button>
+                <button type="button" onClick={() => bulkOrphans("adopt")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Adopt all</button>
                 <button type="button" onClick={() => bulkOrphans("replace")} disabled={busy !== null} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Replace all</button>
               </span>
             )}
@@ -608,7 +608,7 @@ function TVLibrary({ flash, onQueued }: { flash: (m: string) => void; onQueued: 
         </Pill>
         <span className="text-xs text-ink-faint">
           {groups.length.toLocaleString()} shows · {totals.eps.toLocaleString()} episodes ·{" "}
-          <b style={{ color: totals.missing ? "var(--avoid)" : "var(--good)" }}>{totals.missing.toLocaleString()}</b> missing a kept language
+          <b style={{ color: totals.missing ? "var(--avoid-text)" : "var(--good-text)" }}>{totals.missing.toLocaleString()}</b> missing a kept language
         </span>
       </div>
 
@@ -696,7 +696,7 @@ function SeriesGroupRow({ g, first, open, onToggle, flash, onQueued, onProfileCh
             <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: g.missing ? "var(--avoid)" : "var(--good)" }} />
           </span>
         </span>
-        <span className="w-[92px] flex-none text-right font-mono text-xs" style={{ color: g.missing ? "var(--avoid)" : "var(--good)" }}>
+        <span className="w-[92px] flex-none text-right font-mono text-xs" style={{ color: g.missing ? "var(--avoid-text)" : "var(--good-text)" }}>
           {g.missing ? `${g.missing} missing` : "complete"}
         </span>
       </button>
@@ -790,7 +790,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, on
             {f.orphans!.map((o) => (
               <div key={o.name} className="flex min-w-0 items-center gap-1.5 text-xs text-ink-faint">
                 <span className="truncate font-mono" title="Named for no video in this folder, so Plex won't show it with this file">{o.name}</span>
-                <button type="button" onClick={() => onOrphan(o.name, "adopt")} disabled={busy !== null} title="Rename it to pair with this movie, so Plex shows it" className="flex-none rounded px-1.5 py-0.5 font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Adopt</button>
+                <button type="button" onClick={() => onOrphan(o.name, "adopt")} disabled={busy !== null} title="Rename it to pair with this movie, so Plex shows it" className="flex-none rounded px-1.5 py-0.5 font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Adopt</button>
                 {o.variant !== "forced" && <button type="button" onClick={() => onOrphan(o.name, "replace")} disabled={busy !== null} title="Make a fresh subtitle; this one goes to the recycle bin once it's written" className="flex-none rounded px-1.5 py-0.5 font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Replace</button>}
               </div>
             ))}
@@ -801,14 +801,14 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, on
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2">
           {queued ? (
-            <span className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good)" }}>Queued ✓</span>
+            <span className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good-text)" }}>Queued ✓</span>
           ) : f.missing === 0 ? (
             <>
-              <span className="font-mono text-xs" style={{ color: "var(--good)" }}>complete</span>
+              <span className="font-mono text-xs" style={{ color: "var(--good-text)" }}>complete</span>
               <button onClick={onRedo} disabled={busy !== null} title="Make every language again; to redo one, click its chip" className="rounded-md px-2 py-1 text-xs font-semibold text-ink-dim disabled:opacity-50" style={{ border: "1px solid var(--line)" }}>{busy === key ? "…" : "Redo all languages…"}</button>
             </>
           ) : (
-            <button onClick={onEnsure} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{busy === key ? "Queuing…" : "Ensure subs"}</button>
+            <button onClick={onEnsure} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{busy === key ? "Queuing…" : "Ensure subs"}</button>
           )}
         </div>
       </td>
@@ -817,7 +817,7 @@ function SubRow({ f, first, busy, queued, onEnsure, onRedo, flash, onChanged, on
 }
 
 function EmbBadge({ kind }: { kind: "txt" | "pgs" | "vob" }) {
-  const style = kind === "txt" ? { background: "var(--panel-2)", color: "var(--ink-dim)" } : { background: "var(--avoid-soft)", color: "var(--avoid)" };
+  const style = kind === "txt" ? { background: "var(--panel-2)", color: "var(--ink-dim)" } : { background: "var(--avoid-soft)", color: "var(--avoid-text)" };
   const label = kind === "txt" ? "TXT" : kind === "pgs" ? "PGS" : "VOB";
   const title = kind === "txt" ? "Embedded text — extractable to SRT" : "Image subtitle — needs OCR";
   return <span className="rounded px-1 py-0.5 text-xs font-bold uppercase" style={style} title={title}>{label}</span>;
@@ -825,23 +825,23 @@ function EmbBadge({ kind }: { kind: "txt" | "pgs" | "vob" }) {
 function CoverChip({ l }: { l: SubLangStatus }) {
   // A profile's forced want: only a ".forced" subtitle (the foreign-dialogue lines) meets it.
   const name = l.variant === "forced" ? `${l.lang} forced` : l.lang;
-  if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }} title="External SRT present">✓ {name}</span>;
+  if (l.have) return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good-text)" }} title="External SRT present">✓ {name}</span>;
   // A subtitle under another name covers it, but Plex won't pair it with this file.
-  if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{name} · orphaned</span>;
+  if (l.orphan) return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid-text)", border: "1px dashed var(--avoid)" }} title="A subtitle in the folder is named for no video, so Plex won't show it with this file. The sweep leaves it alone; Ensure subs makes a properly named one.">{name} · orphaned</span>;
   // Backing off: the last run couldn't make it, and the sweep leaves it alone until then.
   if (l.reason) {
     const why = REASON_LABEL[l.reason] ?? l.reason.replace(/_/g, " ");
     const when = l.next_retry_at ? `next try ${retryIn(l.next_retry_at)}`
       : l.retry_on ? `waiting for ${l.retry_on.split(",").map((e) => RETRY_ON_LABEL[e] ?? e).join(" or ")}`
       : "retry by hand";
-    return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{name} · {when}</span>;
+    return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid-text)", border: "1px solid var(--avoid-soft)" }} title={`Missing — last try: ${why}. The sweep leaves it alone until then; Ensure subs tries now.`}>{name} · {when}</span>;
   }
   // The ladder tries the first source, then falls back to AI when that comes up empty.
   // No source means nothing can make it yet: no text track, no download set up, and no AI model
   // that can (whisper never makes a forced subtitle).
   const first = !l.source ? "no source" : SOURCE_LABEL[l.source] ?? l.source;
   const plan = l.fallback ? `${first} → ${SOURCE_LABEL[l.fallback] ?? l.fallback}` : first;
-  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={`Missing — will try ${plan}`}>{name} · {plan}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }} title={`Missing — will try ${plan}`}>{name} · {plan}</span>;
 }
 
 /* ============================= LOGS ============================= */
@@ -880,7 +880,7 @@ function Pill({ active, disabled, onClick, children }: { active: boolean; disabl
   return (
     <button type="button" disabled={disabled} onClick={onClick}
       className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-default"
-      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft, rgba(198,93,59,.12))" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft, rgba(198,93,59,.12))" : "transparent", color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
       {children}
     </button>
   );

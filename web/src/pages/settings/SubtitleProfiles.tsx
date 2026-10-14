@@ -51,7 +51,7 @@ export function SubtitleProfiles({ version }: { version: string }) {
       <div className="mt-0.5 text-sm text-ink-faint">
         Per language: the full subtitle, the <b>forced</b> one (just the lines in another language — signs, a scene in Klingon), or both;
         how to treat <b>SDH</b> (sound cues for the hard of hearing); and whether to skip it when the audio is already in that language.
-        Every title uses Default unless you pin it to another profile from the <Link to="/subtitles?tab=library" style={{ color: "var(--accent)" }}>Subtitles Library</Link>.
+        Every title uses Default unless you pin it to another profile from the <Link to="/subtitles?tab=library" style={{ color: "var(--accent-text)" }}>Subtitles Library</Link>.
       </div>
       {!data ? (
         <p className="m-0 mt-3 text-sm text-ink-dim">{error ? error.message : "Loading…"}</p>

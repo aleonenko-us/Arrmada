@@ -23,7 +23,7 @@ export function KeptTracksNote() {
     <>
       Embedded subtitle tracks stay inside the video.{" "}
       {keep !== null && <>When Convert rewrites a file, it keeps embedded subtitles in {keepSubsLine(keep, (c) => langName(c, languages))}. </>}
-      Set that in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link>.
+      Set that in <Link to={LINKS.convertSettings} style={{ color: "var(--accent-text)" }}>Convert's settings</Link>.
     </>
   );
 }

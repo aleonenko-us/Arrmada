@@ -100,7 +100,7 @@ export function LanguagePicker({ value, onChange, languages, firstNote, label = 
                 onMouseDown={(e) => { e.preventDefault(); add(l.code); }}
                 onMouseEnter={() => setActive(i)}
                 className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-base"
-                style={{ background: i === active ? "var(--accent-soft)" : "transparent", color: i === active ? "var(--accent)" : "var(--ink)" }}
+                style={{ background: i === active ? "var(--accent-soft)" : "transparent", color: i === active ? "var(--accent-text)" : "var(--ink)" }}
               >
                 <span>{l.name}</span>
                 <span className="font-mono text-xs text-ink-faint">{l.code}</span>

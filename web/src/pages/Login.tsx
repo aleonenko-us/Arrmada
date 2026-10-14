@@ -72,7 +72,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
             <Field label="Password">
               <Input type="password" required minLength={setup ? 8 : undefined} autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={setup ? "8+ characters" : "••••••••"} className={BOX} />
             </Field>
-            {error && <div className="text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+            {error && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
             <button type="submit" disabled={busy || plexBusy} className="mt-1 rounded-lg px-4 py-2.5 text-md font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
               {busy ? "…" : setup ? "Create admin & continue" : "Sign in"}
             </button>

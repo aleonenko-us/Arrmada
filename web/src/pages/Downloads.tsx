@@ -61,8 +61,8 @@ function fmtReleaseDate(iso: string): string {
 // Stalled and errored transfers share the avoid tone: both need a look, neither is the
 // red of a refusal.
 const STATE_TONE: Record<string, string> = {
-  downloading: "var(--accent)", seeding: "var(--good)", paused: "var(--ink-faint)", error: "var(--avoid)", checking: "var(--avoid)",
-  stalled: "var(--avoid)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid)", allocating: "var(--ink-faint)",
+  downloading: "var(--accent-text)", seeding: "var(--good-text)", paused: "var(--ink-faint)", error: "var(--avoid-text)", checking: "var(--avoid-text)",
+  stalled: "var(--avoid-text)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid-text)", allocating: "var(--ink-faint)",
 };
 // The client's phases in the words of the shared stage model (lib/stages), so this chip
 // and a requester's card say the same thing; the client-only phases keep their own.
@@ -140,7 +140,7 @@ const WANTED_VIEWS: readonly WantedView[] = ["searching", "upcoming"];
 
 function ProfileChip({ profile }: { profile: string }) {
   const na = profile === "n/a";
-  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: na ? "var(--panel-2)" : "var(--accent-soft)", color: na ? "var(--ink-faint)" : "var(--accent)" }}>{profile}</span>;
+  return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: na ? "var(--panel-2)" : "var(--accent-soft)", color: na ? "var(--ink-faint)" : "var(--accent-text)" }}>{profile}</span>;
 }
 
 // How often the Wanted tab refreshes on its own. It reads the search history, so it
@@ -161,7 +161,7 @@ function SubPills<T extends string>({ views, labels, counts, value, onChange, la
       {views.map((v) => {
         const on = v === value;
         return (
-          <button key={v} type="button" aria-pressed={on} onClick={() => onChange(v)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+          <button key={v} type="button" aria-pressed={on} onClick={() => onChange(v)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
             {labels[v]} <span className="font-mono text-xs opacity-70">{counts[v]}</span>
           </button>
         );
@@ -304,14 +304,14 @@ export function QueuePanel() {
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         {!noClient && (
           <>
-            <span className="flex items-center gap-1.5 font-mono text-xs" style={{ color: reconnecting || clientDown ? "var(--avoid)" : "var(--ink-faint)" }}>
+            <span className="flex items-center gap-1.5 font-mono text-xs" style={{ color: reconnecting || clientDown ? "var(--avoid-text)" : "var(--ink-faint)" }}>
               <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: reconnecting || clientDown ? "var(--avoid)" : "var(--accent)" }} />
               {reconnecting ? "Reconnecting…" : clientDown ? "Client offline" : "Live"}
             </span>
-            <Stat label="↓" value={`${bytes(totals.down_speed)}/s`} tone="var(--accent)" />
-            <Stat label="↑" value={`${bytes(totals.up_speed)}/s`} tone="var(--good)" />
+            <Stat label="↓" value={`${bytes(totals.down_speed)}/s`} tone="var(--accent-text)" />
+            <Stat label="↑" value={`${bytes(totals.up_speed)}/s`} tone="var(--good-text)" />
             <Stat label="active" value={String(totals.active)} />
-            {freeGb != null && <Stat label="free" value={`${freeGb.toFixed(0)} GB`} tone={freeGb < 20 ? "var(--reject)" : undefined} title={diskPath ? `Free space on ${diskPath}` : undefined} />}
+            {freeGb != null && <Stat label="free" value={`${freeGb.toFixed(0)} GB`} tone={freeGb < 20 ? "var(--reject-text)" : undefined} title={diskPath ? `Free space on ${diskPath}` : undefined} />}
           </>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -322,7 +322,7 @@ export function QueuePanel() {
             </>
           )}
           {clientId != null && (
-            <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
+            <button onClick={() => setShowSettings((s) => !s)} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: `1px solid ${showSettings ? "var(--accent)" : "var(--line)"}`, color: showSettings ? "var(--accent-text)" : "var(--ink-dim)" }}>⚙ Speed & limits</button>
           )}
         </div>
       </div>
@@ -330,13 +330,13 @@ export function QueuePanel() {
       {showSettings && clientId != null && <SettingsPanel clientId={clientId} onClose={() => setShowSettings(false)} />}
 
       {clients && clients.configured > 0 && clients.enabled === 0 && (
-        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
           Every download client is switched off, so Arrmada can't grab anything. Enable one in{" "}
           <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
         </div>
       )}
       {clientDown && clients && (
-        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+        <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
           {clients.name || "A download client"} unreachable{clients.since ? ` since ${sinceLabel(clients.since)}` : ""} — searches are paused until it's back
           {clients.error ? ` (${clients.error})` : ""}. Check it in{" "}
           <Link to={LINKS.downloadClients} className="font-semibold underline" style={{ color: "inherit" }}>Settings → Connections</Link>.
@@ -370,13 +370,13 @@ export function QueuePanel() {
         {TYPE_PILLS.filter((p) => p.key !== "music" || musicEnabled).map((p) => {
           const on = typeFilter === p.key;
           return (
-            <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+            <button key={p.key} onClick={() => setTypeFilter(p.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
               {p.label} <span className="font-mono text-xs opacity-70">{typeCount(p.key)}</span>
             </button>
           );
         })}
         {problemsOnly && (
-          <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+          <button onClick={showAll} title="Show every download" className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
             Problems only ✕
           </button>
         )}
@@ -460,7 +460,7 @@ export function WantedPanel() {
 // GuardChip marks a torrent the disk guard paused, so it doesn't read as one paused by hand.
 function GuardChip({ guard }: { guard: DiskGuardHold | null }) {
   return (
-    <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+    <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
       Paused · disk {guard ? `${Math.round(guard.used_pct)}% ` : ""}full
     </span>
   );
@@ -536,16 +536,16 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
-            <span className="font-mono text-xs" style={{ color: it.down_speed > 0 ? "var(--accent)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>
+            <span className="font-mono text-xs" style={{ color: it.down_speed > 0 ? "var(--accent-text)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>
             <span className="font-mono text-xs text-ink-faint">ETA {eta(it.eta_seconds)}</span>
           </div>
-          {stall && <div className="mt-1 font-mono text-xs" style={{ color: "var(--avoid)" }}>{stall}</div>}
+          {stall && <div className="mt-1 font-mono text-xs" style={{ color: "var(--avoid-text)" }}>{stall}</div>}
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
           primary={<ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
           secondary={[
-            { label: "Block", tone: "var(--avoid)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
+            { label: "Block", tone: "var(--avoid-text)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
             { label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) },
           ]}
           extras={[
@@ -593,7 +593,7 @@ function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: bo
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
-          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>Decide →</Link> : undefined}
+          primary={decide ? <Link to={decide} className="rounded-lg px-2 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent-text)" }}>Decide →</Link> : undefined}
           secondary={[{ label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) }]}
         />
       </div>
@@ -632,7 +632,7 @@ function SeedingSummary({ items }: { items: ActivityDownload[] }) {
       <Stat label="seeding" value={String(count)} />
       <Stat label="↑ now" value={`${bytes(totalUp)}/s`} tone={totalUp > 0 ? "var(--good)" : undefined} />
       <Stat label="uploading" value={`${activeUp}/${count}`} />
-      <Stat label="avg ratio" value={avgRatio.toFixed(2)} tone="var(--good)" />
+      <Stat label="avg ratio" value={avgRatio.toFixed(2)} tone="var(--good-text)" />
       <Stat label="sharing" value={bytes(sharing)} />
     </div>
   );
@@ -654,13 +654,13 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
             {paused && it.held_by_guard ? <GuardChip guard={guard} /> : it.stage === "not_managed" ? (
               // Nothing in Arrmada grabbed or imported it: a muted chip, no seed rule.
               <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
-            ) : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
+            ) : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good-text)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
             <ItemChips it={it} />
             <TypeChip mediaType={it.media_type} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
-            <span className="font-mono text-xs" title="Share ratio" style={{ color: "var(--good)" }}>⇅ {it.ratio.toFixed(2)}</span>
+            <span className="font-mono text-xs" title="Share ratio" style={{ color: "var(--good-text)" }}>⇅ {it.ratio.toFixed(2)}</span>
             <span className="font-mono text-xs text-ink-faint" title="Time seeded">{dur(it.seeding_time ?? 0)}</span>
-            <span className="font-mono text-xs" style={{ color: it.up_speed > 0 ? "var(--good)" : "var(--ink-faint)" }}>{it.up_speed > 0 ? `↑${bytes(it.up_speed)}/s` : "idle"}</span>
+            <span className="font-mono text-xs" style={{ color: it.up_speed > 0 ? "var(--good-text)" : "var(--ink-faint)" }}>{it.up_speed > 0 ? `↑${bytes(it.up_speed)}/s` : "idle"}</span>
           </div>
         </div>
         <CardActions
@@ -716,7 +716,7 @@ function WantedItem({ item, kind, onSearched, onError }: { item: WantedRow; kind
   const upcoming = kind === "upcoming";
   const chip = upcoming
     ? { text: item.available_at ? `${item.next_label ? item.next_label + " · " : ""}${fmtReleaseDate(item.available_at)}` : "Awaiting release", tone: "var(--ink-faint)", pulse: false }
-    : running ? { text: "Searching now", tone: "var(--accent)", pulse: true } : wantedChip(item);
+    : running ? { text: "Searching now", tone: "var(--accent-text)", pulse: true } : wantedChip(item);
   // The result of this page's Search now stays until the next refresh brings the stored
   // attempt, which then says the same thing with its time.
   const line = upcoming ? "" : running ? "Searching your indexers now…" : result ? result.text : wantedLine(item);
@@ -796,7 +796,7 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
     } catch (e) { setError((e as Error).message); }
   };
 
-  if (error) return <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>;
+  if (error) return <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>;
   if (!s) return <div className="mb-4 rounded-xl p-4 text-sm text-ink-dim" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>Loading settings…</div>;
 
   const num = "w-[70px] rounded-lg px-2 py-1.5 text-right text-md";
@@ -843,7 +843,7 @@ function SettingsPanel({ clientId, onClose }: { clientId: number; onClose: () =>
       </div>
       <div className="mt-3.5 flex items-center gap-3">
         <button onClick={save} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Save</button>
-        {saved && <span className="text-sm" style={{ color: "var(--good)" }}>Saved ✓</span>}
+        {saved && <span className="text-sm" style={{ color: "var(--good-text)" }}>Saved ✓</span>}
       </div>
     </div>
   );

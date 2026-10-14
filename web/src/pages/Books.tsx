@@ -360,11 +360,11 @@ export function Books() {
 
         {multiSelect && (
           <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
-            <span className="font-mono text-sm font-semibold" style={{ color: "var(--accent)" }}>{selected.size} selected</span>
+            <span className="font-mono text-sm font-semibold" style={{ color: "var(--accent-text)" }}>{selected.size} selected</span>
             <button onClick={() => setSelected(new Set(filtered.map((b) => b.id)))} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Select all ({filtered.length})</button>
             <button onClick={clearSelect} disabled={selected.size === 0} className="rounded-lg px-2.5 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Clear</button>
             <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
-            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Monitor</button>
+            <button onClick={() => bulkMonitor(true)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Monitor</button>
             <button onClick={() => bulkMonitor(false)} disabled={selected.size === 0 || bulkBusy} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unmonitor</button>
             <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
             <select
@@ -418,7 +418,7 @@ export function Books() {
           <div className="mb-4 rounded-lg px-3.5 py-2.5 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
             Books are using <b>Open Library</b>, which needs no key. For the preferred catalogue — one entry per book, series and author pages, cleaner covers —{" "}
             {admin
-              ? <>add a free <b>Hardcover</b> API key in <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</>
+              ? <>add a free <b>Hardcover</b> API key in <Link to={LINKS.apiKeys} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>.</>
               : <>ask an admin to add a free <b>Hardcover</b> API key (Settings → Connections).</>}
             {" "}Everything already here keeps working either way.
           </div>
@@ -519,7 +519,7 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
                 <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span></td>
                 <td className={td}><span className="font-mono text-xs text-ink-dim">{editionTags(b)}</span></td>
                 <td className={`${td} text-right font-mono text-xs text-ink-dim`}>{size > 0 ? gb(size) : "—"}</td>
-                <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: b.monitored ? "var(--accent)" : "var(--ink-faint)" }}>{b.monitored ? "Yes" : "No"}</span></td>
+                <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: b.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>{b.monitored ? "Yes" : "No"}</span></td>
                 <td className={`${td} text-right`}>
                   {missing && (
                     <button onClick={() => onSearch(b)} title="Search your indexers for the edition this book is missing" className="whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Search</button>
@@ -583,7 +583,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         <div className="truncate text-md font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
         <div className="truncate text-sm text-ink-dim">{r.author || "Unknown author"}</div>
       </div>
-      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{addingKey === r.key ? "Adding…" : "Add"}</span>
+      <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{addingKey === r.key ? "Adding…" : "Add"}</span>
     </button>
   );
 
@@ -608,7 +608,7 @@ function AddBookModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by title or author" placeholder="Search by title or author — e.g. Dune Herbert" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={inputStyle} />
           <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
-        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
         <div className="thin-scroll max-h-[56vh] overflow-y-auto">
           {results.map(row)}
           {source === "hardcover" && results.length > 0 && olResults === null && (
@@ -693,8 +693,8 @@ function AuthorCard({ group }: { group: AuthorGroup }) {
         <div className="truncate text-base font-bold text-white" title={name}>{name}</div>
         <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,.8)" }}>
           <span>{books.length} book{books.length === 1 ? "" : "s"}</span>
-          {downloaded > 0 && <span style={{ color: "var(--good)" }}>{downloaded} ✓</span>}
-          {wanted > 0 && <span style={{ color: "var(--avoid)" }}>{wanted} wanted</span>}
+          {downloaded > 0 && <span style={{ color: "var(--good-text)" }}>{downloaded} ✓</span>}
+          {wanted > 0 && <span style={{ color: "var(--avoid-text)" }}>{wanted} wanted</span>}
         </div>
       </div>
     </Link>
@@ -719,11 +719,11 @@ function AuthorTable({ authors }: { authors: AuthorGroup[] }) {
             return (
               <tr key={a.key} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                 <td className="px-3 py-2">
-                  <Link to={authorPath(a)} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>{a.name}</Link>
+                  <Link to={authorPath(a)} className="font-semibold hover:underline" style={{ color: "var(--accent-text)" }}>{a.name}</Link>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-ink-dim">{a.books.length}</td>
-                <td className="px-3 py-2 text-right font-mono" style={{ color: downloaded > 0 ? "var(--good)" : "var(--ink-faint)" }}>{downloaded}</td>
-                <td className="px-3 py-2 text-right font-mono" style={{ color: wanted > 0 ? "var(--avoid)" : "var(--ink-faint)" }}>{wanted}</td>
+                <td className="px-3 py-2 text-right font-mono" style={{ color: downloaded > 0 ? "var(--good-text)" : "var(--ink-faint)" }}>{downloaded}</td>
+                <td className="px-3 py-2 text-right font-mono" style={{ color: wanted > 0 ? "var(--avoid-text)" : "var(--ink-faint)" }}>{wanted}</td>
               </tr>
             );
           })}
@@ -788,7 +788,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
           </label>
         </div>
 
-        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
         {!selected ? (
           <>
@@ -802,7 +802,7 @@ function AddAuthorModal({ onClose, onAdded }: { onClose: () => void; onAdded: (m
                 <div className="p-6 text-center text-base text-ink-dim">No authors found.</div>
               ) : authors.map((a) => (
                 <button key={a.key} onClick={() => pick(a)} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--panel-2)]">
-                  <span className="grid h-10 w-10 flex-none place-items-center rounded-full text-md font-bold text-white" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>{a.name.charAt(0).toUpperCase()}</span>
+                  <span className="grid h-10 w-10 flex-none place-items-center rounded-full text-md font-bold text-accent-ink" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>{a.name.charAt(0).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-md font-semibold">{a.name}</div>
                     <div className="truncate text-sm text-ink-faint">{a.work_count > 0 ? `${a.work_count.toLocaleString()} works` : "Author"}{a.top_work ? ` · ${a.top_work}` : ""}</div>

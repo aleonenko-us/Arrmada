@@ -43,7 +43,7 @@ function Catalogue({ onPick }: { onPick: (p: IndexerPreset) => void }) {
               onClick={() => onPick(p)}
               className="flex w-full items-center gap-3 rounded-xl border border-line bg-panel-2 p-3 text-left transition-colors hover:border-accent"
             >
-              <span aria-hidden className="grid h-9 w-9 flex-none place-items-center rounded-lg font-mono text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+              <span aria-hidden className="grid h-9 w-9 flex-none place-items-center rounded-lg font-mono text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
                 {p.monogram}
               </span>
               <span className="min-w-0">
@@ -196,7 +196,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
               style={{
                 border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
                 background: on ? "var(--accent-soft)" : "var(--panel-2)",
-                color: on ? "var(--accent)" : "var(--ink-faint)",
+                color: on ? "var(--accent-text)" : "var(--ink-faint)",
               }}
             >
               {m.label}
@@ -230,7 +230,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
       <div aria-live="polite">
         {!current.loading && current.ok !== undefined && <TestLine state={current} />}
       </div>
-      {error && <div role="alert" className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2.5">
         {passed ? (

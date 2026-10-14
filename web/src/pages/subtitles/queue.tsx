@@ -53,7 +53,7 @@ export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: ()
           <TitleLink j={j} />
           {j.redo && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Replacing the subtitles already there">redo</span>}
           {redoLabel(j) && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Making one language again">{redoLabel(j)}</span>}
-          {!running && PRIO_LABEL[j.priority] && <span className={chipCls} style={{ border: "1px solid var(--line)", color: j.priority === 0 ? "var(--accent)" : "var(--ink-faint)" }} title={PRIO_TITLE[j.priority]}>{PRIO_LABEL[j.priority]}</span>}
+          {!running && PRIO_LABEL[j.priority] && <span className={chipCls} style={{ border: "1px solid var(--line)", color: j.priority === 0 ? "var(--accent-text)" : "var(--ink-faint)" }} title={PRIO_TITLE[j.priority]}>{PRIO_LABEL[j.priority]}</span>}
           {waitingAI && <span className={`${chipCls} text-ink-faint`} style={{ border: "1px solid var(--line)" }} title="Languages left for the AI">{(j.langs ?? []).join(" · ")}</span>}
         </span>
         {stopping ? <span className="font-mono text-xs text-ink-faint">stopping…</span>
@@ -66,7 +66,7 @@ export function ActiveRow({ j, onCancel, busy }: { j: SubtitleJob; onCancel?: ()
         {onCancel && (
           <button type="button" onClick={onCancel} disabled={busy || stopping} title={running ? "Stop this job" : "Remove from the queue"}
             className="flex-none rounded-md border px-1.5 py-0.5 text-xs font-semibold hover:bg-[var(--panel-2)] disabled:opacity-50"
-            style={{ borderColor: "var(--line)", color: running ? "var(--reject)" : "var(--ink-dim)" }}>
+            style={{ borderColor: "var(--line)", color: running ? "var(--reject-text)" : "var(--ink-dim)" }}>
             {running ? "Stop" : "Remove"}
           </button>
         )}
@@ -95,9 +95,9 @@ export function fmtElapsed(sec: number): string {
 }
 
 export function StateBadge({ state }: { state: string }) {
-  const s = state === "done" ? { bg: "var(--good-soft, rgba(127,176,105,.16))", fg: "var(--good)" }
-    : state === "failed" ? { bg: "var(--reject-soft)", fg: "var(--reject)" }
-    : state === "running" ? { bg: "var(--accent-soft)", fg: "var(--accent)" }
+  const s = state === "done" ? { bg: "var(--good-soft, rgba(127,176,105,.16))", fg: "var(--good-text)" }
+    : state === "failed" ? { bg: "var(--reject-soft)", fg: "var(--reject-text)" }
+    : state === "running" ? { bg: "var(--accent-soft)", fg: "var(--accent-text)" }
     : state === "cancelled" ? { bg: "var(--panel-2)", fg: "var(--ink-dim)" }
     : { bg: "var(--panel-2)", fg: "var(--ink-faint)" };
   return <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: s.bg, color: s.fg }}>{state}</span>;
@@ -227,7 +227,7 @@ function History({ jobs, onChange, flash }: { jobs: SubtitleJob[]; onChange: () 
           {FILTERS.map((f) => (
             <button key={f.key} type="button" onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}
               className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
-              style={{ border: `1px solid ${filter === f.key ? "var(--accent)" : "var(--line)"}`, background: filter === f.key ? "var(--accent-soft, rgba(198,93,59,.12))" : "transparent", color: filter === f.key ? "var(--accent)" : "var(--ink-dim)" }}>
+              style={{ border: `1px solid ${filter === f.key ? "var(--accent)" : "var(--line)"}`, background: filter === f.key ? "var(--accent-soft, rgba(198,93,59,.12))" : "transparent", color: filter === f.key ? "var(--accent-text)" : "var(--ink-dim)" }}>
               {f.label}
             </button>
           ))}
@@ -271,7 +271,7 @@ function HistoryRow({ j, open, onToggle, onRetry, retrying }: { j: SubtitleJob; 
         )}
         {RETRYABLE.has(j.state) && (j.movie_id || j.series_id) && (
           <button type="button" onClick={onRetry} disabled={retrying} title="Queue this file again: every kept language still missing gets another go"
-            className={smallBtn} style={{ borderColor: "var(--accent-line, var(--line))", color: "var(--accent)" }}>
+            className={smallBtn} style={{ borderColor: "var(--accent-line, var(--line))", color: "var(--accent-text)" }}>
             {retrying ? "Queuing…" : "Retry"}
           </button>
         )}

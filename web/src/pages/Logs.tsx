@@ -9,9 +9,9 @@ import { Page } from "../ui/Page";
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const LEVEL_STYLE: Record<string, { color: string; label: string }> = {
   DEBUG: { color: "var(--ink-faint)", label: "DBG" },
-  INFO: { color: "var(--accent)", label: "INF" },
-  WARN: { color: "var(--avoid)", label: "WRN" },
-  ERROR: { color: "var(--reject)", label: "ERR" },
+  INFO: { color: "var(--accent-text)", label: "INF" },
+  WARN: { color: "var(--avoid-text)", label: "WRN" },
+  ERROR: { color: "var(--reject-text)", label: "ERR" },
 };
 
 // The routine chatter that drowns everything else. Indexer tracing logs a line per page
@@ -99,7 +99,7 @@ function DebugSwitch({ onEnabled }: { onEnabled: () => void }) {
   if (raised) {
     return (
       <span className="flex items-center gap-2">
-        <span className="font-mono text-sm" style={{ color: "var(--accent)" }} title={`Debug lines until ${new Date(until).toLocaleTimeString()}, then back to ${state.env_level}`}>
+        <span className="font-mono text-sm" style={{ color: "var(--accent-text)" }} title={`Debug lines until ${new Date(until).toLocaleTimeString()}, then back to ${state.env_level}`}>
           Debug on · {fmtLeft(until - now)} left
         </span>
         <Button size="sm" onClick={() => change("")} busy={busy}>Back to normal</Button>
@@ -224,7 +224,7 @@ export function Logs() {
     URL.revokeObjectURL(url);
   };
 
-  const pill = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent-line)" : "var(--line)"}`, color: on ? "var(--accent)" : "var(--ink-dim)", background: "transparent" });
+  const pill = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent-line)" : "var(--line)"}`, color: on ? "var(--accent-text)" : "var(--ink-dim)", background: "transparent" });
 
   return (
     <>
@@ -233,7 +233,7 @@ export function Logs() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg" role="group" aria-label="Lowest level shown" style={{ border: "1px solid var(--line)" }}>
             {LEVELS.map((l) => (
-              <button key={l} onClick={() => setLevel(l)} aria-pressed={level === l} className="px-3 py-1.5 text-sm font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent)" : "var(--ink-dim)" }}>{l}</button>
+              <button key={l} onClick={() => setLevel(l)} aria-pressed={level === l} className="px-3 py-1.5 text-sm font-semibold capitalize" style={{ background: level === l ? "var(--accent-soft)" : "transparent", color: level === l ? "var(--accent-text)" : "var(--ink-dim)" }}>{l}</button>
             ))}
           </div>
           <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Show only lines containing" placeholder="Show only lines containing…" className="min-w-[200px] flex-1 rounded-lg px-3 py-1.5 text-base" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
@@ -269,7 +269,7 @@ export function Logs() {
           <DebugSwitch onEnabled={() => setLevel("debug")} />
         </div>
 
-        {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+        {err && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
 
         <div ref={scroller} onScroll={onScroll} className="thin-scroll overflow-auto rounded-xl p-2 font-mono text-sm leading-[1.5]" style={{ background: "var(--panel)", border: "1px solid var(--line)", height: "calc(100vh - 220px)" }}>
           {entries === null ? (

@@ -73,7 +73,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
           seasons === null ? (
             <div className="text-sm text-ink-faint">Loading episodes…</div>
           ) : seasons === "error" || seasons.length === 0 ? (
-            <div className="text-sm" style={{ color: "var(--reject)" }}>
+            <div className="text-sm" style={{ color: "var(--reject-text)" }}>
               {seasons === "error" ? "Couldn’t load the episodes — try again in a moment." : "There are no episodes of this show to report yet."}
             </div>
           ) : (
@@ -104,7 +104,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
                 style={{ background: on ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}` }}>
                 <input type="radio" name={`${id}-category`} value={c.key} checked={on} onChange={() => setCategory(c.key)} className="h-4 w-4 flex-none" />
                 <span className="min-w-0">
-                  <span className="block text-md font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{c.label}</span>
+                  <span className="block text-md font-semibold" style={{ color: on ? "var(--accent-text)" : "var(--ink)" }}>{c.label}</span>
                   <span className="block text-xs text-ink-faint">{c.hint}</span>
                 </span>
               </label>
@@ -126,7 +126,7 @@ export function IssueReportSheet({ media, tmdbId, title, onClose }: {
           <span className="self-end font-mono text-xs text-ink-faint">{note.length}/{ISSUE_NOTE_MAX}</span>
         </label>
 
-        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" className="min-h-[44px] flex-1 sm:flex-none" onClick={() => { void send(); }} busy={busy} busyLabel="Sending…" disabled={!ready}>Send report</Button>

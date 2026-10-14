@@ -11,7 +11,7 @@ export const TONE_HUE: Record<Tone, string> = {
   faint: "var(--ink-faint)",
 };
 // The text-tuned hue and the soft fill, for chips sitting on a panel.
-const TONE_TEXT: Record<Tone, string> = {
+export const TONE_TEXT: Record<Tone, string> = {
   accent: "var(--accent-text)",
   good: "var(--good-text)",
   avoid: "var(--avoid-text)",
@@ -28,6 +28,15 @@ const TONE_SOFT: Record<Tone, string> = {
 
 // A near-opaque dark chip so a status stays legible over any poster, in either theme.
 export const POSTER_CHIP_BG = "rgba(14,10,7,.92)";
+// Words on that dark chip: it is dark in both themes, so it takes the dark theme's text
+// hues in both (the light theme's darker hues fell to 3.6:1 on it). All clear 4.8:1 here.
+export const POSTER_TONE: Record<Tone, string> = {
+  accent: "#e0845e",
+  good: "#7fb069",
+  avoid: "#e0a93b",
+  reject: "#e27a69",
+  faint: "#9a8774",
+};
 
 const SIZE = {
   xs: "px-1.5 py-0.5 text-2xs",
@@ -50,14 +59,14 @@ export interface StatusChipProps {
 // either a soft fill (panel) or the dark poster chip.
 export function StatusChip({ tone, children, surface = "panel", size = "sm", className, title }: StatusChipProps) {
   const poster = surface === "poster";
-  const border = tone === "faint" && !poster ? "var(--line)" : TONE_HUE[tone];
+  const border = tone === "faint" && !poster ? "var(--line)" : poster ? POSTER_TONE[tone] : TONE_HUE[tone];
   return (
     <span
       title={title}
       className={`rounded-full font-bold uppercase ${SIZE[size]} ${className ?? ""}`}
       style={{
         background: poster ? POSTER_CHIP_BG : TONE_SOFT[tone],
-        color: poster ? TONE_HUE[tone] : TONE_TEXT[tone],
+        color: poster ? POSTER_TONE[tone] : TONE_TEXT[tone],
         border: `1px solid ${border}`,
       }}
     >

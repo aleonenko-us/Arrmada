@@ -69,12 +69,12 @@ export function BookSheet({ book, shelf, listen, onClose, onOpen }: {
                   <button
                     onClick={() => { playAudiobook(a.item_key!, { meta }); onClose(); }}
                     className="rounded-lg px-3 py-1.5 text-base font-semibold"
-                    style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+                    style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
                   >
                     ▶ Listen{a.label ? ` · ${a.label}` : ""}
                   </button>
                 )}
-                <a href={api.audiobookDownloadURL(book.book_id, a.version_id)} download className="rounded-lg px-3 py-1.5 text-base font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                <a href={api.audiobookDownloadURL(book.book_id, a.version_id)} download className="rounded-lg px-3 py-1.5 text-base font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>
                   Download{a.label && !(listen && a.item_key) ? ` · ${a.label}` : ""}{a.size_bytes ? ` · ${fmtSize(a.size_bytes)}` : ""}{a.files > 1 ? " (zip)" : ""}
                 </a>
               </div>
@@ -86,7 +86,7 @@ export function BookSheet({ book, shelf, listen, onClose, onOpen }: {
           <div className="text-base leading-relaxed text-ink-dim">
             <p className={`m-0 whitespace-pre-line ${more ? "" : "line-clamp-5"}`}>{book.description}</p>
             {book.description.length > 300 && (
-              <button onClick={() => setMore(!more)} className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>{more ? "Less" : "More"}</button>
+              <button onClick={() => setMore(!more)} className="mt-1 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>{more ? "Less" : "More"}</button>
             )}
           </div>
         )}

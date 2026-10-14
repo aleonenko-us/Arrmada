@@ -15,15 +15,15 @@ const noop = () => {};
 // from inside a backup.
 
 const KIND: Record<BackupKind, { label: string; tone: string }> = {
-  "pre-migrate": { label: "Before update", tone: "var(--accent)" },
-  nightly: { label: "Nightly", tone: "var(--good)" },
+  "pre-migrate": { label: "Before update", tone: "var(--accent-text)" },
+  nightly: { label: "Nightly", tone: "var(--good-text)" },
   manual: { label: "Manual", tone: "var(--ink-dim)" },
-  "pre-restore": { label: "Before restore", tone: "var(--avoid)" },
-  "pre-delete-user": { label: "Before user delete", tone: "var(--avoid)" },
-  "pre-delete-empty-user": { label: "Before user delete", tone: "var(--avoid)" },
-  "pre-merge-user": { label: "Before account merge", tone: "var(--avoid)" },
-  uploaded: { label: "Uploaded", tone: "var(--accent)" },
-  "pre-insights-repair": { label: "Before Insights cleanup", tone: "var(--avoid)" },
+  "pre-restore": { label: "Before restore", tone: "var(--avoid-text)" },
+  "pre-delete-user": { label: "Before user delete", tone: "var(--avoid-text)" },
+  "pre-delete-empty-user": { label: "Before user delete", tone: "var(--avoid-text)" },
+  "pre-merge-user": { label: "Before account merge", tone: "var(--avoid-text)" },
+  uploaded: { label: "Uploaded", tone: "var(--accent-text)" },
+  "pre-insights-repair": { label: "Before Insights cleanup", tone: "var(--avoid-text)" },
 };
 
 const btn = "rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50";
@@ -172,10 +172,10 @@ export function Backups() {
       </p>
 
       <div className="flex flex-col gap-4">
-        {loadErr && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>{loadErr}</p>}
+        {loadErr && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{loadErr}</p>}
 
         {last && (
-          <div role="status" className="flex items-start gap-3 rounded-lg p-3 text-sm" style={{ color: last.ok ? "var(--good)" : "var(--reject)", background: last.ok ? "var(--good-soft)" : "var(--reject-soft)" }}>
+          <div role="status" className="flex items-start gap-3 rounded-lg p-3 text-sm" style={{ color: last.ok ? "var(--good-text)" : "var(--reject-text)", background: last.ok ? "var(--good-soft)" : "var(--reject-soft)" }}>
             <div className="min-w-0 flex-1 break-words">
               {last.ok
                 ? <>Restored {last.from} on {when(last.at)}. The database it replaced is kept as a “Before restore” backup.</>
@@ -196,7 +196,7 @@ export function Backups() {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {state?.can_restart && <button onClick={restartNow} disabled={busy} className={btn} style={{ background: "var(--reject)", color: "#fff" }}>Restart and restore now</button>}
+              {state?.can_restart && <button onClick={restartNow} disabled={busy} className={btn} style={{ background: "var(--reject)", color: "var(--accent-ink)" }}>Restart and restore now</button>}
               <button onClick={cancelRestore} disabled={busy} className={btn} style={btnStyle}>Cancel restore</button>
             </div>
           </div>
@@ -221,7 +221,7 @@ export function Backups() {
             <span className="flex-none font-mono">{progress < 1 ? `${Math.round(progress * 100)}%` : "Checking…"}</span>
           </div>
         )}
-        {msg && <p className="m-0 break-all text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
+        {msg && <p className="m-0 break-all text-sm" style={{ color: msg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{msg.text}</p>}
         {uploaded && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
             <span className="min-w-0 flex-1">Uploaded and checked: {uploaded.name} ({fmtBytes(uploaded.size_bytes)}). It's in the list as Uploaded.</span>
@@ -248,9 +248,9 @@ export function Backups() {
                       <div className="truncate font-mono text-xs text-ink-faint" title={b.name}>{b.name}{b.schema_version ? ` · schema ${b.schema_version.split("_")[0]}` : ""}</div>
                     </div>
                     <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(b.size_bytes)}</span>
-                    <a href={backupDownloadURL(b.name)} download className={rowBtn} style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</a>
+                    <a href={backupDownloadURL(b.name)} download className={rowBtn} style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Download</a>
                     <button onClick={() => setToRestore(b)} className={rowBtn} style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Restore</button>
-                    <button onClick={() => setToDelete(b)} disabled={pending?.name === b.name} title={pending?.name === b.name ? "Staged to be restored — cancel the restore first" : undefined} className={rowBtn} style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
+                    <button onClick={() => setToDelete(b)} disabled={pending?.name === b.name} title={pending?.name === b.name ? "Staged to be restored — cancel the restore first" : undefined} className={rowBtn} style={{ border: "1px solid var(--line)", color: "var(--reject-text)" }}>Delete</button>
                   </div>
                 );
               })}

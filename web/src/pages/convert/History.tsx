@@ -21,7 +21,7 @@ const OUTCOME_LABEL: Record<ConvertHistoryOutcome, string> = {
   done: "converted", skipped: "kept original", failed: "failed", cancelled: "cancelled", in_progress: "running",
 };
 const OUTCOME_TONE: Record<ConvertHistoryOutcome, string> = {
-  done: "var(--good)", skipped: "var(--avoid)", failed: "var(--reject)", cancelled: "var(--ink-faint)", in_progress: "var(--accent)",
+  done: "var(--good-text)", skipped: "var(--avoid-text)", failed: "var(--reject-text)", cancelled: "var(--ink-faint)", in_progress: "var(--accent-text)",
 };
 const OUTCOME_FILTERS: { key: ConvertHistoryOutcome | ""; label: string }[] = [
   { key: "", label: "All" }, { key: "done", label: "Converted" }, { key: "skipped", label: "Kept original" },
@@ -60,7 +60,7 @@ function savedPct(e: ConvertHistoryEntry): number | null {
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={active} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
-      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
       {children}
     </button>
   );
@@ -168,12 +168,12 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
           <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-dim">
             {pct !== null ? (
               <span className="font-mono">
-                {shortSpec(e.src_spec) || "original"} · {fmtBytes(e.src_size)} → {shortSpec(e.out_spec) || e.codec?.toUpperCase()} · {fmtBytes(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
+                {shortSpec(e.src_spec) || "original"} · {fmtBytes(e.src_size)} → {shortSpec(e.out_spec) || e.codec?.toUpperCase()} · {fmtBytes(e.out_size)} <span style={{ color: "var(--good-text)" }}>−{pct}%</span>
               </span>
             ) : e.note ? <span className="truncate" title={e.note}>{e.note}</span> : null}
             {e.ssim_mean ? <span className="font-mono">SSIM {e.ssim_mean.toFixed(3)}{e.ssim_min ? ` · worst ${e.ssim_min.toFixed(3)}` : ""}</span> : null}
             {dropped.length > 0 && <span title={dropped.map(track).join("\n")}>removed {dropped.length} track{dropped.length === 1 ? "" : "s"}</span>}
-            {hold && <span style={{ color: e.hold_state === "held" ? "var(--accent)" : "var(--ink-faint)" }}>{hold}</span>}
+            {hold && <span style={{ color: e.hold_state === "held" ? "var(--accent-text)" : "var(--ink-faint)" }}>{hold}</span>}
           </div>
           {e.hold_state === "held" && e.outcome === "done" && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -206,7 +206,7 @@ function HistoryRow({ e, open, onToggle, flash, onChanged }: {
               {dropped.map((d) => <div key={`${d.type}-${d.index}`} className="ml-2">{track(d)} <span className="text-ink-faint">— {d.reason}</span></div>)}
             </div>
           )}
-          {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid)" }}>{w}</div>)}
+          {(e.warnings ?? []).map((w) => <div key={w} style={{ color: "var(--avoid-text)" }}>{w}</div>)}
           {e.reclaim_deferred && <div className="text-ink-faint">Releasing the original won't free its space — the download client still holds a hardlinked copy of it.</div>}
           {hold && <div><span className={lbl}>Original</span> {hold}{e.hold_state === "held" && e.hold_until ? ` (until ${fmtWhen(e.hold_until)})` : ""}</div>}
           {e.out_path && <div className="truncate font-mono text-xs text-ink-faint" title={e.out_path}>{e.out_path}</div>}
@@ -229,7 +229,7 @@ export function RecentCard({ reload, onSeeAll }: { reload: number; onSeeAll: () 
     <div className={card} style={cardStyle}>
       <div className="flex items-center justify-between">
         <div className="text-md font-bold">Recent</div>
-        <button onClick={onSeeAll} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>See all in History →</button>
+        <button onClick={onSeeAll} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>See all in History →</button>
       </div>
       <div className="mt-2 flex flex-col gap-1.5">
         {items.map((e) => {
@@ -240,7 +240,7 @@ export function RecentCard({ reload, onSeeAll }: { reload: number; onSeeAll: () 
               <span className="min-w-0 flex-1 truncate font-semibold">{e.title}</span>
               {pct !== null ? (
                 <span className="font-mono text-ink-dim">
-                  {fmtBytes(e.src_size)} → {fmtBytes(e.out_size)} <span style={{ color: "var(--good)" }}>−{pct}%</span>
+                  {fmtBytes(e.src_size)} → {fmtBytes(e.out_size)} <span style={{ color: "var(--good-text)" }}>−{pct}%</span>
                   <span className="ml-1.5 text-xs text-ink-faint">{e.codec?.toUpperCase()}{e.ssim_mean ? ` · SSIM ${e.ssim_mean.toFixed(3)}` : ""}</span>
                 </span>
               ) : (

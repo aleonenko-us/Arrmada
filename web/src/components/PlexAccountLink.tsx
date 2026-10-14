@@ -95,20 +95,20 @@ export default function PlexAccountLink({ variant }: { variant: "sidebar" | "me"
             {link.can_unlink && <>· <button type="button" onClick={unlink} className={btn} style={{ color: "var(--ink-dim)" }}>Unlink</button></>}
           </>
         ) : (
-          <button type="button" onClick={() => { setConflict(null); plex.begin(); }} className={btn} style={{ color: "var(--accent)" }}>Link</button>
+          <button type="button" onClick={() => { setConflict(null); plex.begin(); }} className={btn} style={{ color: "var(--accent-text)" }}>Link</button>
         )}
       </div>
       {(plex.phase === "waiting" || plex.phase === "slow") && (
         <div className="flex flex-wrap gap-x-2">
-          {plex.phase === "slow" && <button type="button" onClick={plex.continueHere} className={btn} style={{ color: "var(--accent)" }}>Plex window didn't open? Continue in this tab</button>}
+          {plex.phase === "slow" && <button type="button" onClick={plex.continueHere} className={btn} style={{ color: "var(--accent-text)" }}>Plex window didn't open? Continue in this tab</button>}
           <button type="button" onClick={plex.cancel} className="underline">Cancel</button>
         </div>
       )}
       {conflict && (
-        <div role="status" style={{ color: "var(--avoid)" }}>
+        <div role="status" style={{ color: "var(--avoid-text)" }}>
           Already linked to {conflict.already_linked_to}.
           {conflict.mergeable && conflict.user_id && user && (
-            <> <button type="button" onClick={() => setMerging(conflict.user_id ?? null)} className={btn} style={{ color: "var(--accent)" }}>Move link here</button></>
+            <> <button type="button" onClick={() => setMerging(conflict.user_id ?? null)} className={btn} style={{ color: "var(--accent-text)" }}>Move link here</button></>
           )}
         </div>
       )}

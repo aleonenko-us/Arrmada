@@ -105,7 +105,7 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
               </span>
               <button
                 className="ml-auto shrink-0 text-xs font-semibold"
-                style={{ color: "var(--reject)" }}
+                style={{ color: "var(--reject-text)" }}
                 title={a.source === "tmdb" ? "Stops matching this title; a refresh won't add it back" : undefined}
                 onClick={async () => { await api.deleteSeriesAlias(series.id, a.id); load(); }}
               >
@@ -147,7 +147,7 @@ export function AliasPanel({ series, defaultOpen = false }: { series: SeriesT; d
           {busy ? "Adding…" : "Add title"}
         </button>
       </div>
-      {err && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</p>}
+      {err && <p className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{err}</p>}
       {empty && !err && (
         <p className="mb-0 mt-2 text-xs text-ink-faint">No alternate titles — most shows never need one.</p>
       )}
@@ -222,7 +222,7 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
               </span>
               <button
                 className="ml-auto text-xs font-semibold"
-                style={{ color: "var(--reject)" }}
+                style={{ color: "var(--reject-text)" }}
                 onClick={async () => { await seriesApi.deleteSceneOverride(series.id, o.scene_season); load(); }}
               >
                 Remove
@@ -255,7 +255,7 @@ export function SceneMapPanel({ series, defaultOpen = false }: { series: SeriesT
           {busy ? "Saving…" : "Add mapping"}
         </button>
       </div>
-      {err && <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
       </>)}
     </div>
   );
@@ -297,28 +297,28 @@ export function DuplicatesPanel({ seriesId, refreshKey, flash }: { seriesId: num
   const extras = dupes.reduce((n, d) => n + d.extras.length, 0);
   return (
     <div className="mt-8">
-      <h2 className="m-0 mb-1 text-md font-bold" style={{ color: "var(--avoid)" }}>Duplicate files</h2>
+      <h2 className="m-0 mb-1 text-md font-bold" style={{ color: "var(--avoid-text)" }}>Duplicate files</h2>
       <p className="mb-3 text-sm text-ink-dim">
         {extras} extra file{extras === 1 ? "" : "s"} on disk across {dupes.length} episode{dupes.length === 1 ? "" : "s"}
         {reclaim > 0 && <> · {fmtBytes(reclaim)} reclaimable</>}. These are older copies left behind when a re-import
         wrote a different filename. Arrmada tracks the one marked <em>keeping</em>; the rest are unused.
       </p>
-      {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
       <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
         {dupes.map((d) => (
           <div key={`${d.season}-${d.episode}`} className="border-b p-3 last:border-b-0" style={{ borderColor: "var(--line-soft)" }}>
             <div className="mb-1.5 font-mono text-xs font-bold">{`S${String(d.season).padStart(2, "0")}E${String(d.episode).padStart(2, "0")}`}</div>
             <div className="flex items-center gap-2 py-1 text-sm">
-              <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good)" }}>keeping</span>
+              <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good-text)" }}>keeping</span>
               <span className="min-w-0 flex-1 truncate text-ink-dim" title={d.keeping.path}>{d.keeping.filename}</span>
               <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(d.keeping.size_bytes)}</span>
             </div>
             {d.extras.map((x) => (
               <div key={x.path} className="flex items-center gap-2 py-1 text-sm">
-                <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid)" }}>extra</span>
+                <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--avoid-text)" }}>extra</span>
                 <span className="min-w-0 flex-1 truncate text-ink-dim" title={x.path}>{x.filename}</span>
                 <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(x.size_bytes)}</span>
-                <button disabled={busy !== null} onClick={() => remove(x.path)} className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+                <button disabled={busy !== null} onClick={() => remove(x.path)} className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
                   {busy === x.path ? "Deleting…" : "Delete"}
                 </button>
               </div>

@@ -50,7 +50,7 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
         aria-pressed={on}
         onClick={() => setPick(value)}
         className="min-h-[36px] rounded-full px-3 text-sm font-semibold"
-        style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-dim)" }}
+        style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-dim)" }}
       >
         {label}
       </button>

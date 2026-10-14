@@ -104,7 +104,7 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
             onClick={select.onToggle}
             aria-pressed={select.active}
             className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold"
-            style={{ border: `1px solid ${select.active ? "var(--accent)" : "var(--line)"}`, background: select.active ? "var(--accent-soft)" : "var(--panel-2)", color: select.active ? "var(--accent)" : "var(--ink)" }}
+            style={{ border: `1px solid ${select.active ? "var(--accent)" : "var(--line)"}`, background: select.active ? "var(--accent-soft)" : "var(--panel-2)", color: select.active ? "var(--accent-text)" : "var(--ink)" }}
           >
             {select.active ? "Done" : "Select"}
           </button>
@@ -131,7 +131,7 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
           </button>
         ))}
         {secondary && (
-          <button onClick={secondary.onClick} disabled={secondary.disabled} title={secondary.title} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent)" }}>
+          <button onClick={secondary.onClick} disabled={secondary.disabled} title={secondary.title} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)", color: "var(--accent-text)" }}>
             {secondary.label}
           </button>
         )}
