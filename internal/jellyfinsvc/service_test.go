@@ -514,3 +514,36 @@ func TestIndexStaleFollowsTheLastAsk(t *testing.T) {
 		t.Fatal("not due after the wait")
 	}
 }
+
+// A rebuild that ran for another reason doesn't swallow a look still to come, and a scan
+// gets a second look FollowUp after the first.
+func TestIndexLooksAfterAScan(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	l := indexSchedule{now: func() time.Time { return now }}
+	l.build = func(context.Context) (*index, error) { return &index{builtAt: now}, nil }
+	if err := l.rebuild(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	l.markStale(ScanSettle)
+	l.markFollowUp(ScanSettle + FollowUp)
+	// Something else rebuilds now (a saved connection): both looks stay.
+	if err := l.rebuild(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if ok, wait := l.due(true); ok || wait != ScanSettle {
+		t.Fatalf("after an early rebuild: due %v in %s, want the settle look", ok, wait)
+	}
+	now = now.Add(ScanSettle)
+	if ok, _ := l.due(true); !ok {
+		t.Fatal("settle look not due")
+	}
+	_ = l.rebuild(context.Background())
+	if ok, wait := l.due(true); ok || wait != FollowUp {
+		t.Fatalf("after the settle look: due %v in %s, want the follow-up", ok, wait)
+	}
+	now = now.Add(FollowUp)
+	_ = l.rebuild(context.Background())
+	if ok, wait := l.due(true); ok || wait != indexTTL {
+		t.Fatalf("after the follow-up: due %v in %s, want the half-hourly look", ok, wait)
+	}
+}

@@ -47,8 +47,8 @@ func (a scanClient) RefreshSection(ctx context.Context, libraryID string) error 
 
 // NewScanner builds the plexscan.Scanner that tells Jellyfin which folders changed, with
 // Jellyfin's own switch and path mappings. Once Jellyfin accepted a report, the index looks
-// again after Jellyfin's wait (ScanSettle; LibrarySettle for a whole library). Run its
-// worker with Run.
+// again after Jellyfin's wait (ScanSettle; LibrarySettle for a whole library), and once
+// more FollowUp later in case the scan itself was slow. Run its worker with Run.
 func (s *Service) NewScanner(settings plexscan.Settings, roots func(ctx context.Context) map[string]string, log *slog.Logger) *plexscan.Scanner {
 	sc := plexscan.New(plexscan.Options{
 		Client: func(ctx context.Context) plexscan.Client {
@@ -65,11 +65,12 @@ func (s *Service) NewScanner(settings plexscan.Settings, roots func(ctx context.
 		Server:     "Jellyfin",
 	})
 	sc.OnRefreshed(func(_, _, path string) {
+		settle := ScanSettle
 		if path == "" {
-			s.IndexStale(LibrarySettle)
-			return
+			settle = LibrarySettle
 		}
-		s.IndexStale(ScanSettle)
+		s.IndexStale(settle)
+		s.idx.markFollowUp(settle + FollowUp)
 	})
 	if s.pathMaps == nil {
 		s.SetPathMaps(sc.PathMaps)

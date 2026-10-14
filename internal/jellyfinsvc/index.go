@@ -37,6 +37,10 @@ const (
 	ScanSettle = 70 * time.Second
 	// LibrarySettle is the wait after a whole library was refreshed, which takes longer.
 	LibrarySettle = 3 * time.Minute
+	// FollowUp is a second look after a scan, in case Jellyfin took longer than the settle
+	// time to add what it was told about (a slow disk, internet metadata lookups):
+	// otherwise the next look would be the half-hourly one.
+	FollowUp = 4 * time.Minute
 )
 
 type index struct {
@@ -156,6 +160,7 @@ type indexSchedule struct {
 	mu        sync.RWMutex
 	idx       *index
 	staleAt   time.Time // a rebuild is due at this time (zero = none asked for)
+	followAt  time.Time // and a second look then (zero = none)
 	retryAt   time.Time // a failed build waits until then
 	failing   bool
 	listeners []func()
@@ -229,6 +234,15 @@ func (l *indexSchedule) markStale(after time.Duration) {
 	}
 }
 
+// markFollowUp asks for a second look after the delay (the latest ask wins).
+func (l *indexSchedule) markFollowUp(after time.Duration) {
+	l.mu.Lock()
+	if at := l.clock().Add(after); at.After(l.followAt) {
+		l.followAt = at
+	}
+	l.mu.Unlock()
+}
+
 // due reports whether a rebuild should run now, and how long to sleep otherwise.
 func (l *indexSchedule) due(configured bool) (bool, time.Duration) {
 	l.mu.RLock()
@@ -244,8 +258,10 @@ func (l *indexSchedule) due(configured bool) (bool, time.Duration) {
 		return true, 0
 	}
 	next := l.idx.builtAt.Add(indexTTL)
-	if !l.staleAt.IsZero() && l.staleAt.Before(next) {
-		next = l.staleAt
+	for _, at := range []time.Time{l.staleAt, l.followAt} {
+		if !at.IsZero() && at.Before(next) {
+			next = at
+		}
 	}
 	if !now.Before(next) {
 		return true, 0
@@ -256,7 +272,8 @@ func (l *indexSchedule) due(configured bool) (bool, time.Duration) {
 // rebuild builds a fresh index and swaps it in. A failure keeps the old one.
 func (l *indexSchedule) rebuild(ctx context.Context) error {
 	l.mu.Lock()
-	requested := l.staleAt
+	start := l.clock()
+	requested, follow := l.staleAt, l.followAt
 	l.mu.Unlock()
 	idx, err := l.build(ctx)
 	l.mu.Lock()
@@ -267,8 +284,13 @@ func (l *indexSchedule) rebuild(ctx context.Context) error {
 	}
 	l.idx = idx
 	l.retryAt = time.Time{}
-	if l.staleAt.Equal(requested) {
-		l.staleAt = time.Time{} // a newer ask stays scheduled
+	// An ask this build answered is done; one still in the future (this build ran for
+	// the half-hourly look) or made while it ran stays scheduled.
+	if l.staleAt.Equal(requested) && !requested.After(start) {
+		l.staleAt = time.Time{}
+	}
+	if l.followAt.Equal(follow) && !follow.After(start) {
+		l.followAt = time.Time{}
 	}
 	listeners := append([]func(){}, l.listeners...)
 	l.mu.Unlock()
