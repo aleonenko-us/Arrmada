@@ -25,7 +25,7 @@ const sections = (items: Partial<Record<ConnectionSectionData["id"], ConnectionI
   { id: "search", title: "Search", items: items.search ?? [] },
   { id: "downloads", title: "Downloads", items: items.downloads ?? [] },
   { id: "metadata", title: "Metadata", items: items.metadata ?? [] },
-  { id: "other", title: "Plex, alerts and apps", items: items.other ?? [] },
+  { id: "other", title: "Alerts and apps", items: items.other ?? [] },
 ];
 
 const page = (at = "/settings/connections") =>

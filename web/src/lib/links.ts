@@ -16,6 +16,8 @@ export const LINKS = {
   plex: "/settings/plex",
   plexMonitoring: "/settings/plex#plex-monitoring",
   plexSignIn: "/settings/plex#plex-sign-in",
+  // The Jellyfin card on Connections, like Plex's.
+  jellyfinConnection: "/settings/connections#jellyfin",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",
   downloadsSearching: "/activity/wanted",
