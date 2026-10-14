@@ -114,14 +114,17 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
       {open && <Scrim onClose={dismiss} className="z-40 lg:hidden" />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[236px] flex-none transform flex-col overflow-y-auto bg-sidebar transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[236px] flex-none transform flex-col bg-sidebar transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
         // As a drawer in the installed iPhone app it runs edge to edge: keep the brand row
-        // below the status bar and the last link above the home indicator.
+        // below the status bar and the foot above the home indicator. Only the nav list
+        // scrolls: the brand row and the foot (you, and which build this is) stay put. The
+        // nav is relative so its screen-reader-only labels (absolutely placed) belong to its
+        // scroll box; otherwise the transformed aside holds them and grows a second scroll.
         style={{ borderRight: "1px solid var(--line)", paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        <div className="flex items-center gap-2.5 px-[18px] pb-3 pt-[18px]">
+        <div className="flex flex-none items-center gap-2.5 px-[18px] pb-3 pt-[18px]">
           <span
             className="grid h-[30px] w-[30px] place-items-center rounded-[9px]"
             style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}
@@ -132,7 +135,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           {bell && <div className="ml-auto"><NotificationBell placement="side" /></div>}
         </div>
 
-        <nav className="flex flex-col gap-0.5 px-2.5 pt-2">
+        <nav className="relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-3 pt-2">
           {nav.map((group, gi) => (
             <div key={gi} className="flex flex-col gap-0.5">
               {group.group && (
@@ -173,40 +176,41 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           ))}
         </nav>
 
-        {/* The foot: you, the theme and sign out, and under them which build this is (with a
-            dot when the update check found a newer one) — one block, so the build line costs
-            the sidebar as little height as it can. */}
-        <div className="mt-auto flex flex-col gap-0.5 px-3.5 pb-2 pt-3.5" style={{ borderTop: "1px solid var(--line)" }}>
-          <div className="flex items-center gap-2.5">
-            {/* You: notifications, password and signed-in devices live on the Me page. */}
-            <NavLink to="/me" onClick={onClose} aria-label={`${user?.username ?? "Your account"} — Me`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
-              <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-sm font-bold text-white">
-                {(user?.username?.[0] ?? "?").toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <div className="truncate text-base font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
-                <div className="font-mono text-xs capitalize text-ink-faint">{user?.role ?? ""}</div>
-              </div>
-            </NavLink>
-            <ThemeButton />
-            <button
-              onClick={signOut}
-              title="Sign out"
-              aria-label="Sign out"
-              className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
-              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject-text)" }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-              </svg>
-            </button>
+        {/* The foot, pinned under the nav: you, the theme and sign out, and under them which
+            build this is (with a dot when the update check found a newer one). */}
+        <div className="flex-none" style={{ borderTop: "1px solid var(--line)" }}>
+          <div className="flex flex-col gap-0.5 px-3.5 pb-2 pt-3.5">
+            <div className="flex items-center gap-2.5">
+              {/* You: notifications, password and signed-in devices live on the Me page. */}
+              <NavLink to="/me" onClick={onClose} aria-label={`${user?.username ?? "Your account"} — Me`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
+                <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-sm font-bold text-white">
+                  {(user?.username?.[0] ?? "?").toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-base font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
+                  <div className="font-mono text-xs capitalize text-ink-faint">{user?.role ?? ""}</div>
+                </div>
+              </NavLink>
+              <ThemeButton />
+              <button
+                onClick={signOut}
+                title="Sign out"
+                aria-label="Sign out"
+                className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
+                style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject-text)" }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+                </svg>
+              </button>
+            </div>
+            <VersionBadge onNavigate={onClose} />
           </div>
-          <VersionBadge onNavigate={onClose} />
+          {/* Your own Plex link (Discover's recommendations use its watch history), and your
+              Jellyfin link while a Jellyfin server is connected or you're linked to one. */}
+          <Suspense fallback={null}><PlexAccountLink variant="sidebar" /></Suspense>
+          <Suspense fallback={null}><JellyfinAccountLink variant="sidebar" /></Suspense>
         </div>
-        {/* Your own Plex link (Discover's recommendations use its watch history), and your
-            Jellyfin link while a Jellyfin server is connected or you're linked to one. */}
-        <Suspense fallback={null}><PlexAccountLink variant="sidebar" /></Suspense>
-        <Suspense fallback={null}><JellyfinAccountLink variant="sidebar" /></Suspense>
       </aside>
     </>
   );

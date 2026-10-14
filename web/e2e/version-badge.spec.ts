@@ -29,6 +29,8 @@ async function openNav(page: Page) {
   const menu = page.getByRole("button", { name: /^Open menu/ });
   await menu.click();
   await expect(menu).toHaveAttribute("aria-expanded", "true");
+  // Let it finish sliding in.
+  await expect.poll(async () => (await page.locator("aside").boundingBox())?.x).toBe(0);
 }
 
 const badge = (page: Page) => page.getByTestId("version-badge");
@@ -71,6 +73,69 @@ test.describe("admin", () => {
     if (phone(page)) {
       await expect(page.getByRole("button", { name: /^Open menu/ })).toHaveAttribute("aria-expanded", "false");
     }
+  });
+});
+
+// The foot is pinned: the account row and the badge are on screen without scrolling at
+// laptop heights and in the phone drawer, and only the nav list scrolls (the sidebar
+// itself and the window never do, and nothing scrolls sideways).
+async function onScreen(page: Page, name: string, loc: ReturnType<Page["locator"]>) {
+  const box = await loc.boundingBox();
+  const vp = page.viewportSize()!;
+  expect(box, `${name} is laid out`).not.toBeNull();
+  expect(box!.y, `${name} top`).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height, `${name} bottom`).toBeLessThanOrEqual(vp.height);
+  expect(box!.x, `${name} left`).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width, `${name} right`).toBeLessThanOrEqual(vp.width);
+}
+
+async function pinnedFoot(page: Page, navScrolls: boolean) {
+  const account = page.getByRole("link", { name: /— Me$/ });
+  const link = badge(page).getByRole("link");
+  await expect(link).toBeVisible();
+  await onScreen(page, "account row", account);
+  await onScreen(page, "version badge", link);
+  const m = await page.evaluate(() => {
+    const aside = document.querySelector("aside")!;
+    const nav = aside.querySelector("nav")!;
+    return {
+      aside: aside.scrollHeight - aside.clientHeight,
+      asideX: aside.scrollWidth - aside.clientWidth,
+      nav: nav.scrollHeight - nav.clientHeight,
+      navX: nav.scrollWidth - nav.clientWidth,
+      window: document.documentElement.scrollHeight - window.innerHeight,
+    };
+  });
+  expect(m.aside, "the sidebar itself doesn't scroll").toBeLessThanOrEqual(1);
+  expect(m.window, "the window doesn't scroll").toBeLessThanOrEqual(1);
+  expect(Math.max(m.asideX, m.navX), "nothing scrolls sideways").toBeLessThanOrEqual(0);
+  if (navScrolls) {
+    expect(m.nav, "the nav list is what scrolls").toBeGreaterThan(0);
+    // Its last entry is still reachable, and scrolling it leaves the foot where it was.
+    const settings = page.locator("aside nav").getByRole("link", { name: /^Settings/ });
+    await settings.scrollIntoViewIfNeeded();
+    await onScreen(page, "Settings link", settings);
+    await onScreen(page, "version badge after scrolling the nav", link);
+  }
+}
+
+test.describe("pinned foot", () => {
+  test.use({ persona: "admin" });
+
+  for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }]) {
+    test(`account row and badge are on screen at ${size.width}×${size.height}`, async ({ page }) => {
+      test.skip(phone(page), "desktop sizes run in the desktop project");
+      await page.setViewportSize(size);
+      await page.goto("/movies");
+      await pinnedFoot(page, size.height < 900);
+    });
+  }
+
+  test("account row and badge are on screen in the phone drawer", async ({ page }) => {
+    test.skip(!phone(page), "the drawer runs in the phone project");
+    await page.goto("/movies");
+    await openNav(page);
+    await pinnedFoot(page, true);
   });
 });
 
