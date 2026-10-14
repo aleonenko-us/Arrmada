@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/notify"
 	"github.com/tristenlammi/arrmada/internal/push"
@@ -24,8 +25,14 @@ type UserNotification struct {
 	Read      bool   `json:"read"`
 	CreatedAt int64  `json:"created_at"`
 	// PlexURL, on a 'ready' notice for a title the owner's Plex had when it was sent, is
-	// the title's app.plex.tv page (the bell's Watch on Plex).
+	// the title's app.plex.tv page (kept for older pages; WatchLinks is the full list).
 	PlexURL string `json:"plex_url,omitempty"`
+	// JellyfinURL is the same for Jellyfin: its web app's page for the title, at the
+	// public address. Read into WatchLinks by the HTTP layer, never sent on its own.
+	JellyfinURL string `json:"-"`
+	// WatchLinks is the bell's Watch buttons: one per media server that has the title,
+	// the reader's own server first. Filled by the HTTP layer.
+	WatchLinks []mediaserver.WatchLink `json:"watch_links,omitempty"`
 }
 
 // --- inbox + per-user Apprise (repo) ---
@@ -34,14 +41,15 @@ type UserNotification struct {
 // makes it idempotent — inserted reports whether this call actually added a row
 // (false = already notified), so callers can skip the Apprise push on repeats.
 func (r *Repo) addUserNotification(ctx context.Context, userID int64, title, body, mediaType, ref string, at int64) (inserted bool, err error) {
-	return r.addUserNotificationLink(ctx, userID, title, body, mediaType, ref, "", at)
+	return r.addUserNotificationLink(ctx, userID, title, body, mediaType, ref, nil, at)
 }
 
-// addUserNotificationLink is addUserNotification with the title's Watch on Plex page.
-func (r *Repo) addUserNotificationLink(ctx context.Context, userID int64, title, body, mediaType, ref, plexURL string, at int64) (inserted bool, err error) {
+// addUserNotificationLink is addUserNotification with the title's Watch links (its Plex
+// and Jellyfin pages).
+func (r *Repo) addUserNotificationLink(ctx context.Context, userID int64, title, body, mediaType, ref string, links []mediaserver.WatchLink, at int64) (inserted bool, err error) {
 	res, err := r.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_notifications (user_id, title, body, media_type, ref, plex_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		userID, title, body, mediaType, ref, plexURL, at)
+		`INSERT OR IGNORE INTO user_notifications (user_id, title, body, media_type, ref, plex_url, jellyfin_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, title, body, mediaType, ref, linkOf(links, mediaserver.Plex), linkOf(links, mediaserver.Jellyfin), at)
 	if err != nil {
 		return false, err
 	}
@@ -51,7 +59,7 @@ func (r *Repo) addUserNotificationLink(ctx context.Context, userID int64, title,
 
 func (r *Repo) listUserNotifications(ctx context.Context, userID int64) ([]UserNotification, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, body, media_type, ref, read, created_at, plex_url FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`, userID)
+		`SELECT id, title, body, media_type, ref, read, created_at, plex_url, jellyfin_url FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +68,7 @@ func (r *Repo) listUserNotifications(ctx context.Context, userID int64) ([]UserN
 	for rows.Next() {
 		var n UserNotification
 		var read int
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.MediaType, &n.Ref, &read, &n.CreatedAt, &n.PlexURL); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.MediaType, &n.Ref, &read, &n.CreatedAt, &n.PlexURL, &n.JellyfinURL); err != nil {
 			return nil, err
 		}
 		n.Read = read != 0
@@ -259,16 +267,13 @@ func (s *Service) notifySeasonsReady(ctx context.Context, req Request, prog map[
 		if p, ok := prog[n]; !ok || !seasonReady(p) {
 			continue
 		}
-		v, plexURL, err := sg.judge(ctx, n)
+		v, note, err := sg.judge(ctx, n)
 		if err != nil || v == plexWait {
 			errs = append(errs, err)
 			continue
 		}
-		if v != plexHas {
-			plexURL = ""
-		}
-		body := readyWords(fmt.Sprintf("Season %d of “%s”", n, req.Title), v)
-		told, err := s.notifyParties(ctx, req, notice{Title: "Season ready", Body: body, Ref: fmt.Sprintf("%s:s%d", requestRef(req), n), Kind: "request-season-ready", PlexURL: plexURL}, nil)
+		body := readyWords(fmt.Sprintf("Season %d of “%s”", n, req.Title), v, note)
+		told, err := s.notifyParties(ctx, req, notice{Title: "Season ready", Body: body, Ref: fmt.Sprintf("%s:s%d", requestRef(req), n), Kind: "request-season-ready", Links: note.links}, nil)
 		if err == nil {
 			sg.told(ctx, n)
 		}
@@ -430,14 +435,11 @@ func (s *Service) notifyReady(ctx context.Context, req Request) error {
 	if req.ReadyAt > 0 {
 		return nil
 	}
-	v, plexURL, err := s.plexGate(ctx, req)
+	v, note, err := s.plexGate(ctx, req)
 	if err != nil || v == plexWait {
 		return err
 	}
-	if v != plexHas {
-		plexURL = ""
-	}
-	told, err := s.notifyParties(ctx, req, notice{Title: "Your request is ready", Body: readyBody(req, v), Ref: requestRef(req), Kind: "request-ready", PlexURL: plexURL}, nil)
+	told, err := s.notifyParties(ctx, req, notice{Title: "Your request is ready", Body: readyBody(req, v, note), Ref: requestRef(req), Kind: "request-ready", Links: note.links}, nil)
 	if err == nil {
 		// Only once everyone has been told: a failure leaves it unstamped, and the retry
 		// (an outbox row, the ready sweep) finishes the job.
@@ -494,22 +496,49 @@ func (s *Service) notifyPartiesCount(ctx context.Context, req Request, title, bo
 	return s.notifyParties(ctx, req, notice{Title: title, Body: body, Ref: ref, Kind: kind}, skip)
 }
 
-// notice is one message to a request's people. PlexURL, on a 'ready' notice for a title
-// the owner's Plex has, is its app.plex.tv page: stored on the inbox row (the bell's Watch
-// on Plex), carried by the Web Push (its Watch on Plex action) and added to the personal
-// Apprise message.
+// notice is one message to a request's people. Links, on a 'ready' notice for a title a
+// media server has, is a Watch link per server that has it (Plex first): stored on the
+// inbox row (the bell's Watch buttons), carried by the Web Push (its Watch action, the
+// reader's own server) and added to the personal Apprise message.
 type notice struct {
 	Title, Body, Ref, Kind string
-	PlexURL                string
+	Links                  []mediaserver.WatchLink
 }
 
-// appriseBody is the personal Apprise message: the notice, and on a 'ready' notice Plex
-// has, the link that opens it there.
-func appriseBody(n notice) string {
-	if n.PlexURL == "" {
-		return n.Body
+// linkOf is the URL of server k's link, "" when it has none.
+func linkOf(links []mediaserver.WatchLink, k mediaserver.Kind) string {
+	for _, l := range links {
+		if l.Server == k {
+			return l.URL
+		}
 	}
-	return n.Body + "\nWatch: " + n.PlexURL
+	return ""
+}
+
+// appriseBody is the personal Apprise message: the notice, and on a 'ready' notice a
+// server has, the link that opens it there — one line per server when there are two,
+// the reader's own first.
+func appriseBody(body string, links []mediaserver.WatchLink) string {
+	switch len(links) {
+	case 0:
+		return body
+	case 1:
+		return body + "\nWatch: " + links[0].URL
+	}
+	for _, l := range links {
+		body += "\nWatch on " + l.Label + ": " + l.URL
+	}
+	return body
+}
+
+// pushMessage is one person's Web Push for a notice: Watch opens their own server's link
+// (links is already in their order); plex_url stays for workers from before Jellyfin.
+func pushMessage(title, body, ref string, links []mediaserver.WatchLink) push.Message {
+	m := push.Message{Title: title, Body: body, URL: pushPath(ref), PlexURL: linkOf(links, mediaserver.Plex)}
+	if len(links) > 0 {
+		m.WatchURL, m.WatchLabel = links[0].URL, links[0].Label
+	}
+	return m
 }
 
 // notifyParties is notifyPartiesCount for a whole notice.
@@ -574,7 +603,7 @@ func (s *Service) tellUsers(ctx context.Context, userIDs []int64, mediaType stri
 	var errs []error
 	now := time.Now().Unix()
 	for _, uid := range userIDs {
-		inserted, err := s.repo.addUserNotificationLink(ctx, uid, title, body, mediaType, ref, n.PlexURL, now)
+		inserted, err := s.repo.addUserNotificationLink(ctx, uid, title, body, mediaType, ref, n.Links, now)
 		if err != nil {
 			s.log.Warn(kind+": could not add inbox notification", "user", uid, "err", err)
 			errs = append(errs, fmt.Errorf("inbox notification (%s %v): %w", logKey, logVal, err))
@@ -590,13 +619,18 @@ func (s *Service) tellUsers(ctx context.Context, userIDs []int64, mediaType stri
 			s.log.Info(kind+" notified (inbox only, by their choice)", logKey, logVal, "user", uid)
 			continue
 		}
+		// Their own server's link first (only asked when there's a choice to make).
+		links := n.Links
+		if len(links) > 1 {
+			links = mediaserver.LeadWith(links, s.homeOf(ctx, uid))
+		}
 		if url, err := s.repo.getUserApprise(ctx, uid); err == nil && url != "" {
 			// Checked again at send time: DNS can change, and a URL saved before the
 			// check existed gets it too. A refusal skips only this push — the inbox row
 			// above (and Web Push below) still tell them.
 			if verr := s.checkUserApprise(ctx, uid, url); verr != nil {
 				s.log.Warn(kind+": personal Apprise push skipped — the saved link isn't allowed", "user", uid, "reason", verr.Error())
-			} else if err := s.sendUserApprise(ctx, url, appriseBody(n)); err != nil {
+			} else if err := s.sendUserApprise(ctx, url, appriseBody(body, links)); err != nil {
 				s.log.Warn(kind+": apprise push failed", "user", uid, "err", err)
 			}
 		}
@@ -604,7 +638,7 @@ func (s *Service) tellUsers(ctx context.Context, userIDs []int64, mediaType stri
 			// Web Push to every device this user enabled it on. Async with its own
 			// deadline — the import fan-out must never block on a push service. The
 			// inbox insert above already deduped repeats, so this can't double-ping.
-			s.push.SendToUserAsync(uid, push.Message{Title: title, Body: body, URL: pushPath(ref), PlexURL: n.PlexURL})
+			s.push.SendToUserAsync(uid, pushMessage(title, body, ref, links))
 		}
 		s.log.Info(kind+" notified", logKey, logVal, "user", uid)
 	}

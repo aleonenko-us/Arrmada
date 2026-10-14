@@ -120,6 +120,36 @@ type WatchLink struct {
 	URL    string `json:"url"`
 }
 
+// Home is the server a person watches on, from the accounts they've linked: Jellyfin for
+// someone linked to Jellyfin and not to Plex, Plex for everyone else (Plex stays first
+// when they're linked to both, or to neither).
+func Home(plexLinked, jellyfinLinked bool) Kind {
+	if jellyfinLinked && !plexLinked {
+		return Jellyfin
+	}
+	return Plex
+}
+
+// LeadWith is links with home's link first and the rest in their order, so each person
+// sees their own server's Watch button first. links is not changed.
+func LeadWith(links []WatchLink, home Kind) []WatchLink {
+	if len(links) < 2 {
+		return links
+	}
+	out := make([]WatchLink, 0, len(links))
+	for _, l := range links {
+		if l.Server == home {
+			out = append(out, l)
+		}
+	}
+	for _, l := range links {
+		if l.Server != home {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // Registry is every media server Arrmada knows how to use, Plex first, then Jellyfin.
 // A server that isn't set up is still in it; the methods skip it. The zero value and a
 // nil *Registry are empty.

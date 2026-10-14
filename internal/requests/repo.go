@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 // ErrNotFound is returned when a request id doesn't exist.
@@ -44,8 +46,12 @@ type Request struct {
 	// Tracking is where the request has got to, from request to ready (see Track).
 	Tracking *Tracking `json:"tracking,omitempty"`
 	// PlexURL opens the title in app.plex.tv once it's delivered and Plex has it. Filled
-	// by the HTTP layer from the Plex library index; never stored.
+	// by the HTTP layer from the Plex library index; never stored. Kept for older pages:
+	// WatchLinks is the full list.
 	PlexURL string `json:"plex_url,omitempty"`
+	// WatchLinks is a Watch link per media server that has the delivered title, the
+	// viewer's own server first. Filled by the HTTP layer; never stored.
+	WatchLinks []mediaserver.WatchLink `json:"watch_links,omitempty"`
 	// ReadyAt is when the requester (and followers) were told it's ready, unix seconds;
 	// 0 until then. It also sorts approved requests into in progress and ready.
 	ReadyAt   int64  `json:"ready_at"`
