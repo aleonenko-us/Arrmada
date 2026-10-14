@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { releaseErrorMessage, type RankedRelease, type ReleaseList } from "../lib/api";
 import { formatReleaseAge } from "../lib/format";
+import { isUsenetRelease, noClientFor } from "../lib/network";
 import { IndexerIssues, emptyReleasesMessage } from "./IndexerIssues";
+import { UsenetChip } from "./UsenetChip";
 import { Button, IconButton, Modal } from "../ui";
 
 // BookReleaseModal is the book-specific interactive search: results split into
@@ -130,8 +132,10 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
   // Default the target to the version being searched for, else the version the
   // release's own words point at.
   const [target, setTarget] = useState<number>(defaultTarget ?? rel.version_id ?? 0);
-  // A usenet release has no client to go to; its reject reason says so.
-  const usenet = rel.transport === "usenet";
+  // Usenet has no seeders to count. A release on a network with no download client set up
+  // for it can't be grabbed at all; its reject reason says so.
+  const usenet = isUsenetRelease(rel);
+  const noClient = noClientFor(rel);
   const age = formatReleaseAge(rel.published_at);
   return (
     <div
@@ -148,12 +152,14 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             {rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>★ Recommended{rel.version ? ` · ${rel.version}` : targets && targets.length > 0 && rel.edition === "audiobook" ? " · Standard" : ""}</span>}
             {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent-text)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
             {rel.format && <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>{rel.format}</span>}
-            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-xs uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
+            {usenet && <UsenetChip />}
+            {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-xs uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{noClient ? "can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
           </div>
           {/* The raw torrent name — narrator and edition detail live here. */}
           <div className="mt-1 break-words text-base font-medium">{rel.title}</div>
-          {/* Another language: the automation skips it, a hand pick is still allowed. */}
-          {rel.reject_reason && !usenet && <div className="mt-0.5 text-xs" style={{ color: "var(--avoid-text)" }}>{rel.reject_reason}</div>}
+          {/* Another language: the automation skips it, a hand pick is still allowed. No
+              client for its network: it can't be grabbed, and this says why. */}
+          {rel.reject_reason && <div className="mt-0.5 text-xs" style={{ color: "var(--avoid-text)" }}>{rel.reject_reason}</div>}
           {/* Structured metadata (rich on trackers like MyAnonaMouse). */}
           {(rel.narrator || rel.series || rel.language) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
@@ -187,7 +193,7 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
         <Button
           variant="primary"
           onClick={() => onGrab(target)}
-          disabled={grabbed || usenet || !rel.token}
+          disabled={grabbed || noClient || !rel.token}
           busy={busy}
           busyLabel="Grabbing…"
           className="flex-none disabled:opacity-60"

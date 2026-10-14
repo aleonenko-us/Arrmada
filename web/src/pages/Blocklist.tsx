@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type BlocklistRow, type BlockType } from "../lib/api";
 import { invalidate, useQuery } from "../lib/query";
+import { UsenetChip } from "../components/UsenetChip";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip, useConfirm, useToast } from "../ui";
 
 const PAGE_SIZE = 100;
@@ -131,6 +132,7 @@ export function BlocklistPanel() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusChip tone={r.type === "global" ? "avoid" : "faint"}>{r.type === "music" && r.discography ? "discography" : KIND_LABEL[r.type]}</StatusChip>
+                            {r.network === "usenet" && <UsenetChip />}
                             <span className="min-w-0 break-all font-mono text-sm">{r.title}</span>
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-dim">
