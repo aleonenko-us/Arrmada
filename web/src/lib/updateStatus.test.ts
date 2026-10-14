@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "./api";
-import { noteBlocks, updateHeadline } from "./updateStatus";
+import { noteBlocks, updateHeadline, updateHint } from "./updateStatus";
 
 const base: UpdateStatus = {
   enabled: true, current: "v1.2.0", channel: "release", checked_at: "2026-10-13T09:00:00Z",
@@ -27,6 +27,30 @@ describe("updateHeadline", () => {
     expect(updateHeadline({ ...main, behind: 1 }).text).toBe("1 commit behind main.");
     expect(updateHeadline({ ...main, behind: 0 }).tone).toBe("ok");
     expect(updateHeadline({ ...main, behind: null }).tone).toBe("muted");
+  });
+});
+
+describe("a build on an install that follows the releases", () => {
+  const build = { ...base, channel: "build" as const, current: "2026.10.14", available: false };
+
+  it("is offered the release that includes it, or told it's newer", () => {
+    expect(updateHeadline({ ...build, available: true, ahead: 0 })).toEqual({ text: "Update available: v1.3.0", tone: "update" });
+    expect(updateHeadline({ ...build, ahead: 5 })).toEqual({ text: "This build is newer than the latest release (v1.3.0).", tone: "ok" });
+    expect(updateHeadline({ ...build, ahead: 0 }).text).toBe("Up to date: this build is v1.3.0.");
+    expect(updateHeadline({ ...build, ahead: null }).tone).toBe("muted");
+    expect(updateHeadline({ ...build, latest: null }).text).toBe("No release has been published yet.");
+  });
+});
+
+describe("updateHint", () => {
+  it("names the way to update for each channel", () => {
+    expect(updateHint(base)).toMatch(/update\.sh.*docker compose pull/);
+    expect(updateHint({ ...base, available: false })).toBeNull();
+    expect(updateHint({ ...base, channel: "build", available: true, ahead: 0 })).toMatch(/moves this server to that release/);
+    expect(updateHint({ ...base, channel: "build", available: false, ahead: 3 })).toMatch(/ARRMADA_CHANNEL=main/);
+    expect(updateHint({ ...base, channel: "main", available: false, behind: 4 })).toMatch(/pulls main/);
+    expect(updateHint({ ...base, channel: "main", available: false, behind: 0 })).toBeNull();
+    expect(updateHint({ ...base, enabled: false })).toBeNull();
   });
 });
 
