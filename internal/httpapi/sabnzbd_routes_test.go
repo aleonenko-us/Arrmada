@@ -10,9 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/scheduler"
 )
 
 // A usenet client's status carries its card's facts, and "Add missing categories" creates
@@ -120,5 +122,63 @@ func TestUsenetClientStatusAndCategories(t *testing.T) {
 	}
 	if rec := s.do("POST", "/api/v1/downloadclients/9999/categories", mgr); rec.Code != http.StatusNotFound {
 		t.Errorf("missing client: HTTP %d", rec.Code)
+	}
+}
+
+// Adding or switching on a usenet client runs the Prowlarr sync at once (its usenet
+// indexers only come in while one exists); a torrent client, or an edit that leaves the
+// usenet client as it was, doesn't.
+func TestUsenetClientKicksProwlarrSync(t *testing.T) {
+	runs := make(chan struct{}, 10)
+	var sched *scheduler.Scheduler
+	s := newRouteServer(t, func(d *Deps) {
+		d.Downloads = download.NewService(d.Store.DB(), d.Log)
+		sched = scheduler.New(d.Log)
+		sched.Register("prowlarr-sync", time.Hour, false, func(context.Context) error {
+			runs <- struct{}{}
+			return nil
+		}, scheduler.Label("Sync indexers from Prowlarr"), scheduler.Description("test"))
+		d.Scheduler = sched
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+	t.Cleanup(func() { cancel(); sched.Wait() })
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+
+	ran := func() bool {
+		select {
+		case <-runs:
+			return true
+		case <-time.After(3 * time.Second):
+			return false
+		}
+	}
+	quiet := func() bool {
+		select {
+		case <-runs:
+			return false
+		case <-time.After(300 * time.Millisecond):
+			return true
+		}
+	}
+
+	if rec := s.doBody("POST", "/api/v1/downloadclients", `{"name":"qb","kind":"qbittorrent","url":"http://qb.invalid"}`, mgr); rec.Code != http.StatusCreated || !quiet() {
+		t.Errorf("torrent client: HTTP %d, or it synced", rec.Code)
+	}
+	rec := s.doBody("POST", "/api/v1/downloadclients", `{"name":"sab","kind":"sabnzbd","url":"http://sab.invalid","enabled":false}`, mgr)
+	if rec.Code != http.StatusCreated || !quiet() {
+		t.Fatalf("switched-off usenet client: HTTP %d %s, or it synced", rec.Code, rec.Body)
+	}
+	var c download.Client
+	_ = json.Unmarshal(rec.Body.Bytes(), &c)
+	path := fmt.Sprintf("/api/v1/downloadclients/%d", c.ID)
+	if rec := s.doBody("PUT", path, `{"name":"sab","kind":"sabnzbd","url":"http://sab.invalid","enabled":true}`, mgr); rec.Code != http.StatusOK || !ran() {
+		t.Errorf("switching it on: HTTP %d, synced %v", rec.Code, false)
+	}
+	if rec := s.doBody("PUT", path, `{"name":"sab2","kind":"sabnzbd","url":"http://sab.invalid"}`, mgr); rec.Code != http.StatusOK || !quiet() {
+		t.Errorf("renaming it: HTTP %d, or it synced again", rec.Code)
+	}
+	if rec := s.doBody("POST", "/api/v1/downloadclients", `{"name":"sab3","kind":"sabnzbd","url":"http://sab3.invalid"}`, mgr); rec.Code != http.StatusCreated || !ran() {
+		t.Errorf("new usenet client: HTTP %d, or it didn't sync", rec.Code)
 	}
 }
