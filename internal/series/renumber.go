@@ -444,11 +444,12 @@ var ErrNoPendingNumbering = errors.New("there's no numbering change waiting for 
 // says, or the metadata couldn't be fetched to check. Nothing moved.
 var ErrStalePlan = errors.New("the numbering changed or the metadata is unavailable — nothing was moved; try again")
 
-// ErrRebuildFailed is returned when the plan still stood but the renumber itself couldn't
-// be saved (a database error, say). Nothing moved. It used to read as ErrStalePlan, which
+// ErrRebuildFailed is returned when Apply failed on its own account — reading the stored
+// listing, planning or the rebuild hit a database error, say — not because the plan
+// changed. Nothing moved. It used to read as ErrStalePlan, which
 // sent the owner round a review loop that could never succeed; the real error is in
 // RefreshResult.NumberingErr and the log, never in this message.
-var ErrRebuildFailed = errors.New("the renumber couldn't be saved, so nothing was moved — the server log has the details")
+var ErrRebuildFailed = errors.New("the renumber failed on the server, so nothing was moved — the server log has the details")
 
 // remapLines is the History list of a renumber's moves: the first 20, then a count.
 func remapLines(remaps []EpisodeRemap) string {
