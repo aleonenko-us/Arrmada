@@ -187,8 +187,12 @@ func (s *Service) record(caller context.Context, idx Indexer, err error, dur tim
 	}
 	o := connstatus.Outcome{Err: err, Dur: dur, Backoff: backoff, Name: idx.Name}
 	var he *HTTPStatusError
-	if errors.As(err, &he) {
+	var ne *nzbIndexerError
+	switch {
+	case errors.As(err, &he):
 		o.RetryAfter = he.RetryAfter
+	case errors.As(err, &ne):
+		o.RetryAfter = ne.retryAfter
 	}
 	s.status.Record(connstatus.KindIndexer, statusRef(idx.ID), o)
 }
@@ -297,7 +301,16 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 	// in its link never reaches the usenet client (nzb.go). There's no fallback to the
 	// link: a failure fails the grab.
 	if found.Transport() == TransportUsenet {
-		return fetchNZBPayload(ctx, *found, downloadURL)
+		// A failure that's the indexer's (limit, key, down) counts against it like a failed
+		// search, so sweeps back off; one about this release (gone, not an NZB) doesn't.
+		// A delivered NZB is the indexer answering.
+		start := time.Now()
+		res, err := fetchNZBPayload(ctx, *found, downloadURL)
+		var ie *nzbIndexerError
+		if err == nil || errors.As(err, &ie) {
+			s.record(ctx, *found, err, time.Since(start), true)
+		}
+		return res, err
 	}
 	// Torrent-transport URLs (torznab) are resolved server-side so downstream
 	// gets an infohash-bearing payload (.torrent bytes or a magnet) instead of a
