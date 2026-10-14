@@ -32,6 +32,9 @@ type BookFile struct {
 	Format    string `json:"format"`
 	SizeBytes int64  `json:"size_bytes"`
 	FileCount int    `json:"file_count"`
+	// Kindle: Send to Kindle's email takes this ebook's format (KindleAccepts). Set only
+	// where a page offers the send (the staff book page); never stored.
+	Kindle bool `json:"kindle,omitempty"`
 }
 
 // Book is one book in the library. It can carry an ebook edition, an audiobook

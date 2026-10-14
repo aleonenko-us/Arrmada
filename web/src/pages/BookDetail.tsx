@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
@@ -21,6 +21,11 @@ import { libraryStatus } from "../lib/status";
 import { Button, ConfirmDialog, IconButton, Menu, Modal, StatusChip, useToast, type MenuItem, type ToastFn } from "../ui";
 import { Switch } from "../ui/Switch";
 import { Page } from "../ui/Page";
+import { lazyPage } from "../lib/lazyPage";
+
+// Send to Kindle for the ebook, to the signed-in person's own Kindle — the same lazy
+// module My shelf uses (the first-time sheet, the address kept on the Me page).
+const KindleButton = lazyPage(() => import("../components/Kindle"), "KindleButton");
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -302,6 +307,13 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
           )}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
+          {kind === "ebook" && (
+            <div className="flex max-w-[240px] flex-wrap justify-end gap-1.5 text-right">
+              <Suspense fallback={null}>
+                <KindleButton book={{ book_id: bookId, title: search.book.title, ebook: { format: file.format, size_bytes: file.size_bytes, kindle: file.kindle } }} />
+              </Suspense>
+            </div>
+          )}
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}
           <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{multi ? "Delete all" : "Delete file"}</button>
         </div>

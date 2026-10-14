@@ -158,6 +158,10 @@ function staffRoutes(admin: boolean): RouteObject[] {
     // name could be more than one author.
     page("/books/author/:name", "Author", books(<AuthorByName />)),
     page("/books/:id", "Book", books(<BookDetail />)),
+    // My shelf is a requester page. A Send to Kindle result ("kindle:<send>", which names
+    // neither the book nor the person) links there, so staff who send from a book page
+    // land on Books instead.
+    redirect("/shelf", "/books"),
     page("/subtitles", "Subtitles", <Subtitles />),
     page("/convert", "Convert", <Convert />),
     // A splat (which also matches plain /insights), so a person's page lives at

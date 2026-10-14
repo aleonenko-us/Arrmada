@@ -15,7 +15,8 @@ const NotificationSettings = lazyPage(() => import("../components/NotificationSe
 const PlexAccountLink = lazy(() => import("../components/PlexAccountLink"));
 // Your password and your other devices (every role).
 const AccountSettings = lazyPage(() => import("../components/AccountSettings"), "AccountSettings");
-// Your Kindle's address, for Send to Kindle on My shelf (anyone who can read the shelf).
+// Your Kindle's address, for Send to Kindle on My shelf or, for staff, the book page
+// (anyone requester and up).
 const KindleCard = lazyPage(() => import("../components/Kindle"), "KindleCard");
 // Your private calendar link for Google / Apple Calendar (LAN only, like the Calendar).
 const CalendarFeedPanel = lazyPage(() => import("../components/CalendarFeed"), "CalendarFeedPanel");

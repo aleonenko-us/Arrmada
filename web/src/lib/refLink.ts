@@ -48,7 +48,7 @@ export function refToPath(ref: string | undefined | null): string | null {
       return /^[1-9]\d*$/.test(id) ? (kind === "issue" ? "/requests?tab=issues&issue=" : "/requests?id=") + id : null;
     }
     case "kindle":
-      return "/shelf"; // a Send to Kindle result
+      return "/shelf"; // a Send to Kindle result (staff, who have no shelf, are sent on to /books)
   }
   return null;
 }
