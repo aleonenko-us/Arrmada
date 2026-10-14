@@ -176,11 +176,11 @@ func TestUpgradePicksKeepEdition(t *testing.T) {
 	theatrical := quality.NewCandidate("Alien.1979.2160p.UHD.BluRay.x265-GRP", 40, 50)
 	dc := quality.NewCandidate("Alien.1979.Directors.Cut.1080p.BluRay.x264-GRP", 12, 20)
 
-	picks := h.c.movieUpgradePicks(h.ctx, m, rows[1:], rows, []quality.Candidate{theatrical})
+	picks := h.c.movieUpgradePicks(h.ctx, m, rows[1:], rows, []quality.Candidate{theatrical}, nil)
 	if len(picks) != 0 {
 		t.Fatalf("the DC track would upgrade to %q", picks[0].pick.Name)
 	}
-	picks = h.c.movieUpgradePicks(h.ctx, m, rows[1:], rows, []quality.Candidate{theatrical, dc})
+	picks = h.c.movieUpgradePicks(h.ctx, m, rows[1:], rows, []quality.Candidate{theatrical, dc}, nil)
 	if len(picks) != 1 || picks[0].pick.Name != dc.Name {
 		t.Fatalf("picks = %+v, want the DC 1080p", picks)
 	}
