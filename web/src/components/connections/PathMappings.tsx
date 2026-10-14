@@ -1,17 +1,50 @@
 import { useState } from "react";
 import { type DownloadClient, type NewDownloadClient, type PathMap } from "../../lib/api";
-import { downloadClientApi, type PathReport } from "../../lib/downloadClientApi";
+import { downloadClientApi, type PathCheck, type PathReport } from "../../lib/downloadClientApi";
+import { clientKindName } from "../../lib/network";
 import { Button } from "../../ui";
 
 // PathMappings sits in a download client's editor: the folders it sees under another path
-// than Arrmada does (a seedbox, or qBittorrent on another machine), and a check of which of
-// its paths Arrmada can actually see. Adding or removing a mapping saves at once; there is
-// no Save button. The bundled qBittorrent shares Arrmada's folders, so it only gets the check.
+// than Arrmada does (a seedbox, or qBittorrent or SABnzbd on another machine), and a check
+// of which of its paths Arrmada can actually see. Adding or removing a mapping saves at
+// once; there is no Save button. The bundled qBittorrent shares Arrmada's folders, so it
+// only gets the check.
 
 const field = "w-full min-w-0 rounded-lg px-3 py-2 font-mono text-sm";
 const fieldStyle = { background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
-const WHAT: Record<string, string> = { save_folder: "Save folder", newest_download: "Newest finished download" };
+const WHAT: Record<string, string> = { save_folder: "Save folder", newest_download: "Newest finished download", complete_folder: "Completed folder", category_folder: "Category folder" };
+
+/** A path check's name: "Completed folder", or "Category folder arrmada-tv". */
+export function pathCheckName(c: PathCheck): string {
+  const what = WHAT[c.what] ?? c.what;
+  return c.category ? `${what} ${c.category}` : what;
+}
+
+// PathCheckLine is one path a client reported and whether Arrmada sees it: ✓ where it is,
+// – for a download that's gone, ✕ for a folder Arrmada can't see. The usenet card's
+// completed folder uses it too (seesAt: "Arrmada sees it at …"), so both say it alike.
+export function PathCheckLine({ c, seesAt }: { c: PathCheck; seesAt?: boolean }) {
+  const tone = c.visible ? "var(--good-text)" : c.gone ? "var(--avoid-text)" : "var(--reject-text)";
+  const mark = c.visible ? "✓" : c.gone ? "–" : "✕";
+  if (seesAt) {
+    return (
+      <div className="break-all text-sm" style={{ color: tone }}>
+        {mark} <span className="text-ink-dim">{pathCheckName(c)}</span> <span className="font-mono">{c.remote}</span>
+        <span className="text-ink-dim">{c.visible ? " · Arrmada sees it at " : " · Arrmada can't see it at "}</span>
+        <span className="font-mono">{c.local}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="break-all text-sm" style={{ color: tone }}>
+      {mark} <span className="text-ink-dim">{pathCheckName(c)}:</span>{" "}
+      <span className="font-mono">{c.remote}</span>
+      {c.local !== c.remote && <> <span className="text-ink-faint">→</span> <span className="font-mono">{c.local}</span></>}
+      {!c.visible && <span className="text-ink-dim">{c.gone ? " (not there any more: moved or deleted)" : " (Arrmada can't see it)"}</span>}
+    </div>
+  );
+}
 
 export function PathMappings({ client, body, onChanged }: {
   client: DownloadClient;
@@ -19,6 +52,7 @@ export function PathMappings({ client, body, onChanged }: {
   body: (maps: PathMap[]) => NewDownloadClient;
   onChanged?: () => void;
 }) {
+  const who = clientKindName(client.kind);
   const [maps, setMaps] = useState<PathMap[]>(client.path_maps ?? []);
   const [remote, setRemote] = useState("");
   const [local, setLocal] = useState("");
@@ -79,7 +113,7 @@ export function PathMappings({ client, body, onChanged }: {
       {!client.bundled && (
         <>
           <p className="mb-0 mt-1 text-xs text-ink-faint">
-            Only for a qBittorrent that sees its downloads under another path than Arrmada, such as a seedbox or another machine. Left, the folder as qBittorrent names it; right, the same folder inside the Arrmada container.
+            Only for a {who} that sees its downloads under another path than Arrmada, such as a seedbox or another machine. Left, the folder as {who} names it; right, the same folder inside the Arrmada container.
           </p>
           {maps.length > 0 && (
             <ul className="m-0 mt-2.5 flex list-none flex-col gap-1.5 p-0">
@@ -101,7 +135,7 @@ export function PathMappings({ client, body, onChanged }: {
             onSubmit={(e) => { e.preventDefault(); if (remote.trim() && local.trim()) void add({ remote: remote.trim(), local: local.trim() }); }}
           >
             <label className="flex min-w-0 flex-col gap-1">
-              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">qBittorrent's path</span>
+              <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{who}'s path</span>
               <input className={field} style={fieldStyle} value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="/downloads" autoComplete="off" />
             </label>
             <label className="flex min-w-0 flex-col gap-1">
@@ -117,14 +151,7 @@ export function PathMappings({ client, body, onChanged }: {
       {checkError && <p role="alert" className="mb-0 mt-2.5 break-words text-sm" style={{ color: "var(--reject-text)" }}>{checkError}</p>}
       {report && (
         <div className="mt-2.5 flex flex-col gap-1.5" aria-live="polite">
-          {report.checks.map((c) => (
-            <div key={c.what} className="break-all text-sm" style={{ color: c.visible ? "var(--good-text)" : c.gone ? "var(--avoid-text)" : "var(--reject-text)" }}>
-              {c.visible ? "✓" : c.gone ? "–" : "✕"} <span className="text-ink-dim">{WHAT[c.what] ?? c.what}:</span>{" "}
-              <span className="font-mono">{c.remote}</span>
-              {c.local !== c.remote && <> <span className="text-ink-faint">→</span> <span className="font-mono">{c.local}</span></>}
-              {!c.visible && <span className="text-ink-dim">{c.gone ? " (not there any more: moved or deleted)" : " (Arrmada can't see it)"}</span>}
-            </div>
-          ))}
+          {report.checks.map((c) => <PathCheckLine key={`${c.what}:${c.category ?? ""}`} c={c} />)}
           <p className="m-0 break-words text-sm text-ink-dim">{report.summary}</p>
           {report.suggestion && !client.bundled && (
             <div className="flex flex-wrap items-center gap-2">

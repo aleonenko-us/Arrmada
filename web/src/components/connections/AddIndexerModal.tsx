@@ -2,7 +2,7 @@ import { useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
-import { DEFAULT_SEED_DAYS, INDEXER_PRESETS, type IndexerPreset } from "../../lib/indexerPresets";
+import { DEFAULT_SEED_DAYS, presetsFor, type IndexerPreset } from "../../lib/indexerPresets";
 import { Button, Modal } from "../../ui";
 import { ALL_MEDIA, Labeled, MEDIA_TYPES, SeedingRules, TestLine, TIE_BREAK_HELP, field, fieldStyle, type TestState } from "./IndexerEditor";
 
@@ -12,7 +12,9 @@ import { ALL_MEDIA, Labeled, MEDIA_TYPES, SeedingRules, TestLine, TIE_BREAK_HELP
 // untested stays possible, one step down. It's loaded on open, so the catalogue and this
 // form aren't part of the Connections page's download.
 
-export default function AddIndexerModal({ onClose, onAdded, onProwlarr }: {
+export default function AddIndexerModal({ usenet = false, onClose, onAdded, onProwlarr }: {
+  /** A usenet download client exists, so a usenet (Newznab) indexer can be added. */
+  usenet?: boolean;
   onClose: () => void;
   onAdded: (created: Indexer) => void;
   /** The Prowlarr tile: open the Prowlarr card instead of a form. */
@@ -25,18 +27,18 @@ export default function AddIndexerModal({ onClose, onAdded, onProwlarr }: {
       {preset ? (
         <PresetForm key={preset.id} preset={preset} onBack={() => setPreset(null)} onAdded={onAdded} onSaving={setSaving} />
       ) : (
-        <Catalogue onPick={(p) => (p.kind === "prowlarr" ? onProwlarr() : setPreset(p))} />
+        <Catalogue usenet={usenet} onPick={(p) => (p.kind === "prowlarr" ? onProwlarr() : setPreset(p))} />
       )}
     </Modal>
   );
 }
 
-function Catalogue({ onPick }: { onPick: (p: IndexerPreset) => void }) {
+function Catalogue({ usenet, onPick }: { usenet: boolean; onPick: (p: IndexerPreset) => void }) {
   return (
     <>
       <p className="mb-3 mt-1.5 text-sm text-ink-dim">Pick where releases come from. You can test it before anything is saved.</p>
       <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 min-[400px]:grid-cols-2">
-        {INDEXER_PRESETS.map((p) => (
+        {presetsFor(usenet).map((p) => (
           <li key={p.id}>
             <button
               type="button"
@@ -92,9 +94,10 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
     media_types: scope.length === ALL_MEDIA.length ? [] : ALL_MEDIA.filter((k) => scope.includes(k)),
     priority,
     min_seeders: minSeeders,
-    seed_enabled: seedEnabled,
-    seed_ratio: seedEnabled ? seedRatio : 0,
-    seed_hours: seedEnabled ? (seedUnit === "days" ? seedTime * 24 : seedTime) : 0,
+    // Nothing from Usenet seeds (the server stores a usenet indexer without seed rules).
+    seed_enabled: seedEnabled && !preset.usenet,
+    seed_ratio: seedEnabled && !preset.usenet ? seedRatio : 0,
+    seed_hours: seedEnabled && !preset.usenet ? (seedUnit === "days" ? seedTime * 24 : seedTime) : 0,
   });
   // A test answers for exactly what was in the form; change anything and it's stale.
   const sig = JSON.stringify(body());
@@ -169,7 +172,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
           </Labeled>
         )}
         {has("url") && (
-          <Labeled label={preset.urlOptional ? "Site URL (optional mirror)" : "Feed URL"} span2>
+          <Labeled label={preset.urlOptional ? "Site URL (optional mirror)" : preset.usenet ? "API URL" : "Feed URL"} span2>
             <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={preset.urlPlaceholder} required={!preset.urlOptional} inputMode="url" autoComplete="off" />
           </Labeled>
         )}
@@ -205,7 +208,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
         })}
       </div>
 
-      <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />
+      {!preset.usenet && <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />}
       {preset.privateTracker && (
         <p className="mb-0 mt-2 text-xs text-ink-faint">
           A private tracker counts how long you seed. Keep these at least as long as its rules ask; {DEFAULT_SEED_DAYS} days covers most.
@@ -213,7 +216,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
       )}
 
       <details className="mt-3">
-        <summary className="cursor-pointer text-sm text-ink-dim">More options: name, tie-break, minimum seeders</summary>
+        <summary className="cursor-pointer text-sm text-ink-dim">{preset.usenet ? "More options: name, tie-break" : "More options: name, tie-break, minimum seeders"}</summary>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Labeled label="Name" span2>
             <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} />
@@ -221,9 +224,11 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
           <Labeled label="Tie-break priority (1–50)" hint={TIE_BREAK_HELP}>
             <input type="number" min={1} max={50} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
           </Labeled>
-          <Labeled label="Min seeders (0 = off)">
-            <input type="number" min={0} className={field} style={fieldStyle} value={minSeeders} onChange={(e) => setMinSeeders(Math.max(0, Number(e.target.value)))} />
-          </Labeled>
+          {!preset.usenet && (
+            <Labeled label="Min seeders (0 = off)">
+              <input type="number" min={0} className={field} style={fieldStyle} value={minSeeders} onChange={(e) => setMinSeeders(Math.max(0, Number(e.target.value)))} />
+            </Labeled>
+          )}
         </div>
       </details>
 

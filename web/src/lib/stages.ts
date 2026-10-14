@@ -7,7 +7,7 @@ import type { Tone } from "../ui";
 
 export type PipelineStage =
   | "queued" | "fetching_metadata" | "downloading" | "stalled" | "paused" | "paused_by_guard" | "failed"
-  | "downloaded" | "importing" | "import_retrying" | "needs_review" | "wrong_category"
+  | "unpacking" | "downloaded" | "importing" | "import_retrying" | "needs_review" | "wrong_category"
   | "imported" | "seeding" | "not_managed" | "removed";
 
 export const STAGE: Record<PipelineStage, { label: string; tone: Tone }> = {
@@ -18,6 +18,8 @@ export const STAGE: Record<PipelineStage, { label: string; tone: Tone }> = {
   paused: { label: "Paused", tone: "faint" },
   paused_by_guard: { label: "Paused · disk full", tone: "avoid" },
   failed: { label: "Failed", tone: "avoid" },
+  // A usenet job SABnzbd is verifying, repairing or extracting: downloaded, not ready yet.
+  unpacking: { label: "Unpacking", tone: "accent" },
   downloaded: { label: "Downloaded", tone: "accent" },
   importing: { label: "Importing", tone: "accent" },
   import_retrying: { label: "Import failed", tone: "reject" },
@@ -32,18 +34,28 @@ export const STAGE: Record<PipelineStage, { label: string; tone: Tone }> = {
 export type QueueGroup = "downloading" | "finishing" | "seeding";
 
 // stageGroup is the Queue section a transfer sits in: still arriving, finished but not in
-// the library yet (Importing, Held, Import failed, Wrong category), or done and sharing.
-// Without a stage (an older server) it falls back to progress, as the page used to.
-export function stageGroup(stage: string | undefined, progress: number): QueueGroup {
+// the library yet (Unpacking, Importing, Held, Import failed, Wrong category), or done and
+// sharing. Without a stage (an older server) it falls back to progress, as the page used to.
+//
+// A usenet job never shares anything back, so it never sits under Seeding: once it's
+// done it stays with Finishing, reading Imported, until SABnzbd's history lets it go.
+export function stageGroup(stage: string | undefined, progress: number, usenet = false): QueueGroup {
   switch (stage) {
     case "queued": case "fetching_metadata": case "downloading": case "stalled": case "paused": case "paused_by_guard": case "failed":
       return "downloading";
-    case "downloaded": case "importing": case "import_retrying": case "needs_review": case "wrong_category":
+    case "unpacking": case "downloaded": case "importing": case "import_retrying": case "needs_review": case "wrong_category":
       return "finishing";
     case "imported": case "seeding": case "not_managed":
-      return "seeding";
+      return usenet ? "finishing" : "seeding";
   }
-  return progress < 1 ? "downloading" : "seeding";
+  if (progress < 1) return "downloading";
+  return usenet ? "finishing" : "seeding";
+}
+
+// usenetStage is a usenet job's stage as the queue shows it. Nothing on Usenet seeds, so a
+// finished job the server still calls "seeding" (an older server) reads Imported.
+export function usenetStage(stage: PipelineStage | undefined): PipelineStage | undefined {
+  return stage === "seeding" ? "imported" : stage;
 }
 
 export function stageLabel(stage: string | undefined): string | undefined {

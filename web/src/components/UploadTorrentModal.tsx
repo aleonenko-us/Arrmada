@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { type TorrentPreview } from "../lib/api";
 import { formatBytes } from "../lib/format";
+import { looksLikeNZB, nzbPreview } from "../lib/nzb";
 import { Button, IconButton, Modal } from "../ui";
 
 // Base64-encode an ArrayBuffer in chunks (avoids the arg-count limit of String.fromCharCode
@@ -15,9 +16,11 @@ function toBase64(buf: ArrayBuffer): string {
   return btoa(bin);
 }
 
-// UploadTorrentModal lets you drop a .torrent file for a title, preview what it resolves
-// to (name / size / files), then grab it straight into the download client — for when you
-// found a release yourself (e.g. on a private tracker) and search didn't surface it.
+// UploadTorrentModal lets you drop a .torrent or an .nzb for a title, preview what it
+// resolves to (name / size / files), then grab it straight into the download client — a
+// torrent to qBittorrent, an NZB to SABnzbd — for when you found a release yourself (e.g.
+// on a private tracker) and search didn't surface it. The server previews a torrent; an NZB
+// is plain XML that names its own files, so it's read here.
 export function UploadTorrentModal({
   what,
   onPreview,
@@ -46,12 +49,15 @@ export function UploadTorrentModal({
 
   const load = async (f: File) => {
     setError(null); setPreview(null); setGrabbed(false);
-    if (!f.name.toLowerCase().endsWith(".torrent")) { setError("That's not a .torrent file."); return; }
+    const lower = f.name.toLowerCase();
+    if (!lower.endsWith(".torrent") && !lower.endsWith(".nzb")) { setError("That's not a .torrent or .nzb file."); return; }
     setBusy(true); setFilename(f.name);
     try {
-      const b64 = toBase64(await f.arrayBuffer());
+      const buf = await f.arrayBuffer();
+      const b64 = toBase64(buf);
       setTorrent(b64);
-      setPreview(await onPreview(b64));
+      const text = new TextDecoder().decode(buf);
+      setPreview(looksLikeNZB(f.name, text.slice(0, 4096)) ? nzbPreview(text, f.name) : await onPreview(b64));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
@@ -67,12 +73,12 @@ export function UploadTorrentModal({
   return (
     <Modal onClose={onClose} labelledBy={titleId} size="lg">
         <div className="mb-1 flex items-center justify-between">
-          <h2 id={titleId} className="m-0 text-lg font-bold">Upload torrent — {what}</h2>
+          <h2 id={titleId} className="m-0 text-lg font-bold">Upload a .torrent or .nzb — {what}</h2>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
-        <p className="mb-3 text-sm text-ink-dim">Found a release yourself? Download the .torrent from your tracker (while logged in) and drop it here. Arrmada previews it so you can check it's right, then grabs it into your library.</p>
+        <p className="mb-3 text-sm text-ink-dim">Found a release yourself? Download the .torrent from your tracker (while logged in), or the .nzb from your usenet indexer, and drop it here. Arrmada previews it so you can check it's right, then grabs it into your library. An .nzb needs SABnzbd in Settings → Connections.</p>
 
-        <input ref={inputRef} type="file" accept=".torrent" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f); }} />
+        <input ref={inputRef} type="file" accept=".torrent,.nzb" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f); }} />
         <div
           role="button"
           tabIndex={0}
@@ -84,8 +90,8 @@ export function UploadTorrentModal({
           className="cursor-pointer rounded-xl p-6 text-center transition-colors"
           style={{ border: `1.5px dashed ${drag ? "var(--accent)" : "var(--line)"}`, background: drag ? "var(--accent-soft)" : "var(--panel-2)" }}
         >
-          <div className="text-md font-semibold">{filename || "Choose a .torrent file"}</div>
-          <div className="mt-0.5 text-xs text-ink-faint">{busy && !preview ? "Reading…" : "Click to browse, or drag a .torrent here"}</div>
+          <div className="text-md font-semibold">{filename || "Choose a .torrent or .nzb file"}</div>
+          <div className="mt-0.5 text-xs text-ink-faint">{busy && !preview ? "Reading…" : "Click to browse, or drag one here"}</div>
         </div>
 
         {error && <div className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}

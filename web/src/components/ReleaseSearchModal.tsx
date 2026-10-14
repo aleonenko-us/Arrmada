@@ -4,6 +4,8 @@ import { formatReleaseAge } from "../lib/format";
 import { Button, IconButton, Modal, StatusChip } from "../ui";
 import { IndexerIssues, emptyReleasesMessage } from "./IndexerIssues";
 import { ReleaseExplain } from "./ReleaseExplain";
+import { UsenetChip } from "./UsenetChip";
+import { isUsenetRelease, noClientFor } from "../lib/network";
 
 // --- release metadata parsing (resolution + notable features live in summary/title) ---
 type SortKey = "best" | "size" | "bitrate" | "seeders" | "smallest" | "newest";
@@ -258,8 +260,10 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onBlock }: { rel: RankedRelease; why?: string[]; chosenOver?: string; busy: boolean; grabbed: boolean; disabled: boolean; onGrab: () => void; onBlock?: () => void }) {
   const blocked = rel.blocklisted;
-  // A usenet release has no client to go to; its reject reason says so.
-  const usenet = rel.transport === "usenet";
+  // Usenet has no seeders to count. A release on a network with no download client set up
+  // for it can't be grabbed at all; its reject reason says so.
+  const usenet = isUsenetRelease(rel);
+  const noClient = noClientFor(rel);
   const age = formatReleaseAge(rel.published_at);
   const highlight = rel.recommended && !blocked;
   return (
@@ -269,6 +273,7 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
           <div className="flex flex-wrap items-center gap-2">
             {highlight && <StatusChip tone="accent" size="md">Recommended</StatusChip>}
             {blocked && <StatusChip tone="reject" size="md">Blocklisted</StatusChip>}
+            {usenet && <UsenetChip />}
             <span className="text-md font-semibold">{rel.summary}</span>
             {/* An anime arc is numbered in its own universe: "S04E06" is the arc's
                 fourth cour, not the show's fourth season. Without saying what it
@@ -304,10 +309,10 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
           {chosenOver && <div className="mt-1 text-xs text-ink-dim">{chosenOver}</div>}
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
-          <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || usenet || !rel.token} className="px-3.5 text-sm" style={{ opacity: blocked || usenet ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>
+          <Button variant={grabbed ? "secondary" : "primary"} onClick={onGrab} disabled={disabled || grabbed || blocked || noClient || !rel.token} className="px-3.5 text-sm" style={{ opacity: blocked || noClient ? 0.5 : 1, color: grabbed ? "var(--ink-dim)" : undefined }}>
             {grabbed ? "Grabbed ✓" : busy ? "…" : "Grab"}
           </Button>
-          {onBlock && !blocked && !grabbed && !usenet && rel.token && (
+          {onBlock && !blocked && !grabbed && !noClient && rel.token && (
             <button onClick={onBlock} disabled={disabled} title="Blocklist and search for an alternate" className="rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-faint)" }}>⊘ Block</button>
           )}
         </div>
