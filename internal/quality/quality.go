@@ -277,8 +277,9 @@ type Profile struct {
 	// Required names formats a release must carry to be eligible at all — "Atmos"
 	// here rejects everything without an Atmos track, where a score only prefers it.
 	Required []string `json:"required_formats,omitempty"`
-	// MinFormatScore refuses a release whose format score is under it. A target Avoid's
-	// negative score is left out of that sum — it ranks in the avoided tier instead.
+	// MinFormatScore refuses a release whose format score is under it. A built-in format's
+	// Avoid (target or "Other formats") is left out of that sum — it ranks in the avoided
+	// tier instead. Custom formats and keywords count in full.
 	MinFormatScore int       `json:"min_format_score,omitempty"`
 	Keywords       []Keyword `json:"keywords,omitempty"`
 	Rejected       []string  `json:"rejected,omitempty"`
@@ -428,9 +429,10 @@ type Evaluation struct {
 	// key by key. Pure description — Total and Avoided above are computed exactly as
 	// before. Set on eligible evaluations.
 	//
-	// TargetAvoided: a target-format Avoid, the bitrate floor, or an Unwanted item set to
-	// avoid — the avoids that are a tier of their own. CustomAvoided: a negative custom
-	// format or keyword score, which v2 treats as a score, not a cliff.
+	// TargetAvoided: a built-in format's Avoid (the target's or an "Other formats" one),
+	// the bitrate floor, or an Unwanted item set to avoid — the avoids that are a tier of
+	// their own. CustomAvoided: a negative custom format or keyword score, which v2 treats
+	// as a score, not a cliff.
 	TargetAvoided bool `json:"target_avoided,omitempty"`
 	CustomAvoided bool `json:"custom_avoided,omitempty"`
 	// ResTier ranks the resolution (2160p 5 … 480p 1, unknown 0); the goal is the top
@@ -608,10 +610,10 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 
 	ev.QualityScore = qualityScore(r)
-	// targetAvoidScore is the (negative) part of FormatScore that came from target formats
-	// set to Avoid. The avoided tier is how those are honoured, so the minimum-score floor
-	// below leaves them out — see there.
-	targetAvoidScore := 0
+	// tierAvoidScore is the (negative) part of FormatScore that came from built-in formats
+	// set to Avoid — the target's and the "Other formats" list's. The avoided tier is how
+	// those are honoured, so the minimum-score floor below leaves them out — see there.
+	tierAvoidScore := 0
 	for name, score := range p.FormatScores {
 		f, ok := e.formats[name]
 		if !ok || !e.match(f, c.Name, r) {
@@ -633,9 +635,11 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		} else if score < 0 {
 			ev.Avoided = true
 			ev.AvoidedFormats = append(ev.AvoidedFormats, name)
-			if target {
+			// A built-in format's Avoid button means what the target's does: the avoided
+			// tier, under both rankings. Only a format the owner wrote is a plain score.
+			if target || isBuiltinFormat(name) {
 				ev.TargetAvoided = true
-				targetAvoidScore += score
+				tierAvoidScore += score
 			} else {
 				ev.CustomAvoided = true
 			}
@@ -689,12 +693,14 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 
 	// The minimum score is a floor on what the release earns — preferences, custom formats
-	// and keywords. A target Avoid isn't part of that: it's a tier ("grabbed only when
-	// nothing else is available"), like the bitrate floor and the Unwanted pack's avoids,
-	// which carry no score at all. Counting its −50 here turned Avoid into Reject at the
-	// default floor of 0, so a Dolby Vision release was refused even when it was all there
-	// was. A negative custom format or keyword is a plain score and still counts.
-	if ev.FormatScore-targetAvoidScore < p.MinFormatScore {
+	// and keywords. An Avoid on a built-in format (the target's, or one in "Other formats")
+	// isn't part of that: it's a tier ("grabbed only when nothing else is available"), like
+	// the bitrate floor and the Unwanted pack's avoids, which carry no score at all.
+	// Counting its −50 here turned Avoid into Reject at the default floor of 0, so a Dolby
+	// Vision or an AMZN release was refused even when it was all there was. A negative
+	// custom format or keyword the owner wrote is a plain score and still counts — that is
+	// the deliberate way to push something under the floor.
+	if ev.FormatScore-tierAvoidScore < p.MinFormatScore {
 		ev.reject(RejectMinFormatScore, "Below the profile's minimum format score")
 		return ev
 	}

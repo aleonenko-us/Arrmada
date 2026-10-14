@@ -45,8 +45,9 @@ const (
 //
 // Keys, in order:
 //
-//  1. avoid — a target Avoid, the bitrate floor or an Unwanted avoid (TargetAvoided); a
-//     negative custom score is not an avoid here
+//  1. avoid — a built-in format's Avoid (target or Other formats), the bitrate floor or an
+//     Unwanted avoid (TargetAvoided); a negative custom format or keyword score is not an
+//     avoid here
 //  2. health — a dead torrent (no seeders) after every seeded one: it never downloads, so
 //     like classic ranking it goes last within its tier, whatever else it has
 //  3. resolution — the goal first (ResTier)
