@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/requests"
 )
@@ -49,11 +50,24 @@ func (m mediaReadyLocator) IndexBuiltAt() time.Time { return m.reg.IndexBuiltAt(
 
 func (m mediaReadyLocator) Refresh(after time.Duration) { m.reg.IndexStale(after) }
 
+// userLinks reads which media servers an account is linked to (*auth.Service is one).
+type userLinks interface {
+	UserByID(ctx context.Context, id int64) (*auth.User, error)
+}
+
 // homeServer is the media server a person watches on: their Watch links, the push's Watch
-// action and their Apprise message lead with it.
-//
-// J4 HOOK: users.jellyfin_id arrives with lane J4 (Jellyfin sign-in and accounts). Until
-// then nobody can be linked to Jellyfin, so everyone is Plex-first. J4 replaces this body
-// with mediaserver.Home(plexLinked, jellyfinLinked) read from the account (one indexed
-// row by id; a read error answers Plex).
-func homeServer(context.Context, int64) mediaserver.Kind { return mediaserver.Plex }
+// action and their Apprise message lead with it. Someone linked only to Jellyfin is
+// Jellyfin-first; everyone else (Plex, both, neither) is Plex-first, and so is anyone whose
+// account can't be read (one row by id).
+func homeServer(users userLinks) func(context.Context, int64) mediaserver.Kind {
+	return func(ctx context.Context, userID int64) mediaserver.Kind {
+		if users == nil {
+			return mediaserver.Plex
+		}
+		u, err := users.UserByID(ctx, userID)
+		if err != nil || u == nil {
+			return mediaserver.Plex
+		}
+		return mediaserver.Home(u.PlexLinked, u.JellyfinLinked)
+	}
+}

@@ -87,6 +87,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Watch monitoring", keywords: "plex monitoring record watched insights poll interval seconds activity history", section: "plex", anchor: "plex-monitoring" },
   { label: "Plex library updates", keywords: "plex scan partial refresh path mapping map folder update library after import rename delete convert", section: "plex", anchor: "plex-library-updates" },
   { label: "Plex sign-in", keywords: "plex login sign in with plex auto-approve home shared users staff admin owner policy", section: "plex", anchor: "plex-sign-in", adminOnly: true },
+  { label: "Jellyfin sign-in", keywords: "jellyfin login sign in with jellyfin quick connect code password auto-approve staff admin", section: "plex", anchor: "jellyfin-sign-in", adminOnly: true },
   { label: "Linked Plex accounts", keywords: "plex linked accounts link unlink who family users", section: "plex", anchor: "plex-accounts", adminOnly: true },
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },

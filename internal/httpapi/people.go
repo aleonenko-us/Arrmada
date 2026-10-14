@@ -27,6 +27,10 @@ type personRow struct {
 	PlexUsername      string         `json:"plex_username,omitempty"`
 	PlexOnly          bool           `json:"plex_only,omitempty"`
 	PlexBlocked       bool           `json:"plex_blocked,omitempty"`
+	JellyfinLinked    bool           `json:"jellyfin_linked"`
+	JellyfinUsername  string         `json:"jellyfin_username,omitempty"`
+	JellyfinOnly      bool           `json:"jellyfin_only,omitempty"`
+	JellyfinBlocked   bool           `json:"jellyfin_blocked,omitempty"`
 	Quota             auth.UserQuota `json:"quota"`
 	// Sessions is how many browsers they're signed in on (only they see which).
 	Sessions int `json:"sessions"`
@@ -67,6 +71,10 @@ func (a *api) handlePeople(w http.ResponseWriter, r *http.Request) {
 	for _, b := range a.plexBlocks(ctx) {
 		blocked[b.PlexID] = true
 	}
+	jfBlocked := map[string]bool{}
+	for _, b := range a.jellyfinBlocks(ctx) {
+		jfBlocked[b.JellyfinID] = true
+	}
 
 	// The audiobook side, when the server is built in: who's switched off, who has a
 	// password, each signed-in app's last use, and the last listening (a time only).
@@ -100,6 +108,7 @@ func (a *api) handlePeople(w http.ResponseWriter, r *http.Request) {
 			ID: u.ID, Username: u.Username, Role: u.Role, Disabled: u.Disabled, CreatedAt: u.CreatedAt,
 			AutoApproveMovie: u.AutoApproveMovie, AutoApproveSeries: u.AutoApproveSeries, AutoApproveBook: u.AutoApproveBook,
 			PlexLinked: u.PlexLinked, PlexUsername: u.PlexUsername, PlexOnly: u.PlexOnly,
+			JellyfinLinked: u.JellyfinLinked, JellyfinUsername: u.JellyfinUsername, JellyfinOnly: u.JellyfinOnly,
 			Quota:         auth.DefaultQuota,
 			AudioEligible: !u.Disabled && u.Role.AtLeast(auth.RoleRequester),
 			AudioAllowed:  !denied[u.ID], AudioPasswordSet: withPassword[u.ID],
@@ -110,6 +119,9 @@ func (a *api) handlePeople(w http.ResponseWriter, r *http.Request) {
 		}
 		if u.PlexLinked && len(blocked) > 0 {
 			p.PlexBlocked = blocked[a.deps.Auth.PlexIDForUser(ctx, u.ID)]
+		}
+		if u.JellyfinLinked && len(jfBlocked) > 0 {
+			p.JellyfinBlocked = jfBlocked[a.deps.Auth.JellyfinIDForUser(ctx, u.ID)]
 		}
 		if s, ok := activity[u.ID]; ok {
 			p.Sessions = s.Sessions
