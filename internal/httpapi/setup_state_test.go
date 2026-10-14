@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/apikeys"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 )
 
 // setupStateBody is the part of GET /api/v1/setup the wizard's later steps read.
@@ -17,6 +19,9 @@ type setupStateBody struct {
 	PlexConnected     bool       `json:"plex_connected"`
 	PlexServer        string     `json:"plex_server"`
 	PlexFamily        plexFamily `json:"plex_family"`
+	JellyfinConnected bool       `json:"jellyfin_connected"`
+	JellyfinServer    string     `json:"jellyfin_server"`
+	JellyfinFamily    plexFamily `json:"jellyfin_family"`
 	IndexersEnabled   int        `json:"indexers_enabled"`
 	ProwlarrAvailable *bool      `json:"prowlarr_available"`
 }
@@ -115,5 +120,55 @@ func TestSetupStatePlexFamily(t *testing.T) {
 	}
 	if b, _ := getSetupState(t, a, ""); b.PlexFamily.AutoApproveTypes != "" {
 		t.Errorf("chose none: auto_approve_types = %q", b.PlexFamily.AutoApproveTypes)
+	}
+}
+
+// The Media server step's Jellyfin half: connected once an address and key are saved (the
+// key never comes back), the server's name, and Sign in with Jellyfin's own family choices
+// — off, nothing ticked, until the owner chooses.
+func TestSetupStateJellyfin(t *testing.T) {
+	t.Setenv("ARRMADA_JELLYFIN_API_KEY", "")
+	a := checklistAPI(t)
+	ctx := context.Background()
+	// Without the Jellyfin service wired the fields still answer, as not connected.
+	if b, raw := getSetupState(t, a, ""); b.JellyfinConnected || b.JellyfinServer != "" || b.JellyfinFamily.Enabled || !strings.Contains(raw, `"jellyfin_family"`) {
+		t.Fatalf("no Jellyfin service: %+v", b)
+	}
+	a.deps.Jellyfin = jellyfinsvc.New(jellyfinsvc.Options{Settings: a.deps.Settings, Keys: a.deps.APIKeys, Version: "test", Log: a.deps.Log})
+	const key = "test-jellyfin-secret-9"
+	for k, v := range map[string]string{jellyfinsvc.KeyURL: "http://127.0.0.1:1", jellyfinsvc.KeyServerName: "Attic"} {
+		if err := a.deps.Settings.Set(ctx, k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if b, _ := getSetupState(t, a, ""); b.JellyfinConnected {
+		t.Error("an address without a key reads as connected")
+	}
+	if err := a.deps.APIKeys.Set(ctx, apikeys.Jellyfin, key); err != nil {
+		t.Fatal(err)
+	}
+	b, raw := getSetupState(t, a, "")
+	if !b.JellyfinConnected || b.JellyfinServer != "Attic" {
+		t.Errorf("connected: %+v", b)
+	}
+	if strings.Contains(raw, key) {
+		t.Error("GET /setup echoed the Jellyfin key")
+	}
+	if b.JellyfinFamily.Enabled || b.JellyfinFamily.AutoApproveTypes != "" {
+		t.Errorf("fresh family = %+v, want everything off", b.JellyfinFamily)
+	}
+	if err := a.deps.Settings.SetBool(ctx, keyJellyfinLoginEnabled, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.deps.Settings.Set(ctx, keyJellyfinAutoApproveTypes, "movie,series"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = getSetupState(t, a, "")
+	if !b.JellyfinFamily.Enabled || b.JellyfinFamily.AutoApproveTypes != "movie,series" {
+		t.Errorf("chosen family = %+v", b.JellyfinFamily)
+	}
+	// Plex's choices are its own.
+	if b.PlexFamily.Enabled {
+		t.Error("Jellyfin's switch turned Plex's on")
 	}
 }

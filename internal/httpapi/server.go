@@ -686,6 +686,7 @@ func (a *api) registerRoutes(mux *router) {
 	// job; it never comes back), its Test, and its library updates like Plex's.
 	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig))
 	mux.HandleFunc("PUT /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinSave))
+	mux.HandleFunc("DELETE /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinDisconnect))
 	mux.HandleFunc("POST /api/v1/jellyfin/test", a.requireRole(auth.RoleManager, a.handleJellyfinTest))
 	mux.HandleFunc("GET /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanView))
 	mux.HandleFunc("PUT /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanSave))
