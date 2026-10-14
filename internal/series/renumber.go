@@ -148,6 +148,42 @@ func planPlacements(current []placementRow, desired []Season) (placed []filePlac
 	return placed, remaps
 }
 
+// uniqueSlots returns the listing with one entry per (season, episode): a season listed
+// twice is merged into its first entry, and a repeated episode number keeps its first
+// entry. Every episode is stamped with the season it's listed under.
+//
+// Sources do repeat slots. TVDB files a season it has announced but not numbered as
+// several "TBA" episodes sharing one placeholder number — Paradise (2025) lists four
+// S03E99s. The additive paths absorbed that (INSERT OR IGNORE), but a rebuild inserts
+// every entry and failed the episodes UNIQUE(series_id, season_number, episode_number)
+// index on the second, so the renumber could never be applied. One row per slot is all
+// the table can hold anyway, and the first entry is the one the additive path kept.
+func uniqueSlots(seasons []Season) []Season {
+	out := make([]Season, 0, len(seasons))
+	at := make(map[int]int, len(seasons)) // season number → index in out
+	seen := map[[2]int]bool{}
+	for _, sn := range seasons {
+		i, ok := at[sn.SeasonNumber]
+		if !ok {
+			i = len(out)
+			at[sn.SeasonNumber] = i
+			first := sn
+			first.Episodes = make([]Episode, 0, len(sn.Episodes))
+			out = append(out, first)
+		}
+		for _, ep := range sn.Episodes {
+			key := [2]int{sn.SeasonNumber, ep.EpisodeNumber}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			ep.SeasonNumber = sn.SeasonNumber
+			out[i].Episodes = append(out[i].Episodes, ep)
+		}
+	}
+	return out
+}
+
 // planRemaps is the preview half of planPlacements: every file that would move, or that
 // would lose its episode.
 func planRemaps(current []placementRow, desired []Season) []EpisodeRemap {
@@ -188,7 +224,7 @@ func (r *Repo) PlanRebuild(ctx context.Context, seriesID int64, seasons []Season
 	if err != nil {
 		return nil, err
 	}
-	return planRemaps(current, seasons), nil
+	return planRemaps(current, uniqueSlots(seasons)), nil
 }
 
 // RebuildEpisodes replaces a series' entire season/episode listing with `seasons`, while
@@ -228,6 +264,8 @@ func (r *Repo) rebuildEpisodes(ctx context.Context, seriesID int64, seasons []Se
 
 // rebuildEpisodesTx is RebuildEpisodes' body, inside the caller's transaction.
 func rebuildEpisodesTx(ctx context.Context, tx *sql.Tx, seriesID int64, seasons []Season) ([]EpisodeRemap, error) {
+	// The same listing PlanRebuild planned against, so the preview and the rebuild agree.
+	seasons = uniqueSlots(seasons)
 	current, err := snapshotRows(ctx, tx, seriesID)
 	if err != nil {
 		return nil, err
