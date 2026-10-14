@@ -74,3 +74,55 @@ func TestRankReleasesExplainsEachRow(t *testing.T) {
 		t.Errorf("ChosenOver = %q", list.ChosenOver)
 	}
 }
+
+// Interactive search under a target that avoids Dolby Vision, at the default minimum score:
+// a DV release is an eligible, avoided row that names what it lost on — never a "below
+// the minimum format score" reject — and it's the recommendation when it's all there is.
+func TestRankReleasesShowsTargetAvoidAsAvoided(t *testing.T) {
+	h := newStallHarness(t)
+	mid := h.addMovie(t, 1, "Arrival", 2016)
+	const (
+		dv    = "Arrival.2016.2160p.WEB-DL.DDP5.1.DV.H.265-GRPA"
+		clean = "Arrival.2016.1080p.WEB-DL.DDP5.1.H.264-GRPB"
+	)
+	spec := quality.StoredProfile{MediaType: quality.MediaMovie, Name: "edited", Ideal: &quality.IdealFile{HDR: map[string]string{"DV": quality.PrefAvoid}}}
+
+	h.ix.offer(dv, clean)
+	list, err := h.c.RankReleasesWith(h.ctx, mid, &spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, r := range list.Releases {
+		switch r.Title {
+		case dv:
+			seen++
+			if !r.Eligible || r.Recommended || r.RejectReason != "" {
+				t.Errorf("DV row: eligible %v, recommended %v, reject %q — want eligible, not recommended, no reject", r.Eligible, r.Recommended, r.RejectReason)
+			}
+			if len(r.Avoided) != 1 || r.Avoided[0] != "Dolby Vision" || r.LostOn != "it has Dolby Vision, which you avoid" {
+				t.Errorf("DV row avoided %v, lost on %q", r.Avoided, r.LostOn)
+			}
+		case clean:
+			seen++
+			if !r.Recommended {
+				t.Errorf("the clean release should be recommended over the avoided DV one")
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("rows found %d of 2: %+v", seen, list.Releases)
+	}
+
+	h.ix.offer(dv)
+	only, err := h.c.RankReleasesWith(h.ctx, mid, &spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(only.Releases) != 1 || !only.Releases[0].Recommended {
+		t.Fatalf("a DV release on its own should be the recommendation, got %+v", only.Releases)
+	}
+	if len(only.Why) == 0 || only.Why[0] != "Only releases with a format you avoid were available" {
+		t.Errorf("Why = %v", only.Why)
+	}
+}
