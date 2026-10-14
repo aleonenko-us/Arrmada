@@ -483,8 +483,18 @@ func TestRunJellyfin(t *testing.T) {
 	}
 	done := make(chan struct{})
 	go func() { r.svc.RunJellyfin(ctx); close(done) }()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && r.jf.Health(ctx).LastOKAt.IsZero() {
+	// A poll records its health before it folds the sessions in and saves them, so wait for
+	// the saved stream itself — waiting on health alone raced the save on slow CI runners.
+	saved := func() (string, error) {
+		var server string
+		err := r.svc.repo.db.QueryRow(`SELECT server FROM insights_live_sessions`).Scan(&server)
+		return server, err
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := saved(); err == nil && !r.jf.Health(ctx).LastOKAt.IsZero() {
+			break
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if h := r.jf.Health(ctx); h.LastOKAt.IsZero() || !h.Monitoring {
@@ -492,8 +502,7 @@ func TestRunJellyfin(t *testing.T) {
 	}
 	cancel()
 	<-done
-	var server string
-	if err := r.svc.repo.db.QueryRow(`SELECT server FROM insights_live_sessions`).Scan(&server); err != nil || server != ServerJellyfin {
+	if server, err := saved(); err != nil || server != ServerJellyfin {
 		t.Errorf("saved stream server = %q, %v", server, err)
 	}
 }
