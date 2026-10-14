@@ -203,7 +203,7 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
           </div>
         ))}
       </div>
-      <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
+      <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes speech in any language into a subtitle in that same language; it can't translate. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
     </div>
   );
 }

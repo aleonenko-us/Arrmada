@@ -53,6 +53,9 @@ var bannedCopy = []bannedPhrase{
 	phrase(`AI are coming`, "AI transcription has shipped — say whether a model is installed"),
 	phrase(`AI \+ embedded only`, "list the sources that work right now (Subtitles header pill)"),
 	phrase(`stripped from the video`, "Subtitles never edits the video; Convert drops languages under its own setting"),
+	// large-v3-turbo transcribes any language; only translating into English needs large-v3.
+	phrase(`Turbo \(English\)|fast English transcription|turbo (is )?(for|only) English`, "large-v3-turbo transcribes speech in any language — say it can't translate, not that it's English-only"),
+	phrase(`turbo (can )?translates?\b`, "large-v3-turbo can't translate — translating foreign audio into English takes large-v3"),
 	// COPY-03: pages that don't exist.
 	phrase(`(appear|show)[a-z]* in Downloads|Downloads → (Searching|Upcoming|Seeding)`, "Downloads, Review, History and Blocklist are tabs of Activity — say Activity → Queue / Wanted (PAGE.activity)"),
 	// (REQ-05 routed /requests, so "Requests page" is no longer a dead end.)
@@ -228,6 +231,8 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`image subs + AI are coming`,
 		`AI + embedded only`,
 		`everything else is stripped from the video`,
+		`{ label: "Turbo (English)" }`,
+		`turbo can translate it into English`,
 		`it'll appear in Downloads once grabbed`,
 		`follow it in Downloads → Searching`,
 		`a Requester account (Discover-only)`,
@@ -285,6 +290,8 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`Connect your Plex server in Settings → Connections`,
 		"flash(`${selected.size} ${mon ? \"monitored\" : \"unmonitored\"}.`);",
 		`{ key: "wanted", label: "Wanted" },`,
+		`turbo transcribes any language; it can't translate`,
+		`needs large-v3 to translate fr audio to English`,
 	} {
 		if b := match(ok, true); b != nil {
 			t.Errorf("false positive on %q (%s)", ok, b.re)

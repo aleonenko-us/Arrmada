@@ -66,6 +66,14 @@ test.describe("admin", () => {
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
   });
 
+  // large-v3-turbo transcribes any language; only translating into English takes large-v3.
+  test("the whisper model note doesn't call turbo English-only", async ({ page }) => {
+    await page.goto("/settings/subtitles");
+    await expect(page.getByText("large-v3-turbo — fast transcription in any language (can't translate)")).toBeVisible();
+    await expect(page.getByText(/transcribes speech in any language into a subtitle in that same language; it can't translate/)).toBeVisible();
+    await expect(page.getByText(/English transcription|Turbo \(English\)/)).toHaveCount(0);
+  });
+
   // FE-15: switches are real switches and labels are real labels.
   test("a switch flips from the keyboard, and a field's label focuses its box", async ({ page, api }) => {
     await installExtra(page, api, [
