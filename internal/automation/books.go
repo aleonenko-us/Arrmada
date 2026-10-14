@@ -367,7 +367,7 @@ func (c *Coordinator) grabBookEditionCounted(ctx context.Context, b books.Book, 
 	st.usable = len(res.Releases)
 	allowed := c.bookLanguages(ctx)
 	noteBookVerdicts(notes, sp, allowed, res.Releases, kind)
-	best := pickBestBookForKind(sp, allowed, res.Releases, kind)
+	best := pickBestBookForKind(sp, allowed, res.Releases, kind, b.Title)
 	if best == nil {
 		c.log.Info("book: no matching-format release", "title", b.Title, "edition", kind)
 		return "", st, nil
@@ -658,10 +658,12 @@ func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition stri
 // score + keyword score combine (so "graphic audio +100" or a preferred format
 // wins), seeders break ties. Hard-reject terms, unwanted formats and releases in a
 // language the owner doesn't read are skipped.
-func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind string) *indexer.Release {
+//
+// wantTitle is the book being searched for; a release that bundles it with others (an
+// omnibus, a trilogy) ranks below one of just that book — see bookShape.
+func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases []indexer.Release, kind, wantTitle string) *indexer.Release {
 	var best *indexer.Release
-	var bestScore int
-	var bestPartial bool
+	var bestScore, bestShape int
 	for i := range releases {
 		if books.EditionOf(releaseBookFormat(releases[i])) != kind {
 			continue
@@ -670,21 +672,50 @@ func pickBestBookForKind(sp quality.StoredProfile, allowed bookLangs, releases [
 		if !ok {
 			continue
 		}
-		partial := isPartialBook(releases[i].Title)
-		if best == nil || betterBook(partial, score, bestPartial, bestScore) {
-			best, bestScore, bestPartial = &releases[i], score, partial
+		shape := bookShape(releases[i].Title, wantTitle)
+		if best == nil || betterBook(shape, score, bestShape, bestScore) {
+			best, bestScore, bestShape = &releases[i], score, shape
 		}
 	}
 	return best
 }
 
-// betterBook reports whether a candidate (partial, score) should replace the
-// current best (bp, bs): a complete release always beats a partial one, then the
-// higher score wins. This keeps a "(Part 1 of 6)" split from being grabbed over
-// the complete book.
-func betterBook(partial bool, score int, bp bool, bs int) bool {
-	if partial != bp {
-		return !partial
+// Release shapes, best first.
+const (
+	shapeSingle     = iota // the book on its own
+	shapeCollection        // the book bundled with others: an omnibus, a trilogy, a box set
+	shapePartial           // one part of a split release
+)
+
+// bookShape sorts a release title into a shape. A collection still holds the book, so
+// it stays grabbable when nothing else turns up, but it loses to the book on its own:
+// a search for Shift took "The Wool Trilogy: Wool, Shift, Dust" over a copy of Shift
+// with fewer seeders, the import rightly held it as not being Shift, and every Reject &
+// find another chose a bundle again. A word the wanted title itself uses ("The Wool
+// Trilogy") doesn't count against it.
+func bookShape(title, wantTitle string) int {
+	if isPartialBook(title) {
+		return shapePartial
+	}
+	want := strings.ToLower(wantTitle)
+	for _, m := range reBookCollection.FindAllString(title, -1) {
+		if !strings.Contains(want, strings.ToLower(m)) {
+			return shapeCollection
+		}
+	}
+	return shapeSingle
+}
+
+// reBookCollection matches the words trackers use for a multi-book release.
+var reBookCollection = regexp.MustCompile(`(?i)\b(?:omnibus|duology|trilogy|quartet|quadrilogy|box\s*set|boxset|collection|complete\s+series|books?\s*\d+\s*(?:-|–|to)\s*\d+)\b`)
+
+// betterBook reports whether a candidate (shape, score) should replace the current best
+// (bshape, bs): the better shape always wins, then the higher score. This keeps a
+// "(Part 1 of 6)" split from being grabbed over the complete book, and a trilogy over
+// the one book that was asked for.
+func betterBook(shape, score, bshape, bs int) bool {
+	if shape != bshape {
+		return shape < bshape
 	}
 	return score > bs
 }
@@ -2074,7 +2105,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if kind == books.KindAudiobook {
 				pool = dropVersionReleases(b, matched)
 			}
-			best := pickBestBookForKind(sp, allowed, pool, kind)
+			best := pickBestBookForKind(sp, allowed, pool, kind, b.Title)
 			if best == nil {
 				continue
 			}
@@ -2093,7 +2124,7 @@ func (c *Coordinator) RSSSyncBooks(ctx context.Context) {
 			if !versionWanted(v) {
 				continue
 			}
-			best := pickBestBookForKind(versionProfile(sp, v), allowed, releasesForVersion(v, matched), books.KindAudiobook)
+			best := pickBestBookForKind(versionProfile(sp, v), allowed, releasesForVersion(v, matched), books.KindAudiobook, b.Title)
 			if best == nil {
 				continue
 			}

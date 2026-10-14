@@ -283,3 +283,46 @@ func TestSetGrabStatusByHashFallbackAndClosedRows(t *testing.T) {
 		t.Errorf("imported grab is now %q", s)
 	}
 }
+
+// A review is named after the download as the client shows it, which for a book tracker
+// is often nothing like the indexer's title. Rejecting it must block the title searches
+// actually see, or "Reject & find another" grabs the release that was just rejected.
+func TestRejectedBookReviewBlocksTheIndexerTitle(t *testing.T) {
+	h := newLifecycleHarness(t)
+	const bookID = 77
+	release := "Hugh Howey - The Wool Trilogy: Wool, Shift, Dust [EPUB]"
+	fileName := "The Wool Trilogy by Hugh Howey.epub"
+	hash := hashFor(release)
+	if _, err := h.c.db.Exec(`INSERT INTO grabs (movie_id, title, indexer, stall_minutes, media_type, info_hash, seed_enabled, seed_ratio, seed_hours, status)
+		VALUES (?, ?, 'MyAnonaMouse', 60, 'book', ?, 1, 1.0, 0, 'held')`, bookID, release, hash); err != nil {
+		t.Fatal(err)
+	}
+	h.c.addReview(h.ctx, Review{
+		Hash: hash, Name: fileName, ContentPath: t.TempDir(), MediaType: "book",
+		ExpectedID: bookID, ExpectedTitle: "Shift", Reason: "mismatch", ReasonCode: ReasonMismatch,
+	})
+	var rid int64
+	if err := h.c.db.QueryRow(`SELECT id FROM import_reviews WHERE hash = ? AND status = 'pending'`, hash).Scan(&rid); err != nil {
+		t.Fatalf("no pending review: %v", err)
+	}
+	if err := h.c.RejectReview(h.ctx, rid); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := h.c.blockedSetBook(h.ctx, bookID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !blocked[normTitle(release)] {
+		t.Errorf("the indexer's title isn't blocklisted for the book: %v", blocked)
+	}
+	if !blocked[normTitle(fileName)] {
+		t.Errorf("the download's own name isn't blocklisted either: %v", blocked)
+	}
+	var n int
+	if err := h.c.db.QueryRow(`SELECT COUNT(*) FROM blocklist WHERE media_type = 'book' AND movie_id = ?`, bookID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("blocklist rows = %d, want 2 (download name + indexer title)", n)
+	}
+}

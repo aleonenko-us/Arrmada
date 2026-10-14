@@ -485,29 +485,46 @@ func (c *Coordinator) RejectReview(ctx context.Context, id int64) error {
 			c.log.Warn("review: remove download failed", "hash", r.Hash, "err", err)
 		}
 	}
-	switch {
-	case r.ExpectedID == 0:
-		// The review wasn't tied to a specific library item ("matches no series/movie").
-		// A blocklist row against id 0 is inert — nothing ever reads it — so a rejected
-		// junk release stayed grabbable everywhere. The user just called it junk: block
-		// it library-wide.
-		c.addBlockGlobal(ctx, r.Name, r.Indexer, "rejected in review")
-	case r.MediaType == "series":
-		c.addBlockSeries(ctx, r.ExpectedID, r.Name, r.Indexer, "rejected in review")
-	case r.MediaType == "movie":
-		_ = c.addBlock(ctx, r.ExpectedID, r.Name, r.Indexer, "", "rejected in review")
-	case r.MediaType == "music":
-		c.addBlockMusic(ctx, r.ExpectedID, r.Name, r.Indexer, "rejected in review")
-	case r.MediaType == "book":
-		// Book reviews now carry the book they were grabbed for, so they reach this switch
-		// with a real ExpectedID. Without a case of their own they would match nothing and
-		// rejecting would blocklist nothing at all, leaving the release free to be re-grabbed
-		// for the same book on the next sweep.
-		c.addBlockBook(ctx, r.ExpectedID, r.Name, r.Indexer, "rejected in review")
-	}
 	// The download is gone, so its grab is over: 'failed' lets the pending guard go (the
 	// blocklist now does that job) and keeps it out of seed cleanup.
-	c.setGrabStatusByHash(ctx, r.Hash, r.Name, r.MediaType, grabStatusFailed)
+	moved := c.setGrabStatusByHash(ctx, r.Hash, r.Name, r.MediaType, grabStatusFailed)
+	// The review is named after the download as the client shows it, which is often not
+	// the title the indexer listed it under: MyAnonaMouse's "Hugh Howey - The Wool Trilogy:
+	// Wool, Shift, Dust [EPUB]" lands as "The Wool Trilogy by Hugh Howey.epub". Searches
+	// check the blocklist against indexer titles, so blocking only the client's name let
+	// "Reject & find another" grab the very release just rejected. Block the grab's own
+	// title as well.
+	type blockRow struct{ title, indexer string }
+	rows := []blockRow{{r.Name, r.Indexer}}
+	seen := map[string]bool{normTitle(r.Name): true}
+	for _, g := range moved {
+		if k := normTitle(g.Title); g.Title != "" && !seen[k] {
+			seen[k] = true
+			rows = append(rows, blockRow{g.Title, g.Indexer})
+		}
+	}
+	for _, b := range rows {
+		switch {
+		case r.ExpectedID == 0:
+			// The review wasn't tied to a specific library item ("matches no series/movie").
+			// A blocklist row against id 0 is inert — nothing ever reads it — so a rejected
+			// junk release stayed grabbable everywhere. The user just called it junk: block
+			// it library-wide.
+			c.addBlockGlobal(ctx, b.title, b.indexer, "rejected in review")
+		case r.MediaType == "series":
+			c.addBlockSeries(ctx, r.ExpectedID, b.title, b.indexer, "rejected in review")
+		case r.MediaType == "movie":
+			_ = c.addBlock(ctx, r.ExpectedID, b.title, b.indexer, "", "rejected in review")
+		case r.MediaType == "music":
+			c.addBlockMusic(ctx, r.ExpectedID, b.title, b.indexer, "rejected in review")
+		case r.MediaType == "book":
+			// Book reviews now carry the book they were grabbed for, so they reach this switch
+			// with a real ExpectedID. Without a case of their own they would match nothing and
+			// rejecting would blocklist nothing at all, leaving the release free to be re-grabbed
+			// for the same book on the next sweep.
+			c.addBlockBook(ctx, r.ExpectedID, b.title, b.indexer, "rejected in review")
+		}
+	}
 	c.reviewEvent(ctx, r.MediaType, r.ExpectedID, "rejected", "Rejected in review — removed and blocklisted: "+r.Name)
 	return c.resolveReview(ctx, id, ResolutionRejected)
 }

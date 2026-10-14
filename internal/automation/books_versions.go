@@ -130,7 +130,7 @@ func (c *Coordinator) grabAudioVersionCounted(ctx context.Context, b books.Book,
 	st.usable = len(rels)
 	allowed := c.bookLanguages(ctx)
 	noteBookVerdicts(notes, versionProfile(sp, v), allowed, rels, books.KindAudiobook)
-	best := pickBestBookForKind(versionProfile(sp, v), allowed, rels, books.KindAudiobook)
+	best := pickBestBookForKind(versionProfile(sp, v), allowed, rels, books.KindAudiobook, b.Title)
 	if best == nil {
 		c.log.Info("book: no acceptable release for this audiobook version", "title", b.Title, "version", v.Label)
 		return "", st, nil
