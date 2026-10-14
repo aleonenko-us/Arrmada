@@ -14,8 +14,10 @@
 # reach Jellyfin by container name.
 #
 # Usage (from anywhere in the repo; needs docker and curl):
-#   scripts/jellyfin-it.sh                  # set up, run `go test -run IT ./internal/jellyfin/...`
+#   scripts/jellyfin-it.sh                  # set up, run `go test -run IT` on internal/jellyfin
+#                                           # and internal/jellyfinsvc
 #   scripts/jellyfin-it.sh -run IT_Sessions # extra arguments go to `go test`
+#   JELLYFIN_IT_PKGS=./internal/jellyfinsvc/... scripts/jellyfin-it.sh   # only these packages
 #   JELLYFIN_IT_HOLD=1 scripts/jellyfin-it.sh
 #       set up, then keep the server running until the printed hold file is deleted; the
 #       connection details are in an env file (mode 600) next to it, never printed.
@@ -284,10 +286,16 @@ ENV
 fi
 
 say "running the live tests"
+# The media volume is mounted twice: at /media, where Jellyfin sees it, and at /arr, which
+# plays Arrmada's own spelling of the same folders so path mappings are tested for real.
+# The packages run one after another (-p 1): each reports folders to the same server, and
+# Jellyfin's scan wait restarts with every report.
+# shellcheck disable=SC2086 # the package list is meant to split
 docker run --rm --name "$name-go" --cpus=3 --network "$net" \
 	-v "$src:/src" -v arrmada-gomod:/go/pkg/mod -v arrmada-gocache:/root/.cache/go-build \
-	-v "$vol:/media" -w /src \
+	-v "$vol:/media" -v "$vol:/arr" -w /src \
 	-e ARRMADA_JELLYFIN_IT -e ARRMADA_JELLYFIN_URL -e ARRMADA_JELLYFIN_KEY \
 	-e ARRMADA_JELLYFIN_ADMIN_USER -e ARRMADA_JELLYFIN_ADMIN_PASSWORD \
 	-e ARRMADA_JELLYFIN_USER -e ARRMADA_JELLYFIN_PASSWORD -e ARRMADA_JELLYFIN_MEDIA \
-	"$GO_IMAGE" go test -count=1 -timeout 20m -v -run IT "$@" ./internal/jellyfin/...
+	-e ARRMADA_JELLYFIN_ARR=/arr \
+	"$GO_IMAGE" go test -count=1 -p 1 -timeout 40m -v -run IT "$@" ${JELLYFIN_IT_PKGS:-./internal/jellyfin/... ./internal/jellyfinsvc/...}
