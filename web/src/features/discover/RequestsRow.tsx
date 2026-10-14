@@ -8,6 +8,7 @@ import { formatSeasons, MOVING_STAGES, requestStage, sortForRequester } from "..
 import { useRequestsFeed } from "../../lib/useRequestsFeed";
 import { StatusChip, POSTER_CHIP_BG, TONE_HUE } from "../../ui";
 import { PosterPlaceholder } from "./shared";
+import { firstWatch } from "../../components/brand/servers";
 import { RailArrows, RailStrip, useRail } from "./rail";
 
 // The request sheet loads when a request is first opened, not with Discover.
@@ -91,6 +92,7 @@ function RequestRail({ heading, seeAll, seeAllLabel, items, staff, queueKnown = 
 function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequest; staff: boolean; queueKnown?: boolean; onOpen: () => void }) {
   const tr = rq.tracking;
   const stage = requestStage(rq, queueKnown);
+  const watch = firstWatch(rq);
   const pct = tr && (tr.stage === "downloading" || tr.stage === "paused") && tr.progress != null ? Math.round(tr.progress * 100) : 0;
   const settling = tr?.stage === "importing" || tr?.stage === "adding"; // on disk, nearly there: a full, pulsing bar
   const showBar = !stage.unknown && (tr?.stage === "downloading" || tr?.stage === "paused" || settling);
@@ -159,9 +161,10 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
           )}
           <span className="truncate">{stage.detail}</span>
         </div>
-        {/* Delivered and in the owner's Plex: one tap to watch it there. */}
-        {rq.plex_url && (
-          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" aria-label={`Watch ${rq.title} on Plex`} className="mt-1.5 inline-flex min-h-[28px] items-center rounded-md bg-accent-grad px-2.5 text-xs font-semibold text-accent-ink">▶ Watch</a>
+        {/* Delivered and on a media server: one tap to watch it on the viewer's own (the
+            sheet has a button per server). */}
+        {watch && (
+          <a href={watch.href} target="_blank" rel="noopener noreferrer" aria-label={`Watch ${rq.title} on ${watch.label}`} className="mt-1.5 inline-flex min-h-[28px] items-center rounded-md bg-accent-grad px-2.5 text-xs font-semibold text-accent-ink">▶ Watch</a>
         )}
       </div>
     </div>

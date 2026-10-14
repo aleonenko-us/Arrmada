@@ -101,15 +101,23 @@ type Payload struct {
 	// PlexURL, on a 'ready' notice for a title the owner's Plex has, is the title's
 	// app.plex.tv page: the worker offers "Watch on Plex" and a plain tap opens it.
 	PlexURL string `json:"plex_url,omitempty"`
+	// WatchURL and WatchLabel, on a 'ready' notice for a title a media server has, are
+	// the reader's own server's page for it and that server's name ("Jellyfin"): the
+	// worker offers "Watch on <label>" and a plain tap opens it. Workers from before
+	// Jellyfin read plex_url instead.
+	WatchURL   string `json:"watch_url,omitempty"`
+	WatchLabel string `json:"watch_label,omitempty"`
 }
 
 // Message is one push: its words, the app address a tap opens, and (optionally) the
-// title's Watch on Plex page.
+// title's Watch pages — Plex's, and the reader's own server's.
 type Message struct {
-	Title   string
-	Body    string
-	URL     string
-	PlexURL string
+	Title      string
+	Body       string
+	URL        string
+	PlexURL    string
+	WatchURL   string
+	WatchLabel string
 }
 
 func (m Message) payload() ([]byte, error) {

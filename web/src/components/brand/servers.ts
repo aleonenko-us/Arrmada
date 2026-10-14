@@ -26,6 +26,24 @@ export interface WatchLink {
   url: string;
 }
 
+/** A record's Watch links: its watch_links, or — from a server older than Jellyfin
+ *  support — its plex_url as the one Plex link. */
+export function watchLinksOf(x: { watch_links?: readonly WatchLink[]; plex_url?: string } | null | undefined): readonly WatchLink[] {
+  if (!x) return [];
+  if (x.watch_links?.length) return x.watch_links;
+  return x.plex_url ? [{ server: "plex", label: "Plex", url: x.plex_url }] : [];
+}
+
+/** The first usable Watch link (the viewer's own server, as the API orders them) as an
+ *  href and the server's name, for a row with room for one button. */
+export function firstWatch(x: Parameters<typeof watchLinksOf>[0]): { href: string; label: string } | null {
+  for (const l of watchLinksOf(x)) {
+    const href = safeWatchURL(l.url);
+    if (href) return { href, label: watchLabel(l) };
+  }
+  return null;
+}
+
 /** The name a Watch link says ("Plex"), from the server when it's known. */
 export function watchLabel(l: WatchLink): string {
   return isMediaServer(l.server) ? SERVER_LABEL[l.server] : l.label || l.server;

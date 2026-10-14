@@ -212,8 +212,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // The media servers Insights can watch: Plex only, not connected (Jellyfin isn't wired).
     get("/api/v1/insights/servers", { servers: [{ server: "plex", configured: false, monitoring: false, status: "unconfigured", poll_seconds: 30 }] }),
     get("/api/v1/insights/plex/scan", mod.plexScan),
-    // Watch on Plex: no Plex connected, so no title is in it.
+    // Watch links: no media server connected, so no title is on one.
     { method: "GET", path: "/api/v1/plex/link", status: 204 },
+    get("/api/v1/media/links", { links: [] }),
     get(/^\/api\/v1\/(movies|series)\/\d+\/watch-stats$/, { available: false, plays: 0, last_played: 0, users: [] }),
     get("/api/v1/insights/stats", mod.insightsStats),
     // Settings → Import (admin): no double-counted plays, live recording since NOW - 30d.

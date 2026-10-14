@@ -9,6 +9,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/pipeline"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
@@ -26,7 +27,7 @@ const (
 	StageFailed      = pipeline.Failed      // its download errored
 	StageImporting   = pipeline.Importing   // downloaded; being moved into the library
 	StagePartial     = "partial"            // a series with some episodes ready
-	StageAdding      = "adding"             // on disk; waiting for Plex to show it before saying it's ready
+	StageAdding      = "adding"             // on disk; waiting for a media server to show it before saying it's ready
 	StageAvailable   = "available"          // ready to watch / read / listen
 )
 
@@ -49,10 +50,11 @@ func (s *Service) failingImports() map[string]bool {
 	return out
 }
 
-// addingToPlex reports whether a complete request is still waiting for Plex: approved, a
-// movie or show, nobody told yet, and either seen waiting (on_disk_at) or Plex is set up
-// so its 'ready' will wait. The card then says 'Adding to Plex…' rather than Ready until
-// the notice goes out, so card and message agree.
+// addingToPlex reports whether a complete request is still waiting for a media server:
+// approved, a movie or show, nobody told yet, and either seen waiting (on_disk_at) or a
+// server is set up so its 'ready' will wait. The card then says 'Adding to Plex…' (or
+// Jellyfin, or your library with both) rather than Ready until the notice goes out, so
+// card and message agree.
 func addingToPlex(rq Request, gated bool) bool {
 	return rq.Status == StatusApproved && rq.ReadyAt == 0 && (rq.MediaType == "movie" || rq.MediaType == "series") &&
 		(rq.onDiskAt > 0 || gated)
@@ -69,6 +71,9 @@ type Tracking struct {
 	Have       int     `json:"have,omitempty"`        // series: episodes on disk
 	Total      int     `json:"total,omitempty"`       // series: aired episodes wanted
 	Note       string  `json:"note,omitempty"`        // a short explanation ("Not out yet")
+	// AddingTo, at stage "adding", names the media servers the title is being added to
+	// ("plex", "jellyfin"): the card says "Adding to Plex…", or "…your library…" for both.
+	AddingTo []mediaserver.Kind `json:"adding_to,omitempty"`
 	// NextCheckAt is when a book that hasn't been found yet will be searched for again
 	// (RFC3339, UTC). The page formats it in the viewer's own locale; the server never
 	// writes a date into the copy.
@@ -123,6 +128,10 @@ func (s *Service) Track(ctx context.Context, reqs []Request, queue []download.It
 	}
 	now := time.Now()
 	gated := s.plex != nil && s.plex.Configured(ctx)
+	var servers []mediaserver.Kind
+	if gated {
+		servers = s.plex.Servers(ctx)
+	}
 	failing := s.failingImports()
 	for i := range reqs {
 		var mine []automation.Acquisition
@@ -132,6 +141,7 @@ func (s *Service) Track(ctx context.Context, reqs []Request, queue []download.It
 		reqs[i].Tracking = track(&reqs[i], mine, byHash, failing, queueKnown, now)
 		if t := reqs[i].Tracking; t != nil && t.Stage == StageAvailable && addingToPlex(reqs[i], gated) {
 			t.Stage = StageAdding
+			t.AddingTo = servers
 		}
 		// Keep the older field in step for anything still reading it.
 		if t := reqs[i].Tracking; t != nil && t.Stage == StageDownloading {

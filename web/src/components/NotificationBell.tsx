@@ -5,6 +5,35 @@ import { api, type UserNotification } from "../lib/api";
 import { refToPath } from "../lib/refLink";
 import { useLiveRefresh } from "../lib/useLiveRefresh";
 import { REQUEST_TOPICS } from "../lib/useRequestsFeed";
+import { SERVER_FILL, SERVER_INK, isMediaServer, safeWatchURL, watchLabel, watchLinksOf, type WatchLink } from "./brand/servers";
+
+// BellWatchLinks is a notice's Watch buttons, small enough for the bell: the first (the
+// reader's own server) in the accent, any other in its server's colours. Plain links,
+// http(s) only; marks are left out to keep the bell light.
+function BellWatchLinks({ links, onOpen }: { links: readonly WatchLink[]; onOpen: () => void }) {
+  const usable = links.filter((l) => safeWatchURL(l.url));
+  if (usable.length === 0) return null;
+  return (
+    <div className="-mt-1 mb-2.5 ml-[30px] flex flex-wrap gap-1.5">
+      {usable.map((l, i) => {
+        const known = isMediaServer(l.server) ? l.server : null;
+        return (
+          <a
+            key={`${l.server}:${l.url}`}
+            href={safeWatchURL(l.url) ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onOpen}
+            className={`inline-flex min-h-[30px] items-center rounded-md px-2.5 text-sm font-semibold ${i === 0 ? "bg-accent-grad text-accent-ink" : ""}`}
+            style={i === 0 ? undefined : known ? { background: SERVER_FILL[known], color: SERVER_INK[known] } : { background: "var(--panel-2)", color: "var(--ink)" }}
+          >
+            ▶ Watch on {watchLabel(l)}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
 // Where the bell's Settings button goes: the Me page's "Get notified" card, the one place
 // push and Apprise are set up.
@@ -140,10 +169,9 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
                 <span className="block whitespace-pre-line text-sm text-ink-dim">{n.body}</span>
               </span>
             </button>
-            {/* A ready title Plex has: straight to it in Plex (the row itself opens it here). */}
-            {n.plex_url && (
-              <a href={n.plex_url} target="_blank" rel="noopener noreferrer" onClick={() => { void markRead(n); }} className="-mt-1 mb-2.5 ml-[30px] inline-flex min-h-[30px] items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on Plex</a>
-            )}
+            {/* A ready title a media server has: straight to it there, one button per server,
+                the reader's own first (the row itself opens it here). */}
+            <BellWatchLinks links={watchLinksOf(n)} onOpen={() => { void markRead(n); }} />
           </div>
         ))}
       </div>

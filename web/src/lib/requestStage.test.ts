@@ -36,4 +36,13 @@ describe("requestStage", () => {
     ]).map((r) => r.id);
     expect(order).toEqual([2, 3, 1]);
   });
+
+  it("names the media server it's being added to, or your library with both", () => {
+    const detail = (adding_to?: ("plex" | "jellyfin")[]) =>
+      requestStage(rq({ media_type: "movie", available: true, tracking: { stage: "adding", adding_to } })).detail;
+    expect(detail(["plex"])).toBe("Adding to Plex…");
+    expect(detail(["jellyfin"])).toBe("Adding to Jellyfin…");
+    expect(detail(["plex", "jellyfin"])).toBe("Adding to your library…");
+    expect(detail()).toBe("Adding to Plex…");
+  });
 });
