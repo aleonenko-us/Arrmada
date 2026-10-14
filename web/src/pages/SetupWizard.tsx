@@ -261,7 +261,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           </p>
           {managedOnly && (
             <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
-              Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, re-run the installer with your media folder.
+              Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, run the install line again on the server with <code className="font-mono">--media</code> and your media folder, for example <code className="font-mono">… | sh -s -- --media /mnt/user/data</code>. It mounts the folder and restarts Arrmada; then pick each library here.
             </div>
           )}
           <div className="flex flex-col gap-2.5">
