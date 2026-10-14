@@ -1571,7 +1571,16 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		c.skipUnreadable(m.Title, err)
 		return err
 	}
-	picks := c.movieUpgradePicks(ctx, m, want, versions, cands)
+	// Every release grabbed for each track before, whatever became of it: an upgrade is
+	// tried once. A grab the import gate kept out (or found already imported) leaves the
+	// track's file as it was, and without this the same release would win again on every
+	// sweep — the loop the series sweep had (movieGrabbedTitles).
+	tried, err := c.movieGrabbedTitles(ctx, m.ID)
+	if err != nil {
+		c.skipUnreadable(m.Title, err)
+		return err
+	}
+	picks := c.movieUpgradePicks(ctx, m, want, versions, cands, tried)
 	takeUpgrades(picks, b, func(u movieUpgrade) bool {
 		winner := byName[u.pick.Name]
 		if grabbed[winner.DownloadURL] {
@@ -1605,8 +1614,9 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 
 // movieUpgradePicks decides, for each version, the release that would upgrade its file —
 // the decision half of upgradeMovie, apart from the grabbing so it can be tested without
-// an indexer or a download client.
-func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, want, siblings []movies.Version, cands []quality.Candidate) []movieUpgrade {
+// an indexer or a download client. tried is movieGrabbedTitles: a release grabbed for a
+// track before is never that track's upgrade again.
+func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, want, siblings []movies.Version, cands []quality.Candidate, tried map[int64]map[string]bool) []movieUpgrade {
 	var picks []movieUpgrade
 	for _, v := range want {
 		// A held file ("keep existing files" when its profile changed) is left as it is.
@@ -1617,12 +1627,64 @@ func (c *Coordinator) movieUpgradePicks(ctx context.Context, m movies.Movie, wan
 		}
 		cur := c.currentMovieFile(ctx, m, v)
 		profile := c.effectiveProfile(ctx, v.QualityProfile, quality.MediaMovie)
-		// Only releases this track may take: its edition, never another track's file.
-		if pick, ok := c.upgradePick(ctx, profile, cur, editionFilter(notesFrom(ctx), cands, v, siblings)); ok {
+		// Only releases this track may take: its edition, never another track's file, never
+		// one it has tried before.
+		mine := editionFilter(notesFrom(ctx), untriedCands(cands, tried[v.ID]), v, siblings)
+		if pick, ok := c.upgradePick(ctx, profile, cur, mine); ok {
 			picks = append(picks, movieUpgrade{v: v, profile: profile, from: cur.Release, pick: pick})
 		}
 	}
 	return picks
+}
+
+// movieGrabbedTitles is every release ever grabbed for a movie, by track (the grab's
+// version_id, 0 for the default track) and then normTitle — imported, failed, removed,
+// whatever became of it. The movie upgrade sweep tries a release once per track, as the
+// series sweep does per show (seriesGrabbedTitles): after an upgrade arrives the import
+// gate may still keep the old file, or find the download already imported, and the same
+// release mustn't come round again every sweep.
+//
+// Per track, not per movie: the tracks are judged apart (each its own profile and
+// edition), so a release one track tried can still be another's upgrade — editionFilter
+// already keeps a release another track's file came from away from the rest. It fails
+// closed like the blocklist: an unreadable history would make every tried release new.
+func (c *Coordinator) movieGrabbedTitles(ctx context.Context, movieID int64) (map[int64]map[string]bool, error) {
+	rows, err := c.db.QueryContext(ctx,
+		`SELECT version_id, title FROM grabs WHERE movie_id = ? AND media_type = 'movie'`, movieID)
+	if err != nil {
+		return nil, fmt.Errorf("grab history unreadable: %w", err)
+	}
+	defer rows.Close()
+	out := map[int64]map[string]bool{}
+	for rows.Next() {
+		var vid int64
+		var title string
+		if err := rows.Scan(&vid, &title); err != nil {
+			return nil, fmt.Errorf("grab history unreadable: %w", err)
+		}
+		if out[vid] == nil {
+			out[vid] = map[string]bool{}
+		}
+		out[vid][normTitle(title)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("grab history unreadable: %w", err)
+	}
+	return out, nil
+}
+
+// untriedCands is cands without the releases in before (one track's movieGrabbedTitles).
+func untriedCands(cands []quality.Candidate, before map[string]bool) []quality.Candidate {
+	if len(before) == 0 {
+		return cands
+	}
+	out := make([]quality.Candidate, 0, len(cands))
+	for _, cand := range cands {
+		if !before[normTitle(cand.Name)] {
+			out = append(out, cand)
+		}
+	}
+	return out
 }
 
 // UpgradeBaseline is the release string the movie upgrade sweep scores a version's file
