@@ -104,7 +104,10 @@ func New(baseURL, apiKey, deviceID, version string, hc *http.Client) *Client {
 // defaultHTTPClient fails fast on a dead address (5 s to connect) but gives a big library
 // page time to arrive.
 func defaultHTTPClient() *http.Client {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr := &http.Transport{Proxy: http.ProxyFromEnvironment}
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr = dt.Clone()
+	}
 	tr.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	tr.TLSHandshakeTimeout = 10 * time.Second
 	tr.ResponseHeaderTimeout = 15 * time.Second
