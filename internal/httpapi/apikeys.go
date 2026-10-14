@@ -55,11 +55,15 @@ func (a *api) handleGetAPIKeys(w http.ResponseWriter, r *http.Request) {
 // handleTestAPIKey makes a real request with a key and reports the outcome. With no body
 // it tests the saved key; with {"value": "..."} it tests that candidate instead — a key
 // typed and not yet saved — which is sent to the provider once and never stored or
-// logged. Only keys with a verifier wired up can be tested; anything else is a 400.
+// logged. The OpenSubtitles key also takes a typed "username" and "password" (setup asks
+// for all three together); empty ones mean the saved values. Only keys with a verifier
+// wired up can be tested; anything else is a 400.
 func (a *api) handleTestAPIKey(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var body struct {
-		Value string `json:"value"`
+		Value    string `json:"value"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 	// The body is optional: the Test button on a saved key sends none.
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
@@ -69,20 +73,28 @@ func (a *api) handleTestAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	candidate := strings.TrimSpace(body.Value)
+	user, pass := strings.TrimSpace(body.Username), strings.TrimSpace(body.Password)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	res, err := a.keyTest(ctx, id, candidate)
+	var res keyTestResult
+	var err error
+	if user != "" || pass != "" {
+		res, err = a.loginTest(ctx, id, candidate, user, pass)
+	} else {
+		res, err = a.keyTest(ctx, id, candidate)
+	}
 	if err != nil {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// A test of the saved TMDB key settles the health panel's TMDB warning either way.
 	// A candidate says nothing about the key in use, so it leaves the panel alone.
-	if id == "tmdb" && candidate == "" {
+	typed := candidate != "" || user != "" || pass != ""
+	if id == "tmdb" && !typed {
 		a.recheckTMDB(r)
 	}
-	if candidate == "" {
+	if !typed {
 		a.recordKeyTest(ctx, id, res.Err)
 	}
 	if res.Err != nil {
@@ -109,8 +121,13 @@ func (a *api) keyTest(ctx context.Context, id, candidate string) (keyTestResult,
 	var res keyTestResult
 	switch verify, ok := a.deps.KeyVerifiers[id]; {
 	case id == "hardcover":
+		// A typed key gets a quick "who am I"; the saved one the full search-and-fetch run.
 		if candidate != "" {
-			return res, errors.New("Hardcover can only test the saved key; save it, then Test")
+			if !ok {
+				return res, errors.New("Hardcover can only test the saved key; save it, then Test")
+			}
+			res.Detail, res.Err = verify(ctx, candidate)
+			return res, nil
 		}
 		if a.deps.Books == nil {
 			return res, errNoKeyTest
@@ -142,6 +159,23 @@ func (a *api) keyTest(ctx context.Context, id, candidate string) (keyTestResult,
 		}
 	default:
 		return res, errNoKeyTest
+	}
+	return res, nil
+}
+
+// loginTest is the OpenSubtitles Test with a typed username or password (and the typed
+// key, or the saved one when candidate is empty). Every other key takes no login.
+func (a *api) loginTest(ctx context.Context, id, candidate, user, pass string) (keyTestResult, error) {
+	var res keyTestResult
+	if id != "opensubtitles_api" {
+		return res, errors.New("only the OpenSubtitles test takes a username and password")
+	}
+	if a.deps.SubtitleLoginVerifier == nil {
+		return res, errNoKeyTest
+	}
+	res.Detail, res.Err = a.deps.SubtitleLoginVerifier(ctx, candidate, user, pass)
+	if errors.Is(res.Err, subtitles.ErrNotConfigured) {
+		res.Err = errors.New("no API key is set to test")
 	}
 	return res, nil
 }
