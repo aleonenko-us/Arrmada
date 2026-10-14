@@ -30,7 +30,7 @@ test.describe("admin on a phone", () => {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
     // The Plex connection opens in its card too (CFG-16).
-    await page.locator("#plex").getByRole("button", { name: "Set up" }).click();
+    await page.locator("#plex").getByRole("button", { name: "Connect Plex" }).click();
     await expect(page.locator("#plex").getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
@@ -44,6 +44,24 @@ test.describe("admin on a phone", () => {
     await expect(form.getByLabel("Username")).toBeVisible();
     const box = await page.getByRole("dialog").boundingBox();
     expect(box && box.x >= 0 && box.x + box.width <= 375).toBe(true);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  // J5a: the media server cards stack on a phone, and the Jellyfin editor fits.
+  test("the media server cards stack on a 375 px screen", async ({ page, api }) => {
+    await page.goto("/settings/connections");
+    const plex = page.locator("#media-servers #plex");
+    const jf = page.locator("#media-servers #jellyfin");
+    await expect(jf.getByRole("button", { name: "Connect Jellyfin" })).toBeVisible();
+    await api.quiet();
+    const a = await plex.boundingBox();
+    const b = await jf.boundingBox();
+    expect(a && b && b.y >= a.y + a.height - 1 && Math.abs(a.x - b.x) < 2).toBe(true);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+    await jf.getByRole("button", { name: "Connect Jellyfin" }).click();
+    await jf.getByLabel("Server URL").fill("http://192.168.1.20:8096");
+    await expect(jf.getByText(/only works on your home network/)).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 

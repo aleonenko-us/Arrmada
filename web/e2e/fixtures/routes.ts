@@ -126,6 +126,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/indexers/prowlarr", { url: "", has_key: false, ui_port: "9696", ui_url: "" }),
     get("/api/v1/connections", media.connections),
     { method: "POST", path: /^\/api\/v1\/connections\/([a-z_]+)\/([^/]+)\/test$/, respond: ({ params }) => media.connectionTest(params[0], params[1]) },
+    // The Jellyfin connection, edited in its card on Connections.
+    get("/api/v1/jellyfin", media.jellyfinConfig),
+    { method: "PUT", path: "/api/v1/jellyfin", respond: ({ body }) => media.jellyfinSave(body as Parameters<typeof media.jellyfinSave>[0]) },
+    { method: "POST", path: "/api/v1/jellyfin/test", respond: ({ body }) => media.jellyfinTest(body as { url?: string }) },
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),

@@ -23,15 +23,8 @@ export function PlexMark({ size = 16, className }: MarkProps) {
 export function JellyfinMark({ size = 16, className }: MarkProps) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false" className={className}>
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        stroke="currentColor"
-        strokeWidth={1.4}
-        strokeLinejoin="round"
-        d="M12 2.8 21.6 20H2.4zm0 5.6-5 8.9h10z"
-      />
-      <path fill="currentColor" stroke="currentColor" strokeWidth={1.2} strokeLinejoin="round" d="M12 11.3l2.3 4.1H9.7z" />
+      <path fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinejoin="round" d="M12 4 20.6 19.2H3.4z" />
+      <path fill="currentColor" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" d="M12 10.2l3 5.3H9z" />
     </svg>
   );
 }

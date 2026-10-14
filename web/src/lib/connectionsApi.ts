@@ -10,6 +10,7 @@ export type ConnectionKind =
   | "flaresolverr"
   | "apikey"
   | "plex"
+  | "jellyfin"
   | "notifications"
   | "audioserver";
 
@@ -46,7 +47,12 @@ export interface ConnectionItem {
   managed_by?: "prowlarr";
   /** Where it's edited, when that isn't its own card (Plex, alerts, the audiobook server). */
   fix_path?: string;
+  /** Media servers only: what Arrmada uses this server for. Absent means all of it. */
+  used_for?: MediaServerUse[];
 }
+
+/** What a connected media server does for Arrmada (the "Used for" chips on its card). */
+export type MediaServerUse = "watch" | "library" | "signin" | "insights";
 
 export type ConnectionSectionId = "search" | "downloads" | "metadata" | "other";
 

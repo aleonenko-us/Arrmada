@@ -35,7 +35,7 @@ test.describe("admin", () => {
     await expect(page.locator("#indexer-1").getByText("214 searches · 2 grabs · 3 failed (24h)")).toBeVisible();
     await expect(page.locator("#apikey-tvdb").getByText("Not set up")).toBeVisible();
     // Plex is connected inside its card (CFG-16), not on another page.
-    await expect(page.locator("#plex").getByRole("button", { name: "Set up" })).toBeVisible();
+    await expect(page.locator("#plex").getByRole("button", { name: "Connect Plex" })).toBeVisible();
 
     await qb.getByRole("button", { name: "Test" }).click();
     await expect(qb.getByRole("status")).toHaveText("✓ Connected");

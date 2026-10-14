@@ -110,7 +110,7 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Plex recommended naming", "Metadata", "Other connections", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Plex recommended naming", "Metadata", "Media servers", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
   });
 
   it("has a unique anchor per card", () => {
