@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -1308,9 +1309,6 @@ func main() {
 		// the later one wins.
 		OnFoldersChanged: func(ctx context.Context, changed []string) {
 			for _, name := range changed {
-				if name == "downloads" && sab != nil {
-					sab.foldersChanged(ctx) // the bundled SABnzbd's folders follow it too
-				}
 				if name != "downloads" || cfg.QbittorrentURL == "" {
 					continue
 				}
@@ -1337,6 +1335,11 @@ func main() {
 				}
 			}
 			bus.Publish("system.folders.applied", map[string]any{"changed": changed})
+			// The bundled SABnzbd's folders follow the Downloads folder too; after the rest,
+			// so a SABnzbd that's down doesn't hold up qBittorrent's move or the page.
+			if sab != nil && slices.Contains(changed, "downloads") {
+				sab.foldersChanged(ctx)
+			}
 		},
 	})
 	// A task that keeps failing is a health problem too (it warns at three in a row).

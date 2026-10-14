@@ -471,7 +471,9 @@ existing_install() {
   # --with-prowlarr / --with-sabnzbd: the companion's compose profile joins COMPOSE_PROFILES
   # (a comma list; whatever is there already stays).
   if [ -n "$SABNZBD" ]; then
-    if [ -z "$(env_get ARRMADA_SABNZBD_PORT)" ]; then
+    # A free port for its web page, unless it's already running (switched on by hand), when
+    # it keeps the one it has.
+    if [ -z "$(env_get ARRMADA_SABNZBD_PORT)" ] && ! docker inspect Arrmada-sabnzbd >/dev/null 2>&1; then
       env_set ARRMADA_SABNZBD_PORT "$(free_port 8085 8086 8087)" "# SABnzbd's web page (where your Usenet provider goes), picked free by install.sh."
       _changed=1
     fi
@@ -520,8 +522,9 @@ existing_install() {
     say ""
     say "✓ Arrmada is running.  Open http://$(host_ip):$(env_get ARRMADA_PORT)"
     if [ -n "$SABNZBD" ]; then
+      _sp=$(env_get ARRMADA_SABNZBD_PORT)
       say ""
-      sabnzbd_note "$(env_get ARRMADA_SABNZBD_PORT)"
+      sabnzbd_note "${_sp:-8085}"
     fi
     return
   fi
