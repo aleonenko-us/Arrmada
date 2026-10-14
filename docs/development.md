@@ -17,8 +17,10 @@ cd web && npm run build && cd .. && go build -o arrmada ./cmd/arrmada
 To build the Docker image from your checkout, put `ARRMADA_APP_IMAGE=arrmada:dev` in `.env`
 (otherwise the build is tagged with the published image's name) and run
 `docker compose up -d --build`. Without `--build`, `docker compose up -d` runs the published
-image. A cold image build needs about 7 GB of free memory on four cores (the stages compile
-side by side; whisper.cpp's Vulkan shaders alone take 3.6 GB in one compiler).
+image. A cold image build needs about 2 GB of free memory (4 GB is comfortable): the heavy
+compiles take turns and size their parallel jobs to free memory (`docker/build-heavy`; set the
+build argument `ARRMADA_BUILD_JOBS` to fix the count). A cold build takes roughly 20 minutes on
+four cores; rebuilds after a Go or web change take under a minute.
 
 ## Checks
 
