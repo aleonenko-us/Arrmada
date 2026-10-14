@@ -181,6 +181,23 @@ sabnzbd_note() {
   say "  SABnzbd (Usenet): Arrmada connects to it by itself. Add your Usenet provider there:"
   say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit)"
   say "  then add your Newznab indexers in Arrmada (Settings → Connections)."
+  # The app looks for SABnzbd's settings every 30 seconds and logs when it has added it. An
+  # Arrmada older than the bundled SABnzbd never does: say what to do then.
+  printf '  Waiting for Arrmada to add SABnzbd' >&2
+  _i=0
+  while [ "$_i" -lt 45 ]; do
+    if docker logs Arrmada-app 2>&1 | grep -q 'SABnzbd (bundled)'; then
+      printf ' done\n' >&2
+      return 0
+    fi
+    printf '.' >&2
+    _i=$((_i + 1)); sleep 2
+  done
+  printf '\n' >&2
+  say "  ! Arrmada hasn't added SABnzbd yet. If Settings → Connections doesn't list \"SABnzbd (bundled)\""
+  say "    in a minute: removed there before? Use its Restore bundled SABnzbd button. Otherwise this"
+  say "    Arrmada is older than the bundled SABnzbd: update it (sh update.sh), or add SABnzbd there"
+  say "    yourself with its API key from SABnzbd → Config → General."
 }
 
 # wait_healthy -> 0 once the app answers its health check; 1 if it crashed, keeps
