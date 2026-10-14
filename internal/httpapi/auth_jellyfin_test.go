@@ -392,7 +392,7 @@ func TestMeJellyfinLink(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"linked":false`) || !strings.Contains(rec.Body.String(), `"available":true`) || !strings.Contains(rec.Body.String(), `"quickconnect":true`) {
 		t.Errorf("me/jellyfin before = %s", rec.Body)
 	}
-	if rec := s.doFrom("POST", "/api/v1/me/jellyfin/link", `{"username":"boss","password":"nope"}`, lan, adminCookie); rec.Code != http.StatusUnauthorized {
+	if rec := s.doFrom("POST", "/api/v1/me/jellyfin/link", `{"username":"boss","password":"nope"}`, lan, adminCookie); rec.Code != http.StatusBadRequest {
 		t.Errorf("wrong password: HTTP %d", rec.Code)
 	}
 	rec = s.doFrom("POST", "/api/v1/me/jellyfin/link", `{"username":"boss","password":"boss-password-1"}`, lan, adminCookie)

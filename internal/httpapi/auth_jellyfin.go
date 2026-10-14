@@ -137,7 +137,13 @@ func (a *api) jellyfinPasswordAuth(w http.ResponseWriter, r *http.Request, flow,
 				a.loginFailuresAlert("jellyfin:"+name, n, ip)
 			}
 		}
-		a.writeError(w, http.StatusUnauthorized, "Wrong Jellyfin username or password.")
+		// 401 only on the sign-in route: on a signed-in route the app reads a 401 as its own
+		// session having ended.
+		code := http.StatusUnauthorized
+		if flow != jfFlowLogin {
+			code = http.StatusBadRequest
+		}
+		a.writeError(w, code, "Wrong Jellyfin username or password.")
 		return jellyfin.User{}, false
 	}
 	if errors.Is(err, jellyfin.ErrForbidden) {
@@ -234,7 +240,7 @@ func (a *api) handleJellyfinLogin(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &body) {
 		return
 	}
-	ju, ok := a.jellyfinPasswordAuth(w, r, "login", body.Username, body.Password)
+	ju, ok := a.jellyfinPasswordAuth(w, r, jfFlowLogin, body.Username, body.Password)
 	if !ok {
 		return
 	}
@@ -363,7 +369,7 @@ func (a *api) handleJellyfinLink(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &body) {
 		return
 	}
-	ju, ok := a.jellyfinPasswordAuth(w, r, "link", body.Username, body.Password)
+	ju, ok := a.jellyfinPasswordAuth(w, r, jfFlowLink, body.Username, body.Password)
 	if !ok {
 		return
 	}
