@@ -1,0 +1,46 @@
+# Troubleshooting
+
+**The installer says Docker or Compose is missing.**
+On Unraid, switch Docker on in Settings → Docker and install the **Docker Compose Manager**
+plugin from Apps. Elsewhere, install [Docker Engine](https://docs.docker.com/engine/install/)
+and the `docker-compose-plugin` package. "Can't talk to Docker" means the daemon isn't
+running or your user isn't allowed to use it — run the installer as root (`… | sudo sh`).
+
+**Arrmada didn't start.**
+The installer and updater print the last lines of the log. The full log is in Arrmada's folder:
+`docker compose logs arrmada-app`. A failed *update* goes back to the version that was
+running by itself ([Updating](updating.md#when-an-update-goes-wrong)).
+
+**I can't open the web page.**
+Use the address the installer printed — it may not be 7878 if something else had that port
+(see `ARRMADA_PORT` in `.env`). On another device, use the server's LAN address, not
+`localhost`.
+
+**I forgot the admin password.**
+`docker exec -it Arrmada-app arrmada reset-password you@example.com` — see
+[Backups → Locked out?](backups.md#locked-out).
+
+**Downloads fill up `docker.img` on Unraid.**
+The install is using managed storage. Mount your share instead: run the install line again
+with `--media /mnt/user/data` (your share), then pick each library in Settings → Library.
+
+**Imports copy instead of hardlinking.**
+Downloads and libraries must be under one mounted folder, and on Unraid on the same disk
+([Configuration → Hardlinks](configuration.md#hardlinks)).
+
+**"Permission denied" on a library folder that used to work (Unraid).**
+One disk's copy of the folder is owned by root. Through the share path: `chown 99:100` and
+`chmod 775` on the library parent folders.
+
+**Schedules run at the wrong time.**
+Set `TZ` in `.env` to your Region/City timezone and run `sh update.sh`.
+
+**The update check says a new release is out.**
+Run the install line again (or `sh update.sh`). Settings → Status has the release notes; the
+check reads GitHub's public list of releases every 12 hours, sends nothing about your server,
+and can be switched off on the same card.
+
+**Something else?**
+[Open an issue](https://github.com/tristenlammi/Arrmada/issues). The **Logs** page can download
+a support bundle (logs, status and settings with credentials, people and book names taken
+out) to attach.
