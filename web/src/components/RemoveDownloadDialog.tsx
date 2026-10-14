@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type ActivityDownload, type RemoveDownloadMode, type RemoveDownloadResult } from "../lib/api";
+import { isUsenetDownload } from "../lib/network";
 import { ConfirmDialog, type ConfirmChoice } from "./ConfirmDialog";
 
 // seriesScope reads what a TV release covers from its name, so "stop wanting" can say
@@ -66,9 +67,11 @@ export function RemoveDownloadDialog({ it, onClose, onDone }: { it: ActivityDown
   const neverImported = it.progress >= 1 && !it.imported;
   const stop = stopWantingLabel(it);
 
+  // A usenet job is SABnzbd's job, not a torrent.
+  const what = isUsenetDownload(it) ? "job" : "torrent";
   const choices: ConfirmChoice<RemoveDownloadMode>[] = [
-    { value: "keep_files", label: "Remove from the client, keep the files", hint: "The torrent stops; everything it downloaded stays where it is." },
-    { value: "delete_files", label: "Remove and delete the files", hint: "Deletes what this torrent downloaded. Files already imported into the library are separate and stay.", danger: true },
+    { value: "keep_files", label: "Remove from the client, keep the files", hint: `The ${what} stops; everything it downloaded stays where it is.` },
+    { value: "delete_files", label: "Remove and delete the files", hint: `Deletes what this ${what} downloaded. Files already imported into the library are separate and stay.`, danger: true },
     ...(linked ? [{ value: "block" as const, label: "Remove, delete, blocklist this release and find another", hint: "For a bad or fake release: it won't be grabbed again and a different one is searched for.", danger: true }] : []),
   ];
 

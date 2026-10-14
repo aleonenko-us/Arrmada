@@ -12,7 +12,7 @@ async function fitsScreen(page: Page) {
   expect(w.doc, "document width").toBeLessThanOrEqual(w.viewport);
 }
 
-const OVERFLOW = ["Refresh & rescan", "Rename…", "Manual import…", "Upload torrent…", "Switch to anime numbering", "Delete…"];
+const OVERFLOW = ["Refresh & rescan", "Rename…", "Manual import…", "Upload .torrent or .nzb…", "Switch to anime numbering", "Delete…"];
 
 test.describe("desktop", () => {
   test.skip(({ isMobile }) => isMobile, "desktop project only");

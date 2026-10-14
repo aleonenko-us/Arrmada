@@ -90,7 +90,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
     },
     { label: "Rename…", onSelect: () => setOpen("rename") },
     { label: "Manual import…", onSelect: () => setOpen("import") },
-    { label: "Upload torrent…", onSelect: () => setOpen("upload") },
+    { label: "Upload .torrent or .nzb…", onSelect: () => setOpen("upload") },
     { label: numberingLabel(series), busyLabel: "Saving…", onSelect: () => switchNumbering(series, onChange, flash) },
     ...extraItems,
     { label: "Delete…", tone: "danger", onSelect: () => setOpen("delete") },

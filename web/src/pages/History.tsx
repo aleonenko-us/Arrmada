@@ -6,6 +6,8 @@ import { formatBytes } from "../lib/format";
 import { posterThumb } from "../lib/img";
 import { useMe } from "../lib/me";
 import { useLiveRefresh } from "../lib/useLiveQuery";
+import { USENET_KEY_PREFIX } from "../lib/network";
+import { UsenetChip } from "../components/UsenetChip";
 import { Button, EmptyState, ErrorState, Skeleton, StaleBanner, StatusChip } from "../ui";
 
 const PAGE_SIZE = 50;
@@ -214,6 +216,7 @@ function EventRow({ e }: { e: HistoryEvent }) {
           <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
           <Link to={href} className="min-w-0 truncate text-base font-semibold no-underline" style={{ color: "var(--ink)" }}>{e.title}</Link>
           <span className="font-mono text-2xs uppercase text-ink-faint">{KIND_WORD[e.kind]}</span>
+          {e.network === "usenet" && <UsenetChip />}
         </div>
         {e.detail && <div className="mt-0.5 truncate text-sm text-ink-dim" title={e.detail}>{e.detail}</div>}
       </div>
@@ -242,7 +245,11 @@ function ImportedFiles({ kind }: { kind: string }) {
           <div key={it.hash} className="rounded-xl px-4 py-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-md font-semibold">{it.title || "Imported"}</div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-md font-semibold">{it.title || "Imported"}</span>
+                  {/* A usenet job's download key is "sab-…" (a torrent's is its hash). */}
+                  {it.hash.toLowerCase().startsWith(USENET_KEY_PREFIX) && <UsenetChip className="flex-none" />}
+                </div>
                 <div className="truncate font-mono text-xs text-ink-faint" title={it.target_path}>{it.target_path}</div>
               </div>
               <span className="font-mono text-xs text-ink-dim">{formatBytes(it.size_bytes)}</span>

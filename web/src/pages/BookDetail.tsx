@@ -494,7 +494,7 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
           { label: "Interactive search…", title: "Browse every release your indexers have for this book and pick one", onSelect: () => setShowSearch(true) },
         ])}
         {group("Add files", [
-          { label: "Upload torrent…", title: "Found the release yourself? Drop the .torrent here and Arrmada will grab and import it", onSelect: () => setShowPaste(true) },
+          { label: "Upload .torrent or .nzb…", title: "Found the release yourself? Drop the .torrent or .nzb here and Arrmada will grab and import it", onSelect: () => setShowPaste(true) },
           { label: "Manual import…", title: "Import a book file that's already in the downloads folder", onSelect: () => setShowImport(true) },
         ])}
         {group("Fix", [
