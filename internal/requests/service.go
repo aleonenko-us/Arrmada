@@ -16,6 +16,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/push"
@@ -58,10 +59,13 @@ type Service struct {
 	// recording a limited requester's ask one step. Taken before seriesMu, never after.
 	quotaLimits func(ctx context.Context, userID int64) (Limits, error)
 	quotaMu     sync.Mutex
-	// plex makes 'ready' wait for the owner's Plex to show the title (plexready.go); nil =
-	// no Plex, ready on import. plexWaiter runs the check that announces them.
+	// plex makes 'ready' wait for a media server (Plex, Jellyfin) to show the title
+	// (plexready.go); nil = no server, ready on import. plexWaiter runs the check that
+	// announces them.
 	plex       PlexLocator
 	plexWaiter plexWaiter
+	// homeServer is the media server each person watches on (SetHomeServer); nil = Plex.
+	homeServer func(ctx context.Context, userID int64) mediaserver.Kind
 	// importFailures is the importers' retry records (SetImportFailures); nil = none.
 	importFailures func() []library.FailureInfo
 }

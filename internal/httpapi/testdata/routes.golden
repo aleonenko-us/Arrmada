@@ -179,6 +179,7 @@ GET /api/v1/me/plex/link/{id} user ext
 GET /api/v1/me/push/key user ext
 GET /api/v1/me/quota user ext
 GET /api/v1/me/sessions user ext
+GET /api/v1/media/links user ext
 GET /api/v1/media/series/{id}/seasons user ext
 GET /api/v1/media/{media}/{id} user ext
 GET /api/v1/movies staff -

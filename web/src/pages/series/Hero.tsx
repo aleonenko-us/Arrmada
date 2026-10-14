@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { PlexPill, WatchedBy } from "../../components/PlexBits";
+import { TitleWatchPills, WatchedBy } from "../../components/PlexBits";
 import type { Series as SeriesT } from "../../lib/api";
 import { libraryStatus } from "../../lib/status";
 import { StatusChip } from "../../ui";
@@ -61,7 +61,7 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
               <span className="flex items-center gap-2">
                 {s.imdb_id && <a href={`https://www.imdb.com/title/${s.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>}
                 <a href={`https://www.themoviedb.org/tv/${s.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#01b4e4", color: "#0d253f" }}>TMDB</a>
-                <PlexPill media="series" tmdbId={s.tmdb_id} />
+                <TitleWatchPills media="series" tmdbId={s.tmdb_id} />
               </span>
             </div>
 

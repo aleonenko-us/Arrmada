@@ -105,3 +105,24 @@ func TestPayloadIncludesPlexURL(t *testing.T) {
 		t.Errorf("a push without a Plex link carries one: %s", plain)
 	}
 }
+
+// A 'ready' push carries the reader's own server's Watch page and its name next to the
+// Plex link older workers read; a push without one says nothing about either.
+func TestPayloadIncludesWatchLink(t *testing.T) {
+	b, err := Message{Title: "Your request is ready", Body: "“Dune” is ready to watch on Jellyfin.", URL: "/discover/movie/603",
+		WatchURL: "https://watch.example.com/web/#/details?id=abc&serverId=def", WatchLabel: "Jellyfin"}.payload()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["watch_url"] != "https://watch.example.com/web/#/details?id=abc&serverId=def" || got["watch_label"] != "Jellyfin" || got["plex_url"] != "" {
+		t.Fatalf("payload = %s", b)
+	}
+	plain, _ := Message{Title: "Request approved", Body: "b", URL: "/requests?id=4"}.payload()
+	if strings.Contains(string(plain), "watch_") {
+		t.Errorf("a push without a link carries one: %s", plain)
+	}
+}

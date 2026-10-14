@@ -156,6 +156,9 @@ type Deps struct {
 	// MediaServers is every media server (Plex, then Jellyfin) for features that work
 	// with whichever is connected. nil = none.
 	MediaServers *mediaserver.Registry
+	// HomeServer is the media server a person watches on: their Watch links lead with it.
+	// nil = Plex first for everyone.
+	HomeServer func(ctx context.Context, userID int64) mediaserver.Kind
 	// ImportFailures is every download whose import has failed and will be retried (the
 	// movie importer's and the series sweep's), for the queue's Finishing stages. nil =
 	// the movie importer's alone (Library.Failures).
@@ -656,6 +659,11 @@ func (a *api) registerRoutes(mux *router) {
 	// Watch on Plex: anyone signed in may ask for a title's app.plex.tv link (no token,
 	// no server address in it); 204 when Plex doesn't have it.
 	mux.HandleFunc("GET /api/v1/plex/link", a.signedIn(a.handlePlexLink).ext())
+	// Watch links on every media server that has a title (Plex's app.plex.tv page,
+	// Jellyfin's at its public address — never a key or an internal address), the
+	// caller's own server first. Signed in, like /plex/link: each opens the server's own
+	// sign-in.
+	mux.HandleFunc("GET /api/v1/media/links", a.signedIn(a.handleMediaLinks).ext())
 	// Jellyfin: the connection (the API key is a credential, so saving it is an admin's
 	// job; it never comes back), its Test, and its library updates like Plex's.
 	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig))
