@@ -26,6 +26,71 @@ type Service struct {
 	flags  flagStore // the shared settings service (SetFlags); nil = no bundled-removed flag
 	// snap is the shared, briefly cached queue read every caller goes through (snapshot.go).
 	snap snapshotCache
+	// transports caches which transports have a client to send to (HasTransport).
+	transports transportCache
+}
+
+// transportCache remembers HasTransport's answer until a client is created, edited or
+// deleted. gen counts those changes, so an answer worked out across one isn't kept.
+type transportCache struct {
+	mu    sync.Mutex
+	gen   uint64
+	valid bool
+	has   map[Transport]bool
+}
+
+// invalidateTransports makes the next HasTransport read the client list again.
+func (s *Service) invalidateTransports() {
+	s.transports.mu.Lock()
+	s.transports.gen++
+	s.transports.valid = false
+	s.transports.mu.Unlock()
+}
+
+// HasTransport reports whether an enabled client of transport t exists that Arrmada can
+// talk to (its kind has an implementation) — whether a release of that transport can be
+// downloaded at all. The answer is cached until a client is created, edited or deleted.
+// An unreadable client list answers false: nothing is offered that can't be sent.
+func (s *Service) HasTransport(ctx context.Context, t Transport) bool {
+	if s == nil || s.repo == nil {
+		return false
+	}
+	tc := &s.transports
+	tc.mu.Lock()
+	if tc.valid {
+		v := tc.has[t]
+		tc.mu.Unlock()
+		return v
+	}
+	gen := tc.gen
+	tc.mu.Unlock()
+
+	clients, err := s.repo.ListEnabled(ctx)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("download clients: couldn't read which networks have a client", "err", err)
+		}
+		return false
+	}
+	has := map[Transport]bool{}
+	for _, c := range clients {
+		if _, ok := s.registry.For(c.Kind); ok && c.Kind.Transport() != "" {
+			has[c.Kind.Transport()] = true
+		}
+	}
+	tc.mu.Lock()
+	if tc.gen == gen {
+		tc.has, tc.valid = has, true
+	}
+	tc.mu.Unlock()
+	return has[t]
+}
+
+// SetDownloader registers the implementation for a client kind (the usenet client; fakes
+// in tests). Call it while wiring, before the service is in use.
+func (s *Service) SetDownloader(kind Kind, d Downloader) {
+	s.registry.Register(kind, d)
+	s.invalidateTransports()
 }
 
 // SetStatus wires the integration status tracker; nil records nothing.
@@ -53,6 +118,29 @@ func (s *Service) List(ctx context.Context) ([]Client, error) { return s.repo.Li
 // so startup must not add it back. Restore clears it.
 const KeyBundledRemoved = "download_bundled_removed"
 
+// KeyBundledRemovedSABnzbd is KeyBundledRemoved for the optional bundled SABnzbd.
+const KeyBundledRemovedSABnzbd = "download_bundled_removed_sabnzbd"
+
+// bundledRemovedKey is the removed flag for one kind's bundled client. qBittorrent keeps
+// the key it has always had, so an install that removed it before this stays removed.
+func bundledRemovedKey(kind Kind) string {
+	if kind == KindQbittorrent {
+		return KeyBundledRemoved
+	}
+	return KeyBundledRemoved + "_" + string(kind)
+}
+
+// bundledName is the name a bundled client is registered under.
+func bundledName(kind Kind) string {
+	switch kind {
+	case KindQbittorrent:
+		return "qBittorrent (bundled)"
+	case KindSABnzbd:
+		return "SABnzbd (bundled)"
+	}
+	return string(kind) + " (bundled)"
+}
+
 // flagStore is the slice of the shared settings service this package uses.
 type flagStore interface {
 	Get(ctx context.Context, key, def string) string
@@ -63,8 +151,8 @@ type flagStore interface {
 // (tests) means the bundled client is never treated as removed.
 func (s *Service) SetFlags(f flagStore) { s.flags = f }
 
-func (s *Service) bundledRemoved(ctx context.Context) bool {
-	return s.flags != nil && s.flags.Get(ctx, KeyBundledRemoved, "") == "1"
+func (s *Service) bundledRemoved(ctx context.Context, kind Kind) bool {
+	return s.flags != nil && s.flags.Get(ctx, bundledRemovedKey(kind), "") == "1"
 }
 
 // EnsureBundled registers the packaged qBittorrent companion as a download client
@@ -77,10 +165,18 @@ func (s *Service) bundledRemoved(ctx context.Context) bool {
 // nothing, and nothing is added while the owner has deleted it (KeyBundledRemoved). An
 // install from before the flag has its row recognised by URL and marked here.
 func (s *Service) EnsureBundled(ctx context.Context, url string) error {
-	if _, ok, err := s.repo.Bundled(ctx); err != nil || ok {
+	return s.EnsureBundledOf(ctx, KindQbittorrent, url)
+}
+
+// EnsureBundledOf is EnsureBundled for one kind of packaged client: each kind has its own
+// bundled row and its own removed flag, so the optional bundled SABnzbd neither stands in
+// for the bundled qBittorrent nor brings it back. An existing row is recognised by URL
+// only among clients of the same kind.
+func (s *Service) EnsureBundledOf(ctx context.Context, kind Kind, url string) error {
+	if _, ok, err := s.repo.BundledOf(ctx, kind); err != nil || ok {
 		return err
 	}
-	if s.bundledRemoved(ctx) {
+	if s.bundledRemoved(ctx, kind) {
 		return nil
 	}
 	clients, err := s.repo.List(ctx)
@@ -88,20 +184,22 @@ func (s *Service) EnsureBundled(ctx context.Context, url string) error {
 		return err
 	}
 	for _, c := range clients {
-		if c.URL == url {
+		if c.URL == url && c.Kind == kind {
 			return s.repo.MarkBundled(ctx, c.ID)
 		}
 	}
 	defer s.invalidateSnapshot() // a new client: the next queue read must ask it too
+	defer s.invalidateTransports()
+	name := bundledName(kind)
 	_, err = s.repo.Create(ctx, Client{
-		Name:    "qBittorrent (bundled)",
-		Kind:    KindQbittorrent,
+		Name:    name,
+		Kind:    kind,
 		URL:     url,
 		Enabled: true,
 		Bundled: true,
 	})
 	if err == nil {
-		s.log.Info("registered bundled qBittorrent", "url", url)
+		s.log.Info("registered bundled download client", "name", name, "url", url)
 	}
 	return err
 }
@@ -109,21 +207,27 @@ func (s *Service) EnsureBundled(ctx context.Context, url string) error {
 // RestoreBundled brings back a deleted bundled qBittorrent: it clears the removed flag
 // and registers it again (or marks an existing row with its URL).
 func (s *Service) RestoreBundled(ctx context.Context, url string) error {
+	return s.RestoreBundledOf(ctx, KindQbittorrent, url)
+}
+
+// RestoreBundledOf is RestoreBundled for one kind of packaged client.
+func (s *Service) RestoreBundledOf(ctx context.Context, kind Kind, url string) error {
 	if s.flags != nil {
-		if err := s.flags.Set(ctx, KeyBundledRemoved, ""); err != nil {
+		if err := s.flags.Set(ctx, bundledRemovedKey(kind), ""); err != nil {
 			return err
 		}
 	}
-	return s.EnsureBundled(ctx, url)
+	return s.EnsureBundledOf(ctx, kind, url)
 }
 
 // ErrBundledInactive means there's no bundled qBittorrent to tune: it was removed, or it
 // is switched off and so may not be running at all.
 var ErrBundledInactive = errors.New("the bundled qBittorrent is switched off or removed")
 
-// activeBundled is the bundled client when it exists and is switched on.
+// activeBundled is the bundled qBittorrent when it exists and is switched on. It is pinned
+// to qBittorrent: the port, save path and queue tuning it serves are torrent settings.
 func (s *Service) activeBundled(ctx context.Context) (Client, Downloader, error) {
-	c, ok, err := s.repo.Bundled(ctx)
+	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
 	if err != nil {
 		return Client{}, nil, err
 	}
@@ -145,6 +249,7 @@ func (s *Service) Status(id int64) (connstatus.State, bool) {
 // Create stores a new client.
 func (s *Service) Create(ctx context.Context, c Client) (Client, error) {
 	defer s.invalidateSnapshot()
+	defer s.invalidateTransports()
 	return s.repo.Create(ctx, c)
 }
 
@@ -172,6 +277,7 @@ func (s *Service) forget(id int64) {
 // acted on — see existingClients.
 func (s *Service) Update(ctx context.Context, c Client) (Client, error) {
 	defer s.invalidateSnapshot()
+	defer s.invalidateTransports()
 	if err := s.repo.Update(ctx, c); err != nil {
 		return Client{}, err
 	}
@@ -197,11 +303,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if c.Bundled && s.flags != nil {
-		if err := s.flags.Set(ctx, KeyBundledRemoved, "1"); err != nil {
+		if err := s.flags.Set(ctx, bundledRemovedKey(c.Kind), "1"); err != nil {
 			return fmt.Errorf("couldn't record that the bundled client was removed: %w", err)
 		}
 	}
 	defer s.invalidateSnapshot()
+	defer s.invalidateTransports()
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
@@ -237,19 +344,48 @@ func (s *Service) Test(ctx context.Context, id int64) error {
 	return err
 }
 
-// Add hands a download to the enabled clients in priority order (ListEnabled), moving on
-// to the next only when a client certainly never received the request (NeverReached: it
-// couldn't be connected to). A client that answered — even with a rejection or an HTTP
-// error — ends it there: it may have taken the torrent, and adding it to a second client
-// as well would download it twice.
+// Add hands a torrent to the torrent clients (AddDownload). Kept for the callers that only
+// ever add torrents and don't need to know where it went.
 func (s *Service) Add(ctx context.Context, req AddRequest) error {
+	_, err := s.AddDownload(ctx, req)
+	return err
+}
+
+// ErrNoUsenetClient: a usenet release with no enabled usenet client to send it to.
+var ErrNoUsenetClient = errors.New("no enabled usenet download client configured")
+
+// AddDownload hands a download to the enabled clients of its transport (req.Transport;
+// empty is torrent) in priority order (ListEnabled), moving on to the next only when a
+// client certainly never received the request (NeverReached: it couldn't be connected to).
+// A client that answered — even with a rejection or an HTTP error — ends it there: it may
+// have taken the download, and adding it to a second client as well would fetch it twice.
+//
+// Fail-over never crosses transports: a torrent is never sent to a usenet client nor an
+// NZB to a torrent client, whatever is or isn't reachable.
+//
+// The key is the download's name in that client (key.go): a usenet client's own job key,
+// or for a torrent client the info hash read from the request — empty when the link
+// doesn't carry one, as before.
+func (s *Service) AddDownload(ctx context.Context, req AddRequest) (Added, error) {
 	defer s.invalidateSnapshot()
-	clients, err := s.repo.ListEnabled(ctx)
+	if req.Transport == "" {
+		req.Transport = TransportTorrent
+	}
+	enabled, err := s.repo.ListEnabled(ctx)
 	if err != nil {
-		return err
+		return Added{}, err
+	}
+	var clients []Client
+	for _, c := range enabled {
+		if c.Kind.Transport() == req.Transport {
+			clients = append(clients, c)
+		}
 	}
 	if len(clients) == 0 {
-		return fmt.Errorf("no enabled download client configured")
+		if req.Transport == TransportUsenet {
+			return Added{}, ErrNoUsenetClient
+		}
+		return Added{}, fmt.Errorf("no enabled download client configured")
 	}
 	var unreachable []error
 	for _, c := range clients {
@@ -263,7 +399,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) error {
 		creq := req
 		creq.SavePath = c.PathMaps.ToRemote(req.SavePath)
 		start := time.Now()
-		err := impl.Add(ctx, c, creq)
+		key, err := s.addTo(ctx, impl, c, creq)
 		if err == nil {
 			s.record(ctx, c, nil, time.Since(start))
 			if len(unreachable) > 0 {
@@ -272,44 +408,70 @@ func (s *Service) Add(ctx context.Context, req AddRequest) error {
 			} else {
 				s.log.Info("download added", "client", c.Name, "release", req.Name)
 			}
-			return nil
+			return Added{ClientID: c.ID, Key: key}, nil
 		}
 		if !NeverReached(err) || ctx.Err() != nil {
-			return err
+			return Added{}, err
 		}
 		s.record(ctx, c, err, time.Since(start))
 		s.log.Warn("download client unreachable; trying the next one", "client", c.Name, "release", req.Name, "err", err)
 		unreachable = append(unreachable, fmt.Errorf("%s: %w", c.Name, err))
 	}
-	return fmt.Errorf("no download client could be reached: %w", errors.Join(unreachable...))
+	return Added{}, fmt.Errorf("no download client could be reached: %w", errors.Join(unreachable...))
 }
 
-// Remove deletes a torrent (and optionally its data) from whichever client
-// holds it, switched off or not.
-func (s *Service) Remove(ctx context.Context, hash string, deleteData bool) error {
+// addTo sends one add to one client and returns the download's key there. A key that
+// isn't a valid key of the request's transport is dropped with a warning rather than
+// failing the add: the client has the download, and refusing now would only grab it again.
+func (s *Service) addTo(ctx context.Context, impl Downloader, c Client, req AddRequest) (string, error) {
+	var key string
+	if ka, ok := impl.(keyedAdder); ok {
+		k, err := ka.AddKeyed(ctx, c, req)
+		if err != nil {
+			return "", err
+		}
+		key = k
+	} else {
+		if err := impl.Add(ctx, c, req); err != nil {
+			return "", err
+		}
+		if req.Transport == TransportTorrent {
+			key = torrentKey(req)
+		}
+	}
+	if key != "" && KeyTransport(key) != req.Transport {
+		s.log.Warn("download client answered with an unusable download id; it will be matched later",
+			"client", c.Name, "release", req.Name)
+		key = ""
+	}
+	return key, nil
+}
+
+// torrentKey is a torrent request's info hash: from the .torrent file's info dictionary,
+// else from a magnet link; "" when neither says.
+func torrentKey(req AddRequest) string {
+	if len(req.File) > 0 {
+		if h, err := InfoHashFromFile(req.File); err == nil {
+			return h
+		}
+		return ""
+	}
+	if h, err := InfoHashFromMagnet(req.URL); err == nil {
+		return h
+	}
+	return ""
+}
+
+// Remove deletes a download (and optionally its data) from the client holding it,
+// switched off or not.
+func (s *Service) Remove(ctx context.Context, key string, deleteData bool) error {
 	defer s.invalidateSnapshot()
-	// Checked here as well as at the HTTP edge: every caller that removes a torrent goes
+	// Checked here as well as at the HTTP edge: every caller that removes a download goes
 	// through this, and a bad value here can empty the whole client.
-	if !ValidHash(hash) {
+	if !ValidKey(key) {
 		return ErrInvalidHash
 	}
-	clients, err := s.existingClients(ctx)
-	if err != nil {
-		return err
-	}
-	var lastErr error
-	for _, c := range clients {
-		impl, ok := s.registry.For(c.Kind)
-		if !ok {
-			continue
-		}
-		if err := impl.Remove(ctx, c, hash, deleteData); err != nil {
-			lastErr = err
-			continue
-		}
-		return nil
-	}
-	return lastErr
+	return s.onKey(ctx, key, func(impl Downloader, c Client) error { return impl.Remove(ctx, c, key, deleteData) })
 }
 
 // portManager is implemented by clients whose incoming port Arrmada manages.
@@ -367,21 +529,29 @@ func (s *Service) ListenPort(ctx context.Context, id int64) (int, error) {
 	return 0, nil
 }
 
-// Pause stops a torrent on whichever enabled client holds it.
-func (s *Service) Pause(ctx context.Context, hash string) error {
+// PauseAll is the key Pause and Resume take for "every download in every client" (the
+// Downloads page's Pause all / Resume all). Nothing else accepts it.
+const PauseAll = "all"
+
+// Pause stops a download on the client holding it, or — for PauseAll — every download on
+// every client.
+func (s *Service) Pause(ctx context.Context, key string) error {
 	defer s.invalidateSnapshot()
-	return s.onHash(ctx, func(impl Downloader, c Client) error { return impl.Pause(ctx, c, hash) })
+	if key == PauseAll {
+		return s.onEvery(ctx, func(impl Downloader, c Client) error { return impl.Pause(ctx, c, PauseAll) })
+	}
+	return s.onKey(ctx, key, func(impl Downloader, c Client) error { return impl.Pause(ctx, c, key) })
 }
 
 // ErrNoCategories: no download client holding torrents can change one's category.
 var ErrNoCategories = errors.New("the download client can't change a torrent's category")
 
-// SetCategory files a torrent under another category on whichever client holds it. The
+// SetCategory files a download under another category on the client holding it. The
 // caller decides which categories are allowed (Arrmada's own); this only moves it.
 func (s *Service) SetCategory(ctx context.Context, hash, category string) error {
 	defer s.invalidateSnapshot()
 	tried := false
-	err := s.onHash(ctx, func(impl Downloader, c Client) error {
+	err := s.onKey(ctx, hash, func(impl Downloader, c Client) error {
 		cs, ok := impl.(categorySetter)
 		if !ok {
 			return ErrNoCategories
@@ -395,50 +565,77 @@ func (s *Service) SetCategory(ctx context.Context, hash, category string) error 
 	return err
 }
 
-// Resume restarts a stopped torrent on whichever enabled client holds it.
-func (s *Service) Resume(ctx context.Context, hash string) error {
+// Resume restarts a stopped download on the client holding it, or — for PauseAll — every
+// download on every client.
+func (s *Service) Resume(ctx context.Context, key string) error {
 	defer s.invalidateSnapshot()
-	return s.onHash(ctx, func(impl Downloader, c Client) error { return impl.Resume(ctx, c, hash) })
+	if key == PauseAll {
+		return s.onEvery(ctx, func(impl Downloader, c Client) error { return impl.Resume(ctx, c, PauseAll) })
+	}
+	return s.onKey(ctx, key, func(impl Downloader, c Client) error { return impl.Resume(ctx, c, key) })
 }
 
-// ResumeMany restarts several torrents with one request per client, hashes joined
-// the way qBittorrent's start/resume endpoint takes them. Every client gets the whole
-// list: qBittorrent ignores hashes it doesn't have, so stopping at the first client
-// that answers (as onHash does) would never reach a second client's torrents. Fails
-// only when no client took the request.
+// ResumeMany restarts several downloads. The torrents go in one request per torrent
+// client, hashes joined the way qBittorrent's start/resume endpoint takes them, and every
+// torrent client gets the whole list: qBittorrent ignores hashes it doesn't have, so
+// stopping at the first client that answers would never reach a second client's torrents.
+// That part fails only when no client took the request. Usenet jobs are resumed one by one
+// on the client holding each — a joined list means nothing to a usenet client, and a
+// torrent hash must never reach one.
 func (s *Service) ResumeMany(ctx context.Context, hashes []string) error {
 	if len(hashes) == 0 {
 		return nil
 	}
 	defer s.invalidateSnapshot()
-	clients, err := s.existingClients(ctx)
-	if err != nil {
-		return err
-	}
-	joined := strings.Join(hashes, "|")
-	var lastErr error
-	ok := false
-	for _, c := range clients {
-		impl, found := s.registry.For(c.Kind)
-		if !found {
-			continue
+	var torrents, usenet []string
+	for _, h := range hashes {
+		if routeOf(h) == TransportUsenet {
+			usenet = append(usenet, h)
+		} else {
+			torrents = append(torrents, h)
 		}
-		if err := impl.Resume(ctx, c, joined); err != nil {
-			lastErr = err
-			continue
+	}
+	var firstErr error
+	if len(torrents) > 0 {
+		clients, err := s.existingClients(ctx)
+		if err != nil {
+			return err
 		}
-		ok = true
+		joined := strings.Join(torrents, "|")
+		var lastErr error
+		ok := false
+		for _, c := range clients {
+			if c.Kind.Transport() != TransportTorrent {
+				continue
+			}
+			impl, found := s.registry.For(c.Kind)
+			if !found {
+				continue
+			}
+			if err := impl.Resume(ctx, c, joined); err != nil {
+				lastErr = err
+				continue
+			}
+			ok = true
+		}
+		if !ok {
+			firstErr = lastErr
+		}
 	}
-	if ok {
-		return nil
+	for _, key := range usenet {
+		err := s.onKey(ctx, key, func(impl Downloader, c Client) error { return impl.Resume(ctx, c, key) })
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return lastErr
+	return firstErr
 }
 
-// Action runs a hash-scoped command (recheck/reannounce/prio_up/prio_down).
+// Action runs a download-scoped command (recheck/reannounce/prio_up/prio_down) on the
+// client holding it.
 func (s *Service) Action(ctx context.Context, hash, action string) error {
 	defer s.invalidateSnapshot()
-	return s.onHash(ctx, func(impl Downloader, c Client) error { return impl.TorrentAction(ctx, c, hash, action) })
+	return s.onKey(ctx, hash, func(impl Downloader, c Client) error { return impl.TorrentAction(ctx, c, hash, action) })
 }
 
 // GetSettings returns the tunable settings of a client (if it supports them).
@@ -493,23 +690,112 @@ func (s *Service) SetSettings(ctx context.Context, id int64, cs ClientSettings) 
 	return fmt.Errorf("%q has no tunable settings", c.Kind)
 }
 
-// onHash runs fn against each client holding torrents (see existingClients), returning on
-// the first success.
-func (s *Service) onHash(ctx context.Context, fn func(Downloader, Client) error) error {
+// routeOf is the transport a command for key may go to. Anything that isn't a usenet key
+// goes to torrent clients, as every command did before usenet existed — the HTTP edge and
+// Remove have already refused what isn't one download's key.
+func routeOf(key string) Transport {
+	if strings.HasPrefix(key, usenetKeyPrefix) {
+		return TransportUsenet
+	}
+	return TransportTorrent
+}
+
+// lastHolder is the client the most recent finished queue read saw key in, 0 when it
+// didn't. Any age will do: a download never moves between clients, and reading the cached
+// copy keeps a burst of commands (seed cleanup removing a dozen torrents) from re-reading
+// every client once per command.
+func (s *Service) lastHolder(key string) int64 {
+	s.snap.mu.Lock()
+	cur := s.snap.cur
+	s.snap.mu.Unlock()
+	if cur == nil {
+		return 0
+	}
+	for _, it := range cur.Items {
+		if strings.EqualFold(it.Hash, key) {
+			return it.ClientID
+		}
+	}
+	return 0
+}
+
+// onKey runs fn against the client holding key — only that one. It used to try every
+// client until one answered, and qBittorrent answers "Ok." for a hash it doesn't hold, so
+// a command for a second client's torrent stopped at the first client and did nothing.
+//
+// The holder is the client the last queue read saw the download in. A download it didn't
+// see — added since, or in a client that didn't answer — goes to the clients of its own
+// transport: the only one when there's one, else after a fresh read, every one of them
+// (each ignores a key it doesn't hold). A usenet key never reaches a torrent client, nor a
+// torrent hash a usenet client.
+func (s *Service) onKey(ctx context.Context, key string, fn func(Downloader, Client) error) error {
+	clients, err := s.existingClients(ctx)
+	if err != nil {
+		return err
+	}
+	route := routeOf(key)
+	var cands []Client
+	for _, c := range clients {
+		if c.Kind.Transport() != route {
+			continue
+		}
+		if _, ok := s.registry.For(c.Kind); ok {
+			cands = append(cands, c)
+		}
+	}
+	holder := s.lastHolder(key)
+	if holder == 0 && len(cands) > 1 {
+		// Several clients could hold it: read them now rather than guess. A failed read
+		// leaves holder 0 and every candidate is asked.
+		_, _ = s.Snapshot(ctx)
+		holder = s.lastHolder(key)
+	}
+	if holder != 0 {
+		for _, c := range cands {
+			if c.ID == holder {
+				impl, _ := s.registry.For(c.Kind)
+				return fn(impl, c)
+			}
+		}
+	}
+	var lastErr error
+	ok := false
+	for _, c := range cands {
+		impl, _ := s.registry.For(c.Kind)
+		if err := fn(impl, c); err != nil {
+			lastErr = err
+			continue
+		}
+		ok = true
+	}
+	if ok {
+		return nil
+	}
+	return lastErr
+}
+
+// onEvery runs fn against every client (see existingClients), succeeding when at least
+// one took it — Pause all and Resume all, which must reach every client, not stop at the
+// first that answers.
+func (s *Service) onEvery(ctx context.Context, fn func(Downloader, Client) error) error {
 	clients, err := s.existingClients(ctx)
 	if err != nil {
 		return err
 	}
 	var lastErr error
+	ok := false
 	for _, c := range clients {
-		impl, ok := s.registry.For(c.Kind)
-		if !ok {
+		impl, found := s.registry.For(c.Kind)
+		if !found {
 			continue
 		}
 		if err := fn(impl, c); err != nil {
 			lastErr = err
 			continue
 		}
+		ok = true
+	}
+	if ok {
 		return nil
 	}
 	return lastErr

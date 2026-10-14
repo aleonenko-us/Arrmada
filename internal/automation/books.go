@@ -1934,17 +1934,17 @@ func (c *Coordinator) recordBookGrab(ctx context.Context, bookID, versionID int6
 	// Recorded under the profile the book actually runs under, so a deleted one still
 	// gets the default's stall window.
 	profile = c.effectiveProfile(ctx, profile, quality.MediaBook)
-	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
+	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexer, infoHash)
 	// stall_minutes must come from the profile. It was written as a literal 0, and
 	// detectStalledBook returns immediately when it isn't positive — so the entire book
 	// stall fail-over was dead code: a 0-seeder grab was never blocklisted or removed, and
 	// once the 24h pending guard expired the identical release was grabbed again, forever.
 	// (The series path carried this exact bug and fixes it the same way.)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'book', ?)`,
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, transport)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'book', ?, ?)`,
 		bookID, versionID, title, indexer, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, infoHash)
+		boolToInt(seedEnabled), seedRatio, seedHours, infoHash, transport)
 	if err != nil {
 		c.log.Warn("book: record grab failed", "err", err)
 		return
