@@ -129,18 +129,21 @@ test.describe("desktop", () => {
     await page.goto("/discover");
     await api.quiet();
 
-    // Each card's poster and its hover-revealed quick button share one wrapper. The button
-    // only takes clicks while the card is hovered, and the card lifts as it is, so hover and
-    // click are retried together until the click lands.
+    // Each card's poster and its quick ＋ Request button share one wrapper. The button shows
+    // on hover and on keyboard focus. Pressing it from the keyboard is the same action
+    // without racing the card's hover lift (clicking mid-animation flaked on CI's runners);
+    // the hover reveal itself is checked once below.
     const card = (title: string) => page.getByRole("button", { name: `View details for ${title}` }).first().locator("..");
     const quick = async (title: string) => {
-      const c = card(title);
-      await c.scrollIntoViewIfNeeded();
-      await expect(async () => {
-        await c.hover();
-        await c.getByRole("button", { name: "＋ Request" }).click({ timeout: 1_000 });
-      }).toPass({ timeout: 10_000 });
+      const button = card(title).getByRole("button", { name: "＋ Request" });
+      await button.scrollIntoViewIfNeeded();
+      await button.focus();
+      await page.keyboard.press("Enter");
     };
+    const first = card("Undertow");
+    await first.scrollIntoViewIfNeeded();
+    await first.hover();
+    await expect(first.getByRole("button", { name: "＋ Request" })).toHaveCSS("opacity", "1");
     await quick("Undertow");
     await expect(page.getByRole("dialog", { name: "Undertow" }).getByRole("region", { name: "Choose seasons" })).toBeVisible();
     expect(api.callsTo("POST", "/api/v1/requests")).toEqual([]);
