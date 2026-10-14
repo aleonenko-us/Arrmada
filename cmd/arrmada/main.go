@@ -1067,7 +1067,7 @@ func main() {
 	// "Update available" on Settings → Status: GitHub's public releases, read twice a day
 	// unless switched off there (then it asks nothing).
 	updates := updatecheck.New(updatecheck.Options{
-		Version: buildinfo.Version, Commit: buildinfo.Commit, Log: log,
+		Version: buildinfo.Version, Commit: buildinfo.Commit, Install: cfg.Channel, Log: log,
 		Enabled: func(ctx context.Context) bool { return settingsSvc.GetBool(ctx, updatecheck.KeyEnabled, true) },
 	})
 	sched.Register("update-check", updatecheck.Interval, true, updates.Run,

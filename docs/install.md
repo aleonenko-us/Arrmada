@@ -41,7 +41,7 @@ It works out everything else and shows a summary before it starts:
 | Timezone | Your server's own (asked only if it can't be found) |
 | GPU | `/dev/dri` is passed through when your server has one |
 | Convert's scratch folder | `transcode/` next to the database |
-| The app | Downloaded from `ghcr.io/tristenlammi/arrmada:stable` (compiled on the server only with `--build` or if the download fails — that takes 30–60 minutes and [a few GB of memory](troubleshooting.md#the-build-fails-or-gets-killed)) |
+| The app | The latest release, downloaded from `ghcr.io/tristenlammi/arrmada:stable` — the stable channel, which updates follow too (compiled on the server only with `--channel main` or if the download fails — that takes 30–60 minutes and [a few GB of memory](troubleshooting.md#the-build-fails-or-gets-killed)) |
 
 When it's done it prints the address, e.g. `http://192.168.1.10:7878`.
 
@@ -77,8 +77,9 @@ curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.s
 | `--tz ZONE` | Timezone, e.g. `Europe/London` ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `--puid N --pgid N` | Run as this user and group |
 | `--with-prowlarr` | Also run the optional Prowlarr indexer manager |
-| `--image REF` | Run a specific published image, e.g. `ghcr.io/tristenlammi/arrmada:0.18.0` |
-| `--build` | Compile the app on your server instead of downloading it |
+| `--channel main` | Follow main instead of the releases: the newest code, compiled on your server at install and on every update (for developers; see [Following main](updating.md#following-main-developers)). `--channel stable` is the default |
+| `--build` | The same as `--channel main` |
+| `--image REF` | On the stable channel, run a specific published image, e.g. `ghcr.io/tristenlammi/arrmada:0.18.0` |
 | `-y`, `--yes` | Don't ask anything; take the suggestions and the options given |
 
 ## Changing things later
@@ -145,7 +146,7 @@ Open it and change the lines marked `←`:
 | `PUID` / `PGID` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
 | `TZ` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
 | `- "7878:7878"` | The left number is the web page's port; change it if something (Radarr) already has 7878 |
-| `- ./data:/data` | Where the database lives (left side). Its own folder — never your media |
+| `- /path/to/arrmada/data:/data` | Where the database lives (left side, a full path, e.g. `/mnt/user/appdata/arrmada/data` on Unraid). Its own folder — never your media |
 | `- &media /path/to/your/media:/storage` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
 
 Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
@@ -156,6 +157,22 @@ commented out, if you want it. For a GPU, uncomment the `devices` line.
 Update with `docker compose pull && docker compose up -d`. This way has no pre-update backup
 and no automatic roll-back (that's `update.sh`); the app still copies its database to
 `<data>/backups` before any upgrade of its tables, and backs up nightly.
+
+### Using Portainer
+
+The same file works as a Portainer stack:
+
+1. **Stacks → Add stack**, give it a name, and either pick **Web editor** and paste
+   [`docker-compose.example.yml`](../docker-compose.example.yml), or pick **Repository** with
+   `https://github.com/tristenlammi/Arrmada` and compose path `docker-compose.example.yml`.
+2. Change the lines marked `←` as above. Keep the folders full paths (`/mnt/user/…`): a stack
+   has no folder of its own, so a relative path like `./data` would end up inside Portainer's
+   own volume, hidden, and gone with the stack.
+3. **Deploy the stack**, then open `http://<server>:7878`.
+
+To update, use the stack's **Pull and redeploy** (re-pull the image). Like plain
+`docker compose`, that skips `update.sh`'s pre-update backup and roll-back; the app still
+copies its database to `<data>/backups` before any upgrade of its tables.
 
 ### From a git checkout
 

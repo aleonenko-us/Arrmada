@@ -26,8 +26,10 @@ publish one.
    the installer falls back to compiling on the server.
 3. Check it: `docker pull ghcr.io/tristenlammi/arrmada:stable` on any machine, signed out.
 
-From then on, new installs download the image, and existing installs switch to it when
-`ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable` is in their `.env`.
+From then on, new installs download the image. Every install on the stable channel (the
+default) moves to a new release on its next update, and one that compiled `main` moves to the
+first release that includes the code it's running ([Updating](updating.md#stable-or-main)).
+Only an install with `ARRMADA_CHANNEL=main` in `.env` keeps compiling `main`.
 
 Never put a token in the repository or in `.env`. If the package must stay private, each
 server signs in once with `docker login ghcr.io` and a token of its own that can only read
@@ -35,7 +37,8 @@ packages.
 
 ## The update check
 
-Settings → Status shows when a newer release is out, with its notes (a build of `main` shows
-how many commits behind `main` it is instead). It reads GitHub's public list of releases every
+Settings → Status shows when a newer release is out, with its notes (an install on `main`
+shows how many commits behind `main` it is instead, and a stable install still running a
+build of `main` says whether the latest release includes it yet). It reads GitHub's public list of releases every
 12 hours and sends nothing about the server; switching it off on the same card stops every
 request.

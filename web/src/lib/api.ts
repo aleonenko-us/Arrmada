@@ -1789,13 +1789,20 @@ export interface UpdateRelease {
 export interface UpdateStatus {
   enabled: boolean;
   current: string;
-  /** release: a v-tag build, compared with the newest release; main: a commit build, compared with main; dev: neither. */
-  channel: "release" | "main" | "dev";
+  /**
+   * release: a v-tag build, compared with the newest release; main: a commit build on an install
+   * that follows main, compared with main; build: a commit build on an install that follows the
+   * releases (updates keep it until a release includes it), compared with the newest release;
+   * dev: none of these.
+   */
+  channel: "release" | "main" | "build" | "dev";
   checked_at: string | null;
   latest: UpdateRelease | null;
   available: boolean;
   /** Commits main has that this build lacks; null = unknown or not a build of main. */
   behind: number | null;
+  /** channel build: commits this build has that the newest release lacks; null = unknown. */
+  ahead?: number | null;
   /** Why the last attempt couldn't check, in words. */
   problem?: string;
 }

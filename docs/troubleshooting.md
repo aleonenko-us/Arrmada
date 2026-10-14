@@ -13,8 +13,8 @@ running by itself ([Updating](updating.md#when-an-update-goes-wrong)).
 
 <a id="the-build-fails-or-gets-killed"></a>
 **The build fails or gets killed.**
-Compiling the image yourself (`--build`, `docker compose up -d --build`, or `update.sh`
-without `ARRMADA_IMAGE`) takes 30–60 minutes and about **2 GB of memory free** while it
+Compiling the image yourself (`--channel main`, `docker compose up -d --build`, or `update.sh`
+with `ARRMADA_CHANNEL=main`) takes 30–60 minutes and about **2 GB of memory free** while it
 runs; 4 GB is comfortable. If a compiler is still killed, the build ends with
 `✗ This machine ran out of memory building Arrmada` and what to do.
 
@@ -29,8 +29,8 @@ with the real cause (`signal: killed`, `Killed signal terminated program cc1plus
 `cannot allocate memory`) further up the log.
 
 Either way you don't need to compile: run the published image. With the installer, run the
-install line without `--build`, or put `ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable`
-in `.env` and run `sh update.sh`. With a checkout and no `.env`, plain `docker compose up -d`
+install line without `--channel main` (or `--build`), or put `ARRMADA_CHANNEL=stable` in
+`.env` and run `sh update.sh`. With a checkout and no `.env`, plain `docker compose up -d`
 already downloads it. To compile on a small machine anyway, add swap, or pass the build
 argument `ARRMADA_BUILD_JOBS=1`.
 
