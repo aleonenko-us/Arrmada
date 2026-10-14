@@ -92,8 +92,8 @@ func (r *repo) sessionExists(ctx context.Context, userID, ratingKey string, star
 // fillEmptyRatingKey looks for an imported play (no session key) by this user at this start
 // second, with this title and no rating key — imported before the Tautulli client read
 // numeric keys — and gives it ratingKey, plus the show's key when that is empty too. It
-// reports whether it found one. rating_key = '' keeps the lookup on the (user_id,
-// rating_key, started_at) dedupe index.
+// reports whether it found one. Asking for an empty rating_key keeps the lookup on the
+// (user_id, rating_key, started_at) dedupe index.
 func (r *repo) fillEmptyRatingKey(ctx context.Context, userID string, startedAt int64, title, ratingKey, grandparentKey string) (bool, error) {
 	var id int64
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM stream_sessions
