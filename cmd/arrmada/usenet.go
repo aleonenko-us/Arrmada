@@ -47,12 +47,18 @@ type bundledSAB struct {
 }
 
 func (b *bundledSAB) run(ctx context.Context) {
-	t := time.NewTicker(b.interval)
-	defer t.Stop()
 	for {
 		b.step(ctx)
+		// Just registered and SABnzbd still starting: set it up as soon as it answers, so
+		// its card isn't left showing folders it hasn't made yet.
+		wait := b.interval
+		if b.lastKey != "" && !b.tuned && b.tries < b.tuneTries {
+			wait = min(wait, 5*time.Second)
+		}
+		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return
 		case <-t.C:
 		}

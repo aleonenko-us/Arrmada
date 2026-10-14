@@ -644,7 +644,7 @@ func main() {
 		sab = &bundledSAB{
 			url: cfg.SABnzbdURL, config: cfg.SABnzbdConfig, downloads: downloads,
 			downloadsDir: roots.Downloads, log: modLog(log, "download"),
-			interval: 30 * time.Second, tuneTries: 20,
+			interval: 30 * time.Second, tuneTries: 60, // five minutes of 5 s retries for a slow start
 			added: func() {
 				if _, _, err := sched.RunNow("prowlarr-sync", scheduler.TriggerSchedule); err != nil && !errors.Is(err, scheduler.ErrBusy) {
 					log.Warn("couldn't start a Prowlarr sync for the bundled SABnzbd", "err", err)

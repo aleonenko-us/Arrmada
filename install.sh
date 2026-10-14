@@ -148,12 +148,16 @@ env_get() {
   grep -E "^$1=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'" || true
 }
 
-# env_set KEY VALUE "comment": KEY=VALUE in ./.env, replacing any line for KEY; the line
-# (after the comment) goes at the end. Written over the same file, so its owner and
-# permissions stay as they are.
+# env_set KEY VALUE "comment": KEY=VALUE in ./.env. A line for KEY already there is changed
+# where it is; otherwise the comment and the line go at the end. Written over the same
+# file, so its owner and permissions stay as they are.
 env_set() {
-  grep -v "^$1=" .env > .env.tmp || true
-  { say ""; say "$3"; say "$1=$2"; } >> .env.tmp
+  if grep -q "^$1=" .env 2>/dev/null; then
+    awk -v k="$1" -v v="$2" 'index($0, k "=") == 1 { print k "=" v; next } { print }' .env > .env.tmp
+  else
+    cp .env .env.tmp
+    { say ""; say "$3"; say "$1=$2"; } >> .env.tmp
+  fi
   cat .env.tmp > .env
   rm -f .env.tmp
 }
