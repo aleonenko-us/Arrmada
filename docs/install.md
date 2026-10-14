@@ -130,9 +130,37 @@ Arrmada's folder holds `docker-compose.yml`, your settings in `.env`, the mounts
 > ⚠ Never mount media at `/data` inside the container — that's where Arrmada keeps its
 > database. The installer always mounts media at `/storage`.
 
-## Plain `docker compose`
+## Docker Compose without the installer
 
-No installer at all:
+One file, no git. In an empty folder on the server (e.g. `/mnt/user/appdata/arrmada`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
+```
+
+Open it and change the lines marked `←`:
+
+| Line | What to put there |
+|---|---|
+| `PUID` / `PGID` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
+| `TZ` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
+| `- "7878:7878"` | The left number is the web page's port; change it if something (Radarr) already has 7878 |
+| `- ./data:/data` | Where the database lives (left side). Its own folder — never your media |
+| `- &media /path/to/your/media:/storage` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
+
+Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
+follow the setup (TMDB key, library folders under `/storage`, Plex, indexers). The bundled
+qBittorrent is already connected; FlareSolverr runs beside it; Prowlarr is in the file,
+commented out, if you want it. For a GPU, uncomment the `devices` line.
+
+Update with `docker compose pull && docker compose up -d`. This way has no pre-update backup
+and no automatic roll-back (that's `update.sh`); the app still copies its database to
+`<data>/backups` before any upgrade of its tables, and backs up nightly.
+
+### From a git checkout
+
+A checkout runs the published image the same way, with its database and media in Docker
+volumes:
 
 ```sh
 git clone https://github.com/tristenlammi/Arrmada
@@ -140,17 +168,18 @@ cd Arrmada
 docker compose up -d
 ```
 
-That downloads the published image (`ghcr.io/tristenlammi/arrmada:stable`) and starts it with
-the bundled qBittorrent and FlareSolverr, the database and media in Docker volumes. Open
-`http://<server>:7878`. To change ports or the run-as user, put the settings from
+To change ports or the run-as user there, put the settings from
 [Configuration](configuration.md) in a `.env` next to `docker-compose.yml`; if that `.env` sets
 `ARRMADA_PORT`, also add `ARRMADA_APP_IMAGE=ghcr.io/tristenlammi/arrmada:stable` (see
 [Updating](updating.md#upgrading-from-v010-or-earlier) for why). Update with
-`git pull && docker compose pull && docker compose up -d`.
+`git pull && docker compose pull && docker compose up -d`, or run `./install.sh` once to get
+`update.sh`'s backups and roll-back (it keeps the database volume).
+
+### ARM
 
 The image is built for 64-bit Intel/AMD (x86-64) only. On an ARM machine (a Raspberry Pi,
-Apple Silicon, Ampere) the download fails with `no matching manifest for linux/arm64`, and
-Compose then tries to compile instead, which fails too (`no match for platform in manifest`).
+Apple Silicon, Ampere) the download fails with `no matching manifest for linux/arm64`; from a
+checkout, Compose then tries to compile instead, which fails too.
 
 ### Compiling it yourself
 

@@ -146,16 +146,20 @@ needs none.
 
 ## Plain `docker compose`
 
-Started from a git checkout with just `docker compose up -d` (no installer, no `.env`)? That
-runs the published image. Update it with:
+Installed with the [one-file compose](install.md#docker-compose-without-the-installer)?
+Update in its folder with:
 
 ```sh
-git pull && docker compose pull && docker compose up -d
+docker compose pull && docker compose up -d
 ```
 
+From a git checkout started with just `docker compose up -d` (no installer, no `.env`), pull
+the code first: `git pull && docker compose pull && docker compose up -d`.
+
 There's no pre-update backup or automatic roll-back this way (the app still snapshots the
-database before any schema change). To get them, run `./install.sh` in the folder once: it
-keeps the database where it is, writes `.env`, and from then on `./update.sh` updates.
+database before any schema change). In a checkout you can get them by running `./install.sh`
+in the folder once: it keeps the database where it is, writes `.env`, and from then on
+`./update.sh` updates.
 
 ## Other deploy tools
 

@@ -1,0 +1,149 @@
+# Arrmada with plain Docker Compose: no installer, no git. In an empty folder:
+#
+#   curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
+#
+# change the lines marked ←, then `docker compose up -d` and open http://<server>:7878.
+# The first-run setup in the browser takes care of the rest (TMDB key, library folders,
+# Plex, indexers). API keys go there, never in this file.
+#
+# Update:  docker compose pull && docker compose up -d
+#
+# 64-bit Intel/AMD (x86-64) servers only. Kept in step with the repository's
+# docker-compose.yml (internal/archtest/compose_test.go checks the two agree).
+
+x-you: &you
+  PUID: "1000"             # ← the user that owns your media folder (Unraid: 99)
+  PGID: "1000"             # ← its group (Unraid: 100)
+  TZ: "Etc/UTC"            # ← your timezone, e.g. Europe/London; schedules run on this clock
+
+services:
+  arrmada-app:
+    image: ghcr.io/tristenlammi/arrmada:stable
+    container_name: Arrmada-app
+    # Lets x265 pin its threads; Convert works without it, just slower.
+    cap_add: [SYS_NICE]
+    ports:
+      - "7878:7878"        # ← the web page; change the left number if 7878 is taken (Radarr)
+      - "13379:13378"      # audiobook server for listening apps (off until switched on)
+    environment:
+      <<: *you
+      ARRMADA_AUDIOBOOK_HOST_PORT: "13379"
+      ARRMADA_EXTERNAL_HEADER: "Cf-Connecting-Ip"
+      ARRMADA_LOG_LEVEL: "info"
+      ARRMADA_QBITTORRENT_URL: "http://arrmada-qbittorrent:8080"
+      ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
+      ARRMADA_PROWLARR_URL: "http://arrmada-prowlarr:9696"
+      ARRMADA_PROWLARR_HOST_PORT: "9696"
+      ARRMADA_QBIT_PORT: "6881"
+    volumes:
+      # ← Where Arrmada keeps its database and settings. Its own folder, never your media.
+      - ./data:/data
+      # ← The folder that holds your libraries AND downloads (e.g. /mnt/user/data with
+      #   media/movies, media/tv and torrents inside), so imports hardlink instead of
+      #   copying. It's /storage inside: pick each library there during setup. Never
+      #   mount media at /data — that's the database.
+      - &media /path/to/your/media:/storage
+      - arrmada-media:/media
+    # To use an Intel/AMD GPU for Convert, uncomment:
+    # devices: [/dev/dri:/dev/dri]
+    depends_on:
+      arrmada-media-init: { condition: service_completed_successfully }
+      arrmada-qbittorrent: { condition: service_started }
+      arrmada-flaresolverr: { condition: service_started }
+    restart: unless-stopped
+
+  # The download client, already wired up: the init container below lets Arrmada in
+  # without a password from the private Docker network, and Arrmada sets its folders.
+  arrmada-qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:5.2.3
+    container_name: Arrmada-qbittorrent
+    environment:
+      <<: *you
+      WEBUI_PORT: "8080"
+    volumes:
+      - arrmada-qbt-config:/config
+      - *media
+      - arrmada-media:/media
+    ports:
+      # BitTorrent; forward it on your router (TCP and UDP). If you change it, change
+      # ARRMADA_QBIT_PORT above to match — Arrmada sets the same port inside qBittorrent.
+      - "6881:6881"
+      - "6881:6881/udp"
+      # qBittorrent's own web page isn't needed (Arrmada drives it); to peek, add
+      # - "8080:8080"
+    depends_on:
+      arrmada-qbittorrent-init: { condition: service_completed_successfully }
+      arrmada-media-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  # Gets past Cloudflare on trackers that use it. No port published.
+  arrmada-flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
+    container_name: Arrmada-flaresolverr
+    environment:
+      <<: *you
+      LOG_LEVEL: "info"
+    restart: unless-stopped
+
+  # One-shot: Arrmada's own downloads/library folders, owned by the user above.
+  arrmada-media-init:
+    image: alpine:3.20
+    container_name: Arrmada-media-init
+    environment: *you
+    command: sh -c 'mkdir -p /media/downloads/incomplete /media/library && chown -R "$$PUID:$$PGID" /media'
+    volumes:
+      - arrmada-media:/media
+    restart: "no"
+
+  # One-shot: qBittorrent's first settings (only if it has none yet).
+  arrmada-qbittorrent-init:
+    image: alpine:3.20
+    container_name: Arrmada-qbittorrent-init
+    command:
+      - sh
+      - -c
+      - |
+        f=/config/qBittorrent/qBittorrent.conf
+        [ -f "$$f" ] && exit 0
+        mkdir -p /config/qBittorrent
+        cat > "$$f" <<'EOF'
+        [Application]
+        FileLogger\Enabled=true
+
+        [BitTorrent]
+        Session\DefaultSavePath=/media/downloads
+        Session\TempPath=/media/downloads/incomplete
+        Session\TempPathEnabled=true
+        Session\BTProtocol=TCP
+
+        [LegalNotice]
+        Accepted=true
+
+        [Preferences]
+        WebUI\Port=8080
+        WebUI\Address=*
+        WebUI\LocalHostAuth=false
+        WebUI\CSRFProtection=false
+        WebUI\HostHeaderValidation=false
+        WebUI\AuthSubnetWhitelistEnabled=true
+        WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+        EOF
+    volumes:
+      - arrmada-qbt-config:/config
+    restart: "no"
+
+  # Optional: Prowlarr, to manage indexers in one place ("Sync from Prowlarr" in Arrmada).
+  # arrmada-prowlarr:
+  #   image: lscr.io/linuxserver/prowlarr:2.6.5
+  #   container_name: Arrmada-prowlarr
+  #   environment: *you
+  #   volumes:
+  #     - arrmada-prowlarr-config:/config
+  #   ports:
+  #     - "9696:9696"
+  #   restart: unless-stopped
+
+volumes:
+  arrmada-media:
+  arrmada-qbt-config:
+  # arrmada-prowlarr-config:

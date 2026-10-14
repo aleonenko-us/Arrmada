@@ -48,6 +48,20 @@ through the rest in the browser: your free TMDB key, your library folders, Plex 
 
 [Install guide, options and Unraid notes →](docs/install.md)
 
+### Prefer Docker Compose?
+
+In an empty folder on the server:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
+```
+
+Edit the lines marked `←` (your media folder, the user and group, your timezone, the port),
+then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+To update: `docker compose pull && docker compose up -d`. That skips the installer's
+pre-update backup and automatic roll-back; the app still copies its database before any
+upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
+
 ## Update
 
 Run the same line again:
