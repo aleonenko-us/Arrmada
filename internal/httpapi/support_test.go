@@ -175,6 +175,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	const (
 		tmdbKey     = "tmdbKEY9f8e7d6c5b4a"
 		plexToken   = "PlexTokZq81XwYy77"
+		jellyKey    = "JellyKeyB0b0Fe77aa"
 		smtpPass    = "smtpPa55wordXq"
 		smtpUser    = "mailer-account-77"
 		osPass      = "OpenSubsPw-551"
@@ -213,7 +214,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	for k, v := range map[string]string{
 		"apikey:tmdb": tmdbKey, "apikey:smtp_password": smtpPass, "apikey:smtp_username": smtpUser,
 		"apikey:opensubtitles_password": osPass, "insights_plex_token": plexToken,
-		"insights_plex_url": "http://192.168.1.5:32400", "convert_codec": "hevc", "module_books_enabled": "true",
+		"insights_plex_url": "http://192.168.1.5:32400", "apikey:jellyfin": jellyKey, "jellyfin_url": "http://192.168.1.6:8096", "convert_codec": "hevc", "module_books_enabled": "true",
 	} {
 		if err := set.Set(ctx, k, v); err != nil {
 			t.Fatal(err)
@@ -243,6 +244,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	f.log.With("module", "indexer").Debug("torznab page", "url", "http://t.example/api?t=search&apikey="+indexerKey+"&q=zephyrine+quillfeather+chronicles")
 	f.log.With("module", "download").Info("grabbed", "release", "Zephyrine.Quillfeather.Chronicles.2024.M4B-GRP", "path", "/downloads/Oswin Thackeray-Pell - Brindlemoor")
 	f.log.Warn("plex call failed", "err", "GET https://plex.tv/x?X-Plex-Token="+plexToken+": 401")
+	f.log.Warn("jellyfin: call failed", "err", "MediaBrowser Token=\""+jellyKey+"\" refused")
 	f.log.Warn("qbittorrent: login refused for password " + qbitPass)
 	f.log.Info("mail: sent to "+kindle, "user", person)
 	f.log.Info("notify: discord answered 404 for "+webhookTok, "who", plexNm)
@@ -288,7 +290,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	lower := strings.ToLower(bundle)
 
 	forbidden := []string{
-		tmdbKey, plexToken, smtpPass, smtpUser, osPass, indexerKey, trackerPass, qbitPass, webhookTok,
+		tmdbKey, plexToken, jellyKey, smtpPass, smtpUser, osPass, indexerKey, trackerPass, qbitPass, webhookTok,
 		"apptokenSecret99", "userkeyMarigold", envPlex,
 		title1, title2, "Zephyrine", "Quillfeather", "Brindlemoor", "Saltwater", author, "Thackeray", series, mark,
 		person, plexNm, kindle, "owner-admin",
@@ -321,7 +323,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	if settings.Included["convert_codec"] != "hevc" || settings.Included["module_books_enabled"] != "true" {
 		t.Errorf("safe settings missing: %+v", settings.Included)
 	}
-	for _, k := range []string{"apikey:tmdb", "insights_plex_token", "insights_plex_url"} {
+	for _, k := range []string{"apikey:tmdb", "insights_plex_token", "insights_plex_url", "apikey:jellyfin", "jellyfin_url"} {
 		if _, ok := settings.Included[k]; ok {
 			t.Errorf("%s should be withheld", k)
 		}

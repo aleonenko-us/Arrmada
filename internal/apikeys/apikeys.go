@@ -99,6 +99,10 @@ var Catalog = []Key{
 	{ID: SMTPHost, Label: "Mail server", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
 	{ID: SMTPUsername, Label: "Mail username", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
 	{ID: SMTPPassword, Label: "Mail password", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
+	// The Jellyfin server's API key, entered on its card in Settings → Connections next to
+	// the server address (internal/jellyfinsvc). An install can set it from the
+	// environment, like the Plex token; it's never sent back to the browser.
+	{ID: Jellyfin, Label: "Jellyfin API key", Purpose: "Jellyfin: Watch links, library updates.", EnvVar: "ARRMADA_JELLYFIN_API_KEY", Secret: true, Hidden: true},
 }
 
 // The outgoing-email credentials' ids.
@@ -107,6 +111,9 @@ const (
 	SMTPUsername = "smtp_username"
 	SMTPPassword = "smtp_password"
 )
+
+// Jellyfin is the Jellyfin API key's id.
+const Jellyfin = "jellyfin"
 
 // Listed reports whether id is a credential the API keys list shows and its routes edit.
 func Listed(id string) bool {
