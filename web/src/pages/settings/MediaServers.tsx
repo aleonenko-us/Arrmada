@@ -271,7 +271,7 @@ function JellyfinWatchLinks({ cfg, admin }: { cfg: JellyfinConfig; admin: boolea
       {!cfg.url ? (
         <p className="m-0 text-sm text-ink-dim">Connect your Jellyfin server first; the address starts as its URL.</p>
       ) : admin ? (
-        <AutoText label="Public address for Watch links" save={save} placeholder={cfg.url}>{help}</AutoText>
+        <AutoText label="Public address for Watch links" save={save} placeholder={cfg.url}><span className="text-xs text-ink-faint">{help}</span></AutoText>
       ) : (
         <div className="flex flex-col gap-1 text-sm">
           <span className="font-semibold">Public address for Watch links</span>
