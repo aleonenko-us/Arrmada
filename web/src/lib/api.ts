@@ -1,6 +1,7 @@
 // Thin typed client for Arrmada's JSON API.
 
 import type { PipelineStage } from "./stages";
+import type { MediaServerKind, WatchLink } from "../components/brand/servers";
 
 export interface Module {
   id: string;
@@ -735,6 +736,8 @@ export interface UserNotification {
   id: number; title: string; body: string; media_type: string; ref: string; read: boolean; created_at: number;
   /** A 'ready' notice for a title the owner's Plex has: its app.plex.tv page (absent while Plex is off). */
   plex_url?: string;
+  /** A 'ready' notice's Watch buttons: one per media server that has the title, the reader's own first. */
+  watch_links?: WatchLink[];
 }
 
 export interface CalendarItem {
@@ -1559,6 +1562,8 @@ export interface MediaRequest {
   rerequest?: number;
   /** Delivered and in the owner's Plex: the title's app.plex.tv page. */
   plex_url?: string;
+  /** Delivered: a Watch link per media server that has it, the viewer's own server first. */
+  watch_links?: WatchLink[];
 }
 
 /** A section of the request list (GET /api/v1/requests?section=). */
@@ -1585,7 +1590,7 @@ export interface RequestList {
 // RequestTracking is where a request has got to, from its own downloads.
 export type RequestStage =
   | "pending" | "declined" | "searching" | "queued" | "downloading" | "paused"
-  | "failed" | "importing" | "partial" | "adding" | "available"; // adding: on disk, waiting for Plex
+  | "failed" | "importing" | "partial" | "adding" | "available"; // adding: on disk, waiting for a media server
 export interface RequestTracking {
   stage: RequestStage;
   progress?: number; // 0..1 across its active downloads
@@ -1605,6 +1610,8 @@ export interface RequestTracking {
   misses?: number;
   /** A book the searches have slowed to a monthly check. */
   search_stopped?: boolean;
+  /** Stage "adding": the media servers it's being added to ("Adding to Plex…"; both = "your library"). */
+  adding_to?: MediaServerKind[];
 }
 
 // MyBook is one library book as a requester sees it: an ebook to download, an
@@ -1872,6 +1879,7 @@ export interface MediaDetail {
   /** The title as a Discover card with this viewer's badge state, for a sheet opened cold from its address. */
   card?: DiscoverCard;
   plex_url?: string; // app.plex.tv page for the title, when the owner's Plex has it
+  watch_links?: WatchLink[]; // a Watch link per media server that has it, the viewer's own first
   collection?: { id: number; name: string }; // a movie's franchise, for "Part of the … collection"
 }
 /** One "Complete the <name>" row on Discover. */

@@ -2,24 +2,22 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { plexLibraryApi, type WatchStats } from "../lib/plexLibraryApi";
 import { ago } from "../lib/taskTime";
+import { WatchPills } from "./brand/WatchPills";
+import type { WatchLink } from "./brand/servers";
 
-// PlexPill is the "Plex" link beside IMDb and TMDB on a title's page: it opens the title
-// in app.plex.tv on the owner's server. Asked for after the page has loaded, and not shown
-// at all when Plex doesn't have the title (or isn't connected).
-export function PlexPill({ media, tmdbId }: { media: "movie" | "series"; tmdbId: number }) {
-  const [url, setUrl] = useState<string | null>(null);
+// TitleWatchPills is the "Plex" / "Jellyfin" links beside IMDb and TMDB on a title's page:
+// each opens the title in that server's own app (Jellyfin at its public address), the
+// viewer's own server first. Asked for after the page has loaded, and not shown at all
+// when no server has the title (or none is connected).
+export function TitleWatchPills({ media, tmdbId }: { media: "movie" | "series"; tmdbId: number }) {
+  const [links, setLinks] = useState<WatchLink[]>([]);
   useEffect(() => {
     let live = true;
-    setUrl(null);
-    if (tmdbId > 0) plexLibraryApi.link(media, tmdbId).then((u) => { if (live) setUrl(u); }).catch(() => {});
+    setLinks([]);
+    if (tmdbId > 0) plexLibraryApi.watchLinks(media, tmdbId).then((ls) => { if (live) setLinks(ls); }).catch(() => {});
     return () => { live = false; };
   }, [media, tmdbId]);
-  if (!url) return null;
-  return (
-    <a href={url} target="_blank" rel="noopener noreferrer" title="Watch on Plex" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#e5a00d", color: "#1f1f1f" }}>
-      ▶ Plex
-    </a>
-  );
+  return <WatchPills links={links} compact />;
 }
 
 // WatchedBy is the "Watched by 3 · last played 2 days ago" line under a title's header,
