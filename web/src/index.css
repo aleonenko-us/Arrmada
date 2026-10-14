@@ -180,6 +180,10 @@ select optgroup {
   background-color: var(--panel);
   color: var(--ink);
 }
+select option:checked {
+  background-color: var(--accent);
+  color: var(--accent-ink);
+}
 select option:disabled {
   color: var(--ink-faint);
 }
