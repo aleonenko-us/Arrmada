@@ -22,6 +22,7 @@ at the end and saves them in `.env`.
 | Setting | What it's for |
 |---|---|
 | `ARRMADA_IMAGE` | The published image `update.sh` downloads; without it, updates compile here ([Updating](updating.md#published-image-or-compiled-here)) |
+| `ARRMADA_APP_IMAGE` | The image `docker compose` runs. `arrmada:dev` (what the installer writes) is whatever `update.sh` built or downloaded — leave it. Without the line, a plain `docker compose up -d` runs the published image ([Updating](updating.md#upgrading-from-v010-or-earlier)) |
 | `ARRMADA_DATA_HOST` | Where the database, its backups and settings live on the host |
 | `ARRMADA_STORAGE_HOST` | Your media folder (for reference; the mount itself is in `docker-compose.override.yml`) |
 | `ARRMADA_PUID`, `ARRMADA_PGID` | The user and group Arrmada and qBittorrent run as. On Unraid, 99 and 100 |

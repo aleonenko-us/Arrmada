@@ -16,6 +16,35 @@ sh /mnt/user/appdata/arrmada/update.sh      # wherever Arrmada is installed
 ./update.sh                                 # from inside the folder (git checkouts too)
 ```
 
+## Upgrading from v0.1.0 or earlier
+
+Newer versions of `docker-compose.yml` run the image named by `ARRMADA_APP_IMAGE` in `.env`,
+and a plain `docker compose up -d` in a folder without that line downloads the published image
+instead of compiling. `update.sh` and the install line add the line by themselves the first
+time they run, before anything is rebuilt:
+
+```sh
+ARRMADA_APP_IMAGE=arrmada:dev
+```
+
+So if you update with `update.sh` or the install line, there's nothing to do: an install that
+compiled keeps compiling, one that downloads the published image keeps downloading it, and
+`--rollback` works as before.
+
+**If something else deploys Arrmada** — Komodo, Portainer, or a script running
+`git pull && docker compose up -d --build` — add that line to `.env` in Arrmada's folder
+**before the next pull**. (If the tool writes `.env` itself, add it to the tool's environment
+for the stack instead.) Without it the deploy stops with
+
+```
+unable to get image 'ARRMADA_APP_IMAGE is missing from .env, see docs/updating.md (…) -- ghcr.io/tristenlammi/arrmada:stable': … invalid reference format
+```
+
+and leaves the running version alone: an install that has always compiled is never switched
+to the published image without you choosing it. Add the line and deploy again. (That check
+looks for `ARRMADA_PORT`, which every version of the installer has written to `.env`. A `.env`
+written by hand without it gets the published image on such a deploy.)
+
 ## What an update does
 
 1. **Checks for a long conversion.** Restarting abandons a conversion in progress, so if one
@@ -107,19 +136,46 @@ ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
 
 `stable` is always the newest release; pin one with a version instead
 (`ghcr.io/tristenlammi/arrmada:0.18.0`). Delete the line to go back to compiling, or run
-`./update.sh --force-local` to compile once without changing `.env`.
+`./update.sh --force-local` to compile once without changing `.env`. Either way
+`ARRMADA_APP_IMAGE` stays `arrmada:dev`: that's the local name `update.sh` gives whatever it
+built or downloaded, and the one `--rollback` swaps.
+
+Compiling needs a few GB of free memory (see
+[Troubleshooting](troubleshooting.md#the-build-fails-or-gets-killed)); the published image
+needs none.
+
+## Plain `docker compose`
+
+Installed with the [one-file compose](install.md#docker-compose-without-the-installer)?
+Update in its folder with:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+From a git checkout started with just `docker compose up -d` (no installer, no `.env`), pull
+the code first: `git pull && docker compose pull && docker compose up -d`.
+
+There's no pre-update backup or automatic roll-back this way (the app still snapshots the
+database before any schema change). In a checkout you can get them by running `./install.sh`
+in the folder once: it keeps the database where it is, writes `.env`, and from then on
+`./update.sh` updates.
 
 ## Other deploy tools
 
-If you deploy with Komodo or another tool instead of `update.sh`, mirror these steps there:
-pass `ARRMADA_VERSION` (a release tag, or the commit date:
+If you deploy with Komodo or another tool instead of `update.sh`, keep
+`ARRMADA_APP_IMAGE=arrmada:dev` in `.env` (see
+[Upgrading from v0.1.0 or earlier](#upgrading-from-v010-or-earlier)) and mirror these steps
+there: pass `ARRMADA_VERSION` (a release tag, or the commit date:
 `git log -1 --format=%cd --date=format:%Y.%m.%d`) and `ARRMADA_COMMIT`
 (`git rev-parse --short HEAD`) as build environment, run
 `docker exec -u <PUID>:<PGID> Arrmada-app arrmada backup --kind pre-update` and tag the
 running image `arrmada:previous` before each build. Otherwise none of this protection applies.
 
-To run the published image from such a tool, set the `arrmada-app` service's `image:` to the
-published tag in your `docker-compose.override.yml` and let the tool pull it.
+To run the published image from such a tool instead, set
+`ARRMADA_APP_IMAGE=ghcr.io/tristenlammi/arrmada:stable` in `.env` and have the tool run
+`docker compose pull` before `docker compose up -d`. (`update.sh` refuses to run on that
+setting, since it manages `arrmada:dev`; use `ARRMADA_IMAGE` for update.sh's own pull mode.)
 
 `docker exec Arrmada-app arrmada help` lists the maintenance commands built into the app
 (`version`, `backup`, …). With no command, `arrmada` is the server.

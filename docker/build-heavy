@@ -1,0 +1,71 @@
+#!/bin/sh
+# build-heavy MB_PER_JOB COMMAND — runs one of the image build's big compiles (the web UI,
+# the Go binary, the two whisper.cpp builds) with as many parallel jobs as this machine's
+# memory allows, in $JOBS, and says plainly when the machine ran out of memory.
+#
+# The Dockerfile runs each of these under one shared lock (a cache mount with
+# sharing=locked), so they take turns instead of compiling side by side: on a small
+# server, compilers from several stages at once is what ran it out of memory (6.5 GB at
+# the peak with four cores, before; 2 GB now).
+#
+# JOBS = the free memory / MB_PER_JOB (the measured memory per compiler process), at
+# least 1 and at most the number of cores. /proc/meminfo is the machine's own memory on a
+# VM or a server; inside a memory-capped container it can be the host's, so a compile
+# that gets killed anyway is tried once more with one job before the build gives up.
+# ARRMADA_BUILD_JOBS (a build argument) fixes the count instead.
+set -u
+per_job=$1
+cmd=$2
+
+cores=$(nproc 2>/dev/null || echo 1)
+avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
+total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+avail_mb=$(( ${avail_kb:-0} / 1024 ))
+total_mb=$(( ${total_kb:-0} / 1024 ))
+case "${ARRMADA_BUILD_JOBS:-}" in
+  "" | *[!0-9]* | 0)
+    JOBS=$(( avail_mb / per_job ))
+    [ "$JOBS" -gt "$cores" ] && JOBS=$cores
+    [ "$JOBS" -lt 1 ] && JOBS=1 ;;
+  *) JOBS=$ARRMADA_BUILD_JOBS ;;
+esac
+export JOBS
+
+log=$(mktemp)
+# run -> the command's exit status; its output goes to the build log and to $log.
+run() {
+  echo "build-heavy: $JOBS parallel job(s) (${avail_mb} MB free of ${total_mb} MB, $cores cores)"
+  rc_file=$(mktemp)
+  { sh -c "$cmd" 2>&1; echo $? > "$rc_file"; } | tee "$log"
+  rc=$(cat "$rc_file")
+  rm -f "$rc_file"
+  return "$rc"
+}
+# killed -> 0 if the last run's compiler was killed by the kernel's out-of-memory killer,
+# as gcc, clang/icpx, go, node and the shell each report it.
+killed() {
+  grep -qE 'Killed signal terminated program|unable to execute command: Killed|signal: killed|^Killed|JavaScript heap out of memory|cannot allocate memory' "$log"
+}
+
+if run; then rm -f "$log"; exit 0; else rc=$?; fi
+if ! killed; then rm -f "$log"; exit "$rc"; fi
+if [ "$JOBS" -gt 1 ]; then
+  JOBS=1
+  echo "build-heavy: a compiler ran out of memory; trying again with one job at a time."
+  if run; then rm -f "$log"; exit 0; else rc=$?; fi
+  if ! killed; then rm -f "$log"; exit "$rc"; fi
+fi
+rm -f "$log"
+cat >&2 <<EOF
+
+✗ This machine ran out of memory building Arrmada: the compiler was killed.
+  Building the image needs about 2 GB of memory free while it runs (4 GB is comfortable);
+  this machine has ${total_mb} MB in all, ${avail_mb} MB of it free when this step began.
+  You don't need to build at all — run the published image instead:
+    a checkout started with plain compose:   docker compose up -d   (without --build)
+    an install made by install.sh:           ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
+                                             in .env, then sh update.sh
+  Or free some memory (stop other containers, add swap) and build again.
+
+EOF
+exit "$rc"

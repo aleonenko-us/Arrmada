@@ -11,6 +11,32 @@ The installer and updater print the last lines of the log. The full log is in Ar
 `docker compose logs arrmada-app`. A failed *update* goes back to the version that was
 running by itself ([Updating](updating.md#when-an-update-goes-wrong)).
 
+<a id="the-build-fails-or-gets-killed"></a>
+**The build fails or gets killed.**
+Compiling the image yourself (`--build`, `docker compose up -d --build`, or `update.sh`
+without `ARRMADA_IMAGE`) takes 30–60 minutes and about **2 GB of memory free** while it
+runs; 4 GB is comfortable. If a compiler is still killed, the build ends with
+`✗ This machine ran out of memory building Arrmada` and what to do.
+
+Versions up to v0.1.0 needed far more — about 7 GB on a four-core machine — and on a smaller
+one Docker printed only the last line, for example
+
+```
+failed to solve: process "/bin/sh -c CGO_ENABLED=0 go build ..." did not complete successfully: exit code 1
+```
+
+with the real cause (`signal: killed`, `Killed signal terminated program cc1plus`,
+`cannot allocate memory`) further up the log.
+
+Either way you don't need to compile: run the published image. With the installer, run the
+install line without `--build`, or put `ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable`
+in `.env` and run `sh update.sh`. With a checkout and no `.env`, plain `docker compose up -d`
+already downloads it. To compile on a small machine anyway, add swap, or pass the build
+argument `ARRMADA_BUILD_JOBS=1`.
+
+The published image is for 64-bit Intel/AMD (x86-64) only: on ARM, Docker says
+`no matching manifest for linux/arm64`, and compiling fails too.
+
 **I can't open the web page.**
 Use the address the installer printed — it may not be 7878 if something else had that port
 (see `ARRMADA_PORT` in `.env`). On another device, use the server's LAN address, not

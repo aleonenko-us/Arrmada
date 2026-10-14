@@ -2,3 +2,6 @@
 *.sh text eol=lf
 install.sh text eol=lf
 update.sh text eol=lf
+# Everything the image copies in and runs. Checked out with CRLF (Windows, autocrlf), the
+# build fails ("whisper-cli-sycl --help" exits 127: /bin/sh^M not found).
+docker/** text eol=lf
