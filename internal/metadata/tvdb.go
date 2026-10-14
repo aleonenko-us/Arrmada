@@ -158,7 +158,10 @@ func groupTVDB(eps []tvdbEpisode) []SeasonDetails {
 	}
 	out := make([]SeasonDetails, 0, len(bySeason))
 	for _, sd := range bySeason {
-		sort.Slice(sd.Episodes, func(i, j int) bool { return sd.Episodes[i].EpisodeNumber < sd.Episodes[j].EpisodeNumber })
+		// Stable: TVDB can list several placeholder episodes under one number (S03E99 for
+		// every "TBA"), and the series module keeps the first — so "first" must be TVDB's
+		// own order, not whichever the sort happened to leave in front.
+		sort.SliceStable(sd.Episodes, func(i, j int) bool { return sd.Episodes[i].EpisodeNumber < sd.Episodes[j].EpisodeNumber })
 		out = append(out, *sd)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].SeasonNumber < out[j].SeasonNumber })
