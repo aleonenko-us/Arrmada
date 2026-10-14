@@ -624,6 +624,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
               <Button onClick={() => setAddingIndexer(true)}>{(state.indexers_enabled ?? 0) > 0 ? "Add another tracker…" : "Add a tracker…"}</Button>
               <span className="text-sm text-ink-faint">Pick it from the list, fill in its key, and Test it first.</span>
             </div>
+            <p className="m-0 text-sm text-ink-dim">Using Usenet? Add SABnzbd in Settings → Connections, then your Newznab indexers.</p>
           </div>
           {addingIndexer && (
             <Suspense fallback={null}>

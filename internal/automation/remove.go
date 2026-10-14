@@ -47,7 +47,7 @@ type RemoveResult struct {
 // another. Optionally it stops wanting the title, scoped to exactly what the download was
 // for (one album, one season, the episodes named): never the whole show.
 func (c *Coordinator) RemoveDownload(ctx context.Context, hash, name string, mode RemoveMode, unmonitor bool) (RemoveResult, error) {
-	if !download.ValidHash(hash) {
+	if !download.ValidKey(hash) {
 		return RemoveResult{}, download.ErrInvalidHash
 	}
 	if !ValidRemoveMode(mode) {

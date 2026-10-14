@@ -52,6 +52,10 @@ func (a *api) setupChecklist(ctx context.Context) setupChecklist {
 		{Key: "first_title", Label: "Add your first movie or show", Done: a.hasTitles(ctx), Link: "/discover"},
 		{Key: "first_import", Label: "Get your first download into the library", Done: a.anyImported(ctx), Link: "/activity/history", LinkKey: "history"},
 	}
+	// The bundled SABnzbd comes without a news server: its step follows the client's.
+	if it, ok := a.usenetProviderItem(ctx); ok {
+		items = append(items[:3], append([]checklistItem{it}, items[3:]...)...)
+	}
 	out := setupChecklist{Items: items, Done: true, Dismissed: a.deps.Settings.GetBool(ctx, keyGettingStartedDismissed, false)}
 	for _, it := range items {
 		if !it.Done {

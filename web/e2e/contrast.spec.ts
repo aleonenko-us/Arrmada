@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { test, expect } from "./mockApi";
+import { test, expect, type MockedApi } from "./mockApi";
 import type { Persona } from "./fixtures/users";
+import { mockUsenet, SAB_ID } from "./fixtures/usenet";
 import { STAFF_PAGES, REQUESTER_PAGES, PAGE_EXTRA } from "./fixtures/pages";
 
 // The colour-contrast guard: every staff page and Settings section, the requester's own
@@ -13,7 +14,9 @@ import { STAFF_PAGES, REQUESTER_PAGES, PAGE_EXTRA } from "./fixtures/pages";
 // token (index.css) or by using a stronger one (ink-dim, not ink-faint, for words people
 // need to read) — never by excluding the element here.
 
-type Shot = { persona: Persona; path: string; open?: (page: Page) => Promise<void> };
+// setup answers extra endpoints before the page loads (a usenet client, say); label names
+// a variant of a page the list already has.
+type Shot = { persona: Persona; path: string; open?: (page: Page) => Promise<void>; setup?: (page: Page, api: MockedApi) => Promise<void>; label?: string };
 
 const shots: Shot[] = [
   ...STAFF_PAGES.map((path) => ({ persona: "admin" as const, path })),
@@ -75,6 +78,21 @@ const shots: Shot[] = [
       await page.getByRole("button", { name: /account|deckhand/i }).first().click();
     },
   },
+  // Usenet: the SABnzbd card opened, the queue's usenet rows (Downloading and Finishing)
+  // and the network preference.
+  {
+    persona: "admin",
+    path: "/settings/connections",
+    label: "SABnzbd card",
+    setup: (page, api) => mockUsenet(page, api),
+    open: async (page) => {
+      await page.locator(`#download_client-${SAB_ID}`).getByRole("button", { name: "Edit" }).click();
+      await expect(page.getByRole("region", { name: "SABnzbd" })).toBeVisible();
+    },
+  },
+  { persona: "admin", path: "/activity/queue", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
+  { persona: "admin", path: "/activity/queue?show=finishing", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
+  { persona: "admin", path: "/settings/downloads", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
 ];
 
 // The open list of a native <select> is drawn by the browser outside the page, so axe
@@ -118,11 +136,12 @@ async function audit(page: Page) {
 }
 
 for (const theme of ["dark", "light"] as const) {
-  for (const { persona, path, open } of shots) {
+  for (const { persona, path, open, setup, label } of shots) {
     test.describe(`${theme} ${persona}`, () => {
       test.use({ persona });
-      test(`${path}${open ? " (dialog)" : ""}`, async ({ page, api }) => {
+      test(`${path}${label ? ` (${label})` : open ? " (dialog)" : ""}`, async ({ page, api }) => {
         await page.addInitScript((t) => localStorage.setItem("arrmada.theme", t), theme);
+        if (setup) await setup(page, api);
         const extra = PAGE_EXTRA[path];
         if (extra) {
           await page.route((u) => u.pathname.startsWith("/api/"), (r) => {

@@ -20,7 +20,7 @@ export interface IndexerPreset {
   /** One line under the title. */
   blurb: string;
   /** The indexer kind it creates. "prowlarr" isn't one: that tile opens the Prowlarr card. */
-  kind: "torrentleech" | "myanonamouse" | "1337x" | "torznab" | "prowlarr";
+  kind: "torrentleech" | "myanonamouse" | "1337x" | "torznab" | "newznab" | "prowlarr";
   /** The name a new indexer gets until the owner types their own. */
   defaultName: string;
   fields: PresetField[];
@@ -34,6 +34,8 @@ export interface IndexerPreset {
   help: string;
   /** A private tracker counts how long you seed, so the seed rules get a reminder. */
   privateTracker?: boolean;
+  /** A usenet indexer: offered only with a usenet download client, and nothing seeds. */
+  usenet?: boolean;
 }
 
 export const INDEXER_PRESETS: IndexerPreset[] = [
@@ -97,7 +99,25 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     urlPlaceholder: "http://jackett:9117/api/v2.0/indexers/<id>/results/torznab/",
     help: "A Torznab feed from Jackett or anything else that speaks it. Copy the feed URL and API key from Jackett's indexer list. Test reads what the feed supports, so searches use its ids and categories.",
   },
+  {
+    id: "newznab",
+    label: "Newznab (Usenet)",
+    monogram: "NZ",
+    blurb: "A usenet indexer by URL and key",
+    kind: "newznab",
+    defaultName: "Newznab",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    urlPlaceholder: "https://indexer.example/api",
+    help: "A usenet indexer's API: its address (ending /api) and your API key, both on the indexer's profile page. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
 ];
+
+/** The catalogue as offered: the usenet tile only once a usenet download client exists. */
+export function presetsFor(hasUsenetClient: boolean): IndexerPreset[] {
+  return INDEXER_PRESETS.filter((p) => !p.usenet || hasUsenetClient);
+}
 
 export const presetById = (id: string) => INDEXER_PRESETS.find((p) => p.id === id);
 

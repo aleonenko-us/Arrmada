@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -286,6 +287,7 @@ func main() {
 	}
 	downloads.SetStatus(connStatus)
 	downloads.SetFlags(settingsSvc) // remembers that the owner removed the bundled qBittorrent
+	wireUsenet(indexers, downloads)
 	// FlareSolverr answering or not is recorded like any integration (no backoff: the
 	// searches that need it are already paced by their indexers' own status).
 	flare.OnResult(func(err error) {
@@ -303,6 +305,17 @@ func main() {
 		Audiobook: libroots.Func(roots.Audiobooks),
 		Music:     libroots.Func(roots.Music),
 	}
+	// SABnzbd files by Arrmada's categories (the movie one is configurable) and, once a
+	// finished job is imported, has its leftover folder deleted only inside Arrmada's
+	// downloads folder or SABnzbd's own completed folder — never a library or the database.
+	downloads.SetMovieCategory(cfg.DownloadCategory)
+	downloads.SetFolders(func(ctx context.Context) download.PathEnv {
+		env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: cfg.DataDir}
+		for _, lib := range roots.Libraries(ctx) {
+			env.Libraries = append(env.Libraries, lib.Path)
+		}
+		return env
+	})
 	httpapi.LogLibraryDirs(context.Background(), roots, cfg, log)
 	logFolders(log, roots.Config(context.Background()),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleBooks, true),
@@ -623,6 +636,24 @@ func main() {
 			log.Warn("couldn't start the first Prowlarr sync", "err", err)
 		}
 	})
+	// The optional bundled SABnzbd registers itself once its config (with the API key its
+	// init container generated) shows up, and gets its categories and folders. Adding it
+	// runs the Prowlarr sync, as adding one by hand does: usenet indexers only come in
+	// while a usenet client exists.
+	var sab *bundledSAB
+	if cfg.SABnzbdURL != "" && cfg.SABnzbdConfig != "" {
+		sab = &bundledSAB{
+			url: cfg.SABnzbdURL, config: cfg.SABnzbdConfig, downloads: downloads,
+			downloadsDir: roots.Downloads, log: modLog(log, "download"),
+			interval: 30 * time.Second, tuneTries: 60, // five minutes of 5 s retries for a slow start
+			added: func() {
+				if _, _, err := sched.RunNow("prowlarr-sync", scheduler.TriggerSchedule); err != nil && !errors.Is(err, scheduler.ErrBusy) {
+					log.Warn("couldn't start a Prowlarr sync for the bundled SABnzbd", "err", err)
+				}
+			},
+		}
+		grp.Go("sabnzbd: bundled", sab.run)
+	}
 	sched.Register("rss-sync", 15*time.Minute, false, func(ctx context.Context) error {
 		coordinator.RSSSync(ctx)
 		return nil
@@ -1304,6 +1335,11 @@ func main() {
 				}
 			}
 			bus.Publish("system.folders.applied", map[string]any{"changed": changed})
+			// The bundled SABnzbd's folders follow the Downloads folder too; after the rest,
+			// so a SABnzbd that's down doesn't hold up qBittorrent's move or the page.
+			if sab != nil && slices.Contains(changed, "downloads") {
+				sab.foldersChanged(ctx)
+			}
 		},
 	})
 	// A task that keeps failing is a health problem too (it warns at three in a row).

@@ -12,7 +12,9 @@ export const REASON_LABELS: Record<string, string> = {
   pending: "already downloading",
   out_of_scope: "for other episodes or editions",
   wrong_edition: "not the edition a version wants",
+  // A release on a network with no download client set up for it.
   not_torrent: "usenet only",
+  not_usenet: "torrent only",
   not_wanted: "a format you don't want",
   wrong_language: "not in your book languages",
   rejected: "rejected by your profile",

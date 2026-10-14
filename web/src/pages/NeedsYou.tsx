@@ -4,6 +4,7 @@ import { api, type AttentionItem, type ReviewKind, type UnmanagedDownload } from
 import { downloadClientApi } from "../lib/downloadClientApi";
 import { formatAgo, formatBytes } from "../lib/format";
 import { LINKS, fixLink } from "../lib/links";
+import { USENET_KEY_PREFIX } from "../lib/network";
 import { loadAttention, refreshAttention, useAttention } from "../lib/useAttention";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { Skeleton, useToast } from "../ui";
@@ -184,13 +185,18 @@ function StalledCard({ it }: { it: AttentionItem }) {
   };
   const reannounce: CardAction = { label: "Reannounce", disabled: busy, title: "Ask the trackers for peers again", onSelect: () => run(() => api.torrentAction(hash, "reannounce"), "Asked the trackers for peers again.") };
   const recheck: CardAction = { label: "Recheck files", disabled: busy, title: "Check the downloaded data against the torrent", onSelect: () => run(() => api.torrentAction(hash, "recheck"), "Rechecking the downloaded data.") };
+  // A usenet job has no trackers or pieces to check: SABnzbd's own remedy is Retry.
+  const usenet = hash.toLowerCase().startsWith(USENET_KEY_PREFIX);
+  const retry: CardAction = { label: "Retry", disabled: busy, title: "Ask SABnzbd to try this download again", onSelect: () => run(() => api.torrentAction(hash, "retry"), "SABnzbd is trying it again.") };
   const errored = it.kind === "download";
   // Another release is only for what Arrmada grabbed; anything else gets the client's own
   // remedies first.
   const primary = it.grabbed
     ? <PrimaryBtn label={searching ? "Searching…" : "Try another release"} disabled={searching} title="Search for a different release; this one is removed only once another is grabbed" onClick={() => void tryAnother()} />
-    : <PrimaryBtn label={errored ? "Recheck files" : "Reannounce"} disabled={busy} onClick={() => void (errored ? recheck : reannounce).onSelect()} />;
-  const rest = it.grabbed ? [reannounce, recheck] : [errored ? reannounce : recheck];
+    : usenet
+      ? <PrimaryBtn label="Retry" disabled={busy} onClick={() => void retry.onSelect()} />
+      : <PrimaryBtn label={errored ? "Recheck files" : "Reannounce"} disabled={busy} onClick={() => void (errored ? recheck : reannounce).onSelect()} />;
+  const rest = usenet ? (it.grabbed ? [retry] : []) : it.grabbed ? [reannounce, recheck] : [errored ? reannounce : recheck];
   return <ProblemCard it={it} primary={primary} secondary={rest} extras={[show]} />;
 }
 

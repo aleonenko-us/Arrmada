@@ -46,7 +46,14 @@ func (r *Repo) ListEnabled(ctx context.Context) ([]Client, error) {
 // Bundled returns the row marked as the packaged qBittorrent, switched off or not, and
 // false when there's none.
 func (r *Repo) Bundled(ctx context.Context) (Client, bool, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+clientCols+` FROM download_clients WHERE bundled = 1 ORDER BY id LIMIT 1`)
+	return r.BundledOf(ctx, KindQbittorrent)
+}
+
+// BundledOf returns the row marked as the packaged client of one kind (qBittorrent, or the
+// optional SABnzbd), switched off or not, and false when there's none. Each kind has its
+// own: the bundled SABnzbd being present says nothing about the bundled qBittorrent.
+func (r *Repo) BundledOf(ctx context.Context, kind Kind) (Client, bool, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+clientCols+` FROM download_clients WHERE bundled = 1 AND kind = ? ORDER BY id LIMIT 1`, kind)
 	c, err := r.scan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Client{}, false, nil
@@ -57,7 +64,7 @@ func (r *Repo) Bundled(ctx context.Context) (Client, bool, error) {
 	return c, true, nil
 }
 
-// MarkBundled flags one row as the packaged qBittorrent.
+// MarkBundled flags one row as the packaged client of its kind.
 func (r *Repo) MarkBundled(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE download_clients SET bundled = 1 WHERE id = ?`, id)
 	return err

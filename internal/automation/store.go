@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
@@ -19,6 +20,8 @@ type BlockEntry struct {
 	Indexer   string `json:"indexer,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 	CreatedAt string `json:"created_at"`
+	// Network is "usenet" for a release grabbed from Usenet, absent otherwise.
+	Network string `json:"network,omitempty"`
 }
 
 // grab is a recorded automatic grab, tracked for stall detection and seed
@@ -43,10 +46,35 @@ type grab struct {
 	// upgrade, a re-grab, a manual grab over a file); "" for a grab for a missing file and
 	// for rows predating migration 0155. See movieHasFileFor.
 	ReplacesPath string
+	// Transport is how its download travels (grabs.transport, migration 0320): a usenet job
+	// is judged by its own rules — it never seeds, never stalls for want of peers, and a
+	// failure comes with SABnzbd's reason (usenetlife.go).
+	Transport download.Transport
 	// Dups are other 'grabbed' rows for the same download of the same title, folded onto
 	// this one by the stall check (collapseDuplicateGrabs) so they get one decision between
 	// them. Never read from the table.
 	Dups []grab
+}
+
+// usenet reports whether the grab's download is a usenet job: recorded as one, or keyed
+// as one (a key always says what it is, whatever an older row's column holds).
+func (g grab) usenet() bool {
+	return g.Transport == download.TransportUsenet || download.KeyTransport(g.InfoHash) == download.TransportUsenet
+}
+
+// uploadedTransportKey carries, on a grab's context, the transport of the file someone
+// uploaded for it (withUploadedTransport).
+type uploadedTransportKey struct{}
+
+// withUploadedTransport marks ctx as recording the grab of an uploaded file of transport t.
+func withUploadedTransport(ctx context.Context, t download.Transport) context.Context {
+	return context.WithValue(ctx, uploadedTransportKey{}, t)
+}
+
+// uploadedTransport is the transport withUploadedTransport put on ctx, "" for none.
+func uploadedTransport(ctx context.Context) download.Transport {
+	t, _ := ctx.Value(uploadedTransportKey{}).(download.Transport)
+	return t
 }
 
 // ids is the grab's row id followed by those of the duplicates folded onto it.
@@ -69,7 +97,7 @@ func sameDownload(a, b grab) bool {
 }
 
 // grabCols is the column list scanGrab reads, in its order.
-const grabCols = `id, movie_id, version_id, title, indexer, quality_profile, stall_minutes, grabbed_at, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, status, replaces_path`
+const grabCols = `id, movie_id, version_id, title, indexer, quality_profile, stall_minutes, grabbed_at, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, status, replaces_path, transport`
 
 // addBlock blocklists a release for a movie.
 func (c *Coordinator) addBlock(ctx context.Context, movieID int64, title, indexer, downloadURL, reason string) error {
@@ -251,17 +279,42 @@ func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionI
 	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	c.noteHashless("movie", title, infoHash)
-	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
+	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexer, infoHash)
 	decidedBy, decidedMode := pickOf(ctx, title) // what decided the pick (pickkey.go)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path, decided_by, decided_mode)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath, decidedBy, decidedMode)
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path, decided_by, decided_mode, transport)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath, decidedBy, decidedMode, transport)
 	if err != nil {
 		c.log.Warn("automation: record grab failed", "err", err)
 		return
 	}
 	c.grabbed(ctx, "movie", movieID)
+}
+
+// grabPolicy is what a new grab records about its download: the transport, and the seed
+// policy that goes with it.
+//
+// The transport comes from the download key (key.go) — a "sab-…" key is a usenet job, a
+// hash a torrent — and, for a grab recorded without a key, from the indexer it came from.
+// A usenet download never seeds, so it gets no seed goal whatever the indexer says; that
+// includes the manual paths, which would otherwise default to seeding (seedRules).
+func (c *Coordinator) grabPolicy(ctx context.Context, indexerName, key string) (transport download.Transport, seedEnabled bool, seedRatio float64, seedHours int) {
+	transport = download.KeyTransport(key)
+	if transport == "" {
+		// An upload whose client didn't say the job's key: what was uploaded says what it
+		// is. "manual" is no indexer, and reading it as one recorded an .nzb as a torrent —
+		// which seeds by default, and which the stall check would judge as one.
+		transport = uploadedTransport(ctx)
+	}
+	if transport == "" {
+		transport = c.indexerTransport(ctx, indexerName)
+	}
+	if transport == download.TransportUsenet {
+		return transport, false, 0, 0
+	}
+	seedEnabled, seedRatio, seedHours = c.seedRules(ctx, indexerName)
+	return transport, seedEnabled, seedRatio, seedHours
 }
 
 // seedRules returns the seed policy of the named indexer.
@@ -476,7 +529,7 @@ func scanGrab(row interface{ Scan(...any) error }) (grab, error) {
 	var g grab
 	var seedEnabled int
 	err := row.Scan(&g.ID, &g.MovieID, &g.VersionID, &g.Title, &g.Indexer, &g.Profile,
-		&g.StallMinutes, &g.GrabbedAt, &seedEnabled, &g.SeedRatio, &g.SeedHours, &g.MediaType, &g.InfoHash, &g.Status, &g.ReplacesPath)
+		&g.StallMinutes, &g.GrabbedAt, &seedEnabled, &g.SeedRatio, &g.SeedHours, &g.MediaType, &g.InfoHash, &g.Status, &g.ReplacesPath, &g.Transport)
 	g.SeedEnabled = seedEnabled != 0
 	return g, err
 }

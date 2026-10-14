@@ -18,7 +18,7 @@ func TestBestByTitle(t *testing.T) {
 		{Title: "Movie.2024.1080p.WEB-DL-GRP", Indexer: "fast", Seeders: 500},
 		{Title: "Movie.2024.2160p.WEB-DL-GRP", Indexer: "slow", Seeders: 9},
 	}
-	out := bestByTitle(in)
+	out := netPolicy{}.bestByTitle(in)
 	if len(out) != 2 {
 		t.Fatalf("want 2 releases after dedup, got %d", len(out))
 	}
@@ -38,7 +38,7 @@ func TestGrabbableFiltersUsenet(t *testing.T) {
 		{Title: "B", Transport: indexer.TransportUsenet},
 		{Title: "C"}, // unset defaults to torrent semantics elsewhere; must survive
 	}
-	out := grabbable(in)
+	out := netPolicy{}.grabbable(in)
 	if len(out) != 2 || out[0].Title != "A" || out[1].Title != "C" {
 		t.Fatalf("want [A C], got %+v", out)
 	}

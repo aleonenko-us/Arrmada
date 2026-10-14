@@ -14,14 +14,17 @@ import (
 	"github.com/tristenlammi/arrmada/internal/jobs"
 )
 
-var allowedActions = map[string]bool{"recheck": true, "reannounce": true, "prio_up": true, "prio_down": true}
+// allowedActions are the download commands the queue offers. "retry" is a failed usenet
+// job's (SABnzbd tries it again); a torrent client refuses it.
+var allowedActions = map[string]bool{"recheck": true, "reannounce": true, "prio_up": true, "prio_down": true, download.ActionRetry: true}
 
 // torrentHash reads the {hash} path value and refuses anything that isn't exactly one
-// torrent's info hash. qBittorrent reads "all" as every torrent it holds and "a|b" as
-// several, so passing the value through let one request act on the whole client.
+// download's key (download.ValidKey): a torrent's info hash or a usenet job's "sab-…" key.
+// qBittorrent reads "all" as every torrent it holds and "a|b" as several (SABnzbd takes
+// comma lists), so passing the value through let one request act on the whole client.
 func (a *api) torrentHash(w http.ResponseWriter, r *http.Request) (string, bool) {
 	h := r.PathValue("hash")
-	if !download.ValidHash(h) {
+	if !download.ValidKey(h) {
 		a.writeError(w, http.StatusBadRequest, "not a torrent hash — remove torrents one at a time")
 		return "", false
 	}

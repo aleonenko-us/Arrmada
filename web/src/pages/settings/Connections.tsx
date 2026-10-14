@@ -13,6 +13,7 @@ import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
 import { jellyfinApi } from "../../lib/jellyfinApi";
 import { isAdmin, useMe } from "../../lib/me";
+import { hasUsenetClient, isUsenetClient } from "../../lib/network";
 import { useQuery } from "../../lib/query";
 import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
@@ -43,7 +44,7 @@ const isServer = (it: ConnectionItem) => it.kind === "plex" || it.kind === "jell
 // What each section holds, under its title.
 const SUBTITLES: Record<ConnectionSectionId, string> = {
   search: "Where releases are found: Prowlarr, FlareSolverr for Cloudflare-protected trackers, and every indexer. Every module searches through these.",
-  downloads: "Where grabbed releases are sent to download. qBittorrent for torrents.",
+  downloads: "Where grabbed releases are sent to download. qBittorrent for torrents, SABnzbd for Usenet.",
   metadata: "The API keys titles, ratings, books and subtitles come from. A key saved here works at once, no restart, and replaces one set at install; it's never shown back, only whether it's set.",
   other: "Where alerts go, and the server listening apps connect to. Each is set up on its own page.",
 };
@@ -84,6 +85,8 @@ export function ConnectionsSettings() {
   const ix = useQuery("indexers", () => indexerApi.indexers(), { staleMs: 0 });
   const dl = useQuery("download-clients", () => downloadClientApi.downloadClientList(), { staleMs: 0 });
   const sections = q.data ?? NO_SECTIONS;
+  // A usenet client opens the Newznab tile in the add-indexer catalogue.
+  const usenet = hasUsenetClient(dl.data?.clients);
   const plexItem = sections.flatMap((s) => s.items).find((x) => x.kind === "plex");
   const jellyfinItem = sections.flatMap((s) => s.items).find((x) => x.kind === "jellyfin") ?? JELLYFIN_UNSET;
   // Which Jellyfin server it is (name and version) comes from its own settings, read once
@@ -150,11 +153,11 @@ export function ConnectionsSettings() {
     void refreshAll().then(() => runTest("download_client", String(c.id), `download_client-${c.id}`));
   };
 
-  const restoreBundled = async () => {
+  const restoreBundled = async (kind?: "sabnzbd") => {
     setRestoring(true);
     setRestoreErr(null);
     try {
-      await downloadClientApi.restoreBundledClient();
+      await downloadClientApi.restoreBundledClient(kind);
       await refreshAll();
     } catch (e) {
       setRestoreErr(`Couldn't restore it: ${(e as Error).message}`);
@@ -197,7 +200,8 @@ export function ConnectionsSettings() {
   const removeIndexer = async (it: ConnectionItem, idx: Indexer) => {
     const ok = await confirm({
       title: `Delete ${idx.name}?`,
-      body: "Searches stop using it. Seed rules on downloads already grabbed through it fall back to the 14-day default.",
+      // Nothing from a usenet indexer seeds, so there's no seed rule to fall back.
+      body: idx.kind === "newznab" ? "Searches stop using it." : "Searches stop using it. Seed rules on downloads already grabbed through it fall back to the 14-day default.",
       confirmLabel: "Delete",
       tone: "danger",
     });
@@ -212,11 +216,12 @@ export function ConnectionsSettings() {
     }
   };
   const removeClient = async (it: ConnectionItem, c: DownloadClient) => {
+    const already = isUsenetClient(c) ? "Jobs already there are untouched." : "Torrents already there are untouched.";
     const ok = await confirm({
       title: `Remove ${c.name}?`,
       body: c.bundled
-        ? "Arrmada stops sending downloads to it. Torrents already there are untouched. It stays removed after a restart; you can restore it from this page."
-        : "Arrmada stops sending downloads to it. Torrents already there are untouched.",
+        ? `Arrmada stops sending downloads to it. ${already} It stays removed after a restart; you can restore it from this page.`
+        : `Arrmada stops sending downloads to it. ${already}`,
       confirmLabel: "Remove",
       tone: "danger",
     });
@@ -237,7 +242,7 @@ export function ConnectionsSettings() {
     switch (it.kind) {
       case "indexer": {
         const idx = indexerOf(it);
-        return idx ? <IndexerEditor key={idx.id} idx={idx} onSaved={done} onChanged={refreshAll} /> : undefined;
+        return idx ? <IndexerEditor key={idx.id} idx={idx} usenet={usenet} onSaved={done} onChanged={refreshAll} /> : undefined;
       }
       case "download_client": {
         const c = clientOf(it);
@@ -306,7 +311,10 @@ export function ConnectionsSettings() {
         return (
           <>
             {dl.data?.can_restore_bundled && (
-              <Button size="sm" variant="secondary" onClick={restoreBundled} busy={restoring} busyLabel="Restoring…">Restore bundled qBittorrent</Button>
+              <Button size="sm" variant="secondary" onClick={() => void restoreBundled()} busy={restoring} busyLabel="Restoring…">Restore bundled qBittorrent</Button>
+            )}
+            {dl.data?.can_restore_bundled_sabnzbd && (
+              <Button size="sm" variant="secondary" onClick={() => void restoreBundled("sabnzbd")} busy={restoring} busyLabel="Restoring…">Restore bundled SABnzbd</Button>
             )}
             <Button size="sm" variant={adding === "client" ? "secondary" : "primary"} onClick={() => setAdding(adding === "client" ? null : "client")}>
               {adding === "client" ? "Cancel" : "+ Add client"}
@@ -325,6 +333,9 @@ export function ConnectionsSettings() {
           {dl.data?.can_restore_bundled && (
             <p className="m-0 text-sm text-ink-dim">The qBittorrent that comes with Arrmada was removed, so it gets no downloads.</p>
           )}
+          {dl.data?.can_restore_bundled_sabnzbd && (
+            <p className="m-0 text-sm text-ink-dim">The SABnzbd that runs alongside Arrmada was removed, so it gets no Usenet downloads.</p>
+          )}
           {adding === "client" && <ClientForm onSaved={clientSaved} />}
         </>
       );
@@ -333,7 +344,7 @@ export function ConnectionsSettings() {
   };
 
   const below = (id: ConnectionSectionId): ReactNode => {
-    if (id === "downloads" && dl.data?.categories) return <CategoryLine c={dl.data.categories} />;
+    if (id === "downloads" && dl.data?.categories) return <CategoryLine c={dl.data.categories} usenet={usenet} />;
     if (id === "metadata" && admin) return <DiscoveryRegion />;
     return undefined;
   };
@@ -373,7 +384,7 @@ export function ConnectionsSettings() {
       {error && <StaleBanner message={error} onRetry={refetch} />}
       {adding === "indexer" && (
         <Suspense fallback={null}>
-          <AddIndexerModal onClose={() => setAdding(null)} onAdded={() => { setAdding(null); void refreshAll(); }} onProwlarr={openProwlarr} />
+          <AddIndexerModal usenet={usenet} onClose={() => setAdding(null)} onAdded={() => { setAdding(null); void refreshAll(); }} onProwlarr={openProwlarr} />
         </Suspense>
       )}
       <ConnectionSection
@@ -396,7 +407,7 @@ export function ConnectionsSettings() {
         >
           {s.items.length === 0 ? (
             <p className="m-0 text-sm text-ink-dim">
-              {s.id === "downloads" ? "No download clients yet. Add qBittorrent to start downloading." : "Nothing here yet."}
+              {s.id === "downloads" ? "No download clients yet. Add qBittorrent or SABnzbd to start downloading." : "Nothing here yet."}
             </p>
           ) : (
             s.items.map(card)

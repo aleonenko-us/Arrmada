@@ -153,6 +153,12 @@ func updateManaged(ctx context.Context, ex store.Execer, id int64, prowlarrID in
 	return err
 }
 
+// setKind changes a synced row's kind (Torznab ↔ Newznab), which decides its transport.
+func setKind(ctx context.Context, ex store.Execer, id int64, kind Kind) error {
+	_, err := ex.ExecContext(ctx, `UPDATE indexers SET kind=? WHERE id=?`, string(kind), id)
+	return err
+}
+
 // setManagedState turns a row on or off for a Prowlarr sync, with who did it and the note
 // the row shows.
 func setManagedState(ctx context.Context, ex store.Execer, id int64, enabled bool, disabledBy, note string) error {

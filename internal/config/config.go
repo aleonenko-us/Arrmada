@@ -45,6 +45,13 @@ type Config struct {
 	// client (0 = leave it alone). Set once at install to a random value so it
 	// matches the Docker-published port; the user forwards this on their router.
 	QbittorrentPort int
+	// SABnzbdURL is where the optional bundled SABnzbd answers (docker-compose.yml's
+	// "sabnzbd" profile). Compose always passes it; the client is only registered once the
+	// bundled SABnzbd's config (with its API key) shows up at SABnzbdConfig, which happens
+	// when the profile is switched on.
+	SABnzbdURL string
+	// SABnzbdConfig is the bundled SABnzbd's sabnzbd.ini, mounted read-only.
+	SABnzbdConfig string
 	// LibraryDir is the root of the organized media library (imports land here) and the
 	// default scan root for every module.
 	LibraryDir string
@@ -109,6 +116,8 @@ func Load() (Config, error) {
 		LogLevel:              strings.ToLower(env("ARRMADA_LOG_LEVEL", "info")),
 		ExternalHeader:        env("ARRMADA_EXTERNAL_HEADER", "Cf-Connecting-Ip"),
 		QbittorrentURL:        env("ARRMADA_QBITTORRENT_URL", ""),
+		SABnzbdURL:            env("ARRMADA_SABNZBD_URL", ""),
+		SABnzbdConfig:         env("ARRMADA_SABNZBD_CONFIG", "/bundled/sabnzbd/sabnzbd.ini"),
 		LibraryDir:            env("ARRMADA_LIBRARY_DIR", "./library"),
 		DownloadCategory:      env("ARRMADA_DOWNLOAD_CATEGORY", "arrmada"),
 		DownloadsDir:          env("ARRMADA_DOWNLOADS_DIR", "./downloads"),

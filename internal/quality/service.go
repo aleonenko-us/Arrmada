@@ -131,7 +131,7 @@ func (s *Service) Effective(ctx context.Context, ref, media string) string {
 func (s *Service) Resolve(ctx context.Context, ref string) (Profile, *Engine) {
 	p, e := s.resolve(ctx, ref)
 	e.Ranking = s.RankingMode(ctx)
-	return p, e
+	return s.withNetwork(ctx, p), e
 }
 
 func (s *Service) resolve(ctx context.Context, ref string) (Profile, *Engine) {
@@ -213,7 +213,7 @@ func (s *Service) Decide(ctx context.Context, ref string, cands []Candidate) Dec
 func (s *Service) decideUnsaved(sp StoredProfile, cands []Candidate) Decision {
 	ctx := context.Background()
 	normalize(&sp)
-	p, e := s.profileOf(ctx, sp), sp.Engine()
+	p, e := s.withNetwork(ctx, s.profileOf(ctx, sp)), sp.Engine()
 	e.Ranking = s.RankingMode(ctx)
 	d := e.Decide(p, cands)
 	if d.Ranking == RankingV1 {

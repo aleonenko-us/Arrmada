@@ -42,6 +42,18 @@ func TestDescribeEveryStage(t *testing.T) {
 		{"grabbed, waiting for import", done(Input{Phase: "seeding", Linked: true, GrabStatus: "grabbed"}), Importing, "next import check", GroupFinishing},
 		{"not grabbed, in our category", done(Input{Phase: "seeding", OwnCategory: true}), Downloaded, "matches a title", GroupFinishing},
 		{"nobody's", done(Input{Phase: "seeding"}), NotManaged, "Not managed by Arrmada", GroupSeeding},
+
+		// Usenet: unpacking is finishing, never stuck; a failure says SABnzbd's reason and
+		// what happens next; a finished, imported job is Imported — it never seeds.
+		{"usenet unpacking", Input{Phase: "unpacking", Usenet: true, Linked: true, GrabStatus: "grabbed"}, Unpacking, "SABnzbd is checking and unpacking it", GroupFinishing},
+		{"usenet waiting its turn", Input{Phase: "queued", Usenet: true}, Queued, "Waiting its turn in SABnzbd", GroupDownloading},
+		{"usenet downloading", Input{Phase: "downloading", Usenet: true}, Downloading, "", GroupDownloading},
+		{"usenet failed, ours", Input{Phase: "error", Usenet: true, Linked: true, GrabStatus: "grabbed", FailMessage: "Download failed - Not on your server(s)"}, Failed, "SABnzbd failed it: Download failed - Not on your server(s) — Arrmada blocklists it and tries another release", GroupDownloading},
+		{"usenet failed, disk full", Input{Phase: "error", Usenet: true, Linked: true, GrabStatus: "grabbed", FailMessage: "Unpacking failed, write error or disk is full?", FailFix: "Free up space, then Retry"}, Failed, "write error or disk is full? — Free up space, then Retry", GroupDownloading},
+		{"usenet failed, not ours", Input{Phase: "error", Usenet: true, FailMessage: "Duplicate NZB"}, Failed, "SABnzbd failed it: Duplicate NZB", GroupDownloading},
+		{"usenet finished, waiting for import", done(Input{Phase: "completed", Usenet: true, Linked: true, GrabStatus: "grabbed"}), Importing, "next import check", GroupFinishing},
+		{"usenet imported", done(Input{Phase: "completed", Usenet: true, Linked: true, GrabStatus: "imported"}), Imported, "", GroupSeeding},
+		{"usenet imported, by the record", done(Input{Phase: "completed", Usenet: true, Imported: true}), Imported, "", GroupSeeding},
 	}
 	for _, c := range cases {
 		stage, why := Describe(c.in)
@@ -63,12 +75,13 @@ func TestDescribeEveryStage(t *testing.T) {
 // A requester sees the plain subset: everything admin-only reads as a stage they know.
 func TestRequesterNeverSeesAdminStages(t *testing.T) {
 	plain := map[string]bool{Queued: true, Downloading: true, Paused: true, Failed: true, Importing: true, Imported: true, Seeding: true, NotManaged: true, Removed: true}
-	for _, s := range []string{Queued, FetchingMetadata, Downloading, Stalled, Paused, PausedByGuard, Failed, Downloaded, Importing, ImportRetrying, NeedsReview, WrongCategory, Imported, Seeding, NotManaged, Removed} {
+	for _, s := range []string{Queued, FetchingMetadata, Downloading, Stalled, Paused, PausedByGuard, Failed, Unpacking, Downloaded, Importing, ImportRetrying, NeedsReview, WrongCategory, Imported, Seeding, NotManaged, Removed} {
 		if r := Requester(s); !plain[r] {
 			t.Errorf("Requester(%q) = %q, an admin stage", s, r)
 		}
 	}
-	for _, s := range []string{NeedsReview, ImportRetrying, WrongCategory} {
+	// Unpacking is the download nearly done: "importing" to a requester.
+	for _, s := range []string{NeedsReview, ImportRetrying, WrongCategory, Unpacking} {
 		if Requester(s) != Importing {
 			t.Errorf("Requester(%q) = %q, want importing", s, Requester(s))
 		}

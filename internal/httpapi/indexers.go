@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
+	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 )
 
@@ -119,10 +121,16 @@ func (a *api) handleCreateIndexer(w http.ResponseWriter, r *http.Request) {
 	kind := indexer.Kind(req.Kind)
 	switch kind {
 	case indexer.KindNewznab:
-		// Nothing could download what it finds. Existing Newznab rows can still be edited
-		// or deleted; they just aren't searched.
-		a.writeError(w, http.StatusBadRequest, "Usenet isn't supported yet; Arrmada has no usenet download client")
-		return
+		// Without a usenet client nothing could download what it finds. Existing Newznab
+		// rows can still be edited or deleted; they just aren't searched until one is added.
+		if !a.usenetClient(r.Context()) {
+			a.writeError(w, http.StatusBadRequest, errNeedsUsenetClient)
+			return
+		}
+		if req.URL == "" {
+			a.writeError(w, http.StatusBadRequest, "url is required for newznab indexers")
+			return
+		}
 	case indexer.KindTorznab:
 		if req.URL == "" {
 			a.writeError(w, http.StatusBadRequest, "url is required for torznab indexers")
@@ -159,6 +167,10 @@ func (a *api) handleCreateIndexer(w http.ResponseWriter, r *http.Request) {
 	// minimum-seed-time rule. Editing an indexer respects whatever is sent, so 0/0 stays
 	// deliberately selectable.
 	seedRatio, seedHours := req.SeedRatio, req.SeedHours
+	if kind == indexer.KindNewznab {
+		// Usenet never seeds; a seed goal on a usenet indexer would only mislead.
+		seedEnabled, seedRatio, seedHours = false, 0, 0
+	}
 	if seedEnabled && seedRatio == 0 && seedHours == 0 {
 		seedHours = indexer.DefaultSeedHours
 	}
@@ -184,6 +196,15 @@ func (a *api) handleCreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSON(w, http.StatusCreated, created)
+}
+
+// errNeedsUsenetClient is why a usenet (Newznab) indexer can't be added yet.
+const errNeedsUsenetClient = "Add SABnzbd in Settings → Connections first: without a usenet download client, nothing a usenet indexer finds can be downloaded"
+
+// usenetClient reports whether a usenet download client is set up, so usenet releases can
+// be downloaded.
+func (a *api) usenetClient(ctx context.Context) bool {
+	return a.deps.Downloads.HasTransport(ctx, download.TransportUsenet)
 }
 
 func (a *api) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +240,11 @@ func (a *api) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	case indexer.KindTorznab, indexer.KindNewznab, indexer.KindTorrentLeech, indexer.KindX1337, indexer.KindMAM:
 	default:
 		a.writeError(w, http.StatusBadRequest, "invalid kind")
+		return
+	}
+	// Turning a row into a usenet indexer is adding one, and needs a usenet client the same.
+	if kind == indexer.KindNewznab && old.Kind != indexer.KindNewznab && !a.usenetClient(r.Context()) {
+		a.writeError(w, http.StatusBadRequest, errNeedsUsenetClient)
 		return
 	}
 	enabled := true

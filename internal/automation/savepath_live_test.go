@@ -59,11 +59,11 @@ func TestCoordinatorSavePathLive(t *testing.T) {
 	current.Store("/storage/torrents")
 	c.SetDownloadsDirFunc(func() string { return current.Load().(string) })
 
-	if _, err := c.addTorrentFile(ctx, []byte("d8:announce0:e"), "a.torrent", "First", ""); err != nil {
+	if _, _, err := c.addTorrentFile(ctx, []byte("d8:announce0:e"), "a.torrent", "First", ""); err != nil {
 		t.Fatal(err)
 	}
 	current.Store("/storage/new-torrents") // saved in Settings → Library
-	if _, err := c.addTorrentFile(ctx, []byte("d8:announce0:e"), "b.torrent", "Second", ""); err != nil {
+	if _, _, err := c.addTorrentFile(ctx, []byte("d8:announce0:e"), "b.torrent", "Second", ""); err != nil {
 		t.Fatal(err)
 	}
 	qb.mu.Lock()

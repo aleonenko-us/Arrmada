@@ -14,7 +14,8 @@ import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "..
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
-import { STAGE, stageGroup, type QueueGroup } from "../lib/stages";
+import { STAGE, stageGroup, usenetStage, type QueueGroup } from "../lib/stages";
+import { isUsenetDownload, leftLine, usenetFailLine, usenetFailed } from "../lib/network";
 import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activity/transfer";
 import { EmptyState, ErrorState, IconButton, Skeleton, StatusChip, useToast } from "../ui";
 
@@ -63,12 +64,14 @@ function fmtReleaseDate(iso: string): string {
 const STATE_TONE: Record<string, string> = {
   downloading: "var(--accent-text)", seeding: "var(--good-text)", paused: "var(--ink-faint)", error: "var(--avoid-text)", checking: "var(--avoid-text)",
   stalled: "var(--avoid-text)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid-text)", allocating: "var(--ink-faint)",
+  unpacking: "var(--accent-text)",
 };
 // The client's phases in the words of the shared stage model (lib/stages), so this chip
 // and a requester's card say the same thing; the client-only phases keep their own.
 const PHASE_TEXT: Record<string, string> = {
   downloading: STAGE.downloading.label, seeding: STAGE.seeding.label, paused: STAGE.paused.label, error: STAGE.failed.label, checking: "Checking",
   stalled: STAGE.stalled.label, metadata: STAGE.fetching_metadata.label, queued: STAGE.queued.label, moving: "Moving", allocating: "Allocating",
+  unpacking: STAGE.unpacking.label,
 };
 
 // mins humanizes a span of minutes: "45m", "3h", "2d 4h".
@@ -128,6 +131,10 @@ export function isProblem(it: Pick<ActivityDownload, "phase" | "state" | "stage"
   const phase = it.phase || it.state;
   return phase === "error" || phase === "stalled" || phase === "metadata" || it.state === "error";
 }
+
+// groupOf is the Queue view a download sits in. A usenet job never seeds: once it's
+// downloaded it stays with Finishing (lib/stages).
+export const groupOf = (d: ActivityDownload): QueueGroup => stageGroup(d.stage, d.progress, isUsenetDownload(d));
 
 type SortKey = "name" | "progress" | "speed" | "size" | "ratio" | "seedtime";
 
@@ -208,8 +215,8 @@ export function QueuePanel() {
   useEffect(() => {
     downloadClientApi.downloadClients().then((cs) => {
       // A switched-off client gets no downloads, so its settings aren't the ones in play.
-      const on = cs.filter((c) => c.enabled);
-      const qb = on.find((c) => c.kind === "qbittorrent") ?? on[0];
+      // The speed limits are qBittorrent's; a SABnzbd has none here.
+      const qb = cs.find((c) => c.enabled && c.kind === "qbittorrent");
       if (qb) setClientId(qb.id);
     }).catch(() => {});
   }, []);
@@ -262,9 +269,9 @@ export function QueuePanel() {
     note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
 
-  const activeDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "downloading"), [downloads]);
-  const finishingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "finishing"), [downloads]);
-  const seedingDownloads = useMemo(() => downloads.filter((d) => stageGroup(d.stage, d.progress) === "seeding"), [downloads]);
+  const activeDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "downloading"), [downloads]);
+  const finishingDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "finishing"), [downloads]);
+  const seedingDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "seeding"), [downloads]);
 
   const filterSort = (list: ActivityDownload[], sortKey: SortKey) => {
     const q = query.trim().toLowerCase();
@@ -487,7 +494,7 @@ function NoClientCard() {
   return (
     <EmptyState
       title="No download client yet"
-      body="Arrmada can't grab anything until one is set up: every download goes through qBittorrent."
+      body="Arrmada can't grab anything until one is set up: torrents go through qBittorrent, Usenet through SABnzbd."
       action={
         <Link to={LINKS.downloadClients} className="inline-block rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
           Add a download client →
@@ -519,11 +526,20 @@ function TypeChip({ mediaType }: { mediaType?: string }) {
 
 // DownloadCard is an in-flight (incomplete) transfer: the title it's for, progress bar,
 // speed, ETA, queue controls.
+//
+// A usenet job has no peers, seeds or trackers: it shows what's left to fetch, no Reannounce
+// or Recheck, and when SABnzbd failed it, its reason and Retry.
 function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void }) {
   const paused = it.state === "paused";
   const [removing, setRemoving] = useState(false);
+  const usenet = isUsenetDownload(it);
+  const failed = usenet && usenetFailed(it);
   const chip = phaseLabel(it);
   const stall = stallLine(it);
+  const failLine = failed ? usenetFailLine(it) : null;
+  const retry = (
+    <IconBtn label="Retry" title="Ask SABnzbd to try this download again" tone="var(--accent-text)" disabled={busy} onClick={() => void act(it.hash, async () => { await api.torrentAction(it.hash, "retry"); onNote("SABnzbd is trying it again."); })} />
+  );
   return (
     <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
       <div className="flex items-start gap-3">
@@ -536,19 +552,21 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
-            <span className="font-mono text-xs" style={{ color: it.down_speed > 0 ? "var(--accent-text)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>
-            <span className="font-mono text-xs text-ink-faint">ETA {eta(it.eta_seconds)}</span>
+            {!failed && <span className="font-mono text-xs" style={{ color: it.down_speed > 0 ? "var(--accent-text)" : "var(--ink-faint)" }}>{it.down_speed > 0 ? `↓${bytes(it.down_speed)}/s` : "—"}</span>}
+            {usenet ? (!failed && <span className="font-mono text-xs text-ink-faint" data-testid="usenet-left">{leftLine(it, bytes, eta)}</span>) : <span className="font-mono text-xs text-ink-faint">ETA {eta(it.eta_seconds)}</span>}
           </div>
+          {failLine && <div className="mt-1 break-words text-sm" style={{ color: "var(--avoid-text)" }} data-testid="usenet-fail">{failLine}</div>}
           {stall && <div className="mt-1 font-mono text-xs" style={{ color: "var(--avoid-text)" }}>{stall}</div>}
         </div>
         <CardActions
           name={it.item?.title ?? it.name}
-          primary={<ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
+          primary={failed ? retry : <ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
           secondary={[
             { label: "Block", tone: "var(--avoid-text)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
             { label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) },
           ]}
-          extras={[
+          // Trackers, piece checks and queue order are qBittorrent's; SABnzbd takes none of them.
+          extras={usenet ? [] : [
             { label: "Reannounce", busyLabel: "Reannouncing…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "reannounce"); onNote("Asked the trackers for peers again."); }) },
             { label: "Recheck files", busyLabel: "Rechecking…", disabled: busy, onSelect: () => act(it.hash, async () => { await api.torrentAction(it.hash, "recheck"); onNote("Rechecking the downloaded data."); }) },
             { label: "Move up the queue", disabled: busy, onSelect: () => act(it.hash, () => api.torrentAction(it.hash, "prio_up")) },
@@ -558,7 +576,7 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
       </div>
       <div className="mt-2.5 flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.round(it.progress * 100)}%`, background: paused ? "var(--ink-faint)" : "var(--accent)" }} />
+          <div className="h-full rounded-full" style={{ width: `${Math.round(it.progress * 100)}%`, background: paused || failed ? "var(--ink-faint)" : "var(--accent)" }} />
         </div>
         <span className="w-10 text-right font-mono text-xs text-ink-dim">{Math.round(it.progress * 100)}%</span>
       </div>
@@ -572,10 +590,11 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
 // why line say which, so it never passes for a healthy seed.
 function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
   const [removing, setRemoving] = useState(false);
-  const st = it.stage ? STAGE[it.stage] : STAGE.importing;
+  const stage = isUsenetDownload(it) ? usenetStage(it.stage) : it.stage;
+  const st = stage ? STAGE[stage] : STAGE.importing;
   // Anything that needs a decision is settled on Needs you, in the section with the
   // action for it.
-  const decide = it.stage === "needs_review" ? LINKS.review : it.stage === "import_retrying" ? LINKS.importProblems : it.stage === "wrong_category" ? LINKS.wrongCategory : null;
+  const decide = stage === "needs_review" ? LINKS.review : stage === "import_retrying" ? LINKS.importProblems : stage === "wrong_category" ? LINKS.wrongCategory : null;
   return (
     <div className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} data-testid="transfer-card">
       <div className="flex items-start gap-3">

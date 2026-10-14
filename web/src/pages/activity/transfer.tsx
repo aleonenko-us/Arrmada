@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { ActivityDownload, TransferItem } from "../../lib/api";
 import { posterThumb } from "../../lib/img";
+import { isUsenetDownload } from "../../lib/network";
+import { UsenetChip } from "../../components/UsenetChip";
 import { Menu, type MenuItem } from "../../ui";
 
 // The parts every transfer card on the Activity page shares: the title's poster and name
@@ -91,17 +93,27 @@ function Chip({ children, fg, bg, title, testId }: { children: ReactNode; fg: st
   return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" title={title} data-testid={testId} style={{ background: bg, color: fg }}>{children}</span>;
 }
 
-/** What part of the title the torrent covers, whether it's an upgrade, and who asked for it. */
+/**
+ * What part of the title the download covers, whether it's an upgrade and who asked for
+ * it, and Usenet for a usenet job (the Seeding view never has one: nothing on Usenet seeds).
+ */
 export function ItemChips({ it }: { it: ActivityDownload }) {
   const item = it.item;
+  const usenet = isUsenetDownload(it) ? <UsenetChip /> : null;
   if (!item) {
     // Nothing in Arrmada grabbed it: say so once, quietly (the seeding view's stage chip
     // already does for finished ones).
-    return it.managed || it.stage === "not_managed" ? null : <Chip fg="var(--ink-faint)" bg="var(--panel-2)">Not managed</Chip>;
+    return (
+      <>
+        {usenet}
+        {it.managed || it.stage === "not_managed" ? null : <Chip fg="var(--ink-faint)" bg="var(--panel-2)">Not managed</Chip>}
+      </>
+    );
   }
   const who = requestedFor(item.requested_by);
   return (
     <>
+      {usenet}
       {item.scope && <Chip fg="var(--accent-text)" bg="var(--accent-soft)" testId="transfer-scope">{item.scope}</Chip>}
       {item.upgrade && <Chip fg="var(--good-text)" bg="var(--panel-2)" title="Replaces the file it already has">Upgrade</Chip>}
       {who && (

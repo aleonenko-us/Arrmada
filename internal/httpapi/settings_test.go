@@ -320,6 +320,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"request_quota_books":               `4`,
 		"books_languages":                   `["en","es"]`,
 		"quality_ranking":                   `"v2"`,
+		"download_network_preference":       `"usenet"`,
 		"app_public_url":                    `"https://arrmada.example.com"`,
 	}
 	// The legacy all-types switch and the per-type list are two views of one setting.

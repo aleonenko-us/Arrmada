@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { AutoNumber, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
+import { AutoNumber, AutoSelect, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Note, Section, input, inputStyle } from "../../components/settings/ui";
 import { Field } from "../../ui/Field";
-import { api, type DiskGuardStatus, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
+import { api, type DiskGuardStatus, type NetworkPreference, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
+import { downloadClientApi } from "../../lib/downloadClientApi";
+import { hasUsenetClient, NETWORK_PREFERENCES } from "../../lib/network";
+import { useQuery } from "../../lib/query";
 import { systemApi } from "../../lib/systemApi";
 import { LINKS } from "../../lib/links";
 import { useAutoSave } from "../../lib/useAutoSave";
@@ -25,6 +28,7 @@ export function DownloadsSettings() {
       <Section id="search-categories" title="Search categories" subtitle="Which categories an indexer is searched in when it names none of its own (Prowlarr's synced indexers name none).">
         <DefaultCategories />
       </Section>
+      <NetworkSection />
       <DiskGuardSection />
       <StallSection />
       <UpgradeBudgetSection />
@@ -44,6 +48,25 @@ function DefaultCategories() {
       hint="Indexers without categories of their own are asked only for the kind of release being searched for — movies, TV, books, audiobooks or music — when they list that category. Turn off if an indexer files releases in odd categories."
       save={save}
     />
+  );
+}
+
+// NetworkSection is which network wins when the same release is on Usenet and torrents.
+// It only means something with a usenet download client, so it only shows with one; the
+// client list is the Connections page's, shared through the query cache.
+function NetworkSection() {
+  const dl = useQuery("download-clients", () => downloadClientApi.downloadClientList(), { staleMs: 30_000 });
+  const { s, commit } = useLoadedSettings();
+  const pref = useAutoSave<NetworkPreference>(s.download_network_preference ?? "best", (v) => commit({ download_network_preference: v }));
+  if (!hasUsenetClient(dl.data?.clients)) return null;
+  return (
+    <Section
+      id="network"
+      title="Usenet and torrents"
+      subtitle="By default the better release wins, wherever it is. A preference only decides between releases that are otherwise as good; it never skips the better one."
+    >
+      <AutoSelect label="When a release is on both Usenet and torrents" save={pref} options={NETWORK_PREFERENCES} />
+    </Section>
   );
 }
 

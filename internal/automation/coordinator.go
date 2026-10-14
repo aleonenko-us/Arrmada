@@ -5,6 +5,7 @@
 package automation
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -59,6 +60,9 @@ type Coordinator struct {
 
 	// removeTorrent overrides downloads.Remove in tests; nil uses the real client.
 	removeTorrent func(ctx context.Context, hash string, deleteData bool) error
+	// fetchRelease overrides indexers.Fetch in tests (a usenet grab's NZB); nil uses the
+	// indexer service.
+	fetchRelease func(ctx context.Context, indexerName, downloadURL string) (indexer.FetchResult, error)
 
 	// guard caches the library's own title keys (movies.PrimaryKeys) for movieKeys, so a
 	// sweep over every movie reads them once rather than once per movie.
@@ -164,6 +168,10 @@ type Coordinator struct {
 	importNotes importNotes
 	// feed caches what the Activity queue reads on every refresh (feedcache.go).
 	feed feedCache
+	// usenet is what this process has seen of the usenet client: whether its jobs are
+	// moving, failures already reported, and finished jobs whose folders were left behind
+	// (usenetlife.go).
+	usenet usenetWatch
 }
 
 // SetOutbox installs where series and book imports queue their side effects.
@@ -319,15 +327,11 @@ func (c *Coordinator) Grab(ctx context.Context, indexerName, downloadURL, title 
 // to what the client holds. An empty hash is not an error — a tracker may serve something
 // we can't parse — and the caller falls back to name matching as before.
 func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, title, category string) (string, error) {
-	// The only download-client kind is a torrent client. Handing it an .nzb URL
-	// "succeeds" (qBittorrent fetches URLs async and answers 2xx), records an
-	// in-flight grab, and nothing ever arrives — refuse up front instead.
-	if idxs, err := c.indexers.List(ctx); err == nil {
-		for _, ix := range idxs {
-			if ix.Name == indexerName && ix.Transport() == indexer.TransportUsenet {
-				return "", fmt.Errorf("%q is a usenet indexer and no usenet download client is configured — this release can't be downloaded", indexerName)
-			}
-		}
+	// A usenet release goes only to a usenet client. Handing a torrent client an .nzb URL
+	// "succeeds" (qBittorrent fetches URLs async and answers 2xx), records an in-flight
+	// grab, and nothing ever arrives.
+	if c.indexerTransport(ctx, indexerName) == download.TransportUsenet {
+		return c.grabUsenet(ctx, indexerName, downloadURL, title, category)
 	}
 	res, err := c.indexers.Fetch(ctx, indexerName, downloadURL)
 	if err != nil {
@@ -368,8 +372,85 @@ func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, titl
 		return "", err
 	}
 	c.clearRemovedImport(ctx, hash)
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName, "network": string(download.TransportTorrent)})
 	return hash, nil
+}
+
+// indexerTransport is the transport of the named indexer's releases: usenet for a Newznab
+// indexer, torrent for everything else — including a name no indexer has ("manual", a
+// removed indexer) and an unreadable indexer list, which is what grabbing has always done.
+func (c *Coordinator) indexerTransport(ctx context.Context, indexerName string) download.Transport {
+	if c.indexers == nil {
+		return download.TransportTorrent
+	}
+	idxs, err := c.indexers.List(ctx)
+	if err != nil {
+		return download.TransportTorrent
+	}
+	for _, ix := range idxs {
+		if ix.Name == indexerName && ix.Transport() == indexer.TransportUsenet {
+			return download.TransportUsenet
+		}
+	}
+	return download.TransportTorrent
+}
+
+// grabUsenet hands a usenet release to a usenet client and returns its download key
+// ("sab-…"), which is what the grab records.
+//
+// The NZB is fetched here and sent as a file, never as a link for the client to fetch: an
+// indexer's NZB link carries its API key, which would then sit in the client's history.
+// A fetch that yields no NZB file fails the grab rather than falling back to the link.
+func (c *Coordinator) grabUsenet(ctx context.Context, indexerName, downloadURL, title, category string) (string, error) {
+	if !c.downloads.HasTransport(ctx, download.TransportUsenet) {
+		return "", fmt.Errorf("%q is a usenet indexer and no usenet download client is configured — this release can't be downloaded", indexerName)
+	}
+	fetch := c.fetchRelease
+	if fetch == nil {
+		fetch = c.indexers.Fetch
+	}
+	res, err := fetch(ctx, indexerName, downloadURL)
+	if err != nil {
+		return "", err
+	}
+	if len(res.File) == 0 {
+		return "", fmt.Errorf("couldn't fetch the NZB for this release from %q", indexerName)
+	}
+	return c.addNZB(ctx, res.File, res.Filename, title, category, indexerName)
+}
+
+// addNZB sends NZB bytes to the usenet clients and returns the job's download key ("" when
+// the client didn't say it — the grab is recorded all the same, so nothing grabs it twice).
+func (c *Coordinator) addNZB(ctx context.Context, file []byte, filename, title, category, source string) (string, error) {
+	if filename == "" {
+		filename = "arrmada.nzb"
+	}
+	added, err := c.downloads.AddDownload(ctx, download.AddRequest{
+		Name: title, SavePath: c.downloadsPath(), Category: category,
+		File: file, Filename: filename, Transport: download.TransportUsenet,
+	})
+	if err != nil {
+		return "", err
+	}
+	c.clearRemovedImport(ctx, added.Key)
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source, "network": string(download.TransportUsenet)})
+	return added.Key, nil
+}
+
+// looksLikeNZB reports whether an uploaded file is an NZB rather than a .torrent. A
+// torrent is a bencoded dictionary and always starts with "d"; an NZB is XML.
+func looksLikeNZB(file []byte, filename string) bool {
+	if len(file) == 0 || file[0] == 'd' {
+		return false
+	}
+	if strings.HasSuffix(strings.ToLower(filename), ".nzb") {
+		return true
+	}
+	head := file
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	return bytes.Contains(bytes.ToLower(head), []byte("<nzb"))
 }
 
 // clearRemovedImport lets a release whose imported file the user deleted import again,
@@ -386,36 +467,53 @@ func (c *Coordinator) clearRemovedImport(ctx context.Context, hash string) {
 
 // addTorrentFile hands an uploaded .torrent file straight to the download client (no
 // indexer fetch, so it works for private trackers where the user downloaded the file
-// while logged in), in the given category, recorded as a manual grab source.
-func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename, title, category string) (string, error) {
+// while logged in), in the given category, recorded as a manual grab source. An uploaded
+// .nzb goes to the usenet clients instead, and its key is the usenet job's.
+//
+// It answers the download's key and what was uploaded, which the grab is recorded with
+// even when the client didn't say the key (withUploadedTransport).
+func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename, title, category string) (string, download.Transport, error) {
 	if len(file) == 0 {
-		return "", fmt.Errorf("no torrent file provided")
+		return "", "", fmt.Errorf("no torrent file provided")
+	}
+	if looksLikeNZB(file, filename) {
+		key, err := c.addNZB(ctx, file, filename, title, category, "manual")
+		return key, download.TransportUsenet, err
 	}
 	if filename == "" {
 		filename = "arrmada.torrent"
 	}
 	add := download.AddRequest{Name: title, SavePath: c.downloadsPath(), Category: category, File: file, Filename: filename}
 	if err := c.downloads.Add(ctx, add); err != nil {
-		return "", err
+		return "", "", err
 	}
 	hash, _ := download.InfoHashFromFile(file) // "" falls back to name matching
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual"})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual", "network": string(download.TransportTorrent)})
 	c.clearRemovedImport(ctx, hash)
-	return hash, nil
+	return hash, download.TransportTorrent, nil
+}
+
+// uploadedEvent is the history line for an uploaded file: an .nzb isn't a torrent.
+func uploadedEvent(t download.Transport, title string) string {
+	if t == download.TransportUsenet {
+		return "Uploaded NZB — " + title
+	}
+	return "Uploaded torrent — " + title
 }
 
 // GrabMovieTorrent adds an uploaded .torrent file for a movie (movie category) and
 // tracks it like an auto grab so seed cleanup / stall detection manage it too.
 // versionID is the track it's for (0 = the default track).
 func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID int64, file []byte, filename, title string) error {
-	hash, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	c.RecordManualGrab(ctx, movieID, versionID, title, "manual", hash)
 	c.markGrabManual(ctx, hash) // the user chose this file; don't gate it on score
 	if c.movies != nil {
-		c.movies.AddEvent(ctx, movieID, "grabbed", "Uploaded torrent — "+title)
+		c.movies.AddEvent(ctx, movieID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -423,10 +521,11 @@ func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID i
 // GrabSeriesTorrent adds an uploaded .torrent file for a series (TV category, so the
 // multi-file importer handles a pack) and records the grab.
 func (c *Coordinator) GrabSeriesTorrent(ctx context.Context, seriesID int64, file []byte, filename, title string) error {
-	hash, err := c.addTorrentFile(ctx, file, filename, title, seriesCategory)
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, seriesCategory)
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	if c.series != nil {
 		if s, err := c.series.Get(ctx, seriesID); err == nil {
 			c.recordSeriesGrab(ctx, seriesID, title, "manual", s.QualityProfile, hash)
@@ -434,7 +533,7 @@ func (c *Coordinator) GrabSeriesTorrent(ctx context.Context, seriesID int64, fil
 		// An uploaded torrent is as deliberate as a choice gets — import it whatever it
 		// scores against what's already there.
 		c.markGrabManual(ctx, hash)
-		c.series.AddEvent(ctx, seriesID, "grabbed", "Uploaded torrent — "+title)
+		c.series.AddEvent(ctx, seriesID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -454,10 +553,11 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			return err
 		}
 	}
-	hash, err := c.addTorrentFile(ctx, file, filename, title, bookCategory)
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, bookCategory)
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	if c.books != nil {
 		if b, err := c.books.Get(ctx, bookID); err == nil {
 			// "manual" as the indexer, same as the movie and series paths: seedRules
@@ -467,7 +567,7 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			c.recordBookGrab(ctx, bookID, versionID, title, "manual", b.QualityProfile, hash)
 			c.markGrabManual(ctx, hash) // imports into this book whatever the torrent is called
 		}
-		c.books.AddEvent(ctx, bookID, "grabbed", "Uploaded torrent — "+title)
+		c.books.AddEvent(ctx, bookID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -777,17 +877,19 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 	}
 	// The recommendation is decided over exactly what auto-grab decides over (candidatesFrom:
 	// grabbable, deduped, not blocklisted), so Recommended is the release a search would
-	// take. Blocklisted and usenet releases are still listed, ranked on their own.
-	torrents, usenet := splitTransport(matchingMovieReleases(m, keys, result.Releases))
-	byName := make(map[string]indexer.Release, len(torrents)+len(usenet))
+	// take. Blocklisted releases and those no client can take are still listed, ranked on
+	// their own.
+	nets := c.networks(ctx)
+	usable, unusable := nets.split(matchingMovieReleases(m, keys, result.Releases))
+	byName := make(map[string]indexer.Release, len(usable)+len(unusable))
 	var pool, side, offTrack []quality.Candidate
 	// offReason is why a release can't go to this track (its edition filter), by title.
 	offReason := map[string]string{}
-	for _, rel := range append(torrents, usenet...) {
+	for _, rel := range append(usable, unusable...) {
 		byName[rel.Title] = rel
-		cand := quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders)
+		cand := releaseCandidate(rel)
 		switch {
-		case rel.Transport == indexer.TransportUsenet || blocked[normTitle(rel.Title)]:
+		case !nets.canGrab(rel) || blocked[normTitle(rel.Title)]:
 			side = append(side, cand)
 		case track != nil && len(editionFilter(nil, []quality.Candidate{cand}, *track, siblings)) == 0:
 			offReason[rel.Title] = offTrackReason(cand, *track, siblings)
@@ -827,7 +929,7 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		if why := offReason[ev.Candidate.Name]; why != "" {
 			rr.Eligible, rr.Recommended, rr.RejectReason = false, false, why
 		}
-		out = append(out, explainRow(withIndexerFacts(rr, rel), ev, ranked))
+		out = append(out, explainRow(withIndexerFacts(rr, rel, nets), ev, ranked))
 	}
 	for _, ev := range decision.Eligible {
 		appendEval(ev, true)
@@ -840,39 +942,25 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 	return ReleaseList{Profile: profile, Why: decision.Why, ChosenOver: decision.ChosenOver, Releases: out}.withIssues(notes), nil
 }
 
-// usenetReject is why an interactive list can't grab a usenet release: the only download
-// client is a torrent client (see grabbable).
-const usenetReject = "Usenet release — no usenet download client is set up"
-
-// splitTransport dedupes releases (bestByTitle) into the torrents a client can take and
-// the usenet ones it can't. A title that also came as a torrent is kept only as that.
-func splitTransport(releases []indexer.Release) (torrents, usenet []indexer.Release) {
-	torrents = bestByTitle(grabbable(releases))
-	have := make(map[string]bool, len(torrents))
-	for _, rel := range torrents {
-		have[rel.Title] = true
-	}
-	var nzb []indexer.Release
-	for _, rel := range releases {
-		if rel.Transport == indexer.TransportUsenet && !have[rel.Title] {
-			nzb = append(nzb, rel)
-		}
-	}
-	return torrents, bestByTitle(nzb)
-}
+// Why an interactive list can't grab a release: no download client of its network is set
+// up (netPolicy.canGrab).
+const (
+	usenetReject  = "Usenet release — no usenet download client is set up"
+	torrentReject = "Torrent release — no torrent download client is set up"
+)
 
 // withIndexerFacts adds what every interactive row shows from the indexer — its age,
-// peers and transport — and makes a usenet release ineligible, saying why, so it can
-// never be the recommended pick.
-func withIndexerFacts(rr RankedRelease, rel indexer.Release) RankedRelease {
+// peers and transport — and makes a release no client can take ineligible, saying why,
+// so it can never be the recommended pick.
+func withIndexerFacts(rr RankedRelease, rel indexer.Release, nets netPolicy) RankedRelease {
 	rr.Peers = rel.Peers
 	rr.Transport = string(rel.Transport)
 	if !rel.PublishedAt.IsZero() {
 		rr.PublishedAt = rel.PublishedAt.UTC().Format(time.RFC3339)
 	}
-	if rel.Transport == indexer.TransportUsenet {
+	if why := nets.rejectReason(rel); why != "" {
 		rr.Eligible, rr.Recommended = false, false
-		rr.RejectReason = usenetReject
+		rr.RejectReason = why
 	}
 	return rr
 }
@@ -1132,45 +1220,9 @@ func (c *Coordinator) missingVersions(ctx context.Context, movieID int64) []movi
 	return want
 }
 
-// bestByTitle collapses duplicate release titles to one copy each — the healthiest
-// (most seeders). The same scene release routinely appears on several indexers; keeping
-// duplicates meant the quality engine could score one copy while a later byName lookup
-// returned another (last write wins), so the grab used a different indexer, seed policy
-// and download link than the release that actually won.
-func bestByTitle(releases []indexer.Release) []indexer.Release {
-	idx := make(map[string]int, len(releases))
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		if i, dup := idx[rel.Title]; dup {
-			if rel.Seeders > out[i].Seeders {
-				out[i] = rel
-			}
-			continue
-		}
-		idx[rel.Title] = len(out)
-		out = append(out, rel)
-	}
-	return out
-}
-
-// grabbable filters out releases no configured download client can take. The only
-// client kind is a torrent client, so usenet releases must not reach a grab: qBittorrent
-// accepts the .nzb URL with a 2xx (it fetches async), the grab is recorded as in-flight,
-// and nothing ever arrives.
-func grabbable(releases []indexer.Release) []indexer.Release {
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		if rel.Transport == indexer.TransportUsenet {
-			continue
-		}
-		out = append(out, rel)
-	}
-	return out
-}
-
 // candidatesFrom builds the scoring candidates from a set of releases, dropping
-// any that are blocklisted for this movie, ungrabbable (usenet), or duplicate
-// copies of a title already kept.
+// any that are blocklisted for this movie, ungrabbable (no client of their network), or
+// duplicate copies of a title already kept (netPolicy.bestByTitle).
 func (c *Coordinator) candidatesFrom(ctx context.Context, movieID int64, releases []indexer.Release) (map[string]indexer.Release, []quality.Candidate, error) {
 	return c.candidatesExcluding(ctx, movieID, releases, nil)
 }
@@ -1185,9 +1237,7 @@ func (c *Coordinator) candidatesExcluding(ctx context.Context, movieID int64, re
 		return nil, nil, err
 	}
 	notes := notesFrom(ctx)
-	torrents := grabbable(releases)
-	notes.dropped(releases, torrents, DropNotTorrent)
-	releases = bestByTitle(torrents)
+	releases = c.networks(ctx).usable(ctx, releases)
 	byName := make(map[string]indexer.Release, len(releases))
 	cands := make([]quality.Candidate, 0, len(releases))
 	for _, rel := range releases {
@@ -1198,7 +1248,7 @@ func (c *Coordinator) candidatesExcluding(ctx context.Context, movieID int64, re
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	return byName, cands, nil
 }
@@ -1548,7 +1598,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 	}
 	byName := make(map[string]indexer.Release, len(result.Releases))
 	cands := make([]quality.Candidate, 0, len(result.Releases))
-	for _, rel := range bestByTitle(grabbable(result.Releases)) {
+	for _, rel := range c.networks(ctx).usable(ctx, result.Releases) {
 		if blocked[normTitle(rel.Title)] {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
@@ -1558,7 +1608,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	// Runtime on the candidates so the profile's bitrate ceiling applies to upgrades
 	// too — without it a capped profile could "upgrade" to a remux it explicitly forbids.
@@ -1728,7 +1778,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 	}
 	byName := make(map[string]indexer.Release, len(result.Releases))
 	cands := make([]quality.Candidate, 0, len(result.Releases))
-	for _, rel := range bestByTitle(grabbable(result.Releases)) {
+	for _, rel := range c.networks(ctx).usable(ctx, result.Releases) {
 		if blocked[normTitle(rel.Title)] {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
@@ -1738,7 +1788,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	grabbed := map[string]bool{}
 	grabbedGB := 0.0
@@ -1784,7 +1834,17 @@ func (c *Coordinator) Blocklist(ctx context.Context, movieID int64, title, index
 
 // Blocklisted lists a movie's blocklisted releases.
 func (c *Coordinator) Blocklisted(ctx context.Context, movieID int64) ([]BlockEntry, error) {
-	return c.listBlocks(ctx, movieID)
+	out, err := c.listBlocks(ctx, movieID)
+	return c.withNetwork(ctx, out, err)
+}
+
+// withNetwork marks the usenet releases among blocklist entries.
+func (c *Coordinator) withNetwork(ctx context.Context, out []BlockEntry, err error) ([]BlockEntry, error) {
+	if err != nil {
+		return out, err
+	}
+	c.markUsenetBlocks(ctx, len(out), func(i int) string { return out[i].Title }, func(i int, n string) { out[i].Network = n })
+	return out, nil
 }
 
 // Unblock removes a blocklist entry.
@@ -2040,7 +2100,8 @@ func (c *Coordinator) BlocklistAndSearch(ctx context.Context, movieID int64, tit
 
 // BlocklistedSeries lists a series' blocklisted releases.
 func (c *Coordinator) BlocklistedSeries(ctx context.Context, seriesID int64) ([]BlockEntry, error) {
-	return c.listBlocksSeries(ctx, seriesID)
+	out, err := c.listBlocksSeries(ctx, seriesID)
+	return c.withNetwork(ctx, out, err)
 }
 
 // BlocklistSeries adds a release to a series' blocklist (so a re-search won't pick it again).
@@ -2187,6 +2248,7 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 		}
 	}
 	c.pruneStallSightings(pending)
+	c.pruneUsenetReports(pending)
 	// One line per check that did anything: a backlog of stale grabs closing reads as one
 	// count, not a line each. Each fail-over still logs its own line (at most three).
 	if tick.closed > 0 || tick.failedOver > 0 || tick.deferred > 0 {
@@ -2219,7 +2281,16 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		}
 	}
 	for _, it := range queue {
+		usenet := it.Transport == download.TransportUsenet
 		if !it.Complete() {
+			// A usenet job that failed although what it was for is in the library (it
+			// landed another way first) has nothing left to do in SABnzbd: clear it out,
+			// partial files and all, rather than leave a failure on the queue for good.
+			if usenet && it.Phase() == "error" {
+				if g := matchGrab(grabs, it.Hash, it.Name); g != nil && g.Status == grabStatusImported {
+					c.clearFailedUsenetJob(ctx, it, *g)
+				}
+			}
 			continue // still downloading — never remove before it's done + imported
 		}
 		g := matchGrab(grabs, it.Hash, it.Name)
@@ -2230,9 +2301,11 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		// even if the originating indexer was later removed or renamed.
 		//   off → remove as soon as it's imported (no seeding).
 		//   on  → remove once it hits a ratio or seeding-time goal (both 0 = forever).
+		// A usenet job never seeds, whatever its row says (one recorded before the
+		// transport was known may say it does): it goes as soon as it's imported.
 		var over bool
 		ratio := it.SeedRatio()
-		if !g.SeedEnabled {
+		if !g.SeedEnabled || usenet {
 			over = true
 		} else {
 			// ratio < 0 means the client couldn't give us an honest number — see
@@ -2253,6 +2326,10 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		}
 		// Only data whose content Arrmada imported is deleted with the torrent.
 		deleteData := g.Status == grabStatusImported
+		if usenet {
+			c.cleanUpUsenetJob(ctx, it, *g, deleteData)
+			continue
+		}
 		if err := c.dropTorrent(ctx, it.Hash, deleteData); err != nil {
 			c.log.Warn("automation: remove seeded torrent failed", "release", g.Title, "err", err)
 			continue

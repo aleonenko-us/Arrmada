@@ -198,6 +198,10 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 		}
 		name := displayName(it, f)
 		switch phase := it.Phase(); {
+		case phase == "error" && it.Transport == download.TransportUsenet:
+			if x, ok := usenetFailure(it, name, h, f); ok {
+				out = append(out, x)
+			}
 		case phase == "error":
 			x := Item{Key: KindDownload + ":" + h, Kind: KindDownload, Level: LevelError, Name: name,
 				Title: name + " errored in the download client", Detail: clientStateWords(it.RawState), Hash: h, Grabbed: f.grabbed(h)}
@@ -239,6 +243,30 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 		delete(p.stalledSince, h)
 	}
 	return out, nil
+}
+
+// usenetFailure is the item for a usenet job SABnzbd failed. One Arrmada grabbed that
+// failed for the release's sake has none: the next stall check blocklists it and searches
+// for another on its own, and an alert in between would only announce what's already being
+// handled. One that failed where SABnzbd writes (a full disk, a folder it can't write) is
+// an error with the fix in plain words — nothing retries it until someone does. Anything
+// else (a job Arrmada didn't grab) is shown with SABnzbd's own reason.
+func usenetFailure(it download.Item, name, h string, f *Frame) (Item, bool) {
+	fail := automation.ClassifyUsenetFailure(it.FailMessage)
+	grabbed := f.grabbed(h)
+	x := Item{Key: KindDownload + ":" + h, Kind: KindDownload, Level: LevelError, Name: name, Hash: h, Grabbed: grabbed}
+	switch {
+	case fail.Environment():
+		x.Title = "SABnzbd couldn't save " + name + ": " + fail.Reason
+		x.Detail = clip(fail.Fix+". SABnzbd said: "+it.FailMessage, 300)
+	case grabbed:
+		return Item{}, false
+	default:
+		x.Title = name + " failed in SABnzbd"
+		x.Detail = clip(it.FailMessage, 200)
+	}
+	linkTo(&x, health.FixDownloadProblems)
+	return x, true
 }
 
 // grabbed reports whether an Arrmada grab recorded the torrent (lowercased hash h) and

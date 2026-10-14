@@ -84,6 +84,11 @@ services:
       # The host port Prowlarr's web UI is published on (below), so the "Open Prowlarr"
       # link points at this install's Prowlarr and not an older one on 9696.
       ARRMADA_PROWLARR_HOST_PORT: "${ARRMADA_PROWLARR_PORT:-9696}"
+      # Optional bundled SABnzbd (started only with `--profile sabnzbd`). Arrmada registers
+      # it once its config (mounted below) exists, which is only when the profile is on.
+      ARRMADA_SABNZBD_URL: "http://arrmada-sabnzbd:8080"
+      # The host port SABnzbd's own web page is on, for the "open SABnzbd" link.
+      ARRMADA_SABNZBD_HOST_PORT: "${ARRMADA_SABNZBD_PORT:-8085}"
       # Downloads and the library live UNDER ONE shared volume (/media) so imports
       # can hardlink instead of copy: the download keeps seeding while the same
       # bytes appear in the library, costing no extra disk. Hardlinks only work
@@ -122,6 +127,9 @@ services:
       # Managed media (downloads + library) for the self-contained setup. To use an existing
       # library, see docker-compose.override.example.yml (mounts it at its own path, NOT /data).
       - arrmada-media:/media
+      # The optional bundled SABnzbd's config, read-only: Arrmada reads its API key from
+      # here, so the key is never in .env. Empty (and unused) while SABnzbd isn't switched on.
+      - arrmada-sab-config:/bundled/sabnzbd:ro
     depends_on:
       arrmada-media-init:
         condition: service_completed_successfully
@@ -208,6 +216,115 @@ services:
       - "${ARRMADA_PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
 
+  # OPTIONAL Usenet downloader (SABnzbd). NOT started by default — opt in with:
+  #     ./install.sh --with-sabnzbd        (or: docker compose --profile sabnzbd up -d)
+  # Arrmada registers it by itself, with its categories and folders. You add your Usenet
+  # provider in SABnzbd's own page (port ← ARRMADA_SABNZBD_PORT) → Config → Servers, and
+  # your Newznab indexers in Arrmada. Downloads go under the shared downloads folder, so
+  # imports are a rename on the same filesystem rather than a copy.
+  arrmada-sabnzbd:
+    # Pinned so a fresh install gets a known-good version; bump deliberately.
+    image: lscr.io/linuxserver/sabnzbd:5.1.3
+    container_name: Arrmada-sabnzbd
+    profiles: ["sabnzbd"]
+    environment:
+      PUID: "${ARRMADA_PUID:-1000}"
+      PGID: "${ARRMADA_PGID:-1000}"
+      TZ: "${TZ:-Etc/UTC}"
+    volumes:
+      - arrmada-sab-config:/config
+      # Same shared media volume, same path as Arrmada, like qBittorrent.
+      - arrmada-media:/media
+    ports:
+      - "${ARRMADA_SABNZBD_PORT:-8085}:8080"
+    depends_on:
+      arrmada-sabnzbd-init:
+        condition: service_completed_successfully
+      arrmada-media-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # One-shot, with SABnzbd: its first settings, only if it has none yet — English (its
+  # failure reasons are read by Arrmada), Arrmada's categories with folders of their own,
+  # downloads on the shared volume (Arrmada moves them into its Downloads folder once it
+  # sees SABnzbd can reach that), the name Arrmada uses for it allowed, every job repaired,
+  # unpacked and deleted after (pp=3), and a new random API key. Arrmada reads the key from
+  # the config volume; it isn't printed or written anywhere else.
+  arrmada-sabnzbd-init:
+    image: alpine:3.20
+    container_name: Arrmada-sabnzbd-init
+    profiles: ["sabnzbd"]
+    environment:
+      PUID: "${ARRMADA_PUID:-1000}"
+      PGID: "${ARRMADA_PGID:-1000}"
+    command:
+      - sh
+      - -c
+      - |
+        f=/config/sabnzbd.ini
+        [ -f "$$f" ] && exit 0
+        key=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+        nzb=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+        [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] || exit 1
+        umask 077
+        cat > "$$f.new" <<EOF
+        __version__ = 19
+        __encoding__ = utf-8
+        [misc]
+        language = en
+        api_key = $$key
+        nzb_key = $$nzb
+        host_whitelist = arrmada-sabnzbd,
+        download_dir = /media/downloads/usenet/incomplete
+        complete_dir = /media/downloads/usenet/complete
+        auto_browser = 0
+        [categories]
+        [[*]]
+        name = *
+        order = 0
+        pp = 3
+        script = None
+        dir = ""
+        newzbin = ""
+        priority = 0
+        [[arrmada]]
+        name = arrmada
+        order = 1
+        pp = 3
+        script = Default
+        dir = movies
+        newzbin = ""
+        priority = -100
+        [[arrmada-tv]]
+        name = arrmada-tv
+        order = 2
+        pp = 3
+        script = Default
+        dir = tv
+        newzbin = ""
+        priority = -100
+        [[arrmada-books]]
+        name = arrmada-books
+        order = 3
+        pp = 3
+        script = Default
+        dir = books
+        newzbin = ""
+        priority = -100
+        [[arrmada-music]]
+        name = arrmada-music
+        order = 4
+        pp = 3
+        script = Default
+        dir = music
+        newzbin = ""
+        priority = -100
+        EOF
+        chown "$$PUID:$$PGID" /config "$$f.new" && mv "$$f.new" "$$f"
+    volumes:
+      - arrmada-sab-config:/config
+    restart: "no"
+
   # Solves Cloudflare challenges for protected trackers (e.g. TorrentLeech), the
   # same way Prowlarr uses it. Headless-Chromium image (~1 GB). NO host port is
   # published — only Arrmada talks to it, over the internal Docker network — so it
@@ -227,3 +344,4 @@ volumes:
   arrmada-media:
   arrmada-qbt-config:
   arrmada-prowlarr-config:
+  arrmada-sab-config:

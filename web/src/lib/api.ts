@@ -368,6 +368,12 @@ export interface ActivityDownload {
   stall?: { idle_minutes: number; failover_in_minutes: number; off: boolean };
   /** An Arrmada grab recorded this torrent (by info hash). */
   managed?: boolean;
+  /** Which network it came over; a usenet job's hash is its "sab-…" key either way. */
+  transport?: "torrent" | "usenet";
+  /** A failed usenet job: SABnzbd's own reason ("Out of retention"). */
+  fail_message?: string;
+  /** What the client still has to fetch, when it says. */
+  remaining_bytes?: number;
   /** The title the grab was for (absent for a torrent no grab knows). */
   item?: TransferItem;
 }
@@ -411,6 +417,8 @@ export interface BlocklistRow {
   indexer?: string;
   reason?: string;
   created_at: string;
+  /** The network the release was on, when it's known. */
+  network?: "torrent" | "usenet";
 }
 
 // The library item a Block blocklisted a release for.
@@ -574,7 +582,9 @@ export interface Evaluation {
 }
 
 // RankKey names a ranking step (quality.RankKey); "only" = the one eligible release.
-export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "source" | "proper" | "group" | "bitrate" | "health" | "size" | "only" | "tie";
+// "network" = the preferred network (Settings → Downloads → When a release is on both
+// Usenet and torrents) decided between releases that otherwise score the same.
+export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "source" | "proper" | "group" | "bitrate" | "network" | "health" | "size" | "only" | "tie";
 
 // Decision fields from ranking v2 (shadow mode): merged into Decision.
 export interface Decision {
@@ -616,8 +626,10 @@ export interface DownloadClient {
   enabled: boolean;
   /** Place in the order new downloads try (1 = first); the next is tried only when this one can't be reached. */
   priority: number;
-  /** The packaged qBittorrent. Deleted, it stays deleted until restored. */
+  /** A packaged client (qBittorrent, or the optional SABnzbd). Deleted, it stays deleted until restored. */
   bundled?: boolean;
+  /** The bundled SABnzbd only: the host port its own web page is on (where the Usenet provider is added). */
+  ui_port?: string;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
   /** Remote → local folder mappings for a client that sees its downloads under another path. */
@@ -650,6 +662,8 @@ export interface DownloadClientList {
   categories?: DownloadCategories;
   /** This install has a bundled qBittorrent and its row was deleted. */
   can_restore_bundled?: boolean;
+  /** This install runs the optional bundled SABnzbd and its row was deleted. */
+  can_restore_bundled_sabnzbd?: boolean;
 }
 
 export interface NewDownloadClient {
@@ -1124,6 +1138,8 @@ export interface AppSettings {
   books_languages: string[];
   /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
   quality_ranking?: "v1" | "v2";
+  /** When a release is on both Usenet and torrents: the better release wins (best, the default), or the preferred network between equals. */
+  download_network_preference?: NetworkPreference;
   /** The address Arrmada is reached at from outside ("https://arrmada.example.com"; "" = none). Admin-only. */
   app_public_url: string;
 }
@@ -2307,6 +2323,8 @@ export interface QueueItem {
   category?: string;
 }
 
+export type NetworkPreference = "best" | "usenet" | "torrent";
+
 // --- Subtitles ---
 export interface SubtitleSettings {
   movies_auto: boolean;
@@ -2793,7 +2811,8 @@ export const api = {
   // run as a job. A download tied to nothing in the library is refused (422) and left alone.
   blockDownload: (hash: string, name: string) =>
     req<{ status: string; blocked_for: BlockTarget } & JobRef>(`/api/v1/queue/${hash}/block`, { method: "POST", body: JSON.stringify({ name }) }),
-  torrentAction: (hash: string, action: "recheck" | "reannounce" | "prio_up" | "prio_down") =>
+  // "retry" is a failed usenet job's (SABnzbd tries it again); the rest are qBittorrent's.
+  torrentAction: (hash: string, action: "recheck" | "reannounce" | "prio_up" | "prio_down" | "retry") =>
     req<{ status: string }>(`/api/v1/queue/${hash}/action`, { method: "POST", body: JSON.stringify({ action }) }),
   // Activity → Needs you: try another release now (a job), move a misfiled TV download
   // into the TV category, and retry a failing import now.
@@ -3558,7 +3577,7 @@ export interface RankedRelease {
   peers?: number;
   /** When the release was posted (RFC3339); absent when the indexer didn't say. */
   published_at?: string;
-  /** A usenet release is listed but never grabbable: there is no usenet client. */
+  /** Which network it's on. One no client of its network can take is ineligible, and its reject_reason says so. */
   transport?: "torrent" | "usenet";
   summary: string;
   eligible: boolean;
@@ -3757,6 +3776,8 @@ export interface HistoryEvent {
   detail: string;
   at_ms: number;
   id: number; // the row id within its kind
+  /** The network a grab came over, when the event knows it. */
+  network?: "torrent" | "usenet";
 }
 export interface HistoryPage { events: HistoryEvent[]; next_before: string }
 // kind and event take one value or a comma-separated list; event "all" includes "other".

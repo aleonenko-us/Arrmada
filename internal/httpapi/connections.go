@@ -212,10 +212,13 @@ func (a *api) searchConnections(ctx context.Context, now time.Time) ([]connectio
 			it.ManagedBy = "prowlarr"
 		}
 		switch {
+		case i.ManagedNote == indexer.NoteNeedsUsenetClient && a.usenetClient(ctx):
+			// The note is from a sync that ran before the usenet client was added.
+			it.Detail = "A usenet client is set up now: the next Prowlarr sync switches this back on"
 		case i.ManagedNote != "":
 			it.Detail = i.ManagedNote
 		case i.Enabled && !a.deps.Indexers.Searched(i):
-			it.State, it.Detail = connStateWarn, "Not searched: needs a usenet download client"
+			it.State, it.Detail = connStateWarn, "Not searched until a usenet download client (SABnzbd) is added"
 		}
 		out = append(out, it)
 	}

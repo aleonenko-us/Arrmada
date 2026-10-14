@@ -37,6 +37,8 @@ services:
       ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
       ARRMADA_PROWLARR_URL: "http://arrmada-prowlarr:9696"
       ARRMADA_PROWLARR_HOST_PORT: "9696"
+      ARRMADA_SABNZBD_URL: "http://arrmada-sabnzbd:8080"
+      ARRMADA_SABNZBD_HOST_PORT: "8085"
       ARRMADA_QBIT_PORT: "6881"
     volumes:
       # ← Where Arrmada keeps its database and settings (e.g. /mnt/user/appdata/arrmada/data
@@ -49,6 +51,8 @@ services:
       #   mount media at /data — that's the database.
       - &media /path/to/your/media:/storage
       - arrmada-media:/media
+      # The optional SABnzbd's settings (below), read-only: Arrmada reads its API key here.
+      - arrmada-sab-config:/bundled/sabnzbd:ro
     # To use an Intel/AMD GPU for Convert, uncomment:
     # devices: [/dev/dri:/dev/dri]
     depends_on:
@@ -148,7 +152,100 @@ services:
   #     - "9696:9696"
   #   restart: unless-stopped
 
+  # Optional: SABnzbd, for Usenet. You need your own Usenet provider and Newznab indexers.
+  # Uncomment both services; Arrmada adds SABnzbd by itself. Then open
+  # http://<server>:8085 → Config → Servers to add your provider, and add your indexers
+  # in Arrmada (Settings → Connections).
+  # arrmada-sabnzbd:
+  #   image: lscr.io/linuxserver/sabnzbd:5.1.3
+  #   container_name: Arrmada-sabnzbd
+  #   environment: *you
+  #   volumes:
+  #     - arrmada-sab-config:/config
+  #     - *media
+  #     - arrmada-media:/media
+  #   ports:
+  #     - "8085:8080"
+  #   depends_on:
+  #     arrmada-sabnzbd-init: { condition: service_completed_successfully }
+  #     arrmada-media-init: { condition: service_completed_successfully }
+  #   restart: unless-stopped
+  #
+  # # One-shot: SABnzbd's first settings (only if it has none yet), with a new API key.
+  # arrmada-sabnzbd-init:
+  #   image: alpine:3.20
+  #   container_name: Arrmada-sabnzbd-init
+  #   environment: *you
+  #   command:
+  #     - sh
+  #     - -c
+  #     - |
+  #       f=/config/sabnzbd.ini
+  #       [ -f "$$f" ] && exit 0
+  #       key=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  #       nzb=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  #       [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] || exit 1
+  #       umask 077
+  #       cat > "$$f.new" <<EOF
+  #       __version__ = 19
+  #       __encoding__ = utf-8
+  #       [misc]
+  #       language = en
+  #       api_key = $$key
+  #       nzb_key = $$nzb
+  #       host_whitelist = arrmada-sabnzbd,
+  #       download_dir = /media/downloads/usenet/incomplete
+  #       complete_dir = /media/downloads/usenet/complete
+  #       auto_browser = 0
+  #       [categories]
+  #       [[*]]
+  #       name = *
+  #       order = 0
+  #       pp = 3
+  #       script = None
+  #       dir = ""
+  #       newzbin = ""
+  #       priority = 0
+  #       [[arrmada]]
+  #       name = arrmada
+  #       order = 1
+  #       pp = 3
+  #       script = Default
+  #       dir = movies
+  #       newzbin = ""
+  #       priority = -100
+  #       [[arrmada-tv]]
+  #       name = arrmada-tv
+  #       order = 2
+  #       pp = 3
+  #       script = Default
+  #       dir = tv
+  #       newzbin = ""
+  #       priority = -100
+  #       [[arrmada-books]]
+  #       name = arrmada-books
+  #       order = 3
+  #       pp = 3
+  #       script = Default
+  #       dir = books
+  #       newzbin = ""
+  #       priority = -100
+  #       [[arrmada-music]]
+  #       name = arrmada-music
+  #       order = 4
+  #       pp = 3
+  #       script = Default
+  #       dir = music
+  #       newzbin = ""
+  #       priority = -100
+  #       EOF
+  #       chown "$$PUID:$$PGID" /config "$$f.new" && mv "$$f.new" "$$f"
+  #   volumes:
+  #     - arrmada-sab-config:/config
+  #   restart: "no"
+
 volumes:
   arrmada-media:
   arrmada-qbt-config:
+  arrmada-sab-config:
   # arrmada-prowlarr-config:

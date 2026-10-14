@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
+import { usenetIndexerLine } from "../../lib/indexerStatus";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { Field } from "../../ui/Field";
 import { Switch } from "../../ui/Switch";
@@ -53,12 +54,12 @@ function TestSettings({ body }: { body: () => NewIndexer & { id?: number } }) {
 
 // IndexerEditor opens inside an indexer's card: what it says it supports, its tie-break,
 // the "Used for" pills (saved at once) and the full form.
-export function IndexerEditor({ idx, onSaved, onChanged }: { idx: Indexer; onSaved: () => void; onChanged: () => void | Promise<void> }) {
+export function IndexerEditor({ idx, usenet = false, onSaved, onChanged }: { idx: Indexer; usenet?: boolean; onSaved: () => void; onChanged: () => void | Promise<void> }) {
   return (
     <div className="mt-1 flex flex-col gap-1">
       {idx.kind === "newznab" && (
-        // Usenet: nothing could download what it finds, so searches skip it.
-        <div className="text-sm text-ink-dim">Not searched: needs a usenet download client.</div>
+        // Usenet: without SABnzbd nothing could download what it finds, so searches skip it.
+        <div className="text-sm text-ink-dim">{usenetIndexerLine(usenet)}</div>
       )}
       {idx.caps_summary && <div className="break-words text-xs text-ink-faint" title="What this indexer says it supports">{idx.caps_summary}</div>}
       <div className="font-mono text-xs text-ink-faint" title={TIE_BREAK_HELP}>tie-break {idx.priority}</div>
@@ -72,6 +73,7 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
   const isTL = idx.kind === "torrentleech";
   const is1337 = idx.kind === "1337x";
   const isMAM = idx.kind === "myanonamouse";
+  const isNewznab = idx.kind === "newznab";
   const managed = Boolean(idx.prowlarr_id);
   const [name, setName] = useState(idx.name);
   const [url, setUrl] = useState(idx.url ?? "");
@@ -139,9 +141,11 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
         <Labeled label="Tie-break priority (1–50)" hint={TIE_BREAK_HELP}>
           <input type="number" min={1} max={50} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
         </Labeled>
-        <Labeled label="Min seeders (0 = off)">
-          <input type="number" min={0} className={field} style={fieldStyle} value={minSeeders} onChange={(e) => setMinSeeders(Math.max(0, Number(e.target.value)))} />
-        </Labeled>
+        {!isNewznab && (
+          <Labeled label="Min seeders (0 = off)">
+            <input type="number" min={0} className={field} style={fieldStyle} value={minSeeders} onChange={(e) => setMinSeeders(Math.max(0, Number(e.target.value)))} />
+          </Labeled>
+        )}
         {isTL ? (
           <>
             <Labeled label="Username">
@@ -171,7 +175,8 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
         )}
       </div>
 
-      <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />
+      {/* Nothing from Usenet seeds: there are no seed rules to set. */}
+      {!isNewznab && <SeedingRules enabled={seedEnabled} ratio={seedRatio} time={seedTime} unit={seedUnit} onEnabled={setSeedEnabled} onRatio={setSeedRatio} onTime={setSeedTime} onUnit={setSeedUnit} />}
 
       <label className="mt-3 flex items-center gap-2 text-base">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />

@@ -1235,7 +1235,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
           items={[
             { label: "Interactive search", onSelect: () => setShowSearch(true) },
             { label: "Manual import", onSelect: () => setShowImport(true) },
-            { label: "Upload torrent", onSelect: () => setShowPaste(true) },
+            { label: "Upload .torrent or .nzb", onSelect: () => setShowPaste(true) },
             ...(hasAnyFile ? [{ label: "Rename…", onSelect: () => setShowRename(true) }] : []),
             { label: "Refresh & rescan", busyLabel: "Refreshing…", onSelect: () => run("refresh", async () => { await api.refreshMovie(movie.id); onChange(); flash("Refreshed metadata and rescanned disk."); }) },
             { label: "Delete movie…", tone: "danger" as const, onSelect: () => setShowDelete(true) },

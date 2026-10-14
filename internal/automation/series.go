@@ -563,9 +563,7 @@ func (c *Coordinator) grabSeriesScoped(ctx context.Context, s series.Series, rel
 	var exampleWrongTitle string
 	rts := newRuntimeIndex(s)
 	notes := notesFrom(ctx)
-	torrents := grabbable(releases)
-	notes.dropped(releases, torrents, DropNotTorrent)
-	for _, rel := range bestByTitle(torrents) {
+	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		if blocked[normTitle(rel.Title)] || exclude[normTitle(rel.Title)] {
 			nBlocked++
 			notes.mark(rel.Title, DropBlocklisted)
@@ -1341,17 +1339,17 @@ func (c *Coordinator) recordSeriesGrab(ctx context.Context, seriesID int64, titl
 	// The stall window comes from the profile the grab ran under, so a deleted profile
 	// must mean the default here too — not 0, which switches fail-over off.
 	profile = c.effectiveProfile(ctx, profile, quality.MediaSeries)
-	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
+	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexer, infoHash)
 	decidedBy, decidedMode := pickOf(ctx, title) // what decided the pick (pickkey.go)
 	// stall_minutes was hardcoded to 0, and detectStalledSeries returns immediately when
 	// it isn't positive — so the entire series stall fail-over was dead code. A TV
 	// download that stalled was never blocklisted, never removed, and its grab row sat at
 	// 'grabbed' forever. Movies have always passed the profile's value here.
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, decided_by, decided_mode)
-		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'series', ?, ?, ?)`,
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, decided_by, decided_mode, transport)
+		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'series', ?, ?, ?, ?)`,
 		seriesID, title, indexer, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, infoHash, decidedBy, decidedMode)
+		boolToInt(seedEnabled), seedRatio, seedHours, infoHash, decidedBy, decidedMode, transport)
 	if err != nil {
 		c.log.Warn("series: record grab failed", "err", err)
 		return
