@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
+	"github.com/tristenlammi/arrmada/internal/scheduler"
 )
 
 // clientView is a download client as the settings page sees it: its settings (the
@@ -83,7 +84,7 @@ func clientPriority(p *int) (int, error) {
 
 // apiClientKinds are the client kinds the API lets someone add or edit, in the order the
 // error message names them. A kind joins here once it has an implementation and a card.
-var apiClientKinds = []download.Kind{download.KindQbittorrent}
+var apiClientKinds = []download.Kind{download.KindQbittorrent, download.KindSABnzbd}
 
 // checkClientKind refuses a kind the API doesn't offer.
 func checkClientKind(kind string) error {
@@ -176,7 +177,23 @@ func (a *api) handleCreateDownloadClient(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	a.recheckHealth(r, "downloads")
+	if created.Enabled {
+		a.kickProwlarrSync(created)
+	}
 	a.writeJSON(w, http.StatusCreated, a.clientView(created))
+}
+
+// kickProwlarrSync runs the Prowlarr sync now when a usenet client was just added or
+// switched on: Prowlarr's usenet indexers only come in while one exists, and they
+// shouldn't wait for the hourly run. Before Prowlarr is set up the sync does nothing.
+func (a *api) kickProwlarrSync(c download.Client) {
+	if a.deps.Scheduler == nil || c.Kind.Transport() != download.TransportUsenet {
+		return
+	}
+	_, _, err := a.deps.Scheduler.RunNow("prowlarr-sync", scheduler.TriggerManual)
+	if err != nil && !errors.Is(err, scheduler.ErrBusy) && !errors.Is(err, scheduler.ErrUnknownTask) && a.deps.Log != nil {
+		a.deps.Log.Warn("couldn't start a Prowlarr sync for the new usenet client", "err", err)
+	}
 }
 
 // handleUpdateDownloadClient edits a client in place — a changed password or URL no longer
@@ -251,6 +268,9 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 	// The health panel's client check reads enabled clients; re-run it so switching one
 	// off (or fixing its password) shows now rather than at the next scheduled check.
 	a.recheckHealth(r, "downloads")
+	if updated.Enabled && !cur.Enabled {
+		a.kickProwlarrSync(updated)
+	}
 	a.writeJSON(w, http.StatusOK, a.clientView(updated))
 }
 
@@ -324,20 +344,60 @@ func (a *api) clientPaths(ctx context.Context, id int64) (download.PathReport, e
 	return a.deps.Downloads.TestPaths(ctx, id, env)
 }
 
-// handleDownloadClientStatus reports live client info — currently the incoming
-// BitTorrent port, so the UI can tell the user which port to forward.
+// handleDownloadClientStatus reports live client info: the incoming BitTorrent port, so the
+// UI can tell the user which port to forward, and for a usenet client what its card shows
+// (usenet: categories present, completed folder and whether Arrmada sees it, news servers,
+// language; usenet_error when it couldn't be read). Only reads.
 func (a *api) handleDownloadClientStatus(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
 		return
 	}
-	port, err := a.deps.Downloads.ListenPort(r.Context(), id)
-	if err != nil {
-		// Not fatal — the client may be briefly unreachable. Report 0.
-		a.writeJSON(w, http.StatusOK, map[string]any{"listen_port": 0})
+	out := map[string]any{"listen_port": 0}
+	// Not fatal: the client may be briefly unreachable. Report 0.
+	if port, err := a.deps.Downloads.ListenPort(r.Context(), id); err == nil {
+		out["listen_port"] = port
+	}
+	facts, err := a.deps.Downloads.UsenetFacts(r.Context(), id)
+	switch {
+	case err == nil:
+		out["usenet"] = facts
+	case errors.Is(err, download.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "download client not found")
+		return
+	case !errors.Is(err, download.ErrNotUsenet):
+		out["usenet_error"] = connstatus.Redact(err.Error())
+	}
+	a.writeJSON(w, http.StatusOK, out)
+}
+
+// handleAddUsenetCategories creates the Arrmada categories a usenet client lacks. It's the
+// card's "Add missing categories" button and nothing else calls it: Arrmada never changes
+// a SABnzbd it was pointed at on its own. Answers the categories it added and the card's
+// facts as they are now.
+func (a *api) handleAddUsenetCategories(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"listen_port": port})
+	created, err := a.deps.Downloads.AddMissingCategories(r.Context(), id)
+	switch {
+	case errors.Is(err, download.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "download client not found")
+		return
+	case errors.Is(err, download.ErrNotUsenet):
+		a.writeError(w, http.StatusBadRequest, "only a usenet client has categories to add")
+		return
+	case err != nil:
+		a.writeError(w, http.StatusBadGateway, connstatus.Redact(err.Error()))
+		return
+	}
+	out := map[string]any{"created": created}
+	if facts, ferr := a.deps.Downloads.UsenetFacts(r.Context(), id); ferr == nil {
+		out["usenet"] = facts
+	}
+	a.recheckHealth(r, "downloads")
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 func (a *api) handleQueue(w http.ResponseWriter, r *http.Request) {

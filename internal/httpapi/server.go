@@ -390,6 +390,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/downloadclients/{id}", a.requireRole(auth.RoleManager, a.handleDeleteDownloadClient))
 	mux.HandleFunc("POST /api/v1/downloadclients/{id}/test", a.requireRole(auth.RoleManager, a.handleTestDownloadClient))
 	mux.HandleFunc("GET /api/v1/downloadclients/{id}/status", a.requireRole(auth.RoleManager, a.handleDownloadClientStatus))
+	mux.HandleFunc("POST /api/v1/downloadclients/{id}/categories", a.requireRole(auth.RoleManager, a.handleAddUsenetCategories))
 	mux.HandleFunc("GET /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleGetClientSettings))
 	mux.HandleFunc("PUT /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleSetClientSettings))
 	mux.HandleFunc("POST /api/v1/downloadclients/restore-bundled", a.requireRole(auth.RoleManager, a.handleRestoreBundledClient))

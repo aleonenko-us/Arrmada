@@ -57,20 +57,21 @@ func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (Fetc
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return FetchResult{}, fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))}
 	}
 	defer resp.Body.Close()
 
 	body, err := readNZB(resp.Body)
 	if err != nil && !errors.Is(err, errNZBTooLarge) {
-		return FetchResult{}, fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))}
 	}
+	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	// The indexer's own <error> answer says why, whatever status it came with.
 	if root, attrs, _, ok := xmlRoot(body); ok && root == "error" {
-		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, torznabErrorFrom(attrs), downloadURL)
+		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, torznabErrorFrom(attrs), downloadURL, retryAfter)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, nil, downloadURL)
+		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, nil, downloadURL, retryAfter)
 	}
 	if errors.Is(err, errNZBTooLarge) {
 		return FetchResult{}, fmt.Errorf("%s: %w", idx.Name, errNZBTooLarge)
@@ -113,7 +114,10 @@ func looksLikeNZBFile(data []byte) bool {
 // newznabFetchError turns an indexer's refusal into a plain sentence. Newznab's codes:
 // 100–102 the key or account, 300 the item, 429/500/501 a request or download limit.
 // ne is nil when the indexer sent no <error> document, and the HTTP status speaks.
-func newznabFetchError(idx Indexer, status int, ne *TorznabError, downloadURL string) error {
+//
+// A limit, a refused key or a server error is about the indexer, not this release, and is
+// returned as an nzbIndexerError so Fetch records it against the indexer.
+func newznabFetchError(idx Indexer, status int, ne *TorznabError, downloadURL string, retryAfter time.Duration) error {
 	code := 0
 	detail := ""
 	if ne != nil {
@@ -122,20 +126,35 @@ func newznabFetchError(idx Indexer, status int, ne *TorznabError, downloadURL st
 	}
 	switch {
 	case status == http.StatusTooManyRequests || code == 429 || code == 500 || code == 501:
-		return fmt.Errorf("%s says its API or download limit is reached — try again once it resets", idx.Name)
+		return &nzbIndexerError{err: fmt.Errorf("%s says its API or download limit is reached — try again once it resets", idx.Name), retryAfter: retryAfter}
 	case status == http.StatusUnauthorized || status == http.StatusForbidden || (code >= 100 && code <= 102):
 		msg := fmt.Sprintf("%s refused the API key", idx.Name)
 		if detail != "" {
 			msg += " (" + detail + ")"
 		}
-		return errors.New(msg + " — check the indexer in Settings → Connections")
+		return &nzbIndexerError{err: errors.New(msg + " — check the indexer in Settings → Connections")}
 	case status == http.StatusNotFound || status == http.StatusGone || code == 300:
 		return fmt.Errorf("%s no longer has this NZB", idx.Name)
 	case detail != "":
 		return fmt.Errorf("%s couldn't send the NZB: %s", idx.Name, detail)
+	case status >= 500:
+		return &nzbIndexerError{err: fmt.Errorf("%s couldn't send the NZB (HTTP %d)", idx.Name, status), retryAfter: retryAfter}
 	}
 	return fmt.Errorf("%s couldn't send the NZB (HTTP %d)", idx.Name, status)
 }
+
+// nzbIndexerError is an NZB download that failed because of the indexer itself — a limit
+// reached, the key refused, the indexer unreachable or erroring — rather than this one
+// release. Fetch records it in the indexer's status, so background searches back off an
+// indexer that has run out of downloads (honouring its Retry-After) instead of grabbing
+// from it again and again.
+type nzbIndexerError struct {
+	err        error
+	retryAfter time.Duration
+}
+
+func (e *nzbIndexerError) Error() string { return e.err.Error() }
+func (e *nzbIndexerError) Unwrap() error { return e.err }
 
 // scrubNZBError is a transport error without the link or key in it. Go's url.Error quotes
 // the whole request URL, so the link is cut out first, then any key that's left.

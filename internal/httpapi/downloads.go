@@ -14,7 +14,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/jobs"
 )
 
-var allowedActions = map[string]bool{"recheck": true, "reannounce": true, "prio_up": true, "prio_down": true}
+// allowedActions are the download commands the queue offers. "retry" is a failed usenet
+// job's (SABnzbd tries it again); a torrent client refuses it.
+var allowedActions = map[string]bool{"recheck": true, "reannounce": true, "prio_up": true, "prio_down": true, download.ActionRetry: true}
 
 // torrentHash reads the {hash} path value and refuses anything that isn't exactly one
 // download's key (download.ValidKey): a torrent's info hash or a usenet job's "sab-…" key.

@@ -304,6 +304,17 @@ func main() {
 		Audiobook: libroots.Func(roots.Audiobooks),
 		Music:     libroots.Func(roots.Music),
 	}
+	// SABnzbd files by Arrmada's categories (the movie one is configurable) and, once a
+	// finished job is imported, has its leftover folder deleted only inside Arrmada's
+	// downloads folder or SABnzbd's own completed folder — never a library or the database.
+	downloads.SetMovieCategory(cfg.DownloadCategory)
+	downloads.SetFolders(func(ctx context.Context) download.PathEnv {
+		env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: cfg.DataDir}
+		for _, lib := range roots.Libraries(ctx) {
+			env.Libraries = append(env.Libraries, lib.Path)
+		}
+		return env
+	})
 	httpapi.LogLibraryDirs(context.Background(), roots, cfg, log)
 	logFolders(log, roots.Config(context.Background()),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleBooks, true),

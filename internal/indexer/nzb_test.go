@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const (
@@ -158,5 +160,55 @@ func TestFetchNZBTransportErrorHidesTheLink(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), nzbKey) || strings.Contains(err.Error(), "t=get") {
 		t.Fatalf("error carries the link or key: %q", err)
+	}
+}
+
+// An NZB download the indexer refuses for its own reasons (a download limit, with its
+// Retry-After) counts against the indexer, so background searches back off it; one about
+// the release (gone) doesn't; a delivered NZB is the indexer answering.
+func TestFetchNZBRecordsIndexerStatus(t *testing.T) {
+	var limited atomic.Bool
+	limited.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "gone"):
+			w.WriteHeader(http.StatusNotFound)
+		case limited.Load():
+			w.Header().Set("Retry-After", "3600")
+			w.WriteHeader(http.StatusTooManyRequests)
+		default:
+			_, _ = w.Write([]byte(nzbBody))
+		}
+	}))
+	defer srv.Close()
+	s, _, _ := healthService(t)
+	idx, err := s.Create(context.Background(), Indexer{Name: "Geek", Kind: KindNewznab, URL: srv.URL + "/api", APIKey: nzbKey, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if _, err := s.Fetch(ctx, "Geek", srv.URL+"/getnzb/gone.nzb?r="+nzbKey); err == nil {
+		t.Fatal("a gone NZB was fetched")
+	}
+	if st, _, ok := s.Status(idx.ID); ok && st.ConsecutiveFailures > 0 {
+		t.Errorf("a gone release counted against the indexer: %+v", st)
+	}
+
+	if _, err := s.Fetch(ctx, "Geek", srv.URL+"/getnzb/a.nzb?r="+nzbKey); err == nil {
+		t.Fatal("a limited indexer's NZB was fetched")
+	}
+	st, _, ok := s.Status(idx.ID)
+	if !ok || st.ConsecutiveFailures != 1 || time.Until(st.BackoffUntil) < 30*time.Minute ||
+		!strings.Contains(st.LastError, "limit") || strings.Contains(st.LastError, nzbKey) {
+		t.Errorf("after a download limit: %+v", st)
+	}
+
+	limited.Store(false)
+	if _, err := s.Fetch(ctx, "Geek", srv.URL+"/getnzb/a.nzb?r="+nzbKey); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, _ := s.Status(idx.ID); st.ConsecutiveFailures != 0 || st.LastOKAt.IsZero() {
+		t.Errorf("after a delivered NZB: %+v", st)
 	}
 }

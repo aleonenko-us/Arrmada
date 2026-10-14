@@ -19,6 +19,8 @@ func TestValidKey(t *testing.T) {
 		"sab-sabnzbd_nzo_p86tgx":         true,
 		"sab-x":                          true,
 		"sab-" + strings.Repeat("a", 80): true,
+		"sab-a-b":                        true, // SABnzbd 5.x ids are UUIDs
+		"sab-5a2cc24f-9be3-4b43-bfc1-9f6d04ee939b": true,
 
 		"":                                     false,
 		"all":                                  false,
@@ -29,7 +31,6 @@ func TestValidKey(t *testing.T) {
 		"sab-a,b":                              false,
 		"sab-a|b":                              false,
 		"sab-a b":                              false,
-		"sab-a-b":                              false,
 		"sab-a/b":                              false,
 		"sab-a%2Cb":                            false,
 		"sab-" + strings.Repeat("a", 81):       false,
@@ -117,6 +118,9 @@ func TestUsenetKey(t *testing.T) {
 		if got := UsenetKey(bad); got != "" {
 			t.Errorf("UsenetKey(%q) = %q, want none", bad, got)
 		}
+	}
+	if got := UsenetKey("5A2CC24F-9be3-4b43-bfc1-9f6d04ee939b"); got != "sab-5a2cc24f-9be3-4b43-bfc1-9f6d04ee939b" {
+		t.Errorf("UsenetKey(5.x id) = %q", got)
 	}
 	if id, ok := UsenetID("sab-sabnzbd_nzo_abc"); !ok || id != "sabnzbd_nzo_abc" {
 		t.Errorf("UsenetID = %q, %v", id, ok)

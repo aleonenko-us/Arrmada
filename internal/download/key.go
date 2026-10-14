@@ -7,6 +7,9 @@ import "strings"
 // import_reviews.hash). A torrent's key is its info hash, as it always was. A usenet job's
 // key is "sab-" plus SABnzbd's nzo_id, lowercased: the columns are compared with lower()
 // everywhere, and the prefix keeps a job id from ever being mistaken for a torrent hash.
+// SABnzbd 4.x names jobs "SABnzbd_nzo_p86tgx"; 5.x uses a UUID ("5a2cc24f-9be3-…"), so an
+// id may carry hyphens. SABnzbd matches ids case-sensitively, so a command never sends the
+// lowercased id back: the client looks the job's real id up first (sabnzbd.go).
 
 // Transport is how a download travels: BitTorrent or Usenet. A client handles exactly one,
 // and a release can only be handed to a client of its own transport.
@@ -20,13 +23,13 @@ const (
 // usenetKeyPrefix starts every usenet download key.
 const usenetKeyPrefix = "sab-"
 
-// maxUsenetIDLen bounds the id after the prefix. SABnzbd's ids are about 20 characters;
+// maxUsenetIDLen bounds the id after the prefix. SABnzbd's ids are 20–36 characters;
 // the cap only keeps an absurd value out of URLs and logs.
 const maxUsenetIDLen = 80
 
 // ValidKey reports whether key names exactly one download: a torrent's info hash (40 or
 // 64 hex characters, either case, as ValidHash) or a usenet key ("sab-" and 1–80 of
-// a-z, 0-9 and "_", lowercase only).
+// a-z, 0-9, "_" and "-", lowercase only).
 //
 // Nothing else may reach a client. qBittorrent reads "all" as every torrent it holds and
 // "a|b" as several, and SABnzbd takes comma-separated ids — a delete carrying such a value
@@ -43,7 +46,7 @@ func ValidKey(key string) bool {
 	}
 	for i := 0; i < len(id); i++ {
 		c := id[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
 			return false
 		}
 	}
