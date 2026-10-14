@@ -49,21 +49,23 @@ const (
 //     Unwanted avoid (TargetAvoided); a negative custom format or keyword score is not an
 //     avoid here
 //  2. health — a dead torrent (no seeders) after every seeded one: it never downloads, so
-//     like classic ranking it goes last within its tier, whatever else it has
+//     like classic ranking it goes last within its tier, whatever else it has (a usenet
+//     release is never dead)
 //  3. resolution — the goal first (ResTier)
 //  4. preferences — more of the target's Prefer/Must formats (PrefCount; waived ones don't count)
 //  5. custom — custom formats and keywords, additive, negatives included (CustomScore)
 //  6. source — Remux > BluRay > WEB > HDTV > DVD > unstated (SourceTier), then proper
 //  7. group — the release group's tier (GroupTier)
-//  8. bitrate — inside the window first; then the higher bitrate (codec-normalised), or the
+//  8. network — the preferred network, when download_network_preference sets one
+//  9. bitrate — inside the window first; then the higher bitrate (codec-normalised), or the
 //     lower when the profile leans small (SmallBias > 0). Within 10% is a tie.
-//  9. health — more seeders, for releases whose magnitude is within 10%
-//  10. size — the larger file, or the smaller when the profile leans small
+//  10. health — more seeders, for two torrents whose magnitude is within 10%
+//  11. size — the larger file, or the smaller when the profile leans small
 func compareV2(p Profile, a, b *Evaluation) (int, RankKey) {
 	if a.TargetAvoided != b.TargetAvoided {
 		return order(!a.TargetAvoided), KeyAvoid
 	}
-	if as, bs := a.Candidate.Seeders > 0, b.Candidate.Seeders > 0; as != bs {
+	if as, bs := a.Candidate.alive(), b.Candidate.alive(); as != bs {
 		return order(as), KeyHealth
 	}
 	if a.ResTier != b.ResTier {
@@ -84,6 +86,9 @@ func compareV2(p Profile, a, b *Evaluation) (int, RankKey) {
 	if a.GroupTier != b.GroupTier {
 		return order(a.GroupTier > b.GroupTier), KeyGroup
 	}
+	if decided, aFirst := p.networkOrder(a.Candidate, b.Candidate); decided {
+		return order(aFirst), KeyNetwork
+	}
 	small := p.SmallBias > 0
 	if a.InWindow != b.InWindow {
 		return order(a.InWindow), KeyBitrate
@@ -92,7 +97,7 @@ func compareV2(p Profile, a, b *Evaluation) (int, RankKey) {
 		return order((a.EffBitrate > b.EffBitrate) != small), KeyBitrate
 	}
 	am, bm := v2Magnitude(a, b)
-	if (am == bm || nearEqual(am, bm)) && a.Candidate.Seeders != b.Candidate.Seeders {
+	if seedersComparable(a.Candidate, b.Candidate) && (am == bm || nearEqual(am, bm)) && a.Candidate.Seeders != b.Candidate.Seeders {
 		return order(a.Candidate.Seeders > b.Candidate.Seeders), KeyHealth
 	}
 	if am != bm {
@@ -176,6 +181,8 @@ func v2Reason(p Profile, k RankKey, winner, loser Evaluation) string {
 		return "it isn't a " + properWord(wr)
 	case KeyGroup:
 		return groupLoss(winner)
+	case KeyNetwork:
+		return p.networkLoss()
 	case KeyBitrate:
 		switch {
 		case !loser.InWindow:
@@ -185,7 +192,7 @@ func v2Reason(p Profile, k RankKey, winner, loser Evaluation) string {
 		}
 		return "lower bitrate"
 	case KeyHealth:
-		if loser.Candidate.Seeders <= 0 && winner.Candidate.Seeders > 0 {
+		if !loser.Candidate.alive() && winner.Candidate.alive() {
 			return "it has no seeders"
 		}
 		return "fewer seeders"
