@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 // One person's profile counts only their plays: totals as the People tab sums them,
@@ -12,10 +14,10 @@ import (
 func TestPersonProfile(t *testing.T) {
 	ctx := context.Background()
 	s := newDataTestService(t)
-	if err := s.repo.upsertUser(ctx, "7", "Sam", "https://plex.tv/users/abc/avatar?c=1", 100); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "7", "Sam", "https://plex.tv/users/abc/avatar?c=1", 100); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.repo.upsertUser(ctx, "8", "Kim", "", 100); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "8", "Kim", "", 100); err != nil {
 		t.Fatal(err)
 	}
 	const base = int64(1_760_000_000)
@@ -64,7 +66,7 @@ func TestPersonProfile(t *testing.T) {
 		t.Errorf("identity = %q %q", p.Username, p.AvatarURL)
 	}
 	// Totals agree with the People tab's.
-	users, err := s.Users(ctx)
+	users, err := s.Users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

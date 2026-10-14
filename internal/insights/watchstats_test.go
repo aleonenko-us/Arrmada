@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
 
@@ -21,7 +22,7 @@ func addPlay(t *testing.T, s *Service, rec sessionRecord) {
 func TestWatchedByAggregation(t *testing.T) {
 	s := newLinkService(t, "http://plex.invalid:32400")
 	ctx := context.Background()
-	if err := s.repo.upsertUser(ctx, "11", "Mum", "", 0); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "11", "Mum", "", 0); err != nil {
 		t.Fatal(err)
 	}
 	// Live plays under the current key.

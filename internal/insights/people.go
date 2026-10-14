@@ -19,7 +19,10 @@ var ErrPersonNotFound = errors.New("no such Plex user")
 
 // PersonProfile is everything the People page shows for one person.
 type PersonProfile struct {
-	ID         string `json:"id"`
+	ID string `json:"id"`
+	// Server is the server this identity watches on (plex | jellyfin). Someone on both
+	// has a profile per server. Stalls stay zero for Jellyfin: it reports no buffering.
+	Server     string `json:"server"`
 	Username   string `json:"username"`
 	AvatarURL  string `json:"avatar_url"`
 	WindowDays int    `json:"window_days"` // 0 = all time
@@ -66,10 +69,14 @@ type PersonStalls struct {
 // avatarURL passes on a Plex account avatar only when it is a plex.tv address: the page
 // loads it straight from there, so anything else (a server path, another host) is
 // dropped rather than handed to the browser. If a content-security policy ever limits
-// img-src, this becomes a proxied endpoint.
+// img-src, this becomes a proxied endpoint. A Jellyfin person's picture is a Jellyfin
+// image path, which goes through the image proxy (the server's key stays here).
 func avatarURL(thumb string) string {
 	if strings.HasPrefix(thumb, "https://plex.tv/") {
 		return thumb
+	}
+	if IsJellyfinImage(thumb) {
+		return proxyImage(thumb)
 	}
 	return ""
 }
@@ -89,7 +96,7 @@ func (s *Service) Person(ctx context.Context, userID string, windowDays int) (Pe
 	db := s.repo.db
 
 	var thumb string
-	err := db.QueryRowContext(ctx, `SELECT username, thumb FROM plex_users WHERE id = ?`, userID).Scan(&p.Username, &thumb)
+	err := db.QueryRowContext(ctx, `SELECT username, thumb, server FROM plex_users WHERE id = ?`, userID).Scan(&p.Username, &thumb, &p.Server)
 	known := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return PersonProfile{}, err
@@ -140,8 +147,18 @@ func (s *Service) Person(ctx context.Context, userID string, windowDays int) (Pe
 	if err != nil {
 		return PersonProfile{}, err
 	}
-	if p.Username == "" && plays > 0 {
-		_ = db.QueryRowContext(ctx, `SELECT user_name FROM stream_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT 1`, userID).Scan(&p.Username)
+	if (p.Username == "" || p.Server == "") && plays > 0 {
+		var name, server string
+		_ = db.QueryRowContext(ctx, `SELECT user_name, server FROM stream_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT 1`, userID).Scan(&name, &server)
+		if p.Username == "" {
+			p.Username = name
+		}
+		if p.Server == "" {
+			p.Server = server
+		}
+	}
+	if p.Server == "" {
+		p.Server = ServerPlex
 	}
 
 	// Top titles: a film by its title, a show by its name, with the show's poster.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strconv"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 // ImportedSession is a historical play session (e.g. from Tautulli) used to backfill Insights so
@@ -199,7 +201,7 @@ func (s *Service) ImportHistory(ctx context.Context, rows []ImportedSession, opt
 		}
 		// Use the user avatar, never the media poster (r.Thumb), and don't overwrite a good
 		// avatar with an empty one — upsertUser keeps the existing thumb when the new one is blank.
-		_ = s.repo.upsertUser(ctx, uid, r.UserName, r.UserThumb, stopped)
+		_ = s.repo.upsertUser(ctx, mediaserver.Plex, uid, r.UserName, r.UserThumb, stopped) // Tautulli watches Plex
 		c.Imported++
 	}
 	return c

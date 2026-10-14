@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
 
@@ -96,7 +97,7 @@ func (s *Service) mergeOwnerSessions(ctx context.Context, realID, username, thum
 	}
 	// Make sure the destination row exists before pointing sessions at it, or the merge
 	// would leave them referencing a user the Users tab can't join to.
-	if err := s.repo.upsertUser(ctx, realID, username, thumb, 0); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, realID, username, thumb, 0); err != nil {
 		s.log.Warn("insights: could not create the owner's user row", "err", err)
 		return
 	}

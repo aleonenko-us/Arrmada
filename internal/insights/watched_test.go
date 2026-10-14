@@ -154,7 +154,7 @@ func TestHistoryTotalsMatchSQL(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT `+watchedSum+` FROM stream_sessions WHERE user_id='u'`).Scan(&sqlTotal); err != nil {
 		t.Fatal(err)
 	}
-	users, err := svc.repo.users(ctx)
+	users, err := svc.repo.users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestStatsRecentHasWatchedSecs(t *testing.T) {
 		 VALUES ('','u','Imported','movie',?,?,?,?,?)`, now-34*3600, now, 34*60*1000, 3000, 2000); err != nil {
 		t.Fatal(err)
 	}
-	st, err := svc.Stats(ctx, 30, false)
+	st, err := svc.Stats(ctx, 30, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

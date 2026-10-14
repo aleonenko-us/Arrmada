@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -48,17 +49,17 @@ func (r *repo) saveLive(ctx context.Context, ex execer, ls *liveSession) error {
 	_, err = ex.ExecContext(ctx, `
 		INSERT INTO insights_live_sessions
 		 (session_key, rating_key, user_id, started_at, last_seen_at, paused_ms, state, steady, buffering,
-		  spell_counted, last_offset_ms, buf_count, buf_events, snapshot)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		  spell_counted, last_offset_ms, buf_count, buf_events, snapshot, server)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_key) DO UPDATE SET
 		  rating_key=excluded.rating_key, user_id=excluded.user_id, started_at=excluded.started_at,
 		  last_seen_at=excluded.last_seen_at, paused_ms=excluded.paused_ms, state=excluded.state,
 		  steady=excluded.steady, buffering=excluded.buffering, spell_counted=excluded.spell_counted,
 		  last_offset_ms=excluded.last_offset_ms, buf_count=excluded.buf_count,
-		  buf_events=excluded.buf_events, snapshot=excluded.snapshot`,
+		  buf_events=excluded.buf_events, snapshot=excluded.snapshot, server=excluded.server`,
 		ls.sess.SessionKey, ls.sess.RatingKey, ls.sess.UserID, ls.started.UnixMilli(), ls.lastSeen.UnixMilli(),
 		ls.pausedMS, ls.state, b2i(ls.steady), b2i(ls.buffering), b2i(ls.spellCounted), ls.lastOffsetMS,
-		ls.bufCount, string(evJSON), string(snap))
+		ls.bufCount, string(evJSON), string(snap), string(serverOf(ls.sess.Server)))
 	return err
 }
 
@@ -67,16 +68,18 @@ func (r *repo) deleteLive(ctx context.Context, ex execer, key string) error {
 	return err
 }
 
-func (r *repo) clearLive(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM insights_live_sessions`)
+// clearLive forgets one server's saved streams.
+func (r *repo) clearLive(ctx context.Context, server mediaserver.Kind) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM insights_live_sessions WHERE server = ?`, string(serverOf(server)))
 	return err
 }
 
-// loadLive reads every saved session. A row whose snapshot can't be read is skipped (and
-// reported), never guessed at.
-func (r *repo) loadLive(ctx context.Context) (map[string]*liveSession, []string, error) {
+// loadLive reads one server's saved sessions. A row whose snapshot can't be read is skipped
+// (and reported), never guessed at.
+func (r *repo) loadLive(ctx context.Context, server mediaserver.Kind) (map[string]*liveSession, []string, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT session_key, started_at, last_seen_at, paused_ms, state, steady,
-		buffering, spell_counted, last_offset_ms, buf_count, buf_events, snapshot FROM insights_live_sessions`)
+		buffering, spell_counted, last_offset_ms, buf_count, buf_events, snapshot FROM insights_live_sessions
+		WHERE server = ?`, string(serverOf(server)))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,15 +109,16 @@ func (r *repo) loadLive(ctx context.Context) (map[string]*liveSession, []string,
 		for _, e := range evs {
 			ls.bufEvents = append(ls.bufEvents, bufEvent{at: time.UnixMilli(e.At), offset: e.Offset, durationMS: e.DurationMS, cause: e.Cause, detail: e.Detail})
 		}
+		ls.sess.Server = serverOf(server) // rows saved before 0310 named none
 		out[key] = ls
 	}
 	return out, bad, rows.Err()
 }
 
-// restoreLive loads the streams the last run was following, so the first poll continues
-// them instead of starting them over.
-func (s *Service) restoreLive(ctx context.Context) {
-	live, bad, err := s.repo.loadLive(ctx)
+// restoreLive loads the streams the last run was following on one server, so the first
+// poll continues them instead of starting them over.
+func (s *Service) restoreLive(ctx context.Context, tr *tracker) {
+	live, bad, err := s.repo.loadLive(ctx, tr.kind)
 	if err != nil {
 		s.log.Warn("insights: couldn't load the streams in progress at the last shutdown", "err", err)
 		return
@@ -124,20 +128,20 @@ func (s *Service) restoreLive(ctx context.Context) {
 		_ = s.repo.deleteLive(ctx, s.repo.db, key)
 	}
 	for key, ls := range live {
-		s.live[key] = ls
+		tr.live[key] = ls
 	}
 	if len(live) > 0 {
-		s.log.Info("insights: picked up streams in progress from before the restart", "streams", len(live))
+		s.log.Info("insights: picked up streams in progress from before the restart", "server", string(tr.kind), "streams", len(live))
 	}
 }
 
-// saveAllLive writes every followed stream in one transaction — once per poll.
-func (s *Service) saveAllLive(ctx context.Context) {
-	if len(s.live) == 0 {
+// saveAllLive writes every followed stream of one server in one transaction — once per poll.
+func (s *Service) saveAllLive(ctx context.Context, tr *tracker) {
+	if len(tr.live) == 0 {
 		return
 	}
 	err := store.WithTx(ctx, s.repo.db, func(tx *sql.Tx) error {
-		for _, ls := range s.live {
+		for _, ls := range tr.live {
 			if err := s.repo.saveLive(ctx, tx, ls); err != nil {
 				return err
 			}

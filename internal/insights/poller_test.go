@@ -33,10 +33,10 @@ func TestReconcileCreditsOnlyToLastSeen(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
 	sess := plex.Session{SessionKey: "1", RatingKey: "100", UserID: "7", Type: "movie", Title: "Dune"}
 
-	svc.reconcile(ctx, []plex.Session{sess}, t0)                    // start
-	svc.reconcile(ctx, []plex.Session{sess}, t0.Add(5*time.Second)) // last time we see it
+	svc.reconcile(ctx, svc.plex, []plex.Session{sess}, t0)                    // start
+	svc.reconcile(ctx, svc.plex, []plex.Session{sess}, t0.Add(5*time.Second)) // last time we see it
 	// Plex goes away for a long stretch, then the session is gone.
-	svc.reconcile(ctx, nil, t0.Add(2*time.Hour))
+	svc.reconcile(ctx, svc.plex, nil, t0.Add(2*time.Hour))
 
 	rows, _, err := svc.repo.history(ctx, HistoryFilter{Limit: 10})
 	if err != nil {
@@ -48,8 +48,8 @@ func TestReconcileCreditsOnlyToLastSeen(t *testing.T) {
 	if got, want := rows[0].StoppedAt, t0.Add(5*time.Second).Unix(); got != want {
 		t.Errorf("stopped_at = %d, want %d (lastSeen, not the 2h-later poll)", got, want)
 	}
-	if len(svc.live) != 0 {
-		t.Errorf("live sessions = %d, want 0 after vanish", len(svc.live))
+	if len(svc.plex.live) != 0 {
+		t.Errorf("live sessions = %d, want 0 after vanish", len(svc.plex.live))
 	}
 }
 
@@ -62,11 +62,11 @@ func TestReconcileSplitsOnRatingKeyChange(t *testing.T) {
 	epA := plex.Session{SessionKey: "1", RatingKey: "100", UserID: "7", Type: "episode", Title: "S01E01"}
 	epB := plex.Session{SessionKey: "1", RatingKey: "200", UserID: "7", Type: "episode", Title: "S01E02"}
 
-	svc.reconcile(ctx, []plex.Session{epA}, t0)
-	svc.reconcile(ctx, []plex.Session{epA}, t0.Add(5*time.Second))  // A alive ≥2s
-	svc.reconcile(ctx, []plex.Session{epB}, t0.Add(10*time.Second)) // same key, new item → split
-	svc.reconcile(ctx, []plex.Session{epB}, t0.Add(15*time.Second)) // B alive ≥2s
-	svc.reconcile(ctx, nil, t0.Add(20*time.Second))                 // B ends
+	svc.reconcile(ctx, svc.plex, []plex.Session{epA}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{epA}, t0.Add(5*time.Second))  // A alive ≥2s
+	svc.reconcile(ctx, svc.plex, []plex.Session{epB}, t0.Add(10*time.Second)) // same key, new item → split
+	svc.reconcile(ctx, svc.plex, []plex.Session{epB}, t0.Add(15*time.Second)) // B alive ≥2s
+	svc.reconcile(ctx, svc.plex, nil, t0.Add(20*time.Second))                 // B ends
 
 	rows, _, err := svc.repo.history(ctx, HistoryFilter{Limit: 10})
 	if err != nil {
@@ -96,11 +96,11 @@ func TestReconcileSplitsOnUserChange(t *testing.T) {
 	a := plex.Session{SessionKey: "1", RatingKey: "100", UserID: "7", Type: "movie", Title: "Dune"}
 	b := plex.Session{SessionKey: "1", RatingKey: "100", UserID: "9", Type: "movie", Title: "Dune"}
 
-	svc.reconcile(ctx, []plex.Session{a}, t0)
-	svc.reconcile(ctx, []plex.Session{a}, t0.Add(5*time.Second))
-	svc.reconcile(ctx, []plex.Session{b}, t0.Add(10*time.Second)) // same key, new user → split
-	svc.reconcile(ctx, []plex.Session{b}, t0.Add(15*time.Second))
-	svc.reconcile(ctx, nil, t0.Add(20*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{a}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{a}, t0.Add(5*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{b}, t0.Add(10*time.Second)) // same key, new user → split
+	svc.reconcile(ctx, svc.plex, []plex.Session{b}, t0.Add(15*time.Second))
+	svc.reconcile(ctx, svc.plex, nil, t0.Add(20*time.Second))
 
 	rows, _, err := svc.repo.history(ctx, HistoryFilter{Limit: 10})
 	if err != nil {
@@ -122,15 +122,15 @@ func TestFlushAllFinalizesLiveSessions(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
 	sess := plex.Session{SessionKey: "1", RatingKey: "100", UserID: "7", Type: "movie", Title: "Dune"}
 
-	svc.reconcile(ctx, []plex.Session{sess}, t0)
-	svc.reconcile(ctx, []plex.Session{sess}, t0.Add(5*time.Second))
-	if len(svc.live) != 1 {
-		t.Fatalf("live = %d before flush, want 1", len(svc.live))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sess}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{sess}, t0.Add(5*time.Second))
+	if len(svc.plex.live) != 1 {
+		t.Fatalf("live = %d before flush, want 1", len(svc.plex.live))
 	}
-	svc.flushAll(ctx) // what Run does when Insights is disabled/unconfigured
+	svc.flushAll(ctx, svc.plex) // what Run does when Insights is disabled/unconfigured
 
-	if len(svc.live) != 0 {
-		t.Errorf("live = %d after flush, want 0", len(svc.live))
+	if len(svc.plex.live) != 0 {
+		t.Errorf("live = %d after flush, want 0", len(svc.plex.live))
 	}
 	rows, _, err := svc.repo.history(ctx, HistoryFilter{Limit: 10})
 	if err != nil {
@@ -144,8 +144,8 @@ func TestFlushAllFinalizesLiveSessions(t *testing.T) {
 	}
 
 	// Re-enabling (a fresh reconcile) starts a brand-new session, not a continuation.
-	svc.reconcile(ctx, []plex.Session{sess}, t0.Add(24*time.Hour))
-	if ls := svc.live[sess.SessionKey]; ls == nil {
+	svc.reconcile(ctx, svc.plex, []plex.Session{sess}, t0.Add(24*time.Hour))
+	if ls := svc.plex.live[sess.SessionKey]; ls == nil {
 		t.Fatal("expected a fresh live session after re-enable")
 	} else if !ls.started.Equal(t0.Add(24 * time.Hour)) {
 		t.Errorf("re-enabled session started = %v, want fresh %v", ls.started, t0.Add(24*time.Hour))
@@ -253,7 +253,7 @@ func sessAt(state string, offsetMS int64) plex.Session {
 }
 
 // bufferState pulls the tracked live session for the buffer tests.
-func bufferLS(svc *Service) *liveSession { return svc.live["b1"] }
+func bufferLS(svc *Service) *liveSession { return svc.plex.live["b1"] }
 
 // Startup fill must not count: a slow client's play-start "buffering" made its owner
 // the biggest buffer offender without a single real stall.
@@ -262,16 +262,16 @@ func TestBufferStartupFillNotCounted(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Now()
 
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 0)}, t0) // first sighting mid startup-fill
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 0)}, t0.Add(5*time.Second))
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 3_000)}, t0.Add(10*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 0)}, t0) // first sighting mid startup-fill
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 0)}, t0.Add(5*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 3_000)}, t0.Add(10*time.Second))
 	if ls := bufferLS(svc); ls.bufCount != 0 {
 		t.Fatalf("startup fill counted as %d buffer events", ls.bufCount)
 	}
 
 	// A genuine stall AFTER steady playback still counts.
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 8_000)}, t0.Add(15*time.Second))
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 12_900)}, t0.Add(20*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 8_000)}, t0.Add(15*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 12_900)}, t0.Add(20*time.Second))
 	if ls := bufferLS(svc); ls.bufCount != 1 {
 		t.Fatalf("real stall not counted, bufCount=%d", ls.bufCount)
 	}
@@ -283,16 +283,16 @@ func TestBufferSeekRefillNotCounted(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Now()
 
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 10_000)}, t0)
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 15_000)}, t0.Add(5*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 10_000)}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 15_000)}, t0.Add(5*time.Second))
 	// Skip intro: offset leaps ~90s while 5s passed → refill, not a stall.
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 105_000)}, t0.Add(10*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 105_000)}, t0.Add(10*time.Second))
 	if ls := bufferLS(svc); ls.bufCount != 0 {
 		t.Fatalf("seek refill counted as %d buffer events", ls.bufCount)
 	}
 	// Backwards scrub too.
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 110_000)}, t0.Add(15*time.Second))
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 20_000)}, t0.Add(20*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 110_000)}, t0.Add(15*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 20_000)}, t0.Add(20*time.Second))
 	if ls := bufferLS(svc); ls.bufCount != 0 {
 		t.Fatalf("backward seek counted as %d buffer events", ls.bufCount)
 	}
@@ -304,9 +304,9 @@ func TestBufferResumeRefillNotCounted(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Now()
 
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 10_000)}, t0)
-	svc.reconcile(ctx, []plex.Session{sessAt("paused", 15_000)}, t0.Add(5*time.Second))
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 15_000)}, t0.Add(10*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 10_000)}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("paused", 15_000)}, t0.Add(5*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 15_000)}, t0.Add(10*time.Second))
 	if ls := bufferLS(svc); ls.bufCount != 0 {
 		t.Fatalf("pause-resume refill counted as %d buffer events", ls.bufCount)
 	}
@@ -319,12 +319,12 @@ func TestBufferSpellAccruesDuration(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Now()
 
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 10_000)}, t0)
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 15_000)}, t0.Add(5*time.Second))
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(10*time.Second)) // stall starts
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(15*time.Second)) // +5s observed
-	svc.reconcile(ctx, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(20*time.Second)) // +5s observed
-	svc.reconcile(ctx, []plex.Session{sessAt("playing", 21_000)}, t0.Add(25*time.Second))   // recovers
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 10_000)}, t0)
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 15_000)}, t0.Add(5*time.Second))
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(10*time.Second)) // stall starts
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(15*time.Second)) // +5s observed
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("buffering", 19_000)}, t0.Add(20*time.Second)) // +5s observed
+	svc.reconcile(ctx, svc.plex, []plex.Session{sessAt("playing", 21_000)}, t0.Add(25*time.Second))   // recovers
 
 	ls := bufferLS(svc)
 	if ls.bufCount != 1 || len(ls.bufEvents) != 1 {
@@ -335,7 +335,7 @@ func TestBufferSpellAccruesDuration(t *testing.T) {
 	}
 
 	// Finalize and confirm the duration reaches the DB.
-	svc.reconcile(ctx, nil, t0.Add(30*time.Second))
+	svc.reconcile(ctx, svc.plex, nil, t0.Add(30*time.Second))
 	var dur int64
 	if err := svc.repo.db.QueryRowContext(ctx, `SELECT duration_ms FROM buffer_events LIMIT 1`).Scan(&dur); err != nil {
 		t.Fatalf("read buffer event: %v", err)
@@ -370,7 +370,7 @@ func TestReliabilityOffenderFloor(t *testing.T) {
 	mk("repeat", 3, 0)        // repeated pattern → appears (count floor)
 	mk("longstall", 1, 15000) // one long stall → appears (time floor), ranked first
 
-	rel, err := svc.Reliability(ctx, 7)
+	rel, err := svc.Reliability(ctx, 7, "")
 	if err != nil {
 		t.Fatalf("reliability: %v", err)
 	}

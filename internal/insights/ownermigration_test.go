@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 // Migration 0073 repairs history recorded before the owner's real account id was known. It
@@ -38,10 +40,10 @@ func seedSession(t *testing.T, s *Service, key, userID string) {
 func TestMigrationMergesTheOwnerByUsername(t *testing.T) {
 	s := newDataTestService(t)
 	ctx := context.Background()
-	if err := s.repo.upsertUser(ctx, "8421", "RegularBloke", "avatar", 1000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "8421", "RegularBloke", "avatar", 1000); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.repo.upsertUser(ctx, ownerPlaceholderID, "RegularBloke", "", 5000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, ownerPlaceholderID, "RegularBloke", "", 5000); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, s, "a", "8421")
@@ -49,7 +51,7 @@ func TestMigrationMergesTheOwnerByUsername(t *testing.T) {
 
 	replayOwnerMerge(t, s)
 
-	users, err := s.Users(ctx)
+	users, err := s.Users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +72,14 @@ func TestMigrationMergesTheOwnerByUsername(t *testing.T) {
 func TestMigrationLeavesALonePlaceholderAlone(t *testing.T) {
 	s := newDataTestService(t)
 	ctx := context.Background()
-	if err := s.repo.upsertUser(ctx, ownerPlaceholderID, "RegularBloke", "", 5000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, ownerPlaceholderID, "RegularBloke", "", 5000); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, s, "a", ownerPlaceholderID)
 
 	replayOwnerMerge(t, s)
 
-	users, err := s.Users(ctx)
+	users, err := s.Users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +97,7 @@ func TestMigrationDeclinesAnAmbiguousMatch(t *testing.T) {
 	s := newDataTestService(t)
 	ctx := context.Background()
 	for _, id := range []string{"8421", "9999", ownerPlaceholderID} {
-		if err := s.repo.upsertUser(ctx, id, "RegularBloke", "", 1000); err != nil {
+		if err := s.repo.upsertUser(ctx, mediaserver.Plex, id, "RegularBloke", "", 1000); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -103,7 +105,7 @@ func TestMigrationDeclinesAnAmbiguousMatch(t *testing.T) {
 
 	replayOwnerMerge(t, s)
 
-	users, err := s.Users(ctx)
+	users, err := s.Users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
