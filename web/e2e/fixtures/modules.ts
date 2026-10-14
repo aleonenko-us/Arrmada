@@ -115,7 +115,7 @@ export const languages: Language[] = [
 // Settings → Subtitles: whisper is in the build, with no model downloaded yet.
 export const subtitleModels: WhisperStatus = {
   binary_ready: true, ready: false,
-  models: [{ name: "ggml-large-v3-turbo.bin", label: "Turbo (English)", size_mb: 1600, present: false, downloading: false }],
+  models: [{ name: "ggml-large-v3-turbo.bin", label: "large-v3-turbo — fast transcription in any language (can't translate)", size_mb: 1600, present: false, downloading: false }],
 };
 
 export const plexConfig: PlexConfig = { url: "", token_set: false, enabled: false, poll_seconds: 30, status: "unconfigured" };

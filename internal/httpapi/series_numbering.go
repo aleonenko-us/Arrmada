@@ -146,8 +146,17 @@ func (a *api) applySeriesNumbering(ctx context.Context, id int64, planHash strin
 	// It's skipped while a file still has an old name — one a rename skipped, or one the
 	// new numbering has no episode for: the rescan reads episodes from file names, and an
 	// old "S01E04" can mean a different episode in the new numbering.
+	var rescanNote string
 	if clean {
-		a.deps.Automation.RescanSeries(ctx, id)
+		if err := a.deps.Automation.RescanSeries(ctx, id); err != nil {
+			// The numbering is applied either way; only the confirming rescan didn't run.
+			var refused *automation.RescanRefusedError
+			if errors.As(err, &refused) {
+				rescanNote = " — the rescan after it changed nothing: " + refused.Reason
+			} else {
+				a.deps.Log.Warn("series: rescan after renumber failed", "series_id", id, "err", err)
+			}
+		}
 	}
 	msg := fmt.Sprintf("Numbering applied — %d renamed", out.Moved)
 	if len(out.Skipped) > 0 {
@@ -159,7 +168,7 @@ func (a *api) applySeriesNumbering(ctx context.Context, id int64, planHash strin
 	if !clean {
 		msg += " — sort those out before a rescan"
 	}
-	p.SetMessage(msg)
+	p.SetMessage(msg + rescanNote)
 	return out, nil
 }
 

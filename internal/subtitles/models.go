@@ -11,14 +11,16 @@ import (
 )
 
 // whisperAssets are the downloadable local-AI models (GGML). Fetched on demand to the models dir so
-// the image stays small — the user picks what they need (turbo for English, large-v3 to translate).
+// the image stays small — the user picks what they need: turbo transcribes speech in any language
+// into that same language; large-v3 transcribes too and is the one that can translate foreign
+// audio into English.
 // No VAD model: silence is handled by cutting the audio at pauses before whisper sees it
 // (chunks.go), which keeps every timestamp on the real timeline.
 var whisperAssets = []struct {
 	name, label, url string
 	sizeMB           int
 }{
-	{modelTurbo, "large-v3-turbo — fast English transcription", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin", 1600},
+	{modelTurbo, "large-v3-turbo — fast transcription in any language (can't translate)", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin", 1600},
 	{modelLarge, "large-v3 — required to translate foreign audio to English", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin", 3100},
 }
 
