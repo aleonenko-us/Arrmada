@@ -93,7 +93,7 @@ function KindleSteps({ from }: { from?: string }) {
     <ol className="m-0 flex flex-col gap-2 pl-5 text-base leading-relaxed text-ink-dim">
       <li>
         On Amazon’s{" "}
-        <a href={AMAZON_DEVICES_URL} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: "var(--accent)" }}>Manage Your Content and Devices</a>
+        <a href={AMAZON_DEVICES_URL} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: "var(--accent-text)" }}>Manage Your Content and Devices</a>
         {" "}page, open <b>Preferences → Personal Document Settings</b>.
       </li>
       <li>
@@ -143,7 +143,7 @@ function KindleAddressForm({ view, submitLabel, onSaved }: { view: KindleView; s
       {error && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
       {warned ? (
         <>
-          <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>{warned.warning}</p>
+          <p className="m-0 text-sm" style={{ color: "var(--avoid-text)" }}>{warned.warning}</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => onSaved(warned)}>Use it anyway</Button>
           </div>
@@ -190,7 +190,7 @@ export function KindleCard() {
               <Button size="sm" variant="ghost" onClick={remove}>Remove</Button>
             </span>
           </div>
-          {view.warning && <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>{view.warning}</p>}
+          {view.warning && <p className="m-0 text-sm" style={{ color: "var(--avoid-text)" }}>{view.warning}</p>}
           {view.from_address && <p className="m-0 text-sm text-ink-faint">Books come from {view.from_address} — keep it on Amazon’s approved list.</p>}
         </>
       ) : (

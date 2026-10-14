@@ -109,7 +109,7 @@ export function ScanStatus({ scan }: { scan: MovieScan }) {
       <span className="font-semibold">Scan finished</span>
       <span className="text-ink-dim">{parts.join(" · ")}</span>
       {s.unmatched > 0 && (
-        <Link to={LINKS.libraryReview} className="font-semibold" style={{ color: "var(--accent)" }}>
+        <Link to={LINKS.libraryReview} className="font-semibold" style={{ color: "var(--accent-text)" }}>
           · {n(s.unmatched)} need review →
         </Link>
       )}

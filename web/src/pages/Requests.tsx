@@ -371,7 +371,7 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
           <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] flex-none items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on Plex</a>
         )}
       </div>
-      {error && <div className="mt-2 text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+      {error && <div className="mt-2 text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}
     </li>
   );
 }

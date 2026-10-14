@@ -5,7 +5,7 @@ import { lazyPage } from "../../lib/lazyPage";
 import { posterThumb } from "../../lib/img";
 import { titlePath } from "../../lib/refLink";
 import { useTitle } from "../../lib/title";
-import { Button, IconButton, Sheet, StatusChip, POSTER_CHIP_BG, TONE_HUE, type ToastFn } from "../../ui";
+import { Button, IconButton, Sheet, StatusChip, POSTER_CHIP_BG, POSTER_TONE, type ToastFn } from "../../ui";
 import { badgeFor, FOLLOWING, PosterPlaceholder, useCloseOverlay, useOpenOverlay, useOpenTitle, type OverlayState, type ReqStatus, type RowCtx } from "./shared";
 
 // "Which seasons?" loads when someone first asks for a show.
@@ -53,7 +53,7 @@ const NOTE_MAX = 500;
 function RatingBadge({ label, value, bg, fg }: { label: string; value: string; bg: string; fg: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold" style={{ background: bg, color: fg }}>
-      <span className="font-mono text-2xs uppercase opacity-80">{label}</span>{value}
+      <span className="font-mono text-2xs uppercase">{label}</span>{value}
     </span>
   );
 }
@@ -250,9 +250,9 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
             {/* Ratings */}
             {(r?.tmdb || r?.imdb || r?.rotten_tomatoes || r?.metacritic) && (
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                {r?.tmdb ? <RatingBadge label="TMDB" value={r.tmdb.toFixed(1)} bg="var(--accent-soft)" fg="var(--accent)" /> : null}
+                {r?.tmdb ? <RatingBadge label="TMDB" value={r.tmdb.toFixed(1)} bg="var(--accent-soft)" fg="var(--accent-text)" /> : null}
                 {r?.imdb ? <RatingBadge label="IMDb" value={r.imdb} bg="#f5c518" fg="#000" /> : null}
-                {r?.rotten_tomatoes ? <RatingBadge label="RT" value={r.rotten_tomatoes} bg="#fa320a" fg="#fff" /> : null}
+                {r?.rotten_tomatoes ? <RatingBadge label="RT" value={r.rotten_tomatoes} bg="#d92b08" fg="#fff" /> : null}
                 {r?.metacritic ? <RatingBadge label="MC" value={r.metacritic} bg="#00658f" fg="#fff" /> : null}
               </div>
             )}
@@ -262,9 +262,9 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {/* Opened cold, nothing is offered until the title is known. */}
               {!c.title ? null : done && subscribed ? (
-                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{FOLLOWING}</span>
+                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{FOLLOWING}</span>
               ) : badge && !declined ? (
-                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>
+                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: POSTER_TONE[badge.tone], border: `1px solid ${POSTER_TONE[badge.tone]}` }}>
                   {badge.label === "In library" ? (moreSeasons ? "✓ Partly in your library" : "✓ In your library") : badge.label === "Pending" ? "Requested — waiting for approval" : badge.label === "Downloading" ? "Downloading…" : badge.label === "Wanted" ? "In library — waiting for a file" : done === "approved" ? "Requested — searching now" : "Requested"}
                 </span>
               ) : !ctx.canRequest ? (
@@ -272,7 +272,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
               ) : (
                 <>
                   {declined && badge && (
-                    <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: TONE_HUE[badge.tone], border: `1px solid ${TONE_HUE[badge.tone]}` }}>Declined</span>
+                    <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: POSTER_TONE[badge.tone], border: `1px solid ${POSTER_TONE[badge.tone]}` }}>Declined</span>
                   )}
                   {!picking && (
                     <Button variant="primary" onClick={ask} busy={busy} busyLabel="Requesting…" disabled={quotaOut && !isShow}>
@@ -316,7 +316,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                   <span className="self-end font-mono text-xs text-ink-faint">{note.length}/{NOTE_MAX}</span>
                 </label>
               ) : (
-                <button onClick={() => setNoteOpen(true)} className="mt-2 min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>
+                <button onClick={() => setNoteOpen(true)} className="mt-2 min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
                   ＋ Add a note for the admin (optional)
                 </button>
               )
@@ -325,7 +325,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
             {ctx.canRequest && !isShow && !(done && subscribed) && (!badge || declined) && (
               <Suspense fallback={null}><QuotaHint kind="movie" onOut={setQuotaOut} /></Suspense>
             )}
-            {error && <div className="mt-1.5 text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+            {error && <div className="mt-1.5 text-sm font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}
           </div>
         </div>
 
@@ -360,7 +360,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
 
           {/* The franchise it belongs to opens over this sheet; Back returns here. */}
           {collection && (
-            <button onClick={() => openOverlay("collection", collection.id)} className="mt-3 min-h-[32px] text-base font-semibold" style={{ color: "var(--accent)" }}>
+            <button onClick={() => openOverlay("collection", collection.id)} className="mt-3 min-h-[32px] text-base font-semibold" style={{ color: "var(--accent-text)" }}>
               Part of the {collection.name} →
             </button>
           )}
@@ -447,7 +447,7 @@ function CrewFact({ label, people, onOpen }: { label: string; people: CrewMember
           <span key={`${p.id ?? p.name}`}>
             {i > 0 && ", "}
             {onOpen && p.id ? (
-              <button onClick={() => onOpen(p.id as number)} className="font-semibold underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>{p.name}</button>
+              <button onClick={() => onOpen(p.id as number)} className="font-semibold underline-offset-2 hover:underline" style={{ color: "var(--accent-text)" }}>{p.name}</button>
             ) : p.name}
           </span>
         ))}

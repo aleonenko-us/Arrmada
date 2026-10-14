@@ -160,7 +160,7 @@ function RunRow({ run: r, busy, onRetry, onRemove }: { run: ImportRun; busy: boo
         </div>
       )}
       <span className="text-sm text-ink-dim">{runSummary(r)}</span>
-      {r.error && <span className="text-sm" style={{ color: "var(--reject)" }}>{r.error}</span>}
+      {r.error && <span className="text-sm" style={{ color: "var(--reject-text)" }}>{r.error}</span>}
       {r.removed_at > 0 && <span className="text-sm text-ink-faint">Removed {r.removed_rows.toLocaleString()} of its plays on {day(r.removed_at)}.</span>}
     </div>
   );

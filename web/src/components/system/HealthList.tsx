@@ -13,9 +13,9 @@ import { usePoll } from "../../lib/usePoll";
 const CATEGORIES = ["Storage", "Downloads", "Indexers", "Integrations", "Tasks"];
 
 const LEVEL: Record<HealthCheck["level"], { color: string; label: string }> = {
-  ok: { color: "var(--good)", label: "OK" },
-  warning: { color: "var(--avoid)", label: "Warning" },
-  error: { color: "var(--reject)", label: "Error" },
+  ok: { color: "var(--good-text)", label: "OK" },
+  warning: { color: "var(--avoid-text)", label: "Warning" },
+  error: { color: "var(--reject-text)", label: "Error" },
   pending: { color: "var(--ink-faint)", label: "Not checked yet" },
 };
 
@@ -61,7 +61,7 @@ export function HealthList() {
           </span>
         )}
       </div>
-      {err && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the health checks: {err}</p>}
+      {err && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the health checks: {err}</p>}
       {data === null && !err && <p className="m-0 text-sm text-ink-dim">Loading…</p>}
       {data && checks.length === 0 && <p className="m-0 text-sm text-ink-dim">No checks have run yet. They start within half a minute of Arrmada starting.</p>}
 
@@ -94,9 +94,9 @@ function CheckRow({ c, first }: { c: HealthCheck; first: boolean }) {
           const to = fixLink(f);
           return (
             <div key={f.key ?? i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-[18px] text-sm">
-              <span className="min-w-0 flex-1 break-words" style={{ color: f.level === "error" ? "var(--reject)" : "var(--ink-dim)" }}>{f.message}</span>
+              <span className="min-w-0 flex-1 break-words" style={{ color: f.level === "error" ? "var(--reject-text)" : "var(--ink-dim)" }}>{f.message}</span>
               {to && (
-                <Link to={to} title={f.link_label} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent)" }}>Fix →</Link>
+                <Link to={to} title={f.link_label} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent-text)" }}>Fix →</Link>
               )}
             </div>
           );

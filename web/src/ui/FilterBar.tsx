@@ -29,7 +29,7 @@ export function FilterBar({ filters, active, onFilter, query, onQuery, noun }: F
             aria-pressed={on}
             title={f.title}
             className="whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold"
-            style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}
+            style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}
           >
             {f.label} <span className="font-mono text-xs opacity-70">{f.count}</span>
           </button>

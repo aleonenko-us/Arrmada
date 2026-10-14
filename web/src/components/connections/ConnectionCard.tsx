@@ -66,7 +66,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
               {kindLabel(item)}
             </span>
             {item.managed_by === "prowlarr" && (
-              <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Its name, address and key come from Prowlarr; the rest is yours">
+              <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }} title="Its name, address and key come from Prowlarr; the rest is yours">
                 Managed by Prowlarr
               </span>
             )}
@@ -92,9 +92,9 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
       <div className="break-words text-sm" style={{ color: line.color }}>{line.text}</div>
       {counts && <div className="text-xs text-ink-faint">{counts}</div>}
       {item.detail && <div className="break-words text-sm text-ink-dim">{item.detail}</div>}
-      {notice && <div role="alert" className="break-words text-sm" style={{ color: "var(--reject)" }}>{notice}</div>}
+      {notice && <div role="alert" className="break-words text-sm" style={{ color: "var(--reject-text)" }}>{notice}</div>}
       {test && !test.running && test.detail && (
-        <div role="status" className="break-words font-mono text-xs" style={{ color: test.ok ? "var(--good)" : "var(--reject)" }}>
+        <div role="status" className="break-words font-mono text-xs" style={{ color: test.ok ? "var(--good-text)" : "var(--reject-text)" }}>
           {test.ok ? "✓ " : "✕ "}{test.detail}
         </div>
       )}
@@ -109,7 +109,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
             <Button size="sm" variant="ghost" onClick={onEdit} aria-expanded={!!editing}>{editing ? "Close" : "Edit"}</Button>
           )}
           {!setUp && !failing && fix?.to && item.fix_path && (
-            <Link to={fix.to} className="text-sm font-semibold no-underline" style={{ color: "var(--accent)" }}>Edit →</Link>
+            <Link to={fix.to} className="text-sm font-semibold no-underline" style={{ color: "var(--accent-text)" }}>Edit →</Link>
           )}
         </div>
       )}

@@ -59,7 +59,7 @@ export function BookDetail() {
     },
   });
 
-  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That book isn't in your library. <Link to="/books" className="underline" style={{ color: "var(--accent)" }}>Back to Books</Link></div></Shell>;
+  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That book isn't in your library. <Link to="/books" className="underline" style={{ color: "var(--accent-text)" }}>Back to Books</Link></div></Shell>;
   if (!b) return <Shell><p className="text-base text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const searchNow = async () => {
@@ -99,7 +99,7 @@ export function BookDetail() {
                 {b.year > 0 && <span className="font-mono text-xs text-ink-faint">{b.year}</span>}
                 {/* Not out yet: searches start on this day. */}
                 {b.release_date && isUpcoming(b.release_date) && (
-                  <span className="rounded-full px-2.5 py-1 font-mono text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Out {formatReleaseDay(b.release_date)}</span>
+                  <span className="rounded-full px-2.5 py-1 font-mono text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Out {formatReleaseDay(b.release_date)}</span>
                 )}
                 {/* The catalogue the book actually came from. Open Library keeps its navy
                     chip; the others use the panel style so the palette doesn't grow. */}
@@ -129,7 +129,7 @@ export function BookDetail() {
               </div>
               <Toolbar book={b} onChange={load} toast={toast} onSearch={searchNow} searching={searchJob !== null} />
               {(searchJob !== null || searchResult) && (
-                <div className="mt-2 text-sm" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
+                <div className="mt-2 text-sm" role="status" style={{ color: searchJob !== null ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject-text)" : "var(--ink)" }}>
                   {searchJob !== null ? "Searching…" : searchResult?.text}
                 </div>
               )}
@@ -217,10 +217,10 @@ function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onCl
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-sm text-ink-dim">{book.catalogue?.name === "Hardcover" ? "Covers from Hardcover editions" : "Covers from Open Library editions and Google Books"} — or upload your own.</p>
-        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
         <div className="mb-3">
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
-          <Button onClick={() => fileRef.current?.click()} disabled={saving !== null} busy={saving === "upload"} busyLabel="Uploading…" className="disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "transparent", color: "var(--accent)" }}>
+          <Button onClick={() => fileRef.current?.click()} disabled={saving !== null} busy={saving === "upload"} busyLabel="Uploading…" className="disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", background: "transparent", color: "var(--accent-text)" }}>
             ⭱ Upload custom cover
           </Button>
         </div>
@@ -237,7 +237,7 @@ function CoverPickerModal({ book, onClose, onChange, toast }: { book: Book; onCl
                   <button key={url} onClick={() => choose(url)} disabled={saving !== null} aria-label={current ? "The current cover" : "Use this cover"} className="relative overflow-hidden rounded-lg disabled:opacity-60" style={{ border: current ? "2px solid var(--accent)" : "1px solid var(--line)", aspectRatio: "2/3", background: "var(--panel-2)" }}>
                     <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => { const btn = e.currentTarget.closest("button"); if (btn) (btn as HTMLElement).style.display = "none"; }} />
                     {saving === url && <div className="absolute inset-0 grid place-items-center text-xs font-semibold text-white" style={{ background: "rgba(0,0,0,.5)" }}>Saving…</div>}
-                    {current && <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-xs font-bold text-white" style={{ background: "var(--accent)" }}>Current</span>}
+                    {current && <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-xs font-bold text-accent-ink" style={{ background: "var(--accent)" }}>Current</span>}
                   </button>
                 );
               })}
@@ -267,8 +267,8 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
   if (!file) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-3" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-        <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }}>{label}</span>
-        <span className="min-w-0 flex-1 text-sm" style={{ color: "var(--avoid)" }}>{wantedCopy(search.book, label)}</span>
+        <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>{label}</span>
+        <span className="min-w-0 flex-1 text-sm" style={{ color: "var(--avoid-text)" }}>{wantedCopy(search.book, label)}</span>
         <button onClick={search.onSearch} disabled={search.searching} title="Search your indexers for this book's missing editions now" className="flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{search.searching ? "Searching…" : "Search now"}</button>
       </div>
     );
@@ -284,8 +284,8 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--good-soft)", color: "var(--good)" }}>{label}</span>
-            <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{file.format}</span>
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--good-soft)", color: "var(--good-text)" }}>{label}</span>
+            <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{file.format}</span>
             {multi && <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{file.file_count} files</span>}
             <span className="font-mono text-sm text-ink-dim">{formatBytes(file.size_bytes)}</span>
           </div>
@@ -303,7 +303,7 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}
-          <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{multi ? "Delete all" : "Delete file"}</button>
+          <button onClick={() => { setErr(null); setConfirming(true); }} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{multi ? "Delete all" : "Delete file"}</button>
         </div>
       </div>
       {confirming && (
@@ -345,7 +345,7 @@ function FileList({ bookId, kind, count }: { bookId: number; kind: "ebook" | "au
   };
   return (
     <div className="mt-2">
-      <button onClick={toggle} className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--accent)" }}>
+      <button onClick={toggle} className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         {open ? "Hide files" : `Show all ${count} files`}
       </button>
@@ -418,10 +418,10 @@ function MergeButton({ bookId, fileCount, onDone, toast }: { bookId: number; fil
 
   return (
     <>
-      <button onClick={() => { setErr(null); setAsking(true); }} disabled={busy || running} title="Merge all chapter files into one chapterized .m4b (needs ffmpeg)" className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+      <button onClick={() => { setErr(null); setAsking(true); }} disabled={busy || running} title="Merge all chapter files into one chapterized .m4b (needs ffmpeg)" className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>
         {running ? "Merging…" : "⧉ Combine into one file"}
       </button>
-      {failure && <span className="max-w-[260px] text-right text-xs" style={{ color: "var(--reject)" }}>Merge failed: {failure}</span>}
+      {failure && <span className="max-w-[260px] text-right text-xs" style={{ color: "var(--reject-text)" }}>Merge failed: {failure}</span>}
       {asking && (
         <ConfirmDialog
           title="Combine into one file?"
@@ -551,7 +551,7 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
             </select>
           </label>
         )}
-        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
         {notice && <div className="mb-2 text-sm text-ink-faint">{notice}</div>}
         <div className="thin-scroll max-h-[52vh] overflow-y-auto">
           {cands === null ? (
@@ -564,12 +564,12 @@ function ManualImportModal({ book, onClose, onImported }: { book: Book; onClose:
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-base font-medium" title={c.filename}>{c.filename}</div>
                   <div className="mt-0.5 flex items-center gap-3 font-mono text-xs text-ink-faint">
-                    <span className="uppercase" style={{ color: c.edition === "audiobook" ? "var(--accent)" : "var(--good)" }}>{c.edition}</span>
+                    <span className="uppercase" style={{ color: c.edition === "audiobook" ? "var(--accent-text)" : "var(--good-text)" }}>{c.edition}</span>
                     <span>{c.format}</span>
                     <span>{formatBytes(c.size_bytes)}</span>
                   </div>
                 </div>
-                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
               </button>
             ))
           )}
@@ -588,7 +588,7 @@ function ProfileSelector({ book, onChange }: { book: Book; onChange: () => void 
   return (
     <div className="flex items-center gap-2">
       <label htmlFor={profileId} className="font-mono text-2xs uppercase text-ink-faint">Format profile</label>
-      <select id={profileId} value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+      <select id={profileId} value={book.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent-text)" }}>
         {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
       </select>
     </div>
@@ -599,7 +599,7 @@ function DeleteButton({ book }: { book: Book }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)} className="rounded-lg px-3 py-2 text-base font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
+      <button onClick={() => setOpen(true)} className="rounded-lg px-3 py-2 text-base font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Delete</button>
       {open && <DeleteBookDialog book={book} onClose={() => setOpen(false)} onDeleted={() => { window.location.href = "/books"; }} />}
     </>
   );
@@ -663,7 +663,7 @@ function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: ()
           )}
           <label className="block"><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></label>
         </div>
-        {err && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{err}</p>}
+        {err && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{err}</p>}
     </Modal>
   );
 }
@@ -676,15 +676,15 @@ const EVENT_LABELS: Record<string, string> = {
 
 const EVENT_TONES: Record<string, string> = {
   added: "var(--ink-faint)",
-  grabbed: "var(--accent)",
-  imported: "var(--good)",
-  merged: "var(--good)",
-  possible_duplicate: "var(--accent)",
-  matched: "var(--accent)",
+  grabbed: "var(--accent-text)",
+  imported: "var(--good-text)",
+  merged: "var(--good-text)",
+  possible_duplicate: "var(--accent-text)",
+  matched: "var(--accent-text)",
   edited: "var(--ink-dim)",
   renamed: "var(--ink-dim)",
-  deleted: "var(--reject)",
-  failed: "var(--reject)",
+  deleted: "var(--reject-text)",
+  failed: "var(--reject-text)",
 };
 
 function fmtEventTime(s: string): string {
@@ -777,7 +777,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
           <Button type="submit" variant="primary" busy={searching} busyLabel="Searching…" className="disabled:opacity-50">Search</Button>
         </form>
 
-        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
 
         {results === null ? (
           <div className="p-4 text-center text-base text-ink-dim">Searching…</div>
@@ -801,7 +801,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
                   {current ? (
                     <span className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>Current</span>
                   ) : (
-                    <button disabled={saving !== null} onClick={() => choose(r)} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}>
+                    <button disabled={saving !== null} onClick={() => choose(r)} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent)", color: "var(--accent-text)" }}>
                       {saving === r.key ? "Matching…" : "Use this"}
                     </button>
                   )}
@@ -861,7 +861,7 @@ function SeriesPanel({ bookID }: { bookID: number }) {
             {catalogue && series.total ? `${series.total} books · ` : ""}{series.gaps > 0 ? `${series.gaps} missing from your library` : "complete"}
           </span>
           {catalogue && series.gaps > 0 && (
-            <button onClick={addAll} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+            <button onClick={addAll} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>
               {busy === "all" ? "Adding…" : `Add all ${series.gaps} missing`}
             </button>
           )}
@@ -877,18 +877,18 @@ function SeriesPanel({ bookID }: { bookID: number }) {
             {e.missing && e.key ? (
               <>
                 <span className="min-w-0 truncate" style={{ color: "var(--ink-dim)" }}>{e.title}{e.year ? <span className="font-mono text-xs text-ink-faint"> {e.year}</span> : null}</span>
-                <button onClick={() => addOne(e)} disabled={busy !== null} className="ml-auto flex-none rounded-md px-2 py-0.5 text-xs font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+                <button onClick={() => addOne(e)} disabled={busy !== null} className="ml-auto flex-none rounded-md px-2 py-0.5 text-xs font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
                   {busy === e.key ? "Adding…" : "Add"}
                 </button>
               </>
             ) : e.missing ? (
-              <span style={{ color: "var(--avoid)" }}>Not in your library</span>
+              <span style={{ color: "var(--avoid-text)" }}>Not in your library</span>
             ) : (
               <>
-                <Link to={`/books/${e.book_id}`} style={{ color: e.book_id === bookID ? "var(--accent)" : "var(--ink)" }}>
+                <Link to={`/books/${e.book_id}`} style={{ color: e.book_id === bookID ? "var(--accent-text)" : "var(--ink)" }}>
                   {e.title}
                 </Link>
-                <span className="font-mono text-xs" style={{ color: e.has_file ? "var(--good)" : "var(--ink-faint)" }}>
+                <span className="font-mono text-xs" style={{ color: e.has_file ? "var(--good-text)" : "var(--ink-faint)" }}>
                   {e.has_file ? "downloaded" : "wanted"}
                 </span>
               </>

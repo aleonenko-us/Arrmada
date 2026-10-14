@@ -23,14 +23,14 @@ export function SavedTick({ save, className = "" }: { save: Saveish; className?:
   return (
     <span aria-live="polite" className="min-h-[1em]">
       {save.status === "saving" && <span className={`${base} text-ink-faint`}>Saving…</span>}
-      {save.status === "saved" && <span className={base} style={{ color: "var(--good)" }}>Saved ✓</span>}
+      {save.status === "saved" && <span className={base} style={{ color: "var(--good-text)" }}>Saved ✓</span>}
       {save.status === "error" && (
         <span role="alert" className={base} style={{ color: "var(--reject-text, var(--reject))" }}>
           {save.error}
           {save.canRetry && (
             <>
               {" "}
-              <button type="button" onClick={save.retry} className="font-semibold underline" style={{ color: "var(--accent)" }}>Retry</button>
+              <button type="button" onClick={save.retry} className="font-semibold underline" style={{ color: "var(--accent-text)" }}>Retry</button>
             </>
           )}
         </span>

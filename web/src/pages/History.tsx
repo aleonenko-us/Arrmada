@@ -52,7 +52,7 @@ export function HistoryPanel() {
   const pill = (on: boolean) => ({
     border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
     background: on ? "var(--accent-soft)" : "var(--panel)",
-    color: on ? "var(--accent)" : "var(--ink-faint)",
+    color: on ? "var(--accent-text)" : "var(--ink-faint)",
   });
   const kinds = HISTORY_KINDS.filter((k) => k.key !== "music" || musicEnabled);
 

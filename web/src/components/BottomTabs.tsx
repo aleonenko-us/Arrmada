@@ -41,7 +41,7 @@ export function BottomTabs({ items }: { items: RequesterNavItem[] }) {
           key={t.key}
           to={t.to}
           className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold"
-          style={({ isActive }) => ({ color: isActive ? "var(--accent)" : "var(--ink-dim)" })}
+          style={({ isActive }) => ({ color: isActive ? "var(--accent-text)" : "var(--ink-dim)" })}
         >
           {({ isActive }) => (
             <>

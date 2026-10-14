@@ -152,7 +152,7 @@ export default function DuplicatesModal({ onClose, onChanged }: { onClose: () =>
                   </span>
                   {m.automatic && m.lost_title && (
                     <Link to={`/discover?tab=books&q=${encodeURIComponent(m.lost_title)}`} onClick={onClose}
-                      className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Find on Discover</Link>
+                      className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Find on Discover</Link>
                   )}
                 </li>
               ))}

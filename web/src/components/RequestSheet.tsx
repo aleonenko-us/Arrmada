@@ -206,7 +206,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
           </div>
         )}
 
-        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           {staff && pending && (

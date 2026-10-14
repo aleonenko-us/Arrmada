@@ -65,7 +65,7 @@ export function CollectionSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
           <div className="absolute inset-0" style={{ background: "linear-gradient(to top, var(--panel) 4%, transparent 78%)" }} />
           <div className="absolute inset-x-5 bottom-3 sm:inset-x-6">
             <h2 className="m-0 text-2xl font-bold leading-tight sm:text-3xl">{c?.name || <span className="text-ink-faint">Loading…</span>}</h2>
-            {c && <div className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>{c.owned} of {c.total} in the library</div>}
+            {c && <div className="mt-1 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>{c.owned} of {c.total} in the library</div>}
           </div>
         </div>
         <div className="px-5 pb-6 pt-3 sm:px-6">

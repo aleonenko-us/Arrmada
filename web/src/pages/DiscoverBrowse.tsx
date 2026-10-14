@@ -126,11 +126,11 @@ function Grid({ state, ctx, empty }: { state: ReturnType<typeof useInfinite>; ct
       {error && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <LoadError message={error} />
-          <button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Try again</button>
+          <button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Try again</button>
         </div>
       )}
       {stalled && hasMore && !loading && !error && (
-        <div className="mt-4 text-center"><button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Load more</button></div>
+        <div className="mt-4 text-center"><button onClick={retry} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Load more</button></div>
       )}
       {!hasMore && items.length > 20 && <div className="mt-6 text-center text-sm text-ink-faint">That’s everything.</div>}
       <div ref={sentinel} aria-hidden className="h-px" />
@@ -169,7 +169,7 @@ export function SearchResults({ query, ctx }: { query: string; ctx: RowCtx }) {
   );
 }
 
-const chip = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" });
+const chip = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" });
 const field = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
 
 // DiscoverBrowse is /discover/browse: a filter bar over an infinite grid, all its state
@@ -233,7 +233,7 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button onClick={back} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>← Discover</button>
+        <button onClick={back} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>← Discover</button>
         <h2 className="m-0 min-w-0 flex-1 text-xl font-bold">{title}</h2>
       </div>
 
@@ -259,7 +259,7 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
           </select>
           <YearRange from={params.get("year_from") ?? ""} to={params.get("year_to") ?? ""} onChange={(from, to) => set({ year_from: from || null, year_to: to || null })} />
           {filtered && (
-            <button onClick={() => setParams({ media: media === "all" ? "movie" : media }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent)" }}>Clear filters</button>
+            <button onClick={() => setParams({ media: media === "all" ? "movie" : media }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
           )}
         </div>
         {genreList.length > 0 && (

@@ -37,7 +37,7 @@ export function AudiobookshelfImport() {
       <div>
         <input type="file" aria-label="Audiobookshelf database" accept=".sqlite,.db,application/octet-stream" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} className="max-w-full text-sm" />
       </div>
-      {error && <div role="alert" className="text-base" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="text-base" style={{ color: "var(--reject-text)" }}>{error}</div>}
       {busy && <div className="text-base text-ink-dim">Working…</div>}
       {preview && (
         <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>

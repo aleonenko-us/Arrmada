@@ -33,7 +33,7 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
         const to = fixLink(it);
         const label = (
           <>
-            <span aria-hidden className="w-4 flex-none text-center font-semibold" style={{ color: it.done ? "var(--good)" : "var(--ink-faint)" }}>{it.done ? "✓" : "○"}</span>
+            <span aria-hidden className="w-4 flex-none text-center font-semibold" style={{ color: it.done ? "var(--good-text)" : "var(--ink-faint)" }}>{it.done ? "✓" : "○"}</span>
             <span className={it.done ? "text-ink-dim line-through decoration-[var(--ink-faint)]" : ""}>{it.label}</span>
             <span className="sr-only">{it.done ? " (done)" : " (to do)"}</span>
           </>
@@ -48,7 +48,7 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
                 style={{ color: "var(--ink)" }}
               >
                 {label}
-                {!it.done && <span aria-hidden className="ml-auto text-sm font-semibold" style={{ color: "var(--accent)" }}>→</span>}
+                {!it.done && <span aria-hidden className="ml-auto text-sm font-semibold" style={{ color: "var(--accent-text)" }}>→</span>}
               </Link>
             ) : (
               <div className="flex items-center gap-2.5 px-2 py-1.5 text-base">{label}</div>

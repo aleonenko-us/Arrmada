@@ -97,7 +97,7 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
       <p className="mt-3 text-xs text-ink-faint">
         Points at your qBittorrent WebUI as the Arrmada container reaches it: its container name or your server’s IP. localhost here means the Arrmada container itself, not your server. Credentials are stored on your server.
       </p>
-      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mt-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
       <button
         type="submit"
         disabled={saving}
@@ -125,7 +125,7 @@ export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadC
     <div className="mt-1 flex flex-col gap-1">
       {port > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <span className="rounded px-1.5 py-0.5 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             incoming port {port}
           </span>
           <span className="text-ink-faint">forward TCP + UDP on your router to seed properly</span>

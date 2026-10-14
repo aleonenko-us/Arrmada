@@ -44,7 +44,7 @@ export function DeleteBookDialog({ book, onClose, onDeleted }: {
         <label className="flex items-start gap-2.5 rounded-lg p-3 text-base" style={{ border: `1px solid ${deleteFiles ? "var(--reject)" : "var(--line)"}`, background: deleteFiles ? "var(--reject-soft)" : "var(--panel-2)", cursor: hasFiles ? "pointer" : "default", opacity: hasFiles ? 1 : 0.6 }}>
           <input type="checkbox" checked={deleteFiles} disabled={!hasFiles || busy} onChange={(e) => { setDeleteFiles(e.target.checked); setErr(null); }} className="mt-0.5" />
           <span>
-            <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject)" : "var(--ink)" }}>Also delete files from disk</span>
+            <span className="font-semibold" style={{ color: deleteFiles ? "var(--reject-text)" : "var(--ink)" }}>Also delete files from disk</span>
             <span className="mt-0.5 block text-xs text-ink-faint">{filesHint}</span>
           </span>
         </label>

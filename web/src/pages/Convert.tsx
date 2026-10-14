@@ -156,7 +156,7 @@ function ConvertPage() {
           <p className="max-w-[66ch] text-base text-ink-dim">
             Makes your library smaller at a quality checked against the original. Wasteful video is re-encoded to HEVC
             {settings?.allow_av1 ? " or AV1 (whichever is smaller at the same quality)" : ""} during your hours.
-            Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent)" }}>Convert's settings</Link> are removed.
+            Audio is never re-encoded: Atmos, TrueHD and DTS-HD pass through, and tracks you filter out in <Link to={LINKS.convertSettings} style={{ color: "var(--accent-text)" }}>Convert's settings</Link> are removed.
             HDR10, HDR10+ and HLG are kept; {settings?.dolby_vision === "skip"
               ? "Dolby Vision files are left alone, as you chose"
               : settings?.dolby_vision === "keep"
@@ -227,7 +227,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: STATUS_TONE[status.state] }} />
             <span className="text-md font-semibold">{status.message}</span>
             {status.state === "done" && (status.problems ?? 0) > 0 && (
-              <button onClick={onShowProblems} className="text-sm font-semibold underline" style={{ color: "var(--avoid)" }}>Open Problems</button>
+              <button onClick={onShowProblems} className="text-sm font-semibold underline" style={{ color: "var(--avoid-text)" }}>Open Problems</button>
             )}
           </div>
           <span className="text-sm text-ink-faint">
@@ -238,7 +238,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           {(backlog || loss) && (
             <div className="flex w-full flex-wrap gap-x-3 gap-y-1 text-sm">
               {backlog && <span className="text-ink-dim" title="Estimated from this machine's own conversion speed; pauses while someone watches Plex aren't counted">{backlog}</span>}
-              {loss && <span role="status" style={{ color: "var(--avoid)" }}>⚠ {loss}</span>}
+              {loss && <span role="status" style={{ color: "var(--avoid-text)" }}>⚠ {loss}</span>}
             </div>
           )}
         </div>
@@ -257,10 +257,10 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           </div>
           <HeldSummary hold={hw?.hold} flash={flash} onChanged={onChanged} />
           <div className="mt-3 border-t pt-3 text-sm text-ink-dim" style={{ borderColor: "var(--line-soft)" }}>
-            <span style={{ color: "var(--good)" }}>~{fmtSize(t?.reclaimable)}</span> more to save ·{" "}
+            <span style={{ color: "var(--good-text)" }}>~{fmtSize(t?.reclaimable)}</span> more to save ·{" "}
             <b style={{ color: "var(--ink)" }}>{(t?.convertible ?? 0).toLocaleString()}</b> of {n.toLocaleString()} files worth converting
             {(t?.skipped ?? 0) > 0 && (
-              <button onClick={onShowProblems} className="mt-1 block text-left text-xs underline" style={{ color: "var(--avoid)" }}>
+              <button onClick={onShowProblems} className="mt-1 block text-left text-xs underline" style={{ color: "var(--avoid-text)" }}>
                 {t!.skipped.toLocaleString()} file{t!.skipped === 1 ? "" : "s"} can&rsquo;t be converted — see Problems
               </button>
             )}
@@ -308,7 +308,7 @@ function Overview({ status, jobs, stats, hw, originals, flash, onChanged, onResc
           <div className="mt-2 flex flex-col gap-1.5">
             {status.requests.map((r) => (
               <div key={r.key} className="flex items-center gap-2.5 text-sm">
-                <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>requested</span>
+                <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>requested</span>
                 <span className="flex-1 truncate font-semibold">{r.title}</span>
                 <button onClick={() => cancelRequest(r.key)} aria-label={`Remove ${r.title}`} className="rounded px-1.5 py-0.5 font-mono text-xs text-ink-faint hover:text-[var(--avoid)]">✕</button>
               </div>
@@ -350,10 +350,10 @@ function JobBar({ j, onCancel }: { j: ConvertJob; onCancel?: () => void }) {
           <span className="ml-1.5 rounded-full px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>
             {j.codec ? `→ ${j.codec.toUpperCase()} · ` : ""}{j.encoder}
           </span>
-          {j.requested && <span className="ml-1 rounded-full px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>requested</span>}
+          {j.requested && <span className="ml-1 rounded-full px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>requested</span>}
         </span>
         <span className="flex items-center gap-2 font-mono tabular-nums text-ink-dim">
-          {j.paused ? <span style={{ color: "var(--avoid)" }}>paused — {j.paused}</span>
+          {j.paused ? <span style={{ color: "var(--avoid-text)" }}>paused — {j.paused}</span>
             : encoding ? `${pct.toFixed(1)}%${eta > 0 ? ` · ${fmtEta(eta)} left` : ""}`
             : STATE_LABEL[j.state] ?? j.state}
           {onCancel && <button onClick={onCancel} aria-label={`Cancel ${j.title}`} title="Stop — the original is untouched until a conversion completes"
@@ -389,13 +389,13 @@ function Saves({ bytes, of, faint, measured }: { bytes: number; of: number; fain
   const pct = of > 0 ? Math.round((bytes / of) * 100) : 0;
   return (
     <span className="inline-flex flex-col leading-tight">
-      <span style={{ color: faint ? "var(--ink-faint)" : "var(--good)" }}>
+      <span style={{ color: faint ? "var(--ink-faint)" : "var(--good-text)" }}>
         −{fmtSize(bytes)} <span className="text-xs opacity-80">({pct}%)</span>
       </span>
       {of > 0 && (
         <span className="text-xs text-ink-faint">
           → ~{fmtSize(of - bytes)} after
-          {measured && <span className="ml-1 rounded px-1 font-semibold" style={{ color: "var(--good)", border: "1px solid var(--good)" }} title="Measured by a test encode of this file at the real settings — not the estimate">measured</span>}
+          {measured && <span className="ml-1 rounded px-1 font-semibold" style={{ color: "var(--good-text)", border: "1px solid var(--good)" }} title="Measured by a test encode of this file at the real settings — not the estimate">measured</span>}
         </span>
       )}
     </span>
@@ -405,7 +405,7 @@ function Saves({ bytes, of, faint, measured }: { bytes: number; of: number; fain
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
-      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+      style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
       {children}
     </button>
   );
@@ -422,7 +422,7 @@ function VersionChip({ label }: { label?: string }) {
 
 function NeedTag({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title={title}>
+    <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }} title={title}>
       {children}
     </span>
   );
@@ -600,7 +600,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
         </label>
       </div>
 
-      {loadErr && <div role="status" className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>Couldn't load the library — this is an error, not an empty library.</div>}
+      {loadErr && <div role="status" className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>Couldn't load the library — this is an error, not an empty library.</div>}
 
       {media === "tv" && !show ? (
         shows === null ? <Empty>Loading your shows…</Empty> : shows.length === 0 ? <Empty>No downloaded episodes yet.</Empty> : (
@@ -615,7 +615,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                       <td className="px-3 py-2 font-semibold"><button onClick={() => setShow(sh)} className="flex items-center gap-2 text-left hover:underline"><Poster url={sh.poster_url} title={sh.title} /><span>{sh.title} <span className="font-normal text-ink-faint">{sh.year || ""}</span></span></button></td>
                       <td className="px-3 py-2 font-mono tabular-nums text-ink-dim">{sh.files.toLocaleString()}</td>
                       <td className="px-3 py-2 font-mono tabular-nums">
-                        {done ? <span className="text-ink-faint">none</span> : <span style={{ color: "var(--avoid)" }}>{sh.convertible.toLocaleString()}</span>}
+                        {done ? <span className="text-ink-faint">none</span> : <span style={{ color: "var(--avoid-text)" }}>{sh.convertible.toLocaleString()}</span>}
                         {sh.reencode > 0 && sh.reencode < sh.convertible && <span className="ml-1.5 text-xs text-ink-faint">{sh.reencode} re-encode</span>}
                         {sh.tidy_only > 0 && <span className="ml-1.5 text-xs text-ink-faint" title="Only their tracks differ, and tidying them would free little — done when they're re-encoded, or with Fix tracks">+{sh.tidy_only} tracks only</span>}
                       </td>
@@ -624,7 +624,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1.5">
                           <button onClick={() => setShow(sh)} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Episodes</button>
-                          {!done && <button onClick={() => convertBulk(sh.series_id, undefined, sh.title)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Convert now</button>}
+                          {!done && <button onClick={() => convertBulk(sh.series_id, undefined, sh.title)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Convert now</button>}
                         </div>
                       </td>
                     </tr>
@@ -645,7 +645,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
               <div className="flex flex-wrap items-center gap-1.5">
                 {seasons.map((n) => (
                   <button key={n} onClick={() => convertBulk(show.series_id, n, `${show.title} season ${n}`)} disabled={busy !== null}
-                    className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+                    className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>
                     {`Convert S${n}`}
                   </button>
                 ))}
@@ -684,7 +684,7 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">
-                          <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: c.needs?.video ? "var(--avoid-soft)" : "var(--good-soft, rgba(127,176,105,.16))", color: c.needs?.video ? "var(--avoid)" : "var(--good)" }} title={c.needs?.why}>{cd}</span>
+                          <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: c.needs?.video ? "var(--avoid-soft)" : "var(--good-soft, rgba(127,176,105,.16))", color: c.needs?.video ? "var(--avoid-text)" : "var(--good-text)" }} title={c.needs?.why}>{cd}</span>
                           {(c.needs?.subs || c.needs?.audio) && <NeedTag title={c.tracks}>tracks</NeedTag>}
                         </div>
                       </td>
@@ -697,13 +697,13 @@ function Library({ flash, onRequested, onRescan, onCompare, running, reload, ori
                         {c.candidate && !c.needs?.video && <span className="ml-1 text-xs text-ink-faint">tracks</span>}
                       </td>
                       <td className="px-3 py-2">
-                        {isRunning ? <div className="text-right"><span className="font-mono text-xs" style={{ color: "var(--accent)" }}>converting…</span></div>
+                        {isRunning ? <div className="text-right"><span className="font-mono text-xs" style={{ color: "var(--accent-text)" }}>converting…</span></div>
                           : c.candidate ? (
                           <div className="flex items-center justify-end gap-1.5">
                             {!c.worth && <span className="font-mono text-xs text-ink-faint" title="Only the tracks differ, and tidying them would free little. Done when it's re-encoded, or now with Fix tracks.">little to gain</span>}
                             {c.needs?.video && <button onClick={() => onCompare(c.key)} title="Encode a few clips as HEVC and AV1, compare size and quality, and keep the clips to watch" className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Compare</button>}
-                            {requested.has(c.key) ? <span className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good)" }}>Next ✓</span>
-                              : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
+                            {requested.has(c.key) ? <span className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--good)", color: "var(--good-text)" }}>Next ✓</span>
+                              : <button onClick={() => convert(c)} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={c.worth ? { border: "1px solid var(--accent-line)", color: "var(--accent-text)" } : { border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{c.needs?.video ? "Convert now" : "Fix tracks"}</button>}
                           </div>
                         ) : (
                           <div className="flex items-center justify-end gap-1.5">
@@ -750,7 +750,7 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
   const r = st?.result && st.key === itemKey ? st.result : null;
   const side = (s: { codec: string; encoder: string; bytes: number; ssim: number; est_bytes: number }, win: boolean) => (
     <div className="flex-1 rounded-lg p-3" style={{ border: `1.5px solid ${win ? "var(--good)" : "var(--line)"}`, background: "var(--panel-2)" }}>
-      <div className="flex items-center justify-between"><span className="text-md font-bold">{s.codec.toUpperCase()}</span>{win && <span className="font-mono text-xs font-bold" style={{ color: "var(--good)" }}>CHOSEN</span>}</div>
+      <div className="flex items-center justify-between"><span className="text-md font-bold">{s.codec.toUpperCase()}</span>{win && <span className="font-mono text-xs font-bold" style={{ color: "var(--good-text)" }}>CHOSEN</span>}</div>
       <div className="mt-1 text-xs text-ink-faint">{s.encoder}</div>
       <div className="mt-2 font-mono text-sm">~{fmtSize(s.est_bytes)} <span className="text-ink-faint">whole file (video)</span></div>
       <div className="font-mono text-sm">SSIM {s.ssim ? s.ssim.toFixed(4) : "—"}</div>
@@ -764,7 +764,7 @@ function CompareModal({ itemKey, onClose, flash }: { itemKey: string; onClose: (
           (longer for 4K). You can close this — it keeps going, and the result shows here when you open Compare again.
         </p>
       )}
-      {st?.error && st.key === itemKey && <p className="mt-2 text-base" style={{ color: "var(--reject)" }}>{st.error}</p>}
+      {st?.error && st.key === itemKey && <p className="mt-2 text-base" style={{ color: "var(--reject-text)" }}>{st.error}</p>}
       {r && (
         <>
           <div className="mt-3 flex gap-2.5">{side(r.hevc, r.pick === "hevc")}{side(r.av1, r.pick === "av1")}</div>
@@ -880,9 +880,9 @@ function Problems({ flash }: { flash: (m: string) => void }) {
           <div className="mt-2.5 flex flex-col gap-1.5">
             {blocked.map((b) => (
               <div key={b.key} className="flex items-start gap-2.5 text-sm">
-                <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{b.count}×</span>
+                <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{b.count}×</span>
                 <div className="min-w-0 flex-1"><div className="font-semibold">{b.title}</div>{b.last_error && <div className="text-xs leading-snug text-ink-faint">{b.last_error}</div>}</div>
-                <button onClick={() => retryBlocked(b.key)} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Retry</button>
+                <button onClick={() => retryBlocked(b.key)} disabled={busy !== null} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Retry</button>
               </div>
             ))}
           </div>

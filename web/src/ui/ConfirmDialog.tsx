@@ -52,7 +52,7 @@ export function ConfirmDialog<V extends string = string>({
   const phraseOK = !typedPhrase || typed === typedPhrase;
   const canConfirm = phraseOK && !busy && !confirmDisabled;
   const solid = tone === "danger" ? "var(--reject)" : "linear-gradient(150deg, var(--accent), var(--accent-deep))";
-  const solidInk = tone === "danger" ? "#fff" : "var(--accent-ink)";
+  const solidInk = "var(--accent-ink)";
 
   // The shared Modal does the dialog plumbing (portal, focus trap, Escape, scroll
   // lock); while busy, Escape and the backdrop do nothing so a delete in flight
@@ -98,7 +98,7 @@ export function ConfirmDialog<V extends string = string>({
         </label>
       )}
 
-      {error && <div role="alert" className="mt-3 whitespace-pre-line rounded-lg p-2.5 text-sm" style={{ color: "var(--reject)", background: "var(--reject-soft)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-3 whitespace-pre-line rounded-lg p-2.5 text-sm" style={{ color: "var(--reject-text)", background: "var(--reject-soft)" }}>{error}</div>}
 
       <div className="mt-4 flex justify-end gap-2.5">
         <button ref={cancelRef} onClick={onCancel} disabled={busy} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{cancelLabel}</button>

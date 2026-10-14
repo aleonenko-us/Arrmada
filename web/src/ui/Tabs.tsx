@@ -115,7 +115,7 @@ export function Tabs<T extends string>({
             {t.count !== undefined && (
               <span
                 className="ml-1.5 rounded px-1.5 py-0.5 font-mono text-xs"
-                style={{ background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-faint)" }}
+                style={{ background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent-text)" : "var(--ink-faint)" }}
               >
                 {t.count}
               </span>

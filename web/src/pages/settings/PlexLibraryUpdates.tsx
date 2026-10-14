@@ -45,7 +45,7 @@ function RootLine({ r, busy, onTest }: { r: PlexScanRoot; busy: string; onTest: 
         {r.how && r.how !== "none" && (
           <>
             <span className="text-ink-faint">→</span>
-            <span className="font-mono text-sm" style={{ color: "var(--accent)" }}>{target ?? "the whole library"}</span>
+            <span className="font-mono text-sm" style={{ color: "var(--accent-text)" }}>{target ?? "the whole library"}</span>
             <span className="text-ink-faint">
               · {r.sections.length === 1 ? "section" : "sections"} {r.sections.join(", ")} ({howLabel(r)})
             </span>
@@ -130,7 +130,7 @@ export function PlexLibraryUpdates() {
     >
       {!view.configured && (
         <Note tone="info">
-          Connect your Plex server first, on its <Link to={LINKS.plexConnection} style={{ color: "var(--accent)" }}>card in Settings → Connections</Link>. Until then nothing is sent.
+          Connect your Plex server first, on its <Link to={LINKS.plexConnection} style={{ color: "var(--accent-text)" }}>card in Settings → Connections</Link>. Until then nothing is sent.
         </Note>
       )}
       <AutoToggle

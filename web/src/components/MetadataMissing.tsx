@@ -22,7 +22,7 @@ export function MetadataMissing({ variant }: { variant: "banner" | "empty" }) {
 
   if (variant === "banner") {
     return (
-      <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid)" }}>
+      <div className="mb-4 rounded-lg p-3.5 text-base" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
         {text}
       </div>
     );

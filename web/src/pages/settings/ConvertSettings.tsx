@@ -196,7 +196,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
               <span className="text-ink-faint">to</span>
               <input type="time" aria-label="End" value={hours.value.hours_end} onChange={(e) => hours.set({ ...hours.value, hours_end: e.target.value })} onBlur={() => void hours.commit()} className={inp} style={hours.status === "error" ? errStyle : inpStyle} />
             </span>
-            <span className={`text-xs ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid)" } : undefined}>
+            <span className={`text-xs ${clockSkewed ? "" : "text-ink-faint"}`} style={clockSkewed ? { color: "var(--avoid-text)" } : undefined}>
               {clockSkewed ? "⚠ " : ""}Read on the server's clock: {s.server_time} {s.server_tz}{clockSkewed ? ` — yours says ${browserTime}. Set TZ in your .env and recreate the container (docker compose up -d).` : "."}
             </span>
             {backlogSec > 0 && hours.value.hours_start && hours.value.hours_end && (
@@ -207,7 +207,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </div>
         )}
         <Toggle save={pause} label="Pause while someone is watching Plex"
-          hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
+          hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
       </Section>
 
       <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. HDR10, HDR10+ and HLG are kept.">
@@ -242,7 +242,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
         )}
         <Toggle save={crop} label="Remove black bars"
           hint="Widescreen films are encoded without the black bars above and below (or beside) the picture. The picture and its shape stay exactly the same and your TV letterboxes it as before. Files come out slightly smaller, and the quality check judges the picture alone instead of counting the bars as a perfect match. The film is checked about every 25 seconds (40 to 400 places): only what's black in every one of those frames is removed, and if any of them shows a different shape (IMAX or open-matte scenes) the film keeps its full frame. A wider shot shorter than the gap between checks could still be trimmed, which is why this is off unless you turn it on. Files that keep image subtitles keep their bars too — those subtitles are placed on the full frame." />
-        {!s.hdr10plus_tool && <p className="text-xs" style={{ color: "var(--avoid)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
+        {!s.hdr10plus_tool && <p className="text-xs" style={{ color: "var(--avoid-text)" }}>hdr10plus_tool isn't installed, so HDR10 files in HEVC are left alone (their HDR10+ couldn't be checked).</p>}
         <DevicesPanel data={devices} />
       </Section>
 
@@ -275,7 +275,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
             <span className="text-ink-faint">days</span>
           </span>
         </Field>
-        {holdDays.value.trim() === "0" && <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
+        {holdDays.value.trim() === "0" && <p className="m-0 text-sm" style={{ color: "var(--avoid-text)" }}>Originals are deleted once the conversion is verified — there is no undo.</p>}
         <Field label="Hold up to" hint="GB · when the next original wouldn't fit, conversions pause until one is released — nothing is deleted to make room · 0 = no limit" save={holdMax}>
           <span className="flex items-center gap-1.5 text-sm">
             <input aria-label="Hold up to (GB)" inputMode="numeric" className={`${inp} w-[90px]`} {...textProps(holdMax)} onChange={(e) => holdMax.set(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))} />
@@ -288,9 +288,9 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
               <div key={c.root} className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-semibold">{c.label}</span>
                 <span className="font-mono text-xs text-ink-faint">{c.root}</span>
-                {c.err ? <span style={{ color: "var(--reject)" }}>✗ {c.err}</span>
-                  : c.instant ? <span style={{ color: "var(--good)" }}>instant move ✓</span>
-                  : <span style={{ color: "var(--avoid)" }}>would copy ⚠ — this folder spans more than one disk, so keeping an original is a full copy</span>}
+                {c.err ? <span style={{ color: "var(--reject-text)" }}>✗ {c.err}</span>
+                  : c.instant ? <span style={{ color: "var(--good-text)" }}>instant move ✓</span>
+                  : <span style={{ color: "var(--avoid-text)" }}>would copy ⚠ — this folder spans more than one disk, so keeping an original is a full copy</span>}
               </div>
             ))}
           </div>
@@ -322,7 +322,7 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
           </Field>
           {/* Green only when the biggest of the next files fits: one 4K remux can need ~90 GB,
               so a fixed threshold said "fine" right before a file failed for space. */}
-          {hw && <div className="text-xs text-ink-faint">Using <span className="font-mono text-ink-dim">{hw.dir}</span> · <b style={{ color: hw.free >= hw.need ? "var(--good)" : "var(--avoid)" }}>{fmtBytes(hw.free)}</b> free{hw.need > 0 && <> · largest of the next 20 files{hw.needTitle ? <> (“{hw.needTitle}”)</> : null} needs ~{fmtBytes(hw.need)}</>}</div>}
+          {hw && <div className="text-xs text-ink-faint">Using <span className="font-mono text-ink-dim">{hw.dir}</span> · <b style={{ color: hw.free >= hw.need ? "var(--good-text)" : "var(--avoid-text)" }}>{fmtBytes(hw.free)}</b> free{hw.need > 0 && <> · largest of the next 20 files{hw.needTitle ? <> (“{hw.needTitle}”)</> : null} needs ~{fmtBytes(hw.need)}</>}</div>}
           {hw && hw.devices.length > 1 && (
             <Field label="GPU device" hint="The discrete card is usually the higher renderD number" save={vaapi}>
               <select aria-label="GPU device" value={vaapi.value} onChange={(e) => void vaapi.commit(e.target.value)} className={`${inp} w-[280px]`} style={inpStyle}>
@@ -416,7 +416,7 @@ function KeepSubsChoice({ save, input }: { save: AutoSave<string>; input: ReactN
         These languages
       </label>
       {follows
-        ? <span className="ml-6 text-xs text-ink-faint">Change them under <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Subtitles → Kept languages</Link>.</span>
+        ? <span className="ml-6 text-xs text-ink-faint">Change them under <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent-text)" }}>Subtitles → Kept languages</Link>.</span>
         : <span className="ml-6 flex flex-wrap items-center gap-2">{input}<span className="text-xs text-ink-faint">comma-separated, e.g. en · blank = keep every language</span></span>}
     </div>
   );

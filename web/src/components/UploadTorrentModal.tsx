@@ -88,7 +88,7 @@ export function UploadTorrentModal({
           <div className="mt-0.5 text-xs text-ink-faint">{busy && !preview ? "Reading…" : "Click to browse, or drag a .torrent here"}</div>
         </div>
 
-        {error && <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
         {preview && (
           <div className="mt-3 rounded-lg p-3" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
@@ -107,7 +107,7 @@ export function UploadTorrentModal({
             )}
             <div className="mt-3 flex items-center gap-3">
               {grabbed ? (
-                <span className="text-base font-semibold" style={{ color: "var(--good)" }}>✓ Grabbed — follow it in Activity → Queue.</span>
+                <span className="text-base font-semibold" style={{ color: "var(--good-text)" }}>✓ Grabbed — follow it in Activity → Queue.</span>
               ) : (
                 <>
                   {targets && targets.length > 0 && (

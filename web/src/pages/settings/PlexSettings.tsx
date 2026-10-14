@@ -52,10 +52,10 @@ function PlexPage({ admin }: { admin: boolean }) {
 }
 
 const STATUS_LINE: Record<PlexStatus, { text: string; color: string }> = {
-  unconfigured: { text: "Not connected", color: "var(--avoid)" },
-  off: { text: "Connected · watch monitoring is off", color: "var(--avoid)" },
-  recording: { text: "Connected · recording what's watched", color: "var(--good)" },
-  unreachable: { text: "Plex isn't answering", color: "var(--reject)" },
+  unconfigured: { text: "Not connected", color: "var(--avoid-text)" },
+  off: { text: "Connected · watch monitoring is off", color: "var(--avoid-text)" },
+  recording: { text: "Connected · recording what's watched", color: "var(--good-text)" },
+  unreachable: { text: "Plex isn't answering", color: "var(--reject-text)" },
 };
 
 // PlexServer says which server Arrmada is connected to and how it's doing, and sends you
@@ -66,7 +66,7 @@ function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }
   return (
     <Section id="plex-server" title="Plex server" subtitle="Insights records what's watched from it, library updates go to it, and Plex sign-in checks people against it. The connection itself — Sign in with Plex, the address and token, Test — is the Plex card in Settings → Connections.">
       {!cfg ? (
-        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the Plex connection: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
+        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the Plex connection: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
       ) : (
         <div className="flex flex-col gap-2">
           {connected && (
@@ -84,7 +84,7 @@ function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }
           )}
           <div>
             {connected ? (
-              <Link to={LINKS.plexConnection} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Change the connection →</Link>
+              <Link to={LINKS.plexConnection} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Change the connection →</Link>
             ) : (
               <Link to={LINKS.plexConnection} className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Connect your Plex server →</Link>
             )}
@@ -148,7 +148,7 @@ function PlexAccounts() {
   return (
     <Section id="plex-accounts" title="Linked Plex accounts" subtitle="Who signs in with which Plex account. A Plex sign-in opens the Arrmada account linked to it; Discover also uses that person's Plex watch history.">
       {people === null ? (
-        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the accounts: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
+        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the accounts: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
       ) : linked.length === 0 ? (
         <p className="m-0 text-sm text-ink-dim">No account is linked to Plex yet. Someone's first Sign in with Plex links one, and anyone can link their own Plex account themselves.</p>
       ) : (
@@ -160,7 +160,7 @@ function PlexAccounts() {
               </span>
               <span className="min-w-0 truncate text-sm text-ink-dim">Plex · {p.plex_username || "linked"}</span>
               <span className="text-xs text-ink-faint">{ROLES.find((r) => r.value === p.role)?.label ?? p.role}</span>
-              {p.plex_blocked && <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>blocked</span>}
+              {p.plex_blocked && <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>blocked</span>}
               {p.id !== user?.id && (
                 <Button size="sm" busy={busy === p.id} busyLabel="Unlinking…" disabled={busy !== null} onClick={() => void unlink(p)} aria-label={`Unlink ${p.username}'s Plex account`}>Unlink</Button>
               )}
@@ -169,7 +169,7 @@ function PlexAccounts() {
         </ul>
       )}
       <p className="m-0 text-xs text-ink-faint">
-        To block a Plex account from signing in, or merge a duplicate Plex sign-in into the right account, use More on their row in <Link to={LINKS.users} style={{ color: "var(--accent)" }}>Settings → People &amp; access</Link>. Your own Plex link is in the sidebar.
+        To block a Plex account from signing in, or merge a duplicate Plex sign-in into the right account, use More on their row in <Link to={LINKS.users} style={{ color: "var(--accent-text)" }}>Settings → People &amp; access</Link>. Your own Plex link is in the sidebar.
       </p>
     </Section>
   );
@@ -181,7 +181,7 @@ function PlexTautulli() {
   return (
     <Section id="plex-tautulli" title="Import from Tautulli" subtitle="Moving from Tautulli? Bring its watch history into Insights so the stats and graphs aren't empty on day one. The import, its past runs and Undo are in Settings → Import & migrate.">
       <div>
-        <Link to={LINKS.tautulliImport} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Open the Tautulli import →</Link>
+        <Link to={LINKS.tautulliImport} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Open the Tautulli import →</Link>
       </div>
     </Section>
   );

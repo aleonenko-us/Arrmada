@@ -128,7 +128,7 @@ export function RevertButton({ e, id, flash, onDone }: {
   };
   return (
     <button onClick={revert} disabled={busy} title="Put the original back in place of the converted file"
-      className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>
+      className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>
       {busy ? "…" : "Revert"}
     </button>
   );

@@ -86,7 +86,7 @@ function SortTh({ label, k, align, title, sort, onSort }: { label: string; k: st
   const active = sort.key === k;
   return (
     <th className={`${TH}${align === "right" ? " text-right" : ""}`} title={title} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
-      <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-[var(--ink)] ${align === "right" ? "flex-row-reverse" : ""}`} style={{ color: active ? "var(--accent)" : undefined }}>
+      <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-[var(--ink)] ${align === "right" ? "flex-row-reverse" : ""}`} style={{ color: active ? "var(--accent-text)" : undefined }}>
         {label}
         <span className="text-xs" style={{ opacity: active ? 1 : 0.3 }}>{active ? (sort.dir === "asc" ? "▲" : "▼") : "▲"}</span>
       </button>

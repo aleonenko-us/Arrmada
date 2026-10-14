@@ -29,7 +29,7 @@ export function OutgoingEmail() {
       subtitle="The mail account Arrmada sends from — used for Send to Kindle. Use your own provider's SMTP details with an app password, not your normal password."
     >
       {error && !data ? (
-        <p className="text-sm" style={{ color: "var(--reject)" }}>Couldn’t load the outgoing email settings — {error.message}</p>
+        <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load the outgoing email settings — {error.message}</p>
       ) : !data ? (
         <p className="text-sm text-ink-dim">Loading…</p>
       ) : (
@@ -150,7 +150,7 @@ function MailForm({ view }: { view: SMTPView }) {
             <Button onClick={test} busy={testing} busyLabel="Sending…" disabled={!testTo.trim()}>Send test email</Button>
           </div>
           {result && (
-            <p className="m-0 break-words text-sm" role="status" style={{ color: result.ok ? "var(--good-text)" : "var(--reject)" }}>
+            <p className="m-0 break-words text-sm" role="status" style={{ color: result.ok ? "var(--good-text)" : "var(--reject-text)" }}>
               {result.ok ? result.detail : `Didn’t send: ${result.detail}`}
             </p>
           )}

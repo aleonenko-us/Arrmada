@@ -200,14 +200,14 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     <Frame>
       <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-xs font-semibold uppercase tracking-wide text-ink-faint">
         {STEPS.map((s, i) => (
-          <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent)" : undefined }}>
+          <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent-text)" : undefined }}>
             {i > 0 && <span aria-hidden className="mr-1.5 text-ink-faint">›</span>}
             {i + 1}. {s.label}
           </li>
         ))}
       </ol>
 
-      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
 
       {step === "keys" && (
         <>
@@ -225,7 +225,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             onBlur={(v) => { if (v.trim()) checkTmdb(v); }}
           />
           {tmdbCheck && tmdbCheck.value === (keys.tmdb ?? "").trim() && (
-            <p className="mt-1 text-sm" style={{ color: tmdbCheck.busy ? "var(--ink-faint)" : tmdbCheck.ok ? "var(--good)" : "var(--reject)" }}>
+            <p className="mt-1 text-sm" style={{ color: tmdbCheck.busy ? "var(--ink-faint)" : tmdbCheck.ok ? "var(--good-text)" : "var(--reject-text)" }}>
               {tmdbCheck.busy ? "Checking with TMDB…" : `${tmdbCheck.ok ? "✓" : "✗"} ${tmdbCheck.detail}`}
             </p>
           )}
@@ -260,7 +260,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             Keep Downloads on the same drive or share as your libraries, so finished downloads are hardlinked instantly instead of copied.
           </p>
           {managedOnly && (
-            <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
+            <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
               Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, re-run the installer with your media folder.
             </div>
           )}
@@ -311,12 +311,12 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             Family sign-in, watch stats and pausing conversions while someone's watching all need your Plex server. Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.
           </p>
           {state.plex_connected && (
-            <p role="status" className="m-0 mb-1 text-base font-semibold" style={{ color: "var(--good)" }}>
+            <p role="status" className="m-0 mb-1 text-base font-semibold" style={{ color: "var(--good-text)" }}>
               ✓ Connected{state.plex_server ? ` to ${state.plex_server}` : ""}
             </p>
           )}
           {plexError && (
-            <div role="alert" className="mb-1 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>
+            <div role="alert" className="mb-1 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
               Couldn't reach plex.tv from the server — you can connect later in Settings → Connections, or enter the server's address below.
               <span className="mt-1 block break-words text-ink-faint">{plexError}</span>
             </div>
@@ -364,7 +364,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             Arrmada searches indexers — your trackers — for releases. Sync them all from Prowlarr in one go, or add one tracker now and test it before it's saved. You can add more any time in Settings → Connections.
           </p>
           {(state.indexers_enabled ?? 0) > 0 && (
-            <p role="status" className="m-0 mb-3 text-base font-semibold" style={{ color: "var(--good)" }}>
+            <p role="status" className="m-0 mb-3 text-base font-semibold" style={{ color: "var(--good-text)" }}>
               ✓ {state.indexers_enabled} {state.indexers_enabled === 1 ? "indexer" : "indexers"} enabled
             </p>
           )}
@@ -380,7 +380,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             ) : (
               <p className="m-0 text-sm text-ink-dim">
                 No Prowlarr answered at its saved address.{" "}
-                <button type="button" onClick={() => setShowProwlarr(true)} className="font-semibold" style={{ color: "var(--accent)" }}>Sync from a Prowlarr elsewhere</button>
+                <button type="button" onClick={() => setShowProwlarr(true)} className="font-semibold" style={{ color: "var(--accent-text)" }}>Sync from a Prowlarr elsewhere</button>
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
@@ -484,7 +484,7 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
     <label className="block">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span className="text-base font-semibold">{label}</span>
-        {status?.configured && <span className="text-xs" style={{ color: "var(--good)" }}>✓ saved{status.hint ? ` (…${status.hint})` : ""}</span>}
+        {status?.configured && <span className="text-xs" style={{ color: "var(--good-text)" }}>✓ saved{status.hint ? ` (…${status.hint})` : ""}</span>}
       </div>
       <input
         type={status?.secret === false ? "text" : "password"}
@@ -498,7 +498,7 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
         style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
       />
       <span className="mt-1 block text-xs text-ink-faint">
-        {note}{status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>get one</a></>}
+        {note}{status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>get one</a></>}
       </span>
     </label>
   );

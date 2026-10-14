@@ -53,7 +53,7 @@ export function StreamingRow({ media, switchable, ctx }: { media: "movie" | "ser
               {(["movie", "series"] as const).map((k) => {
                 const on = m === k;
                 return (
-                  <button key={k} onClick={() => setM(k)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+                  <button key={k} onClick={() => setM(k)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
                     {k === "movie" ? "Movies" : "Series"}
                   </button>
                 );
@@ -63,7 +63,7 @@ export function StreamingRow({ media, switchable, ctx }: { media: "movie" | "ser
           {(providers ?? []).map((p) => {
             const on = active?.id === p.id;
             return (
-              <button key={p.id} onClick={() => setActive(p)} title={p.name} className="flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+              <button key={p.id} onClick={() => setActive(p)} title={p.name} className="flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
                 {p.logo_url ? <img src={p.logo_url} alt="" className="h-5 w-5 rounded-md" /> : null}
                 <span>{p.name}</span>
               </button>
@@ -123,7 +123,7 @@ export function GenreExplorer({ media, switchable, ctx }: { media: "movie" | "se
             {(["movie", "series"] as const).map((k) => {
               const on = m === k;
               return (
-                <button key={k} onClick={() => setM(k)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+                <button key={k} onClick={() => setM(k)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
                   {k === "movie" ? "Movies" : "Series"}
                 </button>
               );
@@ -139,7 +139,7 @@ export function GenreExplorer({ media, switchable, ctx }: { media: "movie" | "se
             {genres.map((g) => {
               const on = active?.id === g.id;
               return (
-                <button key={g.id} onClick={() => pick(g)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+                <button key={g.id} onClick={() => pick(g)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
                   {g.name}
                 </button>
               );

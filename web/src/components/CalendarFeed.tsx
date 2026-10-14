@@ -80,7 +80,7 @@ export function CalendarFeedPanel() {
     catch { toast("Couldn’t copy — select the link and copy it yourself", { tone: "error" }); }
   };
 
-  if (error && !state) return <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn’t load your calendar link — {error}</p>;
+  if (error && !state) return <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load your calendar link — {error}</p>;
   if (!state) return <p className="m-0 text-sm text-ink-faint">Loading…</p>;
 
   const link = made ? withMine(made.url, mine) : "";
@@ -114,7 +114,7 @@ export function CalendarFeedPanel() {
         <Button size="sm" variant={state.enabled ? "secondary" : "primary"} onClick={make} busy={busy} busyLabel="Working…" disabled={busy}>
           {state.enabled ? "Reset link" : "Make my calendar link"}
         </Button>
-        {state.enabled && <Button size="sm" variant="ghost" onClick={turnOff} disabled={busy} style={{ color: "var(--reject)" }}>Turn off</Button>}
+        {state.enabled && <Button size="sm" variant="ghost" onClick={turnOff} disabled={busy} style={{ color: "var(--reject-text)" }}>Turn off</Button>}
       </div>
     </div>
   );

@@ -93,7 +93,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
         </button>
         {(plex.phase === "waiting" || plex.phase === "slow") && (
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">
-            {plex.phase === "slow" && <button onClick={plex.continueHere} className="font-semibold" style={{ color: "var(--accent)" }}>Plex window didn't open? Continue in this tab</button>}
+            {plex.phase === "slow" && <button onClick={plex.continueHere} className="font-semibold" style={{ color: "var(--accent-text)" }}>Plex window didn't open? Continue in this tab</button>}
             <button onClick={plex.cancel} className="text-ink-faint underline">Cancel</button>
           </div>
         )}
@@ -118,7 +118,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
       </div>
 
       {test && (
-        <div className="rounded-lg p-3 text-sm" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good)" : "var(--reject)" }}>
+        <div className="rounded-lg p-3 text-sm" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good-text)" : "var(--reject-text)" }}>
           {test.ok ? (
             <div>
               <div className="font-semibold">✓ Connected{test.server_name ? ` to ${test.server_name}` : ""}{test.version ? ` · Plex ${test.version}` : ""}</div>
@@ -132,7 +132,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
         </div>
       )}
       <p className="m-0 text-xs text-ink-faint">
-        Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent)" }}>Settings → Plex →</Link>
+        Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Plex →</Link>
       </p>
     </div>
   );

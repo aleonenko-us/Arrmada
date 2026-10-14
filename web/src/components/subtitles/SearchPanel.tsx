@@ -60,10 +60,10 @@ export function SearchPanel({ media, lang, langLabel, onQueued }: { media: SubMe
     <div className="mt-2 rounded-lg p-3" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }} aria-label={`OpenSubtitles results for ${langLabel}`} role="region">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">OpenSubtitles · {langLabel}</span>
-        {quota && <span className="text-xs" style={{ color: quota.spent ? "var(--avoid)" : "var(--ink-faint)" }}>{quota.text}</span>}
+        {quota && <span className="text-xs" style={{ color: quota.spent ? "var(--avoid-text)" : "var(--ink-faint)" }}>{quota.text}</span>}
         <Button size="sm" variant="ghost" className="ml-auto" onClick={() => run(true)} busy={loading} busyLabel="Searching…">Refresh</Button>
       </div>
-      {error && <p className="m-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</p>}
+      {error && <p className="m-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
       {!view && !error && <p className="m-0 mt-2 text-sm text-ink-dim">Searching…</p>}
       {view && view.candidates.length === 0 && <p className="m-0 mt-2 text-sm text-ink-dim">Nothing on OpenSubtitles for this file in {langLabel}.</p>}
       {view && view.candidates.length > 0 && (
@@ -81,21 +81,21 @@ export function SearchPanel({ media, lang, langLabel, onQueued }: { media: SubMe
                   </div>
                   <span
                     className="flex-none rounded px-1.5 py-0.5 font-mono text-xs font-bold"
-                    style={{ background: c.hash_match ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: c.hash_match ? "var(--good)" : below ? "var(--avoid)" : "var(--ink)" }}
+                    style={{ background: c.hash_match ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: c.hash_match ? "var(--good-text)" : below ? "var(--avoid-text)" : "var(--ink)" }}
                     title={(c.reasons.length ? c.reasons.join("\n") : "Nothing in the release name matched this file") + (below ? `\nBelow the minimum score (${view.min_score}) the automatic download needs` : "")}
                   >
                     {c.score}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs text-ink-dim">
-                  {c.hash_match && <span style={{ color: "var(--good)" }}>hash match</span>}
+                  {c.hash_match && <span style={{ color: "var(--good-text)" }}>hash match</span>}
                   {c.hearing_impaired && <span>HI</span>}
                   {c.fps ? <span>{Math.round(c.fps * 1000) / 1000} fps</span> : null}
                   <span>{c.downloads.toLocaleString()} downloads</span>
                   {c.trusted && <span>trusted</span>}
-                  {current && <span style={{ color: "var(--accent)" }}>in use</span>}
-                  {c.blocklisted && <span style={{ color: "var(--avoid)" }}>blocked for this file</span>}
-                  {c.rejected && <span style={{ color: "var(--avoid)" }}>{c.rejected}</span>}
+                  {current && <span style={{ color: "var(--accent-text)" }}>in use</span>}
+                  {c.blocklisted && <span style={{ color: "var(--avoid-text)" }}>blocked for this file</span>}
+                  {c.rejected && <span style={{ color: "var(--avoid-text)" }}>{c.rejected}</span>}
                   <span className="ml-auto">
                     <Button
                       size="sm"

@@ -19,7 +19,7 @@ export function ProfileSelector({ series, onChange }: { series: SeriesT; onChang
   return (
     <div className="flex items-center gap-2">
       <label htmlFor={profileId} className="font-mono text-2xs uppercase text-ink-faint">Quality</label>
-      <select id={profileId} value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent)" }}>
+      <select id={profileId} value={series.quality_profile} onChange={(e) => change(e.target.value)} className="rounded-lg px-2.5 py-1.5 text-sm font-medium" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)", color: "var(--accent-text)" }}>
         {opts.map((p) => <option key={p.key} value={p.key} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.name}</option>)}
       </select>
     </div>

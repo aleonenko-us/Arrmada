@@ -82,7 +82,7 @@ export function Dashboard() {
         {error && (
           <div
             className="mb-5 rounded-lg px-3.5 py-2.5 text-base"
-            style={{ background: "var(--reject-soft)", border: "1px solid var(--reject)", color: "var(--reject)" }}
+            style={{ background: "var(--reject-soft)", border: "1px solid var(--reject)", color: "var(--reject-text)" }}
           >
             Backend unreachable: {error}
           </div>
@@ -107,7 +107,7 @@ export function Dashboard() {
               ) : !data.plex_configured ? (
                 <>
                   Plex isn't connected yet.{" "}
-                  <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>
+                  <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>
                     Connect Plex
                   </Link>
                 </>
@@ -278,7 +278,7 @@ function NeedsYou() {
                   {r.detail && <span className="block text-sm text-ink-faint">{r.detail}</span>}
                 </span>
                 {r.to && (
-                  <Link to={r.to} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent)" }}>
+                  <Link to={r.to} className="flex-none whitespace-nowrap font-semibold no-underline" style={{ color: "var(--accent-text)" }}>
                     {r.action} →
                   </Link>
                 )}
@@ -543,7 +543,7 @@ function SectionLabel({ children, right, link }: { children: React.ReactNode; ri
     <div className="mb-3 mt-6 flex items-baseline justify-between font-mono text-2xs font-bold uppercase tracking-[0.12em] text-ink-faint">
       <span>{children}</span>
       {right && <span className="font-normal normal-case tracking-normal">{right}</span>}
-      {link && <Link to={link.to} className="font-semibold normal-case tracking-normal no-underline" style={{ color: "var(--accent)" }}>{link.label}</Link>}
+      {link && <Link to={link.to} className="font-semibold normal-case tracking-normal no-underline" style={{ color: "var(--accent-text)" }}>{link.label}</Link>}
     </div>
   );
 }

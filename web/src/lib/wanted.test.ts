@@ -64,7 +64,7 @@ describe("wantedLine", () => {
 
 describe("wantedChip", () => {
   it("pulses only for a search due now", () => {
-    expect(wantedChip(row({ due: true }))).toEqual({ text: "Searching", tone: "var(--avoid)", pulse: true });
+    expect(wantedChip(row({ due: true }))).toEqual({ text: "Searching", tone: "var(--avoid-text)", pulse: true });
     expect(wantedChip(row({ due: false })).pulse).toBe(false);
     expect(wantedChip(row({ media_type: "series", episode_count: 1 })).text).toBe("1 episode");
   });

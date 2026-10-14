@@ -96,7 +96,7 @@ export function RemoveDownloadDialog({ it, onClose, onDone }: { it: ActivityDown
             </label>
           )}
           {neverImported && (
-            <div className="rounded-lg p-2.5 text-sm" style={mode === "keep_files" ? { color: "var(--ink-dim)", background: "var(--panel-2)" } : { color: "var(--reject)", background: "var(--reject-soft)", fontWeight: 600 }}>
+            <div className="rounded-lg p-2.5 text-sm" style={mode === "keep_files" ? { color: "var(--ink-dim)", background: "var(--panel-2)" } : { color: "var(--reject-text)", background: "var(--reject-soft)", fontWeight: 600 }}>
               This download was never imported — deleting its files destroys the only copy.
             </div>
           )}

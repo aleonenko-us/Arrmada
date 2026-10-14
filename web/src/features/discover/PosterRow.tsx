@@ -100,7 +100,7 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
 // over the page goes through the overlay history).
 export function SeeAll({ to, label }: { to: string | (() => void); label: string }) {
   const aria = label ? `See all: ${label}` : "See all";
-  const style = { color: "var(--accent)" };
+  const style = { color: "var(--accent-text)" };
   return typeof to === "string"
     ? <Link to={to} aria-label={aria} className="text-sm font-semibold" style={style}>See all →</Link>
     : <button onClick={to} aria-label={aria} className="min-h-[28px] text-sm font-semibold" style={style}>See all →</button>;

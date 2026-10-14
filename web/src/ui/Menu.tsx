@@ -184,7 +184,7 @@ export function Menu({ trigger, label, items, align = "right", header, triggerCl
               title={it.title}
               onClick={() => pick(i)}
               className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-base font-medium hover:bg-[var(--panel-2)] focus:bg-[var(--panel-2)] focus:outline-none disabled:opacity-50 ${itemClassName}`}
-              style={{ color: it.tone === "danger" ? "var(--reject)" : "var(--ink)" }}
+              style={{ color: it.tone === "danger" ? "var(--reject-text)" : "var(--ink)" }}
             >
               {busy === i && it.busyLabel ? it.busyLabel : it.label}
             </button>

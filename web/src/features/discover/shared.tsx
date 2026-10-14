@@ -99,7 +99,7 @@ export interface RowCtx {
 // shows one MetadataMissing message instead of an error per row.
 export function LoadError({ message }: { message: string }) {
   return (
-    <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ border: "1px solid var(--line)", color: "var(--reject)", background: "var(--panel)" }}>
+    <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ border: "1px solid var(--line)", color: "var(--reject-text)", background: "var(--panel)" }}>
       Couldn’t load — {message}
     </div>
   );
@@ -182,7 +182,7 @@ export function MediaCard({ c, ctx, full }: { c: DiscoverCard; ctx: RowCtx; full
     >
       <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
         <span>{c.year || "—"}</span>
-        {c.vote_average > 0 && <><span>·</span><span style={{ color: "var(--accent)" }}>★ {c.vote_average.toFixed(1)}</span></>}
+        {c.vote_average > 0 && <><span>·</span><span style={{ color: "var(--accent-text)" }}>★ {c.vote_average.toFixed(1)}</span></>}
       </div>
       {c.genres && c.genres.length > 0 && (
         <div className="mt-0.5 truncate text-xs" style={{ color: "var(--ink-faint)" }} title={c.genres.join(" · ")}>{c.genres.slice(0, 2).join(" · ")}</div>

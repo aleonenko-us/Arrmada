@@ -5,10 +5,10 @@ import type { FileFit, FitItem, FitStatus } from "../lib/api";
 // (codec, HDR, audio) isn't. Green: fits.
 
 export const FIT_COLOR: Record<FitStatus, string> = {
-  over: "var(--reject)",
+  over: "var(--reject-text)",
   under: "var(--under)",
   mismatch: "var(--mismatch)",
-  fits: "var(--good)",
+  fits: "var(--good-text)",
 };
 
 const FIT_LABEL: Record<FitStatus, string> = { over: "Over", under: "Under", mismatch: "Doesn't fit", fits: "Fits" };

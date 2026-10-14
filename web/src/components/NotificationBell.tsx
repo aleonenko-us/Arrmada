@@ -118,18 +118,18 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
       <div className="flex items-center justify-between px-3.5 py-2.5" style={{ borderBottom: "1px solid var(--line)" }}>
         <span className="text-md font-bold">Notifications</span>
         <div className="flex items-center gap-3 text-xs">
-          {items.some((i) => !i.read) && <button onClick={markAll} style={{ color: "var(--accent)" }}>Mark all read</button>}
+          {items.some((i) => !i.read) && <button onClick={markAll} style={{ color: "var(--accent-text)" }}>Mark all read</button>}
           <Link to={SETTINGS} onClick={() => setOpen(false)} className="font-medium text-ink-dim hover:text-[var(--ink)]">Settings</Link>
         </div>
       </div>
 
-      {error && <div className="px-3.5 py-1.5 text-xs font-medium" style={{ color: "var(--reject)", borderBottom: "1px solid var(--line-soft)" }}>{error}</div>}
+      {error && <div className="px-3.5 py-1.5 text-xs font-medium" style={{ color: "var(--reject-text)", borderBottom: "1px solid var(--line-soft)" }}>{error}</div>}
 
       <div className="thin-scroll max-h-[360px] overflow-y-auto">
         {items.length === 0 ? (
           <div className="px-3.5 py-8 text-center text-sm text-ink-faint">
             Nothing yet. When a request you made is ready, it’ll show up here.
-            <div className="mt-1.5"><Link to={SETTINGS} onClick={() => setOpen(false)} style={{ color: "var(--accent)" }}>Turn on notifications in Settings</Link></div>
+            <div className="mt-1.5"><Link to={SETTINGS} onClick={() => setOpen(false)} style={{ color: "var(--accent-text)" }}>Turn on notifications in Settings</Link></div>
           </div>
         ) : items.map((n) => (
           <div key={n.id} style={{ borderTop: "1px solid var(--line-soft)", background: n.read ? "transparent" : "var(--accent-soft)" }}>

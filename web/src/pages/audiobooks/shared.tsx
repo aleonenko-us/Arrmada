@@ -39,7 +39,7 @@ export function fmtWhen(ms: number): string {
 export const card = { background: "var(--panel)", border: "1px solid var(--line)" } as const;
 export const ghost = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" } as const;
 export const inputStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
-export const danger = { border: "1px solid var(--reject)", color: "var(--reject)" } as const;
+export const danger = { border: "1px solid var(--reject)", color: "var(--reject-text)" } as const;
 export const primary = { background: "var(--accent)", color: "var(--accent-ink)" } as const;
 
 export function Card({ title, note, children, right }: { title: string; note?: string; children: React.ReactNode; right?: React.ReactNode }) {
@@ -58,7 +58,7 @@ export function Card({ title, note, children, right }: { title: string; note?: s
 }
 
 export function Loading({ error }: { error?: string | null }) {
-  if (error) return <div className="text-base" style={{ color: "var(--reject)" }}>{error}</div>;
+  if (error) return <div className="text-base" style={{ color: "var(--reject-text)" }}>{error}</div>;
   return <div className="text-base text-ink-dim">Loading…</div>;
 }
 

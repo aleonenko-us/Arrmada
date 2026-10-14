@@ -53,7 +53,7 @@ export function LibrarySettings() {
       </Section>
       <Section id="adding-titles" title="Adding titles" subtitle="Defaults when adding movies and series.">
         <AutoToggle label="Search on add" hint="Start searching for a release as soon as a title is added." save={searchOnAdd} />
-        <Link to="/quality" className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Quality profiles →</Link>
+        <Link to="/quality" className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Quality profiles →</Link>
       </Section>
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">
         <SeriesMonitorDefault />

@@ -102,8 +102,8 @@ export function ItemChips({ it }: { it: ActivityDownload }) {
   const who = requestedFor(item.requested_by);
   return (
     <>
-      {item.scope && <Chip fg="var(--accent)" bg="var(--accent-soft)" testId="transfer-scope">{item.scope}</Chip>}
-      {item.upgrade && <Chip fg="var(--good)" bg="var(--panel-2)" title="Replaces the file it already has">Upgrade</Chip>}
+      {item.scope && <Chip fg="var(--accent-text)" bg="var(--accent-soft)" testId="transfer-scope">{item.scope}</Chip>}
+      {item.upgrade && <Chip fg="var(--good-text)" bg="var(--panel-2)" title="Replaces the file it already has">Upgrade</Chip>}
       {who && (
         <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs font-semibold" title={`Requested by ${item.requested_by?.join(", ")}`} data-testid="transfer-requester" style={{ background: "var(--panel-2)", color: "var(--ink-dim)", border: "1px solid var(--line)" }}>
           {who}
@@ -138,7 +138,7 @@ export function CardActions({ name, primary, secondary = [], extras = [] }: { na
     <div className="flex flex-none items-center gap-1">
       {primary}
       {wide && secondary.map((a) => (
-        <button key={a.label} onClick={() => void a.onSelect()} disabled={a.disabled} title={a.title ?? a.label} className="rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors" style={{ border: `1px solid ${a.danger ? "var(--reject)" : a.tone ?? "var(--line)"}`, color: a.danger ? "var(--reject)" : a.tone ?? "var(--ink-dim)", opacity: a.disabled ? 0.5 : 1 }}>
+        <button key={a.label} onClick={() => void a.onSelect()} disabled={a.disabled} title={a.title ?? a.label} className="rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors" style={{ border: `1px solid ${a.danger ? "var(--reject)" : a.tone ?? "var(--line)"}`, color: a.danger ? "var(--reject-text)" : a.tone ?? "var(--ink-dim)", opacity: a.disabled ? 0.5 : 1 }}>
           {a.label}
         </button>
       ))}

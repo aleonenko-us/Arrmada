@@ -34,12 +34,12 @@ export function wantedChip(r: WantedRow): WantedChip {
       return { text: "Status unknown", tone: "var(--ink-faint)", pulse: false };
     case "waiting_download":
       return r.stalled
-        ? { text: "Waiting · stalled", tone: "var(--avoid)", pulse: false }
-        : { text: "Waiting on download", tone: "var(--accent)", pulse: false };
+        ? { text: "Waiting · stalled", tone: "var(--avoid-text)", pulse: false }
+        : { text: "Waiting on download", tone: "var(--accent-text)", pulse: false };
     case "held_for_review":
-      return { text: "Held for review", tone: "var(--avoid)", pulse: false };
+      return { text: "Held for review", tone: "var(--avoid-text)", pulse: false };
     case "indexers_failed":
-      return { text: "Indexers failed last try", tone: "var(--reject)", pulse: false };
+      return { text: "Indexers failed last try", tone: "var(--reject-text)", pulse: false };
     case "slowed":
       return { text: r.media_type === "music" ? "Checked weekly" : "Checked monthly", tone: "var(--ink-faint)", pulse: false };
     case "not_released":
@@ -47,7 +47,7 @@ export function wantedChip(r: WantedRow): WantedChip {
   }
   const n = r.episode_count ?? 0;
   const text = r.media_type === "series" ? `${n} episode${n === 1 ? "" : "s"}` : "Searching";
-  return { text, tone: "var(--avoid)", pulse: !!r.due };
+  return { text, tone: "var(--avoid-text)", pulse: !!r.due };
 }
 
 // The row's second line: why it isn't downloading. "Last search 3 h ago — Found 34

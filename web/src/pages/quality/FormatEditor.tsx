@@ -155,7 +155,7 @@ export function CustomFormatsEditor({ sp, patch }: { sp: StoredProfile; patch: (
       </div>
       {!draft && (
         <div className="mt-2 flex flex-wrap gap-2">
-          <button onClick={startNew} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>+ New custom format</button>
+          <button onClick={startNew} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>+ New custom format</button>
           <button onClick={() => setImporting(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Import from TRaSH</button>
         </div>
       )}
@@ -170,7 +170,7 @@ function Problems({ errors, warnings }: { errors: FormatProblem[]; warnings: For
   if (errors.length === 0 && warnings.length === 0) return null;
   return (
     <ul className="mt-1.5 flex flex-col gap-0.5 text-xs leading-[1.4]">
-      {errors.map((p, i) => <li key={`e${i}`} style={{ color: "var(--reject)" }}>{p.message}</li>)}
+      {errors.map((p, i) => <li key={`e${i}`} style={{ color: "var(--reject-text)" }}>{p.message}</li>)}
       {warnings.map((p, i) => <li key={`w${i}`} style={{ color: "var(--avoid-text)" }}>{p.message}</li>)}
     </ul>
   );
@@ -186,10 +186,10 @@ function FormatCard({ format, score, required, matches, samples, problems, editi
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 break-words font-semibold">{format.name}</span>
         {format.match === "any" && <span className="rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>any</span>}
-        {required && <span className="rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>must</span>}
+        {required && <span className="rounded px-1.5 py-px font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>must</span>}
         <span className="ml-auto flex items-center gap-2">
           <input type="number" aria-label={`${format.name} score`} value={score} onChange={(e) => onScore(Number(e.target.value))}
-            className="w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-sm" style={{ ...fieldStyle, color: score >= 0 ? "var(--good)" : "var(--reject)" }} />
+            className="w-[64px] rounded-lg px-2 py-0.5 text-right font-mono text-sm" style={{ ...fieldStyle, color: score >= 0 ? "var(--good-text)" : "var(--reject-text)" }} />
           <button onClick={onEdit} disabled={editing} className="text-xs font-semibold text-ink-dim hover:text-[var(--ink)] disabled:opacity-40">Edit</button>
           <button onClick={onRemove} disabled={editing} aria-label={`Remove ${format.name}`} className="text-ink-faint hover:text-[var(--reject)] disabled:opacity-40">✕</button>
         </span>
@@ -247,18 +247,18 @@ function FormatForm({ draft, vocab, others, problems, onChange, onCancel, onDone
         ))}
       </div>
       <button onClick={() => set({ conditions: [...f.conditions, emptyCondition("source", vocab)] })}
-        className="mt-2 text-xs font-semibold" style={{ color: "var(--accent)" }}>+ Add condition</button>
+        className="mt-2 text-xs font-semibold" style={{ color: "var(--accent-text)" }}>+ Add condition</button>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--line)" }}>
         <label className="flex items-center gap-1.5 text-xs text-ink-dim">
           Score
           <input type="number" value={draft.score} onChange={(e) => onChange({ ...draft, score: Number(e.target.value) })}
-            className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={{ ...fieldStyle, color: draft.score >= 0 ? "var(--good)" : "var(--reject)" }} />
+            className="w-[72px] rounded-lg px-2 py-1 text-right font-mono text-sm" style={{ ...fieldStyle, color: draft.score >= 0 ? "var(--good-text)" : "var(--reject-text)" }} />
         </label>
         <span className="ml-auto flex items-center gap-2">
           <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-sm text-ink-dim">Cancel</button>
           <button onClick={onDone} disabled={blocked} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
-            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Done</button>
+            style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Done</button>
         </span>
       </div>
       {local && <p className="mt-1.5 text-xs text-ink-faint">{local}</p>}
@@ -308,7 +308,7 @@ function ConditionRow({ index, cond, vocab, only, errors, warnings, onChange, on
         {value}
         <button onClick={() => onChange({ ...cond, negate: !cond.negate })} aria-pressed={!!cond.negate} aria-label={`Condition ${n}: NOT`}
           title="Match releases that DON'T have this" className="rounded-md px-2 py-1 font-mono text-xs font-bold"
-          style={{ background: cond.negate ? "var(--reject)" : "var(--panel)", color: cond.negate ? "#fff" : "var(--ink-faint)", border: "1px solid var(--line)" }}>NOT</button>
+          style={{ background: cond.negate ? "var(--reject)" : "var(--panel)", color: cond.negate ? "var(--accent-ink)" : "var(--ink-faint)", border: "1px solid var(--line)" }}>NOT</button>
         <button onClick={onRemove} disabled={only} aria-label={`Remove condition ${n}`} className="px-1 text-ink-faint hover:text-[var(--reject)] disabled:opacity-30">✕</button>
       </div>
       {UNWANTED_TYPES.has(cond.type) && (

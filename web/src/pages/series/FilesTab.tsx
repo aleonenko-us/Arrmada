@@ -84,7 +84,7 @@ function RenamePreview({ series, refreshKey, onChange }: { series: SeriesT; refr
         {items && items.length > 0 && <Button size="sm" className="ml-auto" onClick={() => setOpen(true)}>Rename…</Button>}
       </div>
       {err ? (
-        <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>{err}</p>
+        <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{err}</p>
       ) : items === null ? (
         <p className="m-0 text-sm text-ink-dim">Checking file names…</p>
       ) : items.length === 0 ? (
@@ -94,7 +94,7 @@ function RenamePreview({ series, refreshKey, onChange }: { series: SeriesT; refr
           <div className="mb-1.5 text-ink-dim">{items.length} file{items.length === 1 ? "" : "s"} would be renamed{items.some((it) => it.conflict) ? " (some can't be — see Rename…)" : ""}.</div>
           {shown.map((it) => (
             <div key={it.from} className="truncate py-0.5 font-mono text-xs" title={`${it.from} → ${it.to}`}>
-              <span className="text-ink-faint">{base(it.from)}</span> → <span style={{ color: it.conflict ? "var(--reject)" : "var(--ink)" }}>{base(it.to)}</span>
+              <span className="text-ink-faint">{base(it.from)}</span> → <span style={{ color: it.conflict ? "var(--reject-text)" : "var(--ink)" }}>{base(it.to)}</span>
             </div>
           ))}
           {items.length > shown.length && <div className="mt-1 text-ink-faint">…and {items.length - shown.length} more</div>}

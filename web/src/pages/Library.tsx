@@ -118,12 +118,12 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
           <div className="text-md font-semibold">{row.label}</div>
           <div className="text-xs text-ink-faint">{row.hint}</div>
         </div>
-        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
       </div>
       {(line || scan.note) && (
         <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-          {line && <span style={{ color: line.tone === "good" ? "var(--good)" : line.tone === "error" ? "var(--reject)" : "var(--ink-dim)" }}>{line.text}</span>}
-          {unmatched > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent)" }}>{unmatched} need review ↓</a>}
+          {line && <span style={{ color: line.tone === "good" ? "var(--good-text)" : line.tone === "error" ? "var(--reject-text)" : "var(--ink-dim)" }}>{line.text}</span>}
+          {unmatched > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent-text)" }}>{unmatched} need review ↓</a>}
           {scan.note && !scan.note.error && <span className="text-ink-faint">{scan.note.text}</span>}
         </div>
       )}
@@ -191,7 +191,7 @@ function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; relo
         <div>
           <div className="text-md font-semibold">
             {label} — needs review
-            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{items.length}</span>
+            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{items.length}</span>
           </div>
           <div className="text-xs text-ink-faint">Arrmada couldn't confidently identify these — pick the right title so nothing is mis-filed.</div>
         </div>
@@ -222,7 +222,7 @@ function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"
   return (
     <div className="rounded-lg p-2.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
       <div className="flex items-center gap-2 text-sm">
-        <span style={{ color: "var(--accent)" }}>📁</span>
+        <span style={{ color: "var(--accent-text)" }}>📁</span>
         <span className="font-mono font-semibold">{item.folder}</span>
         <span className="text-ink-faint">— looked for “{item.title}”{item.year ? ` (${item.year})` : ""}</span>
       </div>
@@ -312,16 +312,16 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
   if (!c) return failed === p ? null : <div className="mt-1.5 text-xs text-ink-faint">Checking…</div>;
   if (c.error) {
     return (
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" style={{ color: blocking ? "var(--reject)" : "var(--avoid)" }}>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" style={{ color: blocking ? "var(--reject-text)" : "var(--avoid-text)" }}>
         <span>{c.error}</span>
         {!c.exists && !c.under_data_dir && (
-          <button onClick={create} disabled={creating} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{creating ? "Creating…" : "Create it"}</button>
+          <button onClick={create} disabled={creating} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{creating ? "Creating…" : "Create it"}</button>
         )}
-        {createErr && <span style={{ color: "var(--reject)" }}>{createErr}</span>}
+        {createErr && <span style={{ color: "var(--reject-text)" }}>{createErr}</span>}
       </div>
     );
   }
-  const good = "var(--good)", warn = "var(--avoid)";
+  const good = "var(--good-text)", warn = "var(--avoid-text)";
   return (
     <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
       <FolderChip color={good}>✓ Exists</FolderChip>
@@ -364,7 +364,7 @@ export function FolderPicker({ initial, onClose, onSelect }: { initial?: string;
         <div className="min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{data?.path ?? "…"}</div>
       </div>
 
-      {err && <div className="mb-2 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mb-2 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{err}</div>}
 
       <div className="thin-scroll max-h-[46vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {!data ? (
@@ -373,14 +373,14 @@ export function FolderPicker({ initial, onClose, onSelect }: { initial?: string;
           <div className="p-6 text-center text-sm text-ink-faint">No sub-folders here.</div>
         ) : data.dirs.map((d) => (
           <button key={d.path} onClick={() => go(d.path)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-[var(--panel-2)]" style={{ borderTop: "1px solid var(--line-soft)" }}>
-            <span style={{ color: "var(--accent)" }}>📁</span>
+            <span style={{ color: "var(--accent-text)" }}>📁</span>
             <span className="truncate">{d.name}</span>
           </button>
         ))}
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-xs" style={{ color: data?.path_disabled ? "var(--avoid)" : "var(--ink-faint)" }}>
+        <span className="text-xs" style={{ color: data?.path_disabled ? "var(--avoid-text)" : "var(--ink-faint)" }}>
           {data?.path_disabled ? "This folder holds Arrmada's own data — go into your media folder and pick one there." : "Navigate into the folder you want, then select it."}
         </span>
         <button onClick={() => data && !data.path_disabled && onSelect(data.path)} disabled={!data || data.path_disabled}className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>Select this folder</button>

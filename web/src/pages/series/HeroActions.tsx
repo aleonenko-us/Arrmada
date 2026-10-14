@@ -119,7 +119,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
         />
       </div>
       {(search.running || searchResult) && (
-        <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject)" : "var(--ink)" }}>
+        <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject-text)" : "var(--ink)" }}>
           {search.running ? "Searching…" : searchResult?.text}
         </div>
       )}
@@ -170,7 +170,7 @@ function MonitorMenu({ series, onChange, flash }: { series: SeriesT; onChange: (
         <span className="block">{title}</span>
         {help && <span className="block text-xs font-normal leading-snug text-ink-faint">{help}</span>}
       </span>
-      {on !== undefined && <span aria-hidden className="flex-none font-mono text-sm" style={{ color: on ? "var(--accent)" : "transparent" }}>✓</span>}
+      {on !== undefined && <span aria-hidden className="flex-none font-mono text-sm" style={{ color: on ? "var(--accent-text)" : "transparent" }}>✓</span>}
     </span>
   );
   const items: MenuItem[] = [

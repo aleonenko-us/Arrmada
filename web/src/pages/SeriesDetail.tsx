@@ -141,7 +141,7 @@ export function SeriesDetail() {
   });
   useEffect(() => () => window.clearTimeout(grabLook.current), []);
 
-  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That series isn't in your library. <Link to="/series" className="underline" style={{ color: "var(--accent)" }}>Back to Series</Link></div></Shell>;
+  if (notFound) return <Shell><div className="py-10 text-center text-md text-ink-dim">That series isn't in your library. <Link to="/series" className="underline" style={{ color: "var(--accent-text)" }}>Back to Series</Link></div></Shell>;
   if (!s) return <Shell><p className="text-base text-ink-dim">{error ?? "Loading…"}</p></Shell>;
 
   const ex = s.extra;

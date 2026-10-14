@@ -97,7 +97,7 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
         {!existing && (
           <div className="mb-3 flex flex-wrap gap-1.5">
             {PRESETS.map((p) => (
-              <button key={p.label} onClick={() => { setLabel(p.label); setTerms(p.terms.join(", ")); }} title={p.hint} className="rounded-full px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: label === p.label ? "var(--accent-soft)" : "var(--panel-2)", color: label === p.label ? "var(--accent)" : "var(--ink-dim)" }}>
+              <button key={p.label} onClick={() => { setLabel(p.label); setTerms(p.terms.join(", ")); }} title={p.hint} className="rounded-full px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: label === p.label ? "var(--accent-soft)" : "var(--panel-2)", color: label === p.label ? "var(--accent-text)" : "var(--ink-dim)" }}>
                 {p.label}
               </button>
             ))}
@@ -114,7 +114,7 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
         </label>
         <p className="mb-3 text-xs text-ink-faint">
           Matched as whole words against the release name, narrator, series and description. While this version exists, the standard audiobook won't take releases that match these words.
-          {noTerms && <span style={{ color: "var(--avoid)" }}> With no words, this version is only filled by hand — pick it when you grab, upload or import.</span>}
+          {noTerms && <span style={{ color: "var(--avoid-text)" }}> With no words, this version is only filled by hand — pick it when you grab, upload or import.</span>}
         </p>
         {existing?.file && (
           // Who reads it, as listening apps show it; empty leaves it to the files' tags.
@@ -128,9 +128,9 @@ function VersionForm({ book, existing, onClose, onSaved }: { book: Book; existin
           Search for it automatically
         </label>
         {existing && label.trim() !== existing.label && existing.file && (
-          <p className="mb-3 text-xs" style={{ color: "var(--avoid)" }}>Renaming doesn't move the files already on disk.</p>
+          <p className="mb-3 text-xs" style={{ color: "var(--avoid-text)" }}>Renaming doesn't move the files already on disk.</p>
         )}
-        {error && <div role="alert" className="text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div role="alert" className="text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </Modal>
   );
 }
@@ -171,7 +171,7 @@ export function AudioVersionPanel({ book, v, onChange }: { book: Book; v: AudioV
             <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: soft, color: tone }}>Audiobook · {v.label}</span>
             {has && v.file && (
               <>
-                <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{v.file.format}</span>
+                <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{v.file.format}</span>
                 {v.file.file_count > 1 && <span className="rounded px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{v.file.file_count} files</span>}
                 <span className="font-mono text-sm text-ink-dim">{formatBytes(v.file.size_bytes)}</span>
               </>
@@ -197,8 +197,8 @@ export function AudioVersionPanel({ book, v, onChange }: { book: Book; v: AudioV
           {!has && v.terms.length > 0 && <button disabled={busy !== null} onClick={search} className={small} style={ghost} title="Let Arrmada pick and grab the best release matching this version's words">{busy === "search" ? "Searching…" : "Auto search"}</button>}
           <button disabled={busy !== null} onClick={toggleMonitor} className={small} style={ghost} title="Whether the automatic searches look for this version">{v.monitored ? "Monitored" : "Monitor"}</button>
           <button disabled={busy !== null} onClick={() => setEditing(true)} className={small} style={ghost}>Edit</button>
-          {has && <button disabled={busy !== null} onClick={() => { setDelErr(null); setConfirm("file"); }} className={small} style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete files</button>}
-          <button disabled={busy !== null} onClick={() => { setDelErr(null); setConfirm("remove"); }} className={small} style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Remove</button>
+          {has && <button disabled={busy !== null} onClick={() => { setDelErr(null); setConfirm("file"); }} className={small} style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Delete files</button>}
+          <button disabled={busy !== null} onClick={() => { setDelErr(null); setConfirm("remove"); }} className={small} style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Remove</button>
         </div>
       </div>
       {confirm && (

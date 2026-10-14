@@ -36,7 +36,7 @@ function PeopleView() {
       <Card title="Who can connect">
         <p className="m-0 text-base text-ink-dim">
           {allowed} of {eligible} {eligible === 1 ? "person" : "people"} may connect a listening app; {withPassword} {withPassword === 1 ? "has" : "have"} set an audiobook password.{" "}
-          <Link to={LINKS.users} className="font-semibold" style={{ color: "var(--accent)" }}>Manage access in Settings → People &amp; access</Link>
+          <Link to={LINKS.users} className="font-semibold" style={{ color: "var(--accent-text)" }}>Manage access in Settings → People &amp; access</Link>
         </p>
       </Card>
       <Card title="Signed-in devices">
