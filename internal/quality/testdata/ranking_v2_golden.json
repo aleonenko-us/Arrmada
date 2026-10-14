@@ -494,6 +494,511 @@
       }
     ]
   },
+  "avoid-other/dune": {
+    "winner": "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.Atmos.7.1-FraMeSToR",
+    "why": [
+      "Highest quality that matches your goal",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — WEB-DL, not Remux",
+    "eligible": [
+      {
+        "name": "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 421,
+        "format": 0,
+        "quality": 421
+      },
+      {
+        "name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX",
+        "total": 408,
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.HDR.H.265-RUMOUR",
+        "total": 408,
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Dune.Part.Two.2024.1080p.WEB-DL.DDP5.1.H.264-EVO",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Dune.Part.Two.2024.720p.HDTV.x264-GALAXY",
+        "total": 94,
+        "format": 0,
+        "quality": 94
+      },
+      {
+        "name": "Dune.Part.Two.2024.1080p.WEBRip.x265.AAC5.1-YTS",
+        "total": 256,
+        "avoided": [
+          "Low-quality group (YTS)"
+        ],
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "Dune.Part.Two.2024.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS",
+        "total": 218,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 268
+      }
+    ]
+  },
+  "avoid-other/episodes": {
+    "winner": "Show.S01E05.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-NTb",
+    "why": [
+      "Highest quality that matches your goal",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 1080p BluRay — lower resolution",
+    "eligible": [
+      {
+        "name": "Show.S01E05.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-NTb",
+        "total": 408,
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Show.S01E05.1080p.BluRay.x265-HEAVY",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Show.S01.1080p.BluRay.x264-PACK",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Show.S01E05.1080p.WEB.h264.REPACK-SCENE",
+        "total": 259,
+        "format": 0,
+        "quality": 259
+      },
+      {
+        "name": "Show.S01E05.1080p.WEB.h264-SCENE",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Show.S01E05.1080p.WEBRip.x264-RIPPER",
+        "total": 256,
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "[SubsPlease] Show - 05 (1080p) [ABCD1234]",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Show.S01E05.720p.HDTV.x264-KILLERS",
+        "total": 94,
+        "format": 0,
+        "quality": 94
+      },
+      {
+        "name": "Show.S01E05.1080p.WEB.h264-DEAD",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Show.S01E05.1080p.AMZN.WEB-DL.DDP5.1.x265-GRP",
+        "total": 208,
+        "avoided": [
+          "AMZN"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 258
+      }
+    ]
+  },
+  "avoid-other/mixed": {
+    "winner": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+    "why": [
+      "Highest quality that matches your goal",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — WEB-DL, not Remux",
+    "eligible": [
+      {
+        "name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 421,
+        "format": 0,
+        "quality": 421
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
+        "total": 408,
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB",
+        "total": 406,
+        "format": 0,
+        "quality": 406
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.IMAX.x264-IMX",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.WEBRip.x264.AAC-GRPD",
+        "total": 256,
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.HDTV.x264-TVGRP",
+        "total": 254,
+        "format": 0,
+        "quality": 254
+      },
+      {
+        "name": "Film.2021.1080p.x264-NOSRC",
+        "total": 250,
+        "format": 0,
+        "quality": 250
+      },
+      {
+        "name": "Film.2021.720p.BluRay.x264-SEVEN",
+        "total": 108,
+        "format": 0,
+        "quality": 108
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.AV1-AVONE",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
+        "total": 408,
+        "avoided": [
+          "Dolby Vision without HDR fallback"
+        ],
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.UPSCALED.WEB-DL.x265-UPS",
+        "total": 408,
+        "avoided": [
+          "Upscaled"
+        ],
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA",
+        "total": 368,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 418
+      },
+      {
+        "name": "Film.2021.FRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.WEBRip.x265.AAC5.1-YTS",
+        "total": 256,
+        "avoided": [
+          "Low-quality group (YTS)"
+        ],
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS",
+        "total": 219,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 269
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS",
+        "total": 218,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.2160p.AMZN.WEB-DL.DDP5.1.HDR10+.H.265-GRPC",
+        "total": 358,
+        "avoided": [
+          "AMZN"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 408
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.DVDRip.XviD-OLD",
+        "Code": "resolution"
+      },
+      {
+        "Name": "Film.2021.HDCAM.x264-CAMGRP",
+        "Code": "resolution"
+      },
+      {
+        "Name": "Film.2021.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-DISC",
+        "Code": "unwanted"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.Half-SBS.x264-THREED",
+        "Code": "unwanted"
+      },
+      {
+        "Name": "Film.2021.EXTRAS.1080p.BluRay.x264-BONUS",
+        "Code": "unwanted"
+      }
+    ]
+  },
+  "avoid-other/mixed-no-runtime": {
+    "winner": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+    "why": [
+      "Highest quality that matches your goal",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — WEB-DL, not Remux",
+    "eligible": [
+      {
+        "name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 421,
+        "format": 0,
+        "quality": 421
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
+        "total": 408,
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB",
+        "total": 406,
+        "format": 0,
+        "quality": 406
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.IMAX.x264-IMX",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.WEBRip.x264.AAC-GRPD",
+        "total": 256,
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.HDTV.x264-TVGRP",
+        "total": 254,
+        "format": 0,
+        "quality": 254
+      },
+      {
+        "name": "Film.2021.1080p.x264-NOSRC",
+        "total": 250,
+        "format": 0,
+        "quality": 250
+      },
+      {
+        "name": "Film.2021.720p.BluRay.x264-SEVEN",
+        "total": 108,
+        "format": 0,
+        "quality": 108
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.AV1-AVONE",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
+        "total": 408,
+        "avoided": [
+          "Dolby Vision without HDR fallback"
+        ],
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.UPSCALED.WEB-DL.x265-UPS",
+        "total": 408,
+        "avoided": [
+          "Upscaled"
+        ],
+        "format": 0,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA",
+        "total": 368,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 418
+      },
+      {
+        "name": "Film.2021.FRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.WEBRip.x265.AAC5.1-YTS",
+        "total": 256,
+        "avoided": [
+          "Low-quality group (YTS)"
+        ],
+        "format": 0,
+        "quality": 256
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS",
+        "total": 219,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 269
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS",
+        "total": 218,
+        "avoided": [
+          "DTS-HD"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.2160p.AMZN.WEB-DL.DDP5.1.HDR10+.H.265-GRPC",
+        "total": 358,
+        "avoided": [
+          "AMZN"
+        ],
+        "format": -50,
+        "custom": -50,
+        "quality": 408
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.DVDRip.XviD-OLD",
+        "Code": "resolution"
+      },
+      {
+        "Name": "Film.2021.HDCAM.x264-CAMGRP",
+        "Code": "resolution"
+      },
+      {
+        "Name": "Film.2021.1080p.Blu-ray.AVC.DTS-HD.MA.5.1-DISC",
+        "Code": "unwanted"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.Half-SBS.x264-THREED",
+        "Code": "unwanted"
+      },
+      {
+        "Name": "Film.2021.EXTRAS.1080p.BluRay.x264-BONUS",
+        "Code": "unwanted"
+      }
+    ]
+  },
   "bluray-up/dune": {
     "winner": "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.Atmos.7.1-FraMeSToR",
     "why": [

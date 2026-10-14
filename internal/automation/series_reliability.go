@@ -315,14 +315,19 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		c.skipUnreadable(s.Title, err)
 		return err
 	}
-	rts := newRuntimeIndex(s)
-	// Season packs first: a finished show's upgrades mostly come as a BluRay pack, and one
-	// that beats most of a season replaces that season's single-episode picks.
-	picks, err := c.packUpgrades(ctx, s, rts, profile, byName, upSeasons)
+	// Every release grabbed for the show before, whatever became of it: an upgrade is tried
+	// once. A grab that arrived and was kept out by the import gate (or found already
+	// imported) leaves the episode exactly as it was, so without this the same release won
+	// again every sweep — a new grab row each time for a torrent the client already had.
+	tried, err := c.seriesGrabbedTitles(ctx, s.ID)
 	if err != nil {
 		c.skipUnreadable(s.Title, err)
 		return err
 	}
+	rts := newRuntimeIndex(s)
+	// Season packs first: a finished show's upgrades mostly come as a BluRay pack, and one
+	// that beats most of a season replaces that season's single-episode picks.
+	picks := c.packUpgrades(ctx, s, rts, profile, byName, upSeasons, tried)
 	packed := map[int]bool{}
 	for _, p := range picks {
 		packed[p.season] = true
@@ -334,7 +339,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		if packed[ep.season] {
 			continue
 		}
-		cands := c.episodeUpgradeCandidates(ctx, s, rts, byName, holding[epKey{ep.season, ep.episode}])
+		cands := c.episodeUpgradeCandidates(ctx, s, rts, byName, untried(holding[epKey{ep.season, ep.episode}], tried))
 		if len(cands) == 0 {
 			continue
 		}

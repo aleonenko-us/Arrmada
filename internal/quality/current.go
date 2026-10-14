@@ -2,6 +2,7 @@ package quality
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -133,18 +134,71 @@ func (c CurrentFile) OriginalEncode() (Encode, bool) {
 // the same release name, or the same name with only the codec changed.
 func (b upgradeBar) excludes(name string) bool {
 	key := strings.ToLower(strings.TrimSpace(name))
-	if key == strings.ToLower(strings.TrimSpace(b.current)) {
+	if key == strings.ToLower(strings.TrimSpace(b.current)) || sameRelease(name, b.current, true) {
 		return true // the release we already have
 	}
 	if convertedFrom(name, b.current, b.curCodec) {
 		return true // the release the converted file came from, by its stamped name
 	}
 	if b.orig != "" {
-		if key == strings.ToLower(b.orig) || parser.WithoutCodec(name) == parser.WithoutCodec(b.orig) {
+		if key == strings.ToLower(b.orig) || parser.WithoutCodec(name) == parser.WithoutCodec(b.orig) || sameRelease(name, b.orig, false) {
 			return true // the release the file was converted from, as recorded
 		}
 	}
 	return false
+}
+
+// sameRelease reports whether two names are one release however each is written. The
+// file's recorded name is the downloaded file's ("Show.S04E06.1080p.AMZN.WEB-DL.DDP5.1.
+// Atmos.H.264-NTb.mkv"), while the upgrade sweep sees the indexer's title for the same
+// torrent, which some indexers rewrite ("Show S04E06 1080p AMZN WEB-DL DD+ 5 1 Atmos H
+// 264-NTb"). Compared as strings the two never matched, so the sweep didn't know the
+// release on offer was the file it already had: whenever the file's probed facts scored
+// lower than its name (a track the probe didn't report), the same release was grabbed as
+// an "upgrade" every sweep, and the import gate — which compares the file's own name —
+// refused it every time.
+//
+// Both must name the same group, and every tag the parser reads must agree; an episode
+// title one name carries and the other doesn't is not a tag. withCodec false leaves the
+// codec out, for a converted file whose name was restamped with its new codec.
+func sameRelease(a, b string, withCodec bool) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	pa, pb := parser.Parse(a), parser.Parse(b)
+	if pa.Group == "" || !strings.EqualFold(pa.Group, pb.Group) {
+		return false // without a group, two names with the same tags can be two encodes
+	}
+	if parser.TitleKey(pa.Title) != parser.TitleKey(pb.Title) {
+		return false
+	}
+	// A year only one name states (an indexer adding the show's year) says nothing.
+	if pa.Year != 0 && pb.Year != 0 && pa.Year != pb.Year {
+		return false
+	}
+	if withCodec && pa.Codec != pb.Codec {
+		return false
+	}
+	return pa.Season == pb.Season && slices.Equal(pa.Episodes, pb.Episodes) &&
+		slices.Equal(pa.Seasons, pb.Seasons) && pa.Complete == pb.Complete &&
+		slices.Equal(pa.AbsoluteEpisodes, pb.AbsoluteEpisodes) &&
+		pa.Resolution == pb.Resolution && pa.Source == pb.Source &&
+		strings.EqualFold(pa.Streaming, pb.Streaming) && strings.EqualFold(pa.Edition, pb.Edition) &&
+		pa.Proper == pb.Proper && pa.Repack == pb.Repack &&
+		sameSet(pa.HDR, pb.HDR) && sameSet(pa.Audio, pb.Audio) && pa.AudioLossless == pb.AudioLossless &&
+		pa.FullDisc == pb.FullDisc && pa.ThreeD == pb.ThreeD && pa.Upscaled == pb.Upscaled &&
+		pa.Extras == pb.Extras && pa.Multi == pb.Multi && sameSet(pa.Languages, pb.Languages)
+}
+
+// sameSet reports whether two tag lists hold the same tags, in any order.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(x, y)
 }
 
 // release is the file read as a release: the parsed name, with probed facts laid over it.

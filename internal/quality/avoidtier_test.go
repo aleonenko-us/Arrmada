@@ -144,7 +144,7 @@ func TestMustStillRejectsBesideAnAvoid(t *testing.T) {
 	})
 }
 
-// Only target Avoids leave the floor. A negative custom format or keyword the owner wrote
+// Only built-in Avoids leave the floor. A negative custom format or keyword the owner wrote
 // is a plain score, and at the default floor it still refuses a release it pushes under 0.
 func TestCustomNegativeStillCountsAgainstTheFloor(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
@@ -195,6 +195,97 @@ func TestAvoidedFileStillDoesNotFit(t *testing.T) {
 		}
 		if c, _, ok := s.UpgradePick(ctx, ref, cur, []Candidate{NewCandidate("Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-OTHER", 18, 50)}); ok {
 			t.Errorf("another group's DV release of the same quality is no upgrade, got %q", c.Name)
+		}
+	})
+}
+
+// otherAvoid is a saved profile that sets the built-in AMZN format — one of "Other formats",
+// not a target format — to the Avoid button's -50, ranking in mode, at the default floor.
+func otherAvoid(mode string, edit func(*StoredProfile)) (Profile, *Engine) {
+	sp := StoredProfile{Name: "other-avoid", AllowedResolutions: []string{"2160p", "1080p"},
+		FormatScores: map[string]int{"AMZN": -50}}
+	if edit != nil {
+		edit(&sp)
+	}
+	p, e := storedFixture(sp)
+	e.Ranking = mode
+	return p, e
+}
+
+// An "Other formats" Avoid is the same Avoid as the target's: at the default floor of 0 it
+// ranks a release last but never refuses it. Its -50 used to count against the floor, so
+// "Avoid AMZN" silently acted as "Reject AMZN".
+func TestOtherFormatAvoidIsATierAtTheDefaultFloor(t *testing.T) {
+	const (
+		amzn  = "Show.S01E01.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb"
+		clean = "Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-FLUX"
+		amzn4 = "Show.S01E01.2160p.AMZN.WEB-DL.DDP5.1.H.265-NTb"
+	)
+	forEachRanking(t, func(t *testing.T, mode string) {
+		p, e := otherAvoid(mode, nil)
+		if p.MinFormatScore != 0 || p.FormatScores["AMZN"] != -50 {
+			t.Fatalf("fixture floor %d, AMZN %d: want the default 0 and the Avoid button's -50", p.MinFormatScore, p.FormatScores["AMZN"])
+		}
+		ev := e.Evaluate(p, NewCandidate(amzn, 2, 90))
+		if !ev.Eligible || ev.RejectCode != "" {
+			t.Fatalf("the AMZN release must stay eligible, got rejected %q (%s)", ev.RejectCode, ev.RejectReason)
+		}
+		if !ev.Avoided || !ev.TargetAvoided || ev.CustomAvoided || strings.Join(ev.AvoidedFormats, ",") != "AMZN" {
+			t.Errorf("the AMZN release should be in the avoided tier for AMZN, got avoided=%v tier=%v custom=%v %v", ev.Avoided, ev.TargetAvoided, ev.CustomAvoided, ev.AvoidedFormats)
+		}
+		if ev.FormatScore != -50 || ev.CustomScore != -50 {
+			t.Errorf("the avoid still scores within its tier: format %d custom %d, want -50 both", ev.FormatScore, ev.CustomScore)
+		}
+
+		// Ranked below a clean release of the same resolution, and below a clean release
+		// of a lower one too: it's a tier under both rankings, not a score resolution beats.
+		for _, avoided := range []string{amzn, amzn4} {
+			d := e.Decide(p, []Candidate{NewCandidate(avoided, 2, 90), NewCandidate(clean, 2, 90)})
+			if len(d.Rejected) != 0 || len(d.Eligible) != 2 {
+				t.Fatalf("%s: both releases should be eligible, got %d eligible, %d rejected", avoided, len(d.Eligible), len(d.Rejected))
+			}
+			if d.Winner.Candidate.Name != clean || d.DecidedBy != KeyAvoid {
+				t.Errorf("%s: the clean release must win on the avoid, got %q decided by %q", avoided, d.Winner.Candidate.Name, d.DecidedBy)
+			}
+		}
+
+		// Picked when it's all there is, with the heads-up.
+		only := e.Decide(p, []Candidate{NewCandidate(amzn, 2, 90)})
+		if only.Winner == nil || only.Winner.Candidate.Name != amzn {
+			t.Fatalf("with no alternative the AMZN release must be picked, got rejected %+v", only.Rejected)
+		}
+		if len(only.Why) == 0 || only.Why[0] != "Only releases with a format you avoid were available" {
+			t.Errorf("an AMZN-only pick should say only avoided releases were available, got %v", only.Why)
+		}
+	})
+}
+
+// The owner's own custom format and "Name contains" keyword at the same -50 are scores, and
+// the default floor of 0 still refuses what they push under it — the deliberate power-user
+// way to keep something out.
+func TestCustomFormatAtAvoidScoreStillRefusedAtTheDefaultFloor(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		p, e := otherAvoid(mode, func(sp *StoredProfile) {
+			sp.CustomFormats = []CustomFormat{{Name: "No NTb", Conditions: []Condition{{Type: CondReleaseGroup, Value: "NTb"}}}}
+			sp.FormatScores = map[string]int{"No NTb": -50}
+			sp.Keywords = []Keyword{{Term: "HDTV", Score: -50}}
+		})
+		for _, name := range []string{"Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-NTb", "Show.S01E01.1080p.HDTV.x264-TVGRP"} {
+			if ev := e.Evaluate(p, NewCandidate(name, 2, 90)); ev.Eligible || ev.RejectCode != RejectMinFormatScore {
+				t.Errorf("%s: want rejected %q, got eligible=%v code %q", name, RejectMinFormatScore, ev.Eligible, ev.RejectCode)
+			}
+		}
+		// A raised floor still judges what the release earns: an AMZN Avoid neither sinks a
+		// release under it nor lifts one over it.
+		p, e = otherAvoid(mode, func(sp *StoredProfile) {
+			sp.MinFormatScore = 10
+			sp.FormatScores["HEVC"] = 50
+		})
+		if ev := e.Evaluate(p, NewCandidate("Show.S01E01.1080p.AMZN.WEB-DL.DDP5.1.H.265-NTb", 2, 90)); !ev.Eligible || !ev.TargetAvoided {
+			t.Errorf("AMZN HEVC earns 50 against a floor of 10: want eligible and avoided, got eligible=%v (%s)", ev.Eligible, ev.RejectReason)
+		}
+		if ev := e.Evaluate(p, NewCandidate("Show.S01E01.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb", 2, 90)); ev.Eligible || ev.RejectCode != RejectMinFormatScore {
+			t.Errorf("AMZN H.264 earns 0 against a floor of 10: want rejected %q, got eligible=%v code %q", RejectMinFormatScore, ev.Eligible, ev.RejectCode)
 		}
 	})
 }

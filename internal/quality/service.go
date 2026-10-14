@@ -352,7 +352,8 @@ func convertedFrom(cand, current string, curCodec parser.Codec) bool {
 	if curCodec != parser.CodecAV1 && curCodec != parser.CodecX265 {
 		return false
 	}
-	return parser.Parse(cand).Codec != curCodec && parser.WithoutCodec(cand) == parser.WithoutCodec(current)
+	return parser.Parse(cand).Codec != curCodec &&
+		(parser.WithoutCodec(cand) == parser.WithoutCodec(current) || sameRelease(cand, current, false))
 }
 
 // Encode is one side of a bitrate comparison: how big it is and what codec it used.
