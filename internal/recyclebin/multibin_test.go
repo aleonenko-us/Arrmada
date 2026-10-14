@@ -214,6 +214,9 @@ func TestResolveRejectsUnknownBinKeyAndTraversal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.movies, ".plexignore"), []byte("*\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(f.movies, ".ignore"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	outside := filepath.Join(filepath.Dir(f.moviesRoot), "secret.txt")
 	_ = os.WriteFile(outside, []byte("x"), 0o644)
 	key := f.svc.List(ctx)[0].Bin
@@ -225,6 +228,7 @@ func TestResolveRejectsUnknownBinKeyAndTraversal(t *testing.T) {
 		key + "/../../secret.txt",      // out of the bin
 		key + "/F/../../../secret.txt", // out by a longer road
 		key + "/.plexignore",           // the bin's marker
+		key + "/.ignore",               // Jellyfin's marker
 	} {
 		if err := f.svc.DeleteItem(ctx, id); err == nil {
 			t.Errorf("DeleteItem(%q) was accepted", id)
@@ -248,6 +252,9 @@ func TestResolveRejectsUnknownBinKeyAndTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.movies, ".plexignore")); err != nil {
 		t.Error("emptying the bins removed .plexignore, so Plex would list the next delete")
+	}
+	if _, err := os.Stat(filepath.Join(f.movies, ".ignore")); err != nil {
+		t.Error("emptying the bins removed .ignore, so Jellyfin would list the next delete")
 	}
 }
 
