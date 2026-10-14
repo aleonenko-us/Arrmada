@@ -2,6 +2,7 @@ package series
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -235,5 +236,45 @@ func TestRebuildKeepsSeasonMonitoredFlags(t *testing.T) {
 		if sn.Monitored != want[sn.SeasonNumber] {
 			t.Errorf("season %d monitored = %v, want %v", sn.SeasonNumber, sn.Monitored, want[sn.SeasonNumber])
 		}
+	}
+}
+
+// A rebuild that fails for a reason of its own (a database error) is not a stale plan:
+// Apply says the renumber couldn't be saved, carries the real error for the log, keeps the
+// raw database text out of what the owner reads, and moves nothing.
+func TestApplyReportsRebuildFailureNotStalePlan(t *testing.T) {
+	svc, _, id := renumberFixture(t)
+	ctx := t.Context()
+	if _, _, err := svc.Refresh(ctx, id, RefreshOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Planning only reads; the rebuild's first write is clearing the listing, so failing
+	// that fails the rebuild and nothing else.
+	if _, err := svc.repo.db.ExecContext(ctx, `CREATE TRIGGER test_fail_rebuild BEFORE DELETE ON episodes
+		BEGIN SELECT RAISE(ABORT, 'injected rebuild failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.ApplyNumbering(ctx, id, pendingHash(t, svc, id))
+	if errors.Is(err, ErrStalePlan) {
+		t.Fatalf("a failed rebuild was reported as a stale plan: %v", err)
+	}
+	if !errors.Is(err, ErrRebuildFailed) {
+		t.Fatalf("apply = %v, want ErrRebuildFailed", err)
+	}
+	if strings.Contains(err.Error(), "injected") || strings.Contains(err.Error(), "constraint") {
+		t.Errorf("the message the owner reads carries the raw database error: %q", err)
+	}
+	if res.Rebuilt || res.NumberingErr == nil || !strings.Contains(res.NumberingErr.Error(), "injected rebuild failure") {
+		t.Errorf("result = %+v, want the real error carried in NumberingErr", res)
+	}
+	if mustFile(t, svc, ctx, id, 1, 3) != "/tv/A/Season 1/A - S01E03.mkv" {
+		t.Error("a failed rebuild moved a file")
+	}
+	// The plan is still there to apply once the fault is gone.
+	if _, err := svc.repo.db.ExecContext(ctx, `DROP TRIGGER test_fail_rebuild`); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := svc.ApplyNumbering(ctx, id, pendingHash(t, svc, id)); err != nil || !res.Rebuilt {
+		t.Fatalf("apply after the fault cleared: %+v, %v", res, err)
 	}
 }

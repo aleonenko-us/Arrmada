@@ -399,6 +399,10 @@ type RefreshResult struct {
 	// Unplaced counts files the rebuild found no episode for: their rows went, and the
 	// files stay on disk where they were.
 	Unplaced int
+	// NumberingErr is why the numbering couldn't be checked or applied when a step failed
+	// on its own account (reading the stored listing, planning, the rebuild) rather than
+	// because the plan changed. The refresh carried on additively either way.
+	NumberingErr error
 }
 
 // Refresh re-pulls metadata for a series, adding any newly-announced seasons or episodes.
@@ -554,6 +558,7 @@ func (s *Service) applyNumbering(ctx context.Context, sr Series, d *metadata.Ser
 	if err != nil {
 		s.log.Warn("series: refresh couldn't read the stored listing — adding new episodes only", "series", sr.Title, "err", err)
 		s.addOnlyNewEpisodes(ctx, sr, seasons)
+		res.NumberingErr = err
 		return res
 	}
 	authoritative := sr.IsAnime() && fresh == "tvdb"
@@ -570,6 +575,7 @@ func (s *Service) applyNumbering(ctx context.Context, sr Series, d *metadata.Ser
 		if perr != nil {
 			s.log.Warn("series: couldn't plan the renumber — adding new episodes only", "series", sr.Title, "err", perr)
 			s.addOnlyNewEpisodes(ctx, sr, seasons)
+			res.NumberingErr = perr
 			return res
 		}
 		hash := PlanHash(plan)
@@ -810,6 +816,7 @@ func (s *Service) rebuild(ctx context.Context, sr Series, seasons []Season, fres
 		// path keeps the show as it was — better stale numbering than half a rebuild.
 		s.log.Warn("series: numbering rebuild failed — adding new episodes only", "series", sr.Title, "err", err)
 		s.addOnlyNewEpisodes(ctx, sr, seasons)
+		res.NumberingErr = err
 		return res
 	}
 	res.Rebuilt = true
@@ -869,6 +876,11 @@ func (s *Service) ApplyNumbering(ctx context.Context, id int64, planHash string)
 	_, res, err := s.refresh(ctx, id, RefreshOptions{ApplyPlan: planHash})
 	if err != nil {
 		return res, err
+	}
+	if res.NumberingErr != nil {
+		// A broken step isn't a changed plan: saying "try again" only led back to the same
+		// failure. The cause stays in res and the log; the message is plain.
+		return res, ErrRebuildFailed
 	}
 	if !res.Rebuilt {
 		return res, ErrStalePlan
