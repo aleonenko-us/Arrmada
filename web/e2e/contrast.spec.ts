@@ -34,6 +34,16 @@ const shots: Shot[] = [
     },
   },
   { persona: "admin", path: "/settings/media-servers#jellyfin-server" },
+  // The sidebar as a phone's drawer (its foot: the account row and the version badge
+  // with its update dot). On a desktop it's always open and every page above covers it.
+  {
+    persona: "admin",
+    path: "/activity/queue",
+    open: async (page) => {
+      if ((page.viewportSize()?.width ?? 1440) < 1024) await page.getByRole("button", { name: /^Open menu/ }).click();
+      await expect(page.getByTestId("version-badge").getByRole("link")).toBeVisible();
+    },
+  },
   // Dialogs, sheets and menus: what opens on top of a page is drawn on other surfaces.
   { persona: "requester", path: "/discover/movie/1001" },
   { persona: "admin", path: "/requests?tab=active&type=movie&id=2" },
