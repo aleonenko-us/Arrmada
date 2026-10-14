@@ -75,7 +75,7 @@ var bannedCopy = []bannedPhrase{
 	phrase(`connect (your )?Plex( server)? in (Insights|Settings → Plex)`, "the Plex connection is the Plex card in Settings → Connections (LINKS.plexConnection)"),
 	webPhrase(`/settings/plex#plex-connection|/audiobooks\?tab=import`, "those cards moved (Settings → Connections' Plex card, Settings → Import & migrate) — link through LINKS"),
 	// J5b: Settings → Plex became Settings → Media servers (a Plex and a Jellyfin group).
-	phrase(`Settings → Plex\b`, "the section is Settings → Media servers (LINKS.mediaServers, or a card like LINKS.plexMonitoring)"),
+	phrase(`Settings → Plex\b`, "the section is Settings → Media servers (LINKS.mediaServers, or a card like LINKS.plexSignIn)"),
 	webPhrase("[\"'`]/settings/plex\\b", "/settings/plex only redirects now — link through LINKS (LINKS.mediaServers, LINKS.plexServer…)"),
 	phrase(`Plex settings →`, "the button is 'Media server settings →' (LINKS.mediaServers): one page for Plex and Jellyfin"),
 	// COPY-08: the Insights intro only asks to connect while Plex isn't connected.

@@ -26,7 +26,7 @@ export function PeopleSettings() {
     <div className="flex flex-col gap-6">
       <PeopleList meId={user?.id} />
       <p className="m-0 text-sm text-ink-faint">
-        Who may sign in with Plex or Jellyfin, and what their new sign-ins auto-approve, is in <Link to={LINKS.mediaServers} style={{ color: "var(--accent-text)" }}>Settings → Media servers</Link>.
+        Who may sign in with Plex or Jellyfin, and what their new sign-ins auto-approve, is in Settings → Media servers: <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Plex sign-in</Link> and <Link to={LINKS.jellyfinSignIn} style={{ color: "var(--accent-text)" }}>Jellyfin sign-in</Link>.
       </p>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />

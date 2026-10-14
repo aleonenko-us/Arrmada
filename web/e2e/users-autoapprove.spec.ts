@@ -23,8 +23,8 @@ test.describe("admin", () => {
     await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
 
     // The Plex sign-in default (in Settings → Media servers) starts at movies only.
-    await page.getByRole("link", { name: "Settings → Media servers" }).click();
-    await expect(page).toHaveURL(/\/settings\/media-servers$/);
+    await page.getByRole("link", { name: "Plex sign-in" }).click();
+    await expect(page).toHaveURL(/\/settings\/media-servers#plex-sign-in$/);
     const plex = page.getByRole("group", { name: "New Plex sign-ins auto-approve" });
     await expect(plex.getByRole("checkbox", { name: "Movies" })).toBeChecked();
     await expect(plex.getByRole("checkbox", { name: "Series" })).not.toBeChecked();

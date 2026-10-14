@@ -21,9 +21,7 @@ export const LINKS = {
   // Each server's group starts with its server card.
   plexServer: "/settings/media-servers#plex-server",
   jellyfinServer: "/settings/media-servers#jellyfin-server",
-  plexMonitoring: "/settings/media-servers#plex-monitoring",
   plexSignIn: "/settings/media-servers#plex-sign-in",
-  jellyfinMonitoring: "/settings/media-servers#jellyfin-monitoring",
   jellyfinSignIn: "/settings/media-servers#jellyfin-sign-in",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.
   activityQueue: "/activity/queue",
