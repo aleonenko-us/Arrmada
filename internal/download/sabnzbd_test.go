@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/download/nntptest"
 )
 
 // The SABnzbd client against recorded answers. testdata/sabnzbd/<version>/ holds answers
@@ -226,7 +228,7 @@ func TestSABnzbdAddReturnsKey(t *testing.T) {
 		t.Run(version, func(t *testing.T) {
 			f, dc := newSABFake(t, version)
 			f.setCats("*", "arrmada", "arrmada-tv", "arrmada-books", "arrmada-music")
-			nzb := testNZB("pa ss&<word>", map[string]string{"film.mkv": "a@b"}, map[string]int{"film.mkv": 10})
+			nzb := nntptest.NZB("pa ss&<word>", map[string]string{"film.mkv": "a@b"}, map[string]int{"film.mkv": 10})
 			key, err := newSAB().AddKeyed(context.Background(), dc, AddRequest{
 				Name: "Film.2020.1080p.WEB-DL", File: nzb, Filename: "Film.2020.nzb", Category: "arrmada-tv", Transport: TransportUsenet,
 			})
@@ -291,8 +293,8 @@ func TestSABnzbdAddRefusals(t *testing.T) {
 
 func TestNZBPassword(t *testing.T) {
 	for nzb, want := range map[string]string{
-		string(testNZB("s3cret", map[string]string{"a": "b"}, nil)):                                 "s3cret",
-		string(testNZB("", map[string]string{"a": "b"}, nil)):                                       "",
+		string(nntptest.NZB("s3cret", map[string]string{"a": "b"}, nil)):                            "s3cret",
+		string(nntptest.NZB("", map[string]string{"a": "b"}, nil)):                                  "",
 		`<nzb><head><meta type="title">x</meta><meta type="PASSWORD"> p&amp;w </meta></head></nzb>`: "p&w",
 		`<nzb><file><meta type="password">late</meta></file></nzb>`:                                 "",
 		`not xml`: "",

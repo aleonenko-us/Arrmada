@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/download/nntptest"
 )
 
 // TestSABnzbdLive runs the SABnzbd client against a real SABnzbd (the pinned
@@ -89,9 +91,9 @@ func TestSABnzbdLive(t *testing.T) {
 	}
 
 	// A news server in this process: one article it has, one it hasn't.
-	news := startFakeNNTP(t, "0.0.0.0:0")
+	news := nntptest.Start(t, "0.0.0.0:0")
 	if _, err := sab.call(ctx, dc, "set_config", url.Values{"section": {"servers"}, "keyword": {"arrmada-it"}, "name": {"arrmada-it"},
-		"host": {os.Getenv("ARRMADA_SABNZBD_NNTP_HOST")}, "port": {fmt.Sprint(news.port())}, "connections": {"2"},
+		"host": {os.Getenv("ARRMADA_SABNZBD_NNTP_HOST")}, "port": {fmt.Sprint(news.Port())}, "connections": {"2"},
 		"enable": {"1"}, "ssl": {"0"}, "retention": {"0"}}); err != nil {
 		t.Fatalf("adding the test news server: %v", err)
 	}
@@ -115,9 +117,9 @@ func TestSABnzbdLive(t *testing.T) {
 	for i := range payload {
 		payload[i] = byte(i*7 + i/251)
 	}
-	news.add("good-"+run+"@arrmada.test", "arrmada.it."+run+".mkv", payload)
-	good := testNZB("", map[string]string{"arrmada.it." + run + ".mkv": "good-" + run + "@arrmada.test"}, map[string]int{"arrmada.it." + run + ".mkv": 270_000})
-	bad := testNZB("s3cret", map[string]string{"missing." + run + ".mkv": "missing-" + run + "@arrmada.test"}, map[string]int{"missing." + run + ".mkv": 270_000})
+	news.Add("good-"+run+"@arrmada.test", "arrmada.it."+run+".mkv", payload)
+	good := nntptest.NZB("", map[string]string{"arrmada.it." + run + ".mkv": "good-" + run + "@arrmada.test"}, map[string]int{"arrmada.it." + run + ".mkv": 270_000})
+	bad := nntptest.NZB("s3cret", map[string]string{"missing." + run + ".mkv": "missing-" + run + "@arrmada.test"}, map[string]int{"missing." + run + ".mkv": 270_000})
 
 	// A category SABnzbd doesn't have is refused, not filed under *.
 	if _, err := sab.AddKeyed(ctx, dc, AddRequest{Name: "Arrmada.IT.NoCat." + run, File: good, Filename: "x.nzb", Category: "arrmada-no-such-" + run, Transport: TransportUsenet}); err == nil || !strings.Contains(err.Error(), "category") {
