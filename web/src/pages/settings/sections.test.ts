@@ -6,8 +6,8 @@ const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
 
 describe("visibleSections", () => {
-  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles, Convert, Alerts (read-only) and the Plex connection", () => {
-    expect(manager).toEqual(["library", "media", "connections", "subtitles", "convert", "alerts", "plex"]);
+  it("gives a manager what the old Media and Library tabs showed, plus Connections, Subtitles, Convert, Alerts (read-only) and Media servers", () => {
+    expect(manager).toEqual(["library", "media", "connections", "subtitles", "convert", "alerts", "media-servers"]);
   });
 
   it("gives an admin every section, Status included", () => {
@@ -62,10 +62,26 @@ describe("settingsRedirect", () => {
     expect(settingsRedirect("/settings/plex", "", "#plex-connection", admin)).toBe("/settings/connections#plex");
     expect(settingsRedirect("/settings/plex", "", "#plex-connection", manager)).toBe("/settings/connections#plex");
     expect(settingsRedirect("/settings/plex", "?x=1&tab=system", "#plex-connection", admin)).toBe("/settings/connections?x=1#plex");
-    // Its new home and the rest of Settings → Plex stay put.
+    // Its new home stays put.
     expect(settingsRedirect("/settings/connections", "", "#plex", manager)).toBeNull();
-    expect(settingsRedirect("/settings/plex", "", "#plex-library-updates", manager)).toBeNull();
-    expect(settingsRedirect("/settings/plex", "", "", manager)).toBeNull();
+  });
+
+  it("sends the old Plex section and every one of its cards to Media servers, same anchor", () => {
+    // The Plex section became Media servers (Plex and Jellyfin side by side).
+    expect(settingsRedirect("/settings/plex", "", "", manager)).toBe("/settings/media-servers");
+    expect(settingsRedirect("/settings/plex", "", "", admin)).toBe("/settings/media-servers");
+    for (const anchor of ["plex-server", "plex-monitoring", "plex-library-updates", "plex-tautulli"]) {
+      expect(settingsRedirect("/settings/plex", "", `#${anchor}`, manager)).toBe(`/settings/media-servers#${anchor}`);
+    }
+    for (const anchor of ["plex-sign-in", "plex-accounts", "jellyfin-sign-in"]) {
+      expect(settingsRedirect("/settings/plex", "", `#${anchor}`, admin)).toBe(`/settings/media-servers#${anchor}`);
+    }
+    // plex.tv's return address from an older build keeps its query (the page passes the PIN on).
+    expect(settingsRedirect("/settings/plex", "?plexpin=7", "", admin)).toBe("/settings/media-servers?plexpin=7");
+    // The new page and its cards stay put.
+    expect(settingsRedirect("/settings/media-servers", "", "", manager)).toBeNull();
+    expect(settingsRedirect("/settings/media-servers", "", "#jellyfin-library-updates", manager)).toBeNull();
+    expect(settingsRedirect("/settings/media-servers", "", "#plex-sign-in", admin)).toBeNull();
   });
 
   it("keeps other query params", () => {
@@ -81,7 +97,7 @@ describe("settingsRedirect", () => {
 
 describe("LINKS into Settings", () => {
   // Every deep link copy uses must name a section and a card that exist.
-  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.libraryReview, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.plex, LINKS.plexMonitoring, LINKS.plexSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
+  it.each([LINKS.apiKeys, LINKS.connections, LINKS.diskGuard, LINKS.recycleBin, LINKS.libraryFolders, LINKS.libraryReview, LINKS.users, LINKS.alerts, LINKS.plexConnection, LINKS.jellyfinConnection, LINKS.mediaServerCards, LINKS.mediaServers, LINKS.plexServer, LINKS.jellyfinServer, LINKS.plexMonitoring, LINKS.plexSignIn, LINKS.jellyfinMonitoring, LINKS.jellyfinSignIn, LINKS.tautulliImport, LINKS.audiobookshelfImport, LINKS.subtitlesSettings, LINKS.convertSettings, LINKS.audiobookServer])("%s resolves", (link) => {
     const [path, anchor] = link.split("#");
     const section = sectionFromPath(path);
     expect(admin).toContain(section);
@@ -97,6 +113,9 @@ describe("searchSettings", () => {
     expect(labels("recycle")).toEqual(["Recycle bin"]);
     expect(labels("plex")).toContain("Plex sign-in");
     expect(labels("plex path mapping")).toEqual(["Plex library updates"]);
+    expect(labels("jellyfin path mapping")).toEqual(["Jellyfin library updates"]);
+    expect(labels("jellyfin public address")).toEqual(["Jellyfin connection", "Jellyfin Watch links"]);
+    expect(labels("quick connect")).toEqual(["Jellyfin sign-in"]);
     // The section name counts too, so "naming" also lists the rest of Naming & metadata.
     expect(labels("naming")).toEqual(["Plex recommended naming", "Movie naming", "Series naming", "Metadata"]);
   });
@@ -110,7 +129,10 @@ describe("searchSettings", () => {
   it("hides admin-only cards from a manager", () => {
     expect(labels("recycle", manager)).toEqual([]);
     // Managers keep the Plex library updates card (scans and mappings are day-to-day).
-    expect(labels("plex", manager)).toEqual(["Plex recommended naming", "Metadata", "Media servers", "Plex connection", "Plex server", "Watch monitoring", "Plex library updates"]);
+    expect(labels("plex", manager)).toEqual(["Plex recommended naming", "Metadata", "Media servers", "Plex connection", "Plex server", "Plex watch monitoring", "Plex library updates"]);
+    // Jellyfin's sign-in card is an admin's, like Plex's.
+    expect(labels("jellyfin quick", manager)).toEqual([]);
+    expect(labels("jellyfin quick")).toEqual(["Jellyfin sign-in"]);
   });
 
   it("has a unique anchor per card", () => {

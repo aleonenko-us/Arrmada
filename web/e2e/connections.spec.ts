@@ -56,7 +56,7 @@ test.describe("admin", () => {
     await page.route("**/api/v1/insights/plex/test", (route) =>
       route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, server_name: "Basement", version: "1.41.0", libraries: [{ key: "1", title: "Movies", type: "movie" }] }) }));
 
-    // The Plex page's old connection anchor, and Settings → Plex's own link, open the card.
+    // The old Plex page's connection anchor opens the card.
     await page.goto("/settings/plex#plex-connection");
     await expect(page).toHaveURL(/\/settings\/connections#plex$/);
     const plex = page.locator("#plex");
@@ -71,7 +71,7 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/insights/plex")[0].body).toMatchObject({ url: "http://192.168.1.10:32400", token: "tok-123" });
     // The token goes back blank: it's never shown again.
     await expect(plex.getByLabel("X-Plex-Token")).toHaveValue("");
-    await expect(plex.getByRole("link", { name: "Settings → Plex →" })).toHaveAttribute("href", "/settings/plex");
+    await expect(plex.getByRole("link", { name: "Settings → Media servers →" })).toHaveAttribute("href", "/settings/media-servers#plex-server");
   });
 
   test("a redirect-mode Plex sign-in comes back to the Plex card and finishes there", async ({ page, api }) => {
@@ -82,7 +82,7 @@ test.describe("admin", () => {
       return route.fulfill({ contentType: "application/json", body: JSON.stringify({ authorized: true, server_name: "Basement" }) });
     });
     await page.addInitScript(() => { if (!sessionStorage.getItem("e2e-once")) { sessionStorage.setItem("e2e-once", "1"); sessionStorage.setItem("arrmada.plexpin.connect", "7"); } });
-    // An older build sent plex.tv back to Settings → Plex; that address still finishes.
+    // An older build sent plex.tv back to the old Plex page; that address still finishes.
     await page.goto("/settings/plex?plexpin=7");
     await expect(page.getByText("Signed in with Plex — connected to Basement")).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveURL(/\/settings\/connections$/);

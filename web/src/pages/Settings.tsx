@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { inputStyle } from "../components/settings/ui";
@@ -13,12 +13,15 @@ import { ImportSettings } from "./settings/ImportSettings";
 import { SystemSettings } from "./settings/SystemSettings";
 import { StatusSection } from "./settings/Status";
 import { AlertsSettings } from "./settings/AlertsSettings";
-import { PlexSettings } from "./settings/PlexSettings";
+import { MediaServersSettings } from "./settings/MediaServers";
 import { ConnectionsSettings } from "./settings/Connections";
 import { SubtitlesSettings } from "./settings/SubtitlesSettings";
 import { ConvertSettings } from "./settings/ConvertSettings";
 import { AudiobookServerSettings } from "./settings/AudiobookServer";
 import { Page } from "../ui/Page";
+
+// How long a deep link keeps its card in view while the section's cards load (see below).
+const SETTLE_MS = 3000;
 
 // What each section renders; sections.ts says who sees it and where its cards are.
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
@@ -29,7 +32,7 @@ const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   subtitles: SubtitlesSettings,
   convert: ConvertSettings,
   alerts: AlertsSettings,
-  plex: PlexSettings,
+  "media-servers": MediaServersSettings,
   "audiobook-server": AudiobookServerSettings,
   users: PeopleSettings,
   import: ImportSettings,
@@ -65,10 +68,32 @@ function SettingsHub() {
   const section = sectionFromPath(pathname) as SectionId;
 
   // A link like /settings/system#api-keys lands on that card. The cards only exist once
-  // the settings have loaded, so wait for them rather than scrolling to nothing.
+  // the settings have loaded, so wait for them rather than scrolling to nothing. Cards
+  // load their own data after that, so a card far down a long section (Jellyfin's, under
+  // Plex's on Media servers) can be pushed away, or not be reachable yet: keep bringing it
+  // back as the section grows, for a few seconds or until the person scrolls themselves.
   const ready = !!s;
+  const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (ready && hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+    if (!ready || !hash) return;
+    const id = hash.slice(1);
+    const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
+    go();
+    const body = bodyRef.current;
+    if (!body || typeof ResizeObserver === "undefined") return;
+    let done = false;
+    const stop = () => {
+      if (done) return;
+      done = true;
+      ro.disconnect();
+      clearTimeout(timer);
+      for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.removeEventListener(ev, stop);
+    };
+    const ro = new ResizeObserver(() => { if (!done) go(); });
+    ro.observe(body);
+    const timer = setTimeout(stop, SETTLE_MS);
+    for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.addEventListener(ev, stop, { passive: true });
+    return stop;
   }, [ready, hash, section]);
 
   if (redirect) return <Navigate to={redirect} replace />;
@@ -146,7 +171,7 @@ function SettingsHub() {
           </nav>
         </aside>
 
-        <div className="w-full min-w-0 max-w-form flex-1">
+        <div ref={bodyRef} className="w-full min-w-0 max-w-form flex-1">
           {error && <div className="mb-3 rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
           {!s ? <p className="text-base text-ink-dim">Loading…</p> : <Body />}
         </div>

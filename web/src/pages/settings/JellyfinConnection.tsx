@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Note } from "../../components/settings/ui";
 import { jellyfinApi, type JellyfinConfig, type JellyfinTestResult } from "../../lib/jellyfinApi";
 import { lanOnly } from "../../lib/lanAddress";
+import { LINKS } from "../../lib/links";
 import { setQueryData, useQuery } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
-import { Button, StatusChip, useToast } from "../../ui";
+import { Button, StatusChip, useConfirm, useToast } from "../../ui";
 import { Field } from "../../ui/Field";
 import { Input } from "../../ui/Input";
 
@@ -13,15 +15,19 @@ import { Input } from "../../ui/Input";
 // Settings → Connections and reads and writes the connection through the API on its own.
 // The key is a credential: it's typed here, saved with Save (not auto-saved) and never
 // comes back — the form only says a key is set, and a blank key field keeps it.
+//
+// testFirst (the setup wizard): Save tests what's typed first and only saves an address or
+// key Jellyfin turned down if the admin says so. inWizard leaves out the link to Settings
+// → Media servers, which the wizard covers itself.
 
 const JELLYFIN_KEY = "jellyfin";
 
-export function JellyfinConnect({ onChanged }: { onChanged?: () => void }) {
+export function JellyfinConnect({ onChanged, testFirst, inWizard }: { onChanged?: () => void; testFirst?: boolean; inWizard?: boolean }) {
   const q = useQuery(JELLYFIN_KEY, jellyfinApi.get, { staleMs: 0 });
   return (
     <div className="mt-2 flex flex-col gap-4 border-t pt-3" style={{ borderColor: "var(--line)" }}>
       {q.data ? (
-        <JellyfinForm cfg={q.data} onChanged={onChanged} />
+        <JellyfinForm cfg={q.data} onChanged={onChanged} testFirst={testFirst} inWizard={inWizard} />
       ) : q.error ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span role="alert" style={{ color: "var(--reject-text)" }}>Couldn't load the Jellyfin connection: {q.error.message}</span>
@@ -34,8 +40,9 @@ export function JellyfinConnect({ onChanged }: { onChanged?: () => void }) {
   );
 }
 
-function JellyfinForm({ cfg, onChanged }: { cfg: JellyfinConfig; onChanged?: () => void }) {
+function JellyfinForm({ cfg, onChanged, testFirst, inWizard }: { cfg: JellyfinConfig; onChanged?: () => void; testFirst?: boolean; inWizard?: boolean }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [url, setUrl] = useState(cfg.url);
   const [key, setKey] = useState("");
   // The public address follows the URL until it's typed in itself.
@@ -53,6 +60,19 @@ function JellyfinForm({ cfg, onChanged }: { cfg: JellyfinConfig; onChanged?: () 
   const save = async (e?: FormEvent) => {
     e?.preventDefault();
     if (!url.trim() || needsKey) return;
+    if (testFirst && (url.trim() !== cfg.url || key.trim())) {
+      setBusy("test");
+      setTest(null);
+      const r = await jellyfinApi.test({ url: url.trim(), api_key: key.trim() || undefined }).catch((err: Error) => ({ ok: false, detail: err.message }) as JellyfinTestResult);
+      setTest(r);
+      setBusy(null);
+      if (!r.ok && !(await confirm({
+        title: "Save it anyway?",
+        body: `Jellyfin didn't answer as expected: ${r.detail || "no answer"}. Watch links, library updates and sign-in won't work until it does.`,
+        confirmLabel: "Save anyway",
+        cancelLabel: "Keep editing",
+      }))) return;
+    }
     setBusy("save");
     try {
       const next = await jellyfinApi.save({ url: url.trim(), public_url: publicUrl.trim(), api_key: key.trim() || undefined });
@@ -137,6 +157,11 @@ function JellyfinForm({ cfg, onChanged }: { cfg: JellyfinConfig; onChanged?: () 
             ? `✓ Connected${test.server_name ? ` to ${test.server_name}` : ""}${test.version ? ` · Jellyfin ${test.version}` : ""}`
             : `✕ ${test.detail || "Couldn't reach Jellyfin"}`}
         </div>
+      )}
+      {!inWizard && (
+        <p className="m-0 text-xs text-ink-faint">
+          Watch monitoring, library updates, who may sign in with Jellyfin and the accounts linked to it: <Link to={LINKS.jellyfinServer} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Media servers →</Link>
+        </p>
       )}
     </form>
   );

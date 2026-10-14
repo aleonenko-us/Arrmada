@@ -132,6 +132,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/jellyfin", media.jellyfinConfig),
     { method: "PUT", path: "/api/v1/jellyfin", respond: ({ body }) => media.jellyfinSave(body as Parameters<typeof media.jellyfinSave>[0]) },
     { method: "POST", path: "/api/v1/jellyfin/test", respond: ({ body }) => media.jellyfinTest(body as { url?: string }) },
+    { method: "DELETE", path: "/api/v1/jellyfin", body: media.jellyfinConfig },
+    // Its library updates and watch monitoring, on Settings → Media servers.
+    get("/api/v1/jellyfin/scan", mod.jellyfinScan),
+    { method: "PUT", path: "/api/v1/jellyfin/monitoring", respond: ({ body }) => ({ ...media.jellyfinConfig, ...(body as object) }) },
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),

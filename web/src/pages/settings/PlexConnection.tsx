@@ -60,7 +60,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
   });
   const signingIn = plex.phase !== "idle";
 
-  // Only the connection: monitoring and its interval are Settings → Plex's and save on
+  // Only the connection: monitoring and its interval are Settings → Media servers' and save on
   // their own. A first connection switches monitoring on by itself (the server does it).
   const body = (u = url) => ({ url: u.trim(), token: token.trim() || undefined });
   const save = async (u?: string) => {
@@ -132,7 +132,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
         </div>
       )}
       <p className="m-0 text-xs text-ink-faint">
-        Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plex} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Plex →</Link>
+        Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plexServer} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Media servers →</Link>
       </p>
     </div>
   );

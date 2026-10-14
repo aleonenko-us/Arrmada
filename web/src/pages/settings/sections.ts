@@ -2,7 +2,7 @@
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
 
-export type SectionId = "library" | "media" | "connections" | "downloads" | "subtitles" | "convert" | "alerts" | "plex" | "audiobook-server" | "users" | "import" | "system" | "status";
+export type SectionId = "library" | "media" | "connections" | "downloads" | "subtitles" | "convert" | "alerts" | "media-servers" | "audiobook-server" | "users" | "import" | "system" | "status";
 
 export interface SettingsSection {
   id: SectionId;
@@ -25,9 +25,10 @@ export const SECTIONS: readonly SettingsSection[] = [
   { id: "convert", label: "Convert", adminOnly: false },
   // Managers see the alert connections read-only; only admins change them.
   { id: "alerts", label: "Alerts", adminOnly: false },
-  // How Arrmada uses Plex: library updates for managers, sign-in for admins. The connection
-  // itself is the Plex card on Connections.
-  { id: "plex", label: "Plex", adminOnly: false },
+  // How Arrmada uses each media server (Plex, Jellyfin): library updates and watch
+  // monitoring for managers, sign-in and linked accounts for admins. The connections
+  // themselves are the media server cards on Connections. It was "Plex" (/settings/plex).
+  { id: "media-servers", label: "Media servers", adminOnly: false },
   { id: "audiobook-server", label: "Audiobook server", adminOnly: true },
   // The old Users section: one list of everyone with their access (CFG-18).
   { id: "users", label: "People & access", adminOnly: true },
@@ -50,7 +51,7 @@ export interface SearchEntry {
   section: SectionId;
   /** The card's element id, so a result scrolls straight to it. */
   anchor: string;
-  /** An admin-only card in a section managers also see (Plex sign-in under Plex). */
+  /** An admin-only card in a section managers also see (Plex sign-in under Media servers). */
   adminOnly?: true;
 }
 
@@ -83,12 +84,17 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
   { label: "Outgoing email", keywords: "email mail smtp send outgoing server gmail app password from address kindle test", section: "alerts", anchor: "outgoing-email", adminOnly: true },
   { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },
-  { label: "Plex server", keywords: "plex server connected status", section: "plex", anchor: "plex-server" },
-  { label: "Watch monitoring", keywords: "plex monitoring record watched insights poll interval seconds activity history", section: "plex", anchor: "plex-monitoring" },
-  { label: "Plex library updates", keywords: "plex scan partial refresh path mapping map folder update library after import rename delete convert", section: "plex", anchor: "plex-library-updates" },
-  { label: "Plex sign-in", keywords: "plex login sign in with plex auto-approve home shared users staff admin owner policy", section: "plex", anchor: "plex-sign-in", adminOnly: true },
-  { label: "Jellyfin sign-in", keywords: "jellyfin login sign in with jellyfin quick connect code password auto-approve staff admin", section: "plex", anchor: "jellyfin-sign-in", adminOnly: true },
-  { label: "Linked Plex accounts", keywords: "plex linked accounts link unlink who family users", section: "plex", anchor: "plex-accounts", adminOnly: true },
+  { label: "Plex server", keywords: "plex server connected status connection change", section: "media-servers", anchor: "plex-server" },
+  { label: "Plex watch monitoring", keywords: "plex monitoring record watched insights poll interval seconds activity history", section: "media-servers", anchor: "plex-monitoring" },
+  { label: "Plex library updates", keywords: "plex scan partial refresh path mapping map folder update library after import rename delete convert", section: "media-servers", anchor: "plex-library-updates" },
+  { label: "Plex sign-in", keywords: "plex login sign in with plex family auto-approve home shared users staff admin owner policy", section: "media-servers", anchor: "plex-sign-in", adminOnly: true },
+  { label: "Linked Plex accounts", keywords: "plex linked accounts link unlink who family users", section: "media-servers", anchor: "plex-accounts", adminOnly: true },
+  { label: "Jellyfin server", keywords: "jellyfin server connected status connection change disconnect remove", section: "media-servers", anchor: "jellyfin-server" },
+  { label: "Jellyfin Watch links", keywords: "jellyfin public address url watch links outside home phone open button", section: "media-servers", anchor: "jellyfin-watch-links" },
+  { label: "Jellyfin watch monitoring", keywords: "jellyfin monitoring record watched insights poll interval seconds activity history", section: "media-servers", anchor: "jellyfin-monitoring" },
+  { label: "Jellyfin library updates", keywords: "jellyfin scan partial refresh path mapping map folder update library after import rename delete convert", section: "media-servers", anchor: "jellyfin-library-updates" },
+  { label: "Jellyfin sign-in", keywords: "jellyfin login sign in with jellyfin family quick connect code password auto-approve staff admin", section: "media-servers", anchor: "jellyfin-sign-in", adminOnly: true },
+  { label: "Linked Jellyfin accounts", keywords: "jellyfin linked accounts link unlink who family users", section: "media-servers", anchor: "jellyfin-accounts", adminOnly: true },
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
@@ -122,14 +128,15 @@ export function searchSettings(query: string, visible: readonly string[], admin 
 const TAB_SECTION: Record<string, SectionId> = { media: "media", library: "library", system: "system", users: "users" };
 const ANCHOR_SECTION: Record<string, SectionId> = Object.fromEntries(SEARCH_INDEX.map((e) => [e.anchor, e.section]));
 // Cards that moved and changed their anchor on the way: the old anchor's new section and id.
-// The Plex connection editor left Settings → Plex for the Plex card on Connections (CFG-16).
+// The Plex connection editor left the old Plex section for the Plex card on Connections (CFG-16).
 const RENAMED_ANCHOR: Record<string, { section: SectionId; anchor: string }> = {
   "plex-connection": { section: "connections", anchor: "plex" },
 };
 // Sections that were split or renamed: an old address with no card anchor lands here.
 // "Subtitles & Convert" (/settings/tools) became Subtitles and Convert; its #subtitles and
-// #convert anchors find their own section through the search index.
-const RENAMED_SECTION: Record<string, SectionId> = { tools: "subtitles" };
+// #convert anchors find their own section through the search index. The Plex section
+// (/settings/plex) became Media servers, its cards keeping their anchors.
+const RENAMED_SECTION: Record<string, SectionId> = { tools: "subtitles", plex: "media-servers" };
 
 // sectionFromPath is the section named in /settings/<section>[/…], or "" for bare /settings.
 export function sectionFromPath(pathname: string): string {

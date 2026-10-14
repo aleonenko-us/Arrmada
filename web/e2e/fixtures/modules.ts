@@ -120,7 +120,7 @@ export const subtitleModels: WhisperStatus = {
 
 export const plexConfig: PlexConfig = { url: "", token_set: false, enabled: false, poll_seconds: 30, status: "unconfigured" };
 
-// Settings → Plex's library updates card, with no Plex server connected.
+// Settings → Media servers' Plex library updates card, with no Plex server connected.
 export const plexScan: PlexScanView = {
   enabled: true, configured: false, path_map: [], last_scan: null, pending: 0,
   roots: [
@@ -128,6 +128,9 @@ export const plexScan: PlexScanView = {
     { kind: "show", arrmada_root: "/tv", sections: [], plex_path: "" },
   ],
 };
+
+// Its Jellyfin library updates card, with no Jellyfin server connected either.
+export const jellyfinScan: PlexScanView = { ...plexScan, roots: plexScan.roots.map((r) => ({ ...r })) };
 
 // No imported watch history either, so Insights shows its setup state and nothing else.
 export const insightsStats: InsightsStats = {
