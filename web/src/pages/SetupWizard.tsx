@@ -523,7 +523,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
                       {c.id === "later" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-sm text-ink-faint" style={{ border: "1px solid var(--line)" }}>…</span>}
                     </span>
                     <span className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : undefined }}>{c.label}</span>
-                    <span className="text-xs text-ink-faint">{c.hint}</span>
+                    <span className="text-xs text-ink-dim">{c.hint}</span>
                   </label>
                 );
               })}
