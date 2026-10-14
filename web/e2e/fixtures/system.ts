@@ -15,7 +15,7 @@ export function status(p: PersonaInfo): Status {
       { id: "movies", name: "Movies", enabled: true, status: "ok" },
       { id: "series", name: "Series", enabled: true, status: "ok" },
     ],
-    books_enabled: true, music_enabled: true, plex_login: false, metadata_ready: true,
+    books_enabled: true, music_enabled: true, plex_login: false, jellyfin_login: false, jellyfin_quickconnect: false, metadata_ready: true,
   };
 }
 
@@ -163,6 +163,10 @@ export const settings: AppSettings = {
   plex_signin_staff: false,
   plex_login_auto_approve: false,
   plex_login_auto_approve_types: "movie",
+  jellyfin_login_enabled: false,
+  jellyfin_quickconnect_enabled: true,
+  jellyfin_signin_staff: false,
+  jellyfin_login_auto_approve_types: "movie",
   request_quota_days: 7,
   request_quota_movies: 0,
   request_quota_seasons: 0,

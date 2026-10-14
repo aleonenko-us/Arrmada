@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { PlexMergeDialog } from "../../components/PlexMergeDialog";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Section, inputStyle } from "../../components/settings/ui";
-import { api, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
+import { api, type JellyfinBlock, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
 import { peopleApi } from "../../lib/peopleApi";
 import { accountApi } from "../../lib/accountApi";
 import { LINKS } from "../../lib/links";
@@ -128,6 +128,7 @@ function PeopleList({ meId }: { meId?: number }) {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<PlexBlock[]>([]);
+  const [jfBlocks, setJFBlocks] = useState<JellyfinBlock[]>([]);
   const [blockErr, setBlockErr] = useState<string | null>(null);
   const stored = useRef(new Map<number, Person>());
   const chains = useRef(new Map<number, Promise<unknown>>());
@@ -135,6 +136,7 @@ function PeopleList({ meId }: { meId?: number }) {
   const load = useCallback(() => {
     peopleApi.people().then((ps) => { stored.current = new Map(ps.map((p) => [p.id, p])); setPeople(ps); setErr(null); }).catch((e: Error) => setErr(e.message));
     peopleApi.plexBlocks().then(setBlocks).catch(() => {});
+    peopleApi.jellyfinBlocks().then(setJFBlocks).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -178,6 +180,11 @@ function PeopleList({ meId }: { meId?: number }) {
     try { setBlocks(await peopleApi.unblockPlex(b.plex_id)); load(); }
     catch (e) { setBlockErr((e as Error).message); }
   };
+  const unblockJellyfin = async (b: JellyfinBlock) => {
+    setBlockErr(null);
+    try { setJFBlocks(await peopleApi.unblockJellyfin(b.jellyfin_id)); load(); }
+    catch (e) { setBlockErr((e as Error).message); }
+  };
 
   const ctx: RowContext = { update, setAudio, reload: load, toast, people: people ?? [] };
 
@@ -205,6 +212,19 @@ function PeopleList({ meId }: { meId?: number }) {
               <span className="min-w-0 flex-1 truncate text-base">{b.name || `Plex account ${b.plex_id}`}</span>
               <span className="flex-none text-xs text-ink-faint">can't sign in with Plex</span>
               <button onClick={() => unblock(b)} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unblock</button>
+            </div>
+          ))}
+          {blockErr && jfBlocks.length === 0 && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{blockErr}</div>}
+        </div>
+      )}
+      {jfBlocks.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Blocked Jellyfin users</div>
+          {jfBlocks.map((b) => (
+            <div key={b.jellyfin_id} className="flex flex-wrap items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
+              <span className="min-w-0 flex-1 truncate text-base">{b.name || "A Jellyfin user"}</span>
+              <span className="flex-none text-xs text-ink-faint">can't sign in with Jellyfin</span>
+              <button onClick={() => unblockJellyfin(b)} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unblock</button>
             </div>
           ))}
           {blockErr && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{blockErr}</div>}
@@ -285,7 +305,12 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
             Plex{p.plex_username ? ` · ${p.plex_username}` : ""}{p.plex_blocked ? " · blocked" : ""}
           </span>
         )}
-        {p.plex_linked && p.auto_approve_series && p.role === "requester" && (
+        {p.jellyfin_linked && (
+          <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel)", color: p.jellyfin_blocked ? "var(--reject-text)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.jellyfin_blocked ? "Linked Jellyfin user — blocked from signing in" : "Linked Jellyfin user"}>
+            Jellyfin{p.jellyfin_username ? ` · ${p.jellyfin_username}` : ""}{p.jellyfin_blocked ? " · blocked" : ""}
+          </span>
+        )}
+        {(p.plex_linked || p.jellyfin_linked) && p.auto_approve_series && p.role === "requester" && (
           <span className={chip} style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }} title="Their series requests are approved at once, every season asked for.">Approves whole shows</span>
         )}
         <span className="flex items-center gap-1.5">
@@ -370,8 +395,20 @@ export function plexUnlinkConfirm(p: Person) {
   };
 }
 
+// jellyfinUnlinkConfirm is the same question for a Jellyfin link.
+export function jellyfinUnlinkConfirm(p: Person) {
+  return {
+    title: `Unlink ${p.username}'s Jellyfin user${p.jellyfin_username ? ` (${p.jellyfin_username})` : ""}?`,
+    body: p.jellyfin_only
+      ? "Jellyfin is their only way in: nobody knows a password for this account. After unlinking, their next Sign in with Jellyfin makes a new, empty account. Set a new password first if they should keep using this one."
+      : "Sign in with Jellyfin won't open this account any more. They can link it again from their account page.",
+    confirmLabel: "Unlink",
+    tone: "danger" as const,
+  };
+}
+
 // PersonMore is what's changed less often: their own request limits, a new password, and
-// their Plex link (unlink, block, or merge a duplicate account into another).
+// their Plex and Jellyfin links (unlink, block, or merge a duplicate account into another).
 function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext }) {
   const { booksEnabled } = useMe();
   const movies = useOwnLimit(p, "movies", "Movies", ctx);
@@ -404,8 +441,26 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
       ctx.reload();
     } catch (e) { ctx.toast((e as Error).message, { tone: "error" }); }
   };
-  // Accounts this one could be merged into: any other account with no Plex link of its own.
-  const mergeTargets = ctx.people.filter((u) => u.id !== p.id && !u.plex_linked);
+  const jellyfinAction = async (kind: "unlink" | "block") => {
+    const ok = await confirm(kind === "unlink"
+      ? jellyfinUnlinkConfirm(p)
+      : {
+          title: `Block ${p.username}'s Jellyfin user?`,
+          body: "They won't be able to sign in here with Jellyfin. Devices they're already signed in on stay signed in — Disable them to sign them out too.",
+          confirmLabel: "Block", tone: "danger",
+        });
+    if (!ok) return;
+    try {
+      if (kind === "unlink") await peopleApi.updateUser(p.id, { jellyfin_unlink: true });
+      else await peopleApi.blockUserJellyfin(p.id);
+      ctx.reload();
+    } catch (e) { ctx.toast((e as Error).message, { tone: "error" }); }
+  };
+  // Accounts this one could be merged into: any other account that has no link of a kind
+  // this one holds (a link only moves to an account without one).
+  const linked = p.plex_linked || p.jellyfin_linked;
+  const mergeTargets = ctx.people.filter((u) => u.id !== p.id && !(p.plex_linked && u.plex_linked) && !(p.jellyfin_linked && u.jellyfin_linked));
+  const linkWords = p.plex_linked && p.jellyfin_linked ? "Plex and Jellyfin links" : p.plex_linked ? "Plex link" : "Jellyfin link";
   const [mergeInto, setMergeInto] = useState<number | null>(null);
   const field = "w-[88px] rounded-lg px-2.5 py-1.5 text-base";
 
@@ -441,11 +496,22 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
           <Button size="sm" onClick={() => plexAction("unlink")}>Unlink Plex</Button>
         </div>
       )}
-      {/* A duplicate Plex requester (the owner or a family member signed in with Plex before
-          their own account was linked) can be folded into that account. */}
-      {p.plex_linked && !isMe && (p.role === "requester" || p.role === "readonly") && mergeTargets.length > 0 && (
+      {p.jellyfin_linked && !isMe && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-[12rem] flex-1 text-sm text-ink-dim">
+            {p.jellyfin_blocked
+              ? "Their Jellyfin user is blocked from signing in here. Unblock it under Blocked Jellyfin users."
+              : `Linked to Jellyfin${p.jellyfin_username ? ` as ${p.jellyfin_username}` : ""}.`}
+          </span>
+          {!p.jellyfin_blocked && <Button size="sm" style={{ color: "var(--reject-text)" }} onClick={() => jellyfinAction("block")}>Block their Jellyfin user</Button>}
+          <Button size="sm" onClick={() => jellyfinAction("unlink")}>Unlink Jellyfin</Button>
+        </div>
+      )}
+      {/* A duplicate requester (the owner or a family member signed in with Plex or
+          Jellyfin before their own account was linked) can be folded into that account. */}
+      {linked && !isMe && (p.role === "requester" || p.role === "readonly") && mergeTargets.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-sm text-ink-dim">
-          <span className="min-w-[12rem] flex-1">Same person as another account? Merge this one into it: requests, inbox, phones, audiobook progress and the Plex link move there.</span>
+          <span className="min-w-[12rem] flex-1">Same person as another account? Merge this one into it: requests, inbox, phones, audiobook progress and the {linkWords} move there.</span>
           <select aria-label="Merge into" value={mergeInto ?? ""} onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : null)} className="rounded-lg px-2 py-1.5 text-sm" style={inputStyle}>
             <option value="">Merge into…</option>
             {mergeTargets.map((t) => <option key={t.id} value={t.id}>{t.username} ({t.role})</option>)}
@@ -529,8 +595,10 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
   const [impact, setImpact] = useState<UserImpact | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // Plex-linked users come straight back on their next Plex sign-in unless this is ticked.
+  // Plex- and Jellyfin-linked users come straight back on their next sign-in unless these
+  // are ticked.
   const [blockPlex, setBlockPlex] = useState(false);
+  const [blockJellyfin, setBlockJellyfin] = useState(false);
 
   useEffect(() => {
     peopleApi.userImpact(p.id).then(setImpact).catch((e: Error) => setErr(`Couldn't check what this would remove: ${e.message}`));
@@ -539,12 +607,14 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
   const listening = !!impact && (impact.places > 0 || impact.listening_hours > 0);
   const hours = impact ? (impact.listening_hours >= 10 ? Math.round(impact.listening_hours) : Math.round(impact.listening_hours * 10) / 10) : 0;
   const canBlock = p.plex_linked && !p.plex_blocked;
+  const canBlockJF = !!p.jellyfin_linked && !p.jellyfin_blocked;
 
   const confirm = async () => {
     setBusy(true); setErr(null);
-    try { await peopleApi.deleteUser(p.id, listening ? p.username : undefined, canBlock && blockPlex); onDeleted(); }
+    try { await peopleApi.deleteUser(p.id, listening ? p.username : undefined, { plex: canBlock && blockPlex, jellyfin: canBlockJF && blockJellyfin }); onDeleted(); }
     catch (e) { setErr((e as Error).message); setBusy(false); }
   };
+  const comeBack = [canBlock && !blockPlex && "Plex", canBlockJF && !blockJellyfin && "Jellyfin"].filter(Boolean).join(" or ");
 
   return (
     <ConfirmDialog
@@ -556,14 +626,24 @@ function DeleteUserDialog({ p, onClose, onDeleted }: { p: Person; onClose: () =>
             {" "}Their {plural(impact.requests, "request")} stay.
           </p>
           <p className="m-0 mt-2">A copy of the database from just before is kept under Backups.</p>
-          {canBlock && !blockPlex && <p className="m-0 mt-2">They can sign in again with Plex unless you block their Plex account below, or turn off their sign-in instead of deleting them.</p>}
+          {comeBack && <p className="m-0 mt-2">They can sign in again with {comeBack} unless you block it below, or turn off their sign-in instead of deleting them.</p>}
         </>
       ) : !err ? "Checking what this would remove…" : null}
-      extra={canBlock ? (
-        <label className="flex items-center gap-2 text-sm text-ink-dim">
-          <input type="checkbox" checked={blockPlex} disabled={busy} onChange={(e) => setBlockPlex(e.target.checked)} />
-          Also block their Plex account from signing in here
-        </label>
+      extra={canBlock || canBlockJF ? (
+        <div className="flex flex-col gap-1.5">
+          {canBlock && (
+            <label className="flex items-center gap-2 text-sm text-ink-dim">
+              <input type="checkbox" checked={blockPlex} disabled={busy} onChange={(e) => setBlockPlex(e.target.checked)} />
+              Also block their Plex account from signing in here
+            </label>
+          )}
+          {canBlockJF && (
+            <label className="flex items-center gap-2 text-sm text-ink-dim">
+              <input type="checkbox" checked={blockJellyfin} disabled={busy} onChange={(e) => setBlockJellyfin(e.target.checked)} />
+              Also block their Jellyfin user from signing in here
+            </label>
+          )}
+        </div>
       ) : undefined}
       typedPhrase={listening ? p.username : undefined}
       confirmLabel="Delete user"

@@ -99,11 +99,11 @@ test.describe("admin", () => {
     await installExtra(page, api, [
       { method: "POST", path: "/api/v1/me/plex/link", body: { id: 6, auth_url: "https://app.plex.tv/auth#?code=Y" } },
       { method: "GET", path: "/api/v1/me/plex/link/6", status: 409, body: { status: "error", message: "This Plex account is already linked to ownerplex.", already_linked_to: "ownerplex", user_id: 9, mergeable: true } },
-      { method: "GET", path: "/api/v1/users/1/plex/merge", body: {
-        from: "ownerplex", to: "admiral", plex_username: "ownerplex", requests: 12, following: 0, notifications: 4, push_devices: 3,
+      { method: "GET", path: "/api/v1/users/1/merge", body: {
+        from: "ownerplex", to: "admiral", plex_link: true, plex_username: "ownerplex", jellyfin_link: false, requests: 12, following: 0, notifications: 4, push_devices: 3,
         quota_usage: 0, audiobook_progress: true, audiobook_password: false, signed_in_devices: 1, listening_apps: 0,
       } },
-      { method: "POST", path: "/api/v1/users/1/plex/merge", body: { merged: true } },
+      { method: "POST", path: "/api/v1/users/1/merge", body: { merged: true } },
     ]);
     await page.goto("/settings/plex");
     const sidebar = page.getByRole("complementary");
@@ -116,9 +116,9 @@ test.describe("admin", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("12 requests, 4 inbox messages, 3 phones and browsers getting alerts, audiobook progress, the Plex link (ownerplex)", { exact: false })).toBeVisible();
     await dialog.getByRole("button", { name: "Back up and merge" }).click();
-    await expect.poll(() => api.callsTo("POST", "/api/v1/users/1/plex/merge").length).toBe(1);
-    expect(api.callsTo("POST", "/api/v1/users/1/plex/merge")[0].body).toEqual({ from_user_id: 9 });
-    expect(api.callsTo("GET", "/api/v1/users/1/plex/merge")[0].path).toBe("/api/v1/users/1/plex/merge?from=9");
+    await expect.poll(() => api.callsTo("POST", "/api/v1/users/1/merge").length).toBe(1);
+    expect(api.callsTo("POST", "/api/v1/users/1/merge")[0].body).toEqual({ from_user_id: 9 });
+    expect(api.callsTo("GET", "/api/v1/users/1/merge")[0].path).toBe("/api/v1/users/1/merge?from=9");
   });
 
   test("the staff sign-in policy carries a warning and saves itself", async ({ page, api }) => {
@@ -160,7 +160,7 @@ test.describe("requester", () => {
 
   test("the Me page offers to link Plex", async ({ page }) => {
     await page.goto("/me");
-    await expect(page.getByRole("region", { name: "Plex" }).getByRole("button", { name: "Link", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Media servers" }).getByRole("button", { name: "Link", exact: true })).toBeVisible();
   });
 
   test("finishes a link plex.tv sent back to the Me page, for the PIN this tab started", async ({ page, api }) => {
@@ -171,7 +171,7 @@ test.describe("requester", () => {
     ]);
     await page.addInitScript(() => { if (!sessionStorage.getItem("e2e-once")) { sessionStorage.setItem("e2e-once", "1"); sessionStorage.setItem("arrmada.plexpin.link", "7"); } });
     await page.goto("/me?plexlink=7");
-    await expect(page.getByRole("region", { name: "Plex" }).getByText("Linked as kidplex")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("region", { name: "Media servers" }).getByText("Linked as kidplex")).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveURL(/\/me$/);
     expect(api.callsTo("GET", "/api/v1/me/plex/link/7").length).toBe(1);
   });

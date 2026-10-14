@@ -66,6 +66,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     ] }),
     // Your own Plex link (sidebar footer, Me page): not linked.
     get("/api/v1/me/plex", { linked: false, can_unlink: false }),
+    // Your own Jellyfin link (Me page): none, and no Jellyfin connected to link to.
+    get("/api/v1/me/jellyfin", { linked: false, can_unlink: false, available: false, quickconnect: false }),
 
     // Discover (requester and staff)
     { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url) },
@@ -223,6 +225,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/settings", sys.settings),
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
+    get("/api/v1/users/jellyfin-blocks", { blocks: [] }),
     get("/api/v1/users", sys.users),
     get("/api/v1/people", sys.people),
     // Answers like the server: the account as it now stands.

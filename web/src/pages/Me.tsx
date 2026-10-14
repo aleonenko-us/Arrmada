@@ -13,6 +13,8 @@ const NotificationSettings = lazyPage(() => import("../components/NotificationSe
 // Linking your Plex account (Discover's "Recommended for you", Sign in with Plex). Its own
 // chunk, with the Plex sign-in code behind it.
 const PlexAccountLink = lazy(() => import("../components/PlexAccountLink"));
+// Linking your Jellyfin user (Sign in with Jellyfin lands here), with its sign-in sheet.
+const JellyfinAccountLink = lazy(() => import("../components/JellyfinAccountLink"));
 // Your password and your other devices (every role).
 const AccountSettings = lazyPage(() => import("../components/AccountSettings"), "AccountSettings");
 // Your Kindle's address, for Send to Kindle on My shelf or, for staff, the book page
@@ -34,7 +36,8 @@ const ROLE: Record<UserRole, string> = {
 // so later work slots in without a second account page:
 //   Get notified — the one push switch for this device, with a plain answer when it can't
 //                  be on, then Apprise under Advanced;
-//   Plex         — link your Plex account (PLEX-14); plex.tv's redirect comes back here;
+//   Media servers — link your Plex account (PLEX-14; plex.tv's redirect comes back here)
+//                  and your Jellyfin user;
 //   Send to Kindle — your Kindle's address (Books on, requester and up);
 //   Calendar feed — your private link for Google / Apple Calendar (not from outside);
 //   Account      — change your password (or set a first one after Plex sign-in) and sign
@@ -66,9 +69,12 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
           </Suspense>
         </MeSection>
 
-        <MeSection id="plex" title="Plex">
+        <MeSection id="plex" title="Media servers">
           <Suspense fallback={<Loading />}>
             <PlexAccountLink variant="me" />
+          </Suspense>
+          <Suspense fallback={null}>
+            <JellyfinAccountLink />
           </Suspense>
         </MeSection>
 
