@@ -14,6 +14,7 @@ DELETE /api/v1/me/audio/devices/{family} user ext
 DELETE /api/v1/me/audio/items/{key}/bookmarks/{time} user ext
 DELETE /api/v1/me/audio/password user ext
 DELETE /api/v1/me/calendar-feed user -
+DELETE /api/v1/me/jellyfin/link user ext
 DELETE /api/v1/me/plex/link user ext
 DELETE /api/v1/me/sessions/{id} user ext
 DELETE /api/v1/movies/bulk staff -
@@ -41,6 +42,7 @@ DELETE /api/v1/subtitles/overrides/{kind}/{id} staff -
 DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
+DELETE /api/v1/users/jellyfin-blocks/{jellyfinID} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
 DELETE /api/v1/users/{id} admin -
 GET /api/health public ext
@@ -48,6 +50,7 @@ GET /api/v1/apikeys admin -
 GET /api/v1/attention staff -
 GET /api/v1/audioserver admin -
 GET /api/v1/audioserver/listening admin -
+GET /api/v1/auth/jellyfin/quickconnect/{id} public ext
 GET /api/v1/auth/me user ext
 GET /api/v1/auth/plex/pin/{id} public ext
 GET /api/v1/blocklist staff -
@@ -172,6 +175,8 @@ GET /api/v1/me/audio/listening user ext
 GET /api/v1/me/audio/shelves user ext
 GET /api/v1/me/books user ext
 GET /api/v1/me/calendar-feed user -
+GET /api/v1/me/jellyfin user ext
+GET /api/v1/me/jellyfin/link/quickconnect/{id} user ext
 GET /api/v1/me/kindle user ext
 GET /api/v1/me/notifications user ext
 GET /api/v1/me/notify-prefs user ext
@@ -270,8 +275,10 @@ GET /api/v1/system/status admin -
 GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
 GET /api/v1/users admin -
+GET /api/v1/users/jellyfin-blocks admin -
 GET /api/v1/users/plex-blocks admin -
 GET /api/v1/users/{id}/impact admin -
+GET /api/v1/users/{id}/merge admin -
 GET /api/v1/users/{id}/plex/merge admin -
 GET /api/v1/wanted staff -
 GET /api/v1/ws user -
@@ -291,6 +298,8 @@ GET /opds/series/{id} public ext
 POST /api/v1/apikeys/{id}/test admin -
 POST /api/v1/audioserver/import admin -
 POST /api/v1/audioserver/import/apply admin -
+POST /api/v1/auth/jellyfin public ext
+POST /api/v1/auth/jellyfin/quickconnect public ext
 POST /api/v1/auth/login public ext
 POST /api/v1/auth/logout public ext
 POST /api/v1/auth/plex/pin public ext
@@ -361,6 +370,8 @@ POST /api/v1/me/audio/sessions/{sid}/sync user ext
 POST /api/v1/me/audio/undiscard user ext
 POST /api/v1/me/books/{id}/send-to-kindle user ext
 POST /api/v1/me/calendar-feed user -
+POST /api/v1/me/jellyfin/link user ext
+POST /api/v1/me/jellyfin/link/quickconnect user ext
 POST /api/v1/me/notifications/read-all user ext
 POST /api/v1/me/notifications/{id}/read user ext
 POST /api/v1/me/password user ext
@@ -467,7 +478,9 @@ POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
 POST /api/v1/system/update-check admin -
 POST /api/v1/users admin -
+POST /api/v1/users/{id}/block-jellyfin admin -
 POST /api/v1/users/{id}/block-plex admin -
+POST /api/v1/users/{id}/merge admin -
 POST /api/v1/users/{id}/plex/merge admin -
 POST /api/v1/users/{id}/sessions/revoke admin -
 POST /api/v1/wanted/{kind}/{id}/search staff -

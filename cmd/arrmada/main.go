@@ -1024,7 +1024,7 @@ func main() {
 	// every rebuild of either, and every two minutes so the 30-minute fallback fires even
 	// if no index ever builds). Watch links lead with each person's own server.
 	requestsSvc.SetPlexLocator(mediaReadyLocator{media.Registry})
-	requestsSvc.SetHomeServer(homeServer)
+	requestsSvc.SetHomeServer(homeServer(authSvc))
 	media.Registry.OnIndexRebuilt(requestsSvc.KickPlexCheck)
 	grp.Loop("requests: plex check", requestsSvc.RunPlexChecks)
 	sched.Register("request-plex-check", 2*time.Minute, false, requestsSvc.CheckPlexWaiting,
@@ -1271,7 +1271,7 @@ func main() {
 		Jellyfin:     media.Jellyfin,
 		JellyfinScan: media.JellyfinScan,
 		MediaServers: media.Registry,
-		HomeServer:   homeServer, // whose Watch link a person sees first
+		HomeServer:   homeServer(authSvc), // whose Watch link a person sees first
 		// Everything else reads the folders live; the bundled qBittorrent's default save
 		// path is the one thing that has to be told. Same retries as at boot — the client
 		// may be restarting — and each try reads the folder afresh, so of two quick saves

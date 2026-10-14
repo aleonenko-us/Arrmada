@@ -9,9 +9,10 @@ import (
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
-// Merging a duplicate Plex requester into the account it belongs with (admin only). The
-// preview says what would move, as counts — audiobook data only as yes/no, never which
-// books — and the merge copies the database first.
+// Merging a duplicate Plex or Jellyfin requester into the account it belongs with (admin
+// only). The preview says what would move, as counts — audiobook data only as yes/no,
+// never which books — and the merge copies the database first. Served at
+// /users/{id}/merge and, under its old name, /users/{id}/plex/merge.
 
 // mergeAnswer turns a merge refusal into its HTTP answer; false when err was something else.
 func (a *api) mergeAnswer(w http.ResponseWriter, err error) bool {
@@ -27,7 +28,7 @@ func (a *api) mergeAnswer(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-// handlePlexMergePreview: GET /users/{id}/plex/merge?from=<duplicate id>.
+// handlePlexMergePreview: GET /users/{id}/merge?from=<duplicate id>.
 func (a *api) handlePlexMergePreview(w http.ResponseWriter, r *http.Request) {
 	target, ok := a.pathID(w, r)
 	if !ok {
@@ -38,7 +39,7 @@ func (a *api) handlePlexMergePreview(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "from must be a user id")
 		return
 	}
-	p, err := a.deps.Auth.PlexMergePreview(r.Context(), target, from)
+	p, err := a.deps.Auth.MergePreview(r.Context(), target, from)
 	if a.mergeAnswer(w, err) {
 		return
 	}
@@ -49,7 +50,7 @@ func (a *api) handlePlexMergePreview(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, p)
 }
 
-// handlePlexMerge: POST /users/{id}/plex/merge {from_user_id}. All or nothing, after a
+// handlePlexMerge: POST /users/{id}/merge {from_user_id}. All or nothing, after a
 // safety copy of the database; refused when the copy can't be made.
 func (a *api) handlePlexMerge(w http.ResponseWriter, r *http.Request) {
 	target, ok := a.pathID(w, r)
@@ -64,7 +65,7 @@ func (a *api) handlePlexMerge(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	// Checked before the copy, so a refused merge doesn't leave a backup behind.
-	if _, err := a.deps.Auth.PlexMergePreview(ctx, target, req.FromUserID); a.mergeAnswer(w, err) {
+	if _, err := a.deps.Auth.MergePreview(ctx, target, req.FromUserID); a.mergeAnswer(w, err) {
 		return
 	} else if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not check the accounts")
@@ -81,7 +82,7 @@ func (a *api) handlePlexMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.deps.Log.Info("users: database copied before merging accounts", "user_id", target, "from_user_id", req.FromUserID, "backup", path)
-	if err := a.deps.Auth.MergePlexDuplicate(ctx, target, req.FromUserID); err != nil {
+	if err := a.deps.Auth.MergeDuplicate(ctx, target, req.FromUserID); err != nil {
 		if a.mergeAnswer(w, err) {
 			return
 		}
@@ -89,6 +90,6 @@ func (a *api) handlePlexMerge(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not merge the accounts — nothing was changed")
 		return
 	}
-	a.deps.Log.Info("users: duplicate Plex account merged", "user_id", target, "from_user_id", req.FromUserID)
+	a.deps.Log.Info("users: duplicate account merged", "user_id", target, "from_user_id", req.FromUserID)
 	a.writeJSON(w, http.StatusOK, map[string]any{"merged": true})
 }

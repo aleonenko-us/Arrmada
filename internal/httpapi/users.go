@@ -19,8 +19,9 @@ func (a *api) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	// Each also carries their own request limits (-1: the global one).
 	type row struct {
 		auth.User
-		PlexBlocked bool           `json:"plex_blocked,omitempty"`
-		Quota       auth.UserQuota `json:"quota"`
+		PlexBlocked     bool           `json:"plex_blocked,omitempty"`
+		JellyfinBlocked bool           `json:"jellyfin_blocked,omitempty"`
+		Quota           auth.UserQuota `json:"quota"`
 	}
 	quotas, err := a.deps.Auth.Quotas(r.Context())
 	if err != nil {
@@ -31,6 +32,10 @@ func (a *api) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	for _, b := range a.plexBlocks(r.Context()) {
 		blocked[b.PlexID] = true
 	}
+	jfBlocked := map[string]bool{}
+	for _, b := range a.jellyfinBlocks(r.Context()) {
+		jfBlocked[b.JellyfinID] = true
+	}
 	out := make([]row, 0, len(users))
 	for _, u := range users {
 		rw := row{User: u, Quota: auth.DefaultQuota}
@@ -39,6 +44,9 @@ func (a *api) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		if u.PlexLinked && len(blocked) > 0 {
 			rw.PlexBlocked = blocked[a.deps.Auth.PlexIDForUser(r.Context(), u.ID)]
+		}
+		if u.JellyfinLinked && len(jfBlocked) > 0 {
+			rw.JellyfinBlocked = jfBlocked[a.deps.Auth.JellyfinIDForUser(r.Context(), u.ID)]
 		}
 		out = append(out, rw)
 	}
@@ -125,6 +133,8 @@ func (a *api) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		// PlexUnlink removes their Plex link. Their next Plex sign-in then makes (or finds)
 		// another account, so the dialog says so when Plex is their only way in.
 		PlexUnlink bool `json:"plex_unlink"`
+		// JellyfinUnlink is the same for their Jellyfin link.
+		JellyfinUnlink bool `json:"jellyfin_unlink"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -228,6 +238,13 @@ func (a *api) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		a.deps.Log.Info("users: Plex account unlinked by an admin", "user_id", id)
 	}
+	if req.JellyfinUnlink {
+		if err := a.deps.Auth.UnlinkJellyfin(r.Context(), id, false); err != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not unlink their Jellyfin user")
+			return
+		}
+		a.deps.Log.Info("users: Jellyfin user unlinked by an admin", "user_id", id)
+	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "role": role, "disabled": disabled, "auto_approve": autoApprove.All(),
 		"auto_approve_movie": autoApprove.Movie, "auto_approve_series": autoApprove.Series, "auto_approve_book": autoApprove.Book,
@@ -289,12 +306,18 @@ func (a *api) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "can't delete the last admin account")
 		return
 	}
-	// ?block_plex=1 also blocks their Plex account, so deleting them sticks: otherwise their
-	// next "Sign in with Plex" would just make a new account.
-	var blockPlexID string
+	// ?block_plex=1 / ?block_jellyfin=1 also block their Plex account / Jellyfin user, so
+	// deleting them sticks: otherwise their next sign-in would just make a new account.
+	var blockPlexID, blockJellyfinID string
 	if r.URL.Query().Get("block_plex") == "1" {
 		if blockPlexID = a.deps.Auth.PlexIDForUser(r.Context(), id); blockPlexID == "" {
 			a.writeError(w, http.StatusBadRequest, "this account isn't linked to Plex, so there's nothing to block")
+			return
+		}
+	}
+	if r.URL.Query().Get("block_jellyfin") == "1" {
+		if blockJellyfinID = a.deps.Auth.JellyfinIDForUser(r.Context(), id); blockJellyfinID == "" {
+			a.writeError(w, http.StatusBadRequest, "this account isn't linked to Jellyfin, so there's nothing to block")
 			return
 		}
 	}
@@ -330,7 +353,7 @@ func (a *api) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	a.deps.Log.Info("users: database copied before deleting a user", "user_id", id, "backup", path)
 	// Block first, so there's no moment where they're gone but could sign straight back in.
-	var blockAdded bool
+	var blockAdded, jfBlockAdded bool
 	if blockPlexID != "" {
 		if blockAdded, err = a.addPlexBlock(r.Context(), blockPlexID, target.Username); err != nil {
 			a.writeError(w, http.StatusInternalServerError, "couldn't block their Plex account — nothing was deleted")
@@ -338,10 +361,23 @@ func (a *api) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 		a.deps.Log.Info("users: Plex account blocked", "user_id", id)
 	}
+	if blockJellyfinID != "" {
+		if jfBlockAdded, err = a.addJellyfinBlock(r.Context(), blockJellyfinID, target.Username); err != nil {
+			if blockAdded {
+				_, _ = a.removePlexBlock(r.Context(), blockPlexID)
+			}
+			a.writeError(w, http.StatusInternalServerError, "couldn't block their Jellyfin user — nothing was deleted")
+			return
+		}
+		a.deps.Log.Info("users: Jellyfin user blocked", "user_id", id)
+	}
 	if err := a.deps.Auth.DeleteUser(r.Context(), id); err != nil {
 		// The delete didn't happen, so don't leave behind a block that was only its half.
 		if blockAdded {
 			_, _ = a.removePlexBlock(r.Context(), blockPlexID)
+		}
+		if jfBlockAdded {
+			_, _ = a.removeJellyfinBlock(r.Context(), blockJellyfinID)
 		}
 		if errors.Is(err, auth.ErrNotFound) {
 			a.writeError(w, http.StatusNotFound, "user not found")

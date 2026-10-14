@@ -23,6 +23,10 @@ export interface Status {
   books_enabled: boolean;
   music_enabled: boolean;
   plex_login: boolean;
+  /** Sign in with Jellyfin is on (and a Jellyfin server is connected). */
+  jellyfin_login?: boolean;
+  /** Its sheet offers Quick Connect too. */
+  jellyfin_quickconnect?: boolean;
   /** Whether TMDB browsing works (a key is set). Sent to signed-in callers only. */
   metadata_ready?: boolean;
 }
@@ -1087,6 +1091,14 @@ export interface AppSettings {
   plex_login_auto_approve: boolean;
   /** The types a new Plex sign-in auto-approves, "movie,series,book" (any subset). */
   plex_login_auto_approve_types: string;
+  /** Sign in with Jellyfin (username + password). */
+  jellyfin_login_enabled: boolean;
+  /** Jellyfin sign-in and linking also offer Quick Connect. */
+  jellyfin_quickconnect_enabled: boolean;
+  /** Sign in with Jellyfin may open an admin or manager account linked to that user. */
+  jellyfin_signin_staff: boolean;
+  /** The types a new Jellyfin sign-in auto-approves, "movie,series,book" (any subset). */
+  jellyfin_login_auto_approve_types: string;
   /** Request limits per person per window of days (0 = unlimited). */
   request_quota_days: number;
   request_quota_movies: number;
@@ -1724,6 +1736,11 @@ export interface AuthUser {
   plex_username?: string;
   /** Plex is their only way in (no password anyone knows): unlinking would strand them. */
   plex_only?: boolean;
+  // The same for a linked Jellyfin user.
+  jellyfin_linked?: boolean;
+  jellyfin_blocked?: boolean;
+  jellyfin_username?: string;
+  jellyfin_only?: boolean;
 }
 
 /** One filesystem on System → Status, with the other folders that share it. */
@@ -1796,6 +1813,10 @@ export interface Person {
   plex_username?: string;
   plex_only?: boolean;
   plex_blocked?: boolean;
+  jellyfin_linked?: boolean;
+  jellyfin_username?: string;
+  jellyfin_only?: boolean;
+  jellyfin_blocked?: boolean;
   quota: UserQuota;
   /** Browsers signed in (only they see which). */
   sessions: number;
@@ -1832,6 +1853,13 @@ export interface PlexBlock {
   at: string;
 }
 
+// The same for a Jellyfin user.
+export interface JellyfinBlock {
+  jellyfin_id: string;
+  name: string;
+  at: string;
+}
+
 // What deleting a user takes with them — counts only, never which books (privacy rule).
 export interface UserImpact {
   places: number;
@@ -1842,6 +1870,7 @@ export interface UserImpact {
   sessions: number;
   push_subscriptions: number;
   plex_linked: boolean;
+  jellyfin_linked?: boolean;
 }
 
 export interface CrewMember {

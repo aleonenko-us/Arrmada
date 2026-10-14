@@ -18,6 +18,7 @@ type UserImpact struct {
 	Sessions          int     `json:"sessions"`           // browser sign-ins
 	PushSubscriptions int     `json:"push_subscriptions"` // phones/browsers getting alerts
 	PlexLinked        bool    `json:"plex_linked"`        // can sign straight back in with Plex
+	JellyfinLinked    bool    `json:"jellyfin_linked"`    // can sign straight back in with Jellyfin
 }
 
 // HasListeningData reports whether the delete would erase audiobook places or history —
@@ -28,7 +29,7 @@ func (i UserImpact) HasListeningData() bool { return i.Places > 0 || i.Listening
 // keyed by user_id; none selects an item key or any book column.
 func (s *Service) DeletionImpact(ctx context.Context, id int64) (UserImpact, error) {
 	var imp UserImpact
-	err := s.db.QueryRowContext(ctx, `SELECT plex_id IS NOT NULL FROM users WHERE id = ?`, id).Scan(&imp.PlexLinked)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(plex_id, '') != '', COALESCE(jellyfin_id, '') != '' FROM users WHERE id = ?`, id).Scan(&imp.PlexLinked, &imp.JellyfinLinked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return imp, ErrNotFound
 	}

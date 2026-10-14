@@ -11,6 +11,7 @@ import { ago } from "../../lib/taskTime";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { useSetting } from "../../lib/useSettings";
 import { Button, useConfirm, useToast } from "../../ui";
+import { JellyfinSignIn } from "./JellyfinSignInCard";
 import { PlexLibraryUpdates } from "./PlexLibraryUpdates";
 import { requesterPages } from "./roles";
 import { AutoApproveChecks, ROLES, plexUnlinkConfirm, typesFromCSV, typesToCSV } from "./People";
@@ -45,6 +46,7 @@ function PlexPage({ admin }: { admin: boolean }) {
       {/* Path mapping and the last scan; its own load and Save. */}
       <PlexLibraryUpdates />
       {admin && <PlexSignIn />}
+      {admin && <JellyfinSignIn />}
       {admin && <PlexAccounts />}
       {admin && <PlexTautulli />}
     </div>
