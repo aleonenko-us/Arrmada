@@ -66,9 +66,9 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
         <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
       <p className="mb-3 text-sm text-ink-dim">Pick episode files already on disk to import as <b>{series.title}</b>. Season/episode is detected from each filename; files are renamed to the library scheme.</p>
-      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
       {background && (
-        <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+        <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
           Importing in the background — this can take several minutes for a large pack.
           You can close this and keep using the page; the episode list updates as it goes, and a note appears when it's done.
         </div>
@@ -90,7 +90,7 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
                   {f.count} video files — imported together, keeping whichever copy of each episode is better
                 </div>
               </div>
-              <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>
+              <span className="flex-none text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
                 {importing === f.path ? "Importing…" : "Import all"}
               </span>
             </button>
@@ -111,12 +111,12 @@ export function ManualImportModal({ series, onClose, onImported, onBackground }:
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-base font-medium" title={c.filename}>{c.filename}</div>
                   <div className="mt-0.5 flex items-center gap-3 font-mono text-xs text-ink-faint">
-                    {detected ? <span style={{ color: "var(--accent)" }}>S{String(c.season).padStart(2, "0")}E{String(c.episode).padStart(2, "0")}</span> : <span style={{ color: "var(--avoid)" }}>No S/E detected</span>}
+                    {detected ? <span style={{ color: "var(--accent-text)" }}>S{String(c.season).padStart(2, "0")}E{String(c.episode).padStart(2, "0")}</span> : <span style={{ color: "var(--avoid-text)" }}>No S/E detected</span>}
                     {c.quality && <span>{c.quality}</span>}
                     <span>{fmtSize(c.size_bytes)}</span>
                   </div>
                 </div>
-                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
+                <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{importing === c.path ? "Importing…" : "Import"}</span>
               </button>
             );
           })

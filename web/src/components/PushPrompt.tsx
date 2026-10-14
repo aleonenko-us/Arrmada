@@ -59,7 +59,7 @@ export function PushPrompt({ onDone }: { onDone: () => void }) {
         ) : (
           <p className="m-0 mt-1.5 text-base text-ink-dim">A notification on {deviceName()} when what you asked for can be watched or read — no need to keep checking. You can change it any time under Me.</p>
         )}
-        {error && <p role="alert" className="m-0 mt-2 text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</p>}
+        {error && <p role="alert" className="m-0 mt-2 text-sm font-medium" style={{ color: "var(--reject-text)" }}>{error}</p>}
         <div className="mt-4 flex justify-end gap-2.5">
           {install ? (
             <Button variant="primary" onClick={() => close("dismissed")}>Got it</Button>

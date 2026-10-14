@@ -88,7 +88,7 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
           <div className="text-base leading-relaxed text-ink-dim">
             <p className={`m-0 whitespace-pre-line ${moreText ? "" : "line-clamp-4"}`}>{d.description}</p>
             {d.description.length > 240 && (
-              <button onClick={() => setMoreText(!moreText)} className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>{moreText ? "Less" : "More"}</button>
+              <button onClick={() => setMoreText(!moreText)} className="mt-1 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>{moreText ? "Less" : "More"}</button>
             )}
           </div>
         )}
@@ -132,7 +132,7 @@ export function BookSheet({ itemKey, place, onClose, onOpenBook, onChanged }: {
           <section aria-label="Other versions">
             <h3 className="m-0 mb-1.5 text-md font-bold">Other versions</h3>
             {d.versions.map((v) => (
-              <button key={v.key} onClick={() => onOpenBook(v.key)} className="flex min-h-[40px] w-full items-center rounded-lg px-2 text-left text-base font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--accent)" }}>
+              <button key={v.key} onClick={() => onOpenBook(v.key)} className="flex min-h-[40px] w-full items-center rounded-lg px-2 text-left text-base font-semibold hover:bg-[var(--panel-2)]" style={{ color: "var(--accent-text)" }}>
                 {v.title}
               </button>
             ))}

@@ -8,7 +8,7 @@ import { useAutoSave } from "../../lib/useAutoSave";
 import { Button } from "../../ui";
 import { AutoToggle } from "../settings/auto";
 
-const TONE = { update: "var(--accent)", ok: "var(--good)", muted: "var(--ink-dim)" } as const;
+const TONE = { update: "var(--accent-text)", ok: "var(--good-text)", muted: "var(--ink-dim)" } as const;
 
 // UpdateCheck is the Updates card on Settings → Status: whether a newer release is out
 // (or, for a build of main, how far behind main it is), the release notes, Check now and
@@ -76,7 +76,7 @@ function ReleaseNotes({ release, open, label }: { release: NonNullable<UpdateSta
         )}
         {release.notes_truncated && <p className="m-0 text-ink-faint">…</p>}
         {release.url && (
-          <a href={release.url} target="_blank" rel="noreferrer noopener" className="mt-1 text-sm font-semibold" style={{ color: "var(--accent)" }}>
+          <a href={release.url} target="_blank" rel="noreferrer noopener" className="mt-1 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
             {release.tag} on GitHub →
           </a>
         )}

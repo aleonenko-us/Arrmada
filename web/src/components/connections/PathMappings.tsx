@@ -110,15 +110,15 @@ export function PathMappings({ client, body, onChanged }: {
             </label>
             <Button type="submit" size="md" disabled={saving || !remote.trim() || !local.trim()} busy={saving} busyLabel="Saving…">Add mapping</Button>
           </form>
-          {error && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</p>}
+          {error && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
         </>
       )}
 
-      {checkError && <p role="alert" className="mb-0 mt-2.5 break-words text-sm" style={{ color: "var(--reject)" }}>{checkError}</p>}
+      {checkError && <p role="alert" className="mb-0 mt-2.5 break-words text-sm" style={{ color: "var(--reject-text)" }}>{checkError}</p>}
       {report && (
         <div className="mt-2.5 flex flex-col gap-1.5" aria-live="polite">
           {report.checks.map((c) => (
-            <div key={c.what} className="break-all text-sm" style={{ color: c.visible ? "var(--good)" : c.gone ? "var(--avoid)" : "var(--reject)" }}>
+            <div key={c.what} className="break-all text-sm" style={{ color: c.visible ? "var(--good-text)" : c.gone ? "var(--avoid-text)" : "var(--reject-text)" }}>
               {c.visible ? "✓" : c.gone ? "–" : "✕"} <span className="text-ink-dim">{WHAT[c.what] ?? c.what}:</span>{" "}
               <span className="font-mono">{c.remote}</span>
               {c.local !== c.remote && <> <span className="text-ink-faint">→</span> <span className="font-mono">{c.local}</span></>}

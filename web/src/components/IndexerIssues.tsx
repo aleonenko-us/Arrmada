@@ -41,10 +41,10 @@ export function IndexerIssues({ list, className = "mb-3" }: { list: Pick<Release
   const issues: IndexerIssue[] = list?.indexer_issues ?? [];
   if (!list || issues.length === 0) return null;
   return (
-    <div role="status" className={`${className} rounded-lg p-2.5 text-sm`} style={{ background: "var(--reject-soft)", border: "1px solid var(--reject)", color: "var(--reject)" }}>
+    <div role="status" className={`${className} rounded-lg p-2.5 text-sm`} style={{ background: "var(--reject-soft)", border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-semibold">{issueHeadline(list)}</span>
-        <Link to={LINKS.indexers} className="text-xs font-semibold hover:underline" style={{ color: "var(--reject)" }}>Indexers →</Link>
+        <Link to={LINKS.indexers} className="text-xs font-semibold hover:underline" style={{ color: "var(--reject-text)" }}>Indexers →</Link>
       </div>
       <ul className="m-0 mt-1 list-none space-y-0.5 p-0 text-sm">
         {issues.map((i) => (

@@ -18,9 +18,9 @@ const grid = "sm:grid sm:grid-cols-[minmax(0,1fr)_76px_minmax(0,128px)_84px_72px
 
 type Result = { label: string; color: string; border: string };
 const RESULT: Record<"running" | "failed" | "ok" | "never", Result> = {
-  running: { label: "Running", color: "var(--accent)", border: "var(--accent-line)" },
-  failed: { label: "Failed", color: "var(--reject)", border: "var(--reject)" },
-  ok: { label: "OK", color: "var(--good)", border: "var(--good)" },
+  running: { label: "Running", color: "var(--accent-text)", border: "var(--accent-line)" },
+  failed: { label: "Failed", color: "var(--reject-text)", border: "var(--reject)" },
+  ok: { label: "OK", color: "var(--good-text)", border: "var(--good)" },
   never: { label: "Not run yet", color: "var(--ink-faint)", border: "var(--line)" },
 };
 
@@ -77,8 +77,8 @@ export function TasksTable() {
 
   return (
     <div className="flex flex-col gap-3">
-      {err && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the tasks: {err}</p>}
-      {msg && <p role="status" className="m-0 text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</p>}
+      {err && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the tasks: {err}</p>}
+      {msg && <p role="status" className="m-0 text-sm" style={{ color: msg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{msg.text}</p>}
       <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {tasks === null ? (
           <div className="p-4 text-center text-sm text-ink-dim">{err ? "Couldn't load the tasks." : "Loading…"}</div>
@@ -128,7 +128,7 @@ export function TasksTable() {
                           onClick={() => runNow(t)}
                           disabled={running}
                           className={rowBtn}
-                          style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+                          style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
                         >
                           Run now
                         </button>
@@ -136,7 +136,7 @@ export function TasksTable() {
                     </div>
                   </div>
                   {showErr && (
-                    <div className="mt-2 break-words rounded-md p-2 font-mono text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{t.last_error}</div>
+                    <div className="mt-2 break-words rounded-md p-2 font-mono text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{t.last_error}</div>
                   )}
                 </div>
               );

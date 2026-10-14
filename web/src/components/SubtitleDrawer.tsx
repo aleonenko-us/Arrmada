@@ -31,7 +31,7 @@ export interface SubtitleDrawerProps {
 const lbl = "font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint";
 const RUNG_LABEL: Record<string, string> = { extract: "Embedded", opensubtitles: "OpenSubtitles", ai: "AI", upgrade: "Upgrade", repair: "Repair" };
 const NUDGES = [-1000, -500, 500, 1000];
-const HEALTH_COLOR: Record<string, string> = { ok: "var(--good)", uncertain: "var(--accent)", bad: "var(--avoid)", unknown: "var(--ink-dim)", unchecked: "var(--ink-faint)" };
+const HEALTH_COLOR: Record<string, string> = { ok: "var(--good-text)", uncertain: "var(--accent-text)", bad: "var(--avoid-text)", unknown: "var(--ink-dim)", unchecked: "var(--ink-faint)" };
 
 // fmtCue is a cue time as h:mm:ss.mmm (the hour only when there is one).
 export function fmtCue(ms: number): string {
@@ -146,7 +146,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
       </div>
 
       <div className="flex flex-col gap-5 px-4 py-4">
-        {error && !view && <div className="rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && !view && <div className="rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
         {!view && !error && <div className="py-10 text-center text-base text-ink-dim">Reading the folder…</div>}
         {view && (
           <>
@@ -162,7 +162,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
               {view.profile && (
                 <p className="m-0 mb-2 text-xs text-ink-faint">
                   {view.profile.override ? <>This title uses the <b>{view.profile.name}</b> language profile (pinned in the Subtitles Library).</> : <>Language profile: <b>{view.profile.name}</b>.</>}{" "}
-                  <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent)" }}>Edit profiles</Link>
+                  <Link to={LINKS.subtitlesSettings} style={{ color: "var(--accent-text)" }}>Edit profiles</Link>
                 </p>
               )}
               <div className="flex flex-col gap-2">
@@ -258,7 +258,7 @@ export default function SubtitleDrawer({ media, title, onClose, onChanged }: Sub
                     <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
                       <span className="font-mono text-2xs font-bold uppercase">{a.lang}{a.variant ? `.${a.variant}` : ""}</span>
                       <span className="text-ink-faint">{RUNG_LABEL[a.rung] ?? a.rung}</span>
-                      <span style={{ color: a.outcome === "ok" ? "var(--good)" : "var(--ink-dim)" }}>{a.detail || REASON_LABEL[a.outcome] || a.outcome}</span>
+                      <span style={{ color: a.outcome === "ok" ? "var(--good-text)" : "var(--ink-dim)" }}>{a.detail || REASON_LABEL[a.outcome] || a.outcome}</span>
                       <span className="ml-auto font-mono text-xs text-ink-faint">{formatAgo(a.at * 1000)}</span>
                     </li>
                   ))}
@@ -368,7 +368,7 @@ function SidecarCard({ media, s, kept, langLabel, onChanged, toast }: {
         <ol className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
           {s.first_cues.map((c, i) => (
             <li key={i} className="flex gap-2 text-sm leading-snug">
-              <span className="w-[86px] flex-none font-mono text-xs" style={{ color: pending ? "var(--accent)" : "var(--ink-faint)" }}>{fmtCue(Math.max(0, c.start_ms + pending))}</span>
+              <span className="w-[86px] flex-none font-mono text-xs" style={{ color: pending ? "var(--accent-text)" : "var(--ink-faint)" }}>{fmtCue(Math.max(0, c.start_ms + pending))}</span>
               <span className="min-w-0 flex-1">{c.text}</span>
             </li>
           ))}
@@ -397,7 +397,7 @@ function SidecarCard({ media, s, kept, langLabel, onChanged, toast }: {
           {checkable && pending === 0 && (
             <Button size="sm" variant="ghost" onClick={check} busy={busy === "check"} busyLabel="Checking…" disabled={busy !== null} title="Measure how well it lines up with the speech in the audio">Check sync</Button>
           )}
-          <Button size="sm" variant="ghost" onClick={remove} busy={busy === "delete"} busyLabel="Deleting…" disabled={busy !== null || pending !== 0} style={{ color: "var(--reject)" }}>Delete…</Button>
+          <Button size="sm" variant="ghost" onClick={remove} busy={busy === "delete"} busyLabel="Deleting…" disabled={busy !== null || pending !== 0} style={{ color: "var(--reject-text)" }}>Delete…</Button>
         </span>
       </div>
     </div>
@@ -426,8 +426,8 @@ function OrphanRow({ media, name, lang, onChanged, toast }: { media: SubMediaRef
     <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
       <span className="min-w-0 flex-1 truncate font-mono text-ink-dim" title={name}>{name}</span>
       {lang && <Tag>{lang}</Tag>}
-      {media.kind === "movie" && <Button size="sm" onClick={adopt} disabled={busy} title="Rename it to pair with this file, so Plex shows it" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)", background: "transparent" }}>Adopt</Button>}
-      <Button size="sm" variant="ghost" onClick={remove} disabled={busy} style={{ color: "var(--reject)" }}>Delete…</Button>
+      {media.kind === "movie" && <Button size="sm" onClick={adopt} disabled={busy} title="Rename it to pair with this file, so Plex shows it" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)", background: "transparent" }}>Adopt</Button>}
+      <Button size="sm" variant="ghost" onClick={remove} disabled={busy} style={{ color: "var(--reject-text)" }}>Delete…</Button>
     </div>
   );
 }

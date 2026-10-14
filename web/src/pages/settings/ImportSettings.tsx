@@ -54,8 +54,8 @@ function OverseerrImport() {
         <button onClick={run} disabled={busy || !url.trim() || !key.trim()} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
           {busy ? "Connecting…" : "Import requests"}
         </button>
-        {msg && <span className="text-sm" style={{ color: msg.ok ? "var(--good)" : "var(--reject)" }}>{msg.text}</span>}
-        {msg?.ok && <Link to="/requests" className="flex-none text-sm font-semibold" style={{ color: "var(--accent)" }}>Open Requests →</Link>}
+        {msg && <span className="text-sm" style={{ color: msg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{msg.text}</span>}
+        {msg?.ok && <Link to="/requests" className="flex-none text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Open Requests →</Link>}
       </div>
     </Section>
   );

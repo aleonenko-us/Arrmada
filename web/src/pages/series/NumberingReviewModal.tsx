@@ -105,10 +105,10 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
       <p className="mb-3 text-sm text-ink-dim">
         {sourceName(pending.to)} numbers this show differently from what's stored ({sourceName(pending.from)}). Apply moves each file to its new episode and renames it — no existing file is ever replaced. Dismiss keeps everything as it is, and this same change won't be offered again.
       </p>
-      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
       {result ? (
         <div>
-          <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             Applied. Renamed {plural(result.moved, "file")}{result.skipped.length > 0 ? ` · skipped ${result.skipped.length}` : ""}{result.unplaced ? ` · ${plural(result.unplaced, "file")} with no episode left where they are` : ""}.
           </div>
           {(result.skipped.length > 0 || !!result.unplaced) && (
@@ -119,7 +119,7 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
               {result.skipped.map((sk) => (
                 <div key={sk.from} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
                   <div className="truncate font-mono text-xs" title={sk.from}>{sk.from.slice(Math.max(sk.from.lastIndexOf("/"), sk.from.lastIndexOf("\\")) + 1)}</div>
-                  <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>{sk.reason}</div>
+                  <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>{sk.reason}</div>
                 </div>
               ))}
             </div>
@@ -129,7 +129,7 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
         <>
           <div className="mb-2 font-mono text-xs text-ink-faint">
             {plural(pending.files, "file")} would move
-            {unplaced > 0 && <span style={{ color: "var(--reject)" }}> · {unplaced} with no episode in the new numbering</span>}
+            {unplaced > 0 && <span style={{ color: "var(--reject-text)" }}> · {unplaced} with no episode in the new numbering</span>}
           </div>
           <div className="thin-scroll max-h-[52vh] overflow-y-auto">
             <table className="w-full text-left text-sm">
@@ -144,12 +144,12 @@ export function NumberingReviewModal({ seriesId, pending, onClose, onSettled }: 
                 {pending.remaps.map((r, i) => (
                   <tr key={`${r.old}:${r.file}:${i}`} style={{ borderTop: "1px solid var(--line-soft)" }}>
                     <td className="py-1.5 pr-3 font-mono">{r.old}</td>
-                    <td className="py-1.5 pr-3 font-mono" style={{ color: r.new ? "var(--ink)" : "var(--reject)" }}>
+                    <td className="py-1.5 pr-3 font-mono" style={{ color: r.new ? "var(--ink)" : "var(--reject-text)" }}>
                       {r.new || "no episode"}
                     </td>
                     <td className="max-w-[360px] truncate py-1.5 font-mono text-ink-dim" title={r.file}>
                       {r.file}
-                      {!r.new && <div className="text-xs" style={{ color: "var(--reject)" }}>Stays where it is; the next rescan decides what it is.</div>}
+                      {!r.new && <div className="text-xs" style={{ color: "var(--reject-text)" }}>Stays where it is; the next rescan decides what it is.</div>}
                     </td>
                   </tr>
                 ))}

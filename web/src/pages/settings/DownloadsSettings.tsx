@@ -18,8 +18,8 @@ export function DownloadsSettings() {
     <div className="flex flex-col gap-6">
       <Section id="download-links" title="Download clients and indexers" subtitle="Both live on Settings → Connections, with their live status: where downloads are sent, and where releases are searched for.">
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
-          <Link to={LINKS.downloadClients} style={{ color: "var(--accent)" }}>Download clients →</Link>
-          <Link to={LINKS.indexers} style={{ color: "var(--accent)" }}>Indexers →</Link>
+          <Link to={LINKS.downloadClients} style={{ color: "var(--accent-text)" }}>Download clients →</Link>
+          <Link to={LINKS.indexers} style={{ color: "var(--accent-text)" }}>Indexers →</Link>
         </div>
       </Section>
       <Section id="search-categories" title="Search categories" subtitle="Which categories an indexer is searched in when it names none of its own (Prowlarr's synced indexers name none).">
@@ -132,29 +132,29 @@ function RecycleBin() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-base font-medium">
                       {b.label}
-                      {b.legacy && <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Legacy bin</span>}
+                      {b.legacy && <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>Legacy bin</span>}
                     </div>
                     <div className="truncate font-mono text-xs text-ink-faint" title={b.dir}>{b.dir}</div>
                     {b.legacy && <div className="text-xs text-ink-faint">Where deletes used to go. Only files outside every library folder land here now — empty it once you've checked it.</div>}
-                    {b.other_drive && <div className="text-xs" style={{ color: "var(--avoid)" }}>On a different drive from your library — every delete into it is a full copy.</div>}
+                    {b.other_drive && <div className="text-xs" style={{ color: "var(--avoid-text)" }}>On a different drive from your library — every delete into it is a full copy.</div>}
                   </div>
                   <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(b.bytes)} · {b.files} file{b.files === 1 ? "" : "s"}{b.free_known ? ` · ${fmtBytes(b.free_bytes)} free` : ""}</span>
                   {bins.length > 1 && (
-                    <button onClick={() => setConfirm({ kind: "empty", bin: b })} disabled={busy || b.files === 0} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Empty this bin</button>
+                    <button onClick={() => setConfirm({ kind: "empty", bin: b })} disabled={busy || b.files === 0} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject-text)" }}>Empty this bin</button>
                   )}
                 </div>
               ))}
             </div>
           )}
           {stats && stats.over_cap_bytes > 0 && (
-            <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>
+            <p className="m-0 text-sm" style={{ color: "var(--avoid-text)" }}>
               Over the cap by {fmtBytes(stats.over_cap_bytes)} — {stats.protected_bytes > 0 && stats.over_cap_bytes <= stats.protected_bytes
                 ? "items from the last 3 days are kept until they're older."
                 : "the next hourly clean-up will trim it."}
             </p>
           )}
           {stats && stats.max_gb > 0 && stats.largest_item_bytes > stats.max_gb * 1024 ** 3 && (
-            <p className="m-0 text-sm" style={{ color: "var(--avoid)" }}>Your cap ({stats.max_gb} GB) is smaller than the largest file here ({fmtBytes(stats.largest_item_bytes)}).</p>
+            <p className="m-0 text-sm" style={{ color: "var(--avoid-text)" }}>Your cap ({stats.max_gb} GB) is smaller than the largest file here ({fmtBytes(stats.largest_item_bytes)}).</p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <AutoNumber label="Max size (GB)" save={maxGB} min={0} max={100000} placeholder="0">
@@ -166,7 +166,7 @@ function RecycleBin() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={() => setShowItems((v) => !v)} disabled={(stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>{showItems ? "Hide contents" : `Manage contents${stats ? ` (${stats.files})` : ""}`}</button>
-            <button onClick={() => setConfirm({ kind: "empty" })} disabled={busy || (stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{busy ? "Emptying…" : "Empty now"}</button>
+            <button onClick={() => setConfirm({ kind: "empty" })} disabled={busy || (stats?.files ?? 0) === 0} className="rounded-lg px-4 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{busy ? "Emptying…" : "Empty now"}</button>
             {msg && <span className="text-sm text-ink-dim">{msg}</span>}
           </div>
 
@@ -188,8 +188,8 @@ function RecycleBin() {
                       </div>
                       <span className="flex-none font-mono text-xs text-ink-faint">{fmtBytes(it.size_bytes)}</span>
                       <span className="hidden flex-none font-mono text-xs text-ink-faint sm:block">{ageOf(it.deleted_unix)}</span>
-                      <button onClick={() => restore(it)} disabled={!it.restorable || rowBusy !== null} title={it.restorable ? "Move back to its original location" : "Original location wasn't recorded for this item"} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>{rowBusy === it.id ? "…" : "Restore"}</button>
-                      <button onClick={() => setConfirm({ kind: "item", it })} disabled={rowBusy !== null} title="Delete permanently" className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject)" }}>Delete</button>
+                      <button onClick={() => restore(it)} disabled={!it.restorable || rowBusy !== null} title={it.restorable ? "Move back to its original location" : "Original location wasn't recorded for this item"} className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{rowBusy === it.id ? "…" : "Restore"}</button>
+                      <button onClick={() => setConfirm({ kind: "item", it })} disabled={rowBusy !== null} title="Delete permanently" className="flex-none rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--line)", color: "var(--reject-text)" }}>Delete</button>
                     </div>
                   ))}
                 </div>
@@ -276,7 +276,7 @@ function DiskGuardSection() {
       <Note tone="warn">
         <b>This only works if your torrents live on their own drive.</b> The guard measures
         one folder: your Downloads folder, set in{" "}
-        <Link to={LINKS.libraryFolders} style={{ color: "var(--accent)" }}>Settings → Library</Link>
+        <Link to={LINKS.libraryFolders} style={{ color: "var(--accent-text)" }}>Settings → Library</Link>
         {status?.path ? <> (currently <code>{status.path}</code>)</> : null}. If that folder is on
         your main array rather than the torrent or cache drive, the percentage measures the
         array, and it will either never trigger or pause your queue for a reason that has
@@ -294,19 +294,19 @@ function DiskGuardSection() {
             <div className="mt-1 text-sm text-ink-dim">
               {status.used_pct.toFixed(1)}% full
               {status.holding > 0 && (
-                <span style={{ color: "var(--avoid)" }}>
+                <span style={{ color: "var(--avoid-text)" }}>
                   {" "}· holding {status.holding} torrent{status.holding === 1 ? "" : "s"} paused
                 </span>
               )}
             </div>
           ) : (
-            <div className="mt-1 text-sm" style={{ color: "var(--reject)" }}>
+            <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>
               Arrmada can't read this folder's disk usage, so the guard will do nothing. Check the
               path exists and is mounted into the container.
             </div>
           )}
           {(status.shared_with?.length ?? 0) > 0 && (
-            <div className="mt-1.5 text-sm" style={{ color: "var(--reject)" }}>
+            <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>
               Shares a drive with: {status.shared_with.map((f) => f.label).join(", ")}.
               The guard will be measuring your whole array, not a torrent drive — a threshold like
               85% almost certainly isn't what you want here.

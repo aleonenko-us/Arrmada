@@ -160,7 +160,7 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
             {chosen.length > 0 && (
               <>
                 <button onClick={() => bulk("dismiss")} disabled={bulkBusy} className="rounded-lg px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Dismiss selected</button>
-                <button onClick={() => bulk("reject")} disabled={bulkBusy} className="rounded-lg px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Reject selected</button>
+                <button onClick={() => bulk("reject")} disabled={bulkBusy} className="rounded-lg px-3 py-1 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Reject selected</button>
                 {bulkBusy && <span>Working…</span>}
               </>
             )}
@@ -248,8 +248,8 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
 
   const btn = "rounded-lg px-3 py-1.5 text-sm font-semibold";
   const primary = { border: "1px solid var(--line)", color: "var(--ink)" };
-  const accent = { border: "1px solid var(--accent-line)", color: "var(--accent)" };
-  const danger = { border: "1px solid var(--reject)", color: "var(--reject)" };
+  const accent = { border: "1px solid var(--accent-line)", color: "var(--accent-text)" };
+  const danger = { border: "1px solid var(--reject)", color: "var(--reject-text)" };
 
   return (
     <div className="rounded-xl p-4" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--avoid)"}`, background: "var(--panel)" }}>
@@ -261,11 +261,11 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
             <StatusChip tone={reason.tone}>{reason.label}</StatusChip>
             <span className="min-w-0 break-all font-mono text-sm">{r.name}</span>
           </div>
-          <div className="mt-2 text-base" style={{ color: "var(--avoid)" }}>{r.reason}</div>
+          <div className="mt-2 text-base" style={{ color: "var(--avoid-text)" }}>{r.reason}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-ink-faint">
             {linked ? (
               <span>Grabbed for: {link
-                ? <Link to={link} className="font-bold" style={{ color: "var(--accent)" }}>{r.expected_title || `this ${label}`}</Link>
+                ? <Link to={link} className="font-bold" style={{ color: "var(--accent-text)" }}>{r.expected_title || `this ${label}`}</Link>
                 : <b className="text-ink-dim">{r.expected_title}</b>}</span>
             ) : (
               <span>Not linked to a {label} in your library</span>
@@ -278,7 +278,7 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
           {r.content_path && (
             <div className="mt-1 flex min-w-0 items-center gap-2 font-mono text-xs text-ink-faint">
               <span className="truncate" title={r.content_path}>{r.content_path}</span>
-              <button onClick={() => setShowFiles((v) => !v)} className="flex-none font-semibold" style={{ color: "var(--accent)" }} aria-expanded={showFiles}>
+              <button onClick={() => setShowFiles((v) => !v)} className="flex-none font-semibold" style={{ color: "var(--accent-text)" }} aria-expanded={showFiles}>
                 {showFiles ? "Hide files" : "Show files"}
               </button>
             </div>
@@ -333,7 +333,7 @@ function FileList({ reviewId }: { reviewId: number }) {
       .catch((e) => { if (live) setError((e as Error).message); });
     return () => { live = false; };
   }, [reviewId]);
-  if (error) return <div className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>;
+  if (error) return <div className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>;
   if (!files) return <div className="mt-2 text-sm text-ink-faint">Listing files…</div>;
   if (files.length === 0) return <div className="mt-2 text-sm text-ink-faint">No files in the download.</div>;
   return (
@@ -457,7 +457,7 @@ export function TargetPicker({ title, name, kind, load, loadKey, header, initial
       <input ref={filterRef} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter your library" placeholder={kind === "book" ? "Filter by title or author…" : kind === "music" ? "Filter by album or artist…" : "Filter your library…"} className="mb-3 w-full rounded-lg px-3 py-2 text-md" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
       <div className="thin-scroll max-h-[52vh] overflow-y-auto rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {error ? (
-          <div className="p-6 text-center text-sm" style={{ color: "var(--avoid)" }}>{error}</div>
+          <div className="p-6 text-center text-sm" style={{ color: "var(--avoid-text)" }}>{error}</div>
         ) : items === null ? (
           <div className="p-6 text-center text-sm text-ink-faint">Loading…</div>
         ) : items.length === 0 ? (

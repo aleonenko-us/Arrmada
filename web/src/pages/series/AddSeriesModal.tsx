@@ -85,7 +85,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search TV series — e.g. Severance" aria-label="Search TMDB for a series" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
           <Button type="submit" variant="primary" busy={loading} busyLabel="…">Search</Button>
         </form>
-        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
         <div className="max-h-[52vh] overflow-y-auto">
           {results.map((r) => (
             <button key={r.tmdb_id} onClick={() => add(r)} disabled={addingId !== null} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[var(--panel-2)]">
@@ -96,7 +96,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
                 <div className="text-md font-semibold">{r.title} <span className="font-normal text-ink-faint">{r.year ? `(${r.year})` : ""}</span></div>
                 <div className="mt-0.5 line-clamp-2 text-sm text-ink-dim">{r.overview || "No overview."}</div>
               </div>
-              <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+              <span className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
                 {addingId === r.tmdb_id ? "Adding…" : "Add"}
               </span>
             </button>

@@ -71,7 +71,7 @@ function RestartSection() {
         {st?.can_restart && (
           <button onClick={openConfirm} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink)" }}>Restart now</button>
         )}
-        <Link to="/logs" className="text-sm font-semibold" style={{ color: "var(--accent)" }}>Logs →</Link>
+        <Link to="/logs" className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Logs →</Link>
       </div>
       {confirming && (
         <ConfirmDialog
@@ -81,7 +81,7 @@ function RestartSection() {
             <div className="flex flex-col gap-1.5">
               <span>This page reloads once Arrmada is back, usually in a few seconds.</span>
               {lines.length > 0
-                ? lines.map((l) => <span key={l} style={{ color: "var(--avoid)" }}>{l}</span>)
+                ? lines.map((l) => <span key={l} style={{ color: "var(--avoid-text)" }}>{l}</span>)
                 : <span>Nothing is converting or making subtitles right now.</span>}
             </div>
           }

@@ -41,7 +41,7 @@ export function RestartBanner() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm" style={{ background: "var(--panel-2)", borderBottom: "1px solid var(--avoid)", color: "var(--ink)" }} role="status">
       <div className="min-w-0 flex-1">
-        <span className="font-semibold" style={{ color: "var(--avoid)" }}>New folders are saved but not in use yet: </span>
+        <span className="font-semibold" style={{ color: "var(--avoid-text)" }}>New folders are saved but not in use yet: </span>
         {changes.reduce<React.ReactNode[]>((acc, c, i) => (i === 0 ? [c] : [...acc, "; ", c]), [])}.
         <span className="text-ink-dim"> Downloads and imports keep using the old folders until Arrmada restarts. </span>
         {!(admin && st.can_restart) && (
@@ -49,7 +49,7 @@ export function RestartBanner() {
         )}
       </div>
       {admin && st.can_restart && (
-        <button onClick={openConfirm} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid)" }}>Restart now</button>
+        <button onClick={openConfirm} className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>Restart now</button>
       )}
       {confirming && (
         <ConfirmDialog
@@ -59,7 +59,7 @@ export function RestartBanner() {
             <div className="flex flex-col gap-1.5">
               <span>Arrmada restarts and starts using the new folders. Files already imported stay where they are. This page reloads once it's back, usually in a few seconds.</span>
               {lines.length > 0
-                ? lines.map((l) => <span key={l} style={{ color: "var(--avoid)" }}>{l}</span>)
+                ? lines.map((l) => <span key={l} style={{ color: "var(--avoid-text)" }}>{l}</span>)
                 : <span>Nothing is converting or making subtitles right now.</span>}
             </div>
           }

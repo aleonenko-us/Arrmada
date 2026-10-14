@@ -137,7 +137,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
 
         {issue.status === "fixing" && (
           <div className="rounded-lg p-3 text-base" style={{ background: "var(--accent-soft)", border: "1px solid var(--line)" }}>
-            <div className="font-semibold" style={{ color: "var(--accent)" }}>Fixing{issue.action_at ? ` · started ${formatAgo(issue.action_at * 1000, Date.now())}` : ""}</div>
+            <div className="font-semibold" style={{ color: "var(--accent-text)" }}>Fixing{issue.action_at ? ` · started ${formatAgo(issue.action_at * 1000, Date.now())}` : ""}</div>
             <div className="mt-0.5 text-ink-dim">{issue.action_note || "Waiting for the fix to land."} It resolves itself when it does, and they’re told.</div>
             {issue.action_file && <div className="mt-1 break-all font-mono text-xs text-ink-faint">{issue.action === "replace" ? "Replacing" : "File:"} {issue.action_file}</div>}
           </div>
@@ -176,7 +176,7 @@ export function IssueSheet({ issueId, initial, onChanged, onClose }: {
           </div>
         )}
 
-        {error && <div className="text-sm font-medium" style={{ color: "var(--reject)" }} role="alert">{error}</div>}
+        {error && <div className="text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}
 
         <div className="flex flex-wrap gap-2">
           {live && !closing && (

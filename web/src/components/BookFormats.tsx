@@ -16,7 +16,7 @@ export function FormatChoice({ value, onChange, disabled }: { value: BookFormats
             disabled={disabled}
             onClick={() => onChange(f)}
             className="px-3 py-1.5 text-left text-sm font-semibold"
-            style={{ background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent)" : "var(--ink-dim)" }}
+            style={{ background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent-text)" : "var(--ink-dim)" }}
           >
             {FORMAT_CHOICE[f]}
           </button>

@@ -138,7 +138,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
             aria-label={ep.monitored ? `${label} is monitored — stop monitoring` : `Monitor ${label}`}
             title={!series.monitored ? pausedHint : ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"}
             className="-ml-1 grid h-6 w-6 flex-none place-items-center text-md"
-            style={{ color: ep.monitored ? "var(--accent)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}
+            style={{ color: ep.monitored ? "var(--accent-text)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}
           >
             {ep.monitored ? "◉" : "○"}
           </button>
@@ -164,7 +164,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
           <span className="font-mono">{meta}</span>
-          {series.series_type === "anime" && ep.absolute_number ? <span className="rounded px-1 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Absolute episode number">#{ep.absolute_number}</span> : null}
+          {series.series_type === "anime" && ep.absolute_number ? <span className="rounded px-1 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }} title="Absolute episode number">#{ep.absolute_number}</span> : null}
           <StatusChip tone={status.tone} size="xs">{grabbing.running ? "Searching…" : status.label}</StatusChip>
           {ep.has_file && fit?.fit && (
             <span className="inline-flex items-center gap-1">

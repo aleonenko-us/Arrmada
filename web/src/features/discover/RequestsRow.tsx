@@ -43,7 +43,7 @@ export function MyRequestsRow() {
     <>
       {staff ? "Requests" : "Your requests"}
       {staff && waiting > 0 && <span className="ml-2 text-sm font-medium" style={{ color: "var(--avoid-text)" }}>{waiting} waiting</span>}
-      {moving > 0 && <span className="ml-2 text-sm font-medium" style={{ color: "var(--accent)" }}>{moving} on the way</span>}
+      {moving > 0 && <span className="ml-2 text-sm font-medium" style={{ color: "var(--accent-text)" }}>{moving} on the way</span>}
     </>
   );
   return <RequestRail heading={heading} seeAll={staff && waiting > 0 ? "/requests?tab=needs" : "/requests"} items={sorted} staff={staff} queueKnown={queueKnown} onChanged={load} />;
@@ -72,7 +72,7 @@ function RequestRail({ heading, seeAll, seeAllLabel, items, staff, queueKnown = 
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <h2 className="m-0 min-w-0 text-lg font-bold">{heading}</h2>
         <div className="flex flex-none items-center gap-2">
-          <Link to={seeAll} aria-label={seeAllLabel} className="text-sm font-semibold" style={{ color: "var(--accent)" }}>See all →</Link>
+          <Link to={seeAll} aria-label={seeAllLabel} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>See all →</Link>
           <RailArrows rail={rail} />
         </div>
       </div>

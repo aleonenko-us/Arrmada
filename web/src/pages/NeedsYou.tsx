@@ -65,7 +65,7 @@ export function NeedsYouPanel() {
               return (
                 <li key={g.kind} className="flex items-center gap-2 py-0.5 text-base">
                   <span className="min-w-0 flex-1">{g.title}</span>
-                  {to && <Link to={to} className="flex-none font-semibold" style={{ color: "var(--accent)" }}>Open →</Link>}
+                  {to && <Link to={to} className="flex-none font-semibold" style={{ color: "var(--accent-text)" }}>Open →</Link>}
                 </li>
               );
             })}
@@ -130,7 +130,7 @@ function useAct() {
 
 function PrimaryBtn({ label, onClick, disabled, title }: { label: string; onClick: () => void; disabled?: boolean; title?: string }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent)", opacity: disabled ? 0.5 : 1 }}>
+    <button onClick={onClick} disabled={disabled} title={title ?? label} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--accent)", color: "var(--accent-text)", opacity: disabled ? 0.5 : 1 }}>
       {label}
     </button>
   );
@@ -303,7 +303,7 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
           header={
             <div role="group" aria-label="What it is" className="mb-3 flex flex-wrap gap-1.5">
               {KINDS.map((k) => (
-                <button key={k.key} type="button" aria-pressed={k.key === kind} onClick={() => setKind(k.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${k.key === kind ? "var(--accent)" : "var(--line)"}`, background: k.key === kind ? "var(--accent-soft)" : "var(--panel)", color: k.key === kind ? "var(--accent)" : "var(--ink-faint)" }}>
+                <button key={k.key} type="button" aria-pressed={k.key === kind} onClick={() => setKind(k.key)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${k.key === kind ? "var(--accent)" : "var(--line)"}`, background: k.key === kind ? "var(--accent-soft)" : "var(--panel)", color: k.key === kind ? "var(--accent-text)" : "var(--ink-faint)" }}>
                   {k.label}
                 </button>
               ))}

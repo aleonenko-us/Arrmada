@@ -243,7 +243,7 @@ function rowWords(r: MovieWantedRow, upcoming?: boolean, cutoff?: boolean): { ch
   }
   const parts = [r.track ? `${r.track}: ${r.detail}` : r.detail ?? ""];
   if (r.state === "waiting_download") {
-    return { chip: "Upgrade downloading", tone: "var(--accent)", line: `${parts[0]} · downloading ${r.waiting_on ?? "an upgrade"}` };
+    return { chip: "Upgrade downloading", tone: "var(--accent-text)", line: `${parts[0]} · downloading ${r.waiting_on ?? "an upgrade"}` };
   }
   if (!r.will_upgrade) {
     return { chip: "Won't upgrade", tone: "var(--ink-faint)", line: `${parts[0]} · ${r.why_not ?? "Arrmada won't upgrade it"}` };
@@ -251,7 +251,7 @@ function rowWords(r: MovieWantedRow, upcoming?: boolean, cutoff?: boolean): { ch
   if (r.last_search) parts.push(`last looked: ${attemptLine(r.last_search.latest)}`);
   const next = nextTryText(r.next_search_at);
   if (next) parts.push(next);
-  return { chip: "Will upgrade", tone: "var(--avoid)", line: parts.filter(Boolean).join(" · ") };
+  return { chip: "Will upgrade", tone: "var(--avoid-text)", line: parts.filter(Boolean).join(" · ") };
 }
 
 function WantedMovieRow({ row, onChange, upcoming, cutoff }: { row: MovieWantedRow; onChange: () => void; upcoming?: boolean; cutoff?: boolean }) {

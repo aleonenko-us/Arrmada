@@ -26,7 +26,7 @@ export function PeopleSettings() {
     <div className="flex flex-col gap-6">
       <PeopleList meId={user?.id} />
       <p className="m-0 text-sm text-ink-faint">
-        Who may sign in with Plex, and what new Plex sign-ins auto-approve, is in <Link to={LINKS.plexSignIn} style={{ color: "var(--accent)" }}>Settings → Plex</Link>.
+        Who may sign in with Plex, and what new Plex sign-ins auto-approve, is in <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Settings → Plex</Link>.
       </p>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
@@ -110,7 +110,7 @@ const limitText = (n: number) => (n < 0 ? "" : String(n));
 const limitValue = (s: string) => (s.trim() === "" ? -1 : Math.min(1000, Math.round(Number(s))));
 const limitProblem = (what: string) => (v: string) => (v.trim() === "" || /^\d{1,4}$/.test(v.trim()) && Number(v) <= 1000 ? null : `${what}: blank for the usual limit, or 0–1000.`);
 
-const ROLE_TONE: Record<string, string> = { admin: "var(--reject)", manager: "var(--accent)", requester: "var(--good)", readonly: "var(--ink-faint)" };
+const ROLE_TONE: Record<string, string> = { admin: "var(--reject-text)", manager: "var(--accent-text)", requester: "var(--good-text)", readonly: "var(--ink-faint)" };
 export const ROLES: { value: UserRole; label: string }[] = [
   { value: "requester", label: "Requester" },
   { value: "readonly", label: "Read-only" },
@@ -184,7 +184,7 @@ function PeopleList({ meId }: { meId?: number }) {
   return (
     <Section id="users" title="People & access" subtitle="Everyone who can use Arrmada, and what each of them may do. Changes save as you make them. Auto-approve lets someone's requests download without waiting for you.">
       <RoleLegend />
-      {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
       <div className="flex flex-col gap-2">
         {people === null ? (
           !err && <p className="text-sm text-ink-dim">Loading…</p>
@@ -207,7 +207,7 @@ function PeopleList({ meId }: { meId?: number }) {
               <button onClick={() => unblock(b)} className="flex-none rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Unblock</button>
             </div>
           ))}
-          {blockErr && <div className="text-sm" style={{ color: "var(--reject)" }}>{blockErr}</div>}
+          {blockErr && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{blockErr}</div>}
         </div>
       )}
     </Section>
@@ -277,16 +277,16 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
     <div className="flex flex-col gap-2 rounded-lg px-3 py-2.5" style={{ background: "var(--panel-2)" }} data-testid="person">
       {/* Who: name, Plex, role. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="grid h-7 w-7 flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p.username[0]?.toUpperCase()}</span>
+        <span className="grid h-7 w-7 flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{p.username[0]?.toUpperCase()}</span>
         <span className="min-w-[8rem] flex-1 truncate text-base font-semibold" style={faded}>{p.username}{isMe && <span className="font-normal text-ink-faint"> (you)</span>}</span>
-        {p.disabled && <span className={chip} style={{ background: "var(--reject-soft)", color: "var(--reject)" }} title="Can't sign in. Nothing of theirs was deleted.">Disabled</span>}
+        {p.disabled && <span className={chip} style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }} title="Can't sign in. Nothing of theirs was deleted.">Disabled</span>}
         {p.plex_linked && (
-          <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel)", color: p.plex_blocked ? "var(--reject)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.plex_blocked ? "Linked Plex account — blocked from signing in" : "Linked Plex account"}>
+          <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel)", color: p.plex_blocked ? "var(--reject-text)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.plex_blocked ? "Linked Plex account — blocked from signing in" : "Linked Plex account"}>
             Plex{p.plex_username ? ` · ${p.plex_username}` : ""}{p.plex_blocked ? " · blocked" : ""}
           </span>
         )}
         {p.plex_linked && p.auto_approve_series && p.role === "requester" && (
-          <span className={chip} style={{ background: "var(--avoid-soft)", color: "var(--avoid)" }} title="Their series requests are approved at once, every season asked for.">Approves whole shows</span>
+          <span className={chip} style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }} title="Their series requests are approved at once, every season asked for.">Approves whole shows</span>
         )}
         <span className="flex items-center gap-1.5">
           <select
@@ -323,7 +323,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
           ? <Button size="sm" busy={busy === "signin"} busyLabel="Turning on…" onClick={() => setSignIn(true)}>Turn sign-in back on</Button>
           : <Button size="sm" busy={busy === "signin"} busyLabel="Turning off…" onClick={() => setSignIn(false)}>Disable</Button>)}
         <Button size="sm" variant="ghost" aria-expanded={more} onClick={() => setMore((m) => !m)}>{more ? "Less" : "More…"}</Button>
-        {!isMe && <Button size="sm" variant="ghost" style={{ color: "var(--reject)" }} onClick={() => setRemoving(true)}>Delete</Button>}
+        {!isMe && <Button size="sm" variant="ghost" style={{ color: "var(--reject-text)" }} onClick={() => setRemoving(true)}>Delete</Button>}
       </div>
 
       {more && <PersonMore p={p} isMe={isMe} ctx={ctx} />}
@@ -344,7 +344,7 @@ function AudiobookAccess({ p, save }: { p: Person; save: AutoSave<boolean> }) {
         <input type="checkbox" checked={save.value} onChange={(e) => void save.commit(e.target.checked)} aria-label={`${p.username} may use audiobook apps`} />
         Audiobook apps
       </label>
-      <span style={{ color: p.audio_password_set ? "var(--good)" : "var(--ink-faint)" }}>{p.audio_password_set ? "password set" : "no password yet"}</span>
+      <span style={{ color: p.audio_password_set ? "var(--good-text)" : "var(--ink-faint)" }}>{p.audio_password_set ? "password set" : "no password yet"}</span>
       {p.audio_devices > 0 && <span className="text-ink-faint">· {p.audio_devices} {p.audio_devices === 1 ? "app" : "apps"}</span>}
       <SavedTick save={save} />
     </span>
@@ -427,7 +427,7 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
           <input type="password" minLength={8} aria-label={`New password for ${p.username}`} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete="new-password" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           <Button size="sm" variant="primary" disabled={password.length < 8} busy={pwBusy} busyLabel="Setting…" onClick={setPw}>Set password</Button>
         </div>
-        {pwMsg && <span className="text-sm" style={{ color: pwMsg.ok ? "var(--good)" : "var(--reject)" }}>{pwMsg.text}</span>}
+        {pwMsg && <span className="text-sm" style={{ color: pwMsg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{pwMsg.text}</span>}
       </div>
 
       {p.plex_linked && !isMe && (
@@ -437,7 +437,7 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
               ? "Their Plex account is blocked from signing in here. Unblock it under Blocked Plex accounts."
               : `Linked to Plex${p.plex_username ? ` as ${p.plex_username}` : ""}.`}
           </span>
-          {!p.plex_blocked && <Button size="sm" style={{ color: "var(--reject)" }} onClick={() => plexAction("block")}>Block their Plex account</Button>}
+          {!p.plex_blocked && <Button size="sm" style={{ color: "var(--reject-text)" }} onClick={() => plexAction("block")}>Block their Plex account</Button>}
           <Button size="sm" onClick={() => plexAction("unlink")}>Unlink Plex</Button>
         </div>
       )}
@@ -497,7 +497,7 @@ function AddPerson({ onAdded }: { onAdded: () => void }) {
         </div>
         <Button type="submit" variant="primary" busy={busy} busyLabel="Adding…">Add person</Button>
       </div>
-      {err && <div className="text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
     </form>
   );
 }

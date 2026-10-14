@@ -38,7 +38,7 @@ export function hasAtmos(f?: SummaryMedia): boolean {
 // YesNo renders a clear yes/no so gaps (missing HDR/Atmos) are easy to scan for.
 function YesNo({ on, label }: { on: boolean; label?: string }) {
   return on
-    ? <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--good-soft, rgba(90,140,90,.14))", color: "var(--good)" }}>{label ?? "Yes"}</span>
+    ? <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--good-soft, rgba(90,140,90,.14))", color: "var(--good-text)" }}>{label ?? "Yes"}</span>
     : <span className="text-xs text-ink-faint">—</span>;
 }
 
@@ -50,7 +50,7 @@ function DownloadBar({ d }: { d: MovieDownload }) {
   return (
     <div className="absolute inset-x-0 bottom-0 p-1.5">
       <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1" style={{ background: "rgba(20,12,7,.82)" }} title={label ? `Downloading: ${label}` : "Downloading"}>
-        {label && <span className="max-w-[60px] truncate font-mono text-2xs font-bold uppercase" style={{ color: "var(--accent)" }}>{label}</span>}
+        {label && <span className="max-w-[60px] truncate font-mono text-2xs font-bold uppercase" style={{ color: "var(--accent-text)" }}>{label}</span>}
         <div className="h-1 flex-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.25)" }}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
         </div>

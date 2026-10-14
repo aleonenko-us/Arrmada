@@ -147,13 +147,13 @@ export function useAPIKeys(enabled: boolean, onChanged: () => void): KeyControl 
 export function KeyEditor({ ids, ctl }: { ids: string[]; ctl: KeyControl }) {
   if (ctl.keys === null) {
     return ctl.error
-      ? <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>{ctl.error}</p>
+      ? <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>{ctl.error}</p>
       : <p className="m-0 text-sm text-ink-dim">Loading…</p>;
   }
   const rows = ids.map((id) => ctl.keys?.find((k) => k.id === id)).filter((k): k is APIKeyStatus => !!k);
   return (
     <div className="mt-1 flex flex-col gap-2.5">
-      {ctl.error && <div className="rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{ctl.error}</div>}
+      {ctl.error && <div className="rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{ctl.error}</div>}
       {rows.map((k) => <KeyRow key={k.id} k={k} ctl={ctl} />)}
     </div>
   );
@@ -171,7 +171,7 @@ function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold">{k.label}</span>
         {k.configured ? (
-          <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--good-soft, rgba(80,200,120,.15))", color: "var(--good)" }}>
+          <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--good-soft, rgba(80,200,120,.15))", color: "var(--good-text)" }}>
             Set {k.hint ? `(${k.hint})` : ""}{k.source === "env" ? " · from install" : ""}
           </span>
         ) : (
@@ -193,7 +193,7 @@ function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
           onClick={() => void ctl.save(k.id)}
           disabled={ctl.busy !== null || !draft.trim()}
           className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
-          style={{ border: "1px solid var(--accent-line, var(--line))", color: "var(--accent)" }}
+          style={{ border: "1px solid var(--accent-line, var(--line))", color: "var(--accent-text)" }}
         >
           {ctl.busy === k.id ? "Saving…" : "Save"}
         </button>
@@ -220,20 +220,20 @@ function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
           </button>
         )}
       </div>
-      {ctl.clearErr[k.id] && <p className="m-0 text-xs" style={{ color: "var(--reject)" }}>{ctl.clearErr[k.id]}</p>}
+      {ctl.clearErr[k.id] && <p className="m-0 text-xs" style={{ color: "var(--reject-text)" }}>{ctl.clearErr[k.id]}</p>}
       {k.last_error && (
-        <p className="m-0 text-xs" style={{ color: "var(--reject)" }} title={k.last_error_at ? new Date(k.last_error_at).toLocaleString() : undefined}>
+        <p className="m-0 text-xs" style={{ color: "var(--reject-text)" }} title={k.last_error_at ? new Date(k.last_error_at).toLocaleString() : undefined}>
           Last failed {ago(k.last_error_at)}: {k.last_error}
         </p>
       )}
       {result && (
-        <p className="m-0 break-words text-xs" style={{ color: result.ok ? "var(--good)" : "var(--reject)" }}>
+        <p className="m-0 break-words text-xs" style={{ color: result.ok ? "var(--good-text)" : "var(--reject-text)" }}>
           {result.ok ? "✓ " : "✗ "}{result.detail}
           {result.candidate && <span className="text-ink-faint"> (typed value, not saved)</span>}
         </p>
       )}
       <p className="m-0 text-xs text-ink-faint">
-        {k.steps} {k.help_url && <a href={k.help_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Get one →</a>}
+        {k.steps} {k.help_url && <a href={k.help_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)" }}>Get one →</a>}
       </p>
     </div>
   );
@@ -253,7 +253,7 @@ export function DiscoveryRegion() {
     <div id="discovery-region" className="flex scroll-mt-20 flex-col gap-1.5 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-md font-semibold">Discovery region</span>
-        <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={saved ? { background: "var(--good-soft, rgba(80,200,120,.15))", color: "var(--good)" } : { background: "var(--panel-2)", color: "var(--ink-faint)" }}>
+        <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={saved ? { background: "var(--good-soft, rgba(80,200,120,.15))", color: "var(--good-text)" } : { background: "var(--panel-2)", color: "var(--ink-faint)" }}>
           {saved || "Global"}
         </span>
       </div>

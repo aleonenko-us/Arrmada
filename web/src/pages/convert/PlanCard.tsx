@@ -27,7 +27,7 @@ export function PlanCard({ itemKey }: { itemKey: string }) {
       <div className="font-mono text-2xs font-bold uppercase tracking-[0.11em] text-ink-faint">Conversion plan</div>
       {!data && loading && <p className="mt-2 text-sm text-ink-dim">Reading the plan…</p>}
       {!data && error && (
-        <p className="mt-2 text-sm" style={{ color: "var(--reject)" }}>
+        <p className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>
           {error.message} <button type="button" onClick={() => void refetch()} className="ml-1 underline">Retry</button>
         </p>
       )}
@@ -57,7 +57,7 @@ export function PlanDetails({ plan }: { plan: ConvertPlan }) {
       {plan.warnings.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Warnings">
           {plan.warnings.map((w) => (
-            <li key={w} className="text-sm" style={{ color: "var(--avoid)" }}>⚠ {w}</li>
+            <li key={w} className="text-sm" style={{ color: "var(--avoid-text)" }}>⚠ {w}</li>
           ))}
         </ul>
       )}

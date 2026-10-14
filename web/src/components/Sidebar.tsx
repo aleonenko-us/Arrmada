@@ -13,9 +13,9 @@ import { Scrim } from "../ui/Scrim";
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
 
 const PILL_TONE: Record<NavBadge["tone"], { background: string; color: string }> = {
-  accent: { background: "var(--accent-soft)", color: "var(--accent)" },
-  reject: { background: "var(--reject-soft)", color: "var(--reject)" },
-  avoid: { background: "var(--avoid-soft)", color: "var(--avoid)" },
+  accent: { background: "var(--accent-soft)", color: "var(--accent-text)" },
+  reject: { background: "var(--reject-soft)", color: "var(--reject-text)" },
+  avoid: { background: "var(--avoid-soft)", color: "var(--avoid-text)" },
 };
 
 // CountPill is a sidebar entry's live count; nothing at zero.
@@ -147,7 +147,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                   className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-md transition-colors"
                   style={({ isActive }) =>
                     isActive
-                      ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }
+                      ? { background: "var(--accent-soft)", color: "var(--accent-text)", fontWeight: 600 }
                       : { color: "var(--ink-dim)" }
                   }
                 >
@@ -188,7 +188,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
             title="Sign out"
             aria-label="Sign out"
             className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject)" }}
+            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject-text)" }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />

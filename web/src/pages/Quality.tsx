@@ -152,9 +152,9 @@ const TARGET_ROWS: { row: Row; label: string; hint: string; options: { k: string
 // and Avoid decide whether a library file fits; Prefer just ranks releases.
 const PREF_TONE: Record<string, { bg: string; fg: string; label: string; means: string }> = {
   must: { bg: "var(--accent)", fg: "var(--accent-ink)", label: "Must", means: "Never grabbed without it, and a file without it doesn't fit. Two in a row means either will do." },
-  want: { bg: "var(--good)", fg: "#fff", label: "Prefer", means: "Picked over releases without it. A file without it still fits." },
+  want: { bg: "var(--good)", fg: "var(--accent-ink)", label: "Prefer", means: "Picked over releases without it. A file without it still fits." },
   "": { bg: "var(--line)", fg: "var(--ink)", label: "—", means: "No opinion either way." },
-  avoid: { bg: "var(--reject)", fg: "#fff", label: "Avoid", means: "Grabbed only when nothing else is available, and a file with it doesn't fit." },
+  avoid: { bg: "var(--reject)", fg: "var(--accent-ink)", label: "Avoid", means: "Grabbed only when nothing else is available, and a file with it doesn't fit." },
 };
 
 // The bitrate windows are per resolution, with 576p and 480p together as "SD" (how files
@@ -331,7 +331,7 @@ export function Quality() {
               : "A profile describes the file you want — codec, HDR, audio and a bitrate window. Arrmada grabs to it, ranks releases by it, and shows which files in your library don't fit."}
         </p>
 
-        {error && <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
         {listQ.data && loadError && <StaleBanner message={loadError} onRetry={refresh} />}
         {notice && (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", color: "var(--ink)" }}>
@@ -533,7 +533,7 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
         </div>
         <div className="flex flex-none flex-wrap items-center gap-2">
           {!info.is_default && (
-            <button onClick={makeDefault} title="Use this profile by default when adding" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Make default</button>
+            <button onClick={makeDefault} title="Use this profile by default when adding" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Make default</button>
           )}
           <button onClick={onEdit} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Edit</button>
           <button onClick={onDuplicate} title="Start a new profile from this one" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Duplicate</button>
@@ -546,7 +546,7 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
                   {others.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
                 </select>
               </label>
-              <button onClick={del} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ background: "var(--reject)", color: "#fff" }}>
+              <button onClick={del} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold" style={{ background: "var(--reject)", color: "var(--accent-ink)" }}>
                 {counts && titles === 0 ? "Delete" : `Delete and move ${what} to ${target.name}`}
               </button>
               <button onClick={() => setConfirming(false)} aria-label="Keep the profile" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>✕</button>
@@ -554,7 +554,7 @@ function ProfileCard({ info, media, counts, others, onEdit, onDuplicate, onChang
           ) : (
             <button onClick={() => setConfirming(true)} disabled={others.length === 0}
               title={others.length === 0 ? "Create another profile first" : undefined}
-              className="rounded-lg px-2.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Delete</button>
+              className="rounded-lg px-2.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Delete</button>
           )}
         </div>
       </div>
@@ -585,8 +585,8 @@ function FitBar({ counts }: { counts: FitCounts }) {
         {segs.filter(([n]) => n > 0).map(([n, c], i) => <span key={i} style={{ flex: n, background: c }} />)}
       </div>
       <div className="mt-1 font-mono text-xs text-ink-faint">
-        <span style={{ color: "var(--good)" }}>{counts.fits} fit</span>
-        {counts.over > 0 && <> · <span style={{ color: "var(--reject)" }}>{counts.over} over</span></>}
+        <span style={{ color: "var(--good-text)" }}>{counts.fits} fit</span>
+        {counts.over > 0 && <> · <span style={{ color: "var(--reject-text)" }}>{counts.over} over</span></>}
         {counts.under > 0 && <> · <span style={{ color: "var(--under)" }}>{counts.under} under</span></>}
         {counts.mismatch > 0 && <> · <span style={{ color: "var(--mismatch)" }}>{counts.mismatch} don't fit</span></>}
         {" "}of {counts.files} file{counts.files === 1 ? "" : "s"}
@@ -739,7 +739,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
           <div className="mb-4">
             <button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button>
           </div>
-          <label htmlFor="qp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+          <label htmlFor="qp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent-text">Name</label>
           <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
           <SectionLabel>1 · The file you want</SectionLabel>
@@ -946,9 +946,9 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
         {RESOLUTIONS.map((r) => {
           const active = allowed.includes(r.v);
           return (
-            <button key={r.v} onClick={() => toggleRes(r.v)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+            <button key={r.v} onClick={() => toggleRes(r.v)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel)", color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
               {r.l}
-              {active && <span className="font-mono text-2xs font-bold uppercase opacity-80">{r.v === best ? "goal" : "fallback"}</span>}
+              {active && <span className="font-mono text-2xs font-bold uppercase">{r.v === best ? "goal" : "fallback"}</span>}
             </button>
           );
         })}
@@ -1101,7 +1101,7 @@ function UpgradesEditor({ sp, patch }: { sp: StoredProfile; patch: (p: Partial<S
                   <span className="mt-[3px] inline-block h-3 w-3 flex-none rounded-full" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "transparent" }} />
                   <span className="min-w-0">
                     <span className="flex items-baseline gap-1.5">
-                      <span className="text-sm font-semibold" style={{ color: on ? "var(--accent)" : "var(--ink)" }}>{step.label}</span>
+                      <span className="text-sm font-semibold" style={{ color: on ? "var(--accent-text)" : "var(--ink)" }}>{step.label}</span>
                       {step.percent > 0 && <span className="font-mono text-xs text-ink-faint">+{step.percent}% bitrate</span>}
                     </span>
                     <span className="mt-0.5 block text-xs leading-[1.45] text-ink-faint">{step.detail}</span>
@@ -1202,7 +1202,7 @@ function LibraryFitPanel({ sp }: { sp: StoredProfile }) {
       </div>
       {res && <FitBar counts={res.counts} />}
       {res && misfits > 0 && (
-        <button onClick={show} className="mt-2.5 text-sm font-semibold" style={{ color: "var(--accent)" }}>
+        <button onClick={show} className="mt-2.5 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
           {series ? "Open the shows table →" : `Show the films that don't fit →`}
         </button>
       )}
@@ -1266,7 +1266,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
             <input type="number" min={1} value={season} onChange={(e) => setSeason(Math.max(1, Number(e.target.value) || 1))} aria-label="Season"
               className="w-[64px] rounded-lg px-2 py-1.5 text-right font-mono text-base" style={fieldStyle} title="Season" />
           )}
-          <button onClick={run} disabled={!pick || busy} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <button onClick={run} disabled={!pick || busy} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             {busy ? "Searching…" : "Search"}
           </button>
         </div>
@@ -1280,13 +1280,13 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
           </div>
         )}
       </div>
-      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
       {result && (
         <div className="mt-3">
           <IndexerIssues list={result} className="mb-2" />
           {winner ? (
             <div className="rounded-lg p-3" style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-accent">Would grab</div>
+              <div className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-accent-text">Would grab</div>
               <div className="mt-1 text-md font-semibold">{winner.summary}</div>
               <div className="mt-0.5 font-mono text-xs text-ink-dim">
                 {winner.size_gb.toFixed(1)} GB{winner.bitrate_mbps ? ` · ${winner.bitrate_mbps.toFixed(1)} Mb/s` : ""} · ▲ {winner.seeders}
@@ -1305,7 +1305,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
           )}
           {winner && result.chosen_over && <div className="mt-1 text-xs text-ink-faint">{result.chosen_over}</div>}
           {releases.length > 0 && (
-            <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-sm font-semibold" style={{ color: "var(--accent)" }}>
+            <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
               {showAll ? "Hide the others" : `${eligible.length} other eligible · ${skipped.length} skipped`}
             </button>
           )}
@@ -1316,7 +1316,7 @@ function TestPanel({ sp }: { sp: StoredProfile }) {
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate" title={r.title}>{r.summary}</span>
                     <span className="font-mono text-xs text-ink-faint">{r.size_gb.toFixed(1)} GB</span>
-                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-xs" style={{ color: "var(--reject)" }} title={r.reject_reason}>{r.reject_reason}</span>}
+                    {!r.eligible && <span className="max-w-[45%] truncate text-right text-xs" style={{ color: "var(--reject-text)" }} title={r.reject_reason}>{r.reject_reason}</span>}
                   </div>
                   {r.eligible && <ReleaseExplain className="mt-1" matched={r.matched} avoided={r.avoided} waived={r.bonus_waived} lostOn={r.lost_on} />}
                 </div>
@@ -1335,7 +1335,7 @@ function SaveBar({ dirty, saving, error, onSave, onCancel, mobileNote }: { dirty
     <div className="sticky bottom-0 z-20 mt-2" style={{ background: "var(--bg)", borderTop: "1px solid var(--line)" }}>
       <Page className="flex flex-wrap items-center gap-3 py-3">
         <div className="min-w-0 flex-1 text-sm">
-          {error ? <span style={{ color: "var(--reject)" }}>{error}</span>
+          {error ? <span style={{ color: "var(--reject-text)" }}>{error}</span>
             : dirty ? <span className="text-ink-dim">Unsaved changes</span>
               : <span className="text-ink-faint">No changes</span>}
           {mobileNote && <span className="ml-2 font-mono text-xs text-ink-faint lg:hidden">· {mobileNote}</span>}
@@ -1466,7 +1466,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
       <Page className="pb-4 pt-6">
         <div className="max-w-form">
         <div className="mb-4"><button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
-        <label htmlFor="mp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+        <label htmlFor="mp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent-text">Name</label>
         <input id="mp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Lossless, or the best MP3" className="w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
         {presets.length > 0 && (
@@ -1562,7 +1562,7 @@ function BookBuilder({ initial, onCancel, onSaved }: { initial: StoredProfile; o
       <Page className="pb-4 pt-6">
         <div className="max-w-form">
         <div className="mb-4"><button onClick={leave} className="text-sm text-ink-dim hover:text-[var(--ink)]">← Back</button></div>
-        <label htmlFor="bp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent">Name</label>
+        <label htmlFor="bp-name" className="mb-1.5 block font-mono text-2xs font-bold uppercase tracking-wide text-accent-text">Name</label>
         <input id="bp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Audiobooks — GraphicAudio first" className="mb-1 w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
         {BOOK_FORMATS.map((grp) => (
@@ -1616,7 +1616,7 @@ function KeywordEditor({ keywords, onChange }: { keywords: { term: string; score
           {keywords.map((k, i) => (
             <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm" style={panelStyle}>
               <span className="font-semibold">{k.term}</span>
-              <span className="ml-auto font-mono" style={{ color: k.score >= 0 ? "var(--good)" : "var(--reject)" }}>{k.score > 0 ? `+${k.score}` : k.score}</span>
+              <span className="ml-auto font-mono" style={{ color: k.score >= 0 ? "var(--good-text)" : "var(--reject-text)" }}>{k.score > 0 ? `+${k.score}` : k.score}</span>
               <button onClick={() => onChange(keywords.filter((_, j) => j !== i))} aria-label={`Remove ${k.term}`} className="text-ink-faint hover:text-[var(--reject)]">✕</button>
             </div>
           ))}
@@ -1625,7 +1625,7 @@ function KeywordEditor({ keywords, onChange }: { keywords: { term: string; score
       <div className="flex items-center gap-2">
         <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="IMAX" aria-label="Word" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle} />
         <input type="number" value={score} aria-label="Points" onChange={(e) => setScore(Number(e.target.value))} className="w-[70px] rounded-lg px-2 py-1.5 text-right font-mono text-sm" style={fieldStyle} />
-        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
+        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Add</button>
       </div>
     </div>
   );
@@ -1643,7 +1643,7 @@ function PreReleaseRule({ allowed, onChange }: { allowed: boolean; onChange: (al
         {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="text-base font-semibold" style={{ color: on ? "var(--reject)" : "var(--ink)" }}>Reject cams, telesyncs and screeners</span>
+        <span className="text-base font-semibold" style={{ color: on ? "var(--reject-text)" : "var(--ink)" }}>Reject cams, telesyncs and screeners</span>
         <span className="block text-xs text-ink-faint">CAM, HDCAM, TS, HDTS, telecine, DVDSCR, workprint, R5 — however they're spelled. On by default.</span>
       </span>
     </button>
@@ -1673,25 +1673,25 @@ function RejectEditor({ rejected, onChange }: { rejected: string[]; onChange: (r
           {execOn && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="text-base font-semibold" style={{ color: execOn ? "var(--reject)" : "var(--ink)" }}>Reject executables and scripts</span>
+          <span className="text-base font-semibold" style={{ color: execOn ? "var(--reject-text)" : "var(--ink)" }}>Reject executables and scripts</span>
           <span className="block text-xs text-ink-faint">.exe .bat .cmd .scr .msi … — malware safety, on by default</span>
         </span>
       </button>
       <div className="mb-2 flex flex-wrap gap-1.5">
         {REJECT_TYPES.map((t) => (
-          <button key={t} onClick={() => toggle(t)} aria-pressed={has(t)} className="rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: `1px solid ${has(t) ? "var(--reject)" : "var(--line)"}`, background: has(t) ? "var(--reject-soft)" : "var(--panel)", color: has(t) ? "var(--reject)" : "var(--ink-dim)" }}>{t}</button>
+          <button key={t} onClick={() => toggle(t)} aria-pressed={has(t)} className="rounded-lg px-2.5 py-1 text-sm font-semibold" style={{ border: `1px solid ${has(t) ? "var(--reject)" : "var(--line)"}`, background: has(t) ? "var(--reject-soft)" : "var(--panel)", color: has(t) ? "var(--reject-text)" : "var(--ink-dim)" }}>{t}</button>
         ))}
       </div>
       {custom.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {custom.map((r) => (
-            <span key={r} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{r}<button onClick={() => toggle(r)} aria-label={`Stop rejecting ${r}`}>✕</button></span>
+            <span key={r} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{r}<button onClick={() => toggle(r)} aria-label={`Stop rejecting ${r}`}>✕</button></span>
           ))}
         </div>
       )}
       <div className="flex items-center gap-2">
         <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCustom()} placeholder="Telesync" aria-label="Reject any release containing" className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base" style={fieldStyle} />
-        <button onClick={addCustom} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>Reject</button>
+        <button onClick={addCustom} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Reject</button>
       </div>
       <p className="mt-1.5 text-xs text-ink-faint">Any release whose name contains one of these is skipped entirely.</p>
     </div>
@@ -1722,7 +1722,7 @@ function FormatToggle({ format, score, required, advanced, onChange }: { format:
       ) : (
         <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
           {opts.map((o) => (
-            <button key={o.key} onClick={() => onChange(o.val, o.req)} aria-pressed={state === o.key} className="rounded-md px-2.5 py-1 text-xs font-semibold" style={{ background: state === o.key ? o.tone : "transparent", color: state === o.key ? "#fff" : "var(--ink-faint)" }}>{o.label}</button>
+            <button key={o.key} onClick={() => onChange(o.val, o.req)} aria-pressed={state === o.key} className="rounded-md px-2.5 py-1 text-xs font-semibold" style={{ background: state === o.key ? o.tone : "transparent", color: state === o.key ? "var(--accent-ink)" : "var(--ink-faint)" }}>{o.label}</button>
           ))}
         </div>
       )}
@@ -1739,7 +1739,7 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
   return (
     <>
       <div className="rounded-2xl p-5" style={{ background: "linear-gradient(180deg, var(--accent-soft), var(--panel) 62%)", border: "1px solid var(--accent)", boxShadow: "var(--shadow)" }}>
-        <div className="mb-2.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent">★ Arrmada would grab this</div>
+        <div className="mb-2.5 font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent-text">★ Arrmada would grab this</div>
         <div className="mb-3 text-3xl font-bold tracking-tight">{r.resolution} {r.source}</div>
         <div className="mb-4 flex flex-wrap gap-1.5">
           {(r.hdr ?? []).map((h) => <Chip key={h} accent>{h}</Chip>)}
@@ -1753,7 +1753,7 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
           <div className="flex flex-col gap-2">
             {why.map((w) => (
               <div key={w} className="flex items-start gap-2 text-md">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ color: "var(--accent)", flex: "none", marginTop: 2 }}><path d="M4 12l5 5L20 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ color: "var(--accent-text)", flex: "none", marginTop: 2 }}><path d="M4 12l5 5L20 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 <span>{w}</span>
               </div>
             ))}
@@ -1779,7 +1779,7 @@ function Hero({ winner, why, chosenOver, open, onToggle, eligible, rejected, tot
 }
 
 function Chip({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-  return <span className="rounded-md px-1.5 py-1 font-mono text-xs" style={{ background: accent ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${accent ? "var(--accent-line)" : "var(--line-soft)"}`, color: accent ? "var(--accent)" : "var(--ink-dim)" }}>{children}</span>;
+  return <span className="rounded-md px-1.5 py-1 font-mono text-xs" style={{ background: accent ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${accent ? "var(--accent-line)" : "var(--line-soft)"}`, color: accent ? "var(--accent-text)" : "var(--ink-dim)" }}>{children}</span>;
 }
 
 function CmpLabel({ children }: { children: React.ReactNode }) {
@@ -1798,7 +1798,7 @@ function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
         <span className="min-w-[108px] text-base font-semibold">{r.resolution} {r.source}</span>
         <span className="min-w-[50px] font-mono text-sm text-ink-dim">{ev.candidate.size_gb.toFixed(1)} GB</span>
         {(skip || plain) && (
-          <span className="ml-auto text-right text-sm" style={{ color: skip ? "var(--reject)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
+          <span className="ml-auto text-right text-sm" style={{ color: skip ? "var(--reject-text)" : "var(--ink-faint)" }}>{skip ? ev.reject_reason : "eligible"}</span>
         )}
       </div>
       {!skip && <ReleaseExplain className="mt-1.5" matched={ev.matched} avoided={ev.avoided_formats} waived={ev.bonus_waived} lostOn={ev.lost_on_text} />}
@@ -1809,7 +1809,7 @@ function CmpRow({ ev, skip }: { ev: Evaluation; skip?: boolean }) {
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-3 mt-6 flex items-center gap-2.5">
-      <span className="font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent">{children}</span>
+      <span className="font-mono text-2xs font-bold uppercase tracking-[0.12em] text-accent-text">{children}</span>
       <span className="h-px flex-1" style={{ background: "var(--line-soft)" }} />
     </div>
   );

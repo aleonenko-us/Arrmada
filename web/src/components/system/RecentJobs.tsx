@@ -37,7 +37,7 @@ export function RecentJobs() {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="m-0 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Recent jobs</h3>
-      {err && <p className="m-0 text-sm" style={{ color: "var(--reject)" }}>Couldn't load the recent jobs: {err}</p>}
+      {err && <p className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the recent jobs: {err}</p>}
       <div className="rounded-lg" style={{ border: "1px solid var(--line)" }}>
         {list === null ? (
           <div className="p-4 text-center text-sm text-ink-dim">{err ? "Couldn't load the recent jobs." : "Loading…"}</div>
@@ -57,14 +57,14 @@ export function RecentJobs() {
                       {j.target_label && (
                         <>
                           <span className="text-ink-faint"> · </span>
-                          {j.target_path ? <Link to={j.target_path} style={{ color: "var(--accent)" }}>{j.target_label}</Link> : <span>{j.target_label}</span>}
+                          {j.target_path ? <Link to={j.target_path} style={{ color: "var(--accent-text)" }}>{j.target_label}</Link> : <span>{j.target_label}</span>}
                         </>
                       )}
                     </div>
                     {j.message && !failed && <div className="truncate text-xs text-ink-faint" title={j.message}>{j.message}</div>}
                   </div>
                   <div className="min-w-0 truncate text-sm text-ink-dim">
-                    {j.trigger_path ? <Link to={j.trigger_path} style={{ color: "var(--accent)" }}>{j.trigger_label}</Link> : j.trigger_label}
+                    {j.trigger_path ? <Link to={j.trigger_path} style={{ color: "var(--accent-text)" }}>{j.trigger_label}</Link> : j.trigger_label}
                   </div>
                   <div className="text-sm text-ink-dim">
                     {ago(j.created_at)}
@@ -81,7 +81,7 @@ export function RecentJobs() {
                   </div>
                 </div>
                 {showErr && (
-                  <div className="mt-2 break-words rounded-md p-2 font-mono text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject)" }}>{j.error}</div>
+                  <div className="mt-2 break-words rounded-md p-2 font-mono text-xs" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{j.error}</div>
                 )}
               </div>
             );

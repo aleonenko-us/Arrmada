@@ -136,7 +136,7 @@ function SettingsHub() {
                 className="rounded-[9px] px-2.5 py-2 text-md transition-colors"
                 style={({ isActive }) =>
                   isActive
-                    ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }
+                    ? { background: "var(--accent-soft)", color: "var(--accent-text)", fontWeight: 600 }
                     : { color: "var(--ink-dim)" }
                 }
               >
@@ -147,7 +147,7 @@ function SettingsHub() {
         </aside>
 
         <div className="w-full min-w-0 max-w-form flex-1">
-          {error && <div className="mb-3 rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+          {error && <div className="mb-3 rounded-lg p-3 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
           {!s ? <p className="text-base text-ink-dim">Loading…</p> : <Body />}
         </div>
       </Page>

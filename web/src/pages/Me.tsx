@@ -51,7 +51,7 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
       <Page className="py-5">
         <div className="flex max-w-form flex-col gap-5">
         <div className="flex items-center gap-3.5">
-          <span className="grid h-14 w-14 flex-none place-items-center rounded-full text-3xl font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }} aria-hidden>
+          <span className="grid h-14 w-14 flex-none place-items-center rounded-full text-3xl font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)", border: "1px solid var(--accent-line)" }} aria-hidden>
             {(name[0] ?? "?").toUpperCase()}
           </span>
           <div className="min-w-0">
@@ -104,7 +104,7 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
         </MeSection>
 
         <MeSection id="session">
-          <button onClick={() => { void signOut(); }} className="flex min-h-[48px] w-full items-center px-3.5 text-left text-md font-semibold" style={{ color: "var(--reject)" }}>
+          <button onClick={() => { void signOut(); }} className="flex min-h-[48px] w-full items-center px-3.5 text-left text-md font-semibold" style={{ color: "var(--reject-text)" }}>
             Sign out
           </button>
         </MeSection>

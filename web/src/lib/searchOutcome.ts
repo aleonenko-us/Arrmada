@@ -183,13 +183,13 @@ export function latestPerScope(attempts: SearchAttempt[], max = 4): SearchAttemp
 export function outcomeTone(kind: SearchAttempt["outcome"]): string {
   switch (kind) {
     case "grabbed":
-      return "var(--good)";
+      return "var(--good-text)";
     case "indexers_failed":
     case "error":
-      return "var(--reject)";
+      return "var(--reject-text)";
     case "none_suitable":
     case "nothing_found":
-      return "var(--avoid)";
+      return "var(--avoid-text)";
     default:
       return "var(--ink-dim)";
   }

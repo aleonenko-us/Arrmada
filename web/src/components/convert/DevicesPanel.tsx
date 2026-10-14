@@ -64,9 +64,9 @@ export function DevicesPanel({ data }: { data: ConvertDevices | null }) {
         10-bit is known only for plays recorded since this update.
       </div>
       {!data.monitoring && (
-        <div className="text-xs" style={{ color: "var(--avoid)" }}>
+        <div className="text-xs" style={{ color: "var(--avoid-text)" }}>
           Plex watch monitoring is off, so no new plays are recorded{rows.length ? " — this is what it saw while it was on" : ""}.{" "}
-          <Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent)" }}>Turn it on</Link>
+          <Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent-text)" }}>Turn it on</Link>
         </div>
       )}
       {rows.length === 0 ? (

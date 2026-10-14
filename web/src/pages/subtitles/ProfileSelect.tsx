@@ -51,7 +51,7 @@ export function ProfileSelect({ kind, id, value, title, onChanged }: {
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => void change(Number(e.target.value))}
       className="max-w-[140px] flex-none rounded-md px-1.5 py-1 text-xs disabled:opacity-50"
-      style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: value ? "var(--accent)" : "var(--ink-dim)" }}
+      style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: value ? "var(--accent-text)" : "var(--ink-dim)" }}
     >
       {profiles.map((p) => <option key={p.id} value={p.id}>{p.is_default ? "Default profile" : p.name}</option>)}
     </select>
@@ -77,7 +77,7 @@ export function TitleProfilePicker({ kind, id, title, onChanged }: { kind: Title
         disabled={busy}
         onChange={(e) => void change(Number(e.target.value))}
         className="rounded-lg px-2.5 py-1.5 text-sm font-medium disabled:opacity-50"
-        style={{ background: pinned ? "var(--accent-soft)" : "var(--panel-2)", border: "1px solid var(--line)", color: pinned ? "var(--accent)" : "var(--ink)" }}
+        style={{ background: pinned ? "var(--accent-soft)" : "var(--panel-2)", border: "1px solid var(--line)", color: pinned ? "var(--accent-text)" : "var(--ink)" }}
       >
         {profiles.map((p) => <option key={p.id} value={p.id} style={{ background: "var(--panel)", color: "var(--ink)" }}>{p.is_default ? "Default" : p.name}</option>)}
       </select>

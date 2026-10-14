@@ -60,13 +60,13 @@ export function TrashImportDialog({ media, existing, onAdd, onClose }: {
       <textarea value={text} onChange={(e) => { setText(e.target.value); setResult(null); }} aria-label="TRaSH custom-format JSON" rows={result ? 4 : 10} spellCheck={false}
         placeholder={'{\n  "name": "x265 (HD)",\n  "specifications": [ … ]\n}'}
         className="mt-3 w-full rounded-lg px-3 py-2 font-mono text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-      {error && <p role="alert" className="mt-2 text-sm" style={{ color: "var(--reject)" }}>{error}</p>}
+      {error && <p role="alert" className="mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
 
       {result && (
         <div className="mt-3 flex flex-col gap-2">
           {result.warnings.length > 0 && (
             <div className="rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)" }}>
-              <div className="font-semibold" style={{ color: "var(--reject)" }}>Not imported</div>
+              <div className="font-semibold" style={{ color: "var(--reject-text)" }}>Not imported</div>
               <ul className="mt-1 flex flex-col gap-0.5 text-ink-dim">
                 {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>

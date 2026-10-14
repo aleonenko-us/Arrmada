@@ -31,7 +31,7 @@ export function SeriesBulkActions({ sel, profiles, onDone }: {
   return (
     <>
       {/* The switch is a pause gate: season and episode choices are kept either way. */}
-      <button onClick={() => run((id) => seriesApi.setSeriesMonitored(id, true), (n) => `${n} resumed.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="Resume searching. Season and episode choices are kept; a show with nothing monitored gets every regular season.">Monitor</button>
+      <button onClick={() => run((id) => seriesApi.setSeriesMonitored(id, true), (n) => `${n} resumed.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }} title="Resume searching. Season and episode choices are kept; a show with nothing monitored gets every regular season.">Monitor</button>
       <button onClick={() => run((id) => seriesApi.setSeriesMonitored(id, false), (n) => `${n} paused.`)} disabled={none} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }} title="Pause: nothing is searched. Season and episode choices are kept for when you resume.">Unmonitor</button>
       <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
       <select value="" disabled={none} aria-label="Set the quality profile of the selected series" className={SELECT} style={SELECT_STYLE}

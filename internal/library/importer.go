@@ -506,6 +506,9 @@ func (im *Importer) rootFor(fn func() string) string {
 func (im *Importer) movieDir() string { return im.rootFor(im.roots.Movie) }
 func (im *Importer) tvDir() string    { return im.rootFor(im.roots.TV) }
 
+// TVRoot is the TV library folder, read live.
+func (im *Importer) TVRoot() string { return im.tvDir() }
+
 // MusicDir is where album folders are written.
 func (im *Importer) MusicDir() string { return im.rootFor(im.roots.Music) }
 

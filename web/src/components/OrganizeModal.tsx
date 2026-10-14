@@ -104,10 +104,10 @@ export function OrganizeModal({ ids, onClose, onDone }: { ids?: number[]; onClos
       <p className="m-0 mb-3 text-sm text-ink-dim">
         {scoped ? "The selected movies' files" : "Every movie file in your library"}, checked against your naming scheme. This preview changes nothing.
       </p>
-      {error && <div className="mb-2 text-sm" role="alert" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 text-sm" role="alert" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
       {summary ? (
-        <div className="rounded-lg p-3 text-sm" role="status" style={{ border: `1px solid ${summary.failed ? "var(--reject)" : "var(--accent-line)"}`, background: summary.failed ? "var(--reject-soft)" : "var(--accent-soft)", color: summary.failed ? "var(--reject)" : "var(--accent)" }}>
+        <div className="rounded-lg p-3 text-sm" role="status" style={{ border: `1px solid ${summary.failed ? "var(--reject)" : "var(--accent-line)"}`, background: summary.failed ? "var(--reject-soft)" : "var(--accent-soft)", color: summary.failed ? "var(--reject-text)" : "var(--accent-text)" }}>
           {summary.text}
         </div>
       ) : jobId !== null ? (
@@ -125,7 +125,7 @@ export function OrganizeModal({ ids, onClose, onDone }: { ids?: number[]; onClos
           <div className="mb-2 font-mono text-sm" aria-live="polite">
             <span style={{ color: "var(--ink)" }}>{plural(preview.counts.rename, "file")} to rename</span>
             <span className="text-ink-faint"> · {preview.counts.same.toLocaleString()} already correct</span>
-            {preview.counts.conflict > 0 && <span style={{ color: "var(--reject)" }}> · {plural(preview.counts.conflict, "conflict")}</span>}
+            {preview.counts.conflict > 0 && <span style={{ color: "var(--reject-text)" }}> · {plural(preview.counts.conflict, "conflict")}</span>}
             {preview.counts.missing > 0 && <span className="text-ink-faint"> · {preview.counts.missing.toLocaleString()} not on disk</span>}
           </div>
           {items.length === 0 ? (
@@ -139,8 +139,8 @@ export function OrganizeModal({ ids, onClose, onDone }: { ids?: number[]; onClos
                     {it.version_id !== 0 && <span className="font-normal text-ink-dim"> · {it.label}</span>}
                   </div>
                   <div className="break-all font-mono text-xs text-ink-faint" title={it.current}>{pathTail(it.current)}</div>
-                  <div className="break-all font-mono text-xs" title={it.proposed} style={{ color: it.status === "conflict" ? "var(--reject)" : "var(--ink)" }}>→ {pathTail(it.proposed)}</div>
-                  {it.status === "conflict" && <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>Won't be renamed: {it.reason}</div>}
+                  <div className="break-all font-mono text-xs" title={it.proposed} style={{ color: it.status === "conflict" ? "var(--reject-text)" : "var(--ink)" }}>→ {pathTail(it.proposed)}</div>
+                  {it.status === "conflict" && <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>Won't be renamed: {it.reason}</div>}
                 </div>
               ))}
               {items.length < preview.total && (

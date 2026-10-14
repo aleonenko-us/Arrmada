@@ -66,7 +66,7 @@ export function AttentionCard({ flash, onLibrary, onQueued }: { flash: (m: strin
   if (!board) return null;
   const sources = Object.entries(board.sources ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   const btn = "rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-50";
-  const accent = { border: "1px solid var(--accent-line)", color: "var(--accent)" };
+  const accent = { border: "1px solid var(--accent-line)", color: "var(--accent-text)" };
   const plain = { border: "1px solid var(--line)", color: "var(--ink-dim)" };
 
   return (

@@ -52,6 +52,10 @@ export default defineConfig({
       testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|subtitles-profile-picker|my-shelf|book-authors|books-phone|quality-formats)\.spec\.ts/,
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } },
     },
+    // The colour-contrast audit (e2e/contrast.spec.ts): every page in both themes at both
+    // widths, checked against WCAG AA.
+    { name: "contrast-1440", testMatch: /contrast\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "contrast-375", testMatch: /contrast\.spec\.ts/, use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
     ...screens,
   ],
   webServer: {

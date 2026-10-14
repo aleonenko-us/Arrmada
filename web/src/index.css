@@ -22,29 +22,30 @@
   --line-soft: #2a2018;
   --ink: #f0e7dc;
   --ink-dim: #beac98;
-  /* 4.47 / 4.07 / 4.34 — just under 4.5; the lift to #9a8774 (5.35 / 4.87 /
-     5.19) waits for the owner's sign-off because it changes every dark page. */
-  --ink-faint: #8c7a67;
+  --ink-faint: #9a8774; /* 5.35 / 4.87 / 5.19; 4.62 on line-soft hovers (was #8c7a67: 4.47 / 4.07 / 4.34) */
   --accent: #db7a54;
   --accent-deep: #c4633c;
-  --accent-ink: #241007;
+  --accent-ink: #241007; /* the ink on any solid status fill (accent, good, reject buttons) */
   --accent-soft: rgba(219, 122, 84, 0.15);
   --accent-line: rgba(219, 122, 84, 0.42);
   --good: #7fb069;
   --good-soft: rgba(127, 176, 105, 0.16);
   --avoid: #e0a93b;
   --avoid-soft: rgba(224, 169, 59, 0.15);
-  --reject: #cf5442;
+  --reject: #d8604d; /* 5.00 / 4.55 / 4.85, accent-ink on it 4.95 (was #cf5442: 3.99 as text, 4.20 under white) */
   --reject-soft: rgba(207, 84, 66, 0.15);
   --under: #e8863a; /* ideal-file check: under the bitrate floor */
   --under-soft: rgba(232, 134, 58, 0.15);
   --mismatch: #d9c24a; /* ideal-file check: bitrate fine, spec isn't */
   --mismatch-soft: rgba(217, 194, 74, 0.15);
-  --accent-text: #db7a54; /* 6.08 / 5.53 / 5.90; 4.42 on accent-soft over panel */
+  --accent-text: #e0845e; /* 6.70 / 6.10 / 6.50; 4.87 on accent-soft over panel (was #db7a54: 4.42) */
   --good-text: #7fb069; /* 7.30 / 6.64 / 7.08; 5.05 on good-soft */
   --avoid-text: #e0a93b; /* 8.70 / 7.91 / 8.44; 5.91 on avoid-soft */
   --reject-text: #e27a69; /* 6.34 / 5.77 / 6.15; 4.89 on reject-soft (plain --reject is 3.99 on panel) */
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  /* Native controls (the open list of a <select>, scrollbars, date pickers) follow the
+     theme instead of the device's light default. */
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
@@ -58,53 +59,58 @@
     --ink: #2b2016;
     --ink-dim: #6c5d4e;
     --ink-faint: #776654; /* 4.77 / 5.51 / 4.60 (was #9c8b78: 2.85 / 3.29 / 2.75) */
-    --accent: #c15e39;
+    --accent: #b85834; /* white accent-ink on it: 4.68 (was #c15e39: 4.26) */
     --accent-deep: #a94e2d;
     --accent-ink: #ffffff;
     --accent-soft: rgba(193, 94, 57, 0.1);
     --accent-line: rgba(193, 94, 57, 0.35);
-    --good: #5b8c46;
+    --good: #4f7d3c; /* white accent-ink on it 4.85 (was #5b8c46: 3.97) */
     --good-soft: rgba(91, 140, 70, 0.13);
     --avoid: #b07d1e;
     --avoid-soft: rgba(176, 125, 30, 0.12);
     --reject: #b23f30;
     --reject-soft: rgba(178, 63, 48, 0.11);
-    --under: #c0601a;
+    --under: #a14f0e; /* 5.00 / 5.77 / 4.82 as text (was #c0601a: 3.69 / 4.26 / 3.56) */
     --under-soft: rgba(192, 96, 26, 0.12);
-    --mismatch: #9a8410;
+    --mismatch: #77650a; /* 4.99 / 5.75 / 4.81 as text (was #9a8410: 3.20 / 3.70 / 3.09) */
     --mismatch-soft: rgba(154, 132, 16, 0.12);
-    --accent-text: #a94e2d; /* 4.77 / 5.51 / 4.60; 4.86 on accent-soft over panel */
-    --good-text: #4a7539; /* 4.67 / 5.39 / 4.51; 4.65 on good-soft */
-    --avoid-text: #8a6112; /* 4.79 / 5.53 / 4.62; 4.85 on avoid-soft */
-    --reject-text: #b23f30; /* 4.99 / 5.76 / 4.81; 4.90 on reject-soft */
+    /* The *-text hues also clear 4.5 on their own soft tint laid over panel-2, the
+       darkest light surface (the old values fell to 3.9-4.3 there). */
+    --accent-text: #9e4827; /* 5.34 / 6.16 / 5.15; 4.60 on accent-soft over panel-2 */
+    --good-text: #436b33; /* 5.37 / 6.20 / 5.18; 4.53 on good-soft over panel-2 */
+    --avoid-text: #7f5910; /* 5.45 / 6.29 / 5.26; 4.68 on avoid-soft over panel-2 */
+    --reject-text: #a8392b; /* 5.54 / 6.39 / 5.34; 4.59 on reject-soft over panel-2 */
     --shadow: 0 14px 36px rgba(60, 40, 20, 0.14), 0 2px 6px rgba(60, 40, 20, 0.08);
+    color-scheme: light;
   }
 }
 
 :root[data-theme="dark"] {
   --bg: #181310; --sidebar: #1f1812; --panel: #241c15; --panel-2: #1d1610;
   --line: #382b21; --line-soft: #2a2018; --ink: #f0e7dc; --ink-dim: #beac98;
-  --ink-faint: #8c7a67; --accent: #db7a54; --accent-deep: #c4633c; --accent-ink: #241007;
+  --ink-faint: #9a8774; --accent: #db7a54; --accent-deep: #c4633c; --accent-ink: #241007;
   --accent-soft: rgba(219,122,84,.15); --accent-line: rgba(219,122,84,.42);
   --good: #7fb069; --good-soft: rgba(127,176,105,.16); --avoid: #e0a93b;
-  --avoid-soft: rgba(224,169,59,.15); --reject: #cf5442; --reject-soft: rgba(207,84,66,.15);
+  --avoid-soft: rgba(224,169,59,.15); --reject: #d8604d; --reject-soft: rgba(207,84,66,.15);
   --under: #e8863a; --under-soft: rgba(232,134,58,.15);
   --mismatch: #d9c24a; --mismatch-soft: rgba(217,194,74,.15);
-  --accent-text: #db7a54; --good-text: #7fb069; --avoid-text: #e0a93b; --reject-text: #e27a69;
+  --accent-text: #e0845e; --good-text: #7fb069; --avoid-text: #e0a93b; --reject-text: #e27a69;
   --shadow: 0 18px 48px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
+  color-scheme: dark;
 }
 
 :root[data-theme="light"] {
   --bg: #f4eee4; --sidebar: #fbf8f1; --panel: #ffffff; --panel-2: #f1eadd;
   --line: #e4daca; --line-soft: #ede5d7; --ink: #2b2016; --ink-dim: #6c5d4e;
-  --ink-faint: #776654; --accent: #c15e39; --accent-deep: #a94e2d; --accent-ink: #ffffff;
+  --ink-faint: #776654; --accent: #b85834; --accent-deep: #a94e2d; --accent-ink: #ffffff;
   --accent-soft: rgba(193,94,57,.1); --accent-line: rgba(193,94,57,.35);
-  --good: #5b8c46; --good-soft: rgba(91,140,70,.13); --avoid: #b07d1e;
+  --good: #4f7d3c; --good-soft: rgba(91,140,70,.13); --avoid: #b07d1e;
   --avoid-soft: rgba(176,125,30,.12); --reject: #b23f30; --reject-soft: rgba(178,63,48,.11);
-  --under: #c0601a; --under-soft: rgba(192,96,26,.12);
-  --mismatch: #9a8410; --mismatch-soft: rgba(154,132,16,.12);
-  --accent-text: #a94e2d; --good-text: #4a7539; --avoid-text: #8a6112; --reject-text: #b23f30;
+  --under: #a14f0e; --under-soft: rgba(192,96,26,.12);
+  --mismatch: #77650a; --mismatch-soft: rgba(154,132,16,.12);
+  --accent-text: #9e4827; --good-text: #436b33; --avoid-text: #7f5910; --reject-text: #a8392b;
   --shadow: 0 14px 36px rgba(60,40,20,.14), 0 2px 6px rgba(60,40,20,.08);
+  color-scheme: light;
 }
 
 html,
@@ -162,6 +168,24 @@ body {
   background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+}
+
+/* A native <select>'s open list is drawn by the browser, and its options inherit the
+   control's colour but not its background: a transparent picker (LibraryToolbar's View)
+   or an accent-tinted one left the list as faint text on the system's own background.
+   Give every option the panel and ink explicitly, in both themes (Chromium and Firefox
+   honour these; macOS draws its own native menu, which follows color-scheme above). */
+select option,
+select optgroup {
+  background-color: var(--panel);
+  color: var(--ink);
+}
+select option:checked {
+  background-color: var(--accent);
+  color: var(--accent-ink);
+}
+select option:disabled {
+  color: var(--ink-faint);
 }
 
 *:focus-visible {

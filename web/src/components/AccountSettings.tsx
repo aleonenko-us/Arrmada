@@ -91,7 +91,7 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
             New password again
             <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={field} style={fieldStyle} minLength={8} required />
           </label>
-          {error && <div role="alert" className="text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+          {error && <div role="alert" className="text-sm font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}
           <div className="mt-1 flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={reset} disabled={busy}>Cancel</Button>
             <Button size="sm" variant="primary" type="submit" busy={busy} busyLabel="Saving…">{hasPassword ? "Change password" : "Set password"}</Button>
@@ -161,7 +161,7 @@ function Devices() {
         </div>
         {others > 0 && <Button size="sm" onClick={signOutOthers} busy={busy === "others"} busyLabel="Signing out…">Sign out others</Button>}
       </div>
-      {error && <div role="alert" className="px-3.5 pt-2 text-sm font-medium" style={{ color: "var(--reject)" }}>Couldn’t load your devices — {error}</div>}
+      {error && <div role="alert" className="px-3.5 pt-2 text-sm font-medium" style={{ color: "var(--reject-text)" }}>Couldn’t load your devices — {error}</div>}
       {list === null && !error && <div className="px-3.5 py-3 text-sm text-ink-faint">Loading…</div>}
       {list && (
         <ul aria-label="Signed-in devices" className="m-0 mt-1.5 list-none p-0 pb-1.5">
@@ -170,7 +170,7 @@ function Devices() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-base font-medium">
                   <span className="truncate">{s.device}</span>
-                  {s.current && <span className="flex-none rounded-full px-1.5 py-px text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>This device</span>}
+                  {s.current && <span className="flex-none rounded-full px-1.5 py-px text-xs font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>This device</span>}
                 </div>
                 <div className="truncate text-xs text-ink-faint">{s.current ? "Active now" : `Last seen ${seenAgo(s.last_seen_at)}`}{networkLabel(s.network)}</div>
               </div>

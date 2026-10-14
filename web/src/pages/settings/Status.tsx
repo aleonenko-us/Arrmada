@@ -67,7 +67,7 @@ function SystemCard() {
             <Fact k="Database" v={fmtBytes(st.db_bytes)} title={st.data_dir} />
             <Fact
               k="Last backup"
-              v={<Link to={LINKS.backups} style={{ color: backup?.stale ? "var(--avoid)" : "var(--ink)" }}>{backup?.text}</Link>}
+              v={<Link to={LINKS.backups} style={{ color: backup?.stale ? "var(--avoid-text)" : "var(--ink)" }}>{backup?.text}</Link>}
               title={st.last_backup ? `${st.last_backup.file} · ${new Date(st.last_backup.at).toLocaleString()}` : "No backup yet"}
             />
           </dl>

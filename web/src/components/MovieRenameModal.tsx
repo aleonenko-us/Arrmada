@@ -73,17 +73,17 @@ export function MovieRenameModal({ movieId, title, onClose, onRenamed }: { movie
       <p className="m-0 mb-3 text-sm text-ink-dim">
         Every file of <b>{title}</b> and the name your naming scheme gives it. Nothing moves until you confirm, and no existing file is ever replaced.
       </p>
-      {error && <div className="mb-2 whitespace-pre-line text-sm" role="alert" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 whitespace-pre-line text-sm" role="alert" style={{ color: "var(--reject-text)" }}>{error}</div>}
       {result ? (
         <div>
-          <div className="mb-3 rounded-lg p-3 text-sm" role="status" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <div className="mb-3 rounded-lg p-3 text-sm" role="status" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             Renamed {result.renamed} file{result.renamed === 1 ? "" : "s"}{result.skipped > 0 ? ` · ${result.skipped} left as they were` : ""}.
           </div>
           {result.results.map((r) => (
             <div key={`${r.version_id}:${r.from}`} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
               <div className="text-xs font-semibold text-ink-dim">{r.label}</div>
               <div className="break-all font-mono text-xs" style={{ color: r.renamed ? "var(--ink)" : "var(--ink-faint)" }}>{pathTail(r.renamed ? r.to : r.from)}</div>
-              {!r.renamed && <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>Not renamed: {r.reason}</div>}
+              {!r.renamed && <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>Not renamed: {r.reason}</div>}
             </div>
           ))}
         </div>
@@ -102,10 +102,10 @@ export function MovieRenameModal({ movieId, title, onClose, onRenamed }: { movie
                   <span className="block text-xs font-semibold text-ink-dim">{it.label}</span>
                   <span className="block break-all font-mono text-xs text-ink-faint" title={it.current}>{pathTail(it.current)}</span>
                   {it.status !== "same" && it.status !== "missing" && (
-                    <span className="block break-all font-mono text-xs" title={it.proposed} style={{ color: ok ? "var(--ink)" : "var(--reject)" }}>→ {pathTail(it.proposed)}</span>
+                    <span className="block break-all font-mono text-xs" title={it.proposed} style={{ color: ok ? "var(--ink)" : "var(--reject-text)" }}>→ {pathTail(it.proposed)}</span>
                   )}
                   {!ok && (
-                    <span className="mt-0.5 block text-xs" style={{ color: it.status === "same" ? "var(--good)" : "var(--reject)" }}>
+                    <span className="mt-0.5 block text-xs" style={{ color: it.status === "same" ? "var(--good-text)" : "var(--reject-text)" }}>
                       {STATUS_NOTE[it.status]}{it.reason ? `: ${it.reason}` : ""}
                     </span>
                   )}

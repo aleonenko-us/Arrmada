@@ -101,7 +101,7 @@ export function BookReleaseModal({
             <IconButton label="Close" onClick={onClose} className="h-7 w-7 rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
           </div>
         </div>
-        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>{error}</div>}
+        {error && <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
         {!loading && <IndexerIssues list={list} />}
         {!loading && (
           <div className="mb-3 flex items-center gap-2 border-b pb-3" style={{ borderColor: "var(--line)" }}>
@@ -146,18 +146,18 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>★ Recommended{rel.version ? ` · ${rel.version}` : targets && targets.length > 0 && rel.edition === "audiobook" ? " · Standard" : ""}</span>}
-            {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
+            {rel.version && !rel.recommended && <span className="rounded px-1.5 py-0.5 text-xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--accent-text)", border: "1px solid var(--accent-line)" }}>{rel.version}</span>}
             {rel.format && <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel)", color: "var(--ink-dim)" }}>{rel.format}</span>}
             {!rel.eligible && <span className="rounded px-1.5 py-0.5 text-xs uppercase" style={{ background: "var(--panel)", color: "var(--ink-faint)" }}>{usenet ? "usenet — can't grab" : rel.reject_reason ? "not grabbed automatically" : "not in profile"}</span>}
           </div>
           {/* The raw torrent name — narrator and edition detail live here. */}
           <div className="mt-1 break-words text-base font-medium">{rel.title}</div>
           {/* Another language: the automation skips it, a hand pick is still allowed. */}
-          {rel.reject_reason && !usenet && <div className="mt-0.5 text-xs" style={{ color: "var(--avoid)" }}>{rel.reject_reason}</div>}
+          {rel.reject_reason && !usenet && <div className="mt-0.5 text-xs" style={{ color: "var(--avoid-text)" }}>{rel.reject_reason}</div>}
           {/* Structured metadata (rich on trackers like MyAnonaMouse). */}
           {(rel.narrator || rel.series || rel.language) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-              {rel.narrator && <span style={{ color: "var(--accent)" }}>🎙 {rel.narrator}</span>}
+              {rel.narrator && <span style={{ color: "var(--accent-text)" }}>🎙 {rel.narrator}</span>}
               {rel.series && <span className="text-ink-dim">📚 {rel.series}</span>}
               {rel.language && <span className="text-ink-faint">🌐 {rel.language}</span>}
             </div>
@@ -167,7 +167,7 @@ function BookReleaseRow({ rel, busy, grabbed, targets, defaultTarget, onGrab }: 
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
             {age && <span>{age} old</span>}
             <span>{rel.indexer}</span>
-            {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>view ↗</a>}
+            {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold hover:underline" style={{ color: "var(--accent-text)" }}>view ↗</a>}
           </div>
         </div>
         <div className="flex flex-none flex-col items-end gap-1.5">

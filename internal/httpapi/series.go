@@ -860,7 +860,18 @@ func (a *api) handleRefreshSeries(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not refresh series")
 		return
 	}
-	a.deps.Automation.RescanSeries(ctx, id)
+	if err := a.deps.Automation.RescanSeries(ctx, id); err != nil {
+		// A rescan that refused (the TV share looked unmounted) says why in words the
+		// person can act on; nothing on the episodes changed either way.
+		var refused *automation.RescanRefusedError
+		if errors.As(err, &refused) {
+			a.writeError(w, http.StatusConflict, refused.Reason)
+			return
+		}
+		a.deps.Log.Warn("series: rescan failed", "series_id", id, "err", err)
+		a.writeError(w, http.StatusInternalServerError, "could not rescan the disk")
+		return
+	}
 	s, err := a.deps.Series.Get(ctx, id)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not load series")
@@ -893,9 +904,13 @@ func (a *api) handleRefreshAllSeries(w http.ResponseWriter, r *http.Request) {
 	// double every metadata pull and race each other's episode writes for no benefit.
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.refresh-all", Target: "all", Class: "series.refresh-all", Timeout: 2 * time.Hour,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			refreshed, failed := a.refreshSeriesSweep(ctx, ids, p)
-			p.SetMessage(fmt.Sprintf("Refreshed %d of %d series", refreshed, len(ids)))
-			return map[string]int{"refreshed": refreshed, "failed": failed}, nil
+			refreshed, failed, unscanned := a.refreshSeriesSweep(ctx, ids, p)
+			msg := fmt.Sprintf("Refreshed %d of %d series", refreshed, len(ids))
+			if unscanned > 0 {
+				msg += fmt.Sprintf(" — %d not rescanned because their folders didn't look mounted (nothing on them changed)", unscanned)
+			}
+			p.SetMessage(msg)
+			return map[string]int{"refreshed": refreshed, "failed": failed, "not_rescanned": unscanned}, nil
 		}})
 	if !ok {
 		return
@@ -909,7 +924,8 @@ func (a *api) handleRefreshAllSeries(w http.ResponseWriter, r *http.Request) {
 
 // refreshSeriesSweep walks every series, refreshing metadata and rescanning the disk.
 // Detached from the request: ctx is the job's, the run context with a two-hour budget.
-func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progress) (refreshed, failed int) {
+// unscanned counts shows whose rescan refused because their folders looked unmounted.
+func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progress) (refreshed, failed, unscanned int) {
 	a.deps.Log.Info("series: refreshing all", "count", len(ids))
 	for i, id := range ids {
 		p.Set(float64(i)/float64(len(ids)), fmt.Sprintf("Refreshing %d of %d", i+1, len(ids)))
@@ -927,15 +943,23 @@ func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progr
 			}
 			continue
 		}
-		a.deps.Automation.RescanSeries(each, id)
+		if err := a.deps.Automation.RescanSeries(each, id); err != nil {
+			// The metadata refresh still counts; the rescan changed nothing for this show
+			// (RescanSeries logs a refusal itself).
+			if errors.As(err, new(*automation.RescanRefusedError)) {
+				unscanned++
+			} else {
+				a.deps.Log.Warn("series: rescan failed", "series_id", id, "err", err)
+			}
+		}
 		cancelEach()
 		refreshed++
 		if ctx.Err() != nil {
 			break
 		}
 	}
-	a.deps.Log.Info("series: refreshed all", "refreshed", refreshed, "failed", failed)
-	return refreshed, failed
+	a.deps.Log.Info("series: refreshed all", "refreshed", refreshed, "failed", failed, "not_rescanned", unscanned)
+	return refreshed, failed, unscanned
 }
 
 // handleSeriesManualImportList lists importable video files under the downloads dir

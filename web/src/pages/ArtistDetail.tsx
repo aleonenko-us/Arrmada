@@ -45,7 +45,7 @@ export function ArtistDetail() {
       <Shell>
         <div className="py-10 text-center text-md text-ink-dim">
           That artist isn't in your library.{" "}
-          <Link to="/music" className="underline" style={{ color: "var(--accent)" }}>
+          <Link to="/music" className="underline" style={{ color: "var(--accent-text)" }}>
             Back to Music
           </Link>
         </div>
@@ -123,7 +123,7 @@ export function ArtistDetail() {
           {mostlyMissing && (
             <Button
               size="sm"
-              style={{ border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)" }}
+              style={{ border: "1px solid var(--accent)", background: "transparent", color: "var(--accent-text)" }}
               disabled={busy !== null}
               title="Grab one torrent covering this artist's whole catalogue. Best when you own little or nothing by them — for topping up, per-album grabs keep upgrades and seeding clean."
               onClick={() => run("disco", async () => { await api.grabDiscography(a.id); toast("Looking for a discography — check Downloads."); })}
@@ -135,7 +135,7 @@ export function ArtistDetail() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
             {error}
           </div>
         )}
@@ -189,7 +189,7 @@ function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
           }
         }}
         className="flex-none rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50"
-        style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, color: al.monitored ? "var(--accent)" : "var(--ink-faint)" }}
+        style={{ border: `1px solid ${al.monitored ? "var(--accent)" : "var(--line)"}`, color: al.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}
       >
         {al.monitored ? "Monitored" : "Monitor"}
       </button>
@@ -214,7 +214,7 @@ function DeleteArtistButton({ artist }: { artist: Artist }) {
     }
   };
   return (
-    <Button size="sm" onClick={remove} style={{ border: "1px solid var(--reject)", background: "transparent", color: "var(--reject)" }}>
+    <Button size="sm" onClick={remove} style={{ border: "1px solid var(--reject)", background: "transparent", color: "var(--reject-text)" }}>
       Delete
     </Button>
   );
@@ -222,10 +222,10 @@ function DeleteArtistButton({ artist }: { artist: Artist }) {
 
 const EVENT_TONES: Record<string, string> = {
   added: "var(--ink-faint)",
-  grabbed: "var(--accent)",
-  imported: "var(--good)",
+  grabbed: "var(--accent-text)",
+  imported: "var(--good-text)",
   refreshed: "var(--ink-dim)",
-  failed: "var(--reject)",
+  failed: "var(--reject-text)",
 };
 
 function fmtEventTime(s: string): string {

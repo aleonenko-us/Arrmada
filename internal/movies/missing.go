@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -131,29 +130,6 @@ func anchorOf(root, path string) string {
 	return filepath.Dir(filepath.Dir(path))
 }
 
-// folderLooksMounted reports whether dir exists and has something in it besides hidden
-// folders (the recycle bin is one, and an unmounted mount point can still have it if
-// something wrote there). An empty or missing library folder is what an unmounted array
-// looks like. Reads at most a few names.
-func folderLooksMounted(dir string) bool {
-	f, err := os.Open(dir)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	for {
-		names, err := f.Readdirnames(16)
-		for _, n := range names {
-			if !library.SkipScanDir(n) {
-				return true
-			}
-		}
-		if err != nil || len(names) == 0 { // io.EOF: nothing but hidden entries
-			return false
-		}
-	}
-}
-
 // CheckMissingFiles is the missing-file sweep. It stats each recorded default-track file
 // once, one after another (no ffprobe, no folder walks), and:
 //   - clears the flag on a file that's back;
@@ -178,7 +154,7 @@ func (s *Service) CheckMissingFiles(ctx context.Context) (MissingSweep, error) {
 	anchorOK := func(dir string) bool {
 		ok, seen := mounted[dir]
 		if !seen {
-			ok = folderLooksMounted(dir)
+			ok = library.FolderLooksMounted(dir)
 			mounted[dir] = ok
 		}
 		return ok
@@ -288,7 +264,7 @@ func (s *Service) noteDefaultFile(ctx context.Context, id int64, path, missingSi
 		if root != "" {
 			root = filepath.Clean(root)
 		}
-		if !folderLooksMounted(anchorOf(root, filepath.Clean(path))) {
+		if !library.FolderLooksMounted(anchorOf(root, filepath.Clean(path))) {
 			return
 		}
 		if ok, _ := s.repo.flagMissing(ctx, id, path, time.Now().UTC().Format(time.RFC3339)); ok {

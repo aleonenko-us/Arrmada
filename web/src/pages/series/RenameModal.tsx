@@ -57,11 +57,11 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
       <p className="mb-3 text-sm text-ink-dim">
         Episode files of <b>{title}</b> that aren't named to the library scheme yet. Nothing moves until you confirm, and no existing file is ever replaced.
       </p>
-      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div className="mb-2 text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
       {result ? (
         <div>
-          <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+          <div className="mb-3 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent-text)" }}>
             Renamed {result.renamed} file{result.renamed === 1 ? "" : "s"}{result.skipped.length > 0 ? ` · skipped ${result.skipped.length}` : ""}.
           </div>
           {result.skipped.length > 0 && (
@@ -69,7 +69,7 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
               {result.skipped.map((sk) => (
                 <div key={sk.from} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
                   <div className="truncate font-mono text-xs" title={sk.from}>{base(sk.from)}</div>
-                  <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>{sk.reason}</div>
+                  <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>{sk.reason}</div>
                 </div>
               ))}
             </div>
@@ -86,7 +86,7 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
         <>
           <div className="mb-2 font-mono text-xs text-ink-faint">
             {moves.length} file{moves.length === 1 ? "" : "s"} to rename
-            {conflicts > 0 && <span style={{ color: "var(--reject)" }}> · {conflicts} can't be renamed</span>}
+            {conflicts > 0 && <span style={{ color: "var(--reject-text)" }}> · {conflicts} can't be renamed</span>}
           </div>
           <div className="thin-scroll max-h-[52vh] overflow-y-auto">
             {bySeason.map(([season, list]) => (
@@ -95,8 +95,8 @@ export function RenameModal({ seriesId, title, onClose, onRenamed }: { seriesId:
                 {list.map((it) => (
                   <div key={it.from} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
                     <div className="truncate font-mono text-xs text-ink-faint" title={it.from}>{base(it.from)}</div>
-                    <div className="truncate font-mono text-xs" title={it.to} style={{ color: it.conflict ? "var(--reject)" : "var(--ink)" }}>→ {base(it.to)}</div>
-                    {it.conflict && <div className="mt-0.5 text-xs" style={{ color: "var(--reject)" }}>Not renamed: {it.conflict}</div>}
+                    <div className="truncate font-mono text-xs" title={it.to} style={{ color: it.conflict ? "var(--reject-text)" : "var(--ink)" }}>→ {base(it.to)}</div>
+                    {it.conflict && <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>Not renamed: {it.conflict}</div>}
                   </div>
                 ))}
               </div>

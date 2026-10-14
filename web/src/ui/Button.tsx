@@ -9,7 +9,7 @@ const LOOK: Record<ButtonVariant, { className: string; style?: CSSProperties }> 
   primary: { className: "bg-accent-grad text-accent-ink" },
   secondary: { className: "", style: { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } },
   ghost: { className: "", style: { color: "var(--ink-dim)" } },
-  danger: { className: "", style: { background: "var(--reject)", color: "#fff" } },
+  danger: { className: "", style: { background: "var(--reject)", color: "var(--accent-ink)" } },
 };
 const SIZE: Record<ButtonSize, string> = {
   sm: "rounded-md px-2.5 py-1 text-sm",

@@ -54,7 +54,7 @@ export function FileDetailsModal({
         </div>
 
         {err && (
-          <p className="m-0 text-base" style={{ color: "var(--reject)" }}>
+          <p className="m-0 text-base" style={{ color: "var(--reject-text)" }}>
             {err}
           </p>
         )}
@@ -138,7 +138,7 @@ export function FileDetailsModal({
                       }}
                       disabled={cleaning}
                       className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
-                      style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+                      style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
                     >
                       {cleaning ? "Queueing…" : "Bring to target"}
                     </button>
@@ -219,7 +219,7 @@ function Row({ k, v, mono, tone }: { k: string; v: string; mono?: boolean; tone?
       <span className="w-[104px] shrink-0 text-ink-faint">{k}</span>
       <span
         className={`min-w-0 flex-1 break-all ${mono ? "font-mono text-sm" : ""}`}
-        style={tone === "bad" ? { color: "var(--reject)" } : undefined}
+        style={tone === "bad" ? { color: "var(--reject-text)" } : undefined}
       >
         {v}
       </span>

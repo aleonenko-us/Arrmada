@@ -66,6 +66,19 @@ test.describe("desktop", () => {
     expect(api.callsTo("POST", "/api/v1/series/1/search")[0].body).toBeFalsy();
   });
 
+  // A rescan while the TV share isn't mounted changes nothing and says why, rather than
+  // marking every episode missing behind a "Refreshed" toast.
+  test("a rescan the server refuses shows its reason", async ({ page }) => {
+    const reason = "The TV folder isn't reachable (/tv is missing or empty) — nothing was changed. Check the share or array is mounted, then try again.";
+    await page.route("**/api/v1/series/1/refresh", (route) =>
+      route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ status: "error", message: reason }) }));
+    await page.goto("/series/1");
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Refresh & rescan" }).click();
+    await expect(page.getByText(reason)).toBeVisible();
+    await expect(page.getByText("Refreshed metadata and rescanned disk.")).toHaveCount(0);
+  });
+
   test("the Monitor menu pauses, applies a preset and toggles new seasons", async ({ page, api }) => {
     await page.goto("/series/1");
     const monitor = page.getByRole("button", { name: "Monitoring", exact: true });

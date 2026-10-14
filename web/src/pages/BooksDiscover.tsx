@@ -7,7 +7,7 @@ import { coversFormat, editionState, initialBookFormats, lastBookFormats, rememb
 import { FormatChoice } from "../components/BookFormats";
 import { QuotaHint } from "../components/QuotaHint";
 import { announceRequested } from "../lib/pushPrompt";
-import { IconButton, Modal, StatusChip, TONE_HUE, type Tone } from "../ui";
+import { IconButton, Modal, StatusChip, TONE_TEXT, type Tone } from "../ui";
 import { CardSkeleton, GRID, LoadError } from "../features/discover/shared";
 import { PosterCard } from "../features/discover/PosterCard";
 import { RailArrows, RailStrip, useRail } from "../features/discover/rail";
@@ -204,7 +204,7 @@ function BookHero({ ctx }: { ctx: BookCtx }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base font-medium" style={{ color: "rgba(255,255,255,.85)" }}>
             {cur.author && <span>{cur.author}</span>}
             {cur.year ? <span>{cur.year}</span> : null}
-            {!!cur.rating && <span style={{ color: "var(--accent)" }}>★ {cur.rating.toFixed(1)}{cur.ratings ? <span style={{ color: "rgba(255,255,255,.6)" }}> · {fmtCount(cur.ratings)} ratings</span> : null}</span>}
+            {!!cur.rating && <span style={{ color: "var(--accent-text)" }}>★ {cur.rating.toFixed(1)}{cur.ratings ? <span style={{ color: "rgba(255,255,255,.6)" }}> · {fmtCount(cur.ratings)} ratings</span> : null}</span>}
             {d?.series_name && <span className="rounded px-1.5 py-px text-xs uppercase" style={{ background: "rgba(255,255,255,.14)" }}>{d.series_name}{d.series_position ? ` #${d.series_position}` : ""}</span>}
           </div>
           {genres.length > 0 && (
@@ -274,7 +274,7 @@ function GenreExplorer({ ctx }: { ctx: BookCtx }) {
         {GENRES.map((g) => {
           const on = active === g;
           return (
-            <button key={g} onClick={() => pick(g)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink-faint)" }}>
+            <button key={g} onClick={() => pick(g)} className="rounded-full px-3 py-1 text-sm font-semibold" style={{ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" }}>
               {g}
             </button>
           );
@@ -441,7 +441,7 @@ interface CardBadge { label: string; tone: Tone; missing?: "ebook" | "audiobook"
 const GOOD_BADGE = { tone: "good" } as const;
 
 // The request sheet's state pill: the badge's hue on its soft fill.
-const pillStyle = (tone: Tone) => ({ background: tone === "faint" ? "var(--panel-2)" : `var(--${tone}-soft)`, color: TONE_HUE[tone] });
+const pillStyle = (tone: Tone) => ({ background: tone === "faint" ? "var(--panel-2)" : `var(--${tone}-soft)`, color: TONE_TEXT[tone] });
 
 // badgeFor reads a card's state. requested is this session's request for it: false for
 // none, else the formats asked for ("" = the server's default).
@@ -514,7 +514,7 @@ function BookCard({ b, ctx, authorName, full }: { b: BookDiscoverCard; ctx: Book
             caption is what identifies the book. */}
         <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
           <span className="flex-none">{b.year || "—"}</span>
-          {!!b.rating && <><span className="flex-none">·</span><span className="flex-none" style={{ color: "var(--accent)" }} title={b.ratings ? `${b.ratings.toLocaleString()} ratings` : undefined}>★ {b.rating.toFixed(1)}</span></>}
+          {!!b.rating && <><span className="flex-none">·</span><span className="flex-none" style={{ color: "var(--accent-text)" }} title={b.ratings ? `${b.ratings.toLocaleString()} ratings` : undefined}>★ {b.rating.toFixed(1)}</span></>}
           {byline && <><span className="flex-none">·</span><span className="truncate" title={byline}>{byline}</span></>}
         </div>
         {b.genres && b.genres.length > 0 && (
@@ -529,7 +529,7 @@ function BookCard({ b, ctx, authorName, full }: { b: BookDiscoverCard; ctx: Book
 function AuthorCard({ author, onClick }: { author: BookAuthor; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex w-[210px] flex-none items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[var(--panel-2)]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <span className="grid h-11 w-11 flex-none place-items-center rounded-full text-lg font-bold text-white" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>
+      <span className="grid h-11 w-11 flex-none place-items-center rounded-full text-lg font-bold text-accent-ink" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))" }}>
         {author.name.charAt(0).toUpperCase()}
       </span>
       <div className="min-w-0">
@@ -616,26 +616,26 @@ function BookRequestModal({ b, ctx, authorName, onClose }: { b: BookDiscoverCard
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs text-ink-faint">
               {shown.year > 0 && <span>{shown.year}</span>}
               {/* An upcoming book: a request now is grabbed on the day. */}
-              {detail?.release_date && isUpcoming(detail.release_date) && <span className="font-semibold" style={{ color: "var(--accent)" }}>· Out {formatReleaseDay(detail.release_date)}</span>}
+              {detail?.release_date && isUpcoming(detail.release_date) && <span className="font-semibold" style={{ color: "var(--accent-text)" }}>· Out {formatReleaseDay(detail.release_date)}</span>}
               {(detail?.series_name || b.series_name) && <span>· {detail?.series_name || b.series_name}{(detail?.series_position || b.series_position) ? ` #${detail?.series_position || b.series_position}` : ""}</span>}
               {!!detail?.pages && <span>· {detail.pages} pages</span>}
             </div>
             {(!!(detail?.rating ?? b.rating)) && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>★ {(detail?.rating ?? b.rating ?? 0).toFixed(2)}</span>
+                <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>★ {(detail?.rating ?? b.rating ?? 0).toFixed(2)}</span>
                 {!!(detail?.ratings ?? b.ratings) && <span className="text-ink-faint">{fmtCount(detail?.ratings ?? b.ratings ?? 0)} ratings</span>}
                 {!!(detail?.readers ?? b.readers) && <span className="text-ink-faint">· {fmtCount(detail?.readers ?? b.readers ?? 0)} readers</span>}
               </div>
             )}
             <div className="mt-3">
               {done && subscribed ? (
-                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>You’re on the list — we’ll notify you when it’s ready</span>
+                <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>You’re on the list — we’ll notify you when it’s ready</span>
               ) : badge && (badge.missing || badge.asked) ? (
                 // Held in one format: say which, and offer (or report) the other.
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={pillStyle(badge.tone)}>{badge.label}</span>
                   {badge.asked ? (
-                    <span className="text-sm font-semibold" style={{ color: "var(--accent)" }}>{badge.asked === "audiobook" ? "Audiobook" : "Ebook"} requested</span>
+                    <span className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>{badge.asked === "audiobook" ? "Audiobook" : "Ebook"} requested</span>
                   ) : badge.missing && ctx.canRequest ? (
                     <button onClick={() => doRequest(badge.missing)} disabled={busy} className="rounded-lg px-4 py-2 text-base font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
                       {busy ? "Requesting…" : `＋ ${MISSING_LABEL[badge.missing]}`}
@@ -675,7 +675,7 @@ function BookRequestModal({ b, ctx, authorName, onClose }: { b: BookDiscoverCard
                   <QuotaHint kind="book" onOut={setQuotaOut} />
                 </div>
               )}
-              {error && <div className="mt-1.5 text-sm font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+              {error && <div className="mt-1.5 text-sm font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}
             </div>
           </div>
         </div>

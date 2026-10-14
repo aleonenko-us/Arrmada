@@ -2,7 +2,9 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/parser"
+	"github.com/tristenlammi/arrmada/internal/pathguard"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
@@ -491,13 +494,19 @@ func (c *Coordinator) grabForSeries(ctx context.Context, seriesID int64, indexer
 // (not the derived name, so a differently-named folder still works), marks every
 // episode file it finds present (updating moved paths), and clears episodes whose
 // file is gone — so deleting a stray/duplicate folder is picked up cleanly.
-func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) {
+//
+// Clearing an episode makes it wanted again, so a TV share that isn't mounted would
+// otherwise have every episode searched and downloaded a second time. Like the movies
+// missing-file check, it clears nothing unless the folders those files lived in are
+// clearly there; when they aren't it changes nothing at all and returns a
+// *RescanRefusedError saying why.
+func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	if c.series == nil || c.imp == nil {
-		return
+		return nil
 	}
 	s, err := c.series.Get(ctx, seriesID)
 	if err != nil {
-		return
+		return err
 	}
 	// Before anything reads as missing: a file an interrupted rename left under its
 	// temporary name would otherwise be cleared below and downloaded again.
@@ -520,10 +529,38 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) {
 		}
 	}
 
-	found := make(map[[2]int]bool, len(byEpisode))
+	// Episodes still flagged as having a file that wasn't found on disk and whose stored
+	// path no longer exists (e.g. a deleted duplicate season folder). Only "no such file"
+	// counts: a file that can't be read right now is not gone.
+	var gone []series.Episode
+	recorded := 0
+	for _, sn := range s.Seasons {
+		for _, e := range sn.Episodes {
+			if !e.HasFile {
+				continue
+			}
+			recorded++
+			if len(byEpisode[[2]int{e.SeasonNumber, e.EpisodeNumber}]) > 0 {
+				continue
+			}
+			if e.FilePath == "" || fileGone(e.FilePath) {
+				gone = append(gone, e)
+			}
+		}
+	}
+	if len(gone) > 0 {
+		if reason := rescanRefusal(c.imp.TVRoot(), s.Title, gone, recorded); reason != "" {
+			c.log.Warn("series rescan: the files' folders don't look mounted — nothing was changed",
+				"series", s.Title, "would_clear", len(gone), "reason", reason)
+			return &RescanRefusedError{Reason: reason}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err // a rescan cut short writes nothing
+	}
+
 	dupes := 0
 	for key, files := range byEpisode {
-		found[key] = true
 		best := files[0]
 		if len(files) > 1 {
 			best = bestLibraryVideo(files)
@@ -543,19 +580,64 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) {
 	if dupes > 0 {
 		c.log.Warn("series rescan: duplicate episode files on disk", "series", s.Title, "extra_files", dupes)
 	}
+	for _, e := range gone {
+		_ = c.series.MarkEpisodeMissing(ctx, seriesID, e.SeasonNumber, e.EpisodeNumber)
+	}
+	return nil
+}
 
-	// Clear any episode still flagged as having a file that wasn't found on disk and
-	// whose stored path no longer exists (e.g. a deleted duplicate season folder).
-	for _, sn := range s.Seasons {
-		for _, e := range sn.Episodes {
-			if !e.HasFile || found[[2]int{e.SeasonNumber, e.EpisodeNumber}] {
-				continue
-			}
-			if e.FilePath == "" || !fileExists(e.FilePath) {
-				_ = c.series.MarkEpisodeMissing(ctx, seriesID, e.SeasonNumber, e.EpisodeNumber)
-			}
+// RescanRefusedError is a series rescan that changed nothing because the folders its
+// files live in didn't look mounted. Reason is written for the person who started it.
+type RescanRefusedError struct{ Reason string }
+
+func (e *RescanRefusedError) Error() string { return e.Reason }
+
+// rescanRefusal says why a rescan must not clear the gone episodes ("" when it may). It
+// follows the movies missing-file check: a file only counts as missing when the folder
+// it would be in is clearly there (exists and isn't empty). For a show that is the TV
+// folder for files inside it, and the show's own folder for every file — one disk of a
+// split share can be down while the TV folder itself looks fine. Every recorded file of
+// a show vanishing at once is refused too: that's what a missing disk looks like far
+// more often than a deliberate deletion, and clearing them all would download the whole
+// show again.
+func rescanRefusal(root, title string, gone []series.Episode, recorded int) string {
+	root = strings.TrimSpace(root)
+	inRoot := false
+	var shows []string
+	seen := map[string]bool{}
+	for _, e := range gone {
+		if e.FilePath == "" {
+			continue // a row with no path has no folder to judge
+		}
+		p := filepath.Clean(e.FilePath)
+		if root != "" && pathguard.Under(p, root) {
+			inRoot = true
+		}
+		if dir := series.ShowFolder(p); !seen[dir] {
+			seen[dir] = true
+			shows = append(shows, dir)
 		}
 	}
+	if inRoot && !library.FolderLooksMounted(root) {
+		return fmt.Sprintf("The TV folder isn't reachable (%s is missing or empty) — nothing was changed. Check the share or array is mounted, then try again.", root)
+	}
+	sort.Strings(shows)
+	for _, dir := range shows {
+		if !library.FolderLooksMounted(dir) {
+			return fmt.Sprintf("The folder for %s isn't reachable (%s is missing or empty) — nothing was changed. A disk or share may be down; check it, then try again.", title, dir)
+		}
+	}
+	if recorded > 1 && len(gone) == recorded {
+		return fmt.Sprintf("None of the %d files for %s are where they were — nothing was changed. A whole show vanishing at once usually means a disk or share is down; check it, then try again.", recorded, title)
+	}
+	return ""
+}
+
+// fileGone reports whether path definitely doesn't exist. An error reading it (a share
+// that errors, permissions) is not the same as gone.
+func fileGone(path string) bool {
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 func fileExists(path string) bool {

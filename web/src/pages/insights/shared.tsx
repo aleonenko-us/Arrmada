@@ -8,17 +8,17 @@ import { EmptyState } from "../../ui/EmptyState";
 // number and date formats, and the small filter chips.
 
 export const DECISION: Record<string, { label: string; color: string }> = {
-  direct_play: { label: "Direct Play", color: "var(--good)" },
-  direct_stream: { label: "Direct Stream", color: "var(--accent)" },
-  transcode: { label: "Transcode", color: "var(--avoid)" },
+  direct_play: { label: "Direct Play", color: "var(--good-text)" },
+  direct_stream: { label: "Direct Stream", color: "var(--accent-text)" },
+  transcode: { label: "Transcode", color: "var(--avoid-text)" },
 };
 
 // Diagnosed buffer-cause styling (keys match BufferEvent.cause / CauseCount.cause).
 export const CAUSE: Record<string, { label: string; color: string }> = {
-  transcode: { label: "Transcode overloaded", color: "var(--reject)" },
-  transcode_cpu: { label: "CPU transcode (no HW)", color: "var(--reject)" },
-  transcode_fallback: { label: "Plex fell back to CPU", color: "var(--reject)" },
-  bandwidth: { label: "Bandwidth / network", color: "var(--avoid)" },
+  transcode: { label: "Transcode overloaded", color: "var(--reject-text)" },
+  transcode_cpu: { label: "CPU transcode (no HW)", color: "var(--reject-text)" },
+  transcode_fallback: { label: "Plex fell back to CPU", color: "var(--reject-text)" },
+  bandwidth: { label: "Bandwidth / network", color: "var(--avoid-text)" },
   unknown: { label: "Inconclusive", color: "var(--ink-faint)" },
 };
 
@@ -111,7 +111,7 @@ export function FilterGroup({ label, children }: { label: string; children: Reac
 
 export function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent)" : "var(--ink-dim)" }}>
+    <button type="button" aria-pressed={active} onClick={onClick} className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors" style={{ border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`, background: active ? "var(--accent-soft)" : "var(--panel-2)", color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
       {children}
     </button>
   );
@@ -184,7 +184,7 @@ export function ImportedNotice() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <span>Showing imported history — connect Plex to record new plays.</span>
-      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent)" }}>Connect your Plex server →</Link>
+      <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect your Plex server →</Link>
     </div>
   );
 }

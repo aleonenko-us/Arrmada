@@ -75,7 +75,7 @@ export function AlertsSettings() {
       <Section id="alerts" title="Alerts" subtitle="Get a message when something needs you or when new things arrive. Each connection is one place a message goes, with its own choice of events.">
         {!admin && <p className="text-sm text-ink-faint">Only an admin can add or change alert connections.</p>}
         {failed && !(conns && shown) ? (
-          <p className="text-sm" style={{ color: "var(--reject)" }}>Couldn’t load alert connections — {failed.message}</p>
+          <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load alert connections — {failed.message}</p>
         ) : !conns || !shown ? (
           <p className="text-sm text-ink-dim">Loading…</p>
         ) : (
@@ -280,12 +280,12 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
         <>
           <input aria-label="Link" type="password" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={placeholder} className={`mt-2 ${input}`} style={inputStyle} autoComplete="off" />
           <p className="mt-1 text-xs text-ink-faint">
-            An <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Apprise link</a> — e.g. <code>discord://id/token</code>, <code>tgram://token/chatid</code>, <code>ntfy://topic</code>, <code>mailtos://user:pass@host</code>.
+            An <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)" }}>Apprise link</a> — e.g. <code>discord://id/token</code>, <code>tgram://token/chatid</code>, <code>ntfy://topic</code>, <code>mailtos://user:pass@host</code>.
           </p>
         </>
       )}
       {conn.invalid_reason && (
-        <p className="mt-1 text-xs" style={{ color: "var(--avoid)" }}>The saved link no longer passes the check ({conn.invalid_reason}). It still sends; enter a corrected link to edit this connection’s link.</p>
+        <p className="mt-1 text-xs" style={{ color: "var(--avoid-text)" }}>The saved link no longer passes the check ({conn.invalid_reason}). It still sends; enter a corrected link to edit this connection’s link.</p>
       )}
       <EventPicker catalog={catalog} value={c.events} readOnly={readOnly} onChange={(events) => set({ events })} />
       {c.events.some((e) => STREAM_EVENTS.has(e)) && (
@@ -304,7 +304,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
           <Button variant="primary" size="sm" onClick={save} busy={busy === "save"} busyLabel="Saving…" disabled={busy !== null}>{isNew ? "Add" : "Save"}</Button>
           <Button size="sm" onClick={test} busy={busy === "test"} busyLabel="Testing…" disabled={busy !== null}>Test</Button>
           <span className="flex-1" />
-          {isNew ? <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button> : <Button variant="ghost" size="sm" onClick={del} style={{ color: "var(--reject)" }}>Delete</Button>}
+          {isNew ? <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button> : <Button variant="ghost" size="sm" onClick={del} style={{ color: "var(--reject-text)" }}>Delete</Button>}
         </div>
       )}
     </div>
@@ -332,7 +332,7 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                 <span className="flex items-center gap-2 text-sm text-ink-dim">
                   <span>•••• saved</span>
                   {!readOnly && (
-                    <button type="button" className="text-xs font-semibold" style={{ color: "var(--accent)" }} onClick={() => setReplacing((r) => ({ ...r, [f.name]: true }))}>
+                    <button type="button" className="text-xs font-semibold" style={{ color: "var(--accent-text)" }} onClick={() => setReplacing((r) => ({ ...r, [f.name]: true }))}>
                       Replace
                     </button>
                   )}
@@ -355,7 +355,7 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                     style={inputStyle}
                   />
                   {f.secret && savedSecret(f.name) && !readOnly && (
-                    <button type="button" className="flex-none text-xs" style={{ color: "var(--accent)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
+                    <button type="button" className="flex-none text-xs" style={{ color: "var(--accent-text)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
                       Keep saved
                     </button>
                   )}
@@ -396,11 +396,11 @@ function PushDevices({ readOnly, onChange }: { readOnly?: boolean; onChange: () 
       <span>Web Push to every device the account turned push on for.</span>
       {pushSupported() && here === false && (
         <>
-          <span style={{ color: "var(--avoid)" }}>No devices subscribed on this browser.</span>
+          <span style={{ color: "var(--avoid-text)" }}>No devices subscribed on this browser.</span>
           {!readOnly && <Button size="sm" onClick={turnOn} busy={busy} busyLabel="Turning on…">Turn on here</Button>}
         </>
       )}
-      {here === true && <span style={{ color: "var(--good)" }}>This device gets them.</span>}
+      {here === true && <span style={{ color: "var(--good-text)" }}>This device gets them.</span>}
     </div>
   );
 }
@@ -418,7 +418,7 @@ function StatusDot({ conn }: { conn: NotificationConn }) {
   return (
     <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-ink-faint" title={text}>
       <span aria-hidden className="h-2 w-2 flex-none rounded-full" style={{ background: color }} />
-      <span className="truncate" style={s === "failed" ? { color: "var(--reject)" } : undefined}>{text}</span>
+      <span className="truncate" style={s === "failed" ? { color: "var(--reject-text)" } : undefined}>{text}</span>
     </span>
   );
 }
@@ -431,12 +431,12 @@ function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
   const label = (key: string) => key === "test" ? "Test" : catalog.events.find((e) => e.key === key)?.label ?? key;
   return (
     <div className="mt-3">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent-text)" }}>
         {open ? "Hide recent deliveries" : "Recent deliveries"}
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-1">
-          {error && !data ? <p className="text-xs" style={{ color: "var(--reject)" }}>Couldn’t load deliveries — {error.message}</p>
+          {error && !data ? <p className="text-xs" style={{ color: "var(--reject-text)" }}>Couldn’t load deliveries — {error.message}</p>
             : !data ? <p className="text-xs text-ink-faint">Loading…</p>
             : data.length === 0 ? <p className="text-xs text-ink-faint">Nothing sent yet.</p>
             : data.map((d) => (
@@ -444,10 +444,10 @@ function DeliveryLog({ id, catalog }: { id: number; catalog: AlertCatalog }) {
                 <span className="w-[72px] flex-none text-ink-faint">{ago(d.sent_at || d.created_at)}</span>
                 <span className="font-semibold">{label(d.event_key)}</span>
                 <span className="min-w-0 flex-1 truncate text-ink-dim">{d.body}</span>
-                <span style={{ color: d.status === "sent" ? "var(--good)" : d.status === "failed" ? "var(--reject)" : "var(--ink-faint)" }}>
+                <span style={{ color: d.status === "sent" ? "var(--good-text)" : d.status === "failed" ? "var(--reject-text)" : "var(--ink-faint)" }}>
                   {d.status === "queued" && d.attempts > 0 ? `retry ${until(d.next_attempt_at)}` : d.status}
                 </span>
-                {d.last_error && d.status !== "sent" && <span className="w-full pl-[80px] text-xs" style={{ color: "var(--reject)" }}>{d.last_error}</span>}
+                {d.last_error && d.status !== "sent" && <span className="w-full pl-[80px] text-xs" style={{ color: "var(--reject-text)" }}>{d.last_error}</span>}
               </div>
             ))}
         </div>
@@ -474,7 +474,7 @@ function MessageTemplates({ catalog, events, value, readOnly, onChange }: {
   const placeholders = (catalog.placeholders ?? ["message", "title", "user", "year", "media", "link"]).map((p) => `{${p}}`).join(" ");
   return (
     <div className="mt-3">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-xs font-semibold" style={{ color: "var(--accent-text)" }}>
         {open ? "Hide message wording" : `Customise message${custom ? ` (${custom} changed)` : ""}`}
       </button>
       {open && (
@@ -482,7 +482,7 @@ function MessageTemplates({ catalog, events, value, readOnly, onChange }: {
           <p className="m-0 text-xs text-ink-faint">
             Write this connection’s own message for any event, or leave it blank for the standard one. Placeholders: <code>{placeholders}</code>.
             {!catalog.links && (
-              <> <code>{"{link}"}</code> stays blank until the <Link to={LINKS.publicURL} style={{ color: "var(--accent)" }}>outside address</Link> is set.</>
+              <> <code>{"{link}"}</code> stays blank until the <Link to={LINKS.publicURL} style={{ color: "var(--accent-text)" }}>outside address</Link> is set.</>
             )}
           </p>
           {shown.map((ev) => (
@@ -542,11 +542,11 @@ function StreamFilters({ value, readOnly, onChange }: { value: AlertOptions; rea
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-xs text-ink-faint">{picked.size === 0 ? "Everyone’s streams — tick people to hear about only theirs." : `Only ${picked.size === 1 ? "this person’s" : "these people’s"} streams:`}</span>
           {!readOnly && picked.size > 0 && (
-            <button type="button" onClick={() => setUsers([])} className="text-xs" style={{ color: "var(--accent)" }}>Everyone</button>
+            <button type="button" onClick={() => setUsers([])} className="text-xs" style={{ color: "var(--accent-text)" }}>Everyone</button>
           )}
         </div>
         {error && !users ? (
-          <p className="text-xs" style={{ color: "var(--reject)" }}>Couldn’t load the Plex users — {error.message}</p>
+          <p className="text-xs" style={{ color: "var(--reject-text)" }}>Couldn’t load the Plex users — {error.message}</p>
         ) : !users ? (
           <p className="text-xs text-ink-faint">Loading…</p>
         ) : users.length === 0 && gone.length === 0 ? (
@@ -595,7 +595,7 @@ function EventPicker({ catalog, value, readOnly, onChange }: { catalog: AlertCat
             <legend className="mb-1 flex w-full items-center justify-between gap-2">
               <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{g.label}</span>
               {!readOnly && keys.length > 1 && (
-                <button type="button" onClick={() => toggle(keys, !all)} className="text-xs" style={{ color: "var(--accent)" }}>{all ? "None" : "All"}</button>
+                <button type="button" onClick={() => toggle(keys, !all)} className="text-xs" style={{ color: "var(--accent-text)" }}>{all ? "None" : "All"}</button>
               )}
             </legend>
             <div className="flex flex-col gap-1">

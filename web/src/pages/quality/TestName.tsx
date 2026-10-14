@@ -50,7 +50,7 @@ export function TestName({ sp }: { sp: StoredProfile }) {
         </label>
         <span className="text-xs">Both, and the bitrate window applies.</span>
       </div>
-      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject)" }}>{err}</div>}
+      {err && <div className="mt-2.5 text-sm" style={{ color: "var(--reject-text)" }}>{err}</div>}
       {res && trimmed && <Result res={res} />}
     </div>
   );
@@ -109,11 +109,11 @@ function ParsedChips({ r, bitrate }: { r: ParsedRelease; bitrate: number }) {
 
 // Verdict is the one-line answer: grabbable, grabbable but avoided, or refused and why.
 function Verdict({ ev }: { ev: QualityExplain["evaluation"] }) {
-  let tone = "var(--good)", bg = "var(--good-soft)", text = "Eligible — this profile would grab it";
+  let tone = "var(--good-text)", bg = "var(--good-soft)", text = "Eligible — this profile would grab it";
   if (!ev.eligible) {
-    tone = "var(--reject)"; bg = "var(--reject-soft)"; text = ev.reject_reason || "Not eligible";
+    tone = "var(--reject-text)"; bg = "var(--reject-soft)"; text = ev.reject_reason || "Not eligible";
   } else if (ev.avoided) {
-    tone = "var(--avoid)"; bg = "var(--avoid-soft)";
+    tone = "var(--avoid-text)"; bg = "var(--avoid-soft)";
     text = `Eligible, but avoided — it has ${(ev.avoided_formats ?? []).join(", ")}. Grabbed only when nothing else is available.`;
   }
   return (
@@ -128,9 +128,9 @@ function Verdict({ ev }: { ev: QualityExplain["evaluation"] }) {
 
 // stateOf names how the profile treats a format, in the builder's own words.
 function stateOf(f: FormatCheck): { label: string; color: string } {
-  if (f.required) return { label: "Must", color: "var(--accent)" };
-  if (f.score > 0) return { label: "Prefer", color: "var(--good)" };
-  if (f.score < 0) return { label: "Avoid", color: "var(--reject)" };
+  if (f.required) return { label: "Must", color: "var(--accent-text)" };
+  if (f.score > 0) return { label: "Prefer", color: "var(--good-text)" };
+  if (f.score < 0) return { label: "Avoid", color: "var(--reject-text)" };
   return { label: "—", color: "var(--ink-faint)" };
 }
 
@@ -147,7 +147,7 @@ function FormatTable({ formats }: { formats: FormatCheck[] }) {
           <div key={f.name} className="flex items-center px-3 py-1 text-sm" style={{ borderTop: "1px solid var(--line-soft)" }}>
             <span className="min-w-0 flex-1 truncate">{f.name}{f.custom && <span className="ml-1.5 text-xs text-ink-faint">custom</span>}</span>
             <span className="w-[56px] text-center text-xs font-semibold" style={{ color: st.color }}>{st.label}</span>
-            <span className="w-[48px] text-right font-mono" style={{ color: f.matched ? "var(--good)" : "var(--ink-faint)" }} aria-label={f.matched ? "matched" : "not matched"}>{f.matched ? "✓" : "·"}</span>
+            <span className="w-[48px] text-right font-mono" style={{ color: f.matched ? "var(--good-text)" : "var(--ink-faint)" }} aria-label={f.matched ? "matched" : "not matched"}>{f.matched ? "✓" : "·"}</span>
           </div>
         );
       })}

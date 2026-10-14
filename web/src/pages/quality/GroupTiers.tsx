@@ -73,7 +73,7 @@ function TierRow({ label, groups, onAdd, onRemove }: { label: string; groups: st
         <input value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Group name"
           aria-label={`Add a group to ${label}`} className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-base"
           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
-        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Add</button>
+        <button onClick={add} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Add</button>
       </div>
     </div>
   );

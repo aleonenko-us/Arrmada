@@ -154,7 +154,7 @@ export function Music() {
         />
 
         {error && artists !== null && (
-          <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mb-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
             {error}
           </div>
         )}
@@ -187,7 +187,7 @@ export function Music() {
                 disabled={selected.size === 0 || bulkBusy}
                 onClick={() => runBulk("Monitored", (id) => api.setArtistMonitored(id, true))}
                 className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
-                style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}
+                style={{ border: "1px solid var(--accent)", color: "var(--accent-text)" }}
               >
                 Monitor
               </button>
@@ -230,7 +230,7 @@ export function Music() {
                   if (ok) void runBulk("Removed", (id) => api.deleteArtist(id));
                 }}
                 className="rounded-lg px-2.5 py-1 text-sm font-semibold disabled:opacity-40"
-                style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}
+                style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}
               >
                 Remove
               </button>
@@ -418,7 +418,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
         </form>
 
         {error && (
-          <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject)" }}>
+          <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
             {error}
           </div>
         )}
@@ -445,7 +445,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
                     disabled={saving !== null}
                     onClick={() => add(r)}
                     className="flex-none rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
-                    style={{ border: "1px solid var(--accent)", color: "var(--accent)" }}
+                    style={{ border: "1px solid var(--accent)", color: "var(--accent-text)" }}
                   >
                     {saving === r.mbid ? "Adding…" : "Add"}
                   </button>

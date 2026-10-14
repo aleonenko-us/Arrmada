@@ -6,8 +6,9 @@ import type { IdealFile, UnwantedAction, UnwantedItemInfo, UnwantedSettings } fr
 // quality/unwanted.go; the rows and their defaults come from the server's catalog.
 
 const ACTIONS: { v: UnwantedAction; label: string; means: string; bg: string; fg: string }[] = [
-  { v: "reject", label: "Reject", means: "Never grabbed.", bg: "var(--reject)", fg: "#fff" },
-  { v: "avoid", label: "Avoid", means: "Grabbed only when nothing else is available.", bg: "var(--avoid)", fg: "#fff" },
+  { v: "reject", label: "Reject", means: "Never grabbed.", bg: "var(--reject)", fg: "var(--accent-ink)" },
+  // Amber is light in both themes, so its label is the dark ink in both (white was 3.6:1).
+  { v: "avoid", label: "Avoid", means: "Grabbed only when nothing else is available.", bg: "var(--avoid)", fg: "#241007" },
   { v: "allow", label: "Allow", means: "No opinion either way.", bg: "var(--line)", fg: "var(--ink)" },
 ];
 

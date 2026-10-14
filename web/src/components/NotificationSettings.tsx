@@ -107,7 +107,7 @@ function PushSetting() {
       </div>
       {toggleable && !on && <p className="m-0 mt-1.5 text-xs text-ink-faint">Turn it on to hear when something you asked for is ready, without opening Arrmada.</p>}
       {help && <div role="note" className="mt-2 rounded-lg px-3 py-2 text-sm leading-relaxed text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line-soft)" }}>{help}</div>}
-      {error && <div role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </div>
   );
 }
@@ -161,7 +161,7 @@ function EventPrefs() {
         These choose what reaches your phones and Apprise link; the bell keeps every notice either way.
         {staff && " Alert connections in Settings → Alerts keep their own event lists."}
       </p>
-      {error && <div role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject)" }}>{error}</div>}
+      {error && <div role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}
     </fieldset>
   );
 }
@@ -195,8 +195,8 @@ function AppriseSetting() {
         <button onClick={() => write(url.trim())} disabled={!url.trim()} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{saved ? "✓" : "Save"}</button>
         {set && <button onClick={() => write("")} className="rounded-lg px-2 py-1 text-xs text-ink-faint">Remove</button>}
       </div>
-      {status?.blocked_reason && <div className="mt-1.5 text-xs font-medium" style={{ color: "var(--avoid)" }}>Not sending to this link: {status.blocked_reason}</div>}
-      {error && <div className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject)" }}>Couldn’t save — {error}</div>}
+      {status?.blocked_reason && <div className="mt-1.5 text-xs font-medium" style={{ color: "var(--avoid-text)" }}>Not sending to this link: {status.blocked_reason}</div>}
+      {error && <div className="mt-1.5 text-xs font-medium" style={{ color: "var(--reject-text)" }}>Couldn’t save — {error}</div>}
     </div>
   );
 }

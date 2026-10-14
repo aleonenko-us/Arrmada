@@ -132,11 +132,11 @@ function OpenSubtitlesCard({ settings, onChanged, children }: { settings: Subtit
       <div className="mt-0.5 text-sm text-ink-faint">A download source Arrmada tries before AI. Optional — embedded extraction and local AI work without it. Downloading needs a free account as well as the API key.</div>
       <div className="mt-3 flex items-center gap-2 text-sm">
         <span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: chip.tone ? `var(--${chip.tone}-soft)` : "var(--panel-2)", color: tone }}>{chip.label}</span>
-        <span className="text-ink-dim" style={settings.provider_state === "auth_failed" ? { color: "var(--reject)" } : undefined}>{providerLine(settings)}</span>
+        <span className="text-ink-dim" style={settings.provider_state === "auth_failed" ? { color: "var(--reject-text)" } : undefined}>{providerLine(settings)}</span>
       </div>
       {admin
         ? <KeyEditor ids={keyRowsFor("opensubtitles_api")} ctl={keys} />
-        : <p className="m-0 mt-2 text-sm text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent)" }}>Settings → Connections</Link>.</p>}
+        : <p className="m-0 mt-2 text-sm text-ink-faint">An admin enters the OpenSubtitles API key and account under <Link to={LINKS.apiKeys} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>.</p>}
       {children}
     </div>
   );
@@ -156,7 +156,7 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
     <div className={card} style={cardStyle}>
       <div className="flex items-center justify-between">
         <div className="text-md font-bold">Local AI (whisper)</div>
-        <span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: st?.ready ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: st?.ready ? "var(--good)" : "var(--ink-faint)" }}>
+        <span className="rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: st?.ready ? "var(--good-soft, rgba(127,176,105,.16))" : "var(--panel-2)", color: st?.ready ? "var(--good-text)" : "var(--ink-faint)" }}>
           {st?.ready ? "ready" : st?.binary_ready ? "needs a model" : "not installed"}
         </span>
       </div>
@@ -164,7 +164,7 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
       {/* Which compute backend the last run used. A Vulkan build with no visible device runs
           on the CPU without complaint, so "ready" alone can hide a GPU that isn't being used. */}
       {st?.ready && (
-        <div className="mt-1.5 text-sm" style={{ color: backend === "vulkan" || backend === "sycl" ? "var(--good)" : "var(--ink-dim)" }}>
+        <div className="mt-1.5 text-sm" style={{ color: backend === "vulkan" || backend === "sycl" ? "var(--good-text)" : "var(--ink-dim)" }}>
           {backend === "sycl"
             ? "Running on the GPU (Intel oneAPI)."
             : backend === "vulkan"
@@ -177,9 +177,9 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
       {/* The Intel oneAPI build is tried first; when it's set aside, say why rather than
           quietly running slower. */}
       {st?.ready && note && (
-        <div className="mt-1 text-sm" style={{ color: "var(--avoid)" }}>Intel oneAPI build not in use — {note}</div>
+        <div className="mt-1 text-sm" style={{ color: "var(--avoid-text)" }}>Intel oneAPI build not in use — {note}</div>
       )}
-      {st && !st.binary_ready && <div className="mt-2 text-sm" style={{ color: "var(--avoid)" }}>whisper-cli isn't in this build yet — update to a build that bundles it.</div>}
+      {st && !st.binary_ready && <div className="mt-2 text-sm" style={{ color: "var(--avoid-text)" }}>whisper-cli isn't in this build yet — update to a build that bundles it.</div>}
       <div className="mt-3 flex flex-col gap-2">
         {(st?.models ?? []).map((m) => (
           <div key={m.name} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)" }}>
@@ -188,22 +188,22 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
               <div className="font-mono text-xs text-ink-faint">{m.name} · ~{m.size_mb >= 1000 ? `${(m.size_mb / 1000).toFixed(1)} GB` : `${m.size_mb} MB`}</div>
             </div>
             {m.present ? (
-              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good)" }}>installed ✓</span>
+              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--good-soft, rgba(127,176,105,.16))", color: "var(--good-text)" }}>installed ✓</span>
             ) : m.downloading ? (
-              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>downloading…</span>
+              <span className="rounded px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>downloading…</span>
             ) : (
               <div className="flex flex-none items-center gap-2">
                 {/* What this download would set going: files parked for want of a model. */}
                 {!!st?.waiting && waitingFor(st) === m.name && (
                   <span className="text-xs" style={{ color: "var(--avoid-text)" }}>{st.waiting} file{st.waiting === 1 ? " is" : "s are"} waiting for {m.name.includes("turbo") ? "a model" : "large-v3"}</span>
                 )}
-                <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}>Download</button>
+                <button onClick={() => download(m.name)} disabled={!st?.binary_ready} className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Download</button>
               </div>
             )}
           </div>
         ))}
       </div>
-      <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes audio that is already in the language you want. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
+      <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes speech in any language into a subtitle in that same language; it can't translate. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
     </div>
   );
 }

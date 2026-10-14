@@ -27,7 +27,7 @@ describe("phaseLabel", () => {
   it("names a torrent nobody is seeding as Stalled, with seeds and idle time", () => {
     const c = phaseLabel(dl({ phase: "stalled", seeds: 0, last_activity: NOW - 3 * 3600 }), NOW);
     expect(c.text).toBe("Stalled · 0 seeds · no data for 3h");
-    expect(c.tone).toBe("var(--avoid)");
+    expect(c.tone).toBe("var(--avoid-text)");
   });
   it("says when a stalled torrent has never received anything", () => {
     expect(phaseLabel(dl({ phase: "stalled", seeds: 1, added_on: NOW - 45 * 60 }), NOW).text).toBe("Stalled · 1 seed · no data yet (45m)");
@@ -35,7 +35,7 @@ describe("phaseLabel", () => {
   it("labels metadata, queued and error phases, and plain downloading only for downloading", () => {
     expect(phaseLabel(dl({ phase: "metadata" }), NOW).text).toBe("Fetching metadata");
     expect(phaseLabel(dl({ phase: "queued" }), NOW).text).toBe("Queued");
-    expect(phaseLabel(dl({ phase: "error" }), NOW)).toMatchObject({ text: "Failed", tone: "var(--avoid)" });
+    expect(phaseLabel(dl({ phase: "error" }), NOW)).toMatchObject({ text: "Failed", tone: "var(--avoid-text)" });
     expect(phaseLabel(dl({ phase: "downloading" }), NOW).text).toBe("Downloading");
   });
 });

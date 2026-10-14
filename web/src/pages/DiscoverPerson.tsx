@@ -62,7 +62,7 @@ export function PersonSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
               <div className="mt-2.5">
                 <p className={`m-0 whitespace-pre-line text-base leading-relaxed text-ink-dim ${bioOpen ? "" : "line-clamp-4"}`}>{p.biography}</p>
                 {!bioOpen && p.biography.length > 280 && (
-                  <button onClick={() => setBioOpen(true)} className="mt-1 min-h-[28px] text-sm font-semibold" style={{ color: "var(--accent)" }}>More</button>
+                  <button onClick={() => setBioOpen(true)} className="mt-1 min-h-[28px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>More</button>
                 )}
               </div>
             )}

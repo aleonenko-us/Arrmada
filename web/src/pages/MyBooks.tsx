@@ -95,7 +95,7 @@ export function MyBooks() {
 
       <Link to="/audiobooks" className="mb-5 flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-base" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         <span><b>Listen</b> <span className="text-ink-dim">— in your browser or a listening app, with your place kept in sync.</span></span>
-        <span className="flex-none font-semibold" style={{ color: "var(--accent)" }}>Audiobooks →</span>
+        <span className="flex-none font-semibold" style={{ color: "var(--accent-text)" }}>Audiobooks →</span>
       </Link>
 
       {!filtering && fresh.length > 0 && (
@@ -251,7 +251,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
             title={`Download the ${b.ebook.format.toUpperCase()}${b.ebook.size_bytes ? ` (${fmtSize(b.ebook.size_bytes)})` : ""}`}
           >
             Download {b.ebook.format ? b.ebook.format.toUpperCase() : "ebook"}
-            {b.ebook.size_bytes ? <span className="font-normal opacity-80"> · {fmtSize(b.ebook.size_bytes)}</span> : null}
+            {b.ebook.size_bytes ? <span className="font-normal"> · {fmtSize(b.ebook.size_bytes)}</span> : null}
           </a>
         ) : (
           <div className="rounded-lg px-2 py-1 text-center text-xs text-ink-faint" style={{ border: "1px solid var(--line)" }}>No ebook yet</div>
@@ -263,7 +263,7 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
               <button
                 onClick={() => playAudiobook(a.item_key!, { meta: { title: b.title, author: b.author, cover: b.cover_url } })}
                 className="min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-center text-xs font-semibold"
-                style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+                style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
                 aria-label={`Listen to ${b.title}${a.label ? ` (${a.label})` : ""}`}
               >
                 ▶ Listen{a.label ? ` · ${a.label}` : ""}
@@ -273,12 +273,12 @@ function BookCard({ b, listen, onOpen }: { b: MyBook; listen: boolean; onOpen: (
               href={api.audiobookDownloadURL(b.book_id, a.version_id)}
               download
               className={`${listen && a.item_key ? "flex-none" : "flex-1"} block truncate rounded-lg px-2 py-1 text-center text-xs font-semibold`}
-              style={{ border: "1px solid var(--accent-line)", color: "var(--accent)" }}
+              style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}
               title={`Download the audiobook${a.label ? ` (${a.label})` : ""}${a.files > 1 ? ` — ${a.files} files as one zip` : ""}`}
             >
               {listen && a.item_key
-                ? <span aria-label="Download">⬇{a.size_bytes ? <span className="font-normal opacity-80"> {fmtSize(a.size_bytes)}</span> : null}</span>
-                : <>Audiobook{a.label ? ` · ${a.label}` : ""}{a.size_bytes ? <span className="font-normal opacity-80"> · {fmtSize(a.size_bytes)}</span> : null}</>}
+                ? <span aria-label="Download">⬇{a.size_bytes ? <span className="font-normal"> {fmtSize(a.size_bytes)}</span> : null}</span>
+                : <>Audiobook{a.label ? ` · ${a.label}` : ""}{a.size_bytes ? <span className="font-normal"> · {fmtSize(a.size_bytes)}</span> : null}</>}
             </a>
           </div>
         ))}
@@ -308,9 +308,9 @@ function RequestCard({ r, queueKnown }: { r: MyRequest; queueKnown: boolean }) {
       <div className="p-2">
         <div className="truncate text-sm font-semibold" title={r.title}>{r.title}</div>
         {r.author && <div className="truncate text-xs text-ink-dim" title={r.author}>{r.author}</div>}
-        {notOut && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date!)}</div>}
+        {notOut && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent-text)" }} title="We'll grab it then">Out {formatReleaseDay(r.release_date!)}</div>}
         {st.detail && <div className="mt-0.5 line-clamp-2 text-xs" style={{ color: st.detailTone ?? "var(--ink-faint)" }} title={st.detail}>{st.detail}</div>}
-        {coming && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent)" }} title={coming}>{coming}</div>}
+        {coming && <div className="mt-0.5 truncate text-xs" style={{ color: "var(--accent-text)" }} title={coming}>{coming}</div>}
       </div>
     </>
   );
