@@ -16,6 +16,7 @@ at the end and saves them in `.env`.
 | BitTorrent        | random  | `ARRMADA_QBIT_PORT` — forward this on your router (TCP and UDP) |
 | Audiobook server  | 13379   | `ARRMADA_AUDIOBOOK_PORT` — for listening apps; off until switched on in Audiobooks |
 | Prowlarr          | 9696    | `ARRMADA_PROWLARR_PORT` (only with `--with-prowlarr`) |
+| SABnzbd           | 8085    | `ARRMADA_SABNZBD_PORT` (only with `--with-sabnzbd`) — its own web page, where your Usenet provider goes |
 
 ## `.env` settings
 
@@ -28,7 +29,7 @@ at the end and saves them in `.env`.
 | `ARRMADA_STORAGE_HOST` | Your media folder (for reference; the mount itself is in `docker-compose.override.yml`) |
 | `ARRMADA_PUID`, `ARRMADA_PGID` | The user and group Arrmada and qBittorrent run as. On Unraid, 99 and 100 |
 | `TZ` | Timezone. Schedules — the Convert window especially — run on this clock ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
-| `COMPOSE_PROFILES` | `prowlarr` to run the optional Prowlarr |
+| `COMPOSE_PROFILES` | The optional companions to run, a comma list: `prowlarr` (Prowlarr), `sabnzbd` (SABnzbd, for Usenet), e.g. `prowlarr,sabnzbd`. `update.sh` never changes it |
 | `ARRMADA_RECYCLE_DIR` | Override for the recycle bin (see below) |
 | `ARRMADA_SKIP_MIGRATION_SNAPSHOT` | `1` to upgrade the database without the safety copy (a full disk) |
 | `ARRMADA_ALLOW_NEWER_SCHEMA` | `1` to start an older version on a newer database — last resort |
@@ -96,6 +97,71 @@ Older versions kept one shared bin in the app's library volume. It stays listed 
 
 `ARRMADA_RECYCLE_DIR` in `.env` is now just an override: set it to a folder to use that one
 bin for everything, or to `off` to delete files straight away.
+
+## Usenet (SABnzbd)
+
+Arrmada can download from Usenet as well as torrents, through SABnzbd. It's optional, and
+it needs two things Arrmada can't give you: **your own Usenet provider** (a paid account —
+the news servers the files come from) and **Newznab indexers** (the sites that list what's
+on Usenet). Without both, Usenet adds nothing.
+
+There are two ways to have SABnzbd.
+
+**The bundled one.** `install.sh --with-sabnzbd` (on a new install, or later on the one you
+have) runs SABnzbd beside Arrmada and Arrmada connects to it by itself, usually within a
+minute: its API key is read from SABnzbd's own settings (never written to `.env`, never
+shown), Arrmada's categories are there with a folder each, it's in English, every job is
+repaired, unpacked and tidied (post-processing 3), and its downloads go under `usenet/` in
+your Downloads folder — `usenet/incomplete` while downloading, `usenet/complete` when
+done — so an import is a rename on the same drive rather than a copy. That folder follows
+your Downloads folder when you change it in Settings → Library, once Arrmada has checked
+SABnzbd can see it (the installer mounts your media folder into SABnzbd for that).
+
+What's left is your provider: open `http://<server>:8085` (the port the installer printed;
+the SABnzbd card in Settings → Connections has the link) → **Config → Servers**, and add it
+there — the first visit opens SABnzbd's setup wizard, which does the same. Leave the
+folders it shows as they are. Getting started and the health list say "Add your Usenet
+provider in SABnzbd" until there's a news server. Open SABnzbd by the server's IP address:
+it only answers to the names in its `host_whitelist` (Config → Special), which starts with
+just `arrmada-sabnzbd`; add your server's name there to use that instead.
+
+Removed in Arrmada, the bundled SABnzbd stays removed (even after a restart) until **Restore
+bundled SABnzbd** in Settings → Connections. To stop running it at all, take `sabnzbd` out of
+`COMPOSE_PROFILES` in `.env` and run `docker compose rm -sf arrmada-sabnzbd`.
+
+**Your own SABnzbd.** In Settings → Connections → **+ Add client**, pick SABnzbd and give
+its address (as Arrmada's container reaches it) and its **full API key** (SABnzbd → Config →
+General; the NZB key can't read the queue). Arrmada never changes your SABnzbd by itself:
+its card shows which of Arrmada's categories are missing, and **Add missing categories**
+creates them when you click it. If SABnzbd says "hostname verification failed", add the
+name Arrmada uses to its `host_whitelist`. If SABnzbd sees its downloads under a different
+path than Arrmada does, add a path mapping on the card. Keep SABnzbd in English: Arrmada
+reads its failure reasons, and translated ones can't be told apart.
+
+**Indexers.** Add Newznab indexers in Settings → Connections → **+ Add indexer** (the
+Newznab tile appears once a Usenet client exists), or keep them in Prowlarr: its Usenet
+indexers come over in the Prowlarr sync once Arrmada has a Usenet client, and adding one
+runs the sync straight away.
+
+**Usenet or torrents.** By default the better release wins wherever it is. Settings →
+Downloads → **When a release is on both Usenet and torrents** can prefer one network:
+the preference only decides between releases that are otherwise as good — it never picks a
+worse release, and it never hides the other network's.
+
+**When a download fails.** Arrmada reads SABnzbd's reason:
+
+- Something wrong with the release — articles missing from your provider, damage its
+  repair files can't fix, a password, an archive that won't unpack, a duplicate — and the
+  release is blocklisted and another one searched for, as with a torrent that can't finish.
+- Something wrong where SABnzbd writes — a full disk, a folder it may not write to, a
+  missing drive — and nothing is blocklisted (any release would fail the same way). Needs
+  you says what to fix; then Retry the download in Activity.
+- Nothing downloading for half an hour while jobs wait is almost always the provider or
+  your account, so it's never "fixed" by grabbing something else: the health list says to
+  check your provider instead.
+
+After an import Arrmada archives the job in SABnzbd's history and deletes what's left of
+its folder. Usenet downloads never seed.
 
 ## Connecting Jellyfin
 

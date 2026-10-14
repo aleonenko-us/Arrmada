@@ -28,6 +28,7 @@ set up.
 - 💬 **Subtitles** — pulls them out of the file, downloads them, or writes them with local AI.
 - 🗜️ **Convert** — shrinks wasteful video overnight to HEVC or AV1, checking every result against the original.
 - 📺 **Plex and Jellyfin** — connect either or both: Watch buttons, library updates after every change, and Insights — who's watching what, history and stats, Tautulli-style.
+- 📰 **Usenet, optional** — SABnzbd alongside qBittorrent (`--with-sabnzbd` sets one up for you); bring your own Usenet provider and indexers.
 - 🛟 **Safety nets** — hardlinked imports, a recycle bin, nightly backups and one-step rollbacks.
 
 [See everything it does →](docs/features.md)
