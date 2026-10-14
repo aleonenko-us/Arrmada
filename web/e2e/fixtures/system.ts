@@ -1,5 +1,5 @@
 import type {
-  AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
+  APIKeyStatus, AppSettings, Attention, AuthUser, BackupsState, MyQuota, AudioListening, FolderCheck, Health, Job, LibraryPaths, MyAudio, PendingRestart, Person, RecycleStats, SetupState, Status, SystemHealth, SystemStatus,
   RecentJob, ReviewTarget, TaskStatus, UnmanagedDownload,
 } from "../../src/lib/api";
 import type { LogLevelState, LogPage } from "../../src/lib/systemApi";
@@ -91,9 +91,21 @@ export function folderCheck(path: string): FolderCheck {
   };
 }
 
+// The keys setup reads: TMDB and Hardcover saved (Run setup again shows them masked), the
+// rest not set. freshKeys is the same list on a new install, nothing set.
+const setupKey = (id: string, label: string, hint?: string): APIKeyStatus => ({
+  id, label, purpose: "", help_url: "", steps: "", secret: id !== "opensubtitles_username", testable: id !== "opensubtitles_username" && id !== "opensubtitles_password",
+  tests_candidate: true, configured: !!hint, source: hint ? "settings" : "", hint, env_set: false,
+});
+export const setupKeys: APIKeyStatus[] = [
+  setupKey("tmdb", "TMDB", "…9e14"), setupKey("tvdb", "TheTVDB"), setupKey("omdb", "OMDb"), setupKey("hardcover", "Hardcover", "…c0de"),
+  setupKey("opensubtitles_api", "OpenSubtitles API key"), setupKey("opensubtitles_username", "OpenSubtitles username"), setupKey("opensubtitles_password", "OpenSubtitles password"),
+];
+export const freshKeys: APIKeyStatus[] = setupKeys.map((k) => ({ ...k, configured: false, source: "", hint: undefined }));
+
 // Setup is finished, so the staff console opens straight onto its pages.
 export const setup: SetupState = {
-  needed: false, complete: true, tmdb_configured: true, libraries_chosen: true, keys: [],
+  needed: false, complete: true, tmdb_configured: true, libraries_chosen: true, keys: setupKeys,
   library: paths, running: paths, restart_needed: false, can_restart: true, mounts: ["/media"], suggestions: {},
 };
 
