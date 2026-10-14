@@ -20,6 +20,10 @@ var (
 	FixBackups         = &Fix{Key: "backups", Path: "/settings/system#backups", Label: "Backups"}
 	FixStatus          = &Fix{Key: "status", Path: "/settings/status", Label: "Status"}
 
+	// The Jellyfin card on Settings → Connections (a link to it opens its editor while
+	// Jellyfin isn't connected).
+	FixJellyfinConnection = &Fix{Key: "jellyfinConnection", Path: "/settings/connections#jellyfin", Label: "Jellyfin connection"}
+
 	// Where the Needs-you feed (internal/attention) sends each kind of item. Pending
 	// requests open the Requests page on what's waiting for approval; stuck downloads open
 	// their section of Activity → Needs you (#stalled, #import-failures, #wrong-category),

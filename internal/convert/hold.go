@@ -25,7 +25,7 @@ import (
 //
 // Now the original moves to <library folder>/.arrmada-hold/<ledger id>/<its name>: on the
 // same drive as the film (a rename, no copy), hidden from Plex (dot folder plus a
-// .plexignore) and skipped by every scan (library.SkipScanDir). The ledger row records
+// .plexignore and .ignore) and skipped by every scan (library.SkipScanDir). The ledger row records
 // where it is and until when. Nothing in the hold is ever purged to make room: it leaves
 // only when its undo window ends (ExpireHolds — the retention the owner set), when the
 // owner releases it, or straight after the swap when the owner chose no undo at all.
@@ -89,7 +89,7 @@ func (s *Service) holdRootFor(src string) (root, why string) {
 }
 
 // holdPathFor is where src's original goes in the hold for ledger row id
-// (<root>/.arrmada-hold/<id>/<name>), creating the hold itself with its .plexignore. The
+// (<root>/.arrmada-hold/<id>/<name>), creating the hold itself with its marker files. The
 // row's own folder is made just before the original moves (makeHoldDir), so a swap
 // abandoned earlier leaves nothing behind.
 func (s *Service) holdPathFor(src string, id int64) (string, error) {

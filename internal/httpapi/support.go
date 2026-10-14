@@ -413,7 +413,7 @@ type settingsSplit struct {
 var (
 	credentialSettingWords = []string{
 		"apikey", "api_key", "token", "password", "passwd", "secret", "apprise", "cookie",
-		"credential", "smtp", "webhook", "url", "kindle", "insights_plex_",
+		"credential", "smtp", "webhook", "url", "kindle", "insights_plex_", "jellyfin_",
 	}
 	privateSettingWords = []string{"key", "session", "auth", "mail", "user", "machine", "client_id", "pin"}
 )

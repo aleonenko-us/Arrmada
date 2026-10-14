@@ -29,7 +29,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
+	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
@@ -145,6 +147,15 @@ type Deps struct {
 	PlexScan *plexscan.Scanner
 	// PlexLinks finds titles in Plex for Watch on Plex links. nil = no links anywhere.
 	PlexLinks PlexLinker
+	// Jellyfin is the Jellyfin connection (its card on Connections, its health check).
+	// nil = its routes answer 503 and it has no card.
+	Jellyfin *jellyfinsvc.Service
+	// JellyfinScan tells Jellyfin which folder changed (its own switch and path mappings).
+	// nil = the scan routes answer 503.
+	JellyfinScan *plexscan.Scanner
+	// MediaServers is every media server (Plex, then Jellyfin) for features that work
+	// with whichever is connected. nil = none.
+	MediaServers *mediaserver.Registry
 	// ImportFailures is every download whose import has failed and will be retried (the
 	// movie importer's and the series sweep's), for the queue's Finishing stages. nil =
 	// the movie importer's alone (Library.Failures).
@@ -645,6 +656,14 @@ func (a *api) registerRoutes(mux *router) {
 	// Watch on Plex: anyone signed in may ask for a title's app.plex.tv link (no token,
 	// no server address in it); 204 when Plex doesn't have it.
 	mux.HandleFunc("GET /api/v1/plex/link", a.signedIn(a.handlePlexLink).ext())
+	// Jellyfin: the connection (the API key is a credential, so saving it is an admin's
+	// job; it never comes back), its Test, and its library updates like Plex's.
+	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig))
+	mux.HandleFunc("PUT /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinSave))
+	mux.HandleFunc("POST /api/v1/jellyfin/test", a.requireRole(auth.RoleManager, a.handleJellyfinTest))
+	mux.HandleFunc("GET /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanView))
+	mux.HandleFunc("PUT /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanSave))
+	mux.HandleFunc("POST /api/v1/jellyfin/scan/test", a.requireRole(auth.RoleManager, a.handleJellyfinScanTest))
 	mux.HandleFunc("GET /api/v1/insights/activity", a.requireRole(auth.RoleManager, a.handleInsightsActivity))
 	mux.HandleFunc("GET /api/v1/insights/history", a.requireRole(auth.RoleManager, a.handleInsightsHistory))
 	mux.HandleFunc("GET /api/v1/insights/history.csv", a.requireRole(auth.RoleManager, a.handleInsightsHistoryCSV))

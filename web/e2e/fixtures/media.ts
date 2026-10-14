@@ -424,9 +424,9 @@ export const connections: { sections: ConnectionSectionData[] } = {
       ],
     },
     {
-      id: "other", title: "Plex, alerts and apps", items: [
+      id: "other", title: "Alerts and apps", items: [
         { kind: "plex", ref: "default", card: "plex", name: "Plex", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/connections#plex" },
-        { kind: "jellyfin", ref: "default", card: "jellyfin", name: "Jellyfin", configured: false, enabled: false, state: "unknown", testable: false },
+        { kind: "jellyfin", ref: "default", card: "jellyfin", name: "Jellyfin", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/connections#jellyfin" },
         { kind: "notifications", ref: "default", card: "notifications", name: "Alerts", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/alerts", detail: "No alert connections yet" },
       ],
     },
@@ -445,9 +445,11 @@ export const jellyfinConnected: JellyfinConfig = {
   version: "10.10.3", monitoring_enabled: true, poll_seconds: 10,
 };
 
-// PUT /api/v1/jellyfin: answers with what was saved, the key only as key_set.
+// PUT /api/v1/jellyfin: answers with what was saved, the key only as key_set. A public
+// address the same as the URL is saved blank (it follows the URL), as the server does.
 export function jellyfinSave(body: JellyfinSave): JellyfinConfig {
-  return { ...jellyfinConfig, url: body.url, public_url: body.public_url, key_set: !!body.api_key, server_name: "Attic", server_id: "f00dfeed", version: "10.10.3" };
+  const publicURL = body.public_url.replace(/\/+$/, "") === body.url.replace(/\/+$/, "") ? "" : body.public_url;
+  return { ...jellyfinConfig, url: body.url, public_url: publicURL, key_set: !!body.api_key, server_name: "Attic", server_id: "f00dfeed", version: "10.10.3" };
 }
 
 // POST /api/v1/jellyfin/test: an address with "unreachable" in it doesn't answer.

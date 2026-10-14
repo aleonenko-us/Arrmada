@@ -157,8 +157,9 @@ func TestCatalogIsComplete(t *testing.T) {
 		if !k.Hidden && (k.ID == "" || k.Label == "" || k.EnvVar == "" || k.HelpURL == "" || k.Steps == "") {
 			t.Errorf("catalog entry missing fields: %+v", k)
 		}
-		// A hidden credential is entered on its own card only — never from the install.
-		if k.Hidden && (k.ID == "" || k.EnvVar != "") {
+		// A hidden credential is entered on its own card only — never from the install —
+		// except the Jellyfin key, which an install may set like the Plex token.
+		if k.Hidden && (k.ID == "" || (k.EnvVar != "" && k.ID != Jellyfin)) {
 			t.Errorf("hidden credential %q must have an id and no env var", k.ID)
 		}
 		if seen[k.ID] {
@@ -186,9 +187,20 @@ func TestHiddenCredentialsStayOffTheList(t *testing.T) {
 		}
 	}
 	for _, st := range s.Status(ctx) {
-		if st.Hidden || st.ID == SMTPHost || st.ID == SMTPUsername || st.ID == SMTPPassword {
+		if st.Hidden || st.ID == SMTPHost || st.ID == SMTPUsername || st.ID == SMTPPassword || st.ID == Jellyfin {
 			t.Errorf("Status lists %s", st.ID)
 		}
+	}
+	// The Jellyfin key is hidden too, and falls back to its env var.
+	if Listed(Jellyfin) {
+		t.Error("the Jellyfin key is listed")
+	}
+	t.Setenv("ARRMADA_JELLYFIN_API_KEY", " from-env ")
+	if got := s.Value(ctx, Jellyfin); got != "from-env" {
+		t.Errorf("Jellyfin key from env = %q", got)
+	}
+	if err := s.Set(ctx, Jellyfin, "saved"); err != nil || s.Value(ctx, Jellyfin) != "saved" {
+		t.Errorf("saved Jellyfin key = %q, %v", s.Value(ctx, Jellyfin), err)
 	}
 	if !Listed("tmdb") || Listed("nope") {
 		t.Error("Listed must be true for ordinary keys and false for unknown ones")

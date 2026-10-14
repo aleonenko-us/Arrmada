@@ -105,7 +105,8 @@ func DownloadPathsCheck(unseen func(ctx context.Context) ([]UnseenDownloads, err
 	}
 }
 
-// PlexState is the Plex connection as the check sees it (see insights.PlexHealth).
+// PlexState is a media server connection as the check sees it (see insights.PlexHealth and
+// jellyfinsvc.Health): the Plex check and the Jellyfin check read the same shape.
 type PlexState struct {
 	Configured   bool
 	Monitoring   bool
@@ -133,10 +134,37 @@ func PlexCheck(state func(ctx context.Context) PlexState, probe func(ctx context
 }
 
 func plexCheck(state func(ctx context.Context) PlexState, probe func(ctx context.Context) error, now func() time.Time) Check {
+	return mediaServerCheck(mediaServerSpec{
+		key: "plex.connection", name: "Plex connection", server: "Plex", fix: FixPlexConnection,
+		refused: "Plex rejected Arrmada's token — reconnect Plex. Plex sign-in for family, recommendations and Insights stop working until you do.",
+	}, state, probe, now)
+}
+
+// JellyfinCheck is PlexCheck for Jellyfin (state from jellyfinsvc's Health): a refused API
+// key at once, an unreachable server after ten minutes, quiet when it isn't set up.
+func JellyfinCheck(state func(ctx context.Context) PlexState, probe func(ctx context.Context) error) Check {
+	return jellyfinCheck(state, probe, time.Now)
+}
+
+func jellyfinCheck(state func(ctx context.Context) PlexState, probe func(ctx context.Context) error, now func() time.Time) Check {
+	return mediaServerCheck(mediaServerSpec{
+		key: "jellyfin.connection", name: "Jellyfin connection", server: "Jellyfin", fix: FixJellyfinConnection,
+		refused: "Jellyfin rejected Arrmada's API key — make a new one in Jellyfin (Dashboard → API Keys) and save it on the Jellyfin card. Watch links and library updates stop until you do.",
+	}, state, probe, now)
+}
+
+// mediaServerSpec is what differs between the Plex and Jellyfin checks.
+type mediaServerSpec struct {
+	key, name, server string
+	fix               *Fix
+	refused           string // the message for a refused credential
+}
+
+func mediaServerCheck(spec mediaServerSpec, state func(ctx context.Context) PlexState, probe func(ctx context.Context) error, now func() time.Time) Check {
 	var mu sync.Mutex
 	var probedAt time.Time
 	return Check{
-		Key: "plex.connection", Name: "Plex connection", Category: CategoryIntegrations, Timeout: 20 * time.Second,
+		Key: spec.key, Name: spec.name, Category: CategoryIntegrations, Timeout: 20 * time.Second,
 		Run: func(ctx context.Context) []Finding {
 			st := state(ctx)
 			if !st.Configured {
@@ -160,10 +188,7 @@ func plexCheck(state func(ctx context.Context) PlexState, probe func(ctx context
 			case st.Consecutive == 0:
 				return nil
 			case st.Unauthorized:
-				return []Finding{{
-					Key: "plex.connection", Level: LevelError, Fix: FixPlexConnection,
-					Message: "Plex rejected Arrmada's token — reconnect Plex. Plex sign-in for family, recommendations and Insights stop working until you do.",
-				}}
+				return []Finding{{Key: spec.key, Level: LevelError, Fix: spec.fix, Message: spec.refused}}
 			case st.FailingSince.IsZero() || now().Sub(st.FailingSince) < plexDownFor:
 				return nil
 			}
@@ -172,8 +197,8 @@ func plexCheck(state func(ctx context.Context) PlexState, probe func(ctx context
 				since = st.FailingSince
 			}
 			return []Finding{{
-				Key: "plex.connection", Level: LevelWarning, Fix: FixPlexConnection,
-				Message: fmt.Sprintf("Plex hasn't answered since %s: %s", clock(since, now()), st.LastErr),
+				Key: spec.key, Level: LevelWarning, Fix: spec.fix,
+				Message: fmt.Sprintf("%s hasn't answered since %s: %s", spec.server, clock(since, now()), st.LastErr),
 			}}
 		},
 	}

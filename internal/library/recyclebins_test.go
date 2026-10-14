@@ -149,6 +149,45 @@ func TestRootBinWritesPlexignore(t *testing.T) {
 	}
 }
 
+// Jellyfin gets its own marker: an empty .ignore. A bin made before it existed (only a
+// .plexignore) gets one the next time it's used, and the markers alone aren't items.
+func TestHiddenDirsCarryJellyfinIgnore(t *testing.T) {
+	movies := t.TempDir()
+	old := filepath.Join(movies, library.RecycleDirName)
+	if err := os.Mkdir(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, ".plexignore"), []byte("*\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &library.RootBins{Roots: rootsOf(libroots.Root{Name: "movies", Path: movies})}
+	dir, err := b.For(filepath.Join(movies, "Heat (1995)", "Heat.mkv"))
+	if err != nil || dir != old {
+		t.Fatalf("For = %q, %v", dir, err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, ".ignore"))
+	if err != nil || len(got) != 0 {
+		t.Fatalf(".ignore = %q (%v), want an empty file", got, err)
+	}
+	if p, _ := os.ReadFile(filepath.Join(dir, ".plexignore")); string(p) != "*\n" {
+		t.Fatalf(".plexignore rewritten: %q", p)
+	}
+	if !library.MarkerFiles[".ignore"] || !library.MarkerFiles[".plexignore"] || library.MarkerFiles["Heat.mkv"] {
+		t.Fatal("MarkerFiles")
+	}
+	// A legacy bin holding only its markers has nothing in it, so it isn't listed.
+	legacy := t.TempDir()
+	if err := library.PrepareHiddenDir(filepath.Join(legacy, "bin")); err != nil {
+		t.Fatal(err)
+	}
+	lb := &library.RootBins{Roots: rootsOf(libroots.Root{Name: "movies", Path: movies}), Legacy: filepath.Join(legacy, "bin")}
+	for _, d := range lb.All() {
+		if d.Legacy {
+			t.Fatalf("a legacy bin with only markers is listed: %+v", d)
+		}
+	}
+}
+
 // A folder changed in the app routes the next delete to the new folder's bin.
 func TestRootBinsFollowLiveRoots(t *testing.T) {
 	first, second := t.TempDir(), t.TempDir()

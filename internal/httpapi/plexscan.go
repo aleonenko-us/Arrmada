@@ -9,13 +9,17 @@ import (
 	"github.com/tristenlammi/arrmada/internal/plexscan"
 )
 
-// The Plex library-updates card: whether Arrmada tells Plex to scan after changes, how
-// each library folder maps onto Plex's, and the last scan. Paths only — the Plex token
-// and server address never appear here.
+// The library-updates cards (Plex's, and Jellyfin's in jellyfin.go): whether Arrmada tells
+// the server to scan after changes, how each library folder maps onto the server's, and
+// the last scan. Paths only — the token or key and the server address never appear here.
 
 func (a *api) plexScanReady(w http.ResponseWriter) bool {
-	if a.deps.PlexScan == nil {
-		a.writeError(w, http.StatusServiceUnavailable, "Plex scanning isn't available")
+	return a.scannerReady(w, a.deps.PlexScan, "Plex")
+}
+
+func (a *api) scannerReady(w http.ResponseWriter, sc *plexscan.Scanner, server string) bool {
+	if sc == nil {
+		a.writeError(w, http.StatusServiceUnavailable, server+" scanning isn't available")
 		return false
 	}
 	return true
@@ -26,9 +30,13 @@ func (a *api) handlePlexScanView(w http.ResponseWriter, r *http.Request) {
 	if !a.plexScanReady(w) {
 		return
 	}
+	a.scanView(w, r, a.deps.PlexScan)
+}
+
+func (a *api) scanView(w http.ResponseWriter, r *http.Request, sc *plexscan.Scanner) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	a.writeJSON(w, http.StatusOK, a.deps.PlexScan.View(ctx))
+	a.writeJSON(w, http.StatusOK, sc.View(ctx))
 }
 
 // handlePlexScanSave answers PUT /insights/plex/scan {enabled, path_map}.
@@ -43,25 +51,29 @@ func (a *api) handlePlexScanSave(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	enabled := a.deps.PlexScan.Enabled(r.Context())
-	if req.Enabled != nil {
-		enabled = *req.Enabled
+	a.scanSave(w, r, a.deps.PlexScan, req.Enabled, req.PathMap)
+}
+
+func (a *api) scanSave(w http.ResponseWriter, r *http.Request, sc *plexscan.Scanner, enabledReq *bool, mapReq *[]plexscan.PathMap) {
+	enabled := sc.Enabled(r.Context())
+	if enabledReq != nil {
+		enabled = *enabledReq
 	}
-	maps := a.deps.PlexScan.PathMaps(r.Context())
-	if req.PathMap != nil {
-		maps = *req.PathMap
+	maps := sc.PathMaps(r.Context())
+	if mapReq != nil {
+		maps = *mapReq
 	}
 	if len(maps) > plexscan.MaxPathMaps*2 {
 		a.writeError(w, http.StatusBadRequest, "too many path mappings")
 		return
 	}
-	if err := a.deps.PlexScan.Save(r.Context(), enabled, maps); err != nil {
+	if err := sc.Save(r.Context(), enabled, maps); err != nil {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	a.writeJSON(w, http.StatusOK, a.deps.PlexScan.View(ctx))
+	a.writeJSON(w, http.StatusOK, sc.View(ctx))
 }
 
 // handlePlexScanTest answers POST /insights/plex/scan/test {kind, run}: where kind's
@@ -70,6 +82,10 @@ func (a *api) handlePlexScanTest(w http.ResponseWriter, r *http.Request) {
 	if !a.plexScanReady(w) {
 		return
 	}
+	a.scanTest(w, r, a.deps.PlexScan)
+}
+
+func (a *api) scanTest(w http.ResponseWriter, r *http.Request, sc *plexscan.Scanner) {
 	var req struct {
 		Kind string `json:"kind"`
 		Run  bool   `json:"run"`
@@ -79,14 +95,14 @@ func (a *api) handlePlexScanTest(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	rv, err := a.deps.PlexScan.ScanNow(ctx, req.Kind, req.Run)
+	rv, err := sc.ScanNow(ctx, req.Kind, req.Run)
 	if err != nil {
-		status := http.StatusBadGateway // Plex didn't answer, or refused
+		status := http.StatusBadGateway // the server didn't answer, or refused
 		if errors.Is(err, plexscan.ErrUnavailable) {
 			status = http.StatusBadRequest
 		}
 		a.writeJSON(w, status, map[string]any{"status": "error", "message": err.Error(), "root": rv})
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"root": rv, "last_scan": a.deps.PlexScan.LastScan()})
+	a.writeJSON(w, http.StatusOK, map[string]any{"root": rv, "last_scan": sc.LastScan()})
 }
