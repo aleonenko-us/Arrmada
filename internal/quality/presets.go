@@ -27,6 +27,20 @@ func DefaultFormats() []CustomFormat {
 	}
 }
 
+// builtinFormatNames is DefaultFormats by name. A profile's own custom formats can't take
+// one of these names (ValidateFormats), so a name here is always Arrmada's format.
+var builtinFormatNames = func() map[string]bool {
+	m := map[string]bool{}
+	for _, f := range DefaultFormats() {
+		m[f.Name] = true
+	}
+	return m
+}()
+
+// isBuiltinFormat reports whether a format is one of Arrmada's (the target's formats and
+// the "Other formats" list) rather than one the owner wrote.
+func isBuiltinFormat(name string) bool { return builtinFormatNames[name] }
+
 // DefaultGroupTiers are the release-group tiers a profile starts with until it edits its
 // own: a few groups widely trusted for remuxes and WEB releases, as suggestions. They go
 // stale and are a matter of taste, so they are short, shown in the editor and editable,
