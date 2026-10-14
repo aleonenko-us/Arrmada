@@ -1,18 +1,34 @@
 # syntax=docker/dockerfile:1
 
+# Memory. Docker builds the stages side by side, and with four cores this file used to
+# peak at 6.5 GB: whisper.cpp's compilers (one of them 3.6 GB on its own, see the patch
+# below) running next to the Go compiler and Intel's. On a small server one of them was
+# killed part-way, and all Docker showed was the last line, e.g. "go build ... exit code 1".
+#
+# So the big compiles (the web UI, the Go binary and the two whisper.cpp builds) run
+# through docker/build-heavy under one shared lock — the cache mount with
+# id=arrmada-build-lock and sharing=locked, which one step holds at a time — and
+# build-heavy fits each one's parallel jobs to the free memory. The image now builds in
+# 2 GB (peak 2.0 GB measured; a cold build takes about 20% longer on four cores, since the
+# compiles no longer overlap). ARRMADA_BUILD_JOBS (a build argument) fixes the job count.
+
 # --- Stage 1: build the web UI ---
 FROM node:24-alpine AS web
 WORKDIR /src/web
+COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 # Install deps first (cached unless the lockfile changes).
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 # Build the SPA. Vite emits to ../internal/webui/dist (outside web/), so make it.
 COPY web/ ./
-RUN mkdir -p /src/internal/webui/dist && npm run build
+ARG ARRMADA_BUILD_JOBS
+RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
+    mkdir -p /src/internal/webui/dist && build-heavy 800 'npm run build'
 
 # --- Stage 2: build the static Go binary (UI embedded) ---
 FROM golang:1.25-alpine AS build
 WORKDIR /src
+COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
@@ -20,12 +36,15 @@ COPY . .
 COPY --from=web /src/internal/webui/dist ./internal/webui/dist
 ARG VERSION=docker
 ARG COMMIT=unknown
-# CGO off → fully static (modernc.org/sqlite is pure Go), so it runs on scratch.
-RUN CGO_ENABLED=0 go build \
+ARG ARRMADA_BUILD_JOBS
+# CGO off → fully static (modernc.org/sqlite is pure Go), so it runs on scratch. The
+# compiler's memory is mostly the one big SQLite package, so it isn't split into jobs.
+RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
+    build-heavy 900 'CGO_ENABLED=0 go build \
     -ldflags "-s -w \
       -X github.com/tristenlammi/arrmada/internal/buildinfo.Version=${VERSION} \
       -X github.com/tristenlammi/arrmada/internal/buildinfo.Commit=${COMMIT}" \
-    -o /out/arrmada ./cmd/arrmada
+    -o /out/arrmada ./cmd/arrmada'
 
 # --- Stage 3: HDR tooling (musl static binaries for HDR10+ / Dolby Vision metadata) ---
 FROM alpine:3.20 AS hdrtools
@@ -72,11 +91,23 @@ RUN git clone --depth 1 --branch ${VULKAN_HEADERS_VERSION} https://github.com/Kh
     cmake --install /src/vk-headers/build --prefix /usr/local
 # No trailing "|| true" on this chain: it used to swallow a failed build and produce an
 # image with no whisper-cli in it, which the app then reported as "AI unavailable".
+# The patch writes the embedded shaders as string literals, which g++ compiles in a
+# fraction of the memory (3.6 GB → 0.4 GB for the biggest file; see the patch, which
+# fails the build if it ever stops applying). The --param pair makes g++ collect its
+# garbage sooner, as it would on a small machine: the largest remaining file,
+# ggml-vulkan.cpp, then peaks at 1.5 GB instead of 1.8, for about 5% more time on it.
+COPY docker/whisper-vulkan-shaders.patch /tmp/whisper-vulkan-shaders.patch
 RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
     cd /src/whisper && \
+    git apply /tmp/whisper-vulkan-shaders.patch && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=1 \
-          -DVulkan_INCLUDE_DIR=/usr/local/include && \
-    cmake --build build -j"$(nproc)" && \
+          -DVulkan_INCLUDE_DIR=/usr/local/include \
+          -DCMAKE_CXX_FLAGS="--param ggc-min-expand=30 --param ggc-min-heapsize=65536"
+COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
+ARG ARRMADA_BUILD_JOBS
+RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
+    cd /src/whisper && \
+    build-heavy 1500 'cmake --build build -j"$JOBS"' && \
     cp build/bin/whisper-cli /usr/local/bin/whisper-cli && \
     strip /usr/local/bin/whisper-cli && \
     (ldd /usr/local/bin/whisper-cli || true)
@@ -102,8 +133,14 @@ RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov
     (. /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true) && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
           -DGGML_SYCL=ON -DGGML_SYCL_F16=ON \
-          -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx && \
-    cmake --build build -j"$(nproc)" --target whisper-cli && \
+          -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
+ARG ARRMADA_BUILD_JOBS
+# About 0.6 GB per icpx job (2.1 GB with four).
+RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
+    cd /src/whisper && \
+    build-heavy 600 'cmake --build build -j"$JOBS" --target whisper-cli'
+RUN cd /src/whisper && \
     mkdir -p /out/lib && cp build/bin/whisper-cli /out/whisper-cli && \
     ldd /out/whisper-cli | awk '/=> \/opt\/intel/{print $3}' | xargs -r -I{} cp -L {} /out/lib/ && \
     cp -L /opt/intel/oneapi/compiler/latest/lib/libur_adapter_level_zero*.so* \
