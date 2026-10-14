@@ -1193,6 +1193,8 @@ func main() {
 		"tvdb":              tvdb.VerifyKey,
 		"omdb":              omdb.VerifyKey,
 		"opensubtitles_api": subsProvider.Verify,
+		// A typed Hardcover key only; the saved one is tested through Books.
+		"hardcover": hardcover.VerifyKey,
 	}
 	restartCh := make(chan struct{}, 1)
 	srv := httpapi.New(httpapi.Deps{
@@ -1231,6 +1233,8 @@ func main() {
 		KeyVerifiers: keyVerifiers,
 		AudioServer:  audioSrv,
 		AudioManager: audioMgr,
+		// Setup's OpenSubtitles check: the key, username and password typed together.
+		SubtitleLoginVerifier: subsProvider.VerifyLogin,
 		Restart: func() {
 			select {
 			case restartCh <- struct{}{}:

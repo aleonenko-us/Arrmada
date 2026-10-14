@@ -109,3 +109,38 @@ func TestOpenSubtitlesVerify(t *testing.T) {
 		t.Errorf("bad saved key: %v", err)
 	}
 }
+
+// First-run setup tests a key, username and password typed together, before any is saved:
+// the typed ones are used in place of the saved ones, and a typed login that fails never
+// pauses the downloads the saved credentials run.
+func TestOpenSubtitlesVerifyLoginUsesTypedCredentials(t *testing.T) {
+	srv, last := fakeOpenSubtitles(t)
+	ctx := context.Background()
+	o := NewOpenSubtitles("", "", "")
+	o.baseURL = srv.URL
+
+	got, err := o.VerifyLogin(ctx, "good", "me", " secret ")
+	if err != nil || got != "OK: signed in as me, 17 downloads left today." {
+		t.Errorf("typed account: %q, %v", got, err)
+	}
+	if last.Load() != "good" {
+		t.Errorf("last request carried key %q, want the typed one", last.Load())
+	}
+	if o.token != "" {
+		t.Errorf("VerifyLogin cached a download token: %q", o.token)
+	}
+
+	// Saved credentials work; a wrong typed password is reported but leaves them running.
+	saved := NewOpenSubtitles("good", "me", "secret")
+	saved.baseURL = srv.URL
+	if _, err := saved.VerifyLogin(ctx, "", "", "wrong"); err == nil || !strings.Contains(err.Error(), "rejected the username or password") {
+		t.Errorf("wrong typed password: %v", err)
+	}
+	if bad, msg := saved.authRejected(); bad {
+		t.Errorf("a typed login's failure paused the saved credentials: %q", msg)
+	}
+	// Empty typed values fall back to the saved ones.
+	if _, err := saved.VerifyLogin(ctx, "", "", ""); err != nil {
+		t.Errorf("saved credentials: %v", err)
+	}
+}

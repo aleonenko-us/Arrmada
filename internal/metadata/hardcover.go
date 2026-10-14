@@ -519,6 +519,34 @@ func (h *Hardcover) Verify(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s · search returned %d results · fetched %q by %s (%d)%s · %d of %d requests used today", who, len(hits), d.Title, d.Author, d.Year, series, used, budget), nil
 }
 
+// VerifyKey is the Test of a key typed and not yet saved (first-run setup, Settings →
+// Connections): one "who am I" request with candidate, sent once and kept nowhere. It runs
+// on a throwaway client, so the saved key, the caches and the catalogue's own client are
+// untouched; it still counts against the shared daily budget. An empty candidate is the
+// full Verify of the saved key.
+func (h *Hardcover) VerifyKey(ctx context.Context, candidate string) (string, error) {
+	key := strings.TrimSpace(candidate)
+	if key == "" {
+		return h.Verify(ctx)
+	}
+	probe := &Hardcover{key: func() string { return key }, endpoint: h.endpoint, http: h.http, budget: h.budget}
+	var me struct {
+		Me []struct {
+			Username string `json:"username"`
+		} `json:"me"`
+	}
+	if err := probe.query(ctx, `{ me { username } }`, nil, &me); err != nil {
+		return "", err
+	}
+	if len(me.Me) == 0 {
+		return "", errors.New("hardcover: the key was not accepted (no account came back)")
+	}
+	if me.Me[0].Username != "" {
+		return "OK: Hardcover accepted the key (signed in as " + me.Me[0].Username + ").", nil
+	}
+	return "OK: Hardcover accepted the key.", nil
+}
+
 // SearchBooks finds books by title/author/ISBN. Hardcover's index already folds
 // editions into their book, so one novel is one result.
 func (h *Hardcover) SearchBooks(ctx context.Context, query string) ([]BookResult, error) {
