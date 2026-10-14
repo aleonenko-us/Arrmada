@@ -1,8 +1,9 @@
-// Package insights is Arrmada's Plex watch-monitoring module (the Tautulli replacement): the
-// Plex connection and its monitoring status, live activity, the poller that records every
-// play and buffer event, Tautulli import, and the history, people, graphs and reliability
-// reads over the recorded plays. Those reads use only the database, so they work before (or
-// without) a connected server.
+// Package insights is Arrmada's watch-monitoring module (the Tautulli replacement): the
+// Plex connection and its monitoring status, live activity on Plex and Jellyfin, a poller
+// per server that records every play (and Plex's buffer events), Tautulli import, and the
+// history, people, graphs and reliability reads over the recorded plays — each narrowable
+// to one server. Those reads use only the database, so they work before (or without) a
+// connected server.
 package insights
 
 import (
@@ -17,6 +18,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/geoip"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 	"github.com/tristenlammi/arrmada/internal/settings"
 )
@@ -50,32 +52,30 @@ type Service struct {
 	bus      *eventbus.Bus
 	log      *slog.Logger
 
-	live map[string]*liveSession // in-flight sessions (poller goroutine only)
-	// ownerLookupAt rate-limits the plex.tv account lookup. Poller-goroutine only, same
-	// as live — nothing else touches it.
+	// plex and jf are each server's in-flight streams and what was playing at its last
+	// poll; each server's poller goroutine owns its tracker's live map.
+	plex, jf *tracker
+	// ownerLookupAt rate-limits the plex.tv account lookup. Plex-poller-goroutine only,
+	// same as the Plex tracker's live map — nothing else touches it.
 	ownerLookupAt time.Time
 
-	// playing is how many streams were playing at the last successful poll, and playingAt
-	// when that was — read from other goroutines (Convert pauses while someone watches).
-	playing   atomic.Int32
-	playingAt atomic.Int64
+	// jfw is the Jellyfin connection and the source that reads its sessions, once main
+	// wires it (SetJellyfin); nil until then. Read from any goroutine.
+	jfw atomic.Pointer[jfWiring]
 
-	// health is how polls (or identity probes) have been going, for the health panel.
+	// health is how Plex polls (or identity probes) have been going, for the health panel.
+	// Jellyfin keeps its own record (jellyfinsvc.Service.Health).
 	health pollHealth
 
 	// links is the Plex library index behind Watch on Plex (plexlinks.go).
 	links plexLinks
 }
 
-// Watching reports whether anyone is playing something on Plex right now. A paused stream
-// doesn't count, and neither does a reading older than a few minutes (Plex unreachable, or
-// monitoring switched off) — then nobody is known to be watching.
+// Watching reports whether anyone is playing something on Plex or Jellyfin right now. A
+// paused stream doesn't count, and neither does a reading older than a few minutes (the
+// server unreachable, or monitoring switched off) — then nobody is known to be watching.
 func (s *Service) Watching() bool {
-	at := s.playingAt.Load()
-	if at == 0 || time.Since(time.Unix(at, 0)) > 3*time.Minute {
-		return false
-	}
-	return s.playing.Load() > 0
+	return s.plex.watching(time.Now()) || s.jf.watching(time.Now())
 }
 
 // NewService wires the module. geo may be nil (geolocation then only flags LAN as "Local").
@@ -83,7 +83,8 @@ func NewService(db *sql.DB, set *settings.Service, geo *geoip.Resolver, bus *eve
 	if geo == nil {
 		geo = geoip.New("")
 	}
-	return &Service{settings: set, geo: geo, repo: &repo{db: db}, bus: bus, log: log, live: map[string]*liveSession{}}
+	return &Service{settings: set, geo: geo, repo: &repo{db: db}, bus: bus, log: log,
+		plex: newTracker(mediaserver.Plex), jf: newTracker(mediaserver.Jellyfin)}
 }
 
 // Config is the connection config exposed to the UI (token is never returned in full), plus

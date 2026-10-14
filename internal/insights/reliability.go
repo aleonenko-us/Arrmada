@@ -14,6 +14,10 @@ type Reliability struct {
 	ByPlatform []BufferGroup      `json:"by_platform"`
 	ByTitle    []BufferGroup      `json:"by_title"`
 	Events     []BufferEvent      `json:"events"`
+	// Jellyfin doesn't report buffering, so its plays are left out of every figure above
+	// (a play that can't stall would only dilute the rates). JellyfinPlays is how many were
+	// left out, so the page can say so.
+	JellyfinPlays int `json:"jellyfin_plays"`
 }
 
 // CauseCount is how many buffer spells fell into a diagnosed cause bucket.
@@ -75,19 +79,31 @@ func causeLabel(cause string) string {
 	}
 }
 
-// Reliability computes the buffering-history bundle over the last windowDays.
-func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability, error) {
+// Reliability computes the buffering-history bundle over the last windowDays. Only Plex
+// plays count (Jellyfin reports no buffering): asking for server "jellyfin" answers with
+// nothing but the number of Jellyfin plays left out.
+func (s *Service) Reliability(ctx context.Context, windowDays int, server string) (Reliability, error) {
 	if windowDays <= 0 {
 		windowDays = 30
 	}
 	since := windowStart(windowDays)
 	// Non-nil so empty windows serialize as [] not null (a null crashes the Reliability tab).
-	out := Reliability{Causes: []CauseCount{}, Events: []BufferEvent{}}
+	out := Reliability{Causes: []CauseCount{}, Events: []BufferEvent{},
+		ByUser: []BufferGroup{}, ByPlatform: []BufferGroup{}, ByTitle: []BufferGroup{}}
+	if server != ServerPlex {
+		if err := s.repo.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stream_sessions WHERE server = 'jellyfin' AND started_at >= ?`, since).
+			Scan(&out.JellyfinPlays); err != nil {
+			return Reliability{}, err
+		}
+	}
+	if server == ServerJellyfin {
+		return out, nil
+	}
 
 	// Summary.
 	err := s.repo.db.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(CASE WHEN buffer_count>0 THEN 1 ELSE 0 END),0), COALESCE(SUM(buffer_count),0)
-		FROM stream_sessions WHERE started_at >= ?`, since).
+		FROM stream_sessions WHERE started_at >= ? AND server = 'plex'`, since).
 		Scan(&out.Summary.TotalSessions, &out.Summary.BufferedSessions, &out.Summary.TotalEvents)
 	if err != nil {
 		return Reliability{}, err
@@ -95,8 +111,10 @@ func (s *Service) Reliability(ctx context.Context, windowDays int) (Reliability,
 	if out.Summary.TotalSessions > 0 {
 		out.Summary.BufferRatePct = round1(float64(out.Summary.BufferedSessions) * 100 / float64(out.Summary.TotalSessions))
 	}
+	// Buffer events only ever belong to Plex plays; the join says so anyway.
 	_ = s.repo.db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(duration_ms),0) FROM buffer_events WHERE at >= ?`, since).
+		`SELECT COALESCE(SUM(b.duration_ms),0) FROM buffer_events b JOIN stream_sessions s ON s.id = b.session_id
+		 WHERE b.at >= ? AND s.server = 'plex'`, since).
 		Scan(&out.Summary.TotalStallMS)
 
 	// Offenders — only groups that actually buffered, worst first.
@@ -165,7 +183,7 @@ const (
 	minOffenderStallMS = 10_000
 )
 
-// bufferGroups rolls sessions up by a column/expression, keeping only groups whose
+// bufferGroups rolls Plex sessions up by a column/expression, keeping only groups whose
 // buffering clears the offender floor, worst observed stall time first. nameExpr names
 // each group (MAX over the group: one representative value).
 func (s *Service) bufferGroups(ctx context.Context, groupExpr, nameExpr string, since int64) ([]BufferGroup, error) {
@@ -174,7 +192,7 @@ func (s *Service) bufferGroups(ctx context.Context, groupExpr, nameExpr string, 
 				CASE WHEN s.buffer_count>0 THEN 1 ELSE 0 END buffered,
 				s.buffer_count events,
 				COALESCE((SELECT SUM(b.duration_ms) FROM buffer_events b WHERE b.session_id = s.id),0) stall_ms
-			FROM stream_sessions s WHERE s.started_at >= ? AND ` + groupExpr + ` <> ''
+			FROM stream_sessions s WHERE s.started_at >= ? AND s.server = 'plex' AND ` + groupExpr + ` <> ''
 		)
 		GROUP BY g
 		HAVING SUM(events) >= ` + strconv.Itoa(minOffenderEvents) + ` OR SUM(stall_ms) >= ` + strconv.Itoa(minOffenderStallMS) + `

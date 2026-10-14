@@ -33,7 +33,7 @@ func TestPublishPayloadCarriesFilterFields(t *testing.T) {
 		Thumb: "/library/metadata/501/thumb/1", ShowThumb: "/library/metadata/90/thumb/2"}
 	local := plex.Session{SessionKey: "10", RatingKey: "77", UserID: "43", UserName: "kim", Type: "movie",
 		Title: "Dune", State: "playing", Address: "192.168.1.20", Location: "lan"}
-	svc.reconcile(context.Background(), []plex.Session{remote, local}, time.Unix(1_700_000_000, 0))
+	svc.reconcile(context.Background(), svc.plex, []plex.Session{remote, local}, time.Unix(1_700_000_000, 0))
 
 	got := map[string]map[string]any{}
 	for len(got) < 2 {

@@ -21,7 +21,8 @@ import (
 // ("plex:/library/metadata/…/thumb/…"); at send time Arrmada fetches it itself, with the
 // Plex token, into a temporary file Apprise attaches, and deletes the file after that
 // attempt whether it went through or not. The token never leaves the server: it isn't in
-// the stored row, the attachment argument or the file's name.
+// the stored row, the attachment argument or the file's name. A Jellyfin stream alert works
+// the same way with "jellyfin:/Items/<id>/Images/Primary" and Jellyfin's key.
 //
 // Only images from the hosts below are ever handed to Apprise as a URL, so a poster link
 // can't point it at the server's own network. A poster that can't be had is left off;
@@ -41,6 +42,14 @@ const plexAttachPrefix = "plex:"
 // plexImageRe is the shape of a Plex poster or art path: an item's thumb or art, with
 // Plex's optional version stamp.
 var plexImageRe = regexp.MustCompile(`^/library/metadata/[0-9]+/(thumb|art)(/[0-9]+)?$`)
+
+// jellyfinAttachPrefix marks an attachment that is a Jellyfin item's poster; the rest is
+// exactly "/Items/<32 hex>/Images/Primary" (jellyfinImageRe), the one shape Insights'
+// image fetch accepts too. It's fetched the same way as a Plex one, with Jellyfin's key
+// staying on the server.
+const jellyfinAttachPrefix = "jellyfin:"
+
+var jellyfinImageRe = regexp.MustCompile(`^/Items/[0-9a-f]{32}/Images/Primary$`)
 
 // maxPosterBytes bounds a fetched Plex image.
 const maxPosterBytes = 10 << 20
@@ -63,6 +72,9 @@ func validAttach(a string) bool {
 	if p, ok := strings.CutPrefix(a, plexAttachPrefix); ok {
 		return plexImageRe.MatchString(p)
 	}
+	if p, ok := strings.CutPrefix(a, jellyfinAttachPrefix); ok {
+		return jellyfinImageRe.MatchString(p)
+	}
 	return AllowedAttachURL(a)
 }
 
@@ -70,7 +82,8 @@ func validAttach(a string) bool {
 // "" when it has none.
 type PosterFunc func(ctx context.Context, kind string, id int64) string
 
-// ImageFunc fetches a Plex image by its path, authenticated server-side. Insights.Image.
+// ImageFunc fetches a Plex image by its path (or a Jellyfin one, "jellyfin:/Items/…"),
+// authenticated server-side. Insights.Image.
 type ImageFunc func(ctx context.Context, path string) (*http.Response, error)
 
 // hooks are what main wires in after the service starts (the settings, the libraries and
@@ -124,8 +137,13 @@ func (s *Service) attachFor(ctx context.Context, key string, d map[string]any) s
 	case "book.imported":
 		kind = "book"
 	case eventStreamStarted, eventBuffering:
-		if thumb := str(d, "thumb"); plexImageRe.MatchString(thumb) {
+		thumb := str(d, "thumb")
+		if plexImageRe.MatchString(thumb) {
 			return plexAttachPrefix + thumb
+		}
+		// A Jellyfin stream's thumb already carries its prefix ("jellyfin:/Items/…").
+		if p, ok := strings.CutPrefix(thumb, jellyfinAttachPrefix); ok && jellyfinImageRe.MatchString(p) {
+			return thumb
 		}
 		return ""
 	default:
@@ -152,13 +170,17 @@ func (s *Service) resolveAttach(ctx context.Context, a string) (arg string, done
 	if a == "" || !validAttach(a) {
 		return "", noop
 	}
+	// The image function takes a Plex path as is, and a Jellyfin one with its prefix.
 	p, ok := strings.CutPrefix(a, plexAttachPrefix)
 	if !ok {
-		return a, noop
+		if !strings.HasPrefix(a, jellyfinAttachPrefix) {
+			return a, noop
+		}
+		p = a
 	}
 	file, err := s.fetchPlexImage(ctx, p)
 	if err != nil {
-		s.log.Debug("notify: couldn't fetch the Plex poster for an alert", "err", err)
+		s.log.Debug("notify: couldn't fetch the server's poster for an alert", "err", err)
 		return "", noop
 	}
 	return file, func() {

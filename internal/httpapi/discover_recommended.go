@@ -148,8 +148,8 @@ func (a *api) recommendationSeeds(ctx context.Context, userID int64) ([]seed, ma
 	// only Plex's internal rating_key, but a watched title is almost always in the
 	// library, which carries the TMDB id.
 	if a.deps.Insights != nil && a.deps.Auth != nil {
-		if plexID := a.deps.Auth.PlexIDForUser(ctx, userID); plexID != "" {
-			if watched, err := a.deps.Insights.RecentlyWatchedByUser(ctx, plexID, recWatchSeedScan); err == nil {
+		if ids := a.watchIdentities(ctx, userID); len(ids) > 0 {
+			if watched, err := a.deps.Insights.RecentlyWatchedByUser(ctx, recWatchSeedScan, ids...); err == nil {
 				for _, wt := range watched {
 					if len(seeds) >= recSeedCap {
 						break

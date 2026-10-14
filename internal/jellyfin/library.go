@@ -99,8 +99,10 @@ type MediaStream struct {
 type ItemsQuery struct {
 	// UserID scopes the query to what that user may see. An API key lists everything
 	// without one (checked against Jellyfin 12.2), so the index leaves it empty.
-	UserID           string
-	ParentID         string
+	UserID   string
+	ParentID string
+	// IDs limits the answer to these items (Insights reads a playing item's versions).
+	IDs              []string
 	IncludeItemTypes []string
 	Recursive        bool
 	Fields           []string // nil means DefaultItemFields
@@ -117,6 +119,9 @@ func (q ItemsQuery) values() url.Values {
 	}
 	if q.ParentID != "" {
 		v.Set("parentId", q.ParentID)
+	}
+	if len(q.IDs) > 0 {
+		v.Set("ids", strings.Join(q.IDs, ","))
 	}
 	if len(q.IncludeItemTypes) > 0 {
 		v.Set("includeItemTypes", strings.Join(q.IncludeItemTypes, ","))

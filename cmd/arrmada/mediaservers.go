@@ -58,6 +58,12 @@ func setupMediaServers(d mediaServerDeps) *mediaServers {
 	// The Jellyfin library index behind its Watch links: rebuilt every 30 minutes and
 	// after each scan.
 	d.Group.Loop("jellyfin: library index", jf.RunIndex)
+	// Insights watches Jellyfin too: its own poller records plays (while Jellyfin's
+	// monitoring switch is on) and counts towards Convert's "someone is watching".
+	if d.Insights != nil {
+		d.Insights.SetJellyfin(jf)
+		d.Group.Loop("insights: jellyfin poller", d.Insights.RunJellyfin)
+	}
 	m := &mediaServers{Plex: d.Plex, Jellyfin: jf, JellyfinScan: jfScan, insights: d.Insights}
 	m.Registry = mediaserver.NewRegistry(d.Insights.MediaServer(), jf)
 	return m

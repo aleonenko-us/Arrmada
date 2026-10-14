@@ -18,4 +18,11 @@ describe("hwBadge", () => {
     expect(hwBadge(t({ decision: "direct_play", hw_requested: true }))).toBeNull();
     expect(hwBadge(t({ decision: "direct_stream", hw_requested: true }))).toBeNull();
   });
+  it("names Jellyfin's configured hardware and never claims a fallback", () => {
+    expect(hwBadge(t({ server: "jellyfin", hw_transcode: true, hw_title: "vaapi" }))).toEqual({ label: "HW (vaapi)", fellBack: false });
+    expect(hwBadge(t({ server: "jellyfin", hw_transcode: false, hw_requested: true }))).toEqual({ label: "CPU", fellBack: false });
+    expect(hwBadge(t({ server: "jellyfin", decision: "direct_play", hw_transcode: true, hw_title: "qsv" }))).toBeNull();
+    // A Plex stream that says nothing about its server is read as before.
+    expect(hwBadge(t({ server: "plex", hw_requested: true }))).toEqual({ label: "CPU", fellBack: true });
+  });
 });

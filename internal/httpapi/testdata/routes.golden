@@ -146,6 +146,7 @@ GET /api/v1/insights/plex/auth/{id} staff -
 GET /api/v1/insights/plex/scan staff -
 GET /api/v1/insights/recently-added staff -
 GET /api/v1/insights/reliability staff -
+GET /api/v1/insights/servers staff -
 GET /api/v1/insights/stats staff -
 GET /api/v1/insights/users staff -
 GET /api/v1/insights/users/{id} staff -
@@ -501,6 +502,7 @@ PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -
 PUT /api/v1/jellyfin admin -
+PUT /api/v1/jellyfin/monitoring staff -
 PUT /api/v1/jellyfin/scan staff -
 PUT /api/v1/logs/level admin -
 PUT /api/v1/me/apprise user ext

@@ -7,19 +7,22 @@ import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
 import { IconButton, Modal, useToast } from "../ui";
-import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsStream, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
+import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsServer, type InsightsServerStatus, type InsightsStream, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
 import { useSearchParamState } from "../lib/useSearchState";
 import { Page } from "../ui/Page";
-import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, type Metric } from "./insights/shared";
+import { ServerMark, SERVER_LABEL } from "../components/brand";
+import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, InsightsServers, JellyfinNoBuffering, RowServer, SERVER_FILTERS, ServerChips, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, serverArg, type Metric, type ServerFilter } from "./insights/shared";
 import { HistoryView } from "./insights/HistoryView";
 import { LibraryView } from "./insights/LibraryView";
 import { InsightsPerson } from "./InsightsPerson";
 import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
 
-// Insights — Arrmada's Plex watch monitoring (a Tautulli replacement): live Activity, History,
-// People, Graphs and Reliability (buffering). The Plex connection and the alerts used to be
-// tabs here; they live in Settings → Connections (the Plex card) and Settings → Alerts now.
+// Insights — Arrmada's watch monitoring for Plex and Jellyfin (a Tautulli replacement): live
+// Activity, History, People, Graphs and Reliability (buffering). With both servers connected,
+// server chips narrow every tab to one (?server=, in the address) and each row names its
+// server. The connections and the alerts used to be tabs here; they live in Settings →
+// Connections and Settings → Alerts now.
 type Tab = "activity" | "history" | "people" | "graphs" | "reliability" | "library";
 const TABS: { key: Tab; label: string }[] = [
   { key: "activity", label: "Activity" },
@@ -43,24 +46,30 @@ const BADGE: Record<PlexStatus, { label: string; color: string; soft: string }> 
   unreachable: { label: "Plex unreachable", color: "var(--reject-text)", soft: "var(--reject-soft)" },
 };
 
-function MonitoringBadge({ c }: { c: PlexConfig }) {
+// MonitoringBadge is one server's monitoring state. With two servers connected each badge
+// carries its server's mark (and name, for screen readers).
+function MonitoringBadge({ c, server = "plex", marked }: { c: Pick<PlexConfig, "status" | "last_error" | "last_poll_at">; server?: InsightsServer; marked?: boolean }) {
   const b = BADGE[c.status] ?? BADGE.unconfigured;
+  const name = SERVER_LABEL[server];
+  const label = c.status === "unreachable" ? `${name} unreachable` : b.label;
   const title = c.status === "unreachable" && c.last_error ? c.last_error
-    : c.status === "recording" && c.last_poll_at ? `Last answer from Plex ${fmtDate(c.last_poll_at)}` : undefined;
+    : c.status === "recording" && c.last_poll_at ? `Last answer from ${name} ${fmtDate(c.last_poll_at)}` : undefined;
   return (
     <span title={title} className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold" style={{ border: `1px solid ${b.color}`, background: b.soft }}>
       <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
-      {b.label}
+      {marked && c.status !== "unreachable" && <><ServerMark server={server} size={13} /><span className="sr-only">{name}: </span></>}
+      {label}
     </span>
   );
 }
 
-// MonitoringOff sits above the recorded-plays tabs while Plex is connected but monitoring
-// is switched off, so an empty or stale History isn't mistaken for nobody watching.
-function MonitoringOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void }) {
+// MonitoringOff sits above the recorded-plays tabs while a server is connected but its
+// monitoring is switched off, so an empty or stale History isn't mistaken for nobody
+// watching. With two servers it names the one that's off.
+function MonitoringOff({ busy, onTurnOn, server }: { busy: boolean; onTurnOn: () => void; server?: InsightsServer }) {
   return (
     <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-sm" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--ink)" }}>
-      <span>Monitoring is off — nothing new is recorded.</span>
+      <span>{server ? `Monitoring is off on ${SERVER_LABEL[server]}` : "Monitoring is off"} — nothing new is recorded.</span>
       <button onClick={onTurnOn} disabled={busy} className="rounded-lg px-3 py-1 text-sm font-semibold disabled:opacity-60" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
         {busy ? "Turning on…" : "Turn on"}
       </button>
@@ -97,33 +106,56 @@ function InsightsPage() {
   // Re-read every 15 s for the monitoring status, so the badge turns "unreachable" (and
   // back) on its own. The form that edits these settings lives in Settings now, so
   // nothing here is being typed into for a poll to overwrite.
-  usePoll(() => insightsApi.insightsConfig()
-    .then(setCfg)
-    .catch(() => { if (!cfgDone) say("Could not load Plex settings", true); })
-    .finally(() => setCfgDone(true)), 15000);
+  // The servers list says whether Jellyfin is connected and how its monitoring is going.
+  // An older server without the list is Plex only.
+  const [servers, setServers] = useState<InsightsServerStatus[]>([]);
+  usePoll(() => Promise.all([
+    insightsApi.insightsConfig()
+      .then(setCfg)
+      .catch(() => { if (!cfgDone) say("Could not load Plex settings", true); }),
+    insightsApi.insightsServers().then(setServers).catch(() => setServers([])),
+  ]).finally(() => setCfgDone(true)), 15000);
   const status = cfg?.status;
-  const connected = !!status && status !== "unconfigured";
+  const jellyfin = servers.find((s) => s.server === "jellyfin" && s.configured);
+  const plexOn = !!status && status !== "unconfigured";
+  const connected = plexOn || !!jellyfin;
+  // Both connected: the chips show and every row names its server.
+  const multi = plexOn && !!jellyfin;
+  const [serverParam, setServer] = useSearchParamState<ServerFilter>("server", "all", { allowed: SERVER_FILTERS });
+  // A link to one server while only the other is connected shows everything instead.
+  const server = multi ? serverArg(serverParam) : undefined;
 
   // Turn on is the banner's one-click fix; it saves only the switch (a missing URL keeps
   // the saved one).
   const [turningOn, setTurningOn] = useState(false);
-  const turnOn = async () => {
-    if (!cfg) return;
+  const turnOn = async (which: InsightsServer) => {
     setTurningOn(true);
-    try { setCfg(await insightsApi.updateInsightsConfig({ enabled: true })); say("Monitoring is on"); }
-    catch (e) { say((e as Error).message, true); } finally { setTurningOn(false); }
+    try {
+      if (which === "jellyfin") {
+        await insightsApi.updateJellyfinMonitoring({ monitoring_enabled: true });
+        setServers(await insightsApi.insightsServers());
+      } else {
+        if (!cfg) return;
+        setCfg(await insightsApi.updateInsightsConfig({ enabled: true }));
+      }
+      say("Monitoring is on");
+    } catch (e) { say((e as Error).message, true); } finally { setTurningOn(false); }
   };
+  // The first connected server (in the filter) whose monitoring is off.
+  const offServer: InsightsServer | undefined =
+    status === "off" && server !== "jellyfin" ? "plex" : jellyfin?.status === "off" && server !== "plex" ? "jellyfin" : undefined;
 
   return (
     <>
       <PageHeader title="Insights" />
       <Page>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <p className="max-w-[64ch] text-base text-ink-dim">Watch monitoring for your Plex server — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
-            {status === "unconfigured" && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
+          <p className="max-w-[64ch] text-base text-ink-dim">Watch monitoring for your {multi ? "Plex and Jellyfin servers" : jellyfin ? "Jellyfin server" : "Plex server"} — who's streaming what, right now and historically, with stream quality, transcode diagnostics and buffering reliability.
+            {!connected && <> <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>Connect your Plex server in Settings → Connections</Link> to begin.</>}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            {cfg && <MonitoringBadge c={cfg} />}
+            {cfg && (plexOn || !jellyfin) && <MonitoringBadge c={cfg} marked={multi} />}
+            {jellyfin && <MonitoringBadge c={jellyfin} server="jellyfin" marked={multi || !plexOn} />}
             {/* Monitoring, library updates, sign-in and linked accounts: one Plex page. */}
             <Link to={LINKS.plex} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Plex settings →</Link>
           </div>
@@ -131,26 +163,30 @@ function InsightsPage() {
 
         <Tabs tabs={TABS} value={tab} onChange={setTab} idPrefix="insights" label="Insights sections" />
 
-        {status === "off" && RECORDED_TABS.includes(tab) && <MonitoringOff busy={turningOn} onTurnOn={turnOn} />}
+        {multi && <div className="mb-3"><ServerChips value={serverParam} onChange={setServer} /></div>}
+
+        {offServer && RECORDED_TABS.includes(tab) && <MonitoringOff busy={turningOn} onTurnOn={() => turnOn(offServer)} server={multi || offServer === "jellyfin" ? offServer : undefined} />}
 
         <InsightsCfg.Provider value={cfg}>
+        <InsightsServers.Provider value={{ multi }}>
         <TabPanel idPrefix="insights" value={tab}>
           {!cfgDone ? (
             <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading…</div>
           ) : tab === "activity" ? (
-            <ActivityView connected={!!connected} />
+            <ActivityView key={server ?? "all"} connected={!!connected} server={server} />
           ) : tab === "history" ? (
-            <HistoryView connected={!!connected} userLink={(id, name) => <UserLink id={id} name={name} />} />
+            <HistoryView connected={!!connected} server={server} userLink={(id, name) => <UserLink id={id} name={name} />} />
           ) : tab === "people" ? (
-            <UsersView connected={!!connected} />
+            <UsersView connected={!!connected} server={server} />
           ) : tab === "graphs" ? (
-            <GraphsView connected={!!connected} />
+            <GraphsView connected={!!connected} server={server} />
           ) : tab === "library" ? (
-            <LibraryView connected={!!connected} />
+            <LibraryView connected={!!connected} server={server} />
           ) : (
-            <ReliabilityView connected={!!connected} />
+            <ReliabilityView connected={!!connected} server={server} jellyfin={!!jellyfin} />
           )}
         </TabPanel>
+        </InsightsServers.Provider>
         </InsightsCfg.Provider>
       </Page>
     </>
@@ -158,7 +194,7 @@ function InsightsPage() {
 }
 
 /* ============================= ACTIVITY ============================= */
-function ActivityView({ connected }: { connected: boolean }) {
+function ActivityView({ connected, server }: { connected: boolean; server?: InsightsServer }) {
   const [act, setAct] = useState<InsightsActivity | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<InsightsStream | null>(null);
@@ -169,7 +205,9 @@ function ActivityView({ connected }: { connected: boolean }) {
   const clock = useRef<Record<string, { base: number; at: number }>>({});
   const [, tickNow] = useState(0);
 
-  usePoll(() => insightsApi.insightsActivity().then((a) => { setAct(a); setErr(null); }).catch((e) => { setErr((e as Error).message); }), connected ? 4000 : null);
+  // The page mounts this afresh for each server filter (its key), so a new filter never
+  // shows the other server's streams for a beat.
+  usePoll(() => insightsApi.insightsActivity(server).then((a) => { setAct(a); setErr(null); }).catch((e) => { setErr((e as Error).message); }), connected ? 4000 : null);
 
   // Re-render once a second so playing streams' progress interpolates in real time.
   usePoll(() => tickNow((n) => n + 1), 1000, { immediate: false });
@@ -201,7 +239,7 @@ function ActivityView({ connected }: { connected: boolean }) {
     return (
       <div className="flex flex-col gap-3.5">
         <SetupState tab="activity" />
-        <HomeExtras live={false} />
+        <HomeExtras live={false} server={server} />
       </div>
     );
   }
@@ -214,7 +252,7 @@ function ActivityView({ connected }: { connected: boolean }) {
   };
   let live: ReactNode;
   if (err) {
-    live = <div className="rounded-xl p-6 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn’t reach Plex: {err}</div>;
+    live = <div className="rounded-xl p-6 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn’t reach {server ? SERVER_LABEL[server] : "Plex"}: {err}</div>;
   } else if (!act) {
     live = <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading activity…</div>;
   } else {
@@ -229,6 +267,11 @@ function ActivityView({ connected }: { connected: boolean }) {
             <BW label="WAN" v={act.bandwidth.wan_kbps} />
           </div>
         </div>
+        {(Object.entries(act.errors ?? {}) as [InsightsServer, string][]).map(([srv, e]) => (
+          <div key={srv} role="status" className="rounded-lg px-3.5 py-2 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
+            Couldn’t reach {SERVER_LABEL[srv] ?? srv} — its streams aren’t listed: {e}
+          </div>
+        ))}
         {streams.length === 0 ? (
           <div className="rounded-xl p-12 text-center text-base text-ink-faint" style={{ border: "1px dashed var(--line)" }}>No active streams.</div>
         ) : (
@@ -245,7 +288,7 @@ function ActivityView({ connected }: { connected: boolean }) {
   return (
     <div className="flex flex-col gap-3.5">
       {live}
-      <HomeExtras live />
+      <HomeExtras live server={server} />
       {detail && <DeepDive s={detail} onClose={() => setDetail(null)} />}
     </div>
   );
@@ -255,7 +298,7 @@ function ActivityView({ connected }: { connected: boolean }) {
 // HomeExtras: watch statistics (from the database) plus library counts and recently added,
 // which Plex answers live. Without a server (live=false) the Plex calls are skipped, and the
 // block shows only when there are imported statistics to show.
-function HomeExtras({ live }: { live: boolean }) {
+function HomeExtras({ live, server }: { live: boolean; server?: InsightsServer }) {
   const [stats, setStats] = useState<InsightsStats | null>(null);
   const [libs, setLibs] = useState<LibraryStat[] | null>(null);
   const [recent, setRecent] = useState<RecentItem[] | null>(null);
@@ -264,13 +307,13 @@ function HomeExtras({ live }: { live: boolean }) {
   // these two parts need the server, so they say so in place instead of vanishing.
   const [plexErr, setPlexErr] = useState<string | null>(null);
 
-  useEffect(() => { insightsApi.insightsStats(30, metric).then(setStats).catch(() => setStats(null)); }, [metric]);
+  useEffect(() => { insightsApi.insightsStats(30, metric, server).then(setStats).catch(() => setStats(null)); }, [metric, server]);
   useEffect(() => {
     if (!live) return;
     const failed = (e: unknown) => setPlexErr((e as Error).message || "no answer");
-    insightsApi.insightsLibraries().then(setLibs).catch((e) => { setLibs([]); failed(e); });
-    insightsApi.insightsRecentlyAdded(20).then(setRecent).catch((e) => { setRecent([]); failed(e); });
-  }, [live]);
+    insightsApi.insightsLibraries(server).then(setLibs).catch((e) => { setLibs([]); failed(e); });
+    insightsApi.insightsRecentlyAdded(20, server).then(setRecent).catch((e) => { setRecent([]); failed(e); });
+  }, [live, server]);
 
   const hasStats = stats && (stats.most_watched_movies.length || stats.most_watched_shows.length || stats.most_active_users.length);
   if (!live && !hasStats) return null;
@@ -292,7 +335,7 @@ function HomeExtras({ live }: { live: boolean }) {
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
             <StatCard title="Most watched movies" rows={stats!.most_watched_movies.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
             <StatCard title="Most watched TV" rows={stats!.most_watched_shows.map((m) => ({ label: m.title, thumb: m.thumb_url, v: metric === "plays" ? m.plays : m.secs }))} metric={metric} />
-            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, to: u.id ? personPath(u.id) : undefined, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
+            <StatCard title="Most active users" rows={stats!.most_active_users.map((u) => ({ label: u.name, to: u.id ? personPath(u.id) : undefined, server: u.server, v: metric === "plays" ? u.plays : u.secs }))} metric={metric} />
             <StatCard title="Most active platforms" rows={stats!.most_active_platforms.map((p) => ({ label: p.name, v: metric === "plays" ? p.plays : p.secs }))} metric={metric} />
           </div>
         )}
@@ -310,9 +353,9 @@ function HomeExtras({ live }: { live: boolean }) {
           <h3 className="mb-2.5 text-md font-bold">Library statistics</h3>
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(220px, 100%), 1fr))" }}>
             {libs.map((l) => (
-              <div key={l.title} className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+              <div key={`${l.server ?? "plex"}:${l.title}`} className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
                 <div className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{libTypeLabel(l.type)}</div>
-                <div className="mt-0.5 text-md font-semibold">{l.title}</div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-md font-semibold"><span className="min-w-0 truncate">{l.title}</span><RowServer server={l.server} /></div>
                 <div className="mt-1 text-3xl font-extrabold tracking-tight">{l.count.toLocaleString()}</div>
               </div>
             ))}
@@ -345,7 +388,7 @@ function libTypeLabel(t: string): string {
   return t === "movie" ? "Movies" : t === "show" ? "TV Shows" : t === "artist" ? "Music" : t;
 }
 
-function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; to?: string; v: number }[]; metric: "plays" | "duration" }) {
+function StatCard({ title, rows, metric }: { title: string; rows: { label: string; thumb?: string; to?: string; server?: string; v: number }[]; metric: "plays" | "duration" }) {
   return (
     <div className="rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
       <div className="mb-2 text-base font-bold">{title}</div>
@@ -356,6 +399,7 @@ function StatCard({ title, rows, metric }: { title: string; rows: { label: strin
               <span className="w-3 flex-none font-mono text-xs text-ink-faint">{i + 1}</span>
               {r.thumb !== undefined && <span className="h-7 w-5 flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)" }}>{r.thumb ? <img src={r.thumb} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}</span>}
               {r.to ? <Link to={r.to} className="min-w-0 flex-1 truncate hover:underline">{r.label}</Link> : <span className="min-w-0 flex-1 truncate">{r.label}</span>}
+              <RowServer server={r.server} />
               <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--accent-text)" }}>{metric === "plays" ? r.v : fmtHours(r.v)}</span>
             </li>
           ))}
@@ -366,10 +410,10 @@ function StatCard({ title, rows, metric }: { title: string; rows: { label: strin
 }
 
 /* ============================= USERS ============================= */
-function UsersView({ connected }: { connected: boolean }) {
+function UsersView({ connected, server }: { connected: boolean; server?: InsightsServer }) {
   const [users, setUsers] = useState<UserEntry[] | null>(null);
   // Users come from recorded plays, so an import shows here before Plex is connected.
-  useEffect(() => { insightsApi.insightsUsers().then(setUsers).catch(() => setUsers([])); }, []);
+  useEffect(() => { insightsApi.insightsUsers(server).then(setUsers).catch(() => setUsers([])); }, [server]);
   if (!users) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading people…</div>;
   if (users.length === 0 && !connected) return <SetupState tab="people" />;
   if (users.length === 0) return <div className="rounded-xl p-10 text-center text-base text-ink-faint" style={{ border: "1px solid var(--line)" }}>Nobody has watched anything yet.</div>;
@@ -383,7 +427,7 @@ function UsersView({ connected }: { connected: boolean }) {
             {users.map((u, i) => (
               <tr key={u.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
                 <td className="px-3 py-2 font-semibold">
-                  <span className="flex items-center gap-2"><Avatar url={u.avatar_url} name={u.username} /><UserLink id={u.id} name={u.username} /></span>
+                  <span className="flex items-center gap-2"><Avatar url={u.avatar_url} name={u.username} /><UserLink id={u.id} name={u.username} /><RowServer server={u.server} /></span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink-dim">{u.last_seen ? fmtDate(u.last_seen) : "never"}</td>
                 <td className="px-3 py-2 font-mono text-xs text-ink-dim">{u.last_ip ? geoLabel(u.geo) : "—"}</td>
@@ -430,7 +474,7 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-md font-semibold">{s.title}</div>
+            <div className="flex min-w-0 items-center gap-1.5"><span className="truncate text-md font-semibold">{s.title}</span><RowServer server={s.server} /></div>
             <div className="truncate text-xs text-ink-dim">{s.subtitle}</div>
           </div>
           <span className="flex-none rounded-full px-2 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
@@ -464,14 +508,14 @@ function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id={titleId} className="m-0 truncate text-lg font-bold">{s.title}</h2>
-          <p className="m-0 mt-0.5 text-sm text-ink-dim">{s.subtitle}</p>
+          <p className="m-0 mt-0.5 flex items-center gap-1.5 text-sm text-ink-dim"><span>{s.subtitle}</span><RowServer server={s.server} /></p>
         </div>
         <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" ? ` · ${s.hw_title}` : ""}</span>}
+        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" && s.server !== "jellyfin" ? ` · ${s.hw_title}` : ""}</span>}
         {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>Fell back to CPU</span>}
         {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
       </div>
@@ -530,7 +574,7 @@ const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const WINDOWS = [7, 30, 90] as const;
 const METRICS = ["plays", "duration"] as const;
 
-function GraphsView({ connected }: { connected: boolean }) {
+function GraphsView({ connected, server }: { connected: boolean; server?: InsightsServer }) {
   const [g, setG] = useState<InsightsGraphs | null>(null);
   const [failed, setFailed] = useState(false);
   // The window and the metric live in the address, so a refresh or a shared link keeps them.
@@ -540,9 +584,9 @@ function GraphsView({ connected }: { connected: boolean }) {
   // Graphs are drawn from recorded plays, so imported history charts before Plex is connected.
   useEffect(() => {
     let live = true;
-    insightsApi.insightsGraphs(win, metric).then((r) => { if (live) { setG(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
+    insightsApi.insightsGraphs(win, metric, server).then((r) => { if (live) { setG(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [win, metric]);
+  }, [win, metric, server]);
   if (failed && !g) return <div className="rounded-xl p-10 text-center text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn't load the graphs.</div>;
   if (!g) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading graphs…</div>;
 
@@ -615,12 +659,24 @@ function GraphsView({ connected }: { connected: boolean }) {
 }
 
 /* ============================= RELIABILITY (buffering history) ============================= */
-function ReliabilityView({ connected }: { connected: boolean }) {
+function ReliabilityView({ connected, server, jellyfin }: { connected: boolean; server?: InsightsServer; jellyfin: boolean }) {
   const [r, setR] = useState<Reliability | null>(null);
   const [win, setWin] = useState(30);
   // Stalls are read from recorded sessions, so imported history shows before Plex is connected.
-  useEffect(() => { insightsApi.insightsReliability(win).then(setR).catch(() => setR(null)); }, [win]);
+  useEffect(() => { insightsApi.insightsReliability(win, server).then(setR).catch(() => setR(null)); }, [win, server]);
   if (!r) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading reliability…</div>;
+
+  const chips = <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>;
+  // Jellyfin reports no buffering: its plays are left out, and the tab says so.
+  const jfNote = (jellyfin || (r.jellyfin_plays ?? 0) > 0) && <JellyfinNoBuffering plays={r.jellyfin_plays} />;
+  if (server === "jellyfin") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-end">{chips}</div>
+        {jfNote || <JellyfinNoBuffering plays={r.jellyfin_plays} />}
+      </div>
+    );
+  }
 
   const s = r.summary;
   const clean = s.total_events === 0;
@@ -634,8 +690,9 @@ function ReliabilityView({ connected }: { connected: boolean }) {
       {!connected && !nothing && <ImportedNotice />}
       <div className="flex items-center justify-between">
         <p className="max-w-[54ch] text-sm text-ink-dim">Where and when streams stalled mid-playback — sampled every few seconds, so treat counts as observed lower bounds. Startup, seeking and resume refills aren't counted.</p>
-        <div className="flex gap-1">{[7, 30, 90].map((w) => <Chip key={w} active={win === w} onClick={() => setWin(w)}>{w}d</Chip>)}</div>
+        {chips}
       </div>
+      {jfNote}
 
       {/* Summary tiles */}
       {!nothing && <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))" }}>

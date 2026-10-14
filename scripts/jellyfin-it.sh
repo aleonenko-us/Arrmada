@@ -14,8 +14,8 @@
 # reach Jellyfin by container name.
 #
 # Usage (from anywhere in the repo; needs docker and curl):
-#   scripts/jellyfin-it.sh                  # set up, run `go test -run IT` on internal/jellyfin
-#                                           # and internal/jellyfinsvc
+#   scripts/jellyfin-it.sh                  # set up, run `go test -run IT` on internal/jellyfin,
+#                                           # internal/jellyfinsvc and internal/insights
 #   scripts/jellyfin-it.sh -run IT_Sessions # extra arguments go to `go test`
 #   JELLYFIN_IT_PKGS=./internal/jellyfinsvc/... scripts/jellyfin-it.sh   # only these packages
 #   JELLYFIN_IT_HOLD=1 scripts/jellyfin-it.sh
@@ -298,4 +298,4 @@ docker run --rm --name "$name-go" --cpus=3 --network "$net" \
 	-e ARRMADA_JELLYFIN_ADMIN_USER -e ARRMADA_JELLYFIN_ADMIN_PASSWORD \
 	-e ARRMADA_JELLYFIN_USER -e ARRMADA_JELLYFIN_PASSWORD -e ARRMADA_JELLYFIN_MEDIA \
 	-e ARRMADA_JELLYFIN_ARR=/arr \
-	"$GO_IMAGE" go test -count=1 -p 1 -timeout 40m -v -run IT "$@" ${JELLYFIN_IT_PKGS:-./internal/jellyfin/... ./internal/jellyfinsvc/...}
+	"$GO_IMAGE" go test -count=1 -p 1 -timeout 40m -v -run IT "$@" ${JELLYFIN_IT_PKGS:-./internal/jellyfin/... ./internal/jellyfinsvc/... ./internal/insights/...}

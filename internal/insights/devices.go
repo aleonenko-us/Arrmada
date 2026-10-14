@@ -32,6 +32,7 @@ type CodecUse struct {
 
 // DeviceSupport is one device's record over the window.
 type DeviceSupport struct {
+	Server   string   `json:"server"`  // plex | jellyfin: the same TV runs each server's app
 	Product  string   `json:"product"` // "Plex for Roku"
 	Platform string   `json:"platform"`
 	Player   string   `json:"player"` // the device's own name ("Bedroom Roku")
@@ -52,26 +53,26 @@ type DeviceSupport struct {
 // fitting the stream to the connection, not the device refusing the format.
 func (s *Service) DeviceCodecSupport(ctx context.Context, since time.Time) ([]DeviceSupport, error) {
 	rows, err := s.repo.db.QueryContext(ctx, `
-		SELECT product, platform, player, video_src, video_stream, location, video_src_bitdepth, video_src_profile, stopped_at
+		SELECT server, product, platform, player, video_src, video_stream, location, video_src_bitdepth, video_src_profile, stopped_at
 		  FROM stream_sessions
 		 WHERE stopped_at >= ? AND media_type IN ('movie', 'episode')`, since.Unix())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	type key struct{ product, platform, player string }
+	type key struct{ server, product, platform, player string }
 	byDevice := map[key]*DeviceSupport{}
 	for rows.Next() {
 		var k key
 		var src, stream, location, profile string
 		var depth int
 		var stopped int64
-		if err := rows.Scan(&k.product, &k.platform, &k.player, &src, &stream, &location, &depth, &profile, &stopped); err != nil {
+		if err := rows.Scan(&k.server, &k.product, &k.platform, &k.player, &src, &stream, &location, &depth, &profile, &stopped); err != nil {
 			return nil, err
 		}
 		d := byDevice[k]
 		if d == nil {
-			d = &DeviceSupport{Product: k.product, Platform: k.platform, Player: k.player}
+			d = &DeviceSupport{Server: k.server, Product: k.product, Platform: k.platform, Player: k.player}
 			byDevice[k] = d
 		}
 		d.Plays++

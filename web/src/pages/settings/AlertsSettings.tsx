@@ -5,6 +5,7 @@ import { LINKS } from "../../lib/links";
 import { api, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { alertsApi } from "../../lib/alertsApi";
 import { insightsApi } from "../../lib/insightsApi";
+import { ServerBadge } from "../../components/brand";
 import { ago, until } from "../../lib/taskTime";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery, invalidate } from "../../lib/query";
@@ -506,15 +507,15 @@ function MessageTemplates({ catalog, events, value, readOnly, onChange }: {
   );
 }
 
-// The Plex events the stream filters apply to.
+// The stream events the filters apply to (Plex and Jellyfin streams; the keys keep their Plex names).
 const STREAM_EVENTS = new Set(["plex.stream.started", "plex.buffering"]);
 
-// StreamFilters narrows a connection's Plex stream alerts: whose streams, and only remote
-// ones or only transcodes. The people are the Plex users Insights has seen; ticking none
+// StreamFilters narrows a connection's stream alerts (Plex and Jellyfin): whose streams, and only remote
+// ones or only transcodes. The people are the ones Insights has seen on either server; ticking none
 // means everyone. (A binge of autoplayed episodes is one alert, and a stalling stream one
 // buffering alert per quarter hour, whatever is set here.)
 function StreamFilters({ value, readOnly, onChange }: { value: AlertOptions; readOnly?: boolean; onChange: (o: AlertOptions) => void }) {
-  const { data: users, error } = useQuery("insights:users", insightsApi.insightsUsers, { staleMs: 5 * 60_000 });
+  const { data: users, error } = useQuery("insights:users", () => insightsApi.insightsUsers(), { staleMs: 5 * 60_000 });
   const picked = new Set(value.stream_users ?? []);
   const setUsers = (ids: string[]) => onChange({ ...value, stream_users: ids.length ? ids : undefined });
   const toggle = (id: string, on: boolean) => {
@@ -527,7 +528,7 @@ function StreamFilters({ value, readOnly, onChange }: { value: AlertOptions; rea
   const gone = [...picked].filter((id) => !known.has(id));
   return (
     <fieldset className="mt-3 min-w-0 rounded-lg p-3" style={{ border: "1px solid var(--line-soft)" }}>
-      <legend className="px-1 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Plex stream alerts</legend>
+      <legend className="px-1 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Stream alerts</legend>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         <label className="flex cursor-pointer items-center gap-1.5 text-sm">
           <input type="checkbox" checked={!!value.remote_only} disabled={readOnly} onChange={(e) => onChange({ ...value, remote_only: e.target.checked || undefined })} />
@@ -546,17 +547,17 @@ function StreamFilters({ value, readOnly, onChange }: { value: AlertOptions; rea
           )}
         </div>
         {error && !users ? (
-          <p className="text-xs" style={{ color: "var(--reject-text)" }}>Couldn’t load the Plex users — {error.message}</p>
+          <p className="text-xs" style={{ color: "var(--reject-text)" }}>Couldn’t load the people Insights has seen — {error.message}</p>
         ) : !users ? (
           <p className="text-xs text-ink-faint">Loading…</p>
         ) : users.length === 0 && gone.length === 0 ? (
-          <p className="text-xs text-ink-faint">No Plex users yet — they appear once Insights has seen someone watch.</p>
+          <p className="text-xs text-ink-faint">Nobody yet — people appear once Insights has seen someone watch on Plex or Jellyfin.</p>
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {users.map((u) => (
               <label key={u.id} className="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input type="checkbox" checked={picked.has(u.id)} disabled={readOnly} onChange={(e) => toggle(u.id, e.target.checked)} />
-                {u.username || u.id}
+                {u.username || u.id}{u.server === "jellyfin" && <ServerBadge server="jellyfin" />}
               </label>
             ))}
             {gone.map((id) => (

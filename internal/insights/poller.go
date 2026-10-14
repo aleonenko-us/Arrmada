@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -47,17 +48,41 @@ type bufEvent struct {
 	detail     string
 }
 
-// Run is the monitoring loop: while enabled + configured, poll Plex and record activity. Re-reads
-// the interval + enabled flag each cycle so settings changes take effect without a restart. When
-// Insights is disabled or unconfigured we flush any in-flight sessions immediately (capped at their
-// lastSeen) rather than stranding them until a later re-enable would backfill days of phantom time.
+// monitor is one media server's recording loop: where its streams come from, whether it
+// should be recording now, how often to ask, and where each poll's outcome is noted.
+type monitor struct {
+	src    sessionSource
+	tr     *tracker
+	active func(ctx context.Context) bool // switched on and connected
+	every  func(ctx context.Context) int  // poll interval, seconds
+	record func(err error)                // the server's health record
+	// after runs after each successful poll (Jellyfin refreshes its people list there).
+	after func(ctx context.Context, now time.Time)
+}
+
+// Run is Plex's monitoring loop (RunJellyfin is Jellyfin's): while enabled + configured,
+// poll Plex and record activity. See runMonitor.
+func (s *Service) Run(ctx context.Context) {
+	s.markHWSince(ctx, time.Now())
+	s.restoreLive(ctx, s.plex)
+	s.runMonitor(ctx, monitor{
+		src: plexSource{s}, tr: s.plex,
+		active: func(ctx context.Context) bool { return s.settings.GetBool(ctx, keyEnabled, false) && s.configured(ctx) },
+		every:  s.pollSeconds,
+		record: s.observePoll,
+	})
+}
+
+// runMonitor is a server's monitoring loop. It re-reads the interval + enabled flag each
+// cycle so settings changes take effect without a restart. When monitoring is off or the
+// server isn't connected we flush any in-flight sessions immediately (capped at their
+// lastSeen) rather than stranding them until a later re-enable would backfill days of
+// phantom time.
 //
 // Streams in progress are saved every poll and picked up again at the next start, so stopping
 // doesn't finalize them: a restart continues each play instead of splitting it in two.
-func (s *Service) Run(ctx context.Context) {
-	s.markHWSince(ctx, time.Now())
-	s.restoreLive(ctx)
-	wait := time.Duration(s.pollSeconds(ctx)) * time.Second
+func (s *Service) runMonitor(ctx context.Context, m monitor) {
+	wait := time.Duration(m.every(ctx)) * time.Second
 	for {
 		select {
 		case <-ctx.Done():
@@ -65,78 +90,89 @@ func (s *Service) Run(ctx context.Context) {
 		case <-time.After(wait):
 		}
 		start := time.Now()
-		interval := time.Duration(s.pollSeconds(ctx)) * time.Second
-		enabled := s.settings.GetBool(ctx, keyEnabled, false)
-		if enabled && s.configured(ctx) {
-			s.poll(ctx)
+		interval := time.Duration(m.every(ctx)) * time.Second
+		if m.active(ctx) {
+			s.poll(ctx, m)
 		} else {
-			// Disabled or unconfigured: finalize live sessions now (first cycle only; s.live is
-			// then empty, so re-enabling starts fresh instead of continuing a stale entry).
-			s.flushAll(ctx)
+			// Disabled or unconfigured: finalize live sessions now (first cycle only; the
+			// tracker is then empty, so re-enabling starts fresh instead of continuing a
+			// stale entry).
+			s.flushAll(ctx, m.tr)
 		}
-		// Subtract the work we just did from the interval so a slow Plex (up to the 15s timeout)
-		// doesn't widen the real sampling period. Never negative; polls stay strictly sequential.
+		// Subtract the work we just did from the interval so a slow server (up to the 15s
+		// timeout) doesn't widen the real sampling period. Never negative; polls stay
+		// strictly sequential.
 		if wait = interval - time.Since(start); wait < 0 {
 			wait = 0
 		}
 	}
 }
 
-func (s *Service) poll(ctx context.Context) {
+func (s *Service) poll(ctx context.Context, m monitor) {
 	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	sessions, err := s.client(cctx).Sessions(cctx)
+	sessions, err := m.src.Sessions(cctx)
 	cancel()
-	if err == nil || ctx.Err() == nil { // a poll cut short by shutdown isn't Plex failing
-		s.observePoll(err)
+	if err == nil || ctx.Err() == nil { // a poll cut short by shutdown isn't the server failing
+		m.record(err)
 	}
 	if err != nil {
-		// A failed poll (Plex unreachable) leaves live sessions untouched: they keep their prior
-		// lastSeen, so when they eventually vanish they're credited only up to the last poll that
-		// actually saw them — not through the outage.
+		// A failed poll (server unreachable) leaves live sessions untouched: they keep their
+		// prior lastSeen, so when they eventually vanish they're credited only up to the last
+		// poll that actually saw them — not through the outage.
 		return
 	}
-	s.reconcile(ctx, sessions, time.Now())
+	now := time.Now()
+	s.reconcile(ctx, m.tr, sessions, now)
+	if m.after != nil {
+		m.after(ctx, now)
+	}
 }
 
-// reconcile folds one poll's set of active sessions into the tracked live state: it starts newly
-// seen streams, updates ongoing ones, splits a reused SessionKey that now carries different
-// content/user, and finalizes any that vanished. Split out from poll so it's testable with a fixed
-// clock and canned sessions.
-func (s *Service) reconcile(ctx context.Context, sessions []plex.Session, now time.Time) {
+// reconcile folds one poll's set of active sessions into a server's tracked live state: it
+// starts newly seen streams, updates ongoing ones, splits a reused SessionKey that now carries
+// different content/user, and finalizes any that vanished. Split out from poll so it's
+// testable with a fixed clock and canned sessions.
+func (s *Service) reconcile(ctx context.Context, tr *tracker, sessions []plex.Session, now time.Time) {
 	seen := make(map[string]bool, len(sessions))
 	var total, lan, wan int64
 
 	for _, sess := range sessions {
+		sess.Server = tr.kind
 		// Do this FIRST: the id feeds the live-session identity check, the user upsert and
 		// the recorded row, and all three have to agree. A PMS calls its owner "1" — a
 		// placeholder, not an account id — so left alone the owner is filed separately
-		// from the same person's imported history.
-		sess.UserID = s.canonicalUserID(ctx, sess.UserID)
+		// from the same person's imported history. (Jellyfin ids are GUIDs: nothing to map.)
+		if tr.kind == mediaserver.Plex {
+			sess.UserID = s.canonicalUserID(ctx, sess.UserID)
+		}
 		seen[sess.SessionKey] = true
-		ls := s.live[sess.SessionKey]
+		ls := tr.live[sess.SessionKey]
 		// A client can keep the same sessionKey across autoplayed episodes, and a Plex restart
 		// resets sessionKey numbering so a fresh stream can land on a stale key. If the key now
 		// reports a different item or user, the old stream ended: finalize it (capped at its
 		// lastSeen) and start a new one so durations and user attribution stay correct.
 		if ls != nil && (ls.sess.RatingKey != sess.RatingKey || ls.sess.UserID != sess.UserID) {
 			s.finalize(ctx, ls)
-			delete(s.live, sess.SessionKey)
+			delete(tr.live, sess.SessionKey)
 			ls = nil
 		}
 		// A stream the last run was following, seen again: the same play continues, with
 		// no second "Now playing" — unless it was gone so long that it can't be the same.
 		if ls != nil && ls.resumed && !ls.resume(sess, now) {
 			s.finalize(ctx, ls)
-			delete(s.live, sess.SessionKey)
+			delete(tr.live, sess.SessionKey)
 			ls = nil
 		}
 		if ls == nil {
 			ls = &liveSession{started: now, lastSeen: now, state: sess.State, sess: sess}
-			s.live[sess.SessionKey] = ls
-			_ = s.repo.upsertUser(ctx, sess.UserID, sess.UserName, sess.UserThumb, now.Unix())
+			tr.live[sess.SessionKey] = ls
+			_ = s.repo.upsertUser(ctx, tr.kind, sess.UserID, sess.UserName, sess.UserThumb, now.Unix())
+			// The topic keys stay "plex.*" (people's alert subscriptions are stored under
+			// them); the payload says which server.
 			s.publish("plex.stream.started", sess)
 		}
-		if ls.observe(sess, now) { // a new buffer spell just started
+		// Jellyfin never reports buffering, so only a Plex stream can start a spell.
+		if ls.observe(sess, now) {
 			s.publish("plex.buffering", sess)
 		}
 		total += sess.Bandwidth
@@ -153,20 +189,20 @@ func (s *Service) reconcile(ctx context.Context, sessions []plex.Session, now ti
 			playing++
 		}
 	}
-	s.playing.Store(playing)
-	s.playingAt.Store(now.Unix())
+	tr.playing.Store(playing)
+	tr.playingAt.Store(now.Unix())
 
 	// Finalize sessions that vanished since the last poll — including ones restored from
 	// before a restart that ended while Arrmada was down (credited up to their last sighting).
-	for key, ls := range s.live {
+	for key, ls := range tr.live {
 		if !seen[key] {
 			s.finalize(ctx, ls)
-			delete(s.live, key)
+			delete(tr.live, key)
 		}
 	}
-	s.saveAllLive(ctx)
+	s.saveAllLive(ctx, tr)
 
-	_ = s.repo.insertBandwidth(ctx, now.Unix(), total, lan, wan)
+	_ = s.repo.insertBandwidth(ctx, tr.kind, now.Unix(), total, lan, wan)
 }
 
 // seekSlackMS is how far the playback offset may diverge from wall-clock progress
@@ -252,9 +288,11 @@ func (s *Service) publish(topic string, sess plex.Session) {
 		"user_id": sess.UserID, "rating_key": sess.RatingKey, "session_key": sess.SessionKey,
 		"grandparent_title": sess.ShowTitle, "media_type": sess.Type, "year": sess.Year,
 		"location": s.streamLocation(sess),
-		// The Plex image path (no token): an alert fetches it server-side for its poster —
-		// the show's portrait poster for an episode, the item's own image otherwise.
-		"thumb": sess.Thumb,
+		// The server's image path (no token; a Jellyfin one is "jellyfin:/Items/…"): an
+		// alert fetches it server-side for its poster — the show's portrait poster for an
+		// episode, the item's own image otherwise.
+		"thumb":  sess.Thumb,
+		"server": string(serverOf(sess.Server)),
 	}
 	if sess.ShowThumb != "" {
 		data["thumb"] = sess.ShowThumb
@@ -290,7 +328,9 @@ func (ls *liveSession) record(now time.Time) sessionRecord {
 		VideoSrcBitDepth: p.SrcVideoBitDepth, VideoSrcProfile: p.SrcVideoProfile,
 		// hw_transcode records a hardware encode Plex actually used. Rows written before
 		// PLEX-09 stored "hardware was requested" instead; the History view says so.
-		ContainerSrc: strings.ToUpper(p.SrcContainer), HWTranscode: p.HWEncode, BufferCount: ls.bufCount,
+		// Jellyfin only says which hardware is configured, so its rows record that.
+		ContainerSrc: strings.ToUpper(p.SrcContainer), HWTranscode: p.HWEncode || (p.Server == mediaserver.Jellyfin && p.TranscodeHW),
+		BufferCount: ls.bufCount, Server: serverOf(p.Server),
 	}
 	if p.Transcoding {
 		if p.VideoDecision == "transcode" {
@@ -340,19 +380,19 @@ func (s *Service) finalize(ctx context.Context, ls *liveSession) {
 	s.log.Debug("insights: recorded session", "title", rec.Title, "user", rec.UserName, "buffers", ls.bufCount)
 }
 
-// flushAll finalizes every in-flight session (when Insights is disabled or unconfigured).
-// Each is capped at its lastSeen, so flushing a week after a stream was last observed
-// records only the watched portion, not the gap. Nothing in progress is left saved: a later
-// re-enable starts fresh.
-func (s *Service) flushAll(ctx context.Context) {
-	if len(s.live) == 0 {
+// flushAll finalizes every in-flight session of one server (when its monitoring is off or
+// it isn't connected). Each is capped at its lastSeen, so flushing a week after a stream was
+// last observed records only the watched portion, not the gap. Nothing in progress is left
+// saved: a later re-enable starts fresh. The other server's streams are left alone.
+func (s *Service) flushAll(ctx context.Context, tr *tracker) {
+	if len(tr.live) == 0 {
 		return
 	}
-	for key, ls := range s.live {
+	for key, ls := range tr.live {
 		s.finalize(ctx, ls)
-		delete(s.live, key)
+		delete(tr.live, key)
 	}
-	if err := s.repo.clearLive(ctx); err != nil {
+	if err := s.repo.clearLive(ctx, tr.kind); err != nil {
 		s.log.Warn("insights: couldn't clear the saved streams", "err", err)
 	}
 }

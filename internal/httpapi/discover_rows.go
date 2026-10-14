@@ -128,8 +128,8 @@ func (a *api) becauseSeeds(ctx context.Context, userID int64) []titledSeed {
 		out = append(out, titledSeed{seed: seed{media: media, tmdb: tmdb}, title: title, verb: verb})
 	}
 	if a.deps.Insights != nil && a.deps.Auth != nil {
-		if plexID := a.deps.Auth.PlexIDForUser(ctx, userID); plexID != "" {
-			if watched, err := a.deps.Insights.RecentlyWatchedByUser(ctx, plexID, recWatchSeedScan); err == nil {
+		if ids := a.watchIdentities(ctx, userID); len(ids) > 0 {
+			if watched, err := a.deps.Insights.RecentlyWatchedByUser(ctx, recWatchSeedScan, ids...); err == nil {
 				for _, wt := range watched {
 					if len(out) >= becauseRows {
 						break

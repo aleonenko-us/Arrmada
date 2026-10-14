@@ -23,6 +23,7 @@ import { useLiveConnected } from "../lib/live";
 import { useLiveRefresh } from "../lib/useLiveQuery";
 import { QUEUE_CHANGED } from "../lib/queueLive";
 import { hwBadge } from "../lib/plexHw";
+import { ServerBadge, isMediaServer } from "../components/brand";
 import { Page } from "../ui/Page";
 
 // The dashboard fans out over Plex, the download client and the disks, so it isn't
@@ -65,6 +66,9 @@ export function Dashboard() {
 
   const dbOK = health?.checks?.database === "ok";
   const streams = data?.streams?.streams ?? [];
+  // Which media servers Now playing covers: Plex (the default), Jellyfin, or both.
+  const bothServers = !!data?.plex_configured && !!data?.jellyfin_configured;
+  const serversLabel = bothServers ? "Plex & Jellyfin" : data?.jellyfin_configured && !data?.plex_configured ? "Jellyfin" : "Plex";
   const listening = data?.listening ?? [];
   const lib = data?.library;
 
@@ -88,8 +92,9 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Now playing — the thing you actually want to see when you open the page. Plex
-            and the audiobook server are separate sections: different people, different apps. */}
+        {/* Now playing — the thing you actually want to see when you open the page. The media
+            servers (Plex, Jellyfin: one list, each stream with its server) and the audiobook
+            server are separate sections: different people, different apps. */}
         <SectionLabel
           right={
             streams.length > 0 && data?.streams
@@ -97,14 +102,14 @@ export function Dashboard() {
               : undefined
           }
         >
-          Now playing · Plex{streams.length > 0 ? ` · ${streams.length}` : ""}
+          Now playing · {serversLabel}{streams.length > 0 ? ` · ${streams.length}` : ""}
         </SectionLabel>
         {streams.length === 0 ? (
           <Card>
             <p className="m-0 text-base text-ink-faint">
               {!data ? (
                 "Loading…"
-              ) : !data.plex_configured ? (
+              ) : !data.plex_configured && !data.jellyfin_configured ? (
                 <>
                   Plex isn't connected yet.{" "}
                   <Link to={LINKS.plexConnection} className="font-semibold" style={{ color: "var(--accent-text)" }}>
@@ -112,18 +117,21 @@ export function Dashboard() {
                   </Link>
                 </>
               ) : data.streams_note ? (
-                `Plex isn't reachable — ${data.streams_note}`
+                bothServers ? `Not every server answered — ${data.streams_note}` : `${serversLabel} isn't reachable — ${data.streams_note}`
               ) : (
                 "Nothing is streaming right now."
               )}
             </p>
           </Card>
         ) : (
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            {streams.map((s) => (
-              <StreamCard key={s.session_key} s={s} />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {streams.map((s) => (
+                <StreamCard key={s.session_key} s={s} badge={bothServers || s.server === "jellyfin"} />
+              ))}
+            </div>
+            {data?.streams_note && <p className="m-0 mt-1.5 text-sm text-ink-faint">Not every server answered — {data.streams_note}</p>}
+          </>
         )}
 
         <SectionLabel right={listening.some((l) => !l.mine) ? "who and for how long — never which book" : undefined}>
@@ -294,7 +302,7 @@ function NeedsYou() {
   );
 }
 
-function StreamCard({ s }: { s: InsightsStream }) {
+function StreamCard({ s, badge }: { s: InsightsStream; badge?: boolean }) {
   const transcoding = s.decision === "transcode";
   const hw = hwBadge(s);
   return (
@@ -316,6 +324,7 @@ function StreamCard({ s }: { s: InsightsStream }) {
         <div className="truncate text-md font-semibold">{s.title}</div>
         <div className="truncate text-sm text-ink-dim">{s.subtitle}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs">
+          {badge && isMediaServer(s.server) && <ServerBadge server={s.server} />}
           <Pill>{s.user}</Pill>
           <Pill tone={transcoding ? "warn" : "good"}>
             {transcoding ? `transcode · ${hw?.label ?? "CPU"}` : "direct"}

@@ -28,7 +28,7 @@ describe("visibleNav", () => {
 
 describe("NAV", () => {
   it("groups the sidebar as Home, Library, Tools, Plex, System", () => {
-    expect(NAV.map((g) => g.group)).toEqual(["", "Library", "Tools", "Plex", "System"]);
+    expect(NAV.map((g) => g.group)).toEqual(["", "Library", "Tools", "Watching", "System"]);
   });
 
   it("has one Activity entry, with the pill, instead of Downloads, History, Review and Blocklist", () => {
@@ -59,7 +59,7 @@ describe("crumbFor", () => {
     expect(crumbFor("/quality")).toBe("System / Quality profiles");
     expect(crumbFor("/convert")).toBe("Tools / Convert");
     expect(crumbFor("/activity/queue")).toBe("Home / Activity");
-    expect(crumbFor("/insights")).toBe("Plex / Insights");
+    expect(crumbFor("/insights")).toBe("Watching / Insights");
     expect(crumbFor("/discover")).toBe("Home / Discover");
     expect(crumbFor("/settings/system")).toBe("System / Settings");
     expect(crumbFor("/settings/connections")).toBe("System / Settings");

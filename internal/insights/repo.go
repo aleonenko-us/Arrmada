@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 type repo struct{ db *sql.DB }
@@ -51,7 +53,8 @@ type sessionRecord struct {
 	ContainerStream      string
 	HWTranscode          bool
 	BufferCount          int
-	ImportRunID          int64 // the Tautulli import run that brought this play in; 0 = live or older import
+	ImportRunID          int64            // the Tautulli import run that brought this play in; 0 = live or older import
+	Server               mediaserver.Kind // the server it was played on; "" = Plex
 }
 
 func (r *repo) insertSession(ctx context.Context, s sessionRecord) (int64, error) {
@@ -66,13 +69,13 @@ func (r *repo) insertSessionEx(ctx context.Context, ex execer, s sessionRecord) 
 		  media_index,parent_index,year,thumb,player,platform,product,ip_address,location,decision,
 		  started_at,stopped_at,paused_ms,view_offset_ms,duration_ms,watched_ms,
 		  video_src,video_stream,audio_src,audio_stream,container_src,container_stream,hw_transcode,buffer_count,import_run_id,
-		  video_src_bitdepth,video_src_profile,grandparent_thumb,grandparent_rating_key)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  video_src_bitdepth,video_src_profile,grandparent_thumb,grandparent_rating_key,server)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		s.SessionKey, s.UserID, s.UserName, s.RatingKey, s.MediaType, s.Title, s.GrandparentTitle, s.ParentTitle,
 		s.MediaIndex, s.ParentIndex, s.Year, s.Thumb, s.Player, s.Platform, s.Product, s.IPAddress, s.Location, s.Decision,
 		s.StartedAt, s.StoppedAt, s.PausedMS, s.ViewOffsetMS, s.DurationMS, s.WatchedMS,
 		s.VideoSrc, s.VideoStream, s.AudioSrc, s.AudioStream, s.ContainerSrc, s.ContainerStream, b2i(s.HWTranscode), s.BufferCount, s.ImportRunID,
-		s.VideoSrcBitDepth, s.VideoSrcProfile, s.GrandparentThumb, s.GrandparentRatingKey)
+		s.VideoSrcBitDepth, s.VideoSrcProfile, s.GrandparentThumb, s.GrandparentRatingKey, string(serverOf(s.Server)))
 	if err != nil {
 		return 0, err
 	}
@@ -120,8 +123,9 @@ func (r *repo) insertBufferEventEx(ctx context.Context, ex execer, sessionID, at
 	return err
 }
 
-func (r *repo) insertBandwidth(ctx context.Context, at, total, lan, wan int64) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO bandwidth_samples (at,total_kbps,lan_kbps,wan_kbps) VALUES (?,?,?,?)`, at, total, lan, wan)
+func (r *repo) insertBandwidth(ctx context.Context, server mediaserver.Kind, at, total, lan, wan int64) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO bandwidth_samples (at,total_kbps,lan_kbps,wan_kbps,server) VALUES (?,?,?,?,?)`,
+		at, total, lan, wan, string(serverOf(server)))
 	return err
 }
 
@@ -136,19 +140,21 @@ func (r *repo) pruneBandwidth(ctx context.Context, before int64) (int64, error) 
 	return res.RowsAffected()
 }
 
-func (r *repo) upsertUser(ctx context.Context, id, username, thumb string, at int64) error {
+// upsertUser saves a person of one server (plex_users holds both: a Jellyfin id is a
+// 32-hex GUID, a Plex id a short number, so they never collide).
+func (r *repo) upsertUser(ctx context.Context, server mediaserver.Kind, id, username, thumb string, at int64) error {
 	if id == "" {
 		return nil
 	}
 	// Keep the existing avatar when the incoming thumb is blank (imports may not carry one — don't
 	// clobber a good avatar with ''), and never move last_seen_at backwards when importing old rows.
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO plex_users (id,username,thumb,last_seen_at) VALUES (?,?,?,?)
+		INSERT INTO plex_users (id,username,thumb,last_seen_at,server) VALUES (?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
-			username=excluded.username,
+			username=CASE WHEN excluded.username <> '' THEN excluded.username ELSE plex_users.username END,
 			thumb=CASE WHEN excluded.thumb <> '' THEN excluded.thumb ELSE plex_users.thumb END,
 			last_seen_at=MAX(plex_users.last_seen_at, excluded.last_seen_at)`,
-		id, username, thumb, at)
+		id, username, thumb, at, string(serverOf(server)))
 	return err
 }
 
@@ -185,6 +191,8 @@ type HistoryFilter struct {
 	Type     string // movie | episode | track
 	Decision string // direct_play | direct_stream | transcode
 	Query    string // matches title / show / user
+	// Server narrows to one server's plays ("plex", "jellyfin"); "" is both.
+	Server string
 	// From and To bound the start time (epoch seconds, To exclusive); 0 = open.
 	From int64
 	To   int64
@@ -236,12 +244,13 @@ type HistoryRow struct {
 	ContainerStream      string `json:"container_stream"`
 	HWTranscode          bool   `json:"hw_transcode"`
 	BufferCount          int    `json:"buffer_count"`
+	Server               string `json:"server"` // plex | jellyfin
 }
 
 const historyCols = `id,user_id,user_name,title,grandparent_title,parent_title,media_index,parent_index,year,
 	media_type,thumb,player,platform,product,ip_address,location,decision,started_at,stopped_at,paused_ms,
 	view_offset_ms,duration_ms,watched_ms,video_src,video_stream,audio_src,audio_stream,container_src,container_stream,
-	hw_transcode,buffer_count,grandparent_thumb,grandparent_rating_key`
+	hw_transcode,buffer_count,grandparent_thumb,grandparent_rating_key,server`
 
 // historyScanDest lists a HistoryRow's fields in historyCols order, for rows.Scan.
 func historyScanDest(h *HistoryRow, hw *int) []any {
@@ -249,7 +258,7 @@ func historyScanDest(h *HistoryRow, hw *int) []any {
 		&h.MediaIndex, &h.ParentIndex, &h.Year, &h.MediaType, &h.Thumb, &h.Player, &h.Platform, &h.Product,
 		&h.IPAddress, &h.Location, &h.Decision, &h.StartedAt, &h.StoppedAt, &h.PausedMS, &h.ViewOffsetMS,
 		&h.DurationMS, &h.WatchedMS, &h.VideoSrc, &h.VideoStream, &h.AudioSrc, &h.AudioStream, &h.ContainerSrc,
-		&h.ContainerStream, hw, &h.BufferCount, &h.GrandparentThumb, &h.GrandparentRatingKey}
+		&h.ContainerStream, hw, &h.BufferCount, &h.GrandparentThumb, &h.GrandparentRatingKey, &h.Server}
 }
 
 func (r *repo) history(ctx context.Context, f HistoryFilter) ([]HistoryRow, int, error) {
@@ -322,6 +331,8 @@ func itemKeyOf(t string) string {
 // (a date range cuts one in half; a decision filter drops the sittings between), so those
 // work the starts out over the filtered sittings with a window function instead.
 func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
+	// A server filter keeps whole viewings: a person and an item belong to one server, so
+	// it never cuts one in two and the marked starts still hold.
 	if f.Type == "" && f.Decision == "" && f.Query == "" && f.From == 0 && f.To == 0 {
 		return r.historyGroupedMarked(ctx, f, fn)
 	}
@@ -350,7 +361,7 @@ func groupedPageSQL(and string) string {
 // historyGroupedMarked is historyGrouped over every play (or f.UserID's) from the marked
 // starts.
 func (r *repo) historyGroupedMarked(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
-	where, args := " WHERE s.viewing_start = 1", []any(nil)
+	where, args := " WHERE s.viewing_start = 1"+serverAnd("s.", f.Server), []any(nil)
 	if f.UserID != "" {
 		where, args = where+" AND s.user_id = ?", []any{f.UserID}
 	}
@@ -499,6 +510,9 @@ func historyConds(f HistoryFilter) ([]string, []any) {
 	if f.To > 0 {
 		conds = append(conds, "started_at < ?")
 		args = append(args, f.To)
+	}
+	if c := serverAnd("", f.Server); c != "" {
+		conds = append(conds, strings.TrimPrefix(c, " AND "))
 	}
 	return conds, args
 }
