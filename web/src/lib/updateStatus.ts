@@ -31,6 +31,40 @@ export function updateHeadline(u: UpdateStatus): { text: string; tone: UpdateTon
   return { text: "This build doesn't say which commit it's from, so it can't be compared.", tone: "muted" };
 }
 
+// buildChannel is the channel the update check reports, or — where there's no check to
+// ask (a manager, a server without it wired) — the same reading of the build that
+// updatecheck's channelOf makes, minus the install's own channel, which only it knows: a
+// v-tag is a release, a known commit a build of main, anything else dev.
+export function buildChannel(version: string, commit: string, update?: UpdateStatus | null): UpdateStatus["channel"] {
+  if (update?.channel) return update.channel;
+  if (/^v\d+\.\d+\.\d+(?:[-+].*)?$/.test(version)) return "release";
+  if (/^[0-9a-f]{7,40}$/.test(commit)) return "main";
+  return "dev";
+}
+
+// versionBadge is the sidebar's quiet build line: "v0.2.0" for a release, "main · c9d20ec"
+// for a build of a commit (both channels that follow a commit compile main), "dev" for a
+// build that doesn't know its commit. A build with local edits keeps update.sh's -dirty
+// mark. update says whether the check found something newer for this install's channel
+// (the Updates card's headline, so the two never disagree); title is the badge's full name.
+export function versionBadge(version: string, commit: string, update?: UpdateStatus | null): { label: string; update: boolean; title: string } {
+  const channel = buildChannel(version, commit, update);
+  const dirty = version.endsWith("-dirty") ? "-dirty" : "";
+  const label = channel === "release" ? version
+    : channel === "main" || channel === "build" ? `main · ${commit.slice(0, 7)}${dirty}`
+      : "dev";
+  const name = `Arrmada ${label}`;
+  if (!update?.enabled || !update.checked_at) return { label, update: false, title: name };
+  const tone = updateHeadline(update).tone;
+  if (tone === "update") {
+    const what = update.channel === "main"
+      ? `${update.behind} commit${update.behind === 1 ? "" : "s"} behind main`
+      : update.latest?.tag ?? "";
+    return { label, update: true, title: `${name} — update available${what ? ` (${what})` : ""}` };
+  }
+  return { label, update: false, title: tone === "ok" ? `${name} — up to date` : name };
+}
+
 // The install line: run again on the server, it finds the install and updates it the way
 // its channel says (the latest release, or main compiled there).
 export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";

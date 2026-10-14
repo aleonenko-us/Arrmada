@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
 import { Scrim } from "../ui/Scrim";
+import { VersionBadge } from "./VersionBadge";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
 const JellyfinAccountLink = lazy(() => import("./JellyfinAccountLink"));
@@ -172,29 +173,35 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           ))}
         </nav>
 
-        <div className="mt-auto flex items-center gap-2.5 p-3.5" style={{ borderTop: "1px solid var(--line)" }}>
-          {/* You: notifications, password and signed-in devices live on the Me page. */}
-          <NavLink to="/me" onClick={onClose} aria-label={`${user?.username ?? "Your account"} — Me`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
-            <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-sm font-bold text-white">
-              {(user?.username?.[0] ?? "?").toUpperCase()}
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-base font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
-              <div className="font-mono text-xs capitalize text-ink-faint">{user?.role ?? ""}</div>
-            </div>
-          </NavLink>
-          <ThemeButton />
-          <button
-            onClick={signOut}
-            title="Sign out"
-            aria-label="Sign out"
-            className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
-            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject-text)" }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-            </svg>
-          </button>
+        {/* The foot: you, the theme and sign out, and under them which build this is (with a
+            dot when the update check found a newer one) — one block, so the build line costs
+            the sidebar as little height as it can. */}
+        <div className="mt-auto flex flex-col gap-0.5 px-3.5 pb-2 pt-3.5" style={{ borderTop: "1px solid var(--line)" }}>
+          <div className="flex items-center gap-2.5">
+            {/* You: notifications, password and signed-in devices live on the Me page. */}
+            <NavLink to="/me" onClick={onClose} aria-label={`${user?.username ?? "Your account"} — Me`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
+              <span className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-[#5f5142] text-sm font-bold text-white">
+                {(user?.username?.[0] ?? "?").toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-base font-semibold" title={user?.username}>{user?.username ?? "…"}</div>
+                <div className="font-mono text-xs capitalize text-ink-faint">{user?.role ?? ""}</div>
+              </div>
+            </NavLink>
+            <ThemeButton />
+            <button
+              onClick={signOut}
+              title="Sign out"
+              aria-label="Sign out"
+              className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg"
+              style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--reject-text)" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+            </button>
+          </div>
+          <VersionBadge onNavigate={onClose} />
         </div>
         {/* Your own Plex link (Discover's recommendations use its watch history), and your
             Jellyfin link while a Jellyfin server is connected or you're linked to one. */}
