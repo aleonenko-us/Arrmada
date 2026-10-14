@@ -136,6 +136,64 @@ func (c *Coordinator) adoptUsenetKey(ctx context.Context, grabs []grab, it downl
 	return true
 }
 
+// rekeyRetriedUsenetJobs follows a usenet job SABnzbd re-created under a new id. Retrying a
+// failed job (Arrmada's Retry, or SABnzbd's own button) re-adds it from its saved NZB as a
+// new job, and the old id leaves the history: the grab would be judged vanished, and the
+// retried job — the one a person fixed a full disk for — untracked.
+//
+// Only an unambiguous move is followed, and only on a complete read of the clients: the
+// grab is still downloading, its key is gone, exactly one usenet job no grab knows has
+// exactly its release name, and no other such grab has that name. Anything less is left to
+// the usual rules.
+func (c *Coordinator) rekeyRetriedUsenetJobs(ctx context.Context, items []download.Item) int {
+	inQueue := make(map[string]bool, len(items))
+	for _, it := range items {
+		inQueue[strings.ToLower(it.Hash)] = true
+	}
+	pending, err := c.pendingGrabs(ctx)
+	if err != nil {
+		return 0
+	}
+	lost := map[string][]grab{}
+	for _, g := range pending {
+		if g.usenet() && g.InfoHash != "" && !inQueue[strings.ToLower(g.InfoHash)] {
+			lost[normRelease(g.Title)] = append(lost[normRelease(g.Title)], g)
+		}
+	}
+	if len(lost) == 0 {
+		return 0
+	}
+	untracked, err := c.untrackedQueue(ctx, items)
+	if err != nil {
+		return 0
+	}
+	jobs := map[string][]download.Item{}
+	for _, it := range untracked {
+		if it.Transport == download.TransportUsenet {
+			jobs[normRelease(it.Name)] = append(jobs[normRelease(it.Name)], it)
+		}
+	}
+	moved := 0
+	for name, gs := range lost {
+		js := jobs[name]
+		if name == "" || len(gs) != 1 || len(js) != 1 {
+			continue
+		}
+		g, it := gs[0], js[0]
+		res, err := c.db.ExecContext(ctx, `UPDATE grabs SET info_hash = ? WHERE id = ? AND info_hash = ?`, it.Hash, g.ID, g.InfoHash)
+		if err != nil {
+			c.log.Warn("automation: couldn't follow a retried usenet job to its new id", "release", g.Title, "err", err)
+			continue
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			c.grabsChanged()
+			c.log.Info("automation: followed a retried usenet job to its new id", "release", g.Title, "from", g.InfoHash, "to", it.Hash)
+			moved++
+		}
+	}
+	return moved
+}
+
 // releaseIdentity reduces a release name to what actually identifies the media: the
 // title, plus the season/episode for TV or the year for a film. Empty when nothing
 // identifiable can be read, which refuses the pairing rather than matching on a blank.

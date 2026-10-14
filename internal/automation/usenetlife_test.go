@@ -450,6 +450,47 @@ func TestUsenetKeyAdoption(t *testing.T) {
 	}
 }
 
+// A failed job retried (after a full disk was fixed) comes back under a new id: the grab
+// follows it when the move is unambiguous, and two grabs of one name are left alone.
+func TestRetriedUsenetJobIsFollowed(t *testing.T) {
+	h := newStallHarness(t)
+	sab, _ := withUsenet(t, h)
+	const rel = "Rare.Film.1971.1080p.BluRay.x264-NZB"
+	mid := h.addMovie(t, 1, "Rare Film", 1971)
+	old, retried := download.UsenetKey("SABnzbd_nzo_old"), download.UsenetKey("SABnzbd_nzo_new")
+	gid := h.addUsenetGrab(t, mid, rel, old, time.Hour)
+	// Another grab, twice over, of a second release: ambiguous, left alone.
+	const twin = "Rare.Film.1971.2160p.UHD-TWIN"
+	h.addUsenetGrab(t, mid, twin, download.UsenetKey("SABnzbd_nzo_t1"), time.Hour)
+	h.addUsenetGrab(t, mid, twin, download.UsenetKey("SABnzbd_nzo_t2"), time.Hour)
+	sab.set(
+		download.Item{Hash: retried, Name: rel, State: "downloading", RawState: "Queued", SizeBytes: 100, RemainingBytes: 100},
+		download.Item{Hash: download.UsenetKey("SABnzbd_nzo_t3"), Name: twin, State: "downloading", RawState: "Queued", SizeBytes: 100, RemainingBytes: 100},
+	)
+	h.c.downloads.InvalidateSnapshot()
+	if _, err := h.c.ReconcileAcquisitions(h.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var key string
+	if err := h.c.db.QueryRow(`SELECT info_hash FROM grabs WHERE id = ?`, gid).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	if key != retried {
+		t.Errorf("grab key = %q, want the retried job's %q", key, retried)
+	}
+	var twins int
+	if err := h.c.db.QueryRow(`SELECT COUNT(*) FROM grabs WHERE title = ? AND info_hash IN (?, ?)`, twin,
+		download.UsenetKey("SABnzbd_nzo_t1"), download.UsenetKey("SABnzbd_nzo_t2")).Scan(&twins); err != nil || twins != 2 {
+		t.Errorf("ambiguous grabs re-keyed: %d left (%v)", twins, err)
+	}
+	// Followed, it's in flight again: the stall check leaves it be.
+	h.later(stallEvidenceGrace)
+	h.observe()
+	if s := h.status(t, gid); s != grabStatusGrabbed {
+		t.Errorf("grab = %q after the retry, want still grabbed", s)
+	}
+}
+
 // An uploaded .nzb whose add answer carried no key is still recorded as usenet — what was
 // uploaded says what it is — and its history line doesn't call it a torrent.
 func TestKeylessNZBUploadIsUsenet(t *testing.T) {

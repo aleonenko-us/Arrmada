@@ -389,6 +389,9 @@ func (c *Coordinator) ReconcileAcquisitions(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	c.noteUsenetQueue(snap.Items)
+	if snap.Complete {
+		c.rekeyRetriedUsenetJobs(ctx, snap.Items)
+	}
 	c.AdoptTorrentHashes(ctx, snap.Items)
 
 	rows, err := c.db.QueryContext(ctx, `SELECT id, info_hash, phase, progress, progress_at, last_seen_at,

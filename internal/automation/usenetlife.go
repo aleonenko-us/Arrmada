@@ -155,6 +155,21 @@ func (c *Coordinator) failUsenet(ctx context.Context, g grab, item download.Item
 	return true
 }
 
+// pruneUsenetReports forgets the reported failures of grabs no longer pending.
+func (c *Coordinator) pruneUsenetReports(pending []grab) {
+	keep := make(map[int64]bool, len(pending))
+	for _, g := range pending {
+		keep[g.ID] = true
+	}
+	c.usenet.mu.Lock()
+	defer c.usenet.mu.Unlock()
+	for id := range c.usenet.reported {
+		if !keep[id] {
+			delete(c.usenet.reported, id)
+		}
+	}
+}
+
 func (c *Coordinator) forgetUsenetFailure(g grab) {
 	c.usenet.mu.Lock()
 	defer c.usenet.mu.Unlock()

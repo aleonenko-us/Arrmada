@@ -2248,6 +2248,7 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 		}
 	}
 	c.pruneStallSightings(pending)
+	c.pruneUsenetReports(pending)
 	// One line per check that did anything: a backlog of stale grabs closing reads as one
 	// count, not a line each. Each fail-over still logs its own line (at most three).
 	if tick.closed > 0 || tick.failedOver > 0 || tick.deferred > 0 {
