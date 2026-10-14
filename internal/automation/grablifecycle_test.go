@@ -326,3 +326,38 @@ func TestRejectedBookReviewBlocksTheIndexerTitle(t *testing.T) {
 		t.Errorf("blocklist rows = %d, want 2 (download name + indexer title)", n)
 	}
 }
+
+// A torrent that met its seed goal under one grab but is held for review under another
+// (the same torrent re-grabbed for a different item) stays in the client: removing it
+// with its data would take away the files the review is waiting on.
+func TestSeedCleanupKeepsATorrentHeldForReview(t *testing.T) {
+	h := newLifecycleHarness(t)
+	name := "Show.S01.1080p.WEB-DL-GRP"
+	hash := hashFor(name)
+	gid := h.seriesGrab(t, name, hash)
+	if _, err := h.c.db.Exec(`UPDATE grabs SET status = ? WHERE id = ?`, grabStatusImported, gid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.c.db.Exec(`INSERT INTO grabs (movie_id, title, indexer, stall_minutes, media_type, info_hash, seed_enabled, seed_ratio, seed_hours, status)
+		VALUES (99, ?, 'Fake', 60, 'movie', ?, 1, 1.0, 0, ?)`, name, hash, grabStatusHeld); err != nil {
+		t.Fatal(err)
+	}
+	h.seededTorrent(hash, name)
+
+	h.c.ManageSeeding(h.ctx)
+	if len(*h.removed) != 0 {
+		t.Fatalf("seed cleanup removed a torrent held for review: %+v", *h.removed)
+	}
+	if s := grabStatus(t, h.c, gid); s != grabStatusImported {
+		t.Errorf("grab = %q, want it left imported", s)
+	}
+
+	// Once the review is gone, the seed goal applies as usual.
+	if _, err := h.c.db.Exec(`UPDATE grabs SET status = ? WHERE status = ?`, grabStatusFailed, grabStatusHeld); err != nil {
+		t.Fatal(err)
+	}
+	h.c.ManageSeeding(h.ctx)
+	if len(*h.removed) != 1 || (*h.removed)[0].hash != hash {
+		t.Fatalf("after the review, removed = %+v, want the torrent", *h.removed)
+	}
+}

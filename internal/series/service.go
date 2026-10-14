@@ -317,7 +317,6 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 // anime release numbered absolutely resolves to the right (season, episode).
 func seasonsFromDetails(d *metadata.SeriesDetails, monitorFor func(seasonNumber int) bool) []Season {
 	seasons := make([]Season, 0, len(d.Seasons))
-	abs := 0
 	for _, sd := range d.Seasons {
 		special := sd.SeasonNumber == 0
 		monitored := !special && monitorFor(sd.SeasonNumber)
@@ -326,23 +325,33 @@ func seasonsFromDetails(d *metadata.SeriesDetails, monitorFor func(seasonNumber 
 			Monitored: monitored,
 		}
 		for _, ed := range sd.Episodes {
-			absNum := 0
-			if !special {
-				abs++
-				absNum = abs
-				// Prefer an absolute number the source supplied authoritatively (TVDB)
-				// over the counted one, which drifts whenever the season list is wrong.
-				if ed.AbsoluteNumber > 0 {
-					absNum = ed.AbsoluteNumber
-				}
-			}
 			sn.Episodes = append(sn.Episodes, Episode{
 				SeasonNumber: sd.SeasonNumber, EpisodeNumber: ed.EpisodeNumber, Title: ed.Title,
 				Overview: ed.Overview, AirDate: ed.AirDate, Runtime: ed.Runtime, StillURL: ed.StillURL,
-				AbsoluteNumber: absNum, Monitored: monitored,
+				AbsoluteNumber: ed.AbsoluteNumber, Monitored: monitored,
 			})
 		}
 		seasons = append(seasons, sn)
+	}
+	// Repeated slots go before counting, or each dropped placeholder would still use up an
+	// absolute number and shift every later one.
+	seasons = uniqueSlots(seasons)
+	abs := 0
+	for i := range seasons {
+		special := seasons[i].SeasonNumber == 0
+		for j := range seasons[i].Episodes {
+			ep := &seasons[i].Episodes[j]
+			if special {
+				ep.AbsoluteNumber = 0
+				continue
+			}
+			abs++
+			// Prefer an absolute number the source supplied authoritatively (TVDB) over the
+			// counted one, which drifts whenever the season list is wrong.
+			if ep.AbsoluteNumber <= 0 {
+				ep.AbsoluteNumber = abs
+			}
+		}
 	}
 	return seasons
 }

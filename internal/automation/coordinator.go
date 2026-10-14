@@ -1213,12 +1213,12 @@ func (c *Coordinator) grabMissing(ctx context.Context, m movies.Movie, want []mo
 // grabMissingTitles is grabMissing returning the release titles it grabbed, so a stall
 // fail-over can say what replaced the stalled download.
 func (c *Coordinator) grabMissingTitles(ctx context.Context, m movies.Movie, want []movies.Version, byName map[string]indexer.Release, cands []quality.Candidate) []string {
-	return c.grabMissingTitlesExcept(ctx, m, want, byName, cands, 0)
+	return c.grabMissingTitlesExcept(ctx, m, want, byName, cands)
 }
 
-// grabMissingTitlesExcept is grabMissingTitles that doesn't count grab exceptGrab as in
-// flight — the stalled grab a fail-over is replacing.
-func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movie, want []movies.Version, byName map[string]indexer.Release, cands []quality.Candidate, exceptGrab int64) []string {
+// grabMissingTitlesExcept is grabMissingTitles that doesn't count the grabs exceptGrabs as
+// in flight — the stalled grab a fail-over is replacing, and its duplicate rows.
+func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movie, want []movies.Version, byName map[string]indexer.Release, cands []quality.Candidate, exceptGrabs ...int64) []string {
 	var titles []string
 	grabbed := map[string]bool{}
 	pending, err := c.pendingGrabTitles(ctx, m.ID) // releases already grabbed for this movie, not yet imported
@@ -1229,7 +1229,7 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 	// Versions with a download already in flight, by the acquisition record. The pending
 	// guard above only stops the SAME release; this stops a differently named one for a
 	// version that's already on its way.
-	busy, err := c.busyVersions(ctx, m.ID, exceptGrab)
+	busy, err := c.busyVersions(ctx, m.ID, exceptGrabs...)
 	if err != nil {
 		c.skipUnreadable(m.Title, err)
 		return nil
@@ -2110,7 +2110,9 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 	// One budget across every kind: each fail-over costs a search, and once the timeout is
 	// on for every existing grab a backlog of dead torrents mustn't all go in one tick.
 	tick := &stallTick{left: maxStallFailoversPerCheck, held: c.guardHeld(ctx)}
-	for _, g := range pending {
+	// Rows recording the same download of the same title are judged once, together: a
+	// release re-grabbed on several days must not fail over (and search) once per row.
+	for _, g := range collapseDuplicateGrabs(pending) {
 		switch g.MediaType {
 		case "series":
 			c.detectStalledSeries(ctx, g, queue, tick)
@@ -2123,8 +2125,11 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 		}
 	}
 	c.pruneStallSightings(pending)
-	if tick.deferred > 0 {
-		c.log.Info("automation: deferring stalled downloads to the next check",
+	// One line per check that did anything: a backlog of stale grabs closing reads as one
+	// count, not a line each. Each fail-over still logs its own line (at most three).
+	if tick.closed > 0 || tick.failedOver > 0 || tick.deferred > 0 {
+		c.log.Info("automation: stall check finished",
+			"closed", tick.closed, "failed_over", tick.failedOver,
 			"deferred", tick.deferred, "limit_per_check", maxStallFailoversPerCheck)
 	}
 }
@@ -2178,6 +2183,12 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		if !over {
 			continue
 		}
+		// The same torrent can be held for review under a later grab (re-grabbed for
+		// another item, or an audiobook version). Removing it — with its data — would take
+		// away the files that review is waiting on. Leave it until the review is decided.
+		if c.heldForReview(ctx, it.Hash) {
+			continue
+		}
 		// Only data whose content Arrmada imported is deleted with the torrent.
 		deleteData := g.Status == grabStatusImported
 		if err := c.dropTorrent(ctx, it.Hash, deleteData); err != nil {
@@ -2185,6 +2196,9 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 			continue
 		}
 		c.setGrabStatus(ctx, g.ID, grabStatusSeeded)
+		// The same torrent recorded again by a later re-grab that never closed: it left the
+		// client with this one, and left 'grabbed' it would read as a vanished download.
+		c.closeStaleTwins(ctx, *g, grabStatusSeeded)
 		reason := "seed goal met"
 		if !g.SeedEnabled {
 			reason = "seeding off — removed after import"
@@ -2197,6 +2211,22 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 			"delete_data", deleteData, "ratio", ratio, "uploaded_bytes", it.UploadedBytes, "seed_time_s", it.SeedingTime)
 		c.addMediaEvent(ctx, g, "seeded", g.Title+" — "+reason+", "+what)
 	}
+}
+
+// heldForReview reports whether a download is waiting on a decision in Review: a pending
+// review for its hash, or any grab of it held for review. Seed cleanup must not remove it.
+func (c *Coordinator) heldForReview(ctx context.Context, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	if c.hasReview(ctx, hash) {
+		return true
+	}
+	var n int
+	_ = c.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM grabs WHERE status = ? AND info_hash != '' AND lower(info_hash) = lower(?)`,
+		grabStatusHeld, hash).Scan(&n)
+	return n > 0
 }
 
 // dropTorrent removes a torrent from the client through the test seam when one is set.

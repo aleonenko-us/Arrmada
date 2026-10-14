@@ -43,6 +43,29 @@ type grab struct {
 	// upgrade, a re-grab, a manual grab over a file); "" for a grab for a missing file and
 	// for rows predating migration 0155. See movieHasFileFor.
 	ReplacesPath string
+	// Dups are other 'grabbed' rows for the same download of the same title, folded onto
+	// this one by the stall check (collapseDuplicateGrabs) so they get one decision between
+	// them. Never read from the table.
+	Dups []grab
+}
+
+// ids is the grab's row id followed by those of the duplicates folded onto it.
+func (g grab) ids() []int64 {
+	out := make([]int64, 0, 1+len(g.Dups))
+	out = append(out, g.ID)
+	for _, d := range g.Dups {
+		out = append(out, d.ID)
+	}
+	return out
+}
+
+// sameDownload reports whether two grab rows record the same torrent: by info hash when
+// both have one, else by release name (rows predating migration 0062 have no hash).
+func sameDownload(a, b grab) bool {
+	if a.InfoHash != "" && b.InfoHash != "" {
+		return strings.EqualFold(a.InfoHash, b.InfoHash)
+	}
+	return normRelease(a.Title) == normRelease(b.Title)
 }
 
 // grabCols is the column list scanGrab reads, in its order.
@@ -383,6 +406,51 @@ func (c *Coordinator) pendingSeriesGrabTitles(ctx context.Context, seriesID int6
 func (c *Coordinator) setGrabStatus(ctx context.Context, id int64, status string) {
 	defer c.grabsChanged()
 	_, _ = c.db.ExecContext(ctx, `UPDATE grabs SET status = ? WHERE id = ?`, status, id)
+}
+
+// closeGrab moves grab g and every duplicate folded onto it to status, so a decision about
+// one download settles all of its rows at once. A row left behind would be judged again on
+// the next check: a second blocklist line, a second search.
+func (c *Coordinator) closeGrab(ctx context.Context, g grab, status string) {
+	c.setGrabStatuses(ctx, g.ids(), status)
+}
+
+// setGrabStatuses moves the grabs with these ids to status in one statement.
+func (c *Coordinator) setGrabStatuses(ctx context.Context, ids []int64, status string) {
+	if len(ids) == 0 {
+		return
+	}
+	defer c.grabsChanged()
+	args := make([]any, 0, 1+len(ids))
+	args = append(args, status)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ")
+	if _, err := c.db.ExecContext(ctx, `UPDATE grabs SET status = ? WHERE id IN (`+marks+`)`, args...); err != nil {
+		c.log.Warn("automation: couldn't record the grab's status", "status", status, "err", err)
+	}
+}
+
+// closeStaleTwins moves the other 'grabbed' rows recorded for g's download of g's title to
+// status. They are the same release grabbed again on a later day, while the first grab never
+// closed (an older build re-grabbed a release whose import it couldn't match every day the
+// pending guard ran out). Left 'grabbed' once their torrent has left the client, each one
+// reads as a download that vanished and is failed over on its own.
+func (c *Coordinator) closeStaleTwins(ctx context.Context, g grab, status string) {
+	twins, err := c.grabsWhere(ctx, stallWatchWhere+` AND media_type = ? AND movie_id = ? AND version_id = ? AND id != ?`,
+		g.MediaType, g.MovieID, g.VersionID, g.ID)
+	if err != nil {
+		c.log.Warn("automation: couldn't read the grab's duplicates", "release", g.Title, "err", err)
+		return
+	}
+	var ids []int64
+	for _, t := range twins {
+		if sameDownload(g, t) {
+			ids = append(ids, t.ID)
+		}
+	}
+	c.setGrabStatuses(ctx, ids, status)
 }
 
 // seedCleanupGrabs returns grabs whose torrent may leave the client at its seed goal:

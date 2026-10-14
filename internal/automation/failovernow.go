@@ -45,10 +45,16 @@ func (c *Coordinator) FailOverNow(ctx context.Context, hash string) (FailOverRes
 	if err != nil {
 		return FailOverResult{}, err
 	}
+	// Every row recorded for the download goes with the decision; one left 'grabbed' would
+	// count as in flight against its own replacement, and fail over again once the torrent
+	// is gone.
 	var g *grab
-	for i := range pending {
-		if pending[i].InfoHash != "" && strings.EqualFold(pending[i].InfoHash, hash) {
-			g = &pending[i]
+	for _, r := range collapseDuplicateGrabs(pending) {
+		for _, m := range append([]grab{r}, r.Dups...) {
+			if m.InfoHash != "" && strings.EqualFold(m.InfoHash, hash) {
+				g = &r
+				break
+			}
 		}
 	}
 	if g == nil {
@@ -88,7 +94,7 @@ func (c *Coordinator) FailOverNow(ctx context.Context, hash string) (FailOverRes
 	if !on {
 		window = DefaultStallMinutes * time.Minute
 	}
-	repl, outage := c.failOver(ctx, *g, *item, true, window, t)
+	repl, outage, _ := c.failOver(ctx, *g, *item, true, window, t)
 	return FailOverResult{Replacement: repl, Outage: outage, Title: t.name}, nil
 }
 
