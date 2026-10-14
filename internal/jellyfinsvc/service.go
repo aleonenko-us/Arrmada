@@ -216,8 +216,14 @@ func (s *Service) Config(ctx context.Context) Config {
 	}
 }
 
-// ErrInvalid is input Save refuses (the API answers 400 with its message).
+// ErrInvalid is input Save refuses (the API answers 400 with its message). errors.Is
+// matches it; the message itself is only the plain sentence for the person.
 var ErrInvalid = errors.New("invalid Jellyfin connection")
+
+type inputError string
+
+func (e inputError) Error() string        { return string(e) }
+func (e inputError) Is(target error) bool { return target == ErrInvalid }
 
 // NormalizeURL checks an address is http(s)://host[:port][/path] and returns it without a
 // trailing slash, a query or a fragment.
@@ -225,10 +231,10 @@ func NormalizeURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("%w: %q isn't a web address like http://192.168.1.10:8096", ErrInvalid, raw)
+		return "", inputError(fmt.Sprintf("%q isn't a web address like http://192.168.1.10:8096", raw))
 	}
 	if u.User != nil {
-		return "", fmt.Errorf("%w: leave the user name and password out of the address", ErrInvalid)
+		return "", inputError("Leave the user name and password out of the address.")
 	}
 	u.RawQuery, u.Fragment = "", ""
 	return strings.TrimRight(u.String(), "/"), nil
@@ -247,7 +253,7 @@ func (s *Service) Save(ctx context.Context, rawURL, rawPublic, apiKey string) er
 	public := ""
 	if strings.TrimSpace(rawPublic) != "" {
 		if public, err = NormalizeURL(rawPublic); err != nil {
-			return fmt.Errorf("public address: %w", err)
+			return inputError("Public address: " + err.Error())
 		}
 		if public == base {
 			public = ""
@@ -255,7 +261,7 @@ func (s *Service) Save(ctx context.Context, rawURL, rawPublic, apiKey string) er
 	}
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" && s.apiKey(ctx) == "" {
-		return fmt.Errorf("%w: add the API key made in Jellyfin (Dashboard → API Keys)", ErrInvalid)
+		return inputError("Add the API key made in Jellyfin (Dashboard → API Keys).")
 	}
 	changed := base != s.URL(ctx) || (apiKey != "" && apiKey != s.apiKey(ctx))
 	if apiKey != "" {
@@ -303,7 +309,7 @@ func (s *Service) Test(ctx context.Context, rawURL, apiKey string) TestResult {
 	if strings.TrimSpace(rawURL) != "" {
 		var err error
 		if base, err = NormalizeURL(rawURL); err != nil {
-			return TestResult{Detail: strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": ")}
+			return TestResult{Detail: err.Error()}
 		}
 	}
 	if base == "" {
