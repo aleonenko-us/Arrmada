@@ -2,7 +2,7 @@ import type { Page, Route } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import type { Persona } from "./fixtures/users";
 import { PAGE_EXTRA as EXTRA } from "./fixtures/pages";
-import { setup as configuredSetup } from "./fixtures/system";
+import { freshKeys, setup as configuredSetup } from "./fixtures/system";
 
 // The pictures in README.md and on the project website (docs/images/*.png), taken from
 // the mocked fixtures — never a real server or anyone's real library. Run on demand only:
@@ -126,7 +126,7 @@ test.describe("desktop", () => {
     const blank = { movies: "", tv: "", ebooks: "", audiobooks: "", music: "", downloads: "" };
     await extra(page, {
       "GET /api/v1/setup": {
-        ...configuredSetup, needed: true, complete: false, tmdb_configured: false, libraries_chosen: false,
+        ...configuredSetup, needed: true, complete: false, tmdb_configured: false, libraries_chosen: false, keys: freshKeys,
         library: blank, running: blank, suggestions: {},
       },
     });

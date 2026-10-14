@@ -26,4 +26,13 @@ export const setupApi = {
   dismissChecklist: () => req<SetupChecklist>("/api/v1/setup/checklist/dismiss", { method: "POST" }),
   /** The setup state plus whether a Prowlarr answers (a check of up to 3 s), for the Indexers step. */
   stateWithProwlarr: () => req<SetupState>("/api/v1/setup?prowlarr=1"),
+  /**
+   * Checks OpenSubtitles credentials typed in the wizard before they're saved: the key (or
+   * the saved one when empty) and a typed username/password. Sent once, stored nowhere.
+   */
+  testOpenSubtitles: (key: string, username: string, password: string) =>
+    req<{ ok: boolean; detail: string }>("/api/v1/apikeys/opensubtitles_api/test", {
+      method: "POST",
+      body: JSON.stringify({ value: key, username, password }),
+    }),
 };

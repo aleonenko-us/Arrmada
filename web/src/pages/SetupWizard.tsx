@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type APIKeyStatus, type LibraryPaths, type SetupState } from "../lib/api";
 import { FolderChips, FolderPicker } from "./Library";
@@ -8,11 +8,12 @@ import { ChecklistRows, useSetupChecklist } from "../components/GettingStarted";
 import { ProwlarrPanel } from "../components/connections/ProwlarrPanel";
 import { useMe } from "../lib/me";
 import { setupApi } from "../lib/setupApi";
-import { Button, useConfirm, useToast } from "../ui";
+import { Button, StatusChip, useConfirm, useToast } from "../ui";
 import { PlexConnect } from "./settings/PlexConnection";
 
-// SetupWizard is the first thing an admin sees on a fresh install: the metadata key, then
-// each library folder (pre-filled from what's on the mount), then Plex (Settings →
+// SetupWizard is the first thing an admin sees on a fresh install: the TMDB key and the
+// optional ones (Hardcover recommended), each checked before it's saved, then each library
+// folder (pre-filled from what's on the mount), then Plex (Settings →
 // Connections' own sign-in, plus the family switches), then indexers (a Prowlarr sync, or
 // one tracker tested before it's saved — Connections' own dialog), then the Getting
 // started checklist with a link to each step that's left. Folders apply live, so the restart only
@@ -22,7 +23,7 @@ import { PlexConnect } from "./settings/PlexConnection";
 type Step = "keys" | "folders" | "plex" | "indexers" | "finish";
 
 const STEPS: { id: Step; label: string }[] = [
-  { id: "keys", label: "Metadata" },
+  { id: "keys", label: "Keys" },
   { id: "folders", label: "Folders" },
   { id: "plex", label: "Plex" },
   { id: "indexers", label: "Indexers" },
@@ -52,10 +53,74 @@ const FOLDERS: { key: keyof LibraryPaths; label: string; hint: string; optional?
   { key: "music", label: "Music", hint: "Optional — only if you use Music", optional: true },
 ];
 
-const OPTIONAL_KEYS = ["hardcover", "omdb", "tvdb"];
+// The optional keys, Hardcover first: what each adds, what happens without it, and where
+// to get one. OpenSubtitles is one item with its login (the key alone only searches).
+interface OptionalKey { id: string; name: string; what: string; url: string; recommended?: boolean }
+const OPTIONAL_KEYS: OptionalKey[] = [
+  {
+    id: "hardcover", name: "Hardcover", recommended: true, url: "https://hardcover.app/account/api",
+    what: "A better book catalogue, one entry per book. Without it, Books use Open Library.",
+  },
+  {
+    id: "tvdb", name: "TheTVDB", url: "https://thetvdb.com/api-information",
+    what: "Anime episode numbering. Without it, anime uses TMDB's numbering.",
+  },
+  {
+    id: "omdb", name: "OMDb", url: "https://www.omdbapi.com/apikey.aspx",
+    what: "IMDb, Rotten Tomatoes and Metacritic scores. Without it, those scores don't show.",
+  },
+];
+const OPENSUBTITLES = {
+  id: "opensubtitles", name: "OpenSubtitles", url: "https://www.opensubtitles.com/en/consumers",
+  what: "Downloads subtitles your files lack. The key alone only searches; downloading also needs your login. Without it, subtitles come from your files, or local AI if you turn it on.",
+};
+const OS_FIELDS = [
+  { id: "opensubtitles_api", label: "API key", placeholder: "Paste the key" },
+  { id: "opensubtitles_username", label: "Username", placeholder: "Your username" },
+  { id: "opensubtitles_password", label: "Password", placeholder: "Your password" },
+] as const;
 
-// The answer to a pre-save key check, for the value it was asked about.
-interface KeyCheck { value: string; ok: boolean; detail: string; busy?: boolean }
+// The answer to a pre-save key check, for the value it was asked about. unasked: the check
+// itself couldn't be made (Arrmada unreachable, no test for that key here), which says
+// nothing about the key, so it never stands in the way of saving.
+interface KeyCheck { value: string; ok: boolean; detail: string; busy?: boolean; unasked?: boolean }
+type Answer = { ok: boolean; detail: string };
+
+// useKeyChecks runs the pre-save checks, one per key: on paste, on leaving the field and
+// on Next. The typed value goes to the provider once (never stored) and the answer shows
+// under the field. The latest check per key is kept as a promise, so a blur and a click
+// on Next for the same value (the click blurs the field first) share one request.
+function useKeyChecks() {
+  const [checks, setChecks] = useState<Record<string, KeyCheck>>({});
+  const last = useRef<Record<string, { value: string; result: Promise<KeyCheck> } | undefined>>({});
+  const check = useCallback((id: string, value: string, ask: () => Promise<Answer>): Promise<KeyCheck | null> => {
+    if (!value) {
+      last.current[id] = undefined;
+      setChecks((c) => { const n = { ...c }; delete n[id]; return n; });
+      return Promise.resolve(null);
+    }
+    const prev = last.current[id];
+    if (prev?.value === value) return prev.result;
+    setChecks((c) => ({ ...c, [id]: { value, busy: true, ok: false, detail: "" } }));
+    const result = ask().then(
+      (r): KeyCheck => ({ value, ok: r.ok, detail: r.detail }),
+      (e: Error): KeyCheck => {
+        // Couldn't ask: the next blur or Next asks again rather than reusing this answer.
+        if (last.current[id]?.value === value) last.current[id] = undefined;
+        return { value, ok: false, detail: e.message, unasked: true };
+      },
+    );
+    const mine = { value, result };
+    last.current[id] = mine;
+    // undefined: this check failed to ask and cleared itself; still show why.
+    void result.then((res) => {
+      const cur = last.current[id];
+      if (cur === mine || cur === undefined) setChecks((c) => ({ ...c, [id]: res }));
+    });
+    return result;
+  }, []);
+  return { checks, check };
+}
 
 /**
  * onDone: setup is finished (or skipped). to: a page the admin picked from the last
@@ -101,48 +166,52 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const go = (s: Step) => { setError(null); setStep(s); };
   const finish = (to?: string) => run(async () => { await api.completeSetup(); onDone(to); });
 
-  // The TMDB key is checked before it's saved: on paste or when the field loses focus, the
-  // typed value goes to TMDB once (never stored) and the answer shows under the field.
+  // Every key typed on the first step is checked before it's saved (useKeyChecks).
   const confirm = useConfirm();
-  const [tmdbCheck, setTmdbCheck] = useState<KeyCheck | null>(null);
-  // The latest check, kept as a promise so a blur and a click on Next for the same value
-  // (the click blurs the field first) share one request.
-  const lastCheck = useRef<{ value: string; result: Promise<KeyCheck> } | null>(null);
-  const checkTmdb = (value: string): Promise<KeyCheck | null> => {
-    const v = value.trim();
-    if (!v) { lastCheck.current = null; setTmdbCheck(null); return Promise.resolve(null); }
-    if (lastCheck.current?.value === v) return lastCheck.current.result;
-    setTmdbCheck({ value: v, busy: true, ok: false, detail: "" });
-    const result = api.testAPIKey("tmdb", v).then(
-      (r): KeyCheck => ({ value: v, ok: r.ok, detail: r.detail }),
-      (e: Error): KeyCheck => {
-        // Couldn't ask (Arrmada unreachable, say): that says nothing about the key, so
-        // the next blur or Next asks again rather than reusing this answer.
-        if (lastCheck.current?.value === v) lastCheck.current = null;
-        return { value: v, ok: false, detail: e.message };
-      },
-    );
-    const mine = { value: v, result };
-    lastCheck.current = mine;
-    // null: this check failed to ask and cleared itself; still show why.
-    result.then((res) => { if (lastCheck.current === mine || lastCheck.current === null) setTmdbCheck(res); });
-    return result;
+  const toast = useToast();
+  const { checks, check } = useKeyChecks();
+  const typed = (id: string) => (keys[id] ?? "").trim();
+  const checkKey = (id: string, value: string) => check(id, value.trim(), () => api.testAPIKey(id, value.trim()));
+  // OpenSubtitles is checked as one: the key with the login typed beside it (the saved
+  // parts fill in the rest). Only worth asking once there's a key, typed or saved.
+  const osValue = () => {
+    const [k, u, p] = OS_FIELDS.map((f) => typed(f.id));
+    const keyKnown = !!k || !!state?.keys.find((s) => s.id === "opensubtitles_api")?.configured;
+    return (k || u || p) && keyKnown ? [k, u, p].join("\u0000") : "";
+  };
+  const checkOS = () => {
+    const [k, u, p] = OS_FIELDS.map((f) => typed(f.id));
+    return check(OPENSUBTITLES.id, osValue(), () => setupApi.testOpenSubtitles(k, u, p));
   };
 
   const saveKeys = () => run(async () => {
-    // A TMDB key that failed its check is only saved if the admin says so.
-    const tmdbValue = keys.tmdb?.trim();
-    if (tmdbValue) {
-      const r = await checkTmdb(tmdbValue);
-      if (r && !r.ok && !(await confirm({
-        title: "Save this TMDB key anyway?",
-        body: <>TMDB didn't accept it: {r.detail}. Movies and TV won't find anything until it works.</>,
-        confirmLabel: "Save anyway",
-      }))) return;
-    }
+    const asked = await Promise.all([
+      ...["tmdb", ...OPTIONAL_KEYS.map((k) => k.id)].map(async (id) => ({ id, r: await checkKey(id, typed(id)) })),
+      checkOS().then((r) => ({ id: OPENSUBTITLES.id, r })),
+    ]);
+    const name = (id: string) => (id === "tmdb" ? "TMDB" : id === OPENSUBTITLES.id ? OPENSUBTITLES.name : OPTIONAL_KEYS.find((k) => k.id === id)?.name ?? id);
+    // A key its provider turned down is only saved if the admin says so. One that couldn't
+    // be checked at all is saved as typed, and the toast says it wasn't checked.
+    const failed = asked.filter((a) => a.r && !a.r.ok && !a.r.unasked);
+    if (failed.length > 0 && !(await confirm({
+      title: failed.length === 1 ? `Save this ${name(failed[0].id)} key anyway?` : "Save these keys anyway?",
+      body: (
+        <>
+          {failed.map((f) => <span key={f.id} className="block">{name(f.id)} didn't accept it: {f.r?.detail}.</span>)}
+          {failed.some((f) => f.id === "tmdb")
+            ? <span className="mt-1 block">Movies and TV won't find anything until the TMDB key works.</span>
+            : <span className="mt-1 block">Optional keys can stay blank: clear the field to carry on without it.</span>}
+        </>
+      ),
+      confirmLabel: "Save anyway",
+      cancelLabel: "Keep editing",
+    }))) return;
     for (const [id, v] of Object.entries(keys)) {
       if (v.trim()) await api.setAPIKey(id, v.trim());
     }
+    const unchecked = asked.filter((a) => a.r?.unasked).map((a) => name(a.id));
+    if (unchecked.length > 0) toast(`Saved. ${unchecked.join(", ")} couldn't be checked first; Test it in Settings → Connections.`);
+    setKeys({});
     await load();
     go("folders");
   });
@@ -164,7 +233,6 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
   // The Indexers step asks whether a Prowlarr answers (which can take a few seconds) only
   // when it opens; null while it's asking. showProwlarr: the sync panel is open.
-  const toast = useToast();
   const [prowlarr, setProwlarr] = useState<boolean | null>(null);
   const [showProwlarr, setShowProwlarr] = useState(false);
   const [addingIndexer, setAddingIndexer] = useState(false);
@@ -217,27 +285,78 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           </p>
 
           <KeyField
+            id="tmdb"
             status={tmdb}
             label="TMDB API key"
             note="Needed for Movies and TV — titles, artwork and Discover. It's free."
             value={keys.tmdb ?? ""}
-            onChange={(v, pasted) => { setKeys({ ...keys, tmdb: v }); if (pasted) checkTmdb(v); }}
-            onBlur={(v) => { if (v.trim()) checkTmdb(v); }}
+            onChange={(v, pasted) => { setKeys({ ...keys, tmdb: v }); if (pasted) void checkKey("tmdb", v); }}
+            onBlur={(v) => { if (v.trim()) void checkKey("tmdb", v); }}
           />
-          {tmdbCheck && tmdbCheck.value === (keys.tmdb ?? "").trim() && (
-            <p className="mt-1 text-sm" style={{ color: tmdbCheck.busy ? "var(--ink-faint)" : tmdbCheck.ok ? "var(--good-text)" : "var(--reject-text)" }}>
-              {tmdbCheck.busy ? "Checking with TMDB…" : `${tmdbCheck.ok ? "✓" : "✗"} ${tmdbCheck.detail}`}
-            </p>
-          )}
-          <details className="mt-3">
-            <summary className="cursor-pointer text-sm font-semibold text-ink-dim">More keys (all optional)</summary>
-            <div className="mt-2 flex flex-col gap-3">
-              {OPTIONAL_KEYS.map((id) => {
-                const s = keyStatus(id);
-                return s ? <KeyField key={id} status={s} label={s.label} note={s.purpose} value={keys[id] ?? ""} onChange={(v) => setKeys({ ...keys, [id]: v })} /> : null;
-              })}
+          <CheckLine provider="TMDB" check={checks.tmdb} value={typed("tmdb")} />
+
+          <section aria-labelledby="setup-optional-keys" className="mt-5 border-t pt-4" style={{ borderColor: "var(--line)" }}>
+            <h2 id="setup-optional-keys" className="m-0 text-md font-bold">Optional keys — Arrmada works without them</h2>
+            <p className="mb-3 mt-0.5 text-sm text-ink-dim">Add them now or later in Settings → Connections; Hardcover is the one worth adding.</p>
+            <div className="flex flex-col gap-3">
+              {OPTIONAL_KEYS.map((k) => (
+                <div key={k.id}>
+                  <KeyField
+                    id={k.id}
+                    status={keyStatus(k.id)}
+                    label={k.name}
+                    badge={k.recommended ? <StatusChip tone="accent" size="xs">Recommended</StatusChip> : <StatusChip tone="faint" size="xs">Optional</StatusChip>}
+                    note={<>{k.what} <GetKey url={k.url} name={k.name} /></>}
+                    value={keys[k.id] ?? ""}
+                    onChange={(v, pasted) => { setKeys({ ...keys, [k.id]: v }); if (pasted) void checkKey(k.id, v); }}
+                    onBlur={(v) => { if (v.trim()) void checkKey(k.id, v); }}
+                  />
+                  <CheckLine provider={k.name} check={checks[k.id]} value={typed(k.id)} />
+                </div>
+              ))}
+
+              <fieldset
+                className="m-0 min-w-0 border-0 p-0"
+                aria-describedby="setup-key-opensubtitles-note"
+                // Checked as one when focus leaves the group, so the login typed after the
+                // key is part of the check.
+                onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void checkOS(); }}
+              >
+                <legend className="mb-1 flex w-full flex-wrap items-center gap-2 p-0">
+                  <span className="text-base font-semibold">{OPENSUBTITLES.name}</span>
+                  <StatusChip tone="faint" size="xs">Optional</StatusChip>
+                </legend>
+                <p id="setup-key-opensubtitles-note" className="m-0 mb-2 text-xs text-ink-dim">
+                  {OPENSUBTITLES.what} <GetKey url={OPENSUBTITLES.url} name={OPENSUBTITLES.name} />
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {OS_FIELDS.map((f) => {
+                    const s = keyStatus(f.id);
+                    return (
+                      <div key={f.id} className="min-w-0">
+                        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2">
+                          <label htmlFor={`setup-key-${f.id}`} className="text-sm font-semibold text-ink-dim">{f.label}</label>
+                          {s?.configured && <Saved status={s} />}
+                        </div>
+                        <input
+                          id={`setup-key-${f.id}`}
+                          type={s?.secret === false ? "text" : "password"}
+                          value={keys[f.id] ?? ""}
+                          onChange={(e) => setKeys({ ...keys, [f.id]: e.target.value })}
+                          placeholder={s?.configured ? "Leave blank to keep it" : f.placeholder}
+                          // new-password: browsers never fill the admin's own Arrmada login in here.
+                          autoComplete={f.id === "opensubtitles_password" ? "new-password" : "off"}
+                          className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
+                          style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <CheckLine provider={OPENSUBTITLES.name} check={checks[OPENSUBTITLES.id]} value={osValue()} />
+              </fieldset>
             </div>
-          </details>
+          </section>
           <Nav
             busy={busy}
             skip={{
@@ -473,22 +592,30 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-function KeyField({ status, label, note, value, onChange, onBlur }: {
-  status?: APIKeyStatus; label: string; note: string; value: string;
+// KeyField is one key: its name (and a badge), whether one is saved — only the masked
+// hint, never the value — the field, and a line on what it's for. Nothing is ever filled in.
+function KeyField({ id, status, label, badge, note, value, onChange, onBlur }: {
+  id: string; status?: APIKeyStatus; label: string; badge?: ReactNode; note: ReactNode; value: string;
   /** pasted: the change came from a paste, which is when a key is worth checking at once. */
   onChange: (v: string, pasted: boolean) => void;
   onBlur?: (v: string) => void;
 }) {
   const pasting = useRef(false);
+  const inputId = `setup-key-${id}`;
   return (
-    <label className="block">
-      <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold">{label}</span>
-        {status?.configured && <span className="text-xs" style={{ color: "var(--good-text)" }}>✓ saved{status.hint ? ` (…${status.hint})` : ""}</span>}
+    <div>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="flex items-center gap-2">
+          <label htmlFor={inputId} className="text-base font-semibold">{label}</label>
+          {badge}
+        </span>
+        {status?.configured && <Saved status={status} />}
       </div>
       <input
+        id={inputId}
         type={status?.secret === false ? "text" : "password"}
         value={value}
+        aria-describedby={`${inputId}-note`}
         onPaste={() => { pasting.current = true; }}
         onChange={(e) => { const p = pasting.current; pasting.current = false; onChange(e.target.value, p); }}
         onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
@@ -497,11 +624,43 @@ function KeyField({ status, label, note, value, onChange, onBlur }: {
         className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
         style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
       />
-      <span className="mt-1 block text-xs text-ink-faint">
-        {note}{status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>get one</a></>}
+      <span id={`${inputId}-note`} className="mt-1 block text-xs text-ink-dim">
+        {note}{id === "tmdb" && status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>get one</a></>}
       </span>
-    </label>
+    </div>
   );
+}
+
+// Saved says a key is set without showing it: the server's hint is the last few
+// characters of a secret ("…a1b2"), or a username (which isn't one).
+function Saved({ status }: { status: APIKeyStatus }) {
+  return (
+    <span className="text-xs" style={{ color: "var(--good-text)" }}>
+      ✓ saved{status.hint ? ` (${status.hint})` : ""}{status.source === "env" ? " · from install" : ""}
+    </span>
+  );
+}
+
+// GetKey links to where a free key is handed out.
+function GetKey({ url, name }: { url: string; name: string }) {
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="whitespace-nowrap font-semibold underline" style={{ color: "var(--accent-text)" }} aria-label={`Get a free ${name} key (opens in a new tab)`}>
+      Get a free key
+    </a>
+  );
+}
+
+// CheckLine is a key's pre-save check under its field, while it's for what's typed now.
+function CheckLine({ provider, check, value }: { provider: string; check?: KeyCheck; value: string }) {
+  if (!check || !value || check.value !== value) return null;
+  const [color, text] = check.busy
+    ? ["var(--ink-dim)", `Checking with ${provider}…`]
+    : check.ok
+      ? ["var(--good-text)", `✓ ${check.detail}`]
+      : check.unasked
+        ? ["var(--avoid-text)", `Couldn't check it (${check.detail}). It can still be saved; Test it later in Settings → Connections.`]
+        : ["var(--reject-text)", `✗ ${check.detail}`];
+  return <p role="status" className="m-0 mt-1 break-words text-sm" style={{ color }}>{text}</p>;
 }
 
 // Nav is a step's buttons. skip: the first step's "Skip for now" (the whole wizard), or a

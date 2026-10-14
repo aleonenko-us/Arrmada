@@ -18,6 +18,8 @@ type Shot = { persona: Persona; path: string; open?: (page: Page) => Promise<voi
 const shots: Shot[] = [
   ...STAFF_PAGES.map((path) => ({ persona: "admin" as const, path })),
   ...REQUESTER_PAGES.map((path) => ({ persona: "requester" as const, path })),
+  // The setup wizard's first step (Run setup again): the keys, required and optional.
+  { persona: "admin", path: "/setup" },
   // Dialogs, sheets and menus: what opens on top of a page is drawn on other surfaces.
   { persona: "requester", path: "/discover/movie/1001" },
   { persona: "admin", path: "/requests?tab=active&type=movie&id=2" },
