@@ -55,7 +55,8 @@ func RefPath(ref string) string {
 			return "/requests?tab=issues&issue=" + id
 		}
 	case "kindle":
-		// A Send to Kindle result: the shelf it was sent from. The reference names the
+		// A Send to Kindle result: the shelf (staff, who send from a book page and have
+		// no shelf, are redirected to /books by the app's routes). The reference names the
 		// send, never the book.
 		return "/shelf"
 	}

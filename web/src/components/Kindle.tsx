@@ -3,14 +3,18 @@ import type { MyBook } from "../lib/api";
 import { AMAZON_DEVICES_URL, kindleApi, type KindleView } from "../lib/kindleApi";
 import { Button, Sheet, useToast } from "../ui";
 
-// Send to Kindle, as a requester meets it: a button on a book, a first-time sheet that
-// explains Amazon's approved-senders list and asks for the Kindle's address, and a card on
+// Send to Kindle: a button on a book (My shelf's book sheet, and the ebook edition on the
+// staff book page — staff send to their own Kindle too), a first-time sheet that explains Amazon's approved-senders list and asks for the Kindle's address, and a card on
 // the Me page to change that address. Lazy-loaded with the calls behind it (lib/kindleApi),
 // so none of this is in anyone's first load. An email only ever goes out from a tap on
 // Send; the result arrives in the bell.
 
 // Amazon's own limit for a document sent by email (books.KindleMaxBytes on the server).
 const KINDLE_MAX_BYTES = 50 * 1024 * 1024;
+
+// What the button needs to know about a book: My shelf's MyBook has it, and the staff
+// book page builds it from its Book.
+export type KindleBook = Pick<MyBook, "book_id" | "title" | "ebook">;
 
 // One read of the person's Kindle setup per page visit, shared by every button.
 let viewPromise: Promise<KindleView> | null = null;
@@ -24,7 +28,7 @@ function rememberView(v: KindleView) {
 
 // kindleBlocked says why a book can't go to a Kindle by email ("" = it can): Amazon takes
 // EPUB and PDF up to 50 MB. The server decides the format (ebook.kindle) and checks again.
-export function kindleBlocked(book: MyBook): string {
+export function kindleBlocked(book: KindleBook): string {
   const e = book.ebook;
   if (!e) return "No ebook yet";
   if (!e.kindle) return `This ebook is ${(e.format || "in another format").toUpperCase()} — Kindle email takes EPUB or PDF`;
@@ -32,7 +36,7 @@ export function kindleBlocked(book: MyBook): string {
   return "";
 }
 
-export function KindleButton({ book }: { book: MyBook }) {
+export function KindleButton({ book }: { book: KindleBook }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [setup, setSetup] = useState<KindleView | null>(null);

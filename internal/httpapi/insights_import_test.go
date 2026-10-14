@@ -116,6 +116,13 @@ func TestRemoveImportOverlapsBacksUpFirst(t *testing.T) {
 // get_history shape, honouring start/length, and records each request's query.
 func fakeTautulli(t *testing.T, n int, key string) (*httptest.Server, func() []string) {
 	t.Helper()
+	return fakeTautulliKeys(t, n, key, func(i int) any { return strconv.Itoa(i) })
+}
+
+// fakeTautulliKeys is fakeTautulli with each row's rating_key from ratingKey: some
+// Tautulli versions send it as a string, others as a number.
+func fakeTautulliKeys(t *testing.T, n int, key string, ratingKey func(i int) any) (*httptest.Server, func() []string) {
+	t.Helper()
 	var mu sync.Mutex
 	var queries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +140,7 @@ func fakeTautulli(t *testing.T, n int, key string) (*httptest.Server, func() []s
 		for i := start; i < n && i < start+length; i++ {
 			began := 1_000_000 + i*10_000
 			rows = append(rows, map[string]any{"user_id": 7, "user": "amy", "title": fmt.Sprintf("Film %d", i),
-				"media_type": "movie", "rating_key": strconv.Itoa(i), "started": began, "stopped": began + 3000, "duration": 2900})
+				"media_type": "movie", "rating_key": ratingKey(i), "started": began, "stopped": began + 3000, "duration": 2900})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"response": map[string]any{"result": "success",
 			"data": map[string]any{"recordsFiltered": n, "data": rows}}})
@@ -277,5 +284,67 @@ func TestRemoveImportOverlapsRefusesUnsafely(t *testing.T) {
 	_, admin2 := s2.user(t, "owner@example.com", auth.RoleAdmin)
 	if rec := s2.doJSON("POST", "/api/v1/insights/import/overlaps/remove", admin2, `{"expected":0}`); rec.Code != http.StatusInternalServerError {
 		t.Errorf("no snapshot func: HTTP %d, want 500", rec.Code)
+	}
+}
+
+// Some Tautulli versions send rating_key as a number, others as a string; both import with
+// their key. Plays an earlier import stored without a key (the client used to read only
+// the string form) get it filled in on the next import instead of coming in twice.
+func TestImportRatingKeyShapesAndEmptyKeyRepair(t *testing.T) {
+	const key = "k"
+	shapes := map[string]func(i int) any{
+		"number": func(i int) any { return 1000 + i },
+		"string": func(i int) any { return strconv.Itoa(1000 + i) },
+	}
+	for name, shape := range shapes {
+		t.Run(name, func(t *testing.T) {
+			srv, _ := fakeTautulliKeys(t, 600, key, shape)
+			s, r := insightsImportServer(t, nil)
+			_, admin := s.user(t, "owner@example.com", auth.RoleAdmin)
+			// The earlier import: the first 400 plays, every one without its key.
+			for i := 0; i < 400; i++ {
+				began := 1_000_000 + i*10_000
+				if _, err := s.st.DB().Exec(`INSERT INTO stream_sessions (session_key,user_id,user_name,rating_key,media_type,title,started_at,stopped_at,watched_ms)
+					VALUES ('','7','amy','','movie',?,?,?,2900000)`, fmt.Sprintf("Film %d", i), began, began+3000); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			rec := s.doJSON("POST", "/api/v1/insights/import/tautulli", admin, `{"url":"`+srv.URL+`","api_key":"`+key+`"}`)
+			j := waitJob(t, r, rec.Result(), rec.Body.Bytes())
+			if j.Status != jobs.StatusSucceeded || !strings.Contains(string(j.Result), `"keys_filled":400`) {
+				t.Fatalf("import job %s %q result %s; want 400 keys filled", j.Status, j.Error, j.Result)
+			}
+			runs := s.importRuns(t, admin)
+			if len(runs) != 1 || runs[0].Imported != 200 || runs[0].Duplicates != 400 || runs[0].Rows != 200 {
+				t.Fatalf("run = %+v; want the 200 new plays imported and the 400 earlier ones as duplicates", runs)
+			}
+			if n := s.sessionCount(t); n != 600 {
+				t.Fatalf("%d plays, want 600 (no play twice)", n)
+			}
+			var empty, wrong int
+			if err := s.st.DB().QueryRow(`SELECT COUNT(*) FROM stream_sessions WHERE rating_key = ''`).Scan(&empty); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.st.DB().QueryRow(`SELECT COUNT(*) FROM stream_sessions
+				WHERE rating_key <> CAST(1000 + (started_at - 1000000) / 10000 AS TEXT)`).Scan(&wrong); err != nil {
+				t.Fatal(err)
+			}
+			if empty != 0 || wrong != 0 {
+				t.Fatalf("%d plays without a key, %d with the wrong one", empty, wrong)
+			}
+
+			// Run again: everything is already here, keys and all.
+			rec = s.do("POST", fmt.Sprintf("/api/v1/insights/import/runs/%d/retry", runs[0].ID), admin)
+			if j := waitJob(t, r, rec.Result(), rec.Body.Bytes()); j.Status != jobs.StatusSucceeded || strings.Contains(string(j.Result), "keys_filled") {
+				t.Fatalf("retry job %s %q result %s", j.Status, j.Error, j.Result)
+			}
+			if runs := s.importRuns(t, admin); runs[0].Imported != 0 || runs[0].Duplicates != 600 {
+				t.Fatalf("retry run = %+v; want nothing imported", runs[0])
+			}
+			if n := s.sessionCount(t); n != 600 {
+				t.Fatalf("%d plays after the retry, want 600", n)
+			}
+		})
 	}
 }

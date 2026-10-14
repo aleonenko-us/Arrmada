@@ -142,6 +142,46 @@ func TestSendToKindleDeliversAndTellsTheInbox(t *testing.T) {
 	}
 }
 
+// Staff send to their own Kindle from the book page: the same signed-in routes work for a
+// manager and an admin, each result lands in the sender's own inbox, and the book page's
+// ebook says whether Kindle email takes it.
+func TestSendToKindleFromStaffAccounts(t *testing.T) {
+	f := newKindleFixture(t)
+	for _, role := range []auth.Role{auth.RoleManager, auth.RoleAdmin} {
+		u, c := f.s.user(t, "staff-"+string(role), role)
+		if rec := f.s.doJSON("PUT", "/api/v1/me/kindle", c, `{"kindle_email":"staff_`+string(role)+`@kindle.com"}`); rec.Code != http.StatusOK {
+			t.Fatalf("%s saves an address: HTTP %d %s", role, rec.Code, rec.Body)
+		}
+		if rec := f.s.do("POST", fmt.Sprintf("/api/v1/me/books/%d/send-to-kindle", f.epub.ID), c); rec.Code != http.StatusAccepted {
+			t.Fatalf("%s sends: HTTP %d %s", role, rec.Code, rec.Body)
+		}
+		var inbox []requests.UserNotification
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && len(inbox) == 0; time.Sleep(20 * time.Millisecond) {
+			inbox, _ = f.s.deps.Requests.Inbox(context.Background(), u.ID)
+		}
+		if len(inbox) != 1 || !strings.Contains(inbox[0].Body, "Sent “Dune” to your Kindle") || !strings.HasPrefix(inbox[0].Ref, "kindle:") {
+			t.Fatalf("%s inbox = %+v", role, inbox)
+		}
+		if strings.Contains(inbox[0].Ref, fmt.Sprint(f.epub.ID)+":") || strings.Contains(inbox[0].Ref, "Dune") {
+			t.Errorf("the reference names the book: %q", inbox[0].Ref)
+		}
+	}
+	if n := len(f.fake.Messages()); n != 2 {
+		t.Errorf("%d emails went out, want one per staff send", n)
+	}
+
+	for book, want := range map[int64]bool{f.epub.ID: true, f.azw3.ID: false} {
+		rec := f.s.do("GET", fmt.Sprintf("/api/v1/books/%d", book), f.admin)
+		var b books.Book
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &b) != nil || b.Ebook == nil {
+			t.Fatalf("book %d: HTTP %d %s", book, rec.Code, rec.Body)
+		}
+		if b.Ebook.Kindle != want {
+			t.Errorf("book %d (%s): ebook.kindle = %v, want %v", book, b.Ebook.Format, b.Ebook.Kindle, want)
+		}
+	}
+}
+
 // A failed send says so in the inbox, with the mail server's reply.
 func TestSendToKindleFailureReachesTheInbox(t *testing.T) {
 	f := newKindleFixture(t)

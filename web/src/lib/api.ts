@@ -2053,6 +2053,8 @@ export interface BookFile {
   format: string;
   size_bytes: number;
   file_count: number;
+  /** The ebook on the book page: Send to Kindle's email takes this format (EPUB, PDF). */
+  kindle?: boolean;
 }
 export interface BookFileEntry {
   name: string;

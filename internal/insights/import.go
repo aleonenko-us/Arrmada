@@ -58,6 +58,9 @@ type ImportCounts struct {
 	AfterCutoff int    `json:"after_cutoff"` // started at or after ImportOptions.Before
 	Failed      int    `json:"failed"`       // the check or the insert errored
 	FirstError  string `json:"first_error,omitempty"`
+	// KeysFilled is how many of the duplicates were plays an earlier import stored without
+	// a rating key, which this pass filled in. Part of Duplicate, not a bucket of its own.
+	KeysFilled int `json:"keys_filled,omitempty"`
 }
 
 // Add folds another pass's counts into c (the first error seen wins).
@@ -68,6 +71,7 @@ func (c *ImportCounts) Add(o ImportCounts) {
 	c.Invalid += o.Invalid
 	c.AfterCutoff += o.AfterCutoff
 	c.Failed += o.Failed
+	c.KeysFilled += o.KeysFilled
 	if c.FirstError == "" {
 		c.FirstError = o.FirstError
 	}
@@ -150,6 +154,22 @@ func (s *Service) ImportHistory(ctx context.Context, rows []ImportedSession, opt
 		if exists {
 			c.Duplicate++
 			continue
+		}
+		if r.RatingKey != "" {
+			// An earlier import may hold this play without its rating key: the client used
+			// to read only a string key, and some Tautulli versions send a number. Same
+			// person, start second and title is the same play — fill the key in rather than
+			// import the play a second time.
+			filled, err := s.repo.fillEmptyRatingKey(ctx, uid, r.StartedAt, r.Title, r.RatingKey, r.GrandparentRatingKey)
+			if err != nil {
+				c.fail(err)
+				continue
+			}
+			if filled {
+				c.Duplicate++
+				c.KeysFilled++
+				continue
+			}
 		}
 		live, err := s.repo.overlapsLive(ctx, playWindow{
 			UserID: uid, RatingKey: r.RatingKey, Title: r.Title, GrandparentTitle: r.GrandparentTitle,

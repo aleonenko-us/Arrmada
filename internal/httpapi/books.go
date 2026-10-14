@@ -186,7 +186,17 @@ func (a *api) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	a.enrichBookWants(r, &b)
 	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
+	setEbookKindle(&b)
 	a.writeJSON(w, http.StatusOK, b)
+}
+
+// setEbookKindle says whether Send to Kindle's email takes the book's ebook, for the book
+// page's Send to Kindle button (staff send to their own Kindle there, as requesters do
+// from My shelf).
+func setEbookKindle(b *books.Book) {
+	if b.Ebook != nil {
+		b.Ebook.Kindle = books.KindleAccepts(b.Ebook.Format)
+	}
 }
 
 // setBookAliases lists the catalogue keys the book had before its current one, so the
@@ -250,6 +260,7 @@ func (a *api) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
 	a.enrichBookWants(r, &b)
 	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
+	setEbookKindle(&b)
 	a.writeJSON(w, http.StatusOK, b)
 }
 

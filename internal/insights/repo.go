@@ -3,6 +3,8 @@ package insights
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +87,28 @@ func (r *repo) sessionExists(ctx context.Context, userID, ratingKey string, star
 		`SELECT COUNT(*) FROM stream_sessions WHERE user_id = ? AND rating_key = ? AND started_at = ?`,
 		userID, ratingKey, startedAt).Scan(&n)
 	return n > 0, err
+}
+
+// fillEmptyRatingKey looks for an imported play (no session key) by this user at this start
+// second, with this title and no rating key — imported before the Tautulli client read
+// numeric keys — and gives it ratingKey, plus the show's key when that is empty too. It
+// reports whether it found one. Asking for an empty rating_key keeps the lookup on the
+// (user_id, rating_key, started_at) dedupe index.
+func (r *repo) fillEmptyRatingKey(ctx context.Context, userID string, startedAt int64, title, ratingKey, grandparentKey string) (bool, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM stream_sessions
+		WHERE user_id = ? AND rating_key = '' AND started_at = ? AND session_key = '' AND title = ?
+		ORDER BY id LIMIT 1`, userID, startedAt, title).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE stream_sessions SET rating_key = ?,
+		grandparent_rating_key = CASE WHEN grandparent_rating_key = '' THEN ? ELSE grandparent_rating_key END
+		WHERE id = ?`, ratingKey, grandparentKey, id)
+	return err == nil, err
 }
 
 func (r *repo) insertBufferEvent(ctx context.Context, sessionID, at, offsetMS, durationMS int64, cause, detail string) error {
@@ -274,18 +298,95 @@ type GroupedRow struct {
 
 // itemKey identifies "the same item" for grouping. Plays without a rating key (some
 // imports) fall back to their title identity, so they never all merge into one item.
+// Migration 0308 indexes this exact expression (idx_stream_sessions_item) and its
+// triggers repeat it: change all of them together.
 const itemKey = `CASE WHEN rating_key <> '' THEN rating_key
 	ELSE media_type || '|' || title || '|' || grandparent_title || '|' || parent_index || '|' || media_index END`
 
-// historyGrouped is history with resumed sittings folded together (HistoryFilter.Group).
-// The filters pick the sittings first. LAG over each person's sittings of an item finds
-// the gap since the previous one ended; a sitting after a gap over resumeGap (or the first
-// one) starts a viewing. Viewings are paged by their starting sitting, and only the page's
-// viewings are then summed from their sittings — the sittings between a viewing's start
-// and the next viewing's — so a page costs one pass over the filtered plays, not a sum
-// per viewing across the whole history. The total counts viewings, so paging agrees
-// with what is listed.
+// itemKeyOf is itemKey over the stream_sessions row aliased t.
+func itemKeyOf(t string) string {
+	return fmt.Sprintf(`CASE WHEN %[1]s.rating_key <> '' THEN %[1]s.rating_key
+	ELSE %[1]s.media_type || '|' || %[1]s.title || '|' || %[1]s.grandparent_title || '|' || %[1]s.parent_index || '|' || %[1]s.media_index END`, t)
+}
+
+// historyGrouped is history with resumed sittings folded together (HistoryFilter.Group):
+// a sitting starts a viewing when it is a person's first of the item, or when the one
+// before it stopped more than resumeGap earlier. Viewings are paged by their starting
+// sitting, newest first, and only the page's viewings are summed from their sittings —
+// the sittings from a viewing's start up to the next viewing's. The total counts
+// viewings, so paging agrees with what is listed.
+//
+// Grouping every play, or one person's, reads the starts marked on the rows
+// (stream_sessions.viewing_start, kept by migration 0308's triggers): a page is a few
+// index reads. Any other filter picks sittings in a way that moves where viewings break
+// (a date range cuts one in half; a decision filter drops the sittings between), so those
+// work the starts out over the filtered sittings with a window function instead.
 func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
+	if f.Type == "" && f.Decision == "" && f.Query == "" && f.From == 0 && f.To == 0 {
+		return r.historyGroupedMarked(ctx, f, fn)
+	}
+	return r.historyGroupedWindow(ctx, f, fn)
+}
+
+// groupedPageSQL is the end of both grouped queries: given a CTE named page with each
+// listed viewing's start (p_id, p_user, p_item, p_start), the next viewing's start in the
+// same partition (p_next_start, p_next_id; NULL for the last) and p_total, it sums each
+// viewing's sittings (those also matching and, the filters) and returns the rows
+// historyGroupedScan reads. The page's columns are named apart (p_*), so the join's
+// filters and the watched expression read stream_sessions' own columns unqualified.
+func groupedPageSQL(and string) string {
+	return `v AS (
+			SELECT p_id, p_start, p_total, MAX(stopped_at) AS stop, MAX(view_offset_ms) AS off, SUM(buffer_count) AS bufs,
+				SUM(paused_ms) AS paused, SUM(` + watchedExpr + `) AS watched, COUNT(*) AS sessions, MAX(id) AS last_id
+			FROM page JOIN stream_sessions ON user_id = p_user AND ` + itemKey + ` = p_item
+				AND (started_at, id) >= (p_start, p_id)
+				AND (p_next_start IS NULL OR (started_at, id) < (p_next_start, p_next_id))` + and + `
+			GROUP BY p_id)
+		SELECT v.p_start, v.stop, v.off, v.bufs, v.paused, v.watched, v.sessions, v.p_total, ` + prefixed("s.", historyCols) + `
+		FROM v JOIN stream_sessions s ON s.id = v.last_id
+		ORDER BY v.p_start DESC, v.p_id DESC`
+}
+
+// historyGroupedMarked is historyGrouped over every play (or f.UserID's) from the marked
+// starts.
+func (r *repo) historyGroupedMarked(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
+	where, args := " WHERE s.viewing_start = 1", []any(nil)
+	if f.UserID != "" {
+		where, args = where+" AND s.user_id = ?", []any{f.UserID}
+	}
+	var total int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM stream_sessions s`+where, args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	if f.Offset >= total {
+		return total, nil
+	}
+	_, err := r.historyGroupedScan(ctx, groupedMarkedSQL(where), append(append([]any{total}, args...), f.Limit, f.Offset), fn)
+	return total, err
+}
+
+// groupedMarkedSQL is historyGroupedMarked's page query: the page's marked starts (where
+// filters stream_sessions s), each with the next marked start of its item — the sittings
+// before that one are this viewing's. Arguments: the total, where's, limit, offset.
+func groupedMarkedSQL(where string) string {
+	next := func(col string) string {
+		return `(SELECT n.` + col + ` FROM stream_sessions n
+			WHERE n.user_id = s.user_id AND ` + itemKeyOf("n") + ` = ` + itemKeyOf("s") + `
+			  AND n.viewing_start = 1 AND (n.started_at, n.id) > (s.started_at, s.id)
+			ORDER BY n.started_at, n.id LIMIT 1)`
+	}
+	return `WITH page AS (
+			SELECT s.id AS p_id, s.user_id AS p_user, ` + itemKeyOf("s") + ` AS p_item, s.started_at AS p_start,
+				` + next("started_at") + ` AS p_next_start, ` + next("id") + ` AS p_next_id, ? AS p_total
+			FROM stream_sessions s` + where + `
+			ORDER BY s.started_at DESC, s.id DESC LIMIT ? OFFSET ?),
+		` + groupedPageSQL("")
+}
+
+// historyGroupedWindow is historyGrouped for any filters. The filters pick the sittings
+// first, then LAG over each person's sittings of an item finds the gap since the previous
+// one ended — one pass over the filtered plays per page.
+func (r *repo) historyGroupedWindow(ctx context.Context, f HistoryFilter, fn func(GroupedRow) error) (int, error) {
 	conds, args := historyConds(f)
 	where, and := "", ""
 	if len(conds) > 0 {
@@ -293,8 +394,6 @@ func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(Grou
 		and = " AND " + strings.Join(conds, " AND ")
 	}
 	gap := strconv.Itoa(resumeGap)
-	// The page's CTE columns are named apart (p_*), so the join's filters and the watched
-	// expression read stream_sessions' own columns unqualified.
 	q := `WITH f AS (
 			SELECT id, user_id, ` + itemKey + ` AS item, started_at,
 				LAG(stopped_at) OVER (PARTITION BY user_id, ` + itemKey + ` ORDER BY started_at, id) AS prev_stop
@@ -305,18 +404,27 @@ func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(Grou
 				LEAD(started_at) OVER w AS p_next_start, LEAD(id) OVER w AS p_next_id, COUNT(*) OVER () AS p_total
 			FROM st WINDOW w AS (PARTITION BY user_id, item ORDER BY started_at, id)),
 		page AS (SELECT * FROM p ORDER BY p_start DESC, p_id DESC LIMIT ? OFFSET ?),
-		v AS (
-			SELECT p_id, p_start, p_total, MAX(stopped_at) AS stop, MAX(view_offset_ms) AS off, SUM(buffer_count) AS bufs,
-				SUM(paused_ms) AS paused, SUM(` + watchedExpr + `) AS watched, COUNT(*) AS sessions, MAX(id) AS last_id
-			FROM page JOIN stream_sessions ON user_id = p_user AND ` + itemKey + ` = p_item
-				AND (started_at, id) >= (p_start, p_id)
-				AND (p_next_start IS NULL OR (started_at, id) < (p_next_start, p_next_id))` + and + `
-			GROUP BY p_id)
-		SELECT v.p_start, v.stop, v.off, v.bufs, v.paused, v.watched, v.sessions, v.p_total, ` + prefixed("s.", historyCols) + `
-		FROM v JOIN stream_sessions s ON s.id = v.last_id
-		ORDER BY v.p_start DESC, v.p_id DESC`
+		` + groupedPageSQL(and)
 	all := append(append(append([]any{}, args...), f.Limit, f.Offset), args...)
-	rows, err := r.db.QueryContext(ctx, q, all...)
+	total, err := r.historyGroupedScan(ctx, q, all, fn)
+	if err != nil || total >= 0 {
+		return max(total, 0), err
+	}
+	if f.Offset == 0 {
+		return 0, nil
+	}
+	// A page past the end lists nothing, so the window total isn't there: count apart.
+	err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (
+		SELECT started_at, LAG(stopped_at) OVER (PARTITION BY user_id, `+itemKey+` ORDER BY started_at, id) AS prev_stop
+		FROM stream_sessions`+where+`)
+		WHERE prev_stop IS NULL OR started_at - prev_stop > `+gap, args...).Scan(&total)
+	return total, err
+}
+
+// historyGroupedScan runs a grouped query (groupedPageSQL's columns) and hands each
+// viewing to fn. It returns the rows' p_total, or -1 when the page listed nothing.
+func (r *repo) historyGroupedScan(ctx context.Context, q string, args []any, fn func(GroupedRow) error) (int, error) {
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -340,15 +448,10 @@ func (r *repo) historyGrouped(ctx context.Context, f HistoryFilter, fn func(Grou
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
-	if seen || f.Offset == 0 {
-		return total, nil
+	if !seen {
+		return -1, nil
 	}
-	// A page past the end lists nothing, so the window total isn't there: count apart.
-	err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (
-		SELECT started_at, LAG(stopped_at) OVER (PARTITION BY user_id, `+itemKey+` ORDER BY started_at, id) AS prev_stop
-		FROM stream_sessions`+where+`)
-		WHERE prev_stop IS NULL OR started_at - prev_stop > `+gap, args...).Scan(&total)
-	return total, err
+	return total, nil
 }
 
 // prefixed qualifies each column of a comma-separated list with a table alias.
