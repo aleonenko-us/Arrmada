@@ -252,12 +252,25 @@ func TestTuneBundledSAB(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.setCats("*", "arrmada", "arrmada-tv")
+	outside := filepath.ToSlash(filepath.Join(t.TempDir(), "elsewhere"))
+	f.setAnswer("get_config", func(url.Values) (int, string) {
+		return 200, `{"config":{"categories":[{"name":"arrmada","dir":"movies"},{"name":"arrmada-tv","dir":"` + outside + `/tv"},{"name":"other","dir":"other"}]}}`
+	})
 	got, err := svc.TuneBundledSAB(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(got.Categories, ",") != "arrmada-books,arrmada-music" || got.Folders != root+"/usenet" {
 		t.Errorf("tuned = %+v", got)
+	}
+	// Its categories' own folders are made inside the downloads folder, and only there.
+	if fi, err := os.Stat(filepath.Join(root, "usenet", "complete", "movies")); err != nil || !fi.IsDir() {
+		t.Errorf("the movie category's folder wasn't made: %v", err)
+	}
+	for _, p := range []string{filepath.Join(outside, "tv"), filepath.Join(root, "usenet", "complete", "other")} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s was made: %v", p, err)
+		}
 	}
 
 	c, _, _ := svc.BundledClient(ctx, KindSABnzbd)

@@ -85,6 +85,7 @@ type SABTuned struct {
 type bundledSABTuner interface {
 	AddMissingCategories(ctx context.Context, dc Client) ([]string, error)
 	UseDownloadsFolder(ctx context.Context, dc Client, root string) (string, error)
+	MakeCategoryFolders(ctx context.Context, dc Client, root string) error
 }
 
 // TuneBundledSAB gets the bundled SABnzbd ready for Arrmada, the way the bundled
@@ -118,8 +119,38 @@ func (s *Service) TuneBundledSAB(ctx context.Context, downloadsRoot string) (SAB
 		if out.Folders, err = t.UseDownloadsFolder(ctx, c, downloadsRoot); err != nil {
 			return out, err
 		}
+		if err := t.MakeCategoryFolders(ctx, c, downloadsRoot); err != nil {
+			return out, err
+		}
 	}
 	return out, nil
+}
+
+// MakeCategoryFolders creates the folders Arrmada's categories have of their own, inside
+// root (Arrmada's downloads folder) only. SABnzbd makes one when its first job finishes;
+// until then Arrmada can't see it, and the card and the health list would say so.
+func (s *SABnzbd) MakeCategoryFolders(ctx context.Context, dc Client, root string) error {
+	if root == "" || !filepath.IsAbs(root) {
+		return nil
+	}
+	st, err := s.fullStatus(ctx, dc)
+	if err != nil {
+		return err
+	}
+	folders, err := s.categoryFolders(ctx, dc, st.Status.CompleteDir)
+	if err != nil {
+		return err
+	}
+	for _, dir := range folders {
+		local := dc.PathMaps.ToLocal(dir)
+		if _, inside := localUnder(filepath.Clean(local), filepath.Clean(root)); !inside {
+			continue
+		}
+		if err := os.MkdirAll(local, 0o775); err != nil {
+			return fmt.Errorf("couldn't make %s: %w", local, err)
+		}
+	}
+	return nil
 }
 
 // ErrSABCantSee means SABnzbd doesn't see Arrmada's downloads folder, so its folders were
