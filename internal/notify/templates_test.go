@@ -241,6 +241,60 @@ func TestPlexPosterTempFileCleanedUp(t *testing.T) {
 	}
 }
 
+// A Jellyfin stream's poster travels in its strict form ("jellyfin:/Items/<32 hex>/Images/
+// Primary") and is fetched the same way, prefix and all; any other shape carries no poster,
+// and the body says the stream is on Jellyfin.
+func TestJellyfinStreamAlert(t *testing.T) {
+	const thumb = "jellyfin:/Items/dbc9717de8df66b09eed7dacda39fcc1/Images/Primary"
+	s, _, _ := newTestService(t)
+	tmp := t.TempDir()
+	s.SetTempDir(tmp)
+	rec := &attachRecorder{}
+	s.SetAttachTransport(rec.send)
+	var asked []string
+	s.SetPosters(nil, func(_ context.Context, path string) (*http.Response, error) {
+		asked = append(asked, path)
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"image/jpeg"}},
+			Body: io.NopCloser(strings.NewReader("\xff\xd8 not really a jpeg"))}, nil
+	})
+	ctx := context.Background()
+	mustCreate(t, s, Connection{Name: "a", URL: "ntfy://a", Events: sub(eventStreamStarted), Enabled: true})
+	d := streamData("63273eefab23413faf91bb754c90f24d", "lan", "direct_play")
+	d["thumb"], d["server"] = thumb, "jellyfin"
+	if n, err := s.EmitOnce(ctx, eventStreamStarted, "", d); err != nil || n != 1 {
+		t.Fatalf("EmitOnce = %d, %v", n, err)
+	}
+	var stored, body string
+	if err := s.db.QueryRow(`SELECT attach, body FROM notification_deliveries`).Scan(&stored, &body); err != nil || stored != thumb {
+		t.Fatalf("stored attach = %q, %v", stored, err)
+	}
+	if !strings.HasSuffix(body, " on Jellyfin") {
+		t.Errorf("body = %q", body)
+	}
+	drainNow(t, s)
+	if len(asked) != 1 || asked[0] != thumb || len(rec.attach) != 1 {
+		t.Errorf("fetches %v, sends %v", asked, rec.attach)
+	}
+	for _, bad := range []string{
+		"jellyfin:/Items/dbc9717de8df66b09eed7dacda39fcc1/Images/Backdrop",
+		"jellyfin:/Items/../System/Info",
+		"jellyfin:/Users/dbc9717de8df66b09eed7dacda39fcc1/Images/Primary",
+		"jellyfin:https://evil/x.jpg",
+	} {
+		if got := s.attachFor(ctx, eventStreamStarted, map[string]any{"thumb": bad}); got != "" {
+			t.Errorf("thumb %q → attach %q", bad, got)
+		}
+		if validAttach(bad) {
+			t.Errorf("%q passes validAttach", bad)
+		}
+	}
+	// A Plex stream's body is as it always was.
+	def, _ := Lookup(eventStreamStarted)
+	if m, _ := def.Format(map[string]any{"title": "Dune", "user": "sam", "server": "plex"}); strings.Contains(m.Body, " on ") {
+		t.Errorf("plex body = %q", m.Body)
+	}
+}
+
 // A library alert carries the stored poster when it's from an allowed host, and nothing
 // when it isn't; an alert still goes either way.
 func TestLibraryPosterAttach(t *testing.T) {

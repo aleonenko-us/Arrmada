@@ -16,6 +16,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 	"github.com/tristenlammi/arrmada/internal/notify"
 )
 
@@ -31,6 +32,7 @@ import (
 const (
 	connKindAPIKey        = "apikey"
 	connKindPlex          = "plex"
+	connKindJellyfin      = "jellyfin"
 	connKindNotifications = "notifications"
 	connKindAudioServer   = "audioserver"
 
@@ -73,6 +75,9 @@ type connectionItem struct {
 	Testable            bool              `json:"testable"`
 	ManagedBy           string            `json:"managed_by,omitempty"`
 	FixPath             string            `json:"fix_path,omitempty"` // where it's edited, when that isn't its card
+	// UsedFor is what Arrmada uses a media server for right now (watch, library, signin,
+	// insights): only what's switched on and built, so the card's chips are true.
+	UsedFor []string `json:"used_for,omitempty"`
 }
 
 // connectionCounts is an indexer's last 24 hours.
@@ -147,7 +152,7 @@ func (a *api) connectionSections(ctx context.Context, admin bool) ([]connectionS
 		{ID: "search", Title: "Search", Items: search},
 		{ID: "downloads", Title: "Downloads", Items: downloads},
 		{ID: "metadata", Title: "Metadata", Items: a.metadataConnections(ctx, now, admin)},
-		{ID: "other", Title: "Plex, alerts and apps", Items: a.otherConnections(ctx, now)},
+		{ID: "other", Title: "Alerts and apps", Items: a.otherConnections(ctx, now)},
 	}, nil
 }
 
@@ -386,12 +391,16 @@ func (a *api) metadataConnections(ctx context.Context, now time.Time, admin bool
 	return out
 }
 
-// otherConnections: Plex, the alert connections and the audiobook server. Each is edited
-// on its own page, which FixPath names.
+// otherConnections: the media servers (Plex, Jellyfin), the alert connections and the
+// audiobook server. The page lifts the media servers into a section of their own; the
+// rest are edited on their own pages, which FixPath names.
 func (a *api) otherConnections(ctx context.Context, now time.Time) []connectionItem {
 	out := []connectionItem{}
 	if a.deps.Insights != nil {
 		out = append(out, a.plexItem(ctx))
+	}
+	if a.deps.Jellyfin != nil {
+		out = append(out, a.jellyfinItem(ctx))
 	}
 	if a.deps.Notify != nil {
 		out = append(out, a.notificationsItem(ctx))
@@ -424,6 +433,9 @@ func (a *api) plexItem(ctx context.Context) connectionItem {
 		it.State = connstatus.PhaseOK
 	}
 	it.CheckedAt = laterOf(it.LastOKAt, it.LastErrorAt)
+	if h.Configured {
+		it.UsedFor = a.plexUses(ctx, h.Monitoring)
+	}
 	if it.Detail == "" && h.Configured {
 		name := cfg.ServerName
 		if name == "" {
@@ -433,6 +445,65 @@ func (a *api) plexItem(ctx context.Context) connectionItem {
 			it.Detail = name + " · watch monitoring on"
 		} else {
 			it.Detail = name + " · watch monitoring off"
+		}
+	}
+	return it
+}
+
+// The "Used for" chips a media server card shows.
+const (
+	useWatch    = "watch"    // Watch links on titles, notices and pushes
+	useLibrary  = "library"  // told to scan after imports, renames and deletes
+	useSignIn   = "signin"   // people sign in with their account on it
+	useInsights = "insights" // what's played there is recorded
+)
+
+// plexUses is what Plex does for Arrmada right now.
+func (a *api) plexUses(ctx context.Context, monitoring bool) []string {
+	uses := []string{useWatch}
+	if a.deps.PlexScan != nil && a.deps.PlexScan.Enabled(ctx) {
+		uses = append(uses, useLibrary)
+	}
+	if a.deps.Settings != nil && a.deps.Settings.GetBool(ctx, "plex_login_enabled", false) {
+		uses = append(uses, useSignIn)
+	}
+	if monitoring {
+		uses = append(uses, useInsights)
+	}
+	return uses
+}
+
+// jellyfinItem reads Jellyfin's health record (jellyfinsvc.Health), like Plex's card; it
+// never calls Jellyfin. Which server it is (name, version) the card reads from
+// GET /jellyfin.
+func (a *api) jellyfinItem(ctx context.Context) connectionItem {
+	h := a.deps.Jellyfin.Health(ctx)
+	it := connectionItem{
+		Kind: connKindJellyfin, Ref: singletonRef, Card: "jellyfin", Name: "Jellyfin", Subtitle: displayURL(a.deps.Jellyfin.URL(ctx)),
+		Configured: h.Configured, Enabled: h.Configured, Testable: h.Configured, FixPath: health.FixJellyfinConnection.Path,
+		LastOKAt: timePtr(h.LastOKAt), State: connstatus.PhaseUnknown,
+	}
+	switch {
+	case !h.Configured:
+	case h.Consecutive > 0:
+		it.State, it.ConsecutiveFailures = connstatus.PhaseFailing, h.Consecutive
+		it.LastError, it.LastErrorAt, it.FailingSince = connstatus.Redact(h.LastErr), timePtr(h.LastErrAt), timePtr(h.FailingSince)
+		if h.Unauthorized {
+			it.Detail = "Jellyfin rejected Arrmada's API key; paste a new one"
+		}
+	case !h.LastOKAt.IsZero():
+		it.State = connstatus.PhaseOK
+	}
+	it.CheckedAt = laterOf(it.LastOKAt, it.LastErrorAt)
+	if h.Configured {
+		// Watch links and library updates are what J1 gives Jellyfin; Insights and
+		// sign-in join the list when they're built and switched on.
+		it.UsedFor = []string{useWatch}
+		if a.deps.JellyfinScan != nil && a.deps.JellyfinScan.Enabled(ctx) {
+			it.UsedFor = append(it.UsedFor, useLibrary)
+		}
+		if h.Monitoring {
+			it.UsedFor = append(it.UsedFor, useInsights)
 		}
 	}
 	return it
@@ -637,6 +708,23 @@ func (a *api) testConnection(ctx context.Context, kind, ref string) (detail stri
 			return "Plex (" + name + ") is answering.", nil, true
 		}
 		return "Plex is answering.", nil, true
+
+	case connKindJellyfin:
+		if ref != singletonRef || a.deps.Jellyfin == nil {
+			return "", nil, false
+		}
+		if !a.deps.Jellyfin.Configured(ctx) {
+			return "", errors.New("Jellyfin isn't connected yet"), true
+		}
+		// Recorded in Jellyfin's health record, which the card reads.
+		si, err := a.deps.Jellyfin.RefreshIdentity(ctx)
+		if err != nil {
+			return "", errors.New(jellyfinsvc.Describe(err)), true
+		}
+		if si.ServerName != "" {
+			return "Jellyfin (" + si.ServerName + ") is answering.", nil, true
+		}
+		return "Jellyfin is answering.", nil, true
 
 	case connKindAudioServer:
 		if ref != singletonRef || a.deps.AudioManager == nil || a.deps.Settings == nil {

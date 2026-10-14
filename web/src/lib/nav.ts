@@ -30,8 +30,8 @@ export interface NavGroup {
 
 
 // The sidebar, grouped by how the app works: the day-to-day (Dashboard, Discover,
-// Requests, Activity), what you have (Library), things that work on files (Tools), Plex
-// monitoring, and setup (System).
+// Requests, Activity), what you have (Library), things that work on files (Tools), watch
+// monitoring on Plex and Jellyfin (Watching), and setup (System).
 // Routes don't follow this grouping; only the sidebar and the page breadcrumbs do.
 export const NAV: NavGroup[] = [
   {
@@ -66,7 +66,8 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    group: "Plex",
+    // Watch monitoring on Plex and Jellyfin.
+    group: "Watching",
     items: [{ to: "/insights", label: "Insights", icon: "insights" }],
   },
   {

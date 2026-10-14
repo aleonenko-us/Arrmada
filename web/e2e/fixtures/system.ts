@@ -15,7 +15,7 @@ export function status(p: PersonaInfo): Status {
       { id: "movies", name: "Movies", enabled: true, status: "ok" },
       { id: "series", name: "Series", enabled: true, status: "ok" },
     ],
-    books_enabled: true, music_enabled: true, plex_login: false, metadata_ready: true,
+    books_enabled: true, music_enabled: true, plex_login: false, jellyfin_login: false, jellyfin_quickconnect: false, metadata_ready: true,
   };
 }
 
@@ -123,7 +123,7 @@ export const setupChecklist: SetupChecklist = {
     { key: "folders", label: "Choose your library folders", done: true, link: "/settings/library#media-folders", link_key: "libraryFolders" },
     { key: "download_client", label: "Connect a download client", done: true, link: "/settings/connections#download-clients", link_key: "downloadClients" },
     { key: "indexer", label: "Add an indexer, or sync them from Prowlarr", done: true, link: "/settings/connections#search", link_key: "indexers" },
-    { key: "plex", label: "Connect your Plex server", done: true, link: "/settings/connections#plex", link_key: "plexConnection" },
+    { key: "media_server", label: "Connect your media server (Plex or Jellyfin)", done: true, link: "/settings/connections#media-servers", link_key: "mediaServerCards" },
     { key: "first_title", label: "Add your first movie or show", done: true, link: "/discover" },
     { key: "first_import", label: "Get your first download into the library", done: true, link: "/activity/history", link_key: "history" },
   ],
@@ -163,6 +163,10 @@ export const settings: AppSettings = {
   plex_signin_staff: false,
   plex_login_auto_approve: false,
   plex_login_auto_approve_types: "movie",
+  jellyfin_login_enabled: false,
+  jellyfin_quickconnect_enabled: true,
+  jellyfin_signin_staff: false,
+  jellyfin_login_auto_approve_types: "movie",
   request_quota_days: 7,
   request_quota_movies: 0,
   request_quota_seasons: 0,

@@ -3,6 +3,7 @@ import type { AuthUser } from "../lib/api";
 import { plexApi } from "../lib/plexApi";
 import { usePlexPinSignIn, type PlexFlow } from "../lib/plexSignIn";
 import { keepNextAcrossRedirect } from "../lib/session";
+import { PlexMark } from "./brand/marks";
 
 // The login page's "Sign in with Plex" button. Its own chunk: most visits to the login
 // page are password sign-ins, and a requester's first download is tight.
@@ -33,9 +34,10 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
         type="button"
         onClick={() => { onError(null); begin(); }}
         disabled={disabled || busy}
-        className="rounded-lg px-4 py-2.5 text-md font-semibold"
-        style={{ background: "#e5a00d", color: "#1f1300" }}
+        className="flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-md font-semibold"
+        style={{ background: "var(--plex)", color: "var(--plex-ink)" }}
       >
+        <PlexMark />
         {phase === "finishing" ? "Finishing Plex sign-in…" : busy ? "Waiting for Plex…" : "Sign in with Plex"}
       </button>
       {(phase === "waiting" || phase === "slow") && (

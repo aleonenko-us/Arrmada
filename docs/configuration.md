@@ -87,8 +87,8 @@ it). Settings → Convert can also point it somewhere else and shows the free sp
 
 Deleted and replaced files go to a hidden `.arrmada-recycle` folder at the top of the
 library folder they came from (Movies, TV, and so on), so a delete is a quick move on the
-same drive rather than a copy. Each of those folders has a `.plexignore`, so Plex doesn't
-list what's in it, and Arrmada's own library scans skip hidden folders. Restore, size and
+same drive rather than a copy. Each of those folders has a `.plexignore` and an `.ignore`, so
+neither Plex nor Jellyfin lists what's in it, and Arrmada's own library scans skip hidden folders. Restore, size and
 age limits are in Settings → Downloads → Recycle bin; the size limit counts every bin together.
 
 Older versions kept one shared bin in the app's library volume. It stays listed (marked
@@ -96,6 +96,40 @@ Older versions kept one shared bin in the app's library volume. It stays listed 
 
 `ARRMADA_RECYCLE_DIR` in `.env` is now just an override: set it to a folder to use that one
 bin for everything, or to `off` to delete files straight away.
+
+## Connecting Jellyfin
+
+Jellyfin is connected in the app, on its card in Settings → Connections (next to Plex's):
+
+1. **Server URL** — the address Arrmada reaches Jellyfin on, for example
+   `http://192.168.1.10:8096`, or `http://jellyfin:8096` when both run in the same Docker
+   network.
+2. **API key** — make one in Jellyfin under **Dashboard → API Keys → +**, and paste it. Test
+   checks it before you save; once saved it's never shown again.
+3. **Public address for Watch links** — what every requester's Jellyfin button opens. It
+   starts as the server URL; if that only works at home (a `192.168.…` address or a
+   container name), set the address you reach Jellyfin on from outside, like
+   `https://jellyfin.example.com`.
+
+The rest is in Settings → Media servers, Jellyfin's group:
+
+- **Watch monitoring** — off until you switch it on. Arrmada then asks Jellyfin what's playing
+  every few seconds and records each play in Insights; Jellyfin's history in Insights starts
+  then.
+- **Library updates** — on by default once connected. If a line says "whole library", add a
+  path mapping from Arrmada's folder to the same folder as Jellyfin sees it.
+- **Sign-in** — let people sign in with their Jellyfin username and password, and optionally
+  Quick Connect (switch it on in Jellyfin too, under Dashboard → General). Passwords go
+  straight to Jellyfin and are never kept.
+- **Disconnect** — forgets the address and key; the choices above stay for a reconnect.
+
+If you keep several versions of a movie (say 4K and 1080p), Jellyfin shows them as one title
+only when each file name starts with the movie folder's name — `Dune (2021)/Dune (2021) -
+2160p.mkv` — which Arrmada's default movie naming does. If you've changed the naming in
+Settings → Naming & metadata so file names start differently, Jellyfin lists each version
+as its own movie.
+
+The first-run setup's **Media server** step offers the same: Plex, Jellyfin, both, or later.
 
 ## Reverse proxies and tunnels
 

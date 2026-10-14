@@ -66,9 +66,38 @@ type User struct {
 	PlexLinked bool `json:"plex_linked"`
 	// PlexUsername is the Plex name the link was made with (users list; "" when unknown).
 	PlexUsername string `json:"plex_username,omitempty"`
-	// PlexOnly: Plex is their only way in (nobody knows a password for the account), so
-	// unlinking Plex would strand it.
+	// PlexOnly: Plex is their only way in (nobody knows a password for the account and no
+	// Jellyfin user is linked), so unlinking Plex would strand it.
 	PlexOnly bool `json:"plex_only,omitempty"`
+	// JellyfinLinked, JellyfinUsername and JellyfinOnly are the same three for a linked
+	// Jellyfin user.
+	JellyfinLinked   bool   `json:"jellyfin_linked"`
+	JellyfinUsername string `json:"jellyfin_username,omitempty"`
+	JellyfinOnly     bool   `json:"jellyfin_only,omitempty"`
+}
+
+// userCols are the columns userWhere and ListUsers read, in scanUser's order. A link is
+// the only way in when nobody knows the password and the other server isn't linked.
+const userCols = `id, username, role, disabled, ` + autoApproveCols + `, created_at,
+	COALESCE(plex_id, '') != '', plex_username,
+	(COALESCE(plex_id, '') != '' AND password_login = 0 AND COALESCE(jellyfin_id, '') = ''),
+	COALESCE(jellyfin_id, '') != '', jellyfin_username,
+	(COALESCE(jellyfin_id, '') != '' AND password_login = 0 AND COALESCE(plex_id, '') = '')`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+// scanUser reads one row of userCols.
+func scanUser(r rowScanner) (User, error) {
+	var u User
+	var disabled, am, as, ab int
+	err := r.Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab, &u.CreatedAt,
+		&u.PlexLinked, &u.PlexUsername, &u.PlexOnly, &u.JellyfinLinked, &u.JellyfinUsername, &u.JellyfinOnly)
+	if err != nil {
+		return u, err
+	}
+	u.Disabled = disabled != 0
+	u.setAutoApproval(am, as, ab)
+	return u, nil
 }
 
 // Service provides authentication operations backed by the database.
@@ -168,32 +197,44 @@ func (s *Service) CreateUser(ctx context.Context, username, password string, rol
 // keeps its current role/auto-approve — only new users get the provided defaults. A disabled
 // linked user is returned as-is so the caller can refuse the sign-in.
 func (s *Service) FindOrCreatePlexUser(ctx context.Context, plexID, plexUsername string, role Role, autoApprove AutoApproval) (*User, error) {
-	if strings.TrimSpace(plexID) == "" {
-		return nil, errors.New("missing plex id")
+	return s.findOrCreateLinked(ctx, plexLink, plexID, plexUsername, role, autoApprove)
+}
+
+// linkKind names the columns of one kind of outside sign-in (Plex, Jellyfin) on users.
+// The column names are constants, never input.
+type linkKind struct {
+	idCol, nameCol string
+	server         string // "Plex", for messages
+	fallbackName   string // a new account's name when the server gave none
+}
+
+var (
+	plexLink     = linkKind{idCol: "plex_id", nameCol: "plex_username", server: "Plex", fallbackName: "plex-user"}
+	jellyfinLink = linkKind{idCol: "jellyfin_id", nameCol: "jellyfin_username", server: "Jellyfin", fallbackName: "jellyfin-user"}
+)
+
+// findOrCreateLinked is FindOrCreatePlexUser / FindOrCreateJellyfinUser.
+func (s *Service) findOrCreateLinked(ctx context.Context, k linkKind, extID, extName string, role Role, autoApprove AutoApproval) (*User, error) {
+	extID, extName = strings.TrimSpace(extID), strings.TrimSpace(extName)
+	if extID == "" {
+		return nil, errors.New("missing " + strings.ToLower(k.server) + " id")
 	}
-	var u User
-	var disabled, am, as, ab int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, username, role, disabled, `+autoApproveCols+` FROM users WHERE plex_id = ?`, plexID).
-		Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab)
+	u, err := s.userWhere(ctx, k.idCol+" = ?", extID)
 	if err == nil {
-		u.Disabled = disabled == 1
-		u.setAutoApproval(am, as, ab)
-		u.PlexLinked = true
-		// Keep the shown Plex name current (it can change at plex.tv, and links made
-		// before it was stored have none). Cosmetic, so a failure doesn't stop the sign-in.
-		if name := strings.TrimSpace(plexUsername); name != "" {
-			_, _ = s.db.ExecContext(ctx, `UPDATE users SET plex_username = ? WHERE id = ? AND plex_username <> ?`, name, u.ID, name)
+		// Keep the shown name current (it can change on the server, and links made before
+		// it was stored have none). Cosmetic, so a failure doesn't stop the sign-in.
+		if extName != "" {
+			_, _ = s.db.ExecContext(ctx, `UPDATE users SET `+k.nameCol+` = ? WHERE id = ? AND `+k.nameCol+` <> ?`, extName, u.ID, extName)
 		}
-		return &u, nil
+		return u, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, ErrInvalidCredentials) {
 		return nil, err
 	}
 	if !ValidRole(role) {
 		role = RoleRequester
 	}
-	pw := make([]byte, 24) // unusable password — Plex-linked accounts sign in via Plex only
+	pw := make([]byte, 24) // unusable password — the account signs in through the server only
 	if _, err := rand.Read(pw); err != nil {
 		return nil, err
 	}
@@ -201,25 +242,29 @@ func (s *Service) FindOrCreatePlexUser(ctx context.Context, plexID, plexUsername
 	if err != nil {
 		return nil, err
 	}
-	username := s.uniqueUsername(ctx, plexUsername)
-	am, as, ab = boolToInt(autoApprove.Movie), boolToInt(autoApprove.Series), boolToInt(autoApprove.Book)
+	username := s.uniqueUsername(ctx, extName, k.fallbackName)
+	am, as, ab := boolToInt(autoApprove.Movie), boolToInt(autoApprove.Series), boolToInt(autoApprove.Book)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (username, password_hash, role, auto_approve, `+autoApproveCols+`, plex_id, plex_username, password_login) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-		username, string(hash), string(role), boolToInt(autoApprove.All()), am, as, ab, plexID, strings.TrimSpace(plexUsername))
+		`INSERT INTO users (username, password_hash, role, auto_approve, `+autoApproveCols+`, `+k.idCol+`, `+k.nameCol+`, password_login) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		username, string(hash), string(role), boolToInt(autoApprove.All()), am, as, ab, extID, extName)
+	if isUniqueViolation(err) {
+		// Two first sign-ins at once: the other one made the account.
+		if u, err := s.userWhere(ctx, k.idCol+" = ?", extID); err == nil {
+			return u, nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	nu := &User{ID: id, Username: username, Role: role, PlexLinked: true, PlexUsername: strings.TrimSpace(plexUsername)}
-	nu.setAutoApproval(am, as, ab)
-	return nu, nil
+	return s.UserByID(ctx, id)
 }
 
-// uniqueUsername returns base (trimmed), appending "-N" until it's free.
-func (s *Service) uniqueUsername(ctx context.Context, base string) string {
+// uniqueUsername returns base (trimmed; fallback when blank), appending "-N" until it's free.
+func (s *Service) uniqueUsername(ctx context.Context, base, fallback string) string {
 	base = strings.TrimSpace(base)
 	if base == "" {
-		base = "plex-user"
+		base = fallback
 	}
 	name := base
 	for i := 2; i < 1000; i++ {
@@ -269,21 +314,17 @@ func boolToInt(b bool) int {
 
 // ListUsers returns all accounts (no secrets), oldest first.
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, username, role, disabled, `+autoApproveCols+`, created_at, COALESCE(plex_id, '') != '', plex_username, (COALESCE(plex_id, '') != '' AND password_login = 0) FROM users ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+userCols+` FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []User
 	for rows.Next() {
-		var u User
-		var disabled, am, as, ab int
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab, &u.CreatedAt, &u.PlexLinked, &u.PlexUsername, &u.PlexOnly); err != nil {
+		u, err := scanUser(rows)
+		if err != nil {
 			return nil, err
 		}
-		u.Disabled = disabled != 0
-		u.setAutoApproval(am, as, ab)
 		out = append(out, u)
 	}
 	return out, rows.Err()
@@ -380,19 +421,13 @@ func (s *Service) ReportCaseDuplicates(ctx context.Context) {
 }
 
 func (s *Service) userWhere(ctx context.Context, where string, arg any) (*User, error) {
-	var u User
-	var disabled, am, as, ab int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, username, role, disabled, `+autoApproveCols+`, created_at, COALESCE(plex_id, '') != '', plex_username, (COALESCE(plex_id, '') != '' AND password_login = 0) FROM users WHERE `+where+` LIMIT 1`, arg).
-		Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab, &u.CreatedAt, &u.PlexLinked, &u.PlexUsername, &u.PlexOnly)
+	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE `+where+` LIMIT 1`, arg))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
 		return nil, err
 	}
-	u.Disabled = disabled != 0
-	u.setAutoApproval(am, as, ab)
 	return &u, nil
 }
 

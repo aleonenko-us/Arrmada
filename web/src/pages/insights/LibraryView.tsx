@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { InsightsLibrary, LibraryItem } from "../../lib/api";
+import type { InsightsLibrary, InsightsServer, LibraryItem } from "../../lib/api";
 import { insightsApi } from "../../lib/insightsApi";
 import { useSearchParamState } from "../../lib/useSearchState";
-import { Chip, FilterGroup, ImportedNotice, SetupState, fmtDay, fmtHours, type Metric } from "./shared";
+import { Chip, FilterGroup, ImportedNotice, RowServer, SetupState, fmtDay, fmtHours, type Metric } from "./shared";
 
 // Library: what's watched most, what has sat unwatched since it was added, and which
 // titles keep making Plex transcode — linked to the title in Arrmada and to Convert's
@@ -45,16 +45,16 @@ function TitleLink({ it, className = "" }: { it: LibraryItem; className?: string
     : <span className={`truncate font-semibold ${className}`} title={label}>{label}</span>;
 }
 
-export function LibraryView({ connected }: { connected: boolean }) {
+export function LibraryView({ connected, server }: { connected: boolean; server?: InsightsServer }) {
   const [winParam, setWin] = useSearchParamState<Win>("window", "90", { allowed: WINDOWS });
   const [metric, setMetric] = useSearchParamState<Metric>("metric", "plays", { allowed: METRICS });
   const [v, setV] = useState<InsightsLibrary | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    insightsApi.insightsLibrary(Number(winParam), metric).then((r) => { if (live) { setV(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
+    insightsApi.insightsLibrary(Number(winParam), metric, server).then((r) => { if (live) { setV(r); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [winParam, metric]);
+  }, [winParam, metric, server]);
 
   if (failed && !v) return <div role="alert" className="rounded-xl p-10 text-center text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>Couldn't load the library view.</div>;
   if (!v) return <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>Loading the library…</div>;
@@ -90,6 +90,7 @@ export function LibraryView({ connected }: { connected: boolean }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                     <TitleLink it={h} />
+                    <RowServer server={h.server} />
                     <span className="font-mono text-xs text-ink-faint">{h.transcodes} of {h.total_plays} play{h.total_plays === 1 ? "" : "s"} transcoded</span>
                   </div>
                   <div className="text-sm text-ink-dim">
@@ -117,7 +118,7 @@ export function LibraryView({ connected }: { connected: boolean }) {
         <p className="mb-2.5 mt-0.5 text-sm text-ink-dim">Titles Plex added over 30 days ago that nobody has played, oldest first.</p>
         {v.never_watched_unavailable ? (
           <div role="status" className="rounded-lg px-3 py-2 text-sm" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-dim)" }}>
-            Needs Plex's library list, which isn't available right now (Plex not connected, or not read yet). Most watched and hot spots above come from recorded plays.
+            {server === "jellyfin" ? "Lists Plex's library, so it isn't shown for Jellyfin alone." : "Needs Plex's library list, which isn't available right now (Plex not connected, or not read yet)."} Most watched and hot spots above come from recorded plays.
           </div>
         ) : v.never_watched.length === 0 ? (
           <div className="text-sm text-ink-faint">Everything added over 30 days ago has been played at least once.</div>
@@ -155,6 +156,7 @@ function Ranked({ title, items, hours }: { title: string; items: LibraryItem[]; 
               <span className="w-5 flex-none text-right font-mono text-xs text-ink-faint">{i + 1}</span>
               <Poster url={it.thumb_url} w={20} />
               <TitleLink it={it} className="min-w-0 flex-1 font-normal" />
+              <RowServer server={it.server} />
               <span className="flex-none font-mono text-xs font-semibold" style={{ color: "var(--accent-text)" }}>
                 {hours ? fmtHours(it.secs ?? 0) : `${it.plays ?? 0}`}
               </span>

@@ -1,5 +1,5 @@
 import type {
-  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsLibrary, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
+  HistoryEntry, InsightsActivity, InsightsGraphs, InsightsLibrary, InsightsServerStatus, InsightsStats, InsightsStream, LibraryStat, PersonProfile, PlexConfig, RecentItem, Reliability, UserEntry,
 } from "../../src/lib/api";
 import type { MockRoute } from "./routes";
 import { NOW } from "./clock";
@@ -120,10 +120,67 @@ const emptyReliability: Reliability = {
   causes: [], by_user: [], by_platform: [], by_title: [], events: [],
 };
 
-export function routes(cfg: () => PlexConfig, opts: { plexDown?: boolean; empty?: boolean } = {}): MockRoute[] {
+// Jellyfin, for the two-server specs: Robin watching on the Android TV app, transcoding with
+// the configured VA-API hardware, and Robin's recorded play.
+export const JF_USER = "63273eefab23413faf91bb754c90f24d";
+export const jfStream = stream({
+  server: "jellyfin", session_key: "jellyfin:0e75e11f2bed544fb64d8bb097ece64c", user: "Robin", user_id: JF_USER,
+  title: "Northern Lights", subtitle: "2019", player: "Living Room", platform: "Android TV", product: "Jellyfin Android TV",
+  hw_transcode: true, hw_decode: false, hw_encode: false, hw_requested: false, hw_title: "vaapi", bandwidth_kbps: 8000,
+});
+export const jfPlay = play(3, {
+  server: "jellyfin", user_id: JF_USER, user_name: "Robin", title: "Northern Lights", year: 2019, subtitle: "2019",
+  player: "Living Room", platform: "Android TV", product: "Jellyfin Android TV", buffer_count: 0,
+});
+export const jfUser: UserEntry = {
+  id: JF_USER, server: "jellyfin", username: "Robin", last_seen: now - 7200, last_ip: "192.168.1.31", last_platform: "Android TV",
+  last_player: "Living Room", last_title: "Northern Lights", total_plays: 1, total_secs: 5400, geo: { ip: "192.168.1.31", local: true },
+};
+export const jfStatus = (status: InsightsServerStatus["status"] = "recording"): InsightsServerStatus => ({
+  server: "jellyfin", name: "Basement", configured: true, monitoring: status === "recording", status, poll_seconds: 10, last_poll_at: now - 5,
+});
+
+const tagPlex = <T extends { server?: string }>(r: T): T => ({ ...r, server: "plex" });
+
+// byServer answers a read the way ?server= narrows it: plex, jellyfin, or both.
+function byServer<T>(url: URL, plex: T, jf: T, both: T): T {
+  const s = url.searchParams.get("server");
+  return s === "plex" ? plex : s === "jellyfin" ? jf : both;
+}
+
+export function routes(cfg: () => PlexConfig, opts: { plexDown?: boolean; empty?: boolean; jellyfin?: InsightsServerStatus["status"] } = {}): MockRoute[] {
   const plexDown = { status: 502, body: { message: "dial tcp 192.168.1.10:32400: connect: connection refused" } };
+  const plexStatus = (): InsightsServerStatus => {
+    const c = cfg();
+    return { server: "plex", configured: c.status !== "unconfigured", monitoring: c.enabled, status: c.status, poll_seconds: c.poll_seconds, last_error: c.last_error };
+  };
+  if (opts.jellyfin) {
+    // Both servers connected: every read answers by ?server=, rows carry their server.
+    const jf = jfStatus(opts.jellyfin);
+    const pHist = history.rows.map(tagPlex);
+    const pStreams = activity.streams.map(tagPlex);
+    const bw = (streams: InsightsStream[]) => ({ total_kbps: streams.reduce((n, s) => n + s.bandwidth_kbps, 0), lan_kbps: streams.reduce((n, s) => n + s.bandwidth_kbps, 0), wan_kbps: 0 });
+    const act = (streams: InsightsStream[]): InsightsActivity => ({ streams, bandwidth: bw(streams), geo_active: false });
+    return [
+      { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg() },
+      { method: "GET", path: "/api/v1/insights/servers", respond: () => ({ servers: [plexStatus(), jf] }) },
+      { method: "GET", path: "/api/v1/insights/history", respond: ({ url }) => byServer(url, { rows: pHist, total: 2 }, { rows: [jfPlay], total: 1 }, { rows: [...pHist, jfPlay], total: 3 }) },
+      { method: "GET", path: "/api/v1/insights/users", respond: ({ url }) => byServer(url, { users: users.users.map(tagPlex) }, { users: [jfUser] }, { users: [...users.users.map(tagPlex), jfUser] }) },
+      { method: "GET", path: "/api/v1/insights/users/7", body: { ...person, server: "plex" } },
+      { method: "GET", path: `/api/v1/insights/users/${JF_USER}`, body: { ...person, id: JF_USER, server: "jellyfin", username: "Robin", stalls: { events: 0, stall_ms: 0, rate_pct: 0 }, recent: [jfPlay] } },
+      { method: "GET", path: "/api/v1/insights/library", body: library },
+      { method: "GET", path: "/api/v1/insights/stats", respond: ({ url }) => byServer(url, stats, { ...stats, most_active_users: [{ id: JF_USER, name: "Robin", plays: 1, secs: 5400, server: "jellyfin" }] },
+        { ...stats, most_active_users: [{ ...stats.most_active_users[0], server: "plex" }, { id: JF_USER, name: "Robin", plays: 1, secs: 5400, server: "jellyfin" }] }) },
+      { method: "GET", path: "/api/v1/insights/graphs", body: graphs },
+      { method: "GET", path: "/api/v1/insights/reliability", respond: ({ url }) => byServer(url, reliability, { ...emptyReliability, jellyfin_plays: 1 }, { ...reliability, jellyfin_plays: 1 }) },
+      { method: "GET", path: "/api/v1/insights/activity", respond: ({ url }) => byServer(url, act(pStreams), act([jfStream]), act([...pStreams, jfStream])) },
+      { method: "GET", path: "/api/v1/insights/libraries", body: { libraries: [...libraries.libraries.map(tagPlex), { title: "Films", type: "movie", count: 812, server: "jellyfin" }] } },
+      { method: "GET", path: "/api/v1/insights/recently-added", body: recent },
+    ];
+  }
   return [
     { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg() },
+    { method: "GET", path: "/api/v1/insights/servers", respond: () => ({ servers: [plexStatus()] }) },
     { method: "GET", path: "/api/v1/insights/history", body: opts.empty ? { rows: [], total: 0 } : history },
     { method: "GET", path: "/api/v1/insights/users", body: opts.empty ? { users: [] } : users },
     { method: "GET", path: "/api/v1/insights/users/7", body: person },

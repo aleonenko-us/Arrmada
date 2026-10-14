@@ -6,6 +6,8 @@ import { posterThumb } from "../../lib/img";
 import { titlePath } from "../../lib/refLink";
 import { useTitle } from "../../lib/title";
 import { Button, IconButton, Sheet, StatusChip, POSTER_CHIP_BG, POSTER_TONE, type ToastFn } from "../../ui";
+import { WatchButton } from "../../components/brand/WatchPills";
+import { watchLinksOf } from "../../components/brand/servers";
 import { badgeFor, FOLLOWING, PosterPlaceholder, useCloseOverlay, useOpenOverlay, useOpenTitle, type OverlayState, type ReqStatus, type RowCtx } from "./shared";
 
 // "Which seasons?" loads when someone first asks for a show.
@@ -285,9 +287,8 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
               {moreSeasons && ((done && subscribed) || (badge && !declined)) && !picking && (
                 <Button variant="primary" onClick={() => setPicking(true)}>Request more seasons</Button>
               )}
-              {d?.plex_url && (
-                <a href={d.plex_url} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg bg-accent-grad px-3.5 py-2 text-base font-semibold text-accent-ink">▶ Watch on Plex</a>
-              )}
+              {/* A Watch button per media server that has it, the viewer's own first. */}
+              {watchLinksOf(d).map((l, i) => <WatchButton key={`${l.server}:${l.url}`} link={l} primary={i === 0} />)}
               {d?.trailer_url && (
                 <a href={d.trailer_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>

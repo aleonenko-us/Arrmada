@@ -28,6 +28,9 @@ type LibraryItem struct {
 	Plays   int   `json:"plays,omitempty"`
 	Secs    int64 `json:"secs,omitempty"`
 	AddedAt int64 `json:"added_at,omitempty"` // never watched: when Plex added it
+	// Server is where the plays were (plex | jellyfin), "" when on both; never watched
+	// lists Plex's library.
+	Server string `json:"server"`
 }
 
 // HotSpot is a title that keeps being transcoded, with why and where.
@@ -64,7 +67,7 @@ const (
 
 // Library builds the Library tab over the last windowDays (most watched and hot spots;
 // never watched is over all time). byDuration ranks most watched by hours.
-func (s *Service) Library(ctx context.Context, windowDays int, byDuration bool) (LibraryView, error) {
+func (s *Service) Library(ctx context.Context, windowDays int, byDuration bool, server string) (LibraryView, error) {
 	if windowDays <= 0 {
 		windowDays = 90
 	}
@@ -72,16 +75,18 @@ func (s *Service) Library(ctx context.Context, windowDays int, byDuration bool) 
 	out := LibraryView{WindowDays: windowDays, MostWatchedMovies: []LibraryItem{}, MostWatchedShows: []LibraryItem{},
 		NeverWatched: []LibraryItem{}, HotSpots: []HotSpot{}}
 	var err error
-	if out.MostWatchedMovies, err = s.mostWatched(ctx, "movie", since, byDuration); err != nil {
+	if out.MostWatchedMovies, err = s.mostWatched(ctx, "movie", since, byDuration, server); err != nil {
 		return LibraryView{}, err
 	}
-	if out.MostWatchedShows, err = s.mostWatched(ctx, "episode", since, byDuration); err != nil {
+	if out.MostWatchedShows, err = s.mostWatched(ctx, "episode", since, byDuration, server); err != nil {
 		return LibraryView{}, err
 	}
-	if out.HotSpots, err = s.hotSpots(ctx, since); err != nil {
+	if out.HotSpots, err = s.hotSpots(ctx, since, server); err != nil {
 		return LibraryView{}, err
 	}
-	if s.links.current() == nil || (s.settings != nil && !s.Configured(ctx)) {
+	// Never watched is read off the Plex library index, so it's Plex's list (a Jellyfin
+	// play of a title still counts as watching it).
+	if server == ServerJellyfin || s.links.current() == nil || (s.settings != nil && !s.Configured(ctx)) {
 		out.NeverWatchedUnavailable = true
 		return out, nil
 	}
@@ -89,9 +94,11 @@ func (s *Service) Library(ctx context.Context, windowDays int, byDuration bool) 
 	return out, err
 }
 
-// identify fills a title's Arrmada-facing ids from the library index.
+// identify fills a title's Arrmada-facing ids from the Plex library index. A Jellyfin
+// item id (32 hex digits) is never a Plex rating key, so a Jellyfin-only title stays
+// unlinked.
 func (s *Service) identify(it *LibraryItem) {
-	if it.RatingKey == "" {
+	if it.RatingKey == "" || isGUID(it.RatingKey) {
 		return
 	}
 	if media, tmdb, ok := s.TMDBForRatingKey(it.RatingKey); ok {
@@ -101,16 +108,19 @@ func (s *Service) identify(it *LibraryItem) {
 
 // mostWatched ranks movies (by title) or shows (by show name) — the same grouping as the
 // watch-statistics cards — carrying a rating key to link them by.
-func (s *Service) mostWatched(ctx context.Context, mediaType string, since int64, byDuration bool) ([]LibraryItem, error) {
-	q := `SELECT title AS t, MAX(year), MAX(thumb), MAX(rating_key), COUNT(*) AS plays, ` + watchedSum + ` AS secs
-		FROM stream_sessions WHERE media_type = 'movie' AND started_at >= ? AND title <> ''
+func (s *Service) mostWatched(ctx context.Context, mediaType string, since int64, byDuration bool, server string) ([]LibraryItem, error) {
+	// A title watched on both servers is one row (it's the same title), Server "" then. Its
+	// rating key is whichever server's sorts last, which only links it when that's Plex's.
+	srv := serverAnd("", server)
+	q := `SELECT title AS t, MAX(year), MAX(thumb), MAX(rating_key), COUNT(*) AS plays, ` + watchedSum + ` AS secs, ` + rowServer + `
+		FROM stream_sessions WHERE media_type = 'movie' AND started_at >= ? AND title <> ''` + srv + `
 		GROUP BY t ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	kind := "movie"
 	if mediaType == "episode" {
 		kind = "show"
 		q = `SELECT grandparent_title AS t, 0, COALESCE(NULLIF(MAX(grandparent_thumb),''), MAX(thumb)), MAX(grandparent_rating_key),
-				COUNT(*) AS plays, ` + watchedSum + ` AS secs
-			FROM stream_sessions WHERE media_type = 'episode' AND started_at >= ? AND grandparent_title <> ''
+				COUNT(*) AS plays, ` + watchedSum + ` AS secs, ` + rowServer + `
+			FROM stream_sessions WHERE media_type = 'episode' AND started_at >= ? AND grandparent_title <> ''` + srv + `
 			GROUP BY t ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	}
 	rows, err := s.repo.db.QueryContext(ctx, q, since, libraryTopN)
@@ -122,7 +132,7 @@ func (s *Service) mostWatched(ctx context.Context, mediaType string, since int64
 	for rows.Next() {
 		it := LibraryItem{Kind: kind}
 		var thumb string
-		if err := rows.Scan(&it.Title, &it.Year, &thumb, &it.RatingKey, &it.Plays, &it.Secs); err != nil {
+		if err := rows.Scan(&it.Title, &it.Year, &thumb, &it.RatingKey, &it.Plays, &it.Secs, &it.Server); err != nil {
 			return nil, err
 		}
 		it.ThumbURL = proxyImage(thumb)
@@ -172,7 +182,7 @@ func (s *Service) neverWatched(ctx context.Context, cutoff time.Time) ([]Library
 			if (kind == "movie" && seenMovie[strings.ToLower(it.Title)]) || (kind == "show" && seenShow[strings.ToLower(it.Title)]) {
 				continue
 			}
-			li := LibraryItem{Kind: kind, Title: it.Title, Year: it.Year, ThumbURL: proxyImage(it.Thumb), RatingKey: it.RatingKey, AddedAt: it.AddedAt}
+			li := LibraryItem{Kind: kind, Title: it.Title, Year: it.Year, ThumbURL: proxyImage(it.Thumb), RatingKey: it.RatingKey, AddedAt: it.AddedAt, Server: ServerPlex}
 			s.identify(&li)
 			all = append(all, li)
 		}
@@ -196,7 +206,7 @@ const hotKey = `CASE WHEN media_type = 'episode'
 
 // hotSpots ranks the titles transcoded most often in the window, with the most common
 // source → stream video pair, the platforms doing it and the usual buffer cause.
-func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) {
+func (s *Service) hotSpots(ctx context.Context, since int64, server string) ([]HotSpot, error) {
 	type agg struct {
 		HotSpot
 		pairs, platforms map[string]int
@@ -204,18 +214,21 @@ func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) 
 		order            int
 	}
 	byKey := map[string]*agg{}
+	// A title's key is its rating key, which is one server's: each server's transcodes of a
+	// title are their own row.
+	srv := serverAnd("", server)
 	rows, err := s.repo.db.QueryContext(ctx, `
 		SELECT `+hotKey+`, media_type, title, grandparent_title, year, rating_key, grandparent_rating_key, thumb, grandparent_thumb,
-			video_src, video_stream, audio_src, audio_stream, platform
-		FROM stream_sessions WHERE started_at >= ? AND decision = 'transcode' AND media_type IN ('movie','episode')
+			video_src, video_stream, audio_src, audio_stream, platform, server
+		FROM stream_sessions WHERE started_at >= ? AND decision = 'transcode' AND media_type IN ('movie','episode')`+srv+`
 		ORDER BY started_at DESC`, since)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
-		var key, mt, title, show, rk, grk, thumb, gthumb, vsrc, vstream, asrc, astream, platform string
+		var key, mt, title, show, rk, grk, thumb, gthumb, vsrc, vstream, asrc, astream, platform, server string
 		var year int
-		if err := rows.Scan(&key, &mt, &title, &show, &year, &rk, &grk, &thumb, &gthumb, &vsrc, &vstream, &asrc, &astream, &platform); err != nil {
+		if err := rows.Scan(&key, &mt, &title, &show, &year, &rk, &grk, &thumb, &gthumb, &vsrc, &vstream, &asrc, &astream, &platform, &server); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -228,6 +241,7 @@ func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) 
 			} else {
 				a.LibraryItem = LibraryItem{Kind: "movie", Title: title, Year: year, RatingKey: rk, ThumbURL: proxyImage(thumb)}
 			}
+			a.Server = server
 			byKey[key] = a
 		}
 		a.Transcodes++
@@ -257,7 +271,7 @@ func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) 
 	// Every play of these titles in the window, for "n of m plays", and the buffer causes
 	// seen while they were transcoding.
 	rows, err = s.repo.db.QueryContext(ctx, `SELECT `+hotKey+`, COUNT(*) FROM stream_sessions
-		WHERE started_at >= ? AND media_type IN ('movie','episode') GROUP BY 1`, since)
+		WHERE started_at >= ? AND media_type IN ('movie','episode')`+srv+` GROUP BY 1`, since)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +292,7 @@ func (s *Service) hotSpots(ctx context.Context, since int64) ([]HotSpot, error) 
 	}
 	rows, err = s.repo.db.QueryContext(ctx, `SELECT `+hotKey+`, COALESCE(NULLIF(b.cause,''),'unknown'), COUNT(*)
 		FROM buffer_events b JOIN stream_sessions ON stream_sessions.id = b.session_id
-		WHERE started_at >= ? AND decision = 'transcode' AND media_type IN ('movie','episode') GROUP BY 1, 2`, since)
+		WHERE started_at >= ? AND decision = 'transcode' AND media_type IN ('movie','episode')`+serverAnd("stream_sessions.", server)+` GROUP BY 1, 2`, since)
 	if err != nil {
 		return nil, err
 	}

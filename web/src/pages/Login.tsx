@@ -1,11 +1,17 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { FleetMark } from "../components/FleetMark";
+import { JellyfinMark, PlexMark } from "../components/brand/marks";
 import { api, resetSignedOut, type AuthUser } from "../lib/api";
 import { nextAfterSignIn } from "../lib/session";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
 
 const PlexLoginButton = lazy(() => import("../components/PlexLoginButton"));
+// The Jellyfin sheet (username + password, or Quick Connect) downloads when it's opened.
+const JellyfinLoginSheet = lazy(() => import("../components/JellyfinSignInSheet"));
+
+// The media server buttons: the server's mark, then its name, on its brand fill.
+const SERVER_BUTTON ="flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-md font-semibold";
 
 // After any successful sign-in: back to the page they were on (or ?next=), else their home —
 // the Dashboard for staff, Discover for everyone else.
@@ -25,10 +31,15 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [plexEnabled, setPlexEnabled] = useState(false);
   const [plexBusy, setPlexBusy] = useState(false);
+  const [jellyfin, setJellyfin] = useState({ enabled: false, quickConnect: false, open: false });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.status().then((s) => { setMode(s.needs_setup ? "setup" : "login"); setPlexEnabled(s.plex_login); }).catch(() => setMode("login"));
+    api.status().then((s) => {
+      setMode(s.needs_setup ? "setup" : "login");
+      setPlexEnabled(s.plex_login);
+      setJellyfin((j) => ({ ...j, enabled: !!s.jellyfin_login, quickConnect: !!s.jellyfin_quickconnect }));
+    }).catch(() => setMode("login"));
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -82,19 +93,31 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
               </p>
             )}
 
+            {!setup && (plexEnabled || jellyfin.enabled) && (
+              <div className="my-0.5 flex items-center gap-2 text-xs uppercase tracking-wide text-ink-faint">
+                <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or <span className="h-px flex-1" style={{ background: "var(--line)" }} />
+              </div>
+            )}
+            {/* Sign in with Plex: the server checks the Plex account can reach this server
+                and signs it into its requester account. */}
             {!setup && plexEnabled && (
-              <>
-                <div className="my-0.5 flex items-center gap-2 text-xs uppercase tracking-wide text-ink-faint">
-                  <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or <span className="h-px flex-1" style={{ background: "var(--line)" }} />
-                </div>
-                {/* Sign in with Plex: the server checks the Plex account can reach this
-                    server and signs it into its requester account. */}
-                <Suspense fallback={<button type="button" disabled className="rounded-lg px-4 py-2.5 text-md font-semibold" style={{ background: "#e5a00d", color: "#1f1300" }}>Sign in with Plex</button>}>
-                  <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={continueAfterSignIn} />
-                </Suspense>
-              </>
+              <Suspense fallback={<button type="button" disabled className={SERVER_BUTTON} style={{ background: "var(--plex)", color: "var(--plex-ink)" }}><PlexMark />Sign in with Plex</button>}>
+                <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={continueAfterSignIn} />
+              </Suspense>
+            )}
+            {/* Sign in with Jellyfin: Jellyfin checks the username and password (or the
+                Quick Connect code) and the server signs that user into their account. */}
+            {!setup && jellyfin.enabled && (
+              <button type="button" disabled={busy || plexBusy} onClick={() => { setError(null); setJellyfin((j) => ({ ...j, open: true })); }} className={SERVER_BUTTON} style={{ background: "var(--jellyfin)", color: "var(--jellyfin-ink)" }}>
+                <JellyfinMark />Sign in with Jellyfin
+              </button>
             )}
           </form>
+        )}
+        {jellyfin.open && (
+          <Suspense fallback={null}>
+            <JellyfinLoginSheet quickConnect={jellyfin.quickConnect} onClose={() => setJellyfin((j) => ({ ...j, open: false }))} onSignedIn={continueAfterSignIn} />
+          </Suspense>
         )}
       </div>
     </div>

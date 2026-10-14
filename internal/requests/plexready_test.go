@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
@@ -30,18 +31,23 @@ func (f *fakeLocator) Configured(context.Context) bool {
 	return f.configured
 }
 
-func (f *fakeLocator) Find(_ context.Context, media string, ids PlexIDs) (string, bool) {
+func (f *fakeLocator) Servers(context.Context) []mediaserver.Kind {
+	return []mediaserver.Kind{mediaserver.Plex}
+}
+
+func (f *fakeLocator) Find(_ context.Context, media string, ids PlexIDs) []Sighting {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.built.IsZero() {
-		return "", false // the index hasn't been read yet
+		return nil // the index hasn't been read yet
 	}
 	for _, k := range []string{fmt.Sprintf("%s:%d", media, ids.TMDB), "imdb:" + ids.IMDB} {
 		if f.have[k] {
-			return "https://app.plex.tv/desktop/#!/server/m1/details?key=" + k, true
+			return []Sighting{{Link: mediaserver.WatchLink{Server: mediaserver.Plex, Label: "Plex",
+				URL: "https://app.plex.tv/desktop/#!/server/m1/details?key=" + k}, IndexBuiltAt: f.built}}
 		}
 	}
-	return "", false
+	return nil
 }
 
 func (f *fakeLocator) IndexBuiltAt() time.Time {
@@ -180,6 +186,26 @@ func TestReadyWaitsForPlex(t *testing.T) {
 
 // Without Plex — no locator, or one with no server set up — 'ready' goes out on import,
 // worded as always, and nothing waits.
+// The ready sentence names the servers that have the title, and never says "on your
+// library" when it can't name one.
+func TestReadyWordsNameTheServers(t *testing.T) {
+	for _, c := range []struct {
+		v     plexVerdict
+		where []mediaserver.Kind
+		want  string
+	}{
+		{plexHas, []mediaserver.Kind{mediaserver.Plex}, "“Dune” is ready to watch on Plex."},
+		{plexHas, []mediaserver.Kind{mediaserver.Plex, mediaserver.Jellyfin}, "“Dune” is ready to watch on Plex and Jellyfin."},
+		{plexHas, nil, "“Dune” is ready to watch."},
+		{plexLate, nil, "“Dune” is ready — it may take a few more minutes to show up in your library."},
+		{plexOff, nil, "“Dune” is ready to watch."},
+	} {
+		if got := readyWords("“Dune”", c.v, readyNote{where: c.where}); got != c.want {
+			t.Errorf("readyWords(%v, %v) = %q, want %q", c.v, c.where, got, c.want)
+		}
+	}
+}
+
 func TestReadyWithoutPlexImmediate(t *testing.T) {
 	for _, tc := range []struct {
 		name string

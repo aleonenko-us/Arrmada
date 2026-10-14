@@ -193,7 +193,7 @@ func TestRequestPlace(t *testing.T) {
 	}
 
 	s.SetWatching(func() bool { return true }, nil)
-	if p := s.RequestPlace(ctx, movieKey(2)); p.Starting || !strings.Contains(p.Reason, "watching Plex") {
+	if p := s.RequestPlace(ctx, movieKey(2)); p.Starting || !strings.Contains(p.Reason, "someone is watching") {
 		t.Errorf("while watching: %+v", p)
 	}
 }

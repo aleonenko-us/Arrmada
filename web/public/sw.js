@@ -69,12 +69,15 @@ self.addEventListener("fetch", (e) => {
 });
 
 // --- Web Push -------------------------------------------------------------
-// The server sends an encrypted JSON payload: { title, body, url, plex_url? }. plex_url is
-// on a 'ready' notice for a title the owner's Plex has: its app.plex.tv page.
+// The server sends an encrypted JSON payload: { title, body, url, plex_url?, watch_url?,
+// watch_label? }. On a 'ready' notice for a title a media server has, watch_url is its page
+// on the reader's own server (Plex's app.plex.tv page, or Jellyfin's at the owner's public
+// address) and watch_label that server's name; plex_url is Plex's page alone, which a
+// server from before Jellyfin sends instead.
 self.addEventListener("push", (e) => {
   let data = { title: "Arrmada", body: "", url: "/discover" };
   try { data = { ...data, ...e.data.json() }; } catch { /* body may be empty */ }
-  const plex = plexURL(data.plex_url);
+  const watch = watchLink(data);
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
@@ -82,10 +85,10 @@ self.addEventListener("push", (e) => {
       // (only its alpha is used).
       icon: "/icon-192.png",
       badge: "/badge-96.png",
-      data: { url: data.url, plex_url: plex },
-      // Where the platform shows actions (Android, desktop Chrome): Watch on Plex, or the
-      // request in Arrmada. Elsewhere a plain tap is all there is, and opens Plex.
-      ...(plex ? { actions: [{ action: "plex", title: "Watch on Plex" }, { action: "open", title: "Details" }] } : {}),
+      data: { url: data.url, watch_url: watch ? watch.url : "" },
+      // Where the platform shows actions (Android, desktop Chrome): Watch on <server>, or
+      // the request in Arrmada. Elsewhere a plain tap is all there is, and opens the server.
+      ...(watch ? { actions: [{ action: "watch", title: "Watch on " + watch.label }, { action: "open", title: "Details" }] } : {}),
       tag: data.body || data.title, // collapse duplicate pings for the same item
     })
   );
@@ -96,23 +99,49 @@ function plexURL(u) {
   return typeof u === "string" && u.startsWith("https://app.plex.tv/") ? u : "";
 }
 
+// watchURL keeps a Watch link only when it is a plain http(s) address: a Jellyfin server
+// lives wherever its owner put it, but nothing else (javascript:, data:, a relative path)
+// is ever opened.
+function watchURL(u) {
+  if (typeof u !== "string") return "";
+  try {
+    const parsed = new URL(u);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
+// watchLink is a push's Watch link and the server's name for its action: watch_url when
+// it's a usable address, else (an older server) plex_url as Plex's. null when neither.
+function watchLink(data) {
+  const url = watchURL(data.watch_url);
+  if (url) {
+    const label = typeof data.watch_label === "string" && data.watch_label.trim() ? data.watch_label.trim().slice(0, 40) : "your server";
+    return { url, label };
+  }
+  const plex = plexURL(data.plex_url);
+  return plex ? { url: plex, label: "Plex" } : null;
+}
+
 // Tapping the notification opens what it's about (the server sends the exact title's
 // address): it focuses an open Arrmada tab and takes it there, or opens one. Only a page
 // this worker controls can be navigated; for any other (one opened before the worker
 // took over) navigate() rejects, and a fresh window opens instead. Only same-origin
 // paths are followed.
 //
-// A 'ready' notice whose title is in Plex opens it in Plex — from its Watch on Plex
+// A 'ready' notice whose title is on a media server opens it there — from its Watch
 // action, or a plain tap (iOS and others show no actions) — and its Details action opens
-// it here.
+// it here. (A notice shown by the worker from before Jellyfin carries plex_url.)
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const plex = plexURL(e.notification.data && e.notification.data.plex_url);
-  if (plex && e.action !== "open") {
-    e.waitUntil(clients.openWindow(plex));
+  const d = e.notification.data || {};
+  const watch = watchURL(d.watch_url) || plexURL(d.plex_url);
+  if (watch && e.action !== "open") {
+    e.waitUntil(clients.openWindow(watch));
     return;
   }
-  let url = (e.notification.data && e.notification.data.url) || "/discover";
+  let url = d.url || "/discover";
   if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) url = "/discover";
   e.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((tabs) => {

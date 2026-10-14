@@ -1,7 +1,8 @@
 import { req } from "./api";
+import type { WatchLink } from "../components/brand/servers";
 
-// The Plex library calls staff pages make (library updates, Watch on Plex links, Watched
-// by). They live apart from lib/api.ts because only lazily loaded pages import them: the
+// The Plex library calls staff pages make (library updates, Watch links on every media
+// server, Watched by). They live apart from lib/api.ts because only lazily loaded pages import them: the
 // requester's first load is right at its budget. Plex sign-in and account linking are
 // lib/plexApi.ts.
 
@@ -37,19 +38,21 @@ export interface PlexScanView {
   error?: string;
 }
 
-/** Who has played a title on Plex (staff only). available is false without Plex. */
+/** Who has played a title on Plex or Jellyfin (staff only). available is false with no
+ *  server connected. Each person is one server identity, with the server it's on. */
 export interface WatchStats {
   available: boolean;
   plays: number;
   last_played: number; // unix seconds
-  users: { id: string; name: string; plays: number; last_played: number }[];
+  users: { id: string; name: string; plays: number; last_played: number; server?: string }[];
 }
 
 export const plexLibraryApi = {
   watchStats: (kind: "movies" | "series", id: number) => req<WatchStats>(`/api/v1/${kind}/${id}/watch-stats`),
-  // The title's app.plex.tv page, or null when Plex doesn't have it (the server answers 204).
-  link: (media: "movie" | "series", tmdbId: number) =>
-    req<{ url: string } | undefined>(`/api/v1/plex/link?media_type=${media}&tmdb_id=${tmdbId}`).then((r) => r?.url ?? null),
+  // The title's Watch link on each media server that has it (none: an empty list), the
+  // viewer's own server first.
+  watchLinks: (media: "movie" | "series", tmdbId: number) =>
+    req<{ links?: WatchLink[] }>(`/api/v1/media/links?media=${media}&tmdb=${tmdbId}`).then((r) => r?.links ?? []),
   scanView: () => req<PlexScanView>("/api/v1/insights/plex/scan"),
   saveScan: (body: { enabled: boolean; path_map: PlexPathMap[] }) =>
     req<PlexScanView>("/api/v1/insights/plex/scan", { method: "PUT", body: JSON.stringify(body) }),

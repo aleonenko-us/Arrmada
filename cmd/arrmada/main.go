@@ -998,36 +998,46 @@ func main() {
 	// swap: one debounced partial scan per folder, translated to Plex's own paths. Plex
 	// being down or unset never holds anything up — requests are queued in memory and
 	// the worker logs what it couldn't send.
+	scanRoots := func(ctx context.Context) map[string]string {
+		return map[string]string{plexscan.KindMovie: roots.Movies(ctx), plexscan.KindShow: roots.TV(ctx)}
+	}
 	plexScanner := plexscan.New(plexscan.Options{
 		Client:     func(ctx context.Context) plexscan.Client { return insightsSvc.PlexClient(ctx) },
 		Configured: insightsSvc.Configured,
 		Settings:   settingsSvc,
-		Roots: func(ctx context.Context) map[string]string {
-			return map[string]string{plexscan.KindMovie: roots.Movies(ctx), plexscan.KindShow: roots.TV(ctx)}
-		},
-		Log: log,
+		Roots:      scanRoots,
+		Log:        log,
 	})
 	grp.Loop("plex: library scans", plexScanner.Run)
+	// Jellyfin next to Plex: its connection, library index and scanner, and one fan-out
+	// (media.Request) that tells every server about a changed folder (mediaservers.go).
+	media := setupMediaServers(mediaServerDeps{
+		Group: grp, Settings: settingsSvc, Keys: keyStore, Insights: insightsSvc, Plex: plexScanner,
+		Roots: scanRoots, Log: modLog(log, "jellyfin"),
+	})
 	// The Plex library index (TMDB/TVDB/IMDb → rating key) behind Watch on Plex: rebuilt
 	// every 30 minutes and about 90 seconds after each scan, once Plex has added the files.
 	grp.Loop("plex: library index", insightsSvc.RunPlexIndex)
 	plexScanner.OnRefreshed(func(string, string, string) { insightsSvc.PlexIndexStale(90 * time.Second) })
-	// 'Ready' means watchable in Plex: with Plex set up, a request's notice waits until the
-	// index shows the title (looked at again after every rebuild, and every two minutes so
-	// the 30-minute fallback fires even if the index never builds).
-	requestsSvc.SetPlexLocator(plexReadyLocator{insightsSvc})
-	insightsSvc.OnPlexIndexRebuilt(requestsSvc.KickPlexCheck)
+	// 'Ready' means watchable on a media server: with Plex or Jellyfin set up, a request's
+	// notice waits until either server's index shows the title (looked at again after
+	// every rebuild of either, and every two minutes so the 30-minute fallback fires even
+	// if no index ever builds). Watch links lead with each person's own server.
+	requestsSvc.SetPlexLocator(mediaReadyLocator{media.Registry})
+	requestsSvc.SetHomeServer(homeServer(authSvc))
+	media.Registry.OnIndexRebuilt(requestsSvc.KickPlexCheck)
 	grp.Loop("requests: plex check", requestsSvc.RunPlexChecks)
 	sched.Register("request-plex-check", 2*time.Minute, false, requestsSvc.CheckPlexWaiting,
-		scheduler.Label("Tell requesters once Plex has their title"),
-		scheduler.Description("Sends the 'ready' notice for requests waiting for Plex to add the title, or after 30 minutes if Plex never shows it."))
+		scheduler.Label("Tell requesters once their title is on Plex or Jellyfin"),
+		scheduler.Description("Sends the 'ready' notice for requests waiting for Plex or Jellyfin to add the title, or after 30 minutes if neither shows it."))
 	// Imports, upgrades and movie renames/deletes reach it through the outbox (registered
 	// below); the changes that don't go through the outbox call it directly.
-	seriesSvc.SetLibraryChanged(plexScanner.Request)   // episode and show deletes
-	coordinator.SetLibraryChanged(plexScanner.Request) // series renames
-	convertSvc.SetLibraryChanged(plexScanner.Request)  // a converted file swapped in
-	// A subtitle written, shifted, removed or adopted: Plex picks it up without a full scan.
-	subtitlesSvc.SetLibraryChanged(plexScanner.Request)
+	seriesSvc.SetLibraryChanged(media.Request)   // episode and show deletes
+	coordinator.SetLibraryChanged(media.Request) // series renames
+	convertSvc.SetLibraryChanged(media.Request)  // a converted file swapped in
+	// A subtitle written, shifted, removed or adopted: the servers pick it up without a
+	// full scan.
+	subtitlesSvc.SetLibraryChanged(media.Request)
 	// Prune raw bandwidth samples older than 90 days: the poller writes one row per
 	// cycle, so at the 5s default that's ~17k/day and every graph query scans them all.
 	// Watch history itself is kept — only the high-frequency bandwidth series is rolled off.
@@ -1156,14 +1166,10 @@ func main() {
 	// dispatcher starts.
 	importConsumers{
 		convert: convertSvc, subtitles: subtitlesSvc, requests: requestsSvc, issues: issuesSvc, audio: audioSrv, grp: grp,
-		plex: plexScanner, showFolder: seriesSvc.FolderPath,
-		// With scans switched off nothing calls OnRefreshed; Plex's own watcher adds the
-		// file in its own time, so look again a few minutes after the import.
-		plexIndexStale: func() {
-			if !plexScanner.Enabled(context.Background()) {
-				insightsSvc.PlexIndexStale(3 * time.Minute)
-			}
-		},
+		plex: media, showFolder: seriesSvc.FolderPath,
+		// With scans switched off nothing calls OnRefreshed; the server's own watcher adds
+		// the file in its own time, so look again a few minutes after the import.
+		plexIndexStale: media.IndexStaleAfterImport,
 	}.register(box)
 	grp.Loop("outbox: dispatcher", box.Run)
 	// Alert deliveries are each connection's log on the Alerts page: a month of it.
@@ -1261,6 +1267,11 @@ func main() {
 		Attention: needsYou,
 		PlexScan:  plexScanner,
 		PlexLinks: insightsSvc,
+		// Jellyfin's connection card, its library updates, and every server together.
+		Jellyfin:     media.Jellyfin,
+		JellyfinScan: media.JellyfinScan,
+		MediaServers: media.Registry,
+		HomeServer:   homeServer(authSvc), // whose Watch link a person sees first
 		// Everything else reads the folders live; the bundled qBittorrent's default save
 		// path is the one thing that has to be told. Same retries as at boot — the client
 		// may be restarting — and each try reads the folder afresh, so of two quick saves

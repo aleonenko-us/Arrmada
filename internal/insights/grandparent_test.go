@@ -46,7 +46,7 @@ func TestTopShowsPreferGrandparentThumb(t *testing.T) {
 	ins(sessionRecord{UserID: "7", RatingKey: "9912", MediaType: "episode", Title: "Ep", GrandparentTitle: "Old Show",
 		Thumb: "/library/metadata/9912/thumb/1", StartedAt: now - 600, StoppedAt: now - 60})
 
-	st, err := s.Stats(ctx, 30, false)
+	st, err := s.Stats(ctx, 30, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

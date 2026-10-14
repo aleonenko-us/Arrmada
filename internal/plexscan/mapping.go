@@ -189,6 +189,17 @@ func canon(p string) string {
 	return p
 }
 
+// PathKey is p spelled for comparing as a map key: canonical, and lower-cased when it's
+// a Windows path (which compares without regard to case). A server's index of folders
+// and a folder translated by Resolve meet on it.
+func PathKey(p string) string {
+	c := canon(p)
+	if windowsStyle(p) {
+		return strings.ToLower(c)
+	}
+	return c
+}
+
 // under reports whether child is parent or inside it, and the part of child below it
 // ("" when they're the same folder), in forward slashes. It matches whole folder names
 // only: /movies2 is not under /movies.

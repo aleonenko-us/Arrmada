@@ -257,11 +257,12 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 		// Calendar feed links: only their hashes are stored (the token itself never is, and
 		// a "token=" in any line is blanked by shape), but the hash is withheld too.
 		{`SELECT token_hash FROM calendar_feeds`, func(v []string) { addSecret(v[0]) }},
-		{`SELECT username, plex_username, apprise_url, kindle_email FROM users`, func(v []string) {
+		{`SELECT username, plex_username, apprise_url, kindle_email, jellyfin_username FROM users`, func(v []string) {
 			names.Add(v[0], "«user»")
 			names.Add(v[1], "«user»")
 			addSecret(v[2])
 			addSecret(v[3])
+			names.Add(v[4], "«user»")
 		}},
 		{`SELECT title, author, series_name FROM books`, func(v []string) {
 			names.Add(v[0], "«name»")
@@ -340,6 +341,7 @@ var (
 		"user": true, "username": true, "user_id": true, "userid": true, "uid": true, "by": true,
 		"requester": true, "requested_by": true, "owner": true, "account": true, "email": true,
 		"kindle": true, "kindle_email": true, "plex_user": true, "plex_username": true, "who": true,
+		"jellyfin_user": true, "jellyfin_username": true,
 		"person": true, "decided_by": true, "decider": true, "follower": true,
 	}
 	bundleNameAttrs = map[string]bool{
@@ -413,7 +415,7 @@ type settingsSplit struct {
 var (
 	credentialSettingWords = []string{
 		"apikey", "api_key", "token", "password", "passwd", "secret", "apprise", "cookie",
-		"credential", "smtp", "webhook", "url", "kindle", "insights_plex_",
+		"credential", "smtp", "webhook", "url", "kindle", "insights_plex_", "jellyfin_",
 	}
 	privateSettingWords = []string{"key", "session", "auth", "mail", "user", "machine", "client_id", "pin"}
 )

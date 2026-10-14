@@ -54,7 +54,7 @@ test.describe("admin on a phone", () => {
     const active = page.getByRole("tab", { name: "Reliability" });
     await expect(active).toHaveAttribute("aria-selected", "true");
     await api.quiet();
-    // Reliability is the last tab (Settings moved to Settings → Plex), so it sits at the bar's
+    // Reliability is the last tab (Settings moved to Settings → Media servers), so it sits at the bar's
     // very end, where sub-pixel tab widths can leave a hair's width outside: 0.99, not 1.
     await expect(active).toBeInViewport({ ratio: 0.99 });
     await page.getByRole("tab", { name: "Graphs" }).click();

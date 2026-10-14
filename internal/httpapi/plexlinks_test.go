@@ -123,7 +123,7 @@ func TestListRequestsPlexURLOnlyWhenAvailable(t *testing.T) {
 		{MediaType: "book", TMDBID: 1, Tracking: &requests.Tracking{Stage: requests.StageAvailable}},
 		{MediaType: "movie", TMDBID: 1}, // never tracked
 	}
-	a.setRequestPlexURLs(context.Background(), list)
+	a.setRequestWatchLinks(context.Background(), list, nil)
 	got := []string{}
 	for _, rq := range list {
 		got = append(got, rq.PlexURL)
@@ -136,7 +136,7 @@ func TestListRequestsPlexURLOnlyWhenAvailable(t *testing.T) {
 	idle := &fakeLinker{known: link.known, notReady: true}
 	a.deps.PlexLinks = idle
 	list[0].PlexURL = ""
-	a.setRequestPlexURLs(context.Background(), list)
+	a.setRequestWatchLinks(context.Background(), list, nil)
 	if list[0].PlexURL != "" || len(idle.asked) != 0 {
 		t.Fatalf("not ready: url %q after %d lookups", list[0].PlexURL, len(idle.asked))
 	}
@@ -159,7 +159,7 @@ func TestInboxPlexLinks(t *testing.T) {
 		}
 	}
 	got := items()
-	a.inboxPlexLinks(context.Background(), got)
+	a.inboxWatchLinks(context.Background(), got, nil)
 	want := []string{"live603", "saved604", "live1399", "", "", ""}
 	for i, n := range got {
 		if n.PlexURL != want[i] {
@@ -168,7 +168,7 @@ func TestInboxPlexLinks(t *testing.T) {
 	}
 	link.notReady = true
 	got = items()
-	a.inboxPlexLinks(context.Background(), got)
+	a.inboxWatchLinks(context.Background(), got, nil)
 	for _, n := range got {
 		if n.PlexURL != "" {
 			t.Errorf("Plex not ready: %s still links %q", n.Ref, n.PlexURL)

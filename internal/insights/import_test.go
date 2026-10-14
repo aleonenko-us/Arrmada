@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -60,7 +61,7 @@ func TestImportHistorySkipsBadDuration(t *testing.T) {
 	}
 
 	// The single recorded movie should report a non-negative, sane watch time.
-	titles, err := s.repo.topTitles(ctx, "movie", "title", 0, true, 10)
+	titles, err := s.repo.topTitles(ctx, "movie", "title", 0, true, 10, "")
 	if err != nil {
 		t.Fatalf("topTitles: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestWatchedSumClampsNegative(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("insert corrupt: %v", err)
 	}
-	titles, err := s.repo.topTitles(ctx, "movie", "title", 0, true, 10)
+	titles, err := s.repo.topTitles(ctx, "movie", "title", 0, true, 10, "")
 	if err != nil {
 		t.Fatalf("topTitles: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestUsersDedup(t *testing.T) {
 	ctx := context.Background()
 	s := newDataTestService(t)
 
-	if err := s.repo.upsertUser(ctx, "1", "Alice", "avatar.png", 1_750_000_000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "1", "Alice", "avatar.png", 1_750_000_000); err != nil {
 		t.Fatalf("upsert user: %v", err)
 	}
 	// Two sessions at the SAME started_at (two devices, same second).
@@ -125,7 +126,7 @@ func TestUsersDedup(t *testing.T) {
 			t.Fatalf("insert %s: %v", rk, err)
 		}
 	}
-	users, err := s.repo.users(ctx)
+	users, err := s.repo.users(ctx, "")
 	if err != nil {
 		t.Fatalf("users: %v", err)
 	}
@@ -146,11 +147,11 @@ func TestUpsertUserKeepsAvatarAndLastSeen(t *testing.T) {
 	ctx := context.Background()
 	s := newDataTestService(t)
 
-	if err := s.repo.upsertUser(ctx, "1", "Alice", "good-avatar.png", 1_750_000_000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "1", "Alice", "good-avatar.png", 1_750_000_000); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	// Import an older session carrying no avatar.
-	if err := s.repo.upsertUser(ctx, "1", "Alice", "", 1_700_000_000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "1", "Alice", "", 1_700_000_000); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	var thumb string
@@ -180,7 +181,7 @@ func TestTopNamesRepresentativeID(t *testing.T) {
 			t.Fatalf("insert: %v", err)
 		}
 	}
-	names, err := s.repo.topNames(ctx, "user_id", "user_name", 0, false, 10)
+	names, err := s.repo.topNames(ctx, "user_id", "user_name", 0, false, 10, "")
 	if err != nil {
 		t.Fatalf("topNames: %v", err)
 	}
@@ -197,8 +198,8 @@ func TestPruneBandwidth(t *testing.T) {
 	ctx := context.Background()
 	s := newDataTestService(t)
 
-	_ = s.repo.insertBandwidth(ctx, 1_700_000_000, 100, 50, 50)  // old
-	_ = s.repo.insertBandwidth(ctx, 1_750_000_000, 200, 80, 120) // recent
+	_ = s.repo.insertBandwidth(ctx, mediaserver.Plex, 1_700_000_000, 100, 50, 50)  // old
+	_ = s.repo.insertBandwidth(ctx, mediaserver.Plex, 1_750_000_000, 200, 80, 120) // recent
 	n, err := s.repo.pruneBandwidth(ctx, 1_720_000_000)
 	if err != nil {
 		t.Fatalf("prune: %v", err)

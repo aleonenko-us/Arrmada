@@ -42,7 +42,7 @@ func TestGraphsDurationMetric(t *testing.T) {
 	s := newDataTestService(t)
 	seedGraphRows(t, s)
 
-	g, err := s.Graphs(ctx, 7, MetricDuration)
+	g, err := s.Graphs(ctx, 7, MetricDuration, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestGraphsDurationMetric(t *testing.T) {
 		t.Errorf("top users = %+v", g.TopUsers)
 	}
 
-	plays, err := s.Graphs(ctx, 7, "")
+	plays, err := s.Graphs(ctx, 7, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestGraphsDecisionSeriesAligned(t *testing.T) {
 	s := newDataTestService(t)
 	seedGraphRows(t, s)
 	for _, metric := range []string{MetricPlays, MetricDuration} {
-		g, err := s.Graphs(ctx, 7, metric)
+		g, err := s.Graphs(ctx, 7, metric, "")
 		if err != nil {
 			t.Fatal(err)
 		}

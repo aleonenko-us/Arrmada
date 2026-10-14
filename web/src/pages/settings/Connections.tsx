@@ -4,16 +4,19 @@ import { CategoryLine, ClientEditor, ClientForm, clientBody } from "../../compon
 import { ConnectionCard, type CardFix, type CardTest } from "../../components/connections/ConnectionCard";
 import { ConnectionSection } from "../../components/connections/ConnectionSection";
 import { IndexerEditor, indexerBody } from "../../components/connections/IndexerEditor";
+import { MediaServerCard } from "../../components/connections/MediaServerCard";
 import { DiscoveryRegion, KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { ProwlarrPanel } from "../../components/connections/ProwlarrPanel";
 import { type DownloadClient, type Indexer } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
+import { jellyfinApi } from "../../lib/jellyfinApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { useQuery } from "../../lib/query";
 import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
+import { JellyfinConnect } from "./JellyfinConnection";
 import { PlexConnect } from "./PlexConnection";
 
 // The add-indexer catalogue loads when it's opened.
@@ -22,16 +25,32 @@ const AddIndexerModal = lazy(() => import("../../components/connections/AddIndex
 const NO_SECTIONS: ConnectionSectionData[] = [];
 // The Prowlarr card's id (and anchor): the catalogue's Prowlarr tile opens it.
 const PROWLARR_CARD = "prowlarr";
-// The Plex card's id (and anchor): LINKS.plexConnection lands on it.
+// The media server cards' ids (and anchors): LINKS.plexConnection lands on Plex's. A link
+// to one that isn't connected yet opens its editor.
 const PLEX_CARD = "plex";
+const JELLYFIN_CARD = "jellyfin";
+const SERVER_CARDS = [PLEX_CARD, JELLYFIN_CARD];
+const MEDIA_SERVERS_ANCHOR = "media-servers";
+
+// Jellyfin's card before the server lists one (an older server, or none saved yet): not
+// connected, with its Connect button.
+const JELLYFIN_UNSET: ConnectionItem = {
+  kind: "jellyfin", ref: "default", card: JELLYFIN_CARD, name: "Jellyfin",
+  configured: false, enabled: false, state: "unknown", testable: false,
+};
+const isServer = (it: ConnectionItem) => it.kind === "plex" || it.kind === "jellyfin";
 
 // What each section holds, under its title.
 const SUBTITLES: Record<ConnectionSectionId, string> = {
   search: "Where releases are found: Prowlarr, FlareSolverr for Cloudflare-protected trackers, and every indexer. Every module searches through these.",
   downloads: "Where grabbed releases are sent to download. qBittorrent for torrents.",
   metadata: "The API keys titles, ratings, books and subtitles come from. A key saved here works at once, no restart, and replaces one set at install; it's never shown back, only whether it's set.",
-  other: "Plex, where alerts go, and the server listening apps connect to. Plex is connected here; alerts and the audiobook server are set up on their own pages.",
+  other: "Where alerts go, and the server listening apps connect to. Each is set up on its own page.",
 };
+
+// The old "other" section lost its media server to the section above; the server may
+// still send the old title.
+const TITLES: Partial<Record<ConnectionSectionId, string>> = { other: "Alerts and apps" };
 
 // Each section's anchor. They differ from the API's section ids where those would clash
 // with another card's anchor ("downloads" is a section, "metadata" a card under Naming);
@@ -53,8 +72,9 @@ const SLOW_POLL_MS = 60_000;
 // so opening the page calls nothing outside Arrmada; Test asks the one connection. Indexers,
 // download clients and Prowlarr are added, edited, switched off and deleted here (the old
 // Indexers and Download clients pages redirect here); admins edit the metadata keys and the
-// FlareSolverr URL inside their cards. Plex is connected inside its card (how Arrmada uses
-// it is Settings → Plex); alerts and the audiobook server link to their own pages.
+// FlareSolverr URL inside their cards. The media servers (Plex and Jellyfin) sit side by
+// side at the top and are connected inside their cards (how Arrmada uses them is Settings
+// → Media servers); alerts and the audiobook server link to their own pages.
 export function ConnectionsSettings() {
   const { user } = useMe();
   const admin = isAdmin(user);
@@ -64,6 +84,11 @@ export function ConnectionsSettings() {
   const ix = useQuery("indexers", () => indexerApi.indexers(), { staleMs: 0 });
   const dl = useQuery("download-clients", () => downloadClientApi.downloadClientList(), { staleMs: 0 });
   const sections = q.data ?? NO_SECTIONS;
+  const plexItem = sections.flatMap((s) => s.items).find((x) => x.kind === "plex");
+  const jellyfinItem = sections.flatMap((s) => s.items).find((x) => x.kind === "jellyfin") ?? JELLYFIN_UNSET;
+  // Which Jellyfin server it is (name and version) comes from its own settings, read once
+  // it's connected; the card's status comes from the list like every other card.
+  const jf = useQuery("jellyfin", jellyfinApi.get, { enabled: jellyfinItem.configured, staleMs: 60_000 });
   const error = q.error?.message ?? null;
   const [tests, setTests] = useState<Record<string, CardTest>>({});
   const [notices, setNotices] = useState<Record<string, string>>({});
@@ -88,14 +113,16 @@ export function ConnectionsSettings() {
 
   // A link to one card (a health warning's Fix) lands on it once the cards exist; the
   // hub's own scroll ran before they loaded. A link to the Plex card while Plex isn't
-  // connected yet ("Connect your Plex server" in Insights or Settings → Plex) is there to
+  // connected yet ("Connect your Plex server" in Insights or Settings → Media servers) is there to
   // connect it, so its editor opens too.
   const scrolled = useRef("");
   useEffect(() => {
     if (!q.data || !hash || scrolled.current === hash) return;
     scrolled.current = hash;
-    if (hash === `#${PLEX_CARD}` && q.data.some((s) => s.items.some((x) => x.card === PLEX_CARD && !x.configured))) {
-      setEditing((e) => e ?? PLEX_CARD);
+    const target = hash.slice(1);
+    if (SERVER_CARDS.includes(target)) {
+      const it = q.data.flatMap((s) => s.items).find((x) => x.card === target) ?? (target === JELLYFIN_CARD ? JELLYFIN_UNSET : undefined);
+      if (it && !it.configured) setEditing((e) => e ?? target);
     }
     document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
   }, [q.data, hash]);
@@ -225,6 +252,8 @@ export function ConnectionsSettings() {
       case "plex":
         // The connection is a manager setting, like the Plex endpoints it calls.
         return <PlexConnect onChanged={refresh} />;
+      case "jellyfin":
+        return <JellyfinConnect onChanged={refresh} />;
     }
     return undefined;
   };
@@ -309,6 +338,28 @@ export function ConnectionsSettings() {
     return undefined;
   };
 
+  const serverCard = (server: "plex" | "jellyfin", it: ConnectionItem) => {
+    const open = editing === it.card;
+    const identity = server === "jellyfin" && jf.data?.server_name
+      ? `${jf.data.server_name}${jf.data.version ? ` · Jellyfin ${jf.data.version}` : ""}`
+      : undefined;
+    return (
+      <MediaServerCard
+        key={it.card}
+        server={server}
+        item={it}
+        identity={identity}
+        test={tests[it.card]}
+        onTest={() => void runTest(it.kind, it.ref, it.card)}
+        onEdit={() => setEditing(open ? null : it.card)}
+        editing={open}
+        targeted={hash === `#${it.card}`}
+      >
+        {open && editorFor(it)}
+      </MediaServerCard>
+    );
+  };
+
   // The catalogue's Prowlarr tile: Prowlarr isn't added like an indexer, its card pulls
   // Prowlarr's indexers in, so the tile opens that card.
   const openProwlarr = () => {
@@ -325,11 +376,19 @@ export function ConnectionsSettings() {
           <AddIndexerModal onClose={() => setAdding(null)} onAdded={() => { setAdding(null); void refreshAll(); }} onProwlarr={openProwlarr} />
         </Suspense>
       )}
-      {sections.map((s) => (
+      <ConnectionSection
+        id={MEDIA_SERVERS_ANCHOR}
+        title="Media servers"
+        subtitle="Where your library is watched. Connect Plex, Jellyfin or both: a request is ready as soon as either has it, and each one gets its own Watch button."
+      >
+        {plexItem && serverCard("plex", plexItem)}
+        {serverCard("jellyfin", jellyfinItem)}
+      </ConnectionSection>
+      {sections.map((s) => ({ ...s, items: s.items.filter((x) => !isServer(x)) })).map((s) => (
         <ConnectionSection
           key={s.id}
           id={SECTION_ANCHOR[s.id] ?? s.id}
-          title={s.title}
+          title={TITLES[s.id] ?? s.title}
           subtitle={SUBTITLES[s.id] ?? ""}
           actions={headerActions(s.id)}
           above={above(s.id)}

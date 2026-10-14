@@ -36,6 +36,9 @@ type seriesLib interface {
 	// ByTMDBIDs is the library shows with these TMDB ids, each with its Stats roll-up.
 	ByTMDBIDs(ctx context.Context, tmdbIDs []int) ([]series.Series, error)
 	GetByTMDB(ctx context.Context, tmdbID int) (series.Series, error)
+	// FolderPath is the show's library folder ("" with no files): how Jellyfin is asked
+	// for a show it matched no id for.
+	FolderPath(ctx context.Context, seriesID int64) string
 	// SeasonProgress is a show's per-season counts, for season-scoped requests.
 	SeasonProgress(ctx context.Context, seriesID int64) (map[int]series.SeasonProgress, error)
 	// EnsureMonitored wants the seasons a request for a show already held asks for.

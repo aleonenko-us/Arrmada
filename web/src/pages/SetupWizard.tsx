@@ -9,33 +9,48 @@ import { ProwlarrPanel } from "../components/connections/ProwlarrPanel";
 import { useMe } from "../lib/me";
 import { setupApi } from "../lib/setupApi";
 import { Button, StatusChip, useConfirm, useToast } from "../ui";
+import { ServerTile } from "../components/brand/ServerBadge";
 import { PlexConnect } from "./settings/PlexConnection";
+import { JellyfinConnect } from "./settings/JellyfinConnection";
 
 // SetupWizard is the first thing an admin sees on a fresh install: the TMDB key and the
 // optional ones (Hardcover recommended), each checked before it's saved, then each library
-// folder (pre-filled from what's on the mount), then Plex (Settings →
-// Connections' own sign-in, plus the family switches), then indexers (a Prowlarr sync, or
-// one tracker tested before it's saved — Connections' own dialog), then the Getting
-// started checklist with a link to each step that's left. Folders apply live, so the restart only
-// appears if a startup-only setting is waiting. Skipping a step only moves on to the next;
-// ending setup early is its own small "Finish setup later" link, which says what's left.
+// folder (pre-filled from what's on the mount), then the media server — Plex, Jellyfin,
+// both or later: each one's connection editor from Settings → Connections, plus its own
+// family sign-in switches — then indexers (a Prowlarr sync, or one tracker tested before
+// it's saved — Connections' own dialog), then the Getting started checklist with a link to
+// each step that's left. Folders apply live, so the restart only appears if a startup-only
+// setting is waiting. Skipping a step only moves on to the next; ending setup early is its
+// own small "Finish setup later" link, which says what's left.
 // Settings → System → Run setup again opens it again with what's set shown.
 
-type Step = "keys" | "folders" | "plex" | "indexers" | "finish";
+type Step = "keys" | "folders" | "media" | "indexers" | "finish";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "keys", label: "Keys" },
   { id: "folders", label: "Folders" },
-  { id: "plex", label: "Plex" },
+  { id: "media", label: "Media server" },
   { id: "indexers", label: "Indexers" },
   { id: "finish", label: "Finish" },
 ];
+
+// The Media server step's choice. later: neither for now (nothing is saved).
+type ServerChoice = "plex" | "jellyfin" | "both" | "later";
+const SERVER_CHOICES: { id: ServerChoice; label: string; hint: string }[] = [
+  { id: "plex", label: "Plex", hint: "Plex Media Server" },
+  { id: "jellyfin", label: "Jellyfin", hint: "Free and open source" },
+  { id: "both", label: "Both", hint: "Plex and Jellyfin side by side" },
+  { id: "later", label: "Later", hint: "Connect one in Settings" },
+];
+const usesPlex = (c: ServerChoice | null) => c === "plex" || c === "both";
+const usesJellyfin = (c: ServerChoice | null) => c === "jellyfin" || c === "both";
 
 // The Indexers step reuses Settings → Connections' add-indexer dialog (presets, Test
 // before saving); it loads when opened.
 const AddIndexerModal = lazy(() => import("../components/connections/AddIndexerModal"));
 
-// The family sign-in choices on the Plex step: off unless the owner turns them on here.
+// A server's family sign-in choices on the Media server step: off unless the owner turns
+// them on here.
 interface Family { enabled: boolean; types: AutoTypes }
 type AutoTypes = { movie: boolean; series: boolean; book: boolean };
 const TYPE_NAMES: [keyof AutoTypes, string][] = [["movie", "Movies"], ["series", "Series"], ["book", "Books"]];
@@ -131,8 +146,8 @@ function useKeyChecks() {
 export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) => void; rerun?: boolean }) {
   const [state, setState] = useState<SetupState | null>(null);
   // Back from plex.tv after a Plex sign-in by redirect (a phone, or popups blocked): the
-  // address carries ?plexpin=, and the Plex step picks the sign-in up again.
-  const [step, setStep] = useState<Step>(() => (hasPlexPin() ? "plex" : "keys"));
+  // address carries ?plexpin=, and the Media server step picks the sign-in up again.
+  const [step, setStep] = useState<Step>(() => (hasPlexPin() ? "media" : "keys"));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -146,7 +161,11 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const checklist = useSetupChecklist(step === "finish");
 
   const [family, setFamily] = useState<Family | null>(null);
+  const [jfFamily, setJFFamily] = useState<Family | null>(null);
   const [plexError, setPlexError] = useState<string | null>(null);
+  // Which server(s) the Media server step sets up: what's connected already, Plex when
+  // plex.tv has just sent a sign-in back, else nothing until the admin picks.
+  const [choice, setChoice] = useState<ServerChoice | null>(() => (hasPlexPin() ? "plex" : null));
   const { booksEnabled } = useMe();
 
   const load = () => api.setupState().then((s) => {
@@ -156,6 +175,8 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
       f.key, s.libraries_chosen ? s.library[f.key] : (s.suggestions[f.key] ?? s.library[f.key] ?? ""),
     ])) as unknown as LibraryPaths);
     setFamily((cur) => cur ?? { enabled: !!s.plex_family?.enabled, types: typesFrom(s.plex_family?.auto_approve_types ?? "") });
+    setJFFamily((cur) => cur ?? { enabled: !!s.jellyfin_family?.enabled, types: typesFrom(s.jellyfin_family?.auto_approve_types ?? "") });
+    setChoice((cur) => cur ?? (s.plex_connected && s.jellyfin_connected ? "both" : s.jellyfin_connected ? "jellyfin" : s.plex_connected ? "plex" : null));
   }).catch((e) => setError((e as Error).message));
   useEffect(() => { load(); }, []);
 
@@ -179,7 +200,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     const left = [
       !state.tmdb_configured && "the TMDB key",
       !state.libraries_chosen && "library folders",
-      !state.plex_connected && "Plex",
+      !state.plex_connected && !state.jellyfin_connected && "a media server",
       !state.indexers_enabled && "indexers",
     ].filter((s): s is string => !!s);
     if (left.length > 0) {
@@ -253,14 +274,18 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     }))) return;
     if (folders) await api.setLibraryPaths(folders);
     await load();
-    go("plex");
+    go("media");
   });
 
-  // The family switches are saved as chosen here, both of them, so the wizard never leaves
-  // a stored default deciding who gets in or what downloads unasked.
-  const savePlex = () => run(async () => {
-    if (family) {
+  // Each chosen server's family switches are saved as chosen here, both of them, so the
+  // wizard never leaves a stored default deciding who gets in or what downloads unasked.
+  // A server that wasn't chosen (and Later) keeps whatever it had.
+  const saveMedia = () => run(async () => {
+    if (usesPlex(choice) && family) {
       await api.updateSettings({ plex_login_enabled: family.enabled, plex_login_auto_approve_types: typesCSV(family.types) });
+    }
+    if (usesJellyfin(choice) && jfFamily) {
+      await api.updateSettings({ jellyfin_login_enabled: jfFamily.enabled, jellyfin_login_auto_approve_types: typesCSV(jfFamily.types) });
     }
     go("indexers");
   });
@@ -469,55 +494,102 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
         </>
       )}
 
-      {step === "plex" && family && (
+      {step === "media" && family && jfFamily && (
         <>
-          <h1 className="m-0 text-2xl font-bold">Connect Plex</h1>
+          <h1 className="m-0 text-2xl font-bold">Connect your media server</h1>
           <p className="mb-3 mt-1 text-md text-ink-dim">
-            Family sign-in, watch stats and pausing conversions while someone's watching all need your Plex server. Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.
+            Where your family watches: Plex, Jellyfin or both. Watch buttons, library updates, family sign-in, watch stats and pausing conversions while someone's watching all use it.
           </p>
-          {state.plex_connected && (
-            <p role="status" className="m-0 mb-1 text-base font-semibold" style={{ color: "var(--good-text)" }}>
-              ✓ Connected{state.plex_server ? ` to ${state.plex_server}` : ""}
+
+          <fieldset className="m-0 min-w-0 border-0 p-0">
+            <legend className="mb-1.5 p-0 text-base font-semibold">Which media server do you use?</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SERVER_CHOICES.map((c) => {
+                const on = choice === c.id;
+                return (
+                  <label
+                    key={c.id}
+                    className="flex min-h-[88px] cursor-pointer flex-col items-start gap-1.5 rounded-xl p-3 focus-within:outline focus-within:outline-2"
+                    style={{
+                      border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
+                      background: on ? "var(--accent-soft)" : "var(--panel-2)",
+                      outlineColor: "var(--accent)",
+                    }}
+                  >
+                    <input type="radio" name="setup-media-server" value={c.id} checked={on} onChange={() => setChoice(c.id)} className="sr-only" />
+                    <span className="flex items-center gap-1" aria-hidden="true">
+                      {usesPlex(c.id) && <ServerTile server="plex" size={22} />}
+                      {usesJellyfin(c.id) && <ServerTile server="jellyfin" size={22} />}
+                      {c.id === "later" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-sm text-ink-faint" style={{ border: "1px solid var(--line)" }}>…</span>}
+                    </span>
+                    <span className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : undefined }}>{c.label}</span>
+                    <span className="text-xs text-ink-dim">{c.hint}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          {choice === "later" && (
+            <p role="status" className="m-0 mt-4 text-sm text-ink-dim">
+              Nothing to do here for now. Connect Plex or Jellyfin any time from its card in Settings → Connections; requests still download, and wait for it before they say "ready to watch".
             </p>
           )}
-          {plexError && (
-            <div role="alert" className="mb-1 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
-              Couldn't reach plex.tv from the server — you can connect later in Settings → Connections, or enter the server's address below.
-              <span className="mt-1 block break-words text-ink-faint">{plexError}</span>
-            </div>
-          )}
-          <PlexConnect onChanged={() => { setPlexError(null); void load(); }} onError={setPlexError} />
 
-          <fieldset className="m-0 mt-5 flex flex-col gap-2.5 rounded-xl p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-            <legend className="sr-only">Family sign-in</legend>
-            <div className="flex items-start gap-2.5 text-base">
-              <input id="setup-plex-family" type="checkbox" className="mt-0.5" aria-describedby="setup-plex-family-hint" checked={family.enabled} onChange={(e) => setFamily({ ...family, enabled: e.target.checked })} />
-              <div>
-                <label htmlFor="setup-plex-family" className="block font-semibold">Let family sign in with Plex</label>
-                <span id="setup-plex-family-hint" className="block text-sm text-ink-faint">People with access to your Plex server get a requester account the first time they sign in — no accounts to hand out.</span>
-              </div>
-            </div>
-            {family.enabled && (
-              <div role="group" aria-label="Auto-approve their requests" className="ml-6 flex flex-col gap-1.5">
-                <span className="text-base font-semibold">Auto-approve their requests</span>
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-ink-dim">
-                  {TYPE_NAMES.filter(([k]) => k !== "book" || booksEnabled).map(([k, name]) => (
-                    <label key={k} className="flex min-h-[28px] items-center gap-1.5">
-                      <input type="checkbox" checked={family.types[k]} onChange={(e) => setFamily({ ...family, types: { ...family.types, [k]: e.target.checked } })} />
-                      {name}
-                    </label>
-                  ))}
+          {usesPlex(choice) && (
+            <section aria-labelledby="setup-plex-title" className="mt-5 flex flex-col gap-1">
+              <h2 id="setup-plex-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerTile server="plex" size={22} /> Plex</h2>
+              <p className="m-0 text-sm text-ink-dim">Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.</p>
+              {state.plex_connected && (
+                <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>
+                  ✓ Connected{state.plex_server ? ` to ${state.plex_server}` : ""}
+                </p>
+              )}
+              {plexError && (
+                <div role="alert" className="rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
+                  Couldn't reach plex.tv from the server — you can connect later in Settings → Connections, or enter the server's address below.
+                  <span className="mt-1 block break-words text-ink-faint">{plexError}</span>
                 </div>
-                <span className="text-xs text-ink-faint">Ticked types download straight away; the rest wait for you to approve. A series request can pull every season of a long show.</span>
-              </div>
-            )}
-          </fieldset>
+              )}
+              <PlexConnect onChanged={() => { setPlexError(null); void load(); }} onError={setPlexError} />
+              <FamilyFields
+                id="setup-plex-family"
+                server="Plex"
+                hint="People with access to your Plex server get a requester account the first time they sign in — no accounts to hand out."
+                family={family}
+                onChange={setFamily}
+                books={booksEnabled}
+              />
+            </section>
+          )}
+
+          {usesJellyfin(choice) && (
+            <section aria-labelledby="setup-jellyfin-title" className="mt-6 flex flex-col gap-1">
+              <h2 id="setup-jellyfin-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerTile server="jellyfin" size={22} /> Jellyfin</h2>
+              <p className="m-0 text-sm text-ink-dim">Its address and an API key made in Jellyfin (Dashboard → API Keys). Both are tested before they're saved, and the key is never shown again.</p>
+              {state.jellyfin_connected && (
+                <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>
+                  ✓ Connected{state.jellyfin_server ? ` to ${state.jellyfin_server}` : ""}
+                </p>
+              )}
+              <JellyfinConnect testFirst inWizard onChanged={() => void load()} />
+              <FamilyFields
+                id="setup-jellyfin-family"
+                server="Jellyfin"
+                hint="People with a user on your Jellyfin server get a requester account the first time they sign in with their Jellyfin username and password."
+                family={jfFamily}
+                onChange={setJFFamily}
+                books={booksEnabled}
+              />
+            </section>
+          )}
+
           <Nav
             busy={busy}
             onBack={() => go("folders")}
-            skip={{ label: "Skip this step", onClick: () => go("indexers") }}
-            onNext={savePlex}
-            nextLabel="Save and continue"
+            skip={choice === null ? { label: "Skip this step", onClick: () => go("indexers") } : undefined}
+            onNext={choice === null || choice === "later" ? () => go("indexers") : saveMedia}
+            nextLabel={choice === null || choice === "later" ? "Continue" : "Save and continue"}
           />
         </>
       )}
@@ -564,7 +636,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           )}
           <Nav
             busy={busy}
-            onBack={() => go("plex")}
+            onBack={() => go("media")}
             skip={(state.indexers_enabled ?? 0) > 0 ? undefined : { label: "Skip this step", onClick: () => go("finish") }}
             onNext={() => go("finish")}
             nextLabel="Continue"
@@ -710,6 +782,39 @@ function CheckLine({ provider, check, value }: { provider: string; check?: KeyCh
         ? ["var(--avoid-text)", `Couldn't check it (${check.detail}). It can still be saved; Test it later in Settings → Connections.`]
         : ["var(--reject-text)", `✗ ${check.detail}`];
   return <p role="status" className="m-0 mt-1 break-words text-sm" style={{ color }}>{text}</p>;
+}
+
+// FamilyFields is one server's "Let family sign in with <server>" checkbox, with which
+// request types a new sign-in may download unasked once it's ticked.
+function FamilyFields({ id, server, hint, family, onChange, books }: {
+  id: string; server: string; hint: string; family: Family; onChange: (f: Family) => void; books: boolean;
+}) {
+  return (
+    <fieldset className="m-0 mt-3 flex flex-col gap-2.5 rounded-xl p-3.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+      <legend className="sr-only">{server} family sign-in</legend>
+      <div className="flex items-start gap-2.5 text-base">
+        <input id={id} type="checkbox" className="mt-0.5" aria-describedby={`${id}-hint`} checked={family.enabled} onChange={(e) => onChange({ ...family, enabled: e.target.checked })} />
+        <div>
+          <label htmlFor={id} className="block font-semibold">Let family sign in with {server}</label>
+          <span id={`${id}-hint`} className="block text-sm text-ink-faint">{hint}</span>
+        </div>
+      </div>
+      {family.enabled && (
+        <div role="group" aria-label={`Auto-approve their requests (${server})`} className="ml-6 flex flex-col gap-1.5">
+          <span className="text-base font-semibold">Auto-approve their requests</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-ink-dim">
+            {TYPE_NAMES.filter(([k]) => k !== "book" || books).map(([k, name]) => (
+              <label key={k} className="flex min-h-[28px] items-center gap-1.5">
+                <input type="checkbox" checked={family.types[k]} onChange={(e) => onChange({ ...family, types: { ...family.types, [k]: e.target.checked } })} />
+                {name}
+              </label>
+            ))}
+          </div>
+          <span className="text-xs text-ink-faint">Ticked types download straight away; the rest wait for you to approve. A series request can pull every season of a long show.</span>
+        </div>
+      )}
+    </fieldset>
+  );
 }
 
 // Nav is a step's buttons. skip: a quiet way past the step without saving it ("Continue

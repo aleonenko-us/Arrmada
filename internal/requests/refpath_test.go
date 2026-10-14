@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -56,9 +57,10 @@ func TestRefPath(t *testing.T) {
 
 // urlPush records where each Web Push would open.
 type urlPush struct {
-	mu   sync.Mutex
-	urls []string
-	plex []string
+	mu    sync.Mutex
+	urls  []string
+	plex  []string
+	watch []string // "<label> <url>" of the push's Watch action
 }
 
 func (p *urlPush) SendToUserAsync(_ int64, m push.Message) {
@@ -66,6 +68,7 @@ func (p *urlPush) SendToUserAsync(_ int64, m push.Message) {
 	defer p.mu.Unlock()
 	p.urls = append(p.urls, m.URL)
 	p.plex = append(p.plex, m.PlexURL)
+	p.watch = append(p.watch, strings.TrimSpace(m.WatchLabel+" "+m.WatchURL))
 }
 
 // A 'ready' push opens that exact title, and a book's decision opens the book — not the

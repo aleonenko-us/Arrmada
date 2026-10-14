@@ -31,9 +31,9 @@ const (
 	keyRetention = "recycle_retention_days" // auto-delete after this many days; 0 = keep forever
 )
 
-// markerFiles live at the top of a bin and aren't recycled items: .plexignore keeps Plex
-// from listing the bin's contents as library items.
-var markerFiles = map[string]bool{".plexignore": true}
+// markerFiles live at the top of a bin and aren't recycled items: .plexignore and .ignore
+// keep Plex and Jellyfin from listing the bin's contents as library items.
+var markerFiles = library.MarkerFiles
 
 // staleTempAge is how old an unfinished copy must be before it's cleared: a copy that
 // old was cut short by a crash or restart, not still being written.
@@ -590,7 +590,7 @@ func atoiClampNonNeg(v string) int {
 var ErrUnknownBin = errors.New("that recycle bin isn't in use any more — refresh the page")
 
 // Empty removes everything in the bins — or only in the bin whose key is binKey — and
-// returns the bytes freed. Each bin's marker files (.plexignore) stay, so Plex keeps
+// returns the bytes freed. Each bin's marker files (.plexignore, .ignore) stay, so Plex keeps
 // ignoring the folder.
 func (s *Service) Empty(ctx context.Context, binKey string) (int64, error) {
 	var bins []bin

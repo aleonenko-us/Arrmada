@@ -77,7 +77,9 @@ var groups = []Group{
 	{GroupRequests, "Requests"},
 	{GroupDownloads, "Downloads"},
 	{GroupLibrary, "Library"},
-	{GroupPlex, "Plex"},
+	// Streams on Plex or Jellyfin. The key stays "plex": stored choices and the page's
+	// anchors use it.
+	{GroupPlex, "Watching"},
 	{GroupConvert, "Convert"},
 }
 
@@ -188,17 +190,20 @@ var builtinEvents = []EventDef{
 		},
 	},
 	{
+		// The key and topic keep their Plex names (people's subscriptions are stored under
+		// them); a Jellyfin stream says so in its payload's "server".
 		Key: "plex.stream.started", Topic: "plex.stream.started", Group: GroupPlex,
-		Label: "Stream started", Hint: "Someone started playing something on Plex.",
+		Label: "Stream started", Hint: "Someone started playing something on Plex or Jellyfin.",
 		Format: func(d map[string]any) (Message, bool) {
 			title := str(d, "title")
 			if title == "" {
 				return Message{}, false
 			}
-			return Message{Title: "Now playing", Body: fmt.Sprintf("▶️ %s started %s", str(d, "user"), title), Link: plexPersonLink(str(d, "user_id"))}, true
+			return Message{Title: "Now playing", Body: fmt.Sprintf("▶️ %s started %s%s", str(d, "user"), title, onServer(d)), Link: plexPersonLink(str(d, "user_id"))}, true
 		},
 	},
 	{
+		// Plex only: Jellyfin doesn't report buffering.
 		Key: "plex.buffering", Topic: "plex.buffering", Group: GroupPlex,
 		Label: "Buffering", Hint: "A Plex stream started buffering.",
 		Format: func(d map[string]any) (Message, bool) {
@@ -359,8 +364,17 @@ func withYear(title string, year int64) string {
 	return title
 }
 
-// plexPersonLink is the Insights page of the Plex user a stream is by, or Insights itself
-// when the event doesn't say who.
+// onServer is " on Jellyfin" for a Jellyfin stream's alert, "" for Plex's (which said
+// nothing about its server before Jellyfin and still doesn't need to).
+func onServer(d map[string]any) string {
+	if str(d, "server") == "jellyfin" {
+		return " on Jellyfin"
+	}
+	return ""
+}
+
+// plexPersonLink is the Insights page of the Plex or Jellyfin user a stream is by, or
+// Insights itself when the event doesn't say who.
 func plexPersonLink(userID string) string {
 	if userID == "" {
 		return "/insights"

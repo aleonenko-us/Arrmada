@@ -59,6 +59,7 @@ const KIND_LABEL: Record<string, string> = {
   flaresolverr: "cloudflare",
   apikey: "api key",
   plex: "media server",
+  jellyfin: "media server",
   notifications: "apprise",
   audioserver: "listening apps",
 };

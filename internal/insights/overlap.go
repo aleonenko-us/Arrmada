@@ -139,9 +139,10 @@ func (r *repo) removeImportOverlaps(ctx context.Context, expected int) (int64, e
 	return removed, nil
 }
 
-// firstLiveStart is the start of the earliest live-recorded play (0 = none yet).
+// firstLiveStart is the start of the earliest live-recorded Plex play (0 = none yet): a
+// Tautulli import is Plex history, so Jellyfin's plays say nothing about where it overlaps.
 func (r *repo) firstLiveStart(ctx context.Context) (int64, error) {
 	var at sql.NullInt64
-	err := r.db.QueryRowContext(ctx, `SELECT MIN(started_at) FROM stream_sessions WHERE session_key <> ''`).Scan(&at)
+	err := r.db.QueryRowContext(ctx, `SELECT MIN(started_at) FROM stream_sessions WHERE session_key <> '' AND server = 'plex'`).Scan(&at)
 	return at.Int64, err
 }

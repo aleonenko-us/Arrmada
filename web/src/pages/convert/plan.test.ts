@@ -61,8 +61,8 @@ describe("conversion plan words", () => {
     expect(requestedToast("Ep 2", { requested: "k", starting: true })).toBe("“Ep 2” is starting now");
     expect(requestedToast("Ep 2", { requested: "k", position: 1, ahead: "Film" })).toBe("“Ep 2” is next in line — after “Film”");
     expect(requestedToast("Ep 3", { requested: "k", position: 2, ahead: "Ep 2" })).toBe("“Ep 3” is #2 in line — after “Ep 2”");
-    expect(requestedToast("Ep 2", { requested: "k", position: 1, reason: "someone is watching Plex — it starts when they stop" }))
-      .toBe("“Ep 2” waits — someone is watching Plex — it starts when they stop");
+    expect(requestedToast("Ep 2", { requested: "k", position: 1, reason: "someone is watching — it starts when they stop" }))
+      .toBe("“Ep 2” waits — someone is watching — it starts when they stop");
   });
 
   it("says a tracks-only rewrite leaves the picture alone", () => {

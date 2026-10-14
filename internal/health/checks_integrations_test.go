@@ -72,6 +72,35 @@ func TestPlexCheck(t *testing.T) {
 	}
 }
 
+// The Jellyfin check is the Plex check's rules with its own key, words and Fix link; with
+// nothing polling Jellyfin it probes on its own.
+func TestJellyfinCheck(t *testing.T) {
+	now := time.Date(2026, 10, 14, 14, 30, 0, 0, time.Local)
+	st := PlexState{Configured: true}
+	probes := 0
+	c := jellyfinCheck(func(context.Context) PlexState { return st }, func(context.Context) error {
+		probes++
+		st.Consecutive, st.Unauthorized, st.FailingSince = 1, true, now
+		return errors.New("jellyfin rejected the key")
+	}, func() time.Time { return now })
+	if c.Key != "jellyfin.connection" {
+		t.Fatalf("key %q", c.Key)
+	}
+	got := run(c)
+	if probes != 1 || len(got) != 1 || got[0].Key != "jellyfin.connection" || got[0].Level != LevelError ||
+		got[0].Fix != FixJellyfinConnection || !strings.Contains(got[0].Message, "Jellyfin rejected") {
+		t.Fatalf("refused key: %+v (probes %d)", got, probes)
+	}
+	st = PlexState{Configured: true, Monitoring: true, Consecutive: 9, FailingSince: now.Add(-11 * time.Minute), LastErr: "connection refused"}
+	got = run(c)
+	if len(got) != 1 || got[0].Level != LevelWarning || !strings.HasPrefix(got[0].Message, "Jellyfin hasn't answered since") {
+		t.Fatalf("down: %+v", got)
+	}
+	if FixJellyfinConnection.Path != "/settings/connections#jellyfin" || FixJellyfinConnection.Key != "jellyfinConnection" {
+		t.Fatalf("fix link %+v", FixJellyfinConnection)
+	}
+}
+
 // With monitoring off, the check asks Plex itself — but at most every five minutes.
 func TestPlexCheckProbesWhenNotMonitoring(t *testing.T) {
 	now := time.Date(2026, 10, 9, 14, 30, 0, 0, time.Local)

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
 // ErrNotConfigured means no server URL or token is set. Callers that only want to report
@@ -100,17 +102,9 @@ func (c *Client) ServerName(ctx context.Context) (string, error) {
 	return r.MediaContainer.FriendlyName, nil
 }
 
-// Library is one Plex library section.
-type Library struct {
-	Key   string `json:"key"`
-	Title string `json:"title"`
-	Type  string `json:"type"` // movie | show | artist | photo
-	Count int64  `json:"-"`    // filled by SectionTotal on demand
-	// Locations are the section's folders as the Plex server sees them (its own paths,
-	// which usually differ from Arrmada's container paths). Partial scans name a folder
-	// under one of these.
-	Locations []string `json:"locations,omitempty"`
-}
+// Library is one Plex library section. The type lives in internal/mediaserver so a
+// Jellyfin library can be described the same way (plexscan resolves folders against both).
+type Library = mediaserver.Library
 
 // Libraries lists the server's library sections.
 func (c *Client) Libraries(ctx context.Context) ([]Library, error) {
