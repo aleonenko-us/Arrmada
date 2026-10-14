@@ -262,8 +262,8 @@ func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.I
 // For rare content with one intermittent seeder that destroyed the only copy even when no
 // alternate existed — and the blocklist entry then kept it from ever being grabbed again.
 //
-//   - Gone from the client: there is no copy to protect. Blocklist it, fail the grab and
-//     search, as before.
+//   - Gone from the client: there is no copy to protect. Fail the grab and search for
+//     another, excluding it. It is blocklisted only when it had already failed once.
 //   - Still there, and a replacement was grabbed: blocklist and remove the stalled one.
 //   - Still there, nothing else found (or the indexers are down): leave it alone, write
 //     nothing to the blocklist, and try again a window later. Its seeder may come back.
@@ -285,16 +285,29 @@ func (c *Coordinator) failOver(ctx context.Context, g grab, item download.Item, 
 	}
 
 	if !found {
-		c.log.Info("automation: download disappeared from the client, failing over",
-			"kind", t.kind, "title", t.name, "release", g.Title)
-		if err := t.block(ctx, "disappeared from the download client"); err != nil {
-			// Without the blocklist row the search below could grab the same release
-			// straight back. Leave the grab for the next pass.
-			c.log.Warn("automation: stall blocklist failed — leaving the grab for the next check", "release", g.Title, "err", err)
+		// The first disappearance isn't blocklisted (vanished.go): it says nothing about
+		// the release. The search below still skips it (exclude), and a later sweep may
+		// grab it again, which is what a wanted title with no copy needs. Gone a second
+		// time, it is blocklisted, so the grab-and-vanish round ends.
+		before, err := c.vanishedBefore(ctx, g)
+		if err != nil {
+			c.log.Warn("automation: couldn't read the grab's earlier attempts — leaving it for the next check", "release", g.Title, "err", err)
 			return "", false, false
 		}
-		c.closeGrab(ctx, g, grabStatusFailed)
-		t.event(ctx, g.Title+" disappeared from the download client — searching for another")
+		again := len(before) > 0
+		c.log.Info("automation: download disappeared from the client, failing over",
+			"kind", t.kind, "title", t.name, "release", g.Title, "again", again)
+		what := " disappeared from the download client — searching for another"
+		if again {
+			if err := t.block(ctx, vanishedAgainBlockReason); err != nil {
+				// Without the blocklist row the next sweep could grab it straight back.
+				c.log.Warn("automation: stall blocklist failed — leaving the grab for the next check", "release", g.Title, "err", err)
+				return "", false, false
+			}
+			what = " disappeared from the download client again — blocklisted, searching for another"
+		}
+		c.closeVanished(ctx, g)
+		t.event(ctx, g.Title+what)
 		repl, err := c.replaceRecorded(ctx, t, exclude)
 		if err != nil {
 			c.log.Warn("automation: replacement search failed", "kind", t.kind, "title", t.name, "err", err)

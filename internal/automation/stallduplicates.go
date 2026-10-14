@@ -131,7 +131,7 @@ func (c *Coordinator) settleVanished(ctx context.Context, g grab, tick *stallTic
 			"release", g.Title, "err", err)
 		return true
 	}
-	status := ""
+	status, newest := "", int64(0)
 	for i := len(twins) - 1; i >= 0; i-- { // newest first: the latest word on the download
 		if !twinOf(g, twins[i]) {
 			continue
@@ -140,11 +140,28 @@ func (c *Coordinator) settleVanished(ctx context.Context, g grab, tick *stallTic
 			return true
 		}
 		if status == "" {
-			status = twins[i].Status
+			status, newest = twins[i].Status, twins[i].ID
 		}
 	}
 	if status == "" {
 		return false
+	}
+	if status == grabStatusFailed {
+		// A vanished fail-over closes every pending row of its download at once, so a
+		// pending row of a release whose latest settled grab vanished is that release
+		// grabbed again, not a stale copy. Settled quietly, the next sweep would grab it
+		// back and round again without a word (a first disappearance isn't blocklisted);
+		// the fail-over blocklists it instead. Rows failed before vanished_at existed
+		// read as they always did. Unreadable: wait, as above.
+		vanished, err := c.vanishedBefore(ctx, g)
+		if err != nil {
+			c.log.Warn("automation: couldn't read how the grab's duplicates settled — leaving it for the next check",
+				"release", g.Title, "err", err)
+			return true
+		}
+		if vanished[newest] {
+			return false
+		}
 	}
 	c.closeStale(ctx, g, status, tick)
 	return true

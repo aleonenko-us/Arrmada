@@ -217,6 +217,11 @@ func main() {
 	if _, err := convert.BackfillConvertedFrom(context.Background(), st.DB(), settingsSvc, log); err != nil {
 		log.Warn("convert: pre-conversion baseline backfill failed", "err", err)
 	}
+	// One-time: a download leaving the client used to blocklist its release, and one update
+	// failed over hundreds of long-gone grabs at once. Those rows block good releases.
+	if _, err := automation.PurgeVanishedBlocks(context.Background(), st.DB(), settingsSvc, modLog(log, "automation")); err != nil {
+		log.Warn("automation: vanished-download blocklist clean-up failed", "err", err)
+	}
 
 	bus := eventbus.New(log)
 	// What must happen after an import (Convert and Subtitles reindexing, the requester's

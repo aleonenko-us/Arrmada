@@ -380,7 +380,8 @@ func TestStallFailoverDuringOutageKeepsTheTorrent(t *testing.T) {
 }
 
 // A torrent that vanished from a complete queue has no copy left to protect: it fails over
-// the old way — blocklist, fail, search.
+// at once — fail, search for another. Its leaving the client is no evidence against the
+// release, so the first time it isn't blocklisted (TestVanishedTwiceIsBlocklisted).
 func TestStallFailoverVanishedTorrent(t *testing.T) {
 	h := newStallHarness(t)
 	const gone = "Rare.Film.1971.1080p.BluRay.x264-OLD"
@@ -404,8 +405,8 @@ func TestStallFailoverVanishedTorrent(t *testing.T) {
 	if s := h.status(t, gid); s != "failed" {
 		t.Errorf("grab status = %q, want failed", s)
 	}
-	if n := h.blocklistCount(t); n != 1 {
-		t.Errorf("blocklist rows = %d, want 1", n)
+	if n := h.blocklistCount(t); n != 0 {
+		t.Errorf("blocklist rows = %d, want none — a vanished torrent isn't evidence against the release", n)
 	}
 	if calls := h.qbit.callLog(); len(calls) != 1 || calls[0] != "add "+magnetFor(alt) {
 		t.Errorf("client calls = %q, want just the alternate added", calls)
