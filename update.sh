@@ -407,7 +407,7 @@ rollback() {
   if [ -z "$_backup" ] && [ "$(image_label arrmada:previous org.arrmada.cli)" = "1" ]; then
     docker image tag arrmada:previous arrmada:dev
     _rc=0
-    _check=$(docker compose run --rm --no-deps -T --entrypoint /usr/local/bin/arrmada arrmada-app schema 2>&1) || _rc=$?
+    _check=$(docker compose run --rm --no-deps -T --entrypoint /usr/local/bin/arrmada arrmada-app schema 2>&1 </dev/null) || _rc=$?
     if [ -n "$_cur" ]; then
       docker image tag "$_cur" arrmada:dev
     fi
@@ -430,7 +430,7 @@ rollback() {
     docker compose stop arrmada-app
     docker image tag arrmada:previous arrmada:dev
     # Staged with the build that will boot on it: the swap happens as it starts.
-    if ! docker compose run --rm --no-deps arrmada-app restore "$_backup"; then
+    if ! docker compose run --rm --no-deps arrmada-app restore "$_backup" </dev/null; then
       say "✗ Restoring $_backup failed (see above)." >&2
       if [ -n "$_cur" ]; then
         docker image tag arrmada:rolled-back arrmada:dev
