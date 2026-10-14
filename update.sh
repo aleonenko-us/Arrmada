@@ -760,7 +760,7 @@ newest_tag() {
 REL_VERSION=""
 REL_COMMIT=""
 stay_put() {
-  _build="${RUN_VERSION:+$RUN_VERSION, }commit ${RUN_COMMIT:-unknown}"
+  _build="${RUN_VERSION:+$RUN_VERSION, }commit $(printf '%.9s' "${RUN_COMMIT:-unknown}")"
   _release=${REL_VERSION:-the published release}
   say ""
   case "$1" in
