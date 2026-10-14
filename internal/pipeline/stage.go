@@ -20,6 +20,7 @@ const (
 	Paused           = "paused"            // paused in the client
 	PausedByGuard    = "paused_by_guard"   // paused by the disk guard until space frees up
 	Failed           = "failed"            // the client reports an error
+	Unpacking        = "unpacking"         // a usenet download being verified, repaired and unpacked
 	Downloaded       = "downloaded"        // finished, not grabbed by Arrmada, in one of its categories
 	Importing        = "importing"         // finished; waiting for (or in) the import
 	ImportRetrying   = "import_retrying"   // the import failed and will be tried again
@@ -39,12 +40,13 @@ const (
 )
 
 // Group is the queue section a stage belongs to: still arriving, finished but not in the
-// library yet, or done and sharing. Removed has none.
+// library yet, or done and sharing. Removed has none. Unpacking is finishing: every byte is
+// down, and what's left is the client's work before the import.
 func Group(stage string) string {
 	switch stage {
 	case Queued, FetchingMetadata, Downloading, Stalled, Paused, PausedByGuard, Failed:
 		return GroupDownloading
-	case Downloaded, Importing, ImportRetrying, NeedsReview, WrongCategory:
+	case Unpacking, Downloaded, Importing, ImportRetrying, NeedsReview, WrongCategory:
 		return GroupFinishing
 	case Imported, Seeding, NotManaged:
 		return GroupSeeding
@@ -61,7 +63,7 @@ func Requester(stage string) string {
 		return Downloading // "waiting for peers"
 	case PausedByGuard:
 		return Paused
-	case Downloaded, ImportRetrying, NeedsReview, WrongCategory:
+	case Unpacking, Downloaded, ImportRetrying, NeedsReview, WrongCategory:
 		return Importing
 	}
 	return stage
@@ -95,8 +97,15 @@ type Failure struct {
 
 // Input is everything known about one torrent.
 type Input struct {
-	Phase    string // download.Item.Phase(): queued, metadata, downloading, stalled, checking, moving, allocating, paused, seeding, error
+	Phase    string // download.Item.Phase(): queued, metadata, downloading, stalled, checking, moving, allocating, paused, seeding, error, unpacking
 	Complete bool   // every wanted byte is on disk
+	// Usenet: a usenet job, which never seeds — finished and imported, it is Imported.
+	Usenet bool
+	// FailMessage is a failed usenet job's reason as its client gave it, and FailFix what
+	// to do when the failure is where the client writes rather than the release (a full
+	// disk): Arrmada retries nothing then, a person has to.
+	FailMessage string
+	FailFix     string
 	// Linked: an Arrmada grab recorded this torrent's hash (the acquisition record).
 	Linked bool
 	// GrabStatus is that grab's status word (grabbed, held, imported, dismissed).
@@ -122,12 +131,18 @@ type Input struct {
 func Describe(in Input) (stage, why string) {
 	if !in.Complete {
 		switch {
+		case in.Phase == Unpacking:
+			return Unpacking, "SABnzbd is checking and unpacking it"
 		case in.HeldByGuard && in.Phase == "paused":
 			return PausedByGuard, "Paused by the disk guard — it resumes once the downloads volume has room"
+		case in.Phase == "error" && in.Usenet:
+			return Failed, usenetFailWhy(in)
 		case in.Phase == "error":
 			return Failed, "The download client stopped it with an error"
 		case in.Phase == "paused":
 			return Paused, ""
+		case in.Phase == "queued" && in.Usenet:
+			return Queued, "Waiting its turn in SABnzbd"
 		case in.Phase == "queued":
 			return Queued, "Waiting for a download slot"
 		case in.Phase == "metadata":
@@ -140,7 +155,8 @@ func Describe(in Input) (stage, why string) {
 
 	imported := in.Imported || in.GrabStatus == "imported" || in.GrabStatus == "dismissed"
 	if imported {
-		if in.Phase == "paused" {
+		if in.Phase == "paused" || in.Usenet {
+			// A usenet job never seeds: it's in the library, and clean-up archives the job.
 			return Imported, ""
 		}
 		return Seeding, ""
@@ -162,6 +178,25 @@ func Describe(in Input) (stage, why string) {
 		return Downloaded, "Finished — it imports if it matches a title in the library"
 	}
 	return NotManaged, "Not managed by Arrmada"
+}
+
+// usenetFailWhy is a failed usenet job's reason: the client's own words, and what to do
+// when it's the client's disk or folders at fault rather than the release.
+func usenetFailWhy(in Input) string {
+	why := "SABnzbd failed it"
+	if m := strings.TrimSpace(in.FailMessage); m != "" {
+		if r := []rune(m); len(r) > 160 {
+			m = string(r[:157]) + "…"
+		}
+		why += ": " + m
+	}
+	if in.FailFix != "" {
+		return why + " — " + in.FailFix
+	}
+	if in.Linked && in.GrabStatus == "grabbed" {
+		return why + " — Arrmada blocklists it and tries another release"
+	}
+	return why
 }
 
 func reviewWhy(r *Review) string {

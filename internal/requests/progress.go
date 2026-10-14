@@ -267,7 +267,7 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 	// What's in flight for it. checking counts the finished ones a person or a retry is
 	// dealing with (held in Review, an import that failed): still "importing" to the
 	// requester, with a note that it's being checked — never why.
-	var active, done, failed, paused, checking int
+	var active, done, failed, paused, checking, usenetActive int
 	var size, got, speed, eta int64
 	matched := 0
 	for _, a := range acqs {
@@ -310,6 +310,9 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 			size, got = size+it.SizeBytes, got+it.DownloadedBytes
 		default:
 			active++
+			if it.Transport == download.TransportUsenet {
+				usenetActive++
+			}
 			size, got, speed = size+it.SizeBytes, got+it.DownloadedBytes, speed+it.DownSpeed
 			if it.ETASeconds > eta && it.ETASeconds < 100*24*3600 { // qBittorrent's "infinite" is 8640000
 				eta = it.ETASeconds
@@ -325,6 +328,9 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 		t.Stage = StageDownloading
 		if size == 0 {
 			t.Stage, t.Note = StageQueued, "Starting the download"
+		} else if speed == 0 && usenetActive == active {
+			// A usenet download has no peers: it waits its turn in the queue.
+			t.Note = "Waiting its turn"
 		} else if speed == 0 {
 			t.Note = "Waiting for peers"
 		}

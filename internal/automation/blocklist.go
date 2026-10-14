@@ -24,6 +24,8 @@ type BlockRow struct {
 	Indexer     string `json:"indexer,omitempty"`
 	Reason      string `json:"reason,omitempty"`
 	CreatedAt   string `json:"created_at"`
+	// Network is "usenet" for a release grabbed from Usenet, absent otherwise.
+	Network string `json:"network,omitempty"`
 }
 
 // BlockFilter narrows ListAllBlocks: Type is one of BlockRow's types ("" = all), Q matches
@@ -109,6 +111,7 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 	if err != nil {
 		return nil, 0, err
 	}
+	c.markUsenetBlocks(ctx, len(out), func(i int) string { return out[i].Title }, func(i int, n string) { out[i].Network = n })
 	// A discography is blocked against its artist (see grabDiscography), so the album
 	// join above named whichever album happens to share the artist's id.
 	for i := range out {

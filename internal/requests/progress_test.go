@@ -139,3 +139,41 @@ func TestTrackRetryingImportIsBeingChecked(t *testing.T) {
 		t.Errorf("retrying import: %+v, want importing, being checked", got)
 	}
 }
+
+// A usenet download reads to a requester in the same plain words: waiting its turn (it has
+// no peers to wait for), importing while SABnzbd unpacks and once it's finished, failed
+// when SABnzbd gave up.
+func TestTrackUsenetStages(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	at := time.Now().Add(-3 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	keys := []string{"sab-wait", "sab-unpack", "sab-done", "sab-failed"}
+	for i, k := range keys {
+		if _, err := s.repo.db.Exec(`INSERT INTO grabs (movie_id, title, status, media_type, info_hash, grabbed_at, transport) VALUES (?, 'x', 'grabbed', 'movie', ?, ?, 'usenet')`, i+1, k, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u := download.TransportUsenet
+	queue := []download.Item{
+		{Hash: "sab-wait", State: "downloading", RawState: "Queued", Transport: u, SizeBytes: 900},
+		{Hash: "sab-unpack", State: "unpacking", RawState: "Extracting", Transport: u, Progress: 1, SizeBytes: 900, DownloadedBytes: 900},
+		{Hash: "sab-done", State: "completed", RawState: "Completed", Transport: u, Progress: 1, SizeBytes: 900, DownloadedBytes: 900},
+		{Hash: "sab-failed", State: "error", RawState: "Failed", Transport: u, SizeBytes: 900, FailMessage: "Download failed - Not on your server(s)"},
+	}
+	var reqs []Request
+	for i := range keys {
+		reqs = append(reqs, Request{Title: keys[i], Status: StatusApproved, MediaType: "movie", libID: int64(i + 1), released: true})
+	}
+	s.Track(ctx, reqs, queue, true)
+	want := []struct{ stage, note string }{
+		{StageDownloading, "Waiting its turn"},
+		{StageImporting, ""},
+		{StageImporting, ""},
+		{StageFailed, "The download failed — it will be retried"},
+	}
+	for i, w := range want {
+		if got := reqs[i].Tracking; got.Stage != w.stage || got.Note != w.note {
+			t.Errorf("%s: %+v, want %s %q", keys[i], got, w.stage, w.note)
+		}
+	}
+}
