@@ -99,14 +99,18 @@ func TestQueueRoutesTakeUsenetKeys(t *testing.T) {
 	}
 }
 
-// The API still adds and edits only qBittorrent clients, and an edit can't change a
-// client's kind.
+// The API adds and edits qBittorrent and SABnzbd clients, nothing else, and an edit can't
+// change a client's kind.
 func TestDownloadClientKindCheck(t *testing.T) {
 	s, dl := newClientServer(t)
 	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
-	rec := s.doBody("POST", "/api/v1/downloadclients", `{"name":"sab","kind":"sabnzbd","url":"http://sab:8080"}`, mgr)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "kind must be 'qbittorrent'") {
+	rec := s.doBody("POST", "/api/v1/downloadclients", `{"name":"sab","kind":"sabnzbd","url":"http://sab:8080","password":"k"}`, mgr)
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), `"k"`) {
 		t.Errorf("create sabnzbd: HTTP %d %s", rec.Code, rec.Body)
+	}
+	rec = s.doBody("POST", "/api/v1/downloadclients", `{"name":"n","kind":"nzbget","url":"http://n:8080"}`, mgr)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "kind must be 'qbittorrent' or 'sabnzbd'") {
+		t.Errorf("create nzbget: HTTP %d %s", rec.Code, rec.Body)
 	}
 	c, err := dl.Create(context.Background(), download.Client{Name: "qb", Kind: download.KindQbittorrent, URL: "http://qb:8080", Enabled: true})
 	if err != nil {
@@ -119,10 +123,12 @@ func TestDownloadClientKindCheck(t *testing.T) {
 	if rec := s.doBody("PUT", path, `{"name":"qb2","kind":"qbittorrent","url":"http://qb:8080"}`, mgr); rec.Code != http.StatusOK {
 		t.Errorf("plain edit: HTTP %d %s", rec.Code, rec.Body)
 	}
-	if err := checkClientKind("qbittorrent"); err != nil {
-		t.Error(err)
+	for _, k := range []string{"qbittorrent", "sabnzbd"} {
+		if err := checkClientKind(k); err != nil {
+			t.Error(err)
+		}
 	}
-	for _, k := range []string{"", "sabnzbd", "QBITTORRENT", "nzbget"} {
+	for _, k := range []string{"", "SABNZBD", "QBITTORRENT", "nzbget"} {
 		if err := checkClientKind(k); err == nil {
 			t.Errorf("kind %q accepted", k)
 		}

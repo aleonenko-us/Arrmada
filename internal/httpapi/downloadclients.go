@@ -83,7 +83,7 @@ func clientPriority(p *int) (int, error) {
 
 // apiClientKinds are the client kinds the API lets someone add or edit, in the order the
 // error message names them. A kind joins here once it has an implementation and a card.
-var apiClientKinds = []download.Kind{download.KindQbittorrent}
+var apiClientKinds = []download.Kind{download.KindQbittorrent, download.KindSABnzbd}
 
 // checkClientKind refuses a kind the API doesn't offer.
 func checkClientKind(kind string) error {
@@ -324,20 +324,60 @@ func (a *api) clientPaths(ctx context.Context, id int64) (download.PathReport, e
 	return a.deps.Downloads.TestPaths(ctx, id, env)
 }
 
-// handleDownloadClientStatus reports live client info — currently the incoming
-// BitTorrent port, so the UI can tell the user which port to forward.
+// handleDownloadClientStatus reports live client info: the incoming BitTorrent port, so the
+// UI can tell the user which port to forward, and for a usenet client what its card shows
+// (usenet: categories present, completed folder and whether Arrmada sees it, news servers,
+// language; usenet_error when it couldn't be read). Only reads.
 func (a *api) handleDownloadClientStatus(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
 		return
 	}
-	port, err := a.deps.Downloads.ListenPort(r.Context(), id)
-	if err != nil {
-		// Not fatal — the client may be briefly unreachable. Report 0.
-		a.writeJSON(w, http.StatusOK, map[string]any{"listen_port": 0})
+	out := map[string]any{"listen_port": 0}
+	// Not fatal: the client may be briefly unreachable. Report 0.
+	if port, err := a.deps.Downloads.ListenPort(r.Context(), id); err == nil {
+		out["listen_port"] = port
+	}
+	facts, err := a.deps.Downloads.UsenetFacts(r.Context(), id)
+	switch {
+	case err == nil:
+		out["usenet"] = facts
+	case errors.Is(err, download.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "download client not found")
+		return
+	case !errors.Is(err, download.ErrNotUsenet):
+		out["usenet_error"] = connstatus.Redact(err.Error())
+	}
+	a.writeJSON(w, http.StatusOK, out)
+}
+
+// handleAddUsenetCategories creates the Arrmada categories a usenet client lacks. It's the
+// card's "Add missing categories" button and nothing else calls it: Arrmada never changes
+// a SABnzbd it was pointed at on its own. Answers the categories it added and the card's
+// facts as they are now.
+func (a *api) handleAddUsenetCategories(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"listen_port": port})
+	created, err := a.deps.Downloads.AddMissingCategories(r.Context(), id)
+	switch {
+	case errors.Is(err, download.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "download client not found")
+		return
+	case errors.Is(err, download.ErrNotUsenet):
+		a.writeError(w, http.StatusBadRequest, "only a usenet client has categories to add")
+		return
+	case err != nil:
+		a.writeError(w, http.StatusBadGateway, connstatus.Redact(err.Error()))
+		return
+	}
+	out := map[string]any{"created": created}
+	if facts, ferr := a.deps.Downloads.UsenetFacts(r.Context(), id); ferr == nil {
+		out["usenet"] = facts
+	}
+	a.recheckHealth(r, "downloads")
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 func (a *api) handleQueue(w http.ResponseWriter, r *http.Request) {
