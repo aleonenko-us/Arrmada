@@ -81,6 +81,24 @@ func clientPriority(p *int) (int, error) {
 	return *p, nil
 }
 
+// apiClientKinds are the client kinds the API lets someone add or edit, in the order the
+// error message names them. A kind joins here once it has an implementation and a card.
+var apiClientKinds = []download.Kind{download.KindQbittorrent}
+
+// checkClientKind refuses a kind the API doesn't offer.
+func checkClientKind(kind string) error {
+	for _, k := range apiClientKinds {
+		if download.Kind(kind) == k {
+			return nil
+		}
+	}
+	names := make([]string, len(apiClientKinds))
+	for i, k := range apiClientKinds {
+		names[i] = "'" + string(k) + "'"
+	}
+	return fmt.Errorf("kind must be %s", strings.Join(names, " or "))
+}
+
 type createClientRequest struct {
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
@@ -124,8 +142,8 @@ func (a *api) handleCreateDownloadClient(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, "name and url are required")
 		return
 	}
-	if download.Kind(req.Kind) != download.KindQbittorrent {
-		a.writeError(w, http.StatusBadRequest, "kind must be 'qbittorrent'")
+	if err := checkClientKind(req.Kind); err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	enabled := true
@@ -179,8 +197,8 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, "name and url are required")
 		return
 	}
-	if download.Kind(req.Kind) != download.KindQbittorrent {
-		a.writeError(w, http.StatusBadRequest, "kind must be 'qbittorrent'")
+	if err := checkClientKind(req.Kind); err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	cur, err := a.deps.Downloads.Get(r.Context(), id)
@@ -190,6 +208,12 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not read download client")
+		return
+	}
+	// The kind is never changed by an edit (the row keeps its own); say so rather than
+	// save the rest and leave a qBittorrent row answering as something else.
+	if download.Kind(req.Kind) != cur.Kind {
+		a.writeError(w, http.StatusBadRequest, "a download client's kind can't be changed — add a new client instead")
 		return
 	}
 	enabled := cur.Enabled
