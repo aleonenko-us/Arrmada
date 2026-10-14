@@ -312,6 +312,34 @@ pull_image() {
   docker pull "$1" </dev/null && docker image tag "$1" arrmada:dev
 }
 
+# ensure_app_image: docker-compose.yml runs ARRMADA_APP_IMAGE, and without it the
+# published image (for a plain `docker compose up -d`). These scripts keep their build or
+# download as the local arrmada:dev instead (update.sh's --rollback depends on it), so an
+# install from before that line existed gets it here, as update.sh does it: one with an
+# arrmada:dev carries on as it was; one without it (and no ARRMADA_IMAGE) has only run the
+# published image, so its updates download that rather than start compiling.
+ensure_app_image() {
+  _ai=$(env_get ARRMADA_APP_IMAGE)
+  if [ -z "$_ai" ]; then
+    if [ -z "$(env_get ARRMADA_IMAGE)" ] && [ -z "$BUILD" ] && ! docker image inspect arrmada:dev >/dev/null 2>&1; then
+      {
+        say ""
+        say "# The published image update.sh downloads (delete the line to compile here instead)."
+        say "ARRMADA_IMAGE=$DEFAULT_IMAGE"
+      } >> .env
+    fi
+    {
+      say ""
+      say "# The image docker compose runs: update.sh's own build or download (keep this line)."
+      say "ARRMADA_APP_IMAGE=arrmada:dev"
+    } >> .env
+  elif [ "$_ai" != arrmada:dev ]; then
+    die "ARRMADA_APP_IMAGE=$_ai in .env, but the installer and update.sh only run their own arrmada:dev. Set ARRMADA_IMAGE=$_ai and ARRMADA_APP_IMAGE=arrmada:dev to have updates download it, or update with: docker compose pull && docker compose up -d"
+  fi
+  ARRMADA_APP_IMAGE=arrmada:dev
+  export ARRMADA_APP_IMAGE
+}
+
 # stamp_build: what a build from source is stamped with (Dashboard, update check) — a
 # release tag, or the commit's date with the short commit, as update.sh does it.
 stamp_build() {
@@ -332,6 +360,7 @@ existing_install() {
   _dir="$1"
   cd "$_dir"
   say "Arrmada is already installed in $_dir."
+  ensure_app_image
 
   _changed=""
   if [ -n "$MEDIA_SET" ] || [ -n "$TRANSCODE_SET" ]; then
@@ -452,6 +481,16 @@ new_install() {
   fi
   # Everything else is worked out, shown, and can be changed later.
   DATA="$_dir/data"
+  # A checkout already started with a plain `docker compose up -d` keeps its database in
+  # the Docker volume that made. Moving to data/ would start over on an empty database
+  # (the old one still there, but out of sight), so that volume stays where it is.
+  DATA_VOLUME=""
+  if [ -n "$_from_checkout" ]; then
+    DATA_VOLUME=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}{{end}}' Arrmada-app 2>/dev/null || true)
+    if [ -n "$DATA_VOLUME" ] && [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' Arrmada-app 2>/dev/null || true)" != "$_dir" ]; then
+      DATA_VOLUME=""
+    fi
+  fi
   if [ -z "$TRANSCODE_SET" ]; then TRANSCODE="$_dir/transcode"; fi
 
   TZONE="$TZ_ARG"
@@ -496,7 +535,11 @@ new_install() {
   [ -z "$IMAGE_REF" ] && [ -z "$BUILD" ] && IMAGE_REF="$DEFAULT_IMAGE"
 
   say "Ready to install Arrmada:"
-  say "   • Folder:        $_dir   (database in $DATA)"
+  if [ -n "$DATA_VOLUME" ]; then
+    say "   • Folder:        $_dir   (database: the Docker volume $DATA_VOLUME it already has)"
+  else
+    say "   • Folder:        $_dir   (database in $DATA)"
+  fi
   if [ -n "$MEDIA" ]; then
     say "   • Media:         $MEDIA → /storage inside the app"
   else
@@ -547,6 +590,10 @@ new_install() {
       say "# ARRMADA_IMAGE=$DEFAULT_IMAGE"
       say ""
     fi
+    say "# The image docker compose runs: update.sh's own build or download, kept as arrmada:dev"
+    say "# with the one before as arrmada:previous for --rollback (keep this line)."
+    say "ARRMADA_APP_IMAGE=arrmada:dev"
+    say ""
     say "# Host ports (picked free at install so nothing clashes with your other apps)."
     say "ARRMADA_PORT=$WEBPORT"
     say "ARRMADA_QBIT_WEBUI_PORT=$QBWEB"
@@ -564,8 +611,13 @@ new_install() {
     say "ARRMADA_PUID=$PUID"
     say "ARRMADA_PGID=$PGID"
     say ""
-    say "# The database and settings live here."
-    say "ARRMADA_DATA_HOST=$DATA"
+    if [ -n "$DATA_VOLUME" ]; then
+      say "# The database and settings live in the Docker volume $DATA_VOLUME (from before"
+      say "# install.sh ran here). ARRMADA_DATA_HOST would move them to a folder: copy them first."
+    else
+      say "# The database and settings live here."
+      say "ARRMADA_DATA_HOST=$DATA"
+    fi
     if [ -n "$MEDIA" ]; then
       say ""
       say "# Your media folder, mounted at /storage (see docker-compose.override.yml)."
@@ -578,9 +630,12 @@ new_install() {
     fi
   } > .env
   write_override "$MEDIA" "$TRANSCODE" "$GPU"
-  mkdir -p "$DATA"
+  if [ -z "$DATA_VOLUME" ]; then mkdir -p "$DATA"; fi
   if [ -n "$TRANSCODE" ]; then mkdir -p "$TRANSCODE" 2>/dev/null || true; fi
 
+  # What .env now says, whatever this shell may have set.
+  ARRMADA_APP_IMAGE=arrmada:dev
+  export ARRMADA_APP_IMAGE
   if [ -n "$IMAGE_REF" ]; then
     say "Starting Arrmada…"
     docker compose up -d --no-build </dev/null || fail_start

@@ -262,8 +262,55 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 if [ ! -f .env ]; then
   say "✗ No .env found — run ./install.sh first." >&2
+  say "  (Started with a plain 'docker compose up -d'? Update with: git pull && docker compose pull && docker compose up -d)" >&2
   exit 1
 fi
+
+# env_get KEY -> KEY's value in .env, or nothing.
+env_get() {
+  grep -E "^$1=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true
+}
+
+# ── which image compose runs ────────────────────────────────────────────────────
+# docker-compose.yml runs ARRMADA_APP_IMAGE, and without it the published release, so a
+# plain `docker compose up -d` in a fresh checkout downloads rather than compiles. This
+# script works differently: every build or download it makes is the local image
+# arrmada:dev (the one before kept as arrmada:previous, for --rollback), so compose has to
+# run that name. It's exported for every compose call below, whatever .env says, and
+# written to .env once so a hand-run `docker compose up -d` agrees.
+#
+# An install from before the published default gets the line now. One that built or
+# downloaded through these scripts has an arrmada:dev, and carries on exactly as it did
+# (compiling here, unless ARRMADA_IMAGE says otherwise). One with no arrmada:dev and no
+# ARRMADA_IMAGE has only ever run `docker compose up -d` here, which means the published
+# image, so its updates download that too rather than start compiling.
+DEFAULT_IMAGE="ghcr.io/tristenlammi/arrmada:stable"
+_app_image=$(env_get ARRMADA_APP_IMAGE)
+if [ -z "$_app_image" ]; then
+  if [ -z "$(env_get ARRMADA_IMAGE)" ] && [ -z "$FORCE_LOCAL" ] && [ -z "$ROLLBACK" ] &&
+    ! docker image inspect arrmada:dev >/dev/null 2>&1; then
+    {
+      say ""
+      say "# The published image update.sh downloads (delete the line to compile here instead)."
+      say "ARRMADA_IMAGE=$DEFAULT_IMAGE"
+    } >> .env
+    say "Added ARRMADA_IMAGE=$DEFAULT_IMAGE to .env: this install runs the published image, so updates download it."
+  fi
+  {
+    say ""
+    say "# The image docker compose runs: update.sh's own build or download (keep this line)."
+    say "ARRMADA_APP_IMAGE=arrmada:dev"
+  } >> .env
+  say "Added ARRMADA_APP_IMAGE=arrmada:dev to .env (the image update.sh builds or downloads)."
+elif [ "$_app_image" != arrmada:dev ]; then
+  say "✗ ARRMADA_APP_IMAGE=$_app_image in .env, but update.sh only runs its own arrmada:dev image." >&2
+  say "  To have updates download a published image, set ARRMADA_IMAGE=$_app_image and" >&2
+  say "  ARRMADA_APP_IMAGE=arrmada:dev, then run ./update.sh again. Or leave .env as it is" >&2
+  say "  and update with: docker compose pull && docker compose up -d" >&2
+  exit 2
+fi
+ARRMADA_APP_IMAGE=arrmada:dev
+export ARRMADA_APP_IMAGE
 
 # Pull mode: the published image named by ARRMADA_IMAGE in .env, or nothing to compile
 # here as always. --force-local means "build what's here", so it turns pull mode off for
