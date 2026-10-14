@@ -32,6 +32,26 @@
         "quality": 94
       },
       {
+        "name": "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 371,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 421
+      },
+      {
+        "name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
+      },
+      {
         "name": "Dune.Part.Two.2024.1080p.WEBRip.x265.AAC5.1-YTS",
         "total": 256,
         "avoided": [
@@ -39,16 +59,6 @@
         ],
         "format": 0,
         "quality": 256
-      }
-    ],
-    "rejected": [
-      {
-        "Name": "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.Atmos.7.1-FraMeSToR",
-        "Code": "min_format_score"
-      },
-      {
-        "Name": "Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX",
-        "Code": "min_format_score"
       }
     ]
   },
@@ -113,12 +123,16 @@
         "total": 258,
         "format": 0,
         "quality": 258
-      }
-    ],
-    "rejected": [
+      },
       {
-        "Name": "Show.S01E05.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-NTb",
-        "Code": "min_format_score"
+        "name": "Show.S01E05.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-NTb",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
       }
     ]
   },
@@ -230,6 +244,36 @@
         "quality": 408
       },
       {
+        "name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 371,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 421
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
+      },
+      {
         "name": "Film.2021.FRENCH.1080p.BluRay.x264-FRGRP",
         "total": 268,
         "avoided": [
@@ -249,18 +293,6 @@
       }
     ],
     "rejected": [
-      {
-        "Name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
-        "Code": "min_format_score"
-      },
-      {
-        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
-        "Code": "min_format_score"
-      },
-      {
-        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
-        "Code": "min_format_score"
-      },
       {
         "Name": "Film.2021.DVDRip.XviD-OLD",
         "Code": "resolution"
@@ -391,6 +423,36 @@
         "quality": 408
       },
       {
+        "name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
+        "total": 371,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 421
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
+        "total": 358,
+        "avoided": [
+          "Dolby Vision"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 408
+      },
+      {
         "name": "Film.2021.FRENCH.1080p.BluRay.x264-FRGRP",
         "total": 268,
         "avoided": [
@@ -410,18 +472,6 @@
       }
     ],
     "rejected": [
-      {
-        "Name": "Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR",
-        "Code": "min_format_score"
-      },
-      {
-        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX",
-        "Code": "min_format_score"
-      },
-      {
-        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.DV.H.265-DVONLY",
-        "Code": "min_format_score"
-      },
       {
         "Name": "Film.2021.DVDRip.XviD-OLD",
         "Code": "resolution"
