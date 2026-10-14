@@ -72,6 +72,10 @@ curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.s
 
 It backs up the database, updates, and checks Arrmada comes back — if the new version doesn't
 start, it goes back to the one you had. (In Arrmada's folder, `sh update.sh` does the same.)
+
+Installs follow the **stable** channel: updates bring the latest published release, never
+unreleased code. Developers can follow **main** instead, the newest code compiled on the
+server ([Following main](docs/updating.md#following-main-developers)).
 [More about updating →](docs/updating.md)
 
 ## Screenshots

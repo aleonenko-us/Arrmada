@@ -16,6 +16,41 @@ sh /mnt/user/appdata/arrmada/update.sh      # wherever Arrmada is installed
 ./update.sh                                 # from inside the folder (git checkouts too)
 ```
 
+## Stable or main
+
+`ARRMADA_CHANNEL` in `.env` says what an update brings:
+
+- **`stable`** (every new install) — the latest published release, downloaded from
+  `ghcr.io/tristenlammi/arrmada:stable` (or the image `ARRMADA_IMAGE` names). It takes
+  minutes, and it never goes backwards: a server running newer code than the latest release
+  keeps it until a release includes it, and a release never starts on a database a newer
+  version has already upgraded.
+- **`main`** — the newest code on `main`, compiled on the server on every update. See
+  [Following main](#following-main-developers).
+
+An install from before the setting gets it on its next update, by itself. One that already
+downloads the published image (`ARRMADA_IMAGE` in `.env`) gets `ARRMADA_CHANNEL=stable`. One
+that compiles here moves to the published releases if the latest release includes the code
+it's running: the update downloads the release, takes the usual backup, starts it, and then
+writes `ARRMADA_CHANNEL=stable` and `ARRMADA_IMAGE=…:stable` to `.env` (the `.env` from before
+is kept as `.env.bak-<date>`). If it's running newer code than the latest release — it was
+compiled from `main` since then — nothing changes: it says so, keeps the build it has, and
+every update looks again. Nothing ever puts an install on `main` by itself.
+
+## Following main (developers)
+
+Add one line to `.env` in Arrmada's folder:
+
+```sh
+ARRMADA_CHANNEL=main
+```
+
+From then on `./update.sh` pulls `main` and compiles it (the better part of an hour each
+time, and [a few GB of memory](troubleshooting.md#the-build-fails-or-gets-killed)), with the
+same backup and roll-back as always. Settings → Status then says how many commits behind
+`main` the server is. Delete the line or set it to `stable` to go back to the releases: the
+next update moves there once a release includes the code you're running.
+
 ## Upgrading from v0.1.0 or earlier
 
 Newer versions of `docker-compose.yml` run the image named by `ARRMADA_APP_IMAGE` in `.env`,
@@ -27,9 +62,9 @@ time they run, before anything is rebuilt:
 ARRMADA_APP_IMAGE=arrmada:dev
 ```
 
-So if you update with `update.sh` or the install line, there's nothing to do: an install that
-compiled keeps compiling, one that downloads the published image keeps downloading it, and
-`--rollback` works as before.
+So if you update with `update.sh` or the install line, there's nothing to do: the line is
+added, the install gets its channel as [above](#stable-or-main), and `--rollback` works as
+before.
 
 **If something else deploys Arrmada** — Komodo, Portainer, or a script running
 `git pull && docker compose up -d --build` — add that line to `.env` in Arrmada's folder
@@ -56,8 +91,9 @@ written by hand without it gets the published image on such a deploy.)
 3. **Backs up the database** with the running app's own `arrmada backup --kind pre-update`
    (`<data>/backups/arrmada-pre-update-*.db`, newest 3 kept). If the backup fails, nothing
    changes.
-4. **Gets the new version** — downloads the published image named by `ARRMADA_IMAGE` in
-   `.env`, or compiles the code when there isn't one.
+4. **Gets the new version** — on the stable channel, downloads the latest release (first,
+   before anything else changes) and checks it isn't a step back for this server or its
+   database; on main, compiles the code.
 5. **Keeps the version that was running** as the Docker image `arrmada:previous`.
 6. **Restarts only the app** and waits until it answers. qBittorrent, FlareSolverr and
    Prowlarr keep running.
@@ -69,7 +105,7 @@ can't (free some space, or set `ARRMADA_SKIP_MIGRATION_SNAPSHOT=1` in `.env` to 
 without one). It also backs up every night after 04:00 local time (newest 7 kept).
 
 The Dashboard and `/api/health` show the version and commit that's running, and Settings →
-Status says when a newer release is out.
+Status says when a newer release is out (on main: how far behind `main` the server is).
 
 ### Options
 
@@ -77,7 +113,7 @@ Status says when a newer release is out.
 |---|---|
 | `-y` | Don't ask (also `ARRMADA_UPDATE_FORCE=1`). A run with no terminal — a scheduled one — doesn't ask either. |
 | `--no-backup` | Skip the pre-update backup |
-| `--force-local` | Don't pull; compile the code that's in the folder (even with `ARRMADA_IMAGE` set) |
+| `--force-local` | Don't pull; compile the code that's in the folder (even on the stable channel) |
 | `--rollback` | Go back to the version that ran before the last update |
 | `--rollback --with-db` | …and put back the database from before that update |
 
@@ -124,19 +160,11 @@ it, then run `./update.sh --rollback`.
 
 ## Published image or compiled here
 
-New installs download the published image (`ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable`
-in `.env`), which takes minutes. Without that line, `update.sh` compiles the app on your
-server, which takes a long time (the subtitle and GPU tooling are built from source).
-
-To switch an existing install to the published image, add the line to `.env`:
-
-```sh
-ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
-```
-
-`stable` is always the newest release; pin one with a version instead
-(`ghcr.io/tristenlammi/arrmada:0.18.0`). Delete the line to go back to compiling, or run
-`./update.sh --force-local` to compile once without changing `.env`. Either way
+On the stable channel `update.sh` downloads `ARRMADA_IMAGE`, which is
+`ghcr.io/tristenlammi/arrmada:stable` (always the newest release) unless you pin one with a
+version (`ghcr.io/tristenlammi/arrmada:0.18.0`). On main it compiles the app on your server,
+which takes a long time (the subtitle and GPU tooling are built from source).
+`./update.sh --force-local` compiles once without changing `.env`. Either way
 `ARRMADA_APP_IMAGE` stays `arrmada:dev`: that's the local name `update.sh` gives whatever it
 built or downloaded, and the one `--rollback` swaps.
 

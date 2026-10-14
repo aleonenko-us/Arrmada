@@ -13,8 +13,8 @@ running by itself ([Updating](updating.md#when-an-update-goes-wrong)).
 
 <a id="the-build-fails-or-gets-killed"></a>
 **The build fails or gets killed.**
-Compiling the image yourself (`--build`, `docker compose up -d --build`, or `update.sh`
-without `ARRMADA_IMAGE`) takes 30–60 minutes and about 7 GB of free memory on a four-core
+Compiling the image yourself (`--channel main`, `docker compose up -d --build`, or `update.sh`
+with `ARRMADA_CHANNEL=main`) takes 30–60 minutes and about 7 GB of free memory on a four-core
 machine. With less, a compiler is killed part-way, and Docker prints only the last line, for
 example
 
@@ -24,8 +24,8 @@ failed to solve: process "/bin/sh -c CGO_ENABLED=0 go build ..." did not complet
 
 with the real cause (`signal: killed`, `Killed signal terminated program cc1plus`,
 `cannot allocate memory`) further up the log. Don't compile: run the published image. With
-the installer, run the install line without `--build`, or put
-`ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable` in `.env` and run `sh update.sh`. With a
+the installer, run the install line without `--channel main` (or `--build`), or put
+`ARRMADA_CHANNEL=stable` in `.env` and run `sh update.sh`. With a
 checkout and no `.env`, plain `docker compose up -d` already downloads it.
 
 The published image is for 64-bit Intel/AMD (x86-64) only: on ARM, Docker says
