@@ -17,9 +17,21 @@ export interface StatusLine {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+// The step that makes a usenet indexer useful, wherever one is waiting for it.
+export const ADD_SABNZBD = "add SABnzbd in Settings → Connections";
+
+// usenetIndexerLine is a usenet (Newznab) indexer's state in its card: searched once a
+// usenet download client exists, and until then what to do about it.
+export function usenetIndexerLine(hasUsenetClient: boolean): string {
+  return hasUsenetClient
+    ? "Usenet indexer: searched, and what it finds goes to SABnzbd."
+    : `Not searched until you ${ADD_SABNZBD}.`;
+}
+
 // prowlarrSyncMessage says what a Prowlarr sync changed: "Added 2, updated 1, turned off
-// 1 (disabled or removed in Prowlarr). Skipped 1 usenet indexer: Arrmada has no usenet
-// download client." It claims FlareSolverr only when Prowlarr itself lists the proxy.
+// 1 (disabled or removed in Prowlarr). Skipped 1 usenet indexer: they come in once you
+// add SABnzbd in Settings → Connections." It claims FlareSolverr only when Prowlarr itself
+// lists the proxy.
 export function prowlarrSyncMessage(r: ProwlarrSyncResult): string {
   const parts: string[] = [];
   if (r.added) parts.push(`added ${r.added}`);
@@ -29,7 +41,7 @@ export function prowlarrSyncMessage(r: ProwlarrSyncResult): string {
   let msg = parts.length > 0 ? `${parts.join(", ")}.` : "Nothing changed.";
   msg = msg.charAt(0).toUpperCase() + msg.slice(1);
   if (r.unchanged && parts.length > 0) msg += ` ${plural(r.unchanged, "indexer")} unchanged.`;
-  if (r.skipped_usenet) msg += ` Skipped ${plural(r.skipped_usenet, "usenet indexer")}: Arrmada has no usenet download client.`;
+  if (r.skipped_usenet) msg += ` Skipped ${plural(r.skipped_usenet, "usenet indexer")}: they come in once you ${ADD_SABNZBD}.`;
   if (r.flaresolverr_ready) msg += " Prowlarr has a FlareSolverr proxy for Cloudflare trackers.";
   for (const n of r.notes ?? []) msg += ` ${n}`;
   return msg;
