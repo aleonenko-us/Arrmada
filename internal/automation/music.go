@@ -315,11 +315,12 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 
 	// Only releases that actually name THIS artist and album. Without this a search for one
 	// album happily grabs another by the same artist — the hole the Books module shipped
-	// with, and the reason its downloads landed on the wrong title. Usenet releases go too:
-	// there's no client to hand them to, and a FLAC from usenet would otherwise outrank
-	// every torrent and fail the grab on every sweep.
-	usable := grabbable(res.Releases)
-	notes.dropped(res.Releases, usable, DropNotTorrent)
+	// with, and the reason its downloads landed on the wrong title. Releases no client can
+	// take go too (usenet without a usenet client): a FLAC from usenet would otherwise
+	// outrank every torrent and fail the grab on every sweep.
+	nets := c.networks(ctx)
+	usable := nets.grabbable(res.Releases)
+	nets.noteDropped(notes, res.Releases, usable)
 	var cands []indexer.Release
 	for _, rel := range usable {
 		if music.ReleaseIsForAlbum(rel.Title, a.Name, al.Title) {
@@ -330,7 +331,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 	}
 	if len(cands) == 0 {
 		c.log.Info("music: no release matched this album", "artist", a.Name, "album", al.Title)
-		return albumOutcome{Code: outcomeNoMatch, Detail: fmt.Sprintf("%d torrent release(s), none named this album", len(usable))}
+		return albumOutcome{Code: outcomeNoMatch, Detail: fmt.Sprintf("%d release(s), none named this album", len(usable))}
 	}
 	matched := len(cands)
 	before := append([]indexer.Release(nil), cands...)
@@ -361,7 +362,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 			notes.mark(rel.Title, classEligible)
 		}
 	}
-	best := pickBestAlbum(sp, cands)
+	best := pickBestAlbum(nets, sp, cands)
 	if best == nil {
 		c.log.Info("music: no release met the quality profile", "artist", a.Name, "album", al.Title,
 			"candidates", len(cands))
@@ -413,12 +414,13 @@ func (c *Coordinator) grabMusic(ctx context.Context, indexerName, url, title, ca
 	return c.grabTo(ctx, indexerName, url, title, category)
 }
 
-// pickBestAlbum ranks releases by the profile's quality ladder, seeders breaking ties.
+// pickBestAlbum ranks releases by the profile's quality ladder, seeders breaking ties
+// between torrents (nets.beats: a usenet release isn't compared on seeders).
 //
 // The ladder is the profile's format_scores keyed by tier ("FLAC", "MP3-320"…), so scoring
 // is just a lookup — and because nothing outscores the tier already held, this same scoring
 // is what makes upgrades stop by themselves at the top of the ladder.
-func pickBestAlbum(sp quality.StoredProfile, releases []indexer.Release) *indexer.Release {
+func pickBestAlbum(nets netPolicy, sp quality.StoredProfile, releases []indexer.Release) *indexer.Release {
 	var best *indexer.Release
 	bestScore := 0
 	for i := range releases {
@@ -426,7 +428,7 @@ func pickBestAlbum(sp quality.StoredProfile, releases []indexer.Release) *indexe
 		if !ok {
 			continue
 		}
-		if best == nil || score > bestScore {
+		if best == nil || nets.beats(releases[i], score, *best, bestScore) {
 			best, bestScore = &releases[i], score
 		}
 	}
@@ -823,7 +825,8 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 		return fmt.Errorf("search failed: %w", err)
 	}
 	var cands []indexer.Release
-	for _, rel := range grabbable(res.Releases) { // usenet has no client to go to
+	nets := c.networks(ctx)
+	for _, rel := range nets.grabbable(res.Releases) { // only what a client can take
 		if music.ReleaseIsDiscographyFor(rel.Title, a.Name) {
 			cands = append(cands, rel)
 		}
@@ -836,7 +839,7 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 		c.skipUnreadable(a.Name+" discography", err)
 		return err
 	}
-	best := pickBestAlbum(sp, cands)
+	best := pickBestAlbum(nets, sp, cands)
 	if best == nil {
 		return fmt.Errorf("found discography releases for %q, but none met the quality profile", a.Name)
 	}

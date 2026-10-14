@@ -25,7 +25,7 @@ func TestPickBestBookKeyword(t *testing.T) {
 		bookRel("Some Book GraphicAudio M4B", 10),
 		bookRel("Some Book Abridged GraphicAudio M4B", 999), // rejected
 	}
-	best := pickBestBookForKind(sp, nil, releases, "audiobook", "")
+	best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", "")
 	if best == nil || best.Title != "Some Book GraphicAudio M4B" {
 		t.Fatalf("got %v, want the GraphicAudio M4B", best)
 	}
@@ -44,7 +44,7 @@ func TestPickBestBookKeywordInNarrator(t *testing.T) {
 		{Title: "Brandon Sanderson - Rhythm of War [M4B]", Narrator: "Kate Reading, Michael Kramer", Format: "M4B", Seeders: 1072},
 		{Title: "Brandon Sanderson - Rhythm of War [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 61},
 	}
-	best := pickBestBookForKind(sp, nil, releases, "audiobook", "")
+	best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", "")
 	if best == nil || best.Narrator != "GraphicAudio" {
 		t.Fatalf("got %+v, want the GraphicAudio narration to win on the keyword preference", best)
 	}
@@ -62,7 +62,7 @@ func TestPickBestBookPrefersComplete(t *testing.T) {
 		{Title: "Rhythm of War (Part 1 of 6) [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 500},
 		{Title: "Rhythm of War [M4B]", Narrator: "GraphicAudio", Format: "M4B", Seeders: 40},
 	}
-	best := pickBestBookForKind(sp, nil, releases, "audiobook", "")
+	best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", "")
 	if best == nil || best.Title != "Rhythm of War [M4B]" {
 		t.Fatalf("got %+v, want the complete release", best)
 	}
@@ -91,7 +91,7 @@ func TestPickBestBookFormatPreference(t *testing.T) {
 		bookRel("Some Book MP3", 900),
 		bookRel("Some Book M4B", 5),
 	}
-	best := pickBestBookForKind(sp, nil, releases, "audiobook", "")
+	best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", "")
 	if best == nil || best.Title != "Some Book M4B" {
 		t.Fatalf("got %v, want M4B (higher format score)", best)
 	}
@@ -118,7 +118,7 @@ func TestPickBestBookEditionFilter(t *testing.T) {
 		bookRel("Some Book EPUB", 999), // ebook — not for the audiobook edition
 		bookRel("Some Book M4B", 1),
 	}
-	best := pickBestBookForKind(sp, nil, releases, "audiobook", "")
+	best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", "")
 	if best == nil || best.Title != "Some Book M4B" {
 		t.Fatalf("got %v, want the M4B audiobook", best)
 	}
@@ -133,13 +133,13 @@ func TestBookPickPrefersTheBookOverACollection(t *testing.T) {
 	omnibus := indexer.Release{Title: "Hugh Howey - The Silo Saga Omnibus: Wool, Shift, Dust, and Silo Stories [EPUB]", Format: "EPUB", Seeders: 60}
 	single := indexer.Release{Title: "Hugh Howey - Shift [EPUB]", Format: "EPUB", Seeders: 3}
 
-	if best := pickBestBookForKind(sp, nil, []indexer.Release{trilogy, omnibus, single}, "ebook", "Shift"); best == nil || best.Title != single.Title {
+	if best := pickBestBookForKind(netPolicy{}, sp, nil, []indexer.Release{trilogy, omnibus, single}, "ebook", "Shift"); best == nil || best.Title != single.Title {
 		t.Errorf("picked %v, want the single book", best)
 	}
-	if best := pickBestBookForKind(sp, nil, []indexer.Release{trilogy, omnibus}, "ebook", "Shift"); best == nil || best.Title != trilogy.Title {
+	if best := pickBestBookForKind(netPolicy{}, sp, nil, []indexer.Release{trilogy, omnibus}, "ebook", "Shift"); best == nil || best.Title != trilogy.Title {
 		t.Errorf("with only bundles, picked %v, want the best-seeded bundle", best)
 	}
-	if best := pickBestBookForKind(sp, nil, []indexer.Release{omnibus, trilogy}, "ebook", "The Wool Trilogy"); best == nil || best.Title != trilogy.Title {
+	if best := pickBestBookForKind(netPolicy{}, sp, nil, []indexer.Release{omnibus, trilogy}, "ebook", "The Wool Trilogy"); best == nil || best.Title != trilogy.Title {
 		t.Errorf("wanting the trilogy itself, picked %v", best)
 	}
 	for title, want := range map[string]int{

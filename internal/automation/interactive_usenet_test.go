@@ -66,7 +66,7 @@ func TestRankReleasesSkipsUsenetForRecommendation(t *testing.T) {
 // Each row carries the release's age and peers for the modal.
 func TestRankedReleaseJSONHasAgeAndPeers(t *testing.T) {
 	pub := time.Date(2026, 9, 30, 12, 0, 0, 0, time.FixedZone("x", 3600))
-	rr := withIndexerFacts(RankedRelease{Title: "A", Eligible: true}, indexer.Release{Title: "A", Peers: 7, PublishedAt: pub, Transport: indexer.TransportTorrent})
+	rr := withIndexerFacts(RankedRelease{Title: "A", Eligible: true}, indexer.Release{Title: "A", Peers: 7, PublishedAt: pub, Transport: indexer.TransportTorrent}, netPolicy{})
 	b, err := json.Marshal(rr)
 	if err != nil {
 		t.Fatal(err)
@@ -78,13 +78,14 @@ func TestRankedReleaseJSONHasAgeAndPeers(t *testing.T) {
 		}
 	}
 	// Unknown age is left out rather than sent as the zero time.
-	b, _ = json.Marshal(withIndexerFacts(RankedRelease{Title: "B"}, indexer.Release{Title: "B"}))
+	b, _ = json.Marshal(withIndexerFacts(RankedRelease{Title: "B"}, indexer.Release{Title: "B"}, netPolicy{}))
 	if strings.Contains(string(b), "published_at") {
 		t.Errorf("zero time serialized: %s", b)
 	}
 }
 
-// A title offered as both a torrent and an NZB is listed once, as the torrent.
+// Without a usenet client, a title offered as both a torrent and an NZB is listed once, as
+// the torrent.
 func TestSplitTransportPrefersTheTorrentCopy(t *testing.T) {
 	rels := []indexer.Release{
 		{Title: "X", Transport: indexer.TransportUsenet},
@@ -92,8 +93,8 @@ func TestSplitTransportPrefersTheTorrentCopy(t *testing.T) {
 		{Title: "Y", Transport: indexer.TransportUsenet},
 		{Title: "Y", Transport: indexer.TransportUsenet},
 	}
-	tor, nzb := splitTransport(rels)
-	if len(tor) != 1 || tor[0].Title != "X" || len(nzb) != 1 || nzb[0].Title != "Y" {
+	tor, nzb := netPolicy{torrent: true}.split(rels)
+	if len(tor) != 1 || tor[0].Title != "X" || tor[0].Transport != indexer.TransportTorrent || len(nzb) != 1 || nzb[0].Title != "Y" {
 		t.Errorf("torrents %+v, usenet %+v", tor, nzb)
 	}
 }
