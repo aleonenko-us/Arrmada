@@ -83,6 +83,12 @@ func (c *Coordinator) RemoveDownload(ctx context.Context, hash, name string, mod
 	if g != nil && (status == grabStatusGrabbed || status == grabStatusHeld) {
 		c.setGrabStatus(ctx, g.ID, grabStatusRemoved)
 	}
+	if g != nil {
+		// Every other in-flight row for this torrent goes too — the same release grabbed
+		// again on a later day, say. Left 'grabbed', the stall check would read the torrent
+		// the user removed as one that vanished, blocklist it and search for another.
+		c.setGrabStatusByHash(ctx, hash, release, g.MediaType, grabStatusRemoved)
+	}
 	// A download held in Review (one grabbed for a movie since deleted, say) is settled
 	// once it's out of the client; left pending, the review would offer an import of
 	// files that may be gone.
