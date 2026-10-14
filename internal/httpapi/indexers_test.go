@@ -15,6 +15,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
+	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -165,11 +166,12 @@ func TestTestIndexerSettings(t *testing.T) {
 	}
 }
 
-// A new Newznab indexer is refused with the reason; an existing one can still be edited.
+// Without a usenet download client a new Newznab indexer is refused with the reason (and a
+// row can't be turned into one); an existing one can still be edited.
 func TestCreateNewznabRefused(t *testing.T) {
 	a, svc := indexerAPI(t)
 	w := callIndexer(t, a.handleCreateIndexer, http.MethodPost, "/api/v1/indexers", "", `{"name":"NZB","kind":"newznab","url":"http://nzb/api"}`)
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "no usenet download client") {
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Add SABnzbd in Settings → Connections first") {
 		t.Fatalf("create newznab = %d %s", w.Code, w.Body.String())
 	}
 	if list, _ := svc.List(context.Background()); len(list) != 0 {
@@ -179,6 +181,41 @@ func TestCreateNewznabRefused(t *testing.T) {
 	id := strconv.FormatInt(old.ID, 10)
 	if w := callIndexer(t, a.handleUpdateIndexer, http.MethodPut, "/api/v1/indexers/"+id, id, `{"name":"Old NZB","kind":"newznab","url":"http://nzb/api","enabled":false}`); w.Code != http.StatusNoContent {
 		t.Fatalf("update newznab = %d %s", w.Code, w.Body.String())
+	}
+	tor, _ := svc.Create(context.Background(), indexer.Indexer{Name: "Tor", Kind: indexer.KindTorznab, URL: "http://tor/api", Enabled: true})
+	tid := strconv.FormatInt(tor.ID, 10)
+	if w := callIndexer(t, a.handleUpdateIndexer, http.MethodPut, "/api/v1/indexers/"+tid, tid, `{"name":"Tor","kind":"newznab","url":"http://tor/api"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("torznab → newznab without a client = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// With a usenet download client a Newznab indexer is created like any other — searched,
+// and with no seed goal (usenet never seeds).
+func TestCreateNewznabWithUsenetClient(t *testing.T) {
+	a, svc := indexerAPI(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	dl := download.NewService(st.DB(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	dl.SetDownloader(download.KindSABnzbd, &fakeUsenetClient{})
+	if _, err := dl.Create(context.Background(), download.Client{Name: "sab", Kind: download.KindSABnzbd, URL: "http://sab.invalid", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	a.deps.Downloads = dl
+	svc.SetUsenetAvailable(func() bool { return dl.HasTransport(context.Background(), download.TransportUsenet) })
+
+	if w := callIndexer(t, a.handleCreateIndexer, http.MethodPost, "/api/v1/indexers", "", `{"name":"NZB","kind":"newznab"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("no url = %d %s", w.Code, w.Body.String())
+	}
+	w := callIndexer(t, a.handleCreateIndexer, http.MethodPost, "/api/v1/indexers", "", `{"name":"NZB","kind":"newznab","url":"http://nzb/api","api_key":"k","seed_enabled":true,"seed_hours":5}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create newznab = %d %s", w.Code, w.Body.String())
+	}
+	list, _ := svc.List(context.Background())
+	if len(list) != 1 || list[0].Kind != indexer.KindNewznab || list[0].SeedEnabled || list[0].SeedHours != 0 || !svc.Searched(list[0]) {
+		t.Fatalf("rows = %+v", list)
 	}
 }
 

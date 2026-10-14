@@ -858,17 +858,19 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 	}
 	// The recommendation is decided over exactly what auto-grab decides over (candidatesFrom:
 	// grabbable, deduped, not blocklisted), so Recommended is the release a search would
-	// take. Blocklisted and usenet releases are still listed, ranked on their own.
-	torrents, usenet := splitTransport(matchingMovieReleases(m, keys, result.Releases))
-	byName := make(map[string]indexer.Release, len(torrents)+len(usenet))
+	// take. Blocklisted releases and those no client can take are still listed, ranked on
+	// their own.
+	nets := c.networks(ctx)
+	usable, unusable := nets.split(matchingMovieReleases(m, keys, result.Releases))
+	byName := make(map[string]indexer.Release, len(usable)+len(unusable))
 	var pool, side, offTrack []quality.Candidate
 	// offReason is why a release can't go to this track (its edition filter), by title.
 	offReason := map[string]string{}
-	for _, rel := range append(torrents, usenet...) {
+	for _, rel := range append(usable, unusable...) {
 		byName[rel.Title] = rel
-		cand := quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders)
+		cand := releaseCandidate(rel)
 		switch {
-		case rel.Transport == indexer.TransportUsenet || blocked[normTitle(rel.Title)]:
+		case !nets.canGrab(rel) || blocked[normTitle(rel.Title)]:
 			side = append(side, cand)
 		case track != nil && len(editionFilter(nil, []quality.Candidate{cand}, *track, siblings)) == 0:
 			offReason[rel.Title] = offTrackReason(cand, *track, siblings)
@@ -908,7 +910,7 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 		if why := offReason[ev.Candidate.Name]; why != "" {
 			rr.Eligible, rr.Recommended, rr.RejectReason = false, false, why
 		}
-		out = append(out, explainRow(withIndexerFacts(rr, rel), ev, ranked))
+		out = append(out, explainRow(withIndexerFacts(rr, rel, nets), ev, ranked))
 	}
 	for _, ev := range decision.Eligible {
 		appendEval(ev, true)
@@ -921,39 +923,25 @@ func (c *Coordinator) rankReleases(ctx context.Context, id, versionID int64, spe
 	return ReleaseList{Profile: profile, Why: decision.Why, ChosenOver: decision.ChosenOver, Releases: out}.withIssues(notes), nil
 }
 
-// usenetReject is why an interactive list can't grab a usenet release: the only download
-// client is a torrent client (see grabbable).
-const usenetReject = "Usenet release — no usenet download client is set up"
-
-// splitTransport dedupes releases (bestByTitle) into the torrents a client can take and
-// the usenet ones it can't. A title that also came as a torrent is kept only as that.
-func splitTransport(releases []indexer.Release) (torrents, usenet []indexer.Release) {
-	torrents = bestByTitle(grabbable(releases))
-	have := make(map[string]bool, len(torrents))
-	for _, rel := range torrents {
-		have[rel.Title] = true
-	}
-	var nzb []indexer.Release
-	for _, rel := range releases {
-		if rel.Transport == indexer.TransportUsenet && !have[rel.Title] {
-			nzb = append(nzb, rel)
-		}
-	}
-	return torrents, bestByTitle(nzb)
-}
+// Why an interactive list can't grab a release: no download client of its network is set
+// up (netPolicy.canGrab).
+const (
+	usenetReject  = "Usenet release — no usenet download client is set up"
+	torrentReject = "Torrent release — no torrent download client is set up"
+)
 
 // withIndexerFacts adds what every interactive row shows from the indexer — its age,
-// peers and transport — and makes a usenet release ineligible, saying why, so it can
-// never be the recommended pick.
-func withIndexerFacts(rr RankedRelease, rel indexer.Release) RankedRelease {
+// peers and transport — and makes a release no client can take ineligible, saying why,
+// so it can never be the recommended pick.
+func withIndexerFacts(rr RankedRelease, rel indexer.Release, nets netPolicy) RankedRelease {
 	rr.Peers = rel.Peers
 	rr.Transport = string(rel.Transport)
 	if !rel.PublishedAt.IsZero() {
 		rr.PublishedAt = rel.PublishedAt.UTC().Format(time.RFC3339)
 	}
-	if rel.Transport == indexer.TransportUsenet {
+	if why := nets.rejectReason(rel); why != "" {
 		rr.Eligible, rr.Recommended = false, false
-		rr.RejectReason = usenetReject
+		rr.RejectReason = why
 	}
 	return rr
 }
@@ -1213,45 +1201,9 @@ func (c *Coordinator) missingVersions(ctx context.Context, movieID int64) []movi
 	return want
 }
 
-// bestByTitle collapses duplicate release titles to one copy each — the healthiest
-// (most seeders). The same scene release routinely appears on several indexers; keeping
-// duplicates meant the quality engine could score one copy while a later byName lookup
-// returned another (last write wins), so the grab used a different indexer, seed policy
-// and download link than the release that actually won.
-func bestByTitle(releases []indexer.Release) []indexer.Release {
-	idx := make(map[string]int, len(releases))
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		if i, dup := idx[rel.Title]; dup {
-			if rel.Seeders > out[i].Seeders {
-				out[i] = rel
-			}
-			continue
-		}
-		idx[rel.Title] = len(out)
-		out = append(out, rel)
-	}
-	return out
-}
-
-// grabbable filters out releases no configured download client can take. The only
-// client kind is a torrent client, so usenet releases must not reach a grab: qBittorrent
-// accepts the .nzb URL with a 2xx (it fetches async), the grab is recorded as in-flight,
-// and nothing ever arrives.
-func grabbable(releases []indexer.Release) []indexer.Release {
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		if rel.Transport == indexer.TransportUsenet {
-			continue
-		}
-		out = append(out, rel)
-	}
-	return out
-}
-
 // candidatesFrom builds the scoring candidates from a set of releases, dropping
-// any that are blocklisted for this movie, ungrabbable (usenet), or duplicate
-// copies of a title already kept.
+// any that are blocklisted for this movie, ungrabbable (no client of their network), or
+// duplicate copies of a title already kept (netPolicy.bestByTitle).
 func (c *Coordinator) candidatesFrom(ctx context.Context, movieID int64, releases []indexer.Release) (map[string]indexer.Release, []quality.Candidate, error) {
 	return c.candidatesExcluding(ctx, movieID, releases, nil)
 }
@@ -1266,9 +1218,7 @@ func (c *Coordinator) candidatesExcluding(ctx context.Context, movieID int64, re
 		return nil, nil, err
 	}
 	notes := notesFrom(ctx)
-	torrents := grabbable(releases)
-	notes.dropped(releases, torrents, DropNotTorrent)
-	releases = bestByTitle(torrents)
+	releases = c.networks(ctx).usable(ctx, releases)
 	byName := make(map[string]indexer.Release, len(releases))
 	cands := make([]quality.Candidate, 0, len(releases))
 	for _, rel := range releases {
@@ -1279,7 +1229,7 @@ func (c *Coordinator) candidatesExcluding(ctx context.Context, movieID int64, re
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	return byName, cands, nil
 }
@@ -1629,7 +1579,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 	}
 	byName := make(map[string]indexer.Release, len(result.Releases))
 	cands := make([]quality.Candidate, 0, len(result.Releases))
-	for _, rel := range bestByTitle(grabbable(result.Releases)) {
+	for _, rel := range c.networks(ctx).usable(ctx, result.Releases) {
 		if blocked[normTitle(rel.Title)] {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
@@ -1639,7 +1589,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	// Runtime on the candidates so the profile's bitrate ceiling applies to upgrades
 	// too — without it a capped profile could "upgrade" to a remux it explicitly forbids.
@@ -1809,7 +1759,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 	}
 	byName := make(map[string]indexer.Release, len(result.Releases))
 	cands := make([]quality.Candidate, 0, len(result.Releases))
-	for _, rel := range bestByTitle(grabbable(result.Releases)) {
+	for _, rel := range c.networks(ctx).usable(ctx, result.Releases) {
 		if blocked[normTitle(rel.Title)] {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
@@ -1819,7 +1769,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 			continue
 		}
 		byName[rel.Title] = rel
-		cands = append(cands, quality.NewCandidate(rel.Title, rel.SizeGB(), rel.Seeders))
+		cands = append(cands, releaseCandidate(rel))
 	}
 	grabbed := map[string]bool{}
 	grabbedGB := 0.0

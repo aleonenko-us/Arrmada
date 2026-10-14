@@ -297,6 +297,11 @@ type Profile struct {
 	// OwnerLanguages are the audio languages the household keeps (Convert's audio
 	// languages); a release in one of them is never foreign-only. Empty means English.
 	OwnerLanguages []string `json:"owner_languages,omitempty"`
+	// PreferNetwork is the download_network_preference setting (NetworkUsenet or
+	// NetworkTorrent) when it prefers one: between a usenet and a torrent release that
+	// score the same, the preferred network ranks first (KeyNetwork). "" or NetworkBest
+	// adds no step. Set by the service from the setting, never stored with a profile.
+	PreferNetwork string `json:"-"`
 	// onDisk judges a file already in the library rather than a release on offer: an
 	// Unwanted item set to reject only avoids it, so a file the pack now refuses (a 3D
 	// copy) isn't treated as worthless and replaced by any release at all (current.go).
@@ -313,7 +318,19 @@ type Candidate struct {
 	// OrigLanguage is the title's original language (TMDB's original_language), so a
 	// release dubbed only into another language can be told apart; "" = no judgement.
 	OrigLanguage string `json:"orig_language,omitempty"`
+	// Usenet marks a release from a usenet indexer. It has no seeders to count: it is
+	// always alive, the profile's minimum seeders doesn't apply, and seeders never decide
+	// between it and a torrent.
+	Usenet bool `json:"usenet,omitempty"`
 }
+
+// alive reports whether the release can download at all: a usenet release always can, a
+// torrent only with someone seeding it.
+func (c Candidate) alive() bool { return c.Usenet || c.Seeders > 0 }
+
+// seedersComparable reports whether seeders may tell a and b apart: only between two
+// torrents. A usenet release's 0 is "not counted", not "dead".
+func seedersComparable(a, b Candidate) bool { return !a.Usenet && !b.Usenet }
 
 // NewCandidate parses a release name into a Candidate.
 func NewCandidate(name string, sizeGB float64, seeders int) Candidate {
@@ -592,7 +609,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 			return ev
 		}
 	}
-	if p.MinSeeders > 0 && c.Seeders < p.MinSeeders {
+	if p.MinSeeders > 0 && !c.Usenet && c.Seeders < p.MinSeeders {
 		ev.reject(RejectSeeders, fmt.Sprintf("Only %d seeders (needs %d)", c.Seeders, p.MinSeeders))
 		return ev
 	}
@@ -770,6 +787,9 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 	if len(d.Eligible) > 0 {
 		d.Winner = &d.Eligible[0]
 		d.Why = whyReasons(p, *d.Winner, d.Eligible)
+		if d.DecidedBy == KeyNetwork {
+			d.Why = append(d.Why, p.networkWhy())
+		}
 		// Every eligible release carries a format you avoid — say so, so a Dolby Vision
 		// recommendation doesn't look like the avoid was ignored when it's simply all
 		// there was. Under v2 only the avoids that are a tier count: a negative custom
@@ -796,7 +816,8 @@ func (e *Engine) Decide(p Profile, cands []Candidate) Decision {
 }
 
 // sortV1 is classic ranking: the avoided tier, dead torrents last, then the summed score,
-// then magnitude (seeders deciding within 10%), source and seeders. It fills each release's
+// the preferred network (when one is set), then magnitude (seeders deciding within 10%),
+// source and seeders — seeders only ever between two torrents. It fills each release's
 // LostOn from decidingFactor, which walks the same steps.
 func sortV1(p Profile, evs []Evaluation) {
 	// Rank by score, then by bitrate. For one movie every candidate is the same
@@ -814,18 +835,25 @@ func sortV1(p Profile, evs []Evaluation) {
 		}
 		// A dead torrent (no seeders, or an indexer that doesn't say) never downloads, so
 		// within a tier it goes after every seeded release however well it scores. Ranks
-		// only: it's still the pick when nothing seeded is eligible.
-		if (a.Candidate.Seeders > 0) != (b.Candidate.Seeders > 0) {
-			return a.Candidate.Seeders > 0
+		// only: it's still the pick when nothing seeded is eligible. A usenet release is
+		// never dead.
+		if a.Candidate.alive() != b.Candidate.alive() {
+			return a.Candidate.alive()
 		}
 		if a.Total != b.Total {
 			return a.Total > b.Total
 		}
+		// "Prefer Usenet" / "Prefer torrents": after the score, before size — a preference
+		// between equals, never a filter.
+		if decided, aFirst := p.networkOrder(a.Candidate, b.Candidate); decided {
+			return aFirst
+		}
+		seeders := seedersComparable(a.Candidate, b.Candidate)
 		if am, bm := magnitudes(a.Candidate, b.Candidate); am != bm {
 			// Releases within 10% of each other are the same encode for every practical
 			// purpose, so health decides: a 10 GB release with 2 seeders losing to a 9.5 GB
 			// one with 150 is the right call. Outside the band, size (bitrate) still rules.
-			if nearEqual(am, bm) && a.Candidate.Seeders != b.Candidate.Seeders {
+			if seeders && nearEqual(am, bm) && a.Candidate.Seeders != b.Candidate.Seeders {
 				return a.Candidate.Seeders > b.Candidate.Seeders
 			}
 			if preferSmaller {
@@ -833,11 +861,11 @@ func sortV1(p Profile, evs []Evaluation) {
 			}
 			return am > bm // higher bitrate
 		}
-		// Same bitrate → prefer the better source, then more seeders.
+		// Same bitrate → prefer the better source, then more seeders (torrents only).
 		if sourceRank[a.Candidate.Release.Source] != sourceRank[b.Candidate.Release.Source] {
 			return sourceRank[a.Candidate.Release.Source] > sourceRank[b.Candidate.Release.Source]
 		}
-		return a.Candidate.Seeders > b.Candidate.Seeders
+		return seeders && a.Candidate.Seeders > b.Candidate.Seeders
 	})
 	fillLostOn(evs, func(above, ev *Evaluation) RankKey {
 		if k, _ := decidingFactor(p, *above, *ev); k != "" {

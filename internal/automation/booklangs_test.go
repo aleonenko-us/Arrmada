@@ -75,16 +75,16 @@ func TestPickBestBookSkipsOtherLanguages(t *testing.T) {
 		{Title: "Frank Herbert - Dune [M4B]", Format: "M4B", Language: "de", Seeders: 900},
 		{Title: "Frank Herbert - Dune [M4B]", Format: "M4B", Language: "en", Seeders: 12},
 	}
-	if best := pickBestBookForKind(sp, nil, releases, "audiobook", ""); best == nil || best.Language != "de" {
+	if best := pickBestBookForKind(netPolicy{}, sp, nil, releases, "audiobook", ""); best == nil || best.Language != "de" {
 		t.Fatalf("without a language list the seeders decide: got %+v", best)
 	}
 	c := &Coordinator{}
 	c.SetBookLanguages(func(context.Context) []string { return []string{"en"} })
-	if best := pickBestBookForKind(sp, c.bookLanguages(context.Background()), releases, "audiobook", ""); best == nil || best.Language != "en" {
+	if best := pickBestBookForKind(netPolicy{}, sp, c.bookLanguages(context.Background()), releases, "audiobook", ""); best == nil || best.Language != "en" {
 		t.Fatalf("with languages = en: got %+v, want the English release", best)
 	}
 	only := releases[:1]
-	if best := pickBestBookForKind(sp, c.bookLanguages(context.Background()), only, "audiobook", ""); best != nil {
+	if best := pickBestBookForKind(netPolicy{}, sp, c.bookLanguages(context.Background()), only, "audiobook", ""); best != nil {
 		t.Fatalf("a German-only result must grab nothing, got %+v", best)
 	}
 }

@@ -103,7 +103,8 @@ func isProper(r parser.Release) bool { return r.Proper || r.Repack }
 
 // decidingFactor says why runnerUp ranked below winner in Decide, as the RankKey and the
 // text after "Chosen over the … —". It walks Decide's comparator in the same order —
-// avoided tier, dead torrents, score, magnitude (with the seeders band), source, seeders —
+// avoided tier, dead torrents, score, preferred network, magnitude (with the seeders band),
+// source, seeders —
 // and names the first step that told the two apart, so the explanation is the actual
 // reason rather than a guess from the release names. Keep the two in step: the shared
 // fixtures in rank_test check that they agree.
@@ -113,7 +114,7 @@ func decidingFactor(p Profile, winner, runnerUp Evaluation) (RankKey, string) {
 	if runnerUp.Avoided && !winner.Avoided {
 		return KeyAvoid, "it has " + strings.Join(runnerUp.AvoidedFormats, ", ") + ", which you avoid"
 	}
-	if wc.Seeders > 0 && rc.Seeders <= 0 {
+	if wc.alive() && !rc.alive() {
 		return KeyHealth, "it has no seeders"
 	}
 	if winner.Total != runnerUp.Total {
@@ -121,9 +122,14 @@ func decidingFactor(p Profile, winner, runnerUp Evaluation) (RankKey, string) {
 			return k, why
 		}
 	}
+	if decided, _ := p.networkOrder(wc, rc); decided {
+		return KeyNetwork, p.networkLoss()
+	}
+	// Seeders only ever tell two torrents apart: a usenet release has none to count.
+	seeders := seedersComparable(wc, rc)
 	if wm, rm := magnitudes(wc, rc); wm != rm {
 		switch {
-		case nearEqual(wm, rm) && wc.Seeders != rc.Seeders:
+		case seeders && nearEqual(wm, rm) && wc.Seeders != rc.Seeders:
 			return KeyHealth, "fewer seeders"
 		case p.SmallBias > 0:
 			return KeySize, "larger, and you prefer smaller files"
@@ -136,7 +142,7 @@ func decidingFactor(p Profile, winner, runnerUp Evaluation) (RankKey, string) {
 	if sourceRank[wr.Source] != sourceRank[rr.Source] {
 		return KeySource, sourceLoss(wr, rr)
 	}
-	if wc.Seeders != rc.Seeders {
+	if seeders && wc.Seeders != rc.Seeders {
 		return KeyHealth, "fewer seeders"
 	}
 	return "", "an equal match, listed second"

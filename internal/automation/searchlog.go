@@ -78,11 +78,13 @@ const (
 	DropBlocklisted  = "blocklisted"   // blocklisted for this title
 	DropPending      = "pending"       // already grabbed and still downloading
 	DropOutOfScope   = "out_of_scope"  // the right title, but other episodes, another edition or version
-	DropNotTorrent   = "not_torrent"   // a usenet release, which no download client takes
+	DropNotTorrent   = "not_torrent"   // a usenet release, and no usenet download client is set up
 	DropNotWanted    = "not_wanted"    // a book format the profile doesn't want
 	DropWrongEdition = "wrong_edition" // a movie track wants another edition (or another track wants this one)
 	// DropWrongLanguage is a book release stating a language outside the book languages.
 	DropWrongLanguage = "wrong_language"
+	// DropNotUsenet is a torrent when the only download clients are usenet ones.
+	DropNotUsenet = "not_usenet"
 	// The two "taken" states, never counted as reasons.
 	classEligible = "eligible"
 	classGrabbed  = "grabbed"
@@ -101,7 +103,7 @@ func classRank(code string) int {
 		return 4
 	case classEligible:
 		return 3
-	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent, DropWrongEdition:
+	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent, DropNotUsenet, DropWrongEdition:
 		return 1
 	}
 	return 2 // a profile rejection
@@ -224,7 +226,7 @@ func (n *searchNotes) tally() tally {
 			t.blocklisted++
 		case DropOutOfScope, DropWrongEdition:
 			t.outOfScope++
-		case DropNotTorrent, DropNotWanted:
+		case DropNotTorrent, DropNotUsenet, DropNotWanted:
 		default:
 			t.rejected++
 		}
@@ -749,6 +751,7 @@ var reasonLabels = map[string]string{
 	DropOutOfScope:                "for other episodes or editions",
 	DropWrongEdition:              "not the edition a version wants",
 	DropNotTorrent:                "usenet only",
+	DropNotUsenet:                 "torrent only",
 	DropNotWanted:                 "a format you don't want",
 	DropWrongLanguage:             "not in your book languages",
 	rejectedUncoded:               "rejected by your profile",

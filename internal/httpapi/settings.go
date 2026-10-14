@@ -109,6 +109,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// How releases are ranked: v1 (classic, the default) or v2 (ordered keys, preview).
 		// Under v1, v2 runs in the shadow and its disagreements are recorded for review.
 		"quality_ranking": a.qualityRanking(ctx),
+		// When a release is on both Usenet and torrents: best (the better release wins,
+		// the default), usenet or torrent (preferred between releases that score the same).
+		"download_network_preference": quality.NormalizeNetwork(a.deps.Settings.Get(ctx, quality.KeyNetworkPreference, quality.NetworkBest)),
 		// The address people reach Arrmada at from outside (https://arrmada.example.com):
 		// alerts link back with it and the calendar feed's link is built from it.
 		"app_public_url": a.deps.Settings.PublicURL(ctx),
@@ -181,6 +184,7 @@ type settingsUpdate struct {
 	DefaultCategories         *bool     `json:"indexer_default_categories"`
 	BookLanguages             *[]string `json:"books_languages"`
 	QualityRanking            *string   `json:"quality_ranking"`
+	NetworkPreference         *string   `json:"download_network_preference"`
 	PublicURL                 *string   `json:"app_public_url"`
 }
 
@@ -293,6 +297,10 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.QualityRanking != nil && !quality.ValidRanking(strings.TrimSpace(*req.QualityRanking)) {
 		a.writeError(w, http.StatusBadRequest, "quality_ranking must be v1 (classic) or v2 (ordered)")
+		return
+	}
+	if req.NetworkPreference != nil && !quality.ValidNetwork(strings.TrimSpace(*req.NetworkPreference)) {
+		a.writeError(w, http.StatusBadRequest, "download_network_preference must be best, usenet or torrent")
 		return
 	}
 	if req.UpgradeBudget != nil && (*req.UpgradeBudget < 0 || *req.UpgradeBudget > maxUpgradeBudget) {
@@ -449,6 +457,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.QualityRanking != nil && !save(a.deps.Settings.Set(ctx, quality.KeyRanking, strings.TrimSpace(*req.QualityRanking))) {
+		return
+	}
+	if req.NetworkPreference != nil && !save(a.deps.Settings.Set(ctx, quality.KeyNetworkPreference, strings.TrimSpace(*req.NetworkPreference))) {
 		return
 	}
 	a.handleGetSettings(w, r)

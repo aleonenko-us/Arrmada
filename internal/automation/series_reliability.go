@@ -285,7 +285,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 	}
 	byName := make(map[string]indexer.Release, len(releases))
 	droppedTitle := 0
-	for _, rel := range bestByTitle(grabbable(releases)) {
+	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		// The candidate must actually BE this show. Nothing here checked, and matching on
 		// season/episode numbers alone is not a check: a search for "Goliath" returns
 		// "House of David S01E07 David and Goliath - Part 1" — the indexer matched the
