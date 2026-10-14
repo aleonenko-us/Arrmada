@@ -148,6 +148,8 @@ GET /api/v1/insights/users staff -
 GET /api/v1/insights/users/{id} staff -
 GET /api/v1/issues user ext
 GET /api/v1/issues/episodes/{tmdb} requester ext
+GET /api/v1/jellyfin staff -
+GET /api/v1/jellyfin/scan staff -
 GET /api/v1/jobs staff -
 GET /api/v1/jobs/{id} staff -
 GET /api/v1/languages user -
@@ -343,6 +345,8 @@ POST /api/v1/issues requester ext
 POST /api/v1/issues/{id}/dismiss staff -
 POST /api/v1/issues/{id}/fix staff -
 POST /api/v1/issues/{id}/resolve staff -
+POST /api/v1/jellyfin/scan/test staff -
+POST /api/v1/jellyfin/test staff -
 POST /api/v1/jobs/{id}/cancel staff -
 POST /api/v1/library/fit/preview staff -
 POST /api/v1/me/audio/accept user ext
@@ -482,6 +486,8 @@ PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex staff -
 PUT /api/v1/insights/plex/scan staff -
+PUT /api/v1/jellyfin admin -
+PUT /api/v1/jellyfin/scan staff -
 PUT /api/v1/logs/level admin -
 PUT /api/v1/me/apprise user ext
 PUT /api/v1/me/audio/password user ext
