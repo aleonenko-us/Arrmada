@@ -79,7 +79,7 @@ func TestUsenetClientStatusAndCategories(t *testing.T) {
 		t.Fatalf("status: HTTP %d %s", rec.Code, rec.Body)
 	}
 	var st struct {
-		ListenPort int                  `json:"listen_port"`
+		ListenPort int                   `json:"listen_port"`
 		Usenet     *download.UsenetFacts `json:"usenet"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil || st.Usenet == nil {

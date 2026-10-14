@@ -259,8 +259,8 @@ type sabStatus struct {
 		CompleteDir string `json:"completedir"`
 		DownloadDir string `json:"downloaddir"`
 		Servers     []struct {
-			Name     string `json:"servername"`
-			Error    string `json:"servererror"`
+			Name     string  `json:"servername"`
+			Error    string  `json:"servererror"`
 			Optional flexInt `json:"serveroptional"`
 			Total    flexInt `json:"servertotalconn"`
 		} `json:"servers"`

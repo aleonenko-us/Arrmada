@@ -291,10 +291,10 @@ func TestSABnzbdAddRefusals(t *testing.T) {
 
 func TestNZBPassword(t *testing.T) {
 	for nzb, want := range map[string]string{
-		string(testNZB("s3cret", map[string]string{"a": "b"}, nil)):                                    "s3cret",
-		string(testNZB("", map[string]string{"a": "b"}, nil)):                                          "",
+		string(testNZB("s3cret", map[string]string{"a": "b"}, nil)):                                 "s3cret",
+		string(testNZB("", map[string]string{"a": "b"}, nil)):                                       "",
 		`<nzb><head><meta type="title">x</meta><meta type="PASSWORD"> p&amp;w </meta></head></nzb>`: "p&w",
-		`<nzb><file><meta type="password">late</meta></file></nzb>`:                                    "",
+		`<nzb><file><meta type="password">late</meta></file></nzb>`:                                 "",
 		`not xml`: "",
 	} {
 		if got := nzbPassword([]byte(nzb)); got != want {
@@ -580,7 +580,9 @@ func sabRemoveFixture(t *testing.T) (*sabFake, Client, *SABnzbd, string, string)
 		slot("SABnzbd_nzo_Failed", "Film.Failed", "Failed", "/downloads/incomplete/Film.Failed"),
 	}, ",")+`]}}`)
 	sab := newSAB()
-	sab.SetFolders(func(context.Context) PathEnv { return PathEnv{Downloads: root, DataDir: filepath.Join(root, "data-not-here")} })
+	sab.SetFolders(func(context.Context) PathEnv {
+		return PathEnv{Downloads: root, DataDir: filepath.Join(root, "data-not-here")}
+	})
 	return f, dc, sab, root, elsewhere
 }
 
@@ -691,19 +693,19 @@ func TestGuardLeftover(t *testing.T) {
 	protected := append(append([]string{}, roots...), filepath.Join(dl, "complete/tv"))
 	keep := []string{lib, filepath.Join(dl, "job-with-lib/x")}
 	for p, ok := range map[string]bool{
-		filepath.Join(dl, "complete/Job"):            true,
-		filepath.Join(dl, "complete/Job/file.mkv"):   true,
-		filepath.Join(dl, "complete/Missing"):        true, // already gone: nothing to delete, nothing wrong
-		dl:                                           false,
-		filepath.Join(dl, "complete"):                false,
-		filepath.Join(dl, "complete/tv"):             false,
-		filepath.Join(dl, "library/Movie"):           false,
-		lib:                                          false,
-		filepath.Join(dl, "job-with-lib"):            false, // holds a kept folder
-		filepath.Join(dl, "complete/../../escape"):   false,
-		other:                                        false,
-		filepath.Join(dl+"-sibling", "Job"):          false,
-		"relative/path":                              false,
+		filepath.Join(dl, "complete/Job"):          true,
+		filepath.Join(dl, "complete/Job/file.mkv"): true,
+		filepath.Join(dl, "complete/Missing"):      true, // already gone: nothing to delete, nothing wrong
+		dl:                                         false,
+		filepath.Join(dl, "complete"):              false,
+		filepath.Join(dl, "complete/tv"):           false,
+		filepath.Join(dl, "library/Movie"):         false,
+		lib:                                        false,
+		filepath.Join(dl, "job-with-lib"):          false, // holds a kept folder
+		filepath.Join(dl, "complete/../../escape"): false,
+		other:                               false,
+		filepath.Join(dl+"-sibling", "Job"): false,
+		"relative/path":                     false,
 	} {
 		_, err := guardLeftover(p, roots, protected, keep)
 		if (err == nil) != ok {
@@ -1003,4 +1005,3 @@ func TestSABnzbdService(t *testing.T) {
 		t.Errorf("facts of no client: %v", err)
 	}
 }
-
