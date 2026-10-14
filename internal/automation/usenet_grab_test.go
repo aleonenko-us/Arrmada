@@ -20,6 +20,12 @@ type fakeUsenet struct {
 	files [][]byte
 	urls  []string
 	next  int
+	// removes records each removal with whether its data went too; removeErr, when set,
+	// answers a removal (a folder outside the guarded area, say). keyless makes an add
+	// answer no key, as a lost add response does.
+	removes   []removeCall
+	removeErr func(key string, deleteData bool) error
+	keyless   bool
 }
 
 func (f *fakeUsenet) note(s string) {
@@ -41,6 +47,9 @@ func (f *fakeUsenet) AddKeyed(_ context.Context, _ download.Client, req download
 	f.files = append(f.files, req.File)
 	f.urls = append(f.urls, req.URL)
 	f.calls = append(f.calls, "add "+req.Name+" "+req.Category)
+	if f.keyless {
+		return "", nil
+	}
 	return download.UsenetKey("SABnzbd_nzo_job" + string(rune('0'+f.next))), nil
 }
 func (f *fakeUsenet) Add(ctx context.Context, dc download.Client, req download.AddRequest) error {
@@ -54,7 +63,38 @@ func (f *fakeUsenet) List(context.Context, download.Client) ([]download.Item, er
 }
 func (f *fakeUsenet) Remove(_ context.Context, _ download.Client, key string, deleteData bool) error {
 	f.note("remove " + key)
+	f.mu.Lock()
+	f.removes = append(f.removes, removeCall{key, deleteData})
+	answer := f.removeErr
+	f.mu.Unlock()
+	if answer != nil {
+		if err := answer(key, deleteData); err != nil {
+			return err
+		}
+	}
+	// Gone from the client, as SABnzbd's archive or delete makes it.
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kept := f.items[:0]
+	for _, it := range f.items {
+		if it.Hash != key {
+			kept = append(kept, it)
+		}
+	}
+	f.items = kept
 	return nil
+}
+
+func (f *fakeUsenet) removeLog() []removeCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]removeCall(nil), f.removes...)
+}
+
+func (f *fakeUsenet) set(items ...download.Item) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.items = items
 }
 func (f *fakeUsenet) Pause(_ context.Context, _ download.Client, key string) error {
 	f.note("pause " + key)

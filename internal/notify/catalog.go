@@ -116,7 +116,13 @@ var builtinEvents = []EventDef{
 			if title == "" {
 				return Message{}, false
 			}
-			return Message{Title: "Grabbed", Body: "🎬 " + title, Link: "/activity/queue"}, true
+			body := "🎬 " + title
+			// network is "torrent" or "usenet" (absent on events from before it was sent);
+			// only Usenet is named, since a torrent is what every grab used to be.
+			if str(d, "network") == "usenet" {
+				body += " (Usenet)"
+			}
+			return Message{Title: "Grabbed", Body: body, Link: "/activity/queue"}, true
 		},
 	},
 	{

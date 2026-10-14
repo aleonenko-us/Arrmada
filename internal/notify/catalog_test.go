@@ -19,7 +19,7 @@ var samples = map[string]map[string]any{
 	"request.auto_approved": {"id": int64(4), "title": "Dune", "year": 2021, "media_type": "movie", "requested_by": "Sam"},
 	"request.created":       {"id": int64(42), "media_type": "movie", "title": "Dune", "year": 2021, "requested_by_name": "Sam", "note": "for movie night"},
 	"issue.reported":        {"id": int64(5), "title": "Severance", "year": 2022, "season": 1, "episode": 4, "category": "audio", "note": "no English audio", "reported_by_name": "Sam"},
-	"release.grabbed":       {"title": "Dune.2021.2160p.WEB-DL", "indexer": "Tracker"},
+	"release.grabbed":       {"title": "Dune.2021.2160p.WEB-DL", "indexer": "Tracker", "network": "torrent"},
 	"movie.imported":        {"id": int64(12), "version_id": int64(0), "path": "/m/Dune.mkv", "title": "Dune", "upgrade": true},
 	"episodes.imported":     {"title": "Severance", "id": int64(3), "count": 2},
 	"book.imported":         {"title": "Dune", "id": int64(9), "edition": "audiobook", "version": "Unabridged"},
@@ -69,6 +69,24 @@ func TestNeedsYouFormat(t *testing.T) {
 	}
 	if mustLookup(t, EventDownloadStalled).DefaultOn {
 		t.Error("download.stalled should be off by default")
+	}
+}
+
+// A grab says which network it went to when it's Usenet; a torrent, and an event from
+// before the field existed, read as they always did.
+func TestGrabbedNamesUsenet(t *testing.T) {
+	d := mustLookup(t, "release.grabbed")
+	for _, c := range []struct {
+		data map[string]any
+		body string
+	}{
+		{map[string]any{"title": "Dune", "network": "usenet"}, "🎬 Dune (Usenet)"},
+		{map[string]any{"title": "Dune", "network": "torrent"}, "🎬 Dune"},
+		{map[string]any{"title": "Dune"}, "🎬 Dune"},
+	} {
+		if m, ok := d.Format(c.data); !ok || m.Body != c.body {
+			t.Errorf("Format(%v) = %q, %v; want %q", c.data, m.Body, ok, c.body)
+		}
 	}
 }
 

@@ -54,6 +54,13 @@ func (c *Coordinator) AdoptTorrentHashes(ctx context.Context, queue []download.I
 		if hash == "" || taken[hash] {
 			continue // no hash to record, or some grab already owns it
 		}
+		if it.Transport == download.TransportUsenet {
+			if c.adoptUsenetKey(ctx, grabs, it) {
+				taken[hash] = true
+				adopted++
+			}
+			continue
+		}
 		if matchGrab(grabs, it.Hash, it.Name) != nil {
 			continue // already matches by hash or name — nothing to repair
 		}
@@ -64,8 +71,8 @@ func (c *Coordinator) AdoptTorrentHashes(ctx context.Context, queue []download.I
 
 		var found *grab
 		for i := range grabs {
-			if grabs[i].InfoHash != "" {
-				continue
+			if grabs[i].InfoHash != "" || grabs[i].usenet() {
+				continue // a torrent never pairs with a usenet grab
 			}
 			if releaseIdentity(grabs[i].Title) != want {
 				continue
@@ -91,6 +98,42 @@ func (c *Coordinator) AdoptTorrentHashes(ctx context.Context, queue []download.I
 		adopted++
 	}
 	return adopted
+}
+
+// adoptUsenetKey pairs a usenet job with the key-less usenet grab it came from and records
+// its key: a grab whose add answer was lost (a timeout after SABnzbd took the NZB) knows
+// no key, and without one nothing finds its job but its name.
+//
+// Stricter than the torrent pairing, because it can be: Arrmada names every job it adds
+// after the release (nzbname), so the job's name normalises to exactly its grab's title.
+// Exactly one key-less usenet grab must match; two is ambiguous and nothing is written.
+// A torrent grab is never a candidate.
+func (c *Coordinator) adoptUsenetKey(ctx context.Context, grabs []grab, it download.Item) bool {
+	want := normRelease(it.Name)
+	if want == "" {
+		return false
+	}
+	var found *grab
+	for i := range grabs {
+		g := &grabs[i]
+		if g.InfoHash != "" || g.Transport != download.TransportUsenet || normRelease(g.Title) != want {
+			continue
+		}
+		if found != nil {
+			return false // two candidates: refuse rather than pick
+		}
+		found = g
+	}
+	if found == nil {
+		return false
+	}
+	if err := c.setGrabInfoHash(ctx, found.ID, it.Hash); err != nil {
+		c.log.Warn("seeding: could not record a usenet job's key on its grab", "grab", found.ID, "job", it.Name, "err", err)
+		return false
+	}
+	c.log.Info("seeding: paired a usenet job with its grab and recorded the key", "job", it.Name, "key", it.Hash)
+	found.InfoHash = it.Hash
+	return true
 }
 
 // releaseIdentity reduces a release name to what actually identifies the media: the

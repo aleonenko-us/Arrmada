@@ -168,6 +168,10 @@ type Coordinator struct {
 	importNotes importNotes
 	// feed caches what the Activity queue reads on every refresh (feedcache.go).
 	feed feedCache
+	// usenet is what this process has seen of the usenet client: whether its jobs are
+	// moving, failures already reported, and finished jobs whose folders were left behind
+	// (usenetlife.go).
+	usenet usenetWatch
 }
 
 // SetOutbox installs where series and book imports queue their side effects.
@@ -368,7 +372,7 @@ func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, titl
 		return "", err
 	}
 	c.clearRemovedImport(ctx, hash)
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName, "network": string(download.TransportTorrent)})
 	return hash, nil
 }
 
@@ -429,7 +433,7 @@ func (c *Coordinator) addNZB(ctx context.Context, file []byte, filename, title, 
 		return "", err
 	}
 	c.clearRemovedImport(ctx, added.Key)
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source, "network": string(download.TransportUsenet)})
 	return added.Key, nil
 }
 
@@ -465,38 +469,51 @@ func (c *Coordinator) clearRemovedImport(ctx context.Context, hash string) {
 // indexer fetch, so it works for private trackers where the user downloaded the file
 // while logged in), in the given category, recorded as a manual grab source. An uploaded
 // .nzb goes to the usenet clients instead, and its key is the usenet job's.
-func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename, title, category string) (string, error) {
+//
+// It answers the download's key and what was uploaded, which the grab is recorded with
+// even when the client didn't say the key (withUploadedTransport).
+func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename, title, category string) (string, download.Transport, error) {
 	if len(file) == 0 {
-		return "", fmt.Errorf("no torrent file provided")
+		return "", "", fmt.Errorf("no torrent file provided")
 	}
 	if looksLikeNZB(file, filename) {
-		return c.addNZB(ctx, file, filename, title, category, "manual")
+		key, err := c.addNZB(ctx, file, filename, title, category, "manual")
+		return key, download.TransportUsenet, err
 	}
 	if filename == "" {
 		filename = "arrmada.torrent"
 	}
 	add := download.AddRequest{Name: title, SavePath: c.downloadsPath(), Category: category, File: file, Filename: filename}
 	if err := c.downloads.Add(ctx, add); err != nil {
-		return "", err
+		return "", "", err
 	}
 	hash, _ := download.InfoHashFromFile(file) // "" falls back to name matching
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual"})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual", "network": string(download.TransportTorrent)})
 	c.clearRemovedImport(ctx, hash)
-	return hash, nil
+	return hash, download.TransportTorrent, nil
+}
+
+// uploadedEvent is the history line for an uploaded file: an .nzb isn't a torrent.
+func uploadedEvent(t download.Transport, title string) string {
+	if t == download.TransportUsenet {
+		return "Uploaded NZB — " + title
+	}
+	return "Uploaded torrent — " + title
 }
 
 // GrabMovieTorrent adds an uploaded .torrent file for a movie (movie category) and
 // tracks it like an auto grab so seed cleanup / stall detection manage it too.
 // versionID is the track it's for (0 = the default track).
 func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID int64, file []byte, filename, title string) error {
-	hash, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	c.RecordManualGrab(ctx, movieID, versionID, title, "manual", hash)
 	c.markGrabManual(ctx, hash) // the user chose this file; don't gate it on score
 	if c.movies != nil {
-		c.movies.AddEvent(ctx, movieID, "grabbed", "Uploaded torrent — "+title)
+		c.movies.AddEvent(ctx, movieID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -504,10 +521,11 @@ func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID i
 // GrabSeriesTorrent adds an uploaded .torrent file for a series (TV category, so the
 // multi-file importer handles a pack) and records the grab.
 func (c *Coordinator) GrabSeriesTorrent(ctx context.Context, seriesID int64, file []byte, filename, title string) error {
-	hash, err := c.addTorrentFile(ctx, file, filename, title, seriesCategory)
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, seriesCategory)
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	if c.series != nil {
 		if s, err := c.series.Get(ctx, seriesID); err == nil {
 			c.recordSeriesGrab(ctx, seriesID, title, "manual", s.QualityProfile, hash)
@@ -515,7 +533,7 @@ func (c *Coordinator) GrabSeriesTorrent(ctx context.Context, seriesID int64, fil
 		// An uploaded torrent is as deliberate as a choice gets — import it whatever it
 		// scores against what's already there.
 		c.markGrabManual(ctx, hash)
-		c.series.AddEvent(ctx, seriesID, "grabbed", "Uploaded torrent — "+title)
+		c.series.AddEvent(ctx, seriesID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -535,10 +553,11 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			return err
 		}
 	}
-	hash, err := c.addTorrentFile(ctx, file, filename, title, bookCategory)
+	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, bookCategory)
 	if err != nil {
 		return err
 	}
+	ctx = withUploadedTransport(ctx, tr)
 	if c.books != nil {
 		if b, err := c.books.Get(ctx, bookID); err == nil {
 			// "manual" as the indexer, same as the movie and series paths: seedRules
@@ -548,7 +567,7 @@ func (c *Coordinator) GrabBookTorrent(ctx context.Context, bookID, versionID int
 			c.recordBookGrab(ctx, bookID, versionID, title, "manual", b.QualityProfile, hash)
 			c.markGrabManual(ctx, hash) // imports into this book whatever the torrent is called
 		}
-		c.books.AddEvent(ctx, bookID, "grabbed", "Uploaded torrent — "+title)
+		c.books.AddEvent(ctx, bookID, "grabbed", uploadedEvent(tr, title))
 	}
 	return nil
 }
@@ -2250,7 +2269,16 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		}
 	}
 	for _, it := range queue {
+		usenet := it.Transport == download.TransportUsenet
 		if !it.Complete() {
+			// A usenet job that failed although what it was for is in the library (it
+			// landed another way first) has nothing left to do in SABnzbd: clear it out,
+			// partial files and all, rather than leave a failure on the queue for good.
+			if usenet && it.Phase() == "error" {
+				if g := matchGrab(grabs, it.Hash, it.Name); g != nil && g.Status == grabStatusImported {
+					c.clearFailedUsenetJob(ctx, it, *g)
+				}
+			}
 			continue // still downloading — never remove before it's done + imported
 		}
 		g := matchGrab(grabs, it.Hash, it.Name)
@@ -2261,9 +2289,11 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		// even if the originating indexer was later removed or renamed.
 		//   off → remove as soon as it's imported (no seeding).
 		//   on  → remove once it hits a ratio or seeding-time goal (both 0 = forever).
+		// A usenet job never seeds, whatever its row says (one recorded before the
+		// transport was known may say it does): it goes as soon as it's imported.
 		var over bool
 		ratio := it.SeedRatio()
-		if !g.SeedEnabled {
+		if !g.SeedEnabled || usenet {
 			over = true
 		} else {
 			// ratio < 0 means the client couldn't give us an honest number — see
@@ -2284,6 +2314,10 @@ func (c *Coordinator) ManageSeeding(ctx context.Context) {
 		}
 		// Only data whose content Arrmada imported is deleted with the torrent.
 		deleteData := g.Status == grabStatusImported
+		if usenet {
+			c.cleanUpUsenetJob(ctx, it, *g, deleteData)
+			continue
+		}
 		if err := c.dropTorrent(ctx, it.Hash, deleteData); err != nil {
 			c.log.Warn("automation: remove seeded torrent failed", "release", g.Title, "err", err)
 			continue

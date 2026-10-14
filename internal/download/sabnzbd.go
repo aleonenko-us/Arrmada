@@ -754,10 +754,14 @@ func (s *SABnzbd) Remove(ctx context.Context, dc Client, key string, deleteData 
 		return nil
 	}
 	if err := deleteLeftover(target, guard); err != nil {
-		return fmt.Errorf("SABnzbd archived the job, but what it left at %s couldn't be deleted: %w", target, err)
+		return fmt.Errorf("SABnzbd archived the job, but %w (%s): %w", ErrLeftoverNotDeleted, target, err)
 	}
 	return nil
 }
+
+// ErrLeftoverNotDeleted: a finished job was archived, so it has left the client, but the
+// folder it left behind couldn't be deleted. The removal happened; only the tidying didn't.
+var ErrLeftoverNotDeleted = errors.New("what it left behind couldn't be deleted")
 
 // deleteLeftover deletes a finished job's leftovers. SABnzbd's storage is the job's folder,
 // or — for a job of one file — that file, inside the job's folder: then the file goes, and

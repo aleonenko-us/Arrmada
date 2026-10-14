@@ -110,6 +110,12 @@ func (c *Coordinator) StallInfo(ctx context.Context) map[string]StallState {
 		if g.InfoHash == "" {
 			continue
 		}
+		if g.usenet() {
+			// A usenet job is never replaced for making no progress (usenetlife.go): there's
+			// no countdown to show. A failure is acted on when it happens.
+			out[strings.ToLower(g.InfoHash)] = StallState{Off: true}
+			continue
+		}
 		window, on := c.stallWindow(ctx, g)
 		st := StallState{Off: !on}
 		at, seen := clocks[g.ID]
@@ -202,11 +208,20 @@ var errSearchUnavailable = errors.New("search unavailable")
 // torrent gone or stuck? target is only built when the answer is yes, so a healthy queue
 // costs no extra lookups.
 func (c *Coordinator) judgeStall(ctx context.Context, g grab, queue []download.Item, tick *stallTick, target func(ctx context.Context) (stallTarget, bool)) {
+	item, found := findQueuedGroup(queue, g)
+	if found && item.Transport == download.TransportUsenet {
+		// A usenet job in its client has rules of its own (usenetlife.go): it never fails
+		// over for making no progress, and a failure is acted on at once, whatever the stall
+		// window — SABnzbd's verdict is final, and there's no copy to protect. Gone from the
+		// client, it is a vanished download like any other (below).
+		c.stallEvidenceHeld(g.ID, "")
+		c.judgeUsenetJob(ctx, g, item, tick, target)
+		return
+	}
 	window, on := c.stallWindow(ctx, g)
 	if !on {
 		return // fail-over off for this grab
 	}
-	item, found := findQueuedGroup(queue, g)
 	// Recorded before the age gate, so a grab's evidence is already being watched by the
 	// time it is old enough to judge.
 	settled := c.stallEvidenceHeld(g.ID, stallEvidenceOf(item, found))
