@@ -206,8 +206,8 @@ function ConvertForm({ s, commit }: { s: Settings; commit: Commit }) {
             )}
           </div>
         )}
-        <Toggle save={pause} label="Pause while someone is watching Plex"
-          hint={s.plex_watching_known ? "Nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs Plex watch monitoring turned on (<Link to={LINKS.plexMonitoring} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Plex</Link>) — until then this does nothing.</>} />
+        <Toggle save={pause} label="Pause while someone is watching"
+          hint={s.plex_watching_known ? "Someone playing something on Plex or Jellyfin: nothing new starts, and a running conversion is frozen until the stream stops." : <>Needs watch monitoring turned on for your media server (<Link to={LINKS.mediaServers} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Media servers</Link>) — until then this does nothing.</>} />
       </Section>
 
       <Section title="Format" desc="HEVC by default: the best quality for the size. Whether your own players take each format as it is shows under Your devices below. HDR10, HDR10+ and HLG are kept.">

@@ -56,7 +56,7 @@ func TestTranscodeHotSpots(t *testing.T) {
 	// Outside the window: not counted.
 	ins(sessionRecord{UserID: "1", RatingKey: "9", MediaType: "movie", Title: "Old", Decision: "transcode", StartedAt: now - 400*86400, StoppedAt: now - 400*86400 + 60})
 
-	hs, err := s.hotSpots(ctx, windowStart(90))
+	hs, err := s.hotSpots(ctx, windowStart(90), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestNeverWatched(t *testing.T) {
 	older := time.Now().Add(-90 * 24 * time.Hour).Unix()
 	fresh := time.Now().Add(-5 * 24 * time.Hour).Unix()
 
-	v, err := s.Library(ctx, 90, false)
+	v, err := s.Library(ctx, 90, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestNeverWatched(t *testing.T) {
 		sessionRecord{UserID: "1", RatingKey: "811", MediaType: "episode", Title: "Ep", GrandparentTitle: "Severance", GrandparentRatingKey: "800", StartedAt: 100, StoppedAt: 200},
 		sessionRecord{UserID: "1", RatingKey: "911", MediaType: "episode", Title: "Ep", GrandparentTitle: "The Bear", StartedAt: 100, StoppedAt: 200},
 	)
-	v, err = s.Library(ctx, 90, false)
+	v, err = s.Library(ctx, 90, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestLibraryMostWatched(t *testing.T) {
 		sessionRecord{UserID: "1", RatingKey: "6", MediaType: "movie", Title: "Heat", StartedAt: now - 7000, StoppedAt: now - 7000 + 10000},
 		sessionRecord{UserID: "1", RatingKey: "811", MediaType: "episode", Title: "Ep", GrandparentTitle: "Severance", GrandparentRatingKey: "800", StartedAt: now - 500, StoppedAt: now - 100},
 	)
-	v, err := s.Library(ctx, 30, false)
+	v, err := s.Library(ctx, 30, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestLibraryMostWatched(t *testing.T) {
 	if len(v.MostWatchedShows) != 1 || v.MostWatchedShows[0].Media != "series" || v.MostWatchedShows[0].TMDB != 95396 {
 		t.Errorf("shows = %+v", v.MostWatchedShows)
 	}
-	h, _ := s.Library(ctx, 30, true)
+	h, _ := s.Library(ctx, 30, true, "")
 	if h.MostWatchedMovies[0].Title != "Heat" {
 		t.Errorf("by hours = %+v", h.MostWatchedMovies)
 	}

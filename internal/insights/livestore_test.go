@@ -39,7 +39,7 @@ func newRestartRig(t *testing.T) *restartRig {
 func (r *restartRig) boot() *Service {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := NewService(r.st.DB(), settings.NewService(r.st.DB()), nil, r.bus, log)
-	s.restoreLive(context.Background())
+	s.restoreLive(context.Background(), s.plex)
 	return s
 }
 
@@ -87,7 +87,7 @@ func TestRestartResumesLiveSession(t *testing.T) {
 	s1 := rig.boot()
 	for i, st := range []string{"playing", "playing", "buffering", "playing"} {
 		now, sess := at(time.Duration(i*5)*time.Second, int64(i*5000), st)
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 	if rig.saved() != 1 {
 		t.Fatalf("saved streams = %d, want 1", rig.saved())
@@ -97,10 +97,10 @@ func TestRestartResumesLiveSession(t *testing.T) {
 	s2 := rig.boot()
 	for _, i := range []int{20, 25} { // back 5 s after the last poll, the position kept moving
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s2.reconcile(ctx, []plex.Session{sess}, now)
+		s2.reconcile(ctx, s2.plex, []plex.Session{sess}, now)
 	}
 	end, _ := at(30*time.Second, 0, "")
-	s2.reconcile(ctx, nil, end)
+	s2.reconcile(ctx, s2.plex, nil, end)
 
 	rows := rig.rows()
 	if len(rows) != 1 {
@@ -135,12 +135,12 @@ func TestCrashRecoveryFinalizesVanished(t *testing.T) {
 	s1 := rig.boot()
 	for _, i := range []int{0, 5, 10} {
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 
 	s2 := rig.boot()
 	later, _ := at(3*time.Hour, 0, "")
-	s2.reconcile(ctx, nil, later)
+	s2.reconcile(ctx, s2.plex, nil, later)
 	rows := rig.rows()
 	last, _ := at(10*time.Second, 0, "")
 	if len(rows) != 1 || rows[0].StoppedAt != last.Unix() {
@@ -159,19 +159,19 @@ func TestResumeGapTooLongStartsNew(t *testing.T) {
 	s1 := rig.boot()
 	for _, i := range []int{0, 5} {
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 
 	s2 := rig.boot()
 	now, sess := at(2*time.Hour, 7_200_000, "playing")
-	s2.reconcile(ctx, []plex.Session{sess}, now)
+	s2.reconcile(ctx, s2.plex, []plex.Session{sess}, now)
 	rows := rig.rows()
 	last, _ := at(5*time.Second, 0, "")
 	if len(rows) != 1 || rows[0].StoppedAt != last.Unix() {
 		t.Fatalf("rows = %+v, want the old play closed at %d", rows, last.Unix())
 	}
-	if ls := s2.live["5"]; ls == nil || !ls.started.Equal(now) {
-		t.Fatalf("live = %+v, want a fresh play starting %v", s2.live["5"], now)
+	if ls := s2.plex.live["5"]; ls == nil || !ls.started.Equal(now) {
+		t.Fatalf("live = %+v, want a fresh play starting %v", s2.plex.live["5"], now)
 	}
 	if n := rig.startedEvents(); n != 2 {
 		t.Errorf("stream.started published %d times, want 2 (the original and the new play)", n)
@@ -195,15 +195,15 @@ func TestResumeGapCreditedAsPausedWhenOffsetStalled(t *testing.T) {
 			s1 := rig.boot()
 			for _, i := range []int{0, 5} {
 				now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-				s1.reconcile(ctx, []plex.Session{sess}, now)
+				s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 			}
 			s2 := rig.boot()
 			now, sess := at(65*time.Second, tc.offsetBack, "playing") // a 60 s gap
-			s2.reconcile(ctx, []plex.Session{sess}, now)
+			s2.reconcile(ctx, s2.plex, []plex.Session{sess}, now)
 			now, sess = at(70*time.Second, tc.offsetBack+5000, "playing")
-			s2.reconcile(ctx, []plex.Session{sess}, now)
+			s2.reconcile(ctx, s2.plex, []plex.Session{sess}, now)
 			end, _ := at(75*time.Second, 0, "")
-			s2.reconcile(ctx, nil, end)
+			s2.reconcile(ctx, s2.plex, nil, end)
 			rows := rig.rows()
 			if len(rows) != 1 || rows[0].PausedMS != tc.wantPaused {
 				t.Fatalf("rows = %+v, want one play with paused %d ms", rows, tc.wantPaused)
@@ -220,13 +220,13 @@ func TestFinalizeIsAtomic(t *testing.T) {
 	s1 := rig.boot()
 	for _, i := range []int{0, 5} {
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 	if _, err := rig.st.DB().Exec(`CREATE TRIGGER boom BEFORE INSERT ON stream_sessions BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
 		t.Fatal(err)
 	}
 	end, _ := at(10*time.Second, 0, "")
-	s1.reconcile(ctx, nil, end)
+	s1.reconcile(ctx, s1.plex, nil, end)
 	if len(rig.rows()) != 0 || rig.saved() != 1 {
 		t.Fatalf("after a failed insert: rows %d, saved %d; want 0 and the saved copy kept", len(rig.rows()), rig.saved())
 	}
@@ -235,7 +235,7 @@ func TestFinalizeIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	s2 := rig.boot()
-	s2.reconcile(ctx, nil, end.Add(time.Minute))
+	s2.reconcile(ctx, s2.plex, nil, end.Add(time.Minute))
 	if len(rig.rows()) != 1 || rig.saved() != 0 {
 		t.Fatalf("after the restart: rows %d, saved %d; want the play recorded once", len(rig.rows()), rig.saved())
 	}
@@ -248,12 +248,12 @@ func TestFlushAllEmptiesSavedStreams(t *testing.T) {
 	s1 := rig.boot()
 	for _, i := range []int{0, 5} {
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 	s2 := rig.boot() // monitoring was switched off while Arrmada was down
-	s2.flushAll(ctx)
-	if len(rig.rows()) != 1 || rig.saved() != 0 || len(s2.live) != 0 {
-		t.Fatalf("rows %d, saved %d, live %d; want the play recorded and nothing left", len(rig.rows()), rig.saved(), len(s2.live))
+	s2.flushAll(ctx, s2.plex)
+	if len(rig.rows()) != 1 || rig.saved() != 0 || len(s2.plex.live) != 0 {
+		t.Fatalf("rows %d, saved %d, live %d; want the play recorded and nothing left", len(rig.rows()), rig.saved(), len(s2.plex.live))
 	}
 }
 
@@ -264,7 +264,7 @@ func TestRunStopDoesNotFinalize(t *testing.T) {
 	s1 := rig.boot()
 	for _, i := range []int{0, 5} {
 		now, sess := at(time.Duration(i)*time.Second, int64(i*1000), "playing")
-		s1.reconcile(ctx, []plex.Session{sess}, now)
+		s1.reconcile(ctx, s1.plex, []plex.Session{sess}, now)
 	}
 	stopped, cancel := context.WithCancel(ctx)
 	cancel()

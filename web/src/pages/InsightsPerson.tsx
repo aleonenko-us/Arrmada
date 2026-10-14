@@ -7,13 +7,15 @@ import { useSearchParamState } from "../lib/useSearchState";
 import { EmptyState, ErrorState } from "../ui";
 import { Page } from "../ui/Page";
 import { HBarChart } from "./insights/charts";
-import { Avatar, Chip, DECISION, StatTile, fmtDate, fmtDay, fmtDur, fmtStall, geoLabel } from "./insights/shared";
+import { Avatar, Chip, DECISION, RowServer, StatTile, fmtDate, fmtDay, fmtDur, fmtStall, geoLabel } from "./insights/shared";
 import { progressBadge } from "./insights/HistoryView";
 
-// A Plex user's People page: who they are on Plex, how much they watch, what, on which
-// devices and from where, how far they get, and how often their streams stall. It is the
-// owner's view of their own server, for staff only (the API refuses anyone else), and it
-// shows Plex video plays only — audiobook listening never appears here.
+// A person's People page: who they are on their server (Plex or Jellyfin — someone on both
+// has a page per server), how much they watch, what, on which devices and from where, how
+// far they get, and how often their streams stall (Plex only: Jellyfin reports no
+// buffering). It is the owner's view of their own server, for staff only (the API refuses
+// anyone else), and it shows recorded video plays only — audiobook listening never appears
+// here.
 
 const WINDOWS = ["0", "30", "90", "365"] as const;
 type Win = (typeof WINDOWS)[number];
@@ -43,7 +45,7 @@ export function InsightsPerson({ id }: { id: string }) {
       <Page>
         <Link to="/insights?tab=people" className="mb-3 inline-block text-sm font-semibold" style={{ color: "var(--accent-text)" }}>← All people</Link>
         {err?.missing ? (
-          <EmptyState title="Nobody by that id" body={<p className="text-sm">No Plex user with this id has watched anything here.</p>} />
+          <EmptyState title="Nobody by that id" body={<p className="text-sm">Nobody with this id on Plex or Jellyfin has watched anything here.</p>} />
         ) : err && !p ? (
           <ErrorState what="this person" message={err.message} onRetry={load} busy={busy} />
         ) : !p ? (
@@ -66,7 +68,7 @@ function Profile({ p, win, setWin }: { p: PersonProfile; win: Win; setWin: (w: W
         <div className="flex min-w-0 items-center gap-3">
           <Avatar url={p.avatar_url} name={p.username} size={56} />
           <div className="min-w-0">
-            <div className="truncate text-2xl font-bold">{p.username || p.id}</div>
+            <div className="flex min-w-0 items-center gap-2"><span className="truncate text-2xl font-bold">{p.username || p.id}</span><RowServer server={p.server} /></div>
             <div className="text-sm text-ink-dim">
               {p.total_plays > 0 ? <>First play {fmtDay(p.first_seen)} · last {fmtDate(p.last_seen)}{windowed ? ` (${span})` : ""}</> : `No plays ${span}`}
             </div>
@@ -80,9 +82,13 @@ function Profile({ p, win, setWin }: { p: PersonProfile; win: Win; setWin: (w: W
         <StatTile label="Watch time" value={fmtDur(p.total_secs)} sub={span} />
         <StatTile label="Finished" value={p.completion_of ? `${p.completion_pct}%` : "—"}
           sub={p.completion_of ? `of ${p.completion_of.toLocaleString()} plays reached 90%` : "no runtimes recorded"} />
-        <StatTile label="Stalls" value={p.stalls.events.toLocaleString()}
-          sub={`${p.stalls.rate_pct}% of plays${p.stalls.stall_ms ? ` · ${fmtStall(p.stalls.stall_ms)} stalled` : ""}`}
-          color={p.stalls.events ? "var(--avoid-text)" : undefined} />
+        {p.server === "jellyfin" ? (
+          <StatTile label="Stalls" value="—" sub="Jellyfin doesn't report buffering" />
+        ) : (
+          <StatTile label="Stalls" value={p.stalls.events.toLocaleString()}
+            sub={`${p.stalls.rate_pct}% of plays${p.stalls.stall_ms ? ` · ${fmtStall(p.stalls.stall_ms)} stalled` : ""}`}
+            color={p.stalls.events ? "var(--avoid-text)" : undefined} />
+        )}
       </div>
 
       {p.top_titles.length > 0 && (

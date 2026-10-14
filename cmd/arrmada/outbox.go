@@ -27,12 +27,15 @@ type importConsumers struct {
 	requests  *requests.Service
 	audio     *audioserver.Server
 	grp       *safego.Group // background work a handler starts (the audiobook warm-up)
-	// plex queues a debounced Plex scan of a changed folder. It never blocks or fails, so
-	// the consumer is done as soon as the folder is queued, Plex up or not.
+	// plex queues a debounced scan of a changed folder on every media server (Plex and
+	// Jellyfin, mediaservers.go; the field and the consumer name predate Jellyfin). It
+	// never blocks or fails, so the consumer is done as soon as the folder is queued, the
+	// servers up or not.
 	plex interface{ Request(kind, dir string) }
 	// showFolder is a show's library folder ("" while it has no files).
 	showFolder func(ctx context.Context, seriesID int64) string
-	// plexIndexStale asks the Plex library index to look again soon (nil = nothing).
+	// plexIndexStale asks the media servers' library indexes to look again soon (nil =
+	// nothing).
 	plexIndexStale func()
 	// issues resolves a reported problem being fixed when the new file for it lands.
 	issues *issues.Service

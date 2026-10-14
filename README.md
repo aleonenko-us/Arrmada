@@ -13,7 +13,7 @@
 </div>
 
 Arrmada finds, downloads and organises your movies, TV, books and audiobooks, lets your
-household request what they want to watch, and keeps your Plex library tidy — with one
+household request what they want to watch, and keeps your Plex or Jellyfin library tidy — with one
 database and one web page instead of half a dozen apps. qBittorrent comes with it, already
 set up.
 
@@ -24,10 +24,10 @@ set up.
 
 - 🎬 **Movies and TV** — search, download, import, rename and upgrade, the way Radarr and Sonarr do. Anime numbering included.
 - 📚 **Books and audiobooks** — ebooks and audiobooks with series tracking, plus a built-in audiobook server for listening apps like Lissen.
-- 🙋 **Requests** — family and friends browse and request titles, Overseerr-style, and get told when they're ready. Sign in with Plex.
+- 🙋 **Requests** — family and friends browse and request titles, Overseerr-style, and get told when they're ready. Sign in with Plex or Jellyfin.
 - 💬 **Subtitles** — pulls them out of the file, downloads them, or writes them with local AI.
 - 🗜️ **Convert** — shrinks wasteful video overnight to HEVC or AV1, checking every result against the original.
-- 📈 **Plex insights** — who's watching what, history and stats, Tautulli-style.
+- 📺 **Plex and Jellyfin** — connect either or both: Watch buttons, library updates after every change, and Insights — who's watching what, history and stats, Tautulli-style.
 - 🛟 **Safety nets** — hardlinked imports, a recycle bin, nightly backups and one-step rollbacks.
 
 [See everything it does →](docs/features.md)
@@ -44,9 +44,25 @@ curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.s
 It asks where to keep Arrmada's files and where your media lives (press Enter to accept the
 suggestions), then starts everything. Open the address it prints —
 **`http://<your-server>:7878`** — create your admin account, and a short setup walks you
-through the rest in the browser: your free TMDB key, your library folders, Plex and indexers.
+through the rest in the browser: your free TMDB key, your library folders, your media server (Plex, Jellyfin or both) and indexers.
 
 [Install guide, options and Unraid notes →](docs/install.md)
+
+### Prefer Docker Compose?
+
+In an empty folder on the server:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
+```
+
+Edit the lines marked `←` (your media folder, the user and group, your timezone, the port),
+then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+To update: `docker compose pull && docker compose up -d`. That skips the installer's
+pre-update backup and automatic roll-back; the app still copies its database before any
+upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
+
+Using Portainer? The same file works as a stack: [Using Portainer →](docs/install.md#using-portainer)
 
 ## Update
 
@@ -58,6 +74,10 @@ curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.s
 
 It backs up the database, updates, and checks Arrmada comes back — if the new version doesn't
 start, it goes back to the one you had. (In Arrmada's folder, `sh update.sh` does the same.)
+
+Installs follow the **stable** channel: updates bring the latest published release, never
+unreleased code. Developers can follow **main** instead, the newest code compiled on the
+server ([Following main](docs/updating.md#following-main-developers)).
 [More about updating →](docs/updating.md)
 
 ## Screenshots
@@ -88,7 +108,7 @@ start, it goes back to the one you had. (In Arrmada's folder, `sh update.sh` doe
 - A 64-bit Intel or AMD (x86-64) server running Linux — Unraid, Debian, Ubuntu and the like.
 - Docker with Compose v2.
 - A free [TMDB API key](https://www.themoviedb.org/settings/api) (entered in the app).
-- Optional: Intel or AMD graphics for faster Convert and AI subtitles, and a Plex server.
+- Optional: Intel or AMD graphics for faster Convert and AI subtitles, and a Plex or Jellyfin server.
 
 ## Documentation
 

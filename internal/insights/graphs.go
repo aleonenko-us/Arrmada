@@ -54,7 +54,8 @@ func metricExpr(metric string) string {
 const graphMediaTypes = `media_type IN ('episode','movie','track')`
 
 // Graphs computes all the time-series over the last windowDays, in plays or hours.
-func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Graphs, error) {
+// server narrows every series to one server's plays ("" for both).
+func (s *Service) Graphs(ctx context.Context, windowDays int, metric, server string) (Graphs, error) {
 	if windowDays <= 0 {
 		windowDays = 30
 	}
@@ -74,7 +75,7 @@ func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Gr
 	n := len(days)
 	g.DailyTV, g.DailyMovies, g.DailyMusic = make([]float64, n), make([]float64, n), make([]float64, n)
 	g.DailyDirectPlay, g.DailyDirectStream, g.DailyTranscode = make([]float64, n), make([]float64, n), make([]float64, n)
-	err := s.dailySeries(ctx, `media_type`, agg, since, idx, func(i int, key string, v float64) {
+	err := s.dailySeries(ctx, `media_type`, agg, since, server, idx, func(i int, key string, v float64) {
 		switch key {
 		case "episode":
 			g.DailyTV[i] += v
@@ -87,7 +88,7 @@ func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Gr
 	if err != nil {
 		return Graphs{}, err
 	}
-	err = s.dailySeries(ctx, `decision`, agg, since, idx, func(i int, key string, v float64) {
+	err = s.dailySeries(ctx, `decision`, agg, since, server, idx, func(i int, key string, v float64) {
 		switch key {
 		case "transcode":
 			g.DailyTranscode[i] += v
@@ -101,10 +102,10 @@ func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Gr
 		return Graphs{}, err
 	}
 
-	if err := scanBuckets(ctx, s.repo, `strftime('%w', started_at, 'unixepoch', 'localtime')`, agg, since, g.ByDayOfWeek); err != nil {
+	if err := scanBuckets(ctx, s.repo, `strftime('%w', started_at, 'unixepoch', 'localtime')`, agg, since, server, g.ByDayOfWeek); err != nil {
 		return Graphs{}, err
 	}
-	if err := scanBuckets(ctx, s.repo, `strftime('%H', started_at, 'unixepoch', 'localtime')`, agg, since, g.ByHour); err != nil {
+	if err := scanBuckets(ctx, s.repo, `strftime('%H', started_at, 'unixepoch', 'localtime')`, agg, since, server, g.ByHour); err != nil {
 		return Graphs{}, err
 	}
 
@@ -112,18 +113,18 @@ func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Gr
 	// floor: a failed query rendered as an empty Top Platforms / Top Users card, so a
 	// broken query and a quiet week looked identical.
 	byDuration := metric == MetricDuration
-	plats, err := s.repo.topNames(ctx, "platform", "platform", since, byDuration, 10)
+	plats, err := s.repo.topNames(ctx, "platform", "platform", since, byDuration, 10, server)
 	if err != nil {
 		return Graphs{}, err
 	}
 	g.TopPlatforms = toNameStats(plats)
-	users, err := s.repo.topNames(ctx, "user_id", "user_name", since, byDuration, 10)
+	users, err := s.repo.topNames(ctx, "user_id", "user_name", since, byDuration, 10, server)
 	if err != nil {
 		return Graphs{}, err
 	}
 	g.TopUsers = toNameStats(users)
 
-	bw, err := s.bandwidthSeries(ctx, since)
+	bw, err := s.bandwidthSeries(ctx, since, server)
 	if err != nil {
 		return Graphs{}, err
 	}
@@ -133,10 +134,10 @@ func (s *Service) Graphs(ctx context.Context, windowDays int, metric string) (Gr
 
 // dailySeries sums agg per local day and per value of keyCol over the charted media types,
 // handing each (day index, key, value) to put. Days outside the axis are skipped.
-func (s *Service) dailySeries(ctx context.Context, keyCol, agg string, since int64, idx map[string]int, put func(i int, key string, v float64)) error {
+func (s *Service) dailySeries(ctx context.Context, keyCol, agg string, since int64, server string, idx map[string]int, put func(i int, key string, v float64)) error {
 	rows, err := s.repo.db.QueryContext(ctx, `
 		SELECT strftime('%Y-%m-%d', started_at, 'unixepoch', 'localtime') d, `+keyCol+`, `+agg+`
-		FROM stream_sessions WHERE started_at >= ? AND `+graphMediaTypes+` GROUP BY d, `+keyCol, since)
+		FROM stream_sessions WHERE started_at >= ? AND `+graphMediaTypes+serverAnd("", server)+` GROUP BY d, `+keyCol, since)
 	if err != nil {
 		return err
 	}
@@ -169,8 +170,8 @@ func dayAxis(n int) ([]string, map[string]int) {
 
 // scanBuckets fills a slice keyed by a strftime bucket expression (values are the bucket
 // index) with agg per bucket.
-func scanBuckets(ctx context.Context, r *repo, expr, agg string, since int64, out []float64) error {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+expr+` b, `+agg+` FROM stream_sessions WHERE started_at >= ? GROUP BY b`, since)
+func scanBuckets(ctx context.Context, r *repo, expr, agg string, since int64, server string, out []float64) error {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+expr+` b, `+agg+` FROM stream_sessions WHERE started_at >= ?`+serverAnd("", server)+` GROUP BY b`, since)
 	if err != nil {
 		return err
 	}
@@ -188,11 +189,16 @@ func scanBuckets(ctx context.Context, r *repo, expr, agg string, since int64, ou
 	return rows.Err()
 }
 
-func (s *Service) bandwidthSeries(ctx context.Context, since int64) ([]BWPoint, error) {
+// bandwidthSeries is the peak per hour. Each server's poller records its own samples, so
+// across both servers the hour's figure is each server's peak added together: an upper
+// bound when the two peaked at different moments, never an undercount.
+func (s *Service) bandwidthSeries(ctx context.Context, since int64, server string) ([]BWPoint, error) {
 	rows, err := s.repo.db.QueryContext(ctx, `
-		SELECT strftime('%Y-%m-%d %H:00', at, 'unixepoch', 'localtime') bucket,
-		       MAX(total_kbps), MAX(lan_kbps), MAX(wan_kbps)
-		FROM bandwidth_samples WHERE at >= ? GROUP BY bucket ORDER BY bucket`, since)
+		SELECT bucket, SUM(t), SUM(l), SUM(w) FROM (
+			SELECT strftime('%Y-%m-%d %H:00', at, 'unixepoch', 'localtime') bucket, server,
+			       MAX(total_kbps) t, MAX(lan_kbps) l, MAX(wan_kbps) w
+			FROM bandwidth_samples WHERE at >= ?`+serverAnd("", server)+` GROUP BY bucket, server)
+		GROUP BY bucket ORDER BY bucket`, since)
 	if err != nil {
 		return nil, err
 	}

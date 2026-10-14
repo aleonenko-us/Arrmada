@@ -17,6 +17,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -161,7 +162,7 @@ func TestSetupChecklist(t *testing.T) {
 		t.Fatal(err)
 	}
 	got = checklistDone(getChecklist(t, a))
-	if !got["plex"] || !got["first_title"] || got["first_import"] {
+	if !got["media_server"] || !got["first_title"] || got["first_import"] {
 		t.Errorf("plex and a title, no import: %v", got)
 	}
 	if _, err := db.Exec(`INSERT INTO grabs (movie_id, title, indexer, media_type, info_hash, status) VALUES (1, 'Test.Movie.2020.1080p', 'Off', 'movie', 'abc', 'seeded')`); err != nil {
@@ -177,6 +178,40 @@ func TestSetupChecklist(t *testing.T) {
 	}
 	if c = getChecklist(t, a); c.Done || !c.Dismissed {
 		t.Errorf("a step undone after finishing: done=%v dismissed=%v, want not done but still dismissed", c.Done, c.Dismissed)
+	}
+}
+
+// A Jellyfin server on its own ticks the media server step, the way Plex does, and the
+// step links to both servers' cards.
+func TestSetupChecklistJellyfinOnly(t *testing.T) {
+	t.Setenv("ARRMADA_JELLYFIN_API_KEY", "")
+	a := checklistAPI(t)
+	ctx := context.Background()
+	a.deps.Jellyfin = jellyfinsvc.New(jellyfinsvc.Options{Settings: a.deps.Settings, Keys: a.deps.APIKeys, Version: "test", Log: a.deps.Log})
+	item := func() checklistItem {
+		for _, it := range getChecklist(t, a).Items {
+			if it.Key == "media_server" {
+				return it
+			}
+		}
+		t.Fatal("no media_server item")
+		return checklistItem{}
+	}
+	if it := item(); it.Done || it.Link != "/settings/connections#media-servers" || it.LinkKey != "mediaServerCards" {
+		t.Fatalf("fresh install: %+v", it)
+	}
+	// An address alone isn't a connection; the key makes it one.
+	if err := a.deps.Settings.Set(ctx, jellyfinsvc.KeyURL, "http://127.0.0.1:1"); err != nil {
+		t.Fatal(err)
+	}
+	if item().Done {
+		t.Error("a Jellyfin address with no key ticks the step")
+	}
+	if err := a.deps.APIKeys.Set(ctx, apikeys.Jellyfin, "test-jellyfin-key"); err != nil {
+		t.Fatal(err)
+	}
+	if !item().Done {
+		t.Error("Jellyfin connected, but the media server step isn't ticked")
 	}
 }
 

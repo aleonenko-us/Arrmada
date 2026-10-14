@@ -18,10 +18,10 @@ export const plexApi = {
   linkStart: (m: PlexMode) => req<PlexPin>(`/api/v1/me/plex/link${mode(m)}`, { method: "POST" }),
   linkPoll: (id: number) => req<{ pending?: boolean; linked?: boolean; plex_username?: string }>(`/api/v1/me/plex/link/${id}`),
   unlink: () => req<PlexLink>("/api/v1/me/plex/link", { method: "DELETE" }),
-  // Admin: merge a duplicate Plex requester (from) into the account it belongs with.
-  mergePreview: (target: number, from: number) => req<PlexMergePreview>(`/api/v1/users/${target}/plex/merge?from=${from}`),
+  // Admin: merge a duplicate Plex or Jellyfin requester (from) into the account it belongs with.
+  mergePreview: (target: number, from: number) => req<PlexMergePreview>(`/api/v1/users/${target}/merge?from=${from}`),
   merge: (target: number, from: number) =>
-    req<{ merged: boolean }>(`/api/v1/users/${target}/plex/merge`, { method: "POST", body: JSON.stringify({ from_user_id: from }) }),
+    req<{ merged: boolean }>(`/api/v1/users/${target}/merge`, { method: "POST", body: JSON.stringify({ from_user_id: from }) }),
 };
 
 // PlexMergePreview is what a merge moves, as counts. Audiobook data is only yes/no: admins
@@ -29,7 +29,12 @@ export const plexApi = {
 export interface PlexMergePreview {
   from: string;
   to: string;
+  /** The duplicate's Plex link moves (false when it has none). */
+  plex_link?: boolean;
   plex_username?: string;
+  /** The duplicate's Jellyfin link moves. */
+  jellyfin_link?: boolean;
+  jellyfin_username?: string;
   requests: number;
   following: number;
   notifications: number;

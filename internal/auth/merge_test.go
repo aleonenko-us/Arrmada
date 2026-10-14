@@ -81,7 +81,7 @@ func TestMergePlexDuplicateMovesRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := MergePreview{From: "ownerplex", To: "owner", PlexUsername: "ownerplex", Requests: 1, Following: 2, Notifications: 2, PushDevices: 1, QuotaUsage: 1, AudiobookProgress: true, AudiobookPassword: true, SignedInDevices: 1}
+	want := MergePreview{From: "ownerplex", To: "owner", PlexLink: true, PlexUsername: "ownerplex", Requests: 1, Following: 2, Notifications: 2, PushDevices: 1, QuotaUsage: 1, AudiobookProgress: true, AudiobookPassword: true, SignedInDevices: 1}
 	if p != want {
 		t.Errorf("preview = %+v\nwant      %+v", p, want)
 	}

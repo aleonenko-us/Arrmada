@@ -2,10 +2,13 @@ package insights
 
 import (
 	"context"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/geoip"
+	"github.com/tristenlammi/arrmada/internal/jellyfin"
 )
 
 // watchedExpr is the per-row watched seconds.
@@ -45,16 +48,18 @@ func windowStart(windowDays int) int64 {
 // --- repo: aggregate queries over stream_sessions ---
 
 type titleStatRow struct {
-	Title string
-	Thumb string
-	Plays int
-	Secs  int64
+	Title  string
+	Thumb  string
+	Plays  int
+	Secs   int64
+	Server string
 }
 type nameStatRow struct {
-	ID    string
-	Name  string
-	Plays int
-	Secs  int64
+	ID     string
+	Name   string
+	Plays  int
+	Secs   int64
+	Server string
 }
 
 func orderBy(byDuration bool) string {
@@ -64,7 +69,7 @@ func orderBy(byDuration bool) string {
 	return "plays DESC"
 }
 
-func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since int64, byDuration bool, limit int) ([]titleStatRow, error) {
+func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since int64, byDuration bool, limit int, server string) ([]titleStatRow, error) {
 	// An episode's own thumb is a landscape still: a show's row takes its poster, recorded
 	// since PLEX-20, and falls back to the thumb only for older plays and imports (whose
 	// Tautulli thumb is already a poster).
@@ -72,8 +77,8 @@ func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since 
 	if mediaType == "episode" {
 		thumb = `COALESCE(NULLIF(MAX(grandparent_thumb),''), MAX(thumb))`
 	}
-	q := `SELECT ` + groupCol + ` AS t, ` + thumb + ` AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs
-		FROM stream_sessions WHERE media_type = ? AND started_at >= ? AND ` + groupCol + ` <> ''
+	q := `SELECT ` + groupCol + ` AS t, ` + thumb + ` AS th, COUNT(*) AS plays, ` + watchedSum + ` AS secs, ` + rowServer + `
+		FROM stream_sessions WHERE media_type = ? AND started_at >= ? AND ` + groupCol + ` <> ''` + serverAnd("", server) + `
 		GROUP BY ` + groupCol + ` ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, q, mediaType, since, limit)
 	if err != nil {
@@ -83,7 +88,7 @@ func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since 
 	var out []titleStatRow
 	for rows.Next() {
 		var s titleStatRow
-		if err := rows.Scan(&s.Title, &s.Thumb, &s.Plays, &s.Secs); err != nil {
+		if err := rows.Scan(&s.Title, &s.Thumb, &s.Plays, &s.Secs, &s.Server); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -91,11 +96,11 @@ func (r *repo) topTitles(ctx context.Context, mediaType, groupCol string, since 
 	return out, rows.Err()
 }
 
-func (r *repo) topNames(ctx context.Context, idCol, nameCol string, since int64, byDuration bool, limit int) ([]nameStatRow, error) {
+func (r *repo) topNames(ctx context.Context, idCol, nameCol string, since int64, byDuration bool, limit int, server string) ([]nameStatRow, error) {
 	// Group by the ID column (not the display name) so the id the UI uses for drill-down links is a
 	// real one, and carry a representative name via MAX(nameCol) rather than an arbitrary pick.
-	q := `SELECT ` + idCol + ` AS id, MAX(` + nameCol + `) AS name, COUNT(*) AS plays, ` + watchedSum + ` AS secs
-		FROM stream_sessions WHERE started_at >= ? AND ` + idCol + ` <> ''
+	q := `SELECT ` + idCol + ` AS id, MAX(` + nameCol + `) AS name, COUNT(*) AS plays, ` + watchedSum + ` AS secs, ` + rowServer + `
+		FROM stream_sessions WHERE started_at >= ? AND ` + idCol + ` <> ''` + serverAnd("", server) + `
 		GROUP BY ` + idCol + ` ORDER BY ` + orderBy(byDuration) + ` LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, q, since, limit)
 	if err != nil {
@@ -105,7 +110,7 @@ func (r *repo) topNames(ctx context.Context, idCol, nameCol string, since int64,
 	var out []nameStatRow
 	for rows.Next() {
 		var s nameStatRow
-		if err := rows.Scan(&s.ID, &s.Name, &s.Plays, &s.Secs); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Plays, &s.Secs, &s.Server); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -114,17 +119,17 @@ func (r *repo) topNames(ctx context.Context, idCol, nameCol string, since int64,
 }
 
 type userStatRow struct {
-	ID, Username, Thumb                         string
+	ID, Username, Thumb, Server                 string
 	LastSeen                                    int64
 	LastIP, LastPlatform, LastPlayer, LastTitle string
 	TotalPlays                                  int
 	TotalSecs                                   int64
 }
 
-func (r *repo) users(ctx context.Context) ([]userStatRow, error) {
+func (r *repo) users(ctx context.Context, server string) ([]userStatRow, error) {
 	// The last-session join is pinned to a single row via MAX(id) at that started_at, so two
 	// sessions sharing a started_at don't fan the user out into duplicate rows.
-	q := `SELECT u.id, u.username, u.thumb,
+	q := `SELECT u.id, u.username, u.thumb, u.server,
 			COALESCE(a.last,0), COALESCE(a.plays,0), COALESCE(a.secs,0),
 			COALESCE(l.ip_address,''), COALESCE(l.platform,''), COALESCE(l.player,''), COALESCE(l.title,'')
 		FROM plex_users u
@@ -133,7 +138,7 @@ func (r *repo) users(ctx context.Context) ([]userStatRow, error) {
 		LEFT JOIN stream_sessions l ON l.id = (
 			SELECT x.id FROM stream_sessions x
 			WHERE x.user_id = u.id AND x.started_at = a.last
-			ORDER BY x.id DESC LIMIT 1)
+			ORDER BY x.id DESC LIMIT 1)` + serverWhere("u.", server) + `
 		ORDER BY COALESCE(a.plays,0) DESC, u.username ASC`
 	rows, err := r.db.QueryContext(ctx, q)
 	if err != nil {
@@ -143,7 +148,7 @@ func (r *repo) users(ctx context.Context) ([]userStatRow, error) {
 	var out []userStatRow
 	for rows.Next() {
 		var u userStatRow
-		if err := rows.Scan(&u.ID, &u.Username, &u.Thumb, &u.LastSeen, &u.TotalPlays, &u.TotalSecs,
+		if err := rows.Scan(&u.ID, &u.Username, &u.Thumb, &u.Server, &u.LastSeen, &u.TotalPlays, &u.TotalSecs,
 			&u.LastIP, &u.LastPlatform, &u.LastPlayer, &u.LastTitle); err != nil {
 			return nil, err
 		}
@@ -154,18 +159,21 @@ func (r *repo) users(ctx context.Context) ([]userStatRow, error) {
 
 // --- service: watch statistics, users, libraries, recently-added ---
 
-// TitleStat / NameStat are ranked entries for the watch-statistics cards.
+// TitleStat / NameStat are ranked entries for the watch-statistics cards. Server is the
+// server the entry's plays were on, "" when they were on both (a film watched on each).
 type TitleStat struct {
 	Title    string `json:"title"`
 	ThumbURL string `json:"thumb_url"`
 	Plays    int    `json:"plays"`
 	Secs     int64  `json:"secs"`
+	Server   string `json:"server"`
 }
 type NameStat struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Plays int    `json:"plays"`
-	Secs  int64  `json:"secs"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Plays  int    `json:"plays"`
+	Secs   int64  `json:"secs"`
+	Server string `json:"server"`
 }
 
 // Stats is the home watch-statistics bundle over a window.
@@ -177,21 +185,22 @@ type Stats struct {
 	Recent    []HistoryEntry `json:"recently_watched"`
 }
 
-// Stats computes the watch-statistics cards over the last windowDays.
-func (s *Service) Stats(ctx context.Context, windowDays int, byDuration bool) (Stats, error) {
+// Stats computes the watch-statistics cards over the last windowDays, on one server or
+// both (server "").
+func (s *Service) Stats(ctx context.Context, windowDays int, byDuration bool, server string) (Stats, error) {
 	if windowDays <= 0 {
 		windowDays = 30
 	}
 	since := windowStart(windowDays)
 	const n = 5
-	movies, err := s.repo.topTitles(ctx, "movie", "title", since, byDuration, n)
+	movies, err := s.repo.topTitles(ctx, "movie", "title", since, byDuration, n, server)
 	if err != nil {
 		return Stats{}, err
 	}
-	shows, _ := s.repo.topTitles(ctx, "episode", "grandparent_title", since, byDuration, n)
-	users, _ := s.repo.topNames(ctx, "user_id", "user_name", since, byDuration, n)
-	plats, _ := s.repo.topNames(ctx, "platform", "platform", since, byDuration, n)
-	recent, _, _ := s.repo.history(ctx, HistoryFilter{Limit: 8})
+	shows, _ := s.repo.topTitles(ctx, "episode", "grandparent_title", since, byDuration, n, server)
+	users, _ := s.repo.topNames(ctx, "user_id", "user_name", since, byDuration, n, server)
+	plats, _ := s.repo.topNames(ctx, "platform", "platform", since, byDuration, n, server)
+	recent, _, _ := s.repo.history(ctx, HistoryFilter{Limit: 8, Server: server})
 
 	out := Stats{
 		Movies:    toTitleStats(movies),
@@ -209,14 +218,14 @@ func (s *Service) Stats(ctx context.Context, windowDays int, byDuration bool) (S
 func toTitleStats(rows []titleStatRow) []TitleStat {
 	out := make([]TitleStat, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, TitleStat{Title: r.Title, ThumbURL: proxyImage(r.Thumb), Plays: r.Plays, Secs: r.Secs})
+		out = append(out, TitleStat{Title: r.Title, ThumbURL: proxyImage(r.Thumb), Plays: r.Plays, Secs: r.Secs, Server: r.Server})
 	}
 	return out
 }
 func toNameStats(rows []nameStatRow) []NameStat {
 	out := make([]NameStat, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, NameStat{ID: r.ID, Name: r.Name, Plays: r.Plays, Secs: r.Secs})
+		out = append(out, NameStat{ID: r.ID, Name: r.Name, Plays: r.Plays, Secs: r.Secs, Server: r.Server})
 	}
 	return out
 }
@@ -224,8 +233,9 @@ func toNameStats(rows []nameStatRow) []NameStat {
 // UserEntry is one row of the Users table.
 type UserEntry struct {
 	ID           string         `json:"id"`
+	Server       string         `json:"server"` // one row per server identity: the server this person watches on
 	Username     string         `json:"username"`
-	AvatarURL    string         `json:"avatar_url"` // a plex.tv avatar, or "" (see avatarURL)
+	AvatarURL    string         `json:"avatar_url"` // a plex.tv avatar, a proxied Jellyfin picture, or "" (see avatarURL)
 	LastSeen     int64          `json:"last_seen"`
 	LastIP       string         `json:"last_ip"`
 	LastPlatform string         `json:"last_platform"`
@@ -236,16 +246,16 @@ type UserEntry struct {
 	Geo          geoip.Location `json:"geo"`
 }
 
-// Users returns per-user activity aggregates.
-func (s *Service) Users(ctx context.Context) ([]UserEntry, error) {
-	rows, err := s.repo.users(ctx)
+// Users returns per-user activity aggregates, of one server's people or both (server "").
+func (s *Service) Users(ctx context.Context, server string) ([]UserEntry, error) {
+	rows, err := s.repo.users(ctx, server)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]UserEntry, 0, len(rows))
 	for _, u := range rows {
 		out = append(out, UserEntry{
-			ID: u.ID, Username: u.Username, AvatarURL: avatarURL(u.Thumb), LastSeen: u.LastSeen, LastIP: u.LastIP,
+			ID: u.ID, Server: u.Server, Username: u.Username, AvatarURL: avatarURL(u.Thumb), LastSeen: u.LastSeen, LastIP: u.LastIP,
 			LastPlatform: u.LastPlatform, LastPlayer: u.LastPlayer, LastTitle: u.LastTitle,
 			TotalPlays: u.TotalPlays, TotalSecs: u.TotalSecs, Geo: s.geo.Lookup(u.LastIP),
 		})
@@ -255,22 +265,80 @@ func (s *Service) Users(ctx context.Context) ([]UserEntry, error) {
 
 // LibraryStat is a library section with its item count.
 type LibraryStat struct {
-	Title string `json:"title"`
-	Type  string `json:"type"` // movie | show | artist
-	Count int64  `json:"count"`
+	Title  string `json:"title"`
+	Type   string `json:"type"` // movie | show | artist
+	Count  int64  `json:"count"`
+	Server string `json:"server"`
 }
 
-// Libraries returns the Plex library sections with counts (live from Plex).
-func (s *Service) Libraries(ctx context.Context) ([]LibraryStat, error) {
-	c := s.client(ctx)
-	libs, err := c.Libraries(ctx)
+// Libraries returns the connected servers' libraries with counts, live from each (server
+// "" for both). One server failing leaves its libraries out; it's an error only when every
+// server asked failed.
+func (s *Service) Libraries(ctx context.Context, server string) ([]LibraryStat, error) {
+	out := []LibraryStat{}
+	asked, failed := 0, 0
+	var firstErr error
+	if server != ServerJellyfin && s.configured(ctx) {
+		asked++
+		c := s.client(ctx)
+		if libs, err := c.Libraries(ctx); err != nil {
+			failed, firstErr = failed+1, err
+		} else {
+			for _, l := range libs {
+				count, _ := c.SectionTotal(ctx, l.Key)
+				out = append(out, LibraryStat{Title: l.Title, Type: l.Type, Count: count, Server: ServerPlex})
+			}
+		}
+	}
+	if w := s.jfw.Load(); server != ServerPlex && w != nil && w.svc.Configured(ctx) {
+		asked++
+		if libs, err := jellyfinLibraries(ctx, w.svc.Client(ctx)); err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			out = append(out, libs...)
+		}
+	}
+	if asked == 0 {
+		// Nothing connected: what Plex's client says (not configured).
+		_, err := s.client(ctx).Libraries(ctx)
+		return nil, err
+	}
+	if failed == asked {
+		return nil, firstErr
+	}
+	return out, nil
+}
+
+// jellyfinLibraries is Jellyfin's movie, show and music libraries with their title counts.
+func jellyfinLibraries(ctx context.Context, c *jellyfin.Client) ([]LibraryStat, error) {
+	vfs, err := c.VirtualFolders(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]LibraryStat, 0, len(libs))
-	for _, l := range libs {
-		count, _ := c.SectionTotal(ctx, l.Key)
-		out = append(out, LibraryStat{Title: l.Title, Type: l.Type, Count: count})
+	var out []LibraryStat
+	for _, vf := range vfs {
+		typ, items := "", []string(nil)
+		switch vf.CollectionType {
+		case "movies":
+			typ, items = "movie", []string{jellyfin.TypeMovie}
+		case "tvshows":
+			typ, items = "show", []string{jellyfin.TypeSeries}
+		case "music":
+			typ, items = "artist", []string{"MusicArtist"}
+		default:
+			continue
+		}
+		st := LibraryStat{Title: vf.Name, Type: typ, Server: ServerJellyfin}
+		if vf.ItemID != "" {
+			// One item is enough: the answer's total is the count.
+			if p, err := c.Items(ctx, jellyfin.ItemsQuery{ParentID: vf.ItemID, IncludeItemTypes: items, Recursive: true, Fields: []string{}, Limit: 1}); err == nil {
+				st.Count = int64(p.TotalRecordCount)
+			}
+		}
+		out = append(out, st)
 	}
 	return out, nil
 }
@@ -282,24 +350,71 @@ type RecentItem struct {
 	Type     string `json:"type"`
 	ThumbURL string `json:"thumb_url"`
 	AddedAt  int64  `json:"added_at"`
+	Server   string `json:"server"`
 }
 
-// RecentlyAdded returns recently-added library items (live from Plex).
-func (s *Service) RecentlyAdded(ctx context.Context, limit int) ([]RecentItem, error) {
-	items, err := s.client(ctx).RecentlyAdded(ctx, limit)
-	if err != nil {
+// RecentlyAdded returns recently-added library items, live from the connected servers
+// (server "" for both), newest first. Like Libraries, one server failing leaves its items
+// out.
+func (s *Service) RecentlyAdded(ctx context.Context, limit int, server string) ([]RecentItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	out := []RecentItem{}
+	asked, failed := 0, 0
+	var firstErr error
+	if server != ServerJellyfin && s.configured(ctx) {
+		asked++
+		if items, err := s.client(ctx).RecentlyAdded(ctx, limit); err != nil {
+			failed, firstErr = failed+1, err
+		} else {
+			for _, it := range items {
+				title, sub := it.Title, ""
+				if it.Type == "episode" && it.GrandparentTitle != "" {
+					title = it.GrandparentTitle
+					sub = it.Title
+				} else if it.Year > 0 {
+					sub = strconv.Itoa(it.Year)
+				}
+				out = append(out, RecentItem{Title: title, Subtitle: sub, Type: it.Type, ThumbURL: proxyImage(it.Thumb), AddedAt: it.AddedAt, Server: ServerPlex})
+			}
+		}
+	}
+	if w := s.jfw.Load(); server != ServerPlex && w != nil && w.svc.Configured(ctx) {
+		asked++
+		if items, err := w.svc.Client(ctx).RecentlyAdded(ctx, limit, ""); err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			for _, it := range items {
+				ri := RecentItem{Title: it.Name, Type: "movie", ThumbURL: proxyImage(JellyfinItemImage(it.ID)), AddedAt: it.DateCreated.Unix(), Server: ServerJellyfin}
+				if !isGUID(it.ID) {
+					ri.ThumbURL = ""
+				}
+				if it.Type == jellyfin.TypeEpisode {
+					ri.Type, ri.Title, ri.Subtitle = "episode", it.SeriesName, it.Name
+					if isGUID(it.SeriesID) {
+						ri.ThumbURL = proxyImage(JellyfinItemImage(it.SeriesID))
+					}
+				} else if it.ProductionYear > 0 {
+					ri.Subtitle = strconv.Itoa(it.ProductionYear)
+				}
+				out = append(out, ri)
+			}
+		}
+	}
+	if asked == 0 {
+		_, err := s.client(ctx).RecentlyAdded(ctx, limit)
 		return nil, err
 	}
-	out := make([]RecentItem, 0, len(items))
-	for _, it := range items {
-		title, sub := it.Title, ""
-		if it.Type == "episode" && it.GrandparentTitle != "" {
-			title = it.GrandparentTitle
-			sub = it.Title
-		} else if it.Year > 0 {
-			sub = strconv.Itoa(it.Year)
-		}
-		out = append(out, RecentItem{Title: title, Subtitle: sub, Type: it.Type, ThumbURL: proxyImage(it.Thumb), AddedAt: it.AddedAt})
+	if failed == asked {
+		return nil, firstErr
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].AddedAt > out[j].AddedAt })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }
@@ -312,13 +427,20 @@ type WatchedTitle struct {
 	Year      int
 }
 
-// RecentlyWatchedByUser returns the distinct titles a Plex user has recently
-// watched, most-recent first — the watch-history seed for the personalized
-// "Recommended for you" row. plexUserID is the numeric Plex account id (what the
-// Plex-login flow stores on the Arrmada user as plex_id, and what sessions key on).
-// Episodes collapse to their show title so one binge is one seed.
-func (s *Service) RecentlyWatchedByUser(ctx context.Context, plexUserID string, limit int) ([]WatchedTitle, error) {
-	if plexUserID == "" {
+// RecentlyWatchedByUser returns the distinct titles a person has recently watched, most
+// recent first — the watch-history seed for the personalized "Recommended for you" row.
+// userIDs are the person's ids on the media servers: the numeric Plex account id (what the
+// Plex-login flow stores on the Arrmada user as plex_id) and/or their Jellyfin user id,
+// which is what sessions key on; plays on either count. Episodes collapse to their show
+// title so one binge is one seed.
+func (s *Service) RecentlyWatchedByUser(ctx context.Context, limit int, userIDs ...string) ([]WatchedTitle, error) {
+	var ids []any
+	for _, id := range userIDs {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
 		return nil, nil
 	}
 	if limit <= 0 {
@@ -331,10 +453,10 @@ func (s *Service) RecentlyWatchedByUser(ctx context.Context, plexUserID string, 
 		   CASE WHEN media_type = 'episode' AND grandparent_title != '' THEN grandparent_title ELSE title END AS lib_title,
 		   media_type, MAX(year) AS year, MAX(started_at) AS last_at
 		 FROM stream_sessions
-		 WHERE user_id = ? AND lib_title != ''
+		 WHERE user_id IN (?`+strings.Repeat(",?", len(ids)-1)+`) AND lib_title != ''
 		 GROUP BY lib_title, media_type
 		 ORDER BY last_at DESC
-		 LIMIT ?`, plexUserID, limit)
+		 LIMIT ?`, append(ids, limit)...)
 	if err != nil {
 		return nil, err
 	}

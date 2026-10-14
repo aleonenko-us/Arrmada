@@ -9,6 +9,7 @@ import { useRequestsFeed } from "../lib/useRequestsFeed";
 import { pickTab } from "../lib/useTabParam";
 import { formatSeasons, mediaLabel, requestAge, requestStage } from "../lib/requestStage";
 import { BookFormatBadge } from "../components/BookFormats";
+import { firstWatch } from "../components/brand/servers";
 import { DECLINE_REASON_MAX, ReRequestFlag, decisionLine } from "../components/DeclineReason";
 import { refreshAttention } from "../lib/useAttention";
 import { quotaLine, useQuota } from "../lib/quota";
@@ -327,6 +328,7 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
 }) {
   const stage = requestStage(rq, queueKnown);
   const pending = rq.status === "pending";
+  const watch = firstWatch(rq);
   return (
     <li className="rounded-xl p-3" style={{ background: "var(--panel)", border: `1px solid ${error ? "var(--reject)" : "var(--line)"}` }}>
       <div className="flex items-start gap-3">
@@ -367,8 +369,9 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
             <Button size="sm" className="min-h-[36px]" onClick={() => onDecide("decline")} busy={busy === `decline:${rq.id}`} disabled={!!busy}>Decline</Button>
           </div>
         )}
-        {rq.plex_url && (
-          <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] flex-none items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on Plex</a>
+        {/* The viewer's own server's Watch button; the sheet has one per server. */}
+        {watch && (
+          <a href={watch.href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] flex-none items-center rounded-md bg-accent-grad px-2.5 text-sm font-semibold text-accent-ink">▶ Watch on {watch.label}</a>
         )}
       </div>
       {error && <div className="mt-2 text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}

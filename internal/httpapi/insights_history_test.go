@@ -59,11 +59,11 @@ func TestHistoryCSV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 3 || strings.Join(recs[0], ",") != "when,user,title,show,season_episode,player,platform,ip,decision,watched_secs,progress_pct,sessions" {
+	if len(recs) != 3 || strings.Join(recs[0], ",") != "when,user,title,show,season_episode,player,platform,ip,decision,watched_secs,progress_pct,sessions,server" {
 		t.Fatalf("csv = %q", recs)
 	}
 	ep := recs[1]
-	if ep[2] != "Hello, World" || ep[3] != "Severance" || ep[4] != "S01E02" || ep[7] != "203.0.113.9" || ep[9] != "1800" || ep[10] != "50" || ep[11] != "1" {
+	if ep[2] != "Hello, World" || ep[3] != "Severance" || ep[4] != "S01E02" || ep[7] != "203.0.113.9" || ep[9] != "1800" || ep[10] != "50" || ep[11] != "1" || ep[12] != "plex" {
 		t.Errorf("episode row = %q", ep)
 	}
 	if recs[2][2] != `'=HYPERLINK("x")` {

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/settings"
 )
 
@@ -24,10 +25,10 @@ func TestMergeOwnerSessionsFoldsThePlaceholder(t *testing.T) {
 
 	// The two halves of the same person: an imported history under the real account id,
 	// and live-polled sessions under the server's placeholder.
-	if err := s.repo.upsertUser(ctx, "8421", "RegularBloke", "avatar", 1000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, "8421", "RegularBloke", "avatar", 1000); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.repo.upsertUser(ctx, ownerPlaceholderID, "RegularBloke", "", 2000); err != nil {
+	if err := s.repo.upsertUser(ctx, mediaserver.Plex, ownerPlaceholderID, "RegularBloke", "", 2000); err != nil {
 		t.Fatal(err)
 	}
 	for i, uid := range []string{"8421", "8421", ownerPlaceholderID} {
@@ -41,7 +42,7 @@ func TestMergeOwnerSessionsFoldsThePlaceholder(t *testing.T) {
 
 	s.mergeOwnerSessions(ctx, "8421", "RegularBloke", "avatar")
 
-	users, err := s.Users(ctx)
+	users, err := s.Users(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestMergeOwnerSessionsFoldsThePlaceholder(t *testing.T) {
 
 	// Idempotent: nothing is left under the placeholder, so a second run is a no-op.
 	s.mergeOwnerSessions(ctx, "8421", "RegularBloke", "avatar")
-	if again, err := s.Users(ctx); err != nil || len(again) != 1 {
+	if again, err := s.Users(ctx, ""); err != nil || len(again) != 1 {
 		t.Errorf("second merge changed things: %d users, err %v", len(again), err)
 	}
 }

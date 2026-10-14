@@ -20,13 +20,26 @@ const RecycleDirName = ".arrmada-recycle"
 
 // HoldDirName is Convert's originals hold at the top of each library folder: converted
 // originals wait there, on the drive they were already on, until their undo window ends.
-// Hidden like the bins (dot folder plus .plexignore) and skipped by every scan
+// Hidden like the bins (dot folder plus .plexignore and .ignore) and skipped by every scan
 // (SkipScanDir). It is not a recycle bin: nothing in it is purged by a size cap.
 const HoldDirName = ".arrmada-hold"
 
 // plexignoreName is the file that keeps Plex from listing a bin's contents as library
 // items. "*" ignores everything under the folder it sits in.
 const plexignoreName = ".plexignore"
+
+// jellyfinIgnoreName does the same for Jellyfin: it skips any folder holding a .ignore
+// file (an empty one ignores everything under it). Jellyfin already skips folders whose
+// name starts with a dot; the marker is there in case a library is ever pointed inside
+// one.
+const jellyfinIgnoreName = ".ignore"
+
+// MarkerFiles are the files at the top of each hidden folder that keep media servers out
+// of it. They aren't recycled items, and emptying a bin leaves them in place.
+var MarkerFiles = map[string]bool{plexignoreName: true, jellyfinIgnoreName: true}
+
+// markerContent is what each marker file holds.
+var markerContent = map[string]string{plexignoreName: "*\n", jellyfinIgnoreName: ""}
 
 // RootBins routes each deleted file to the bin on the library folder it came from:
 // <root>/.arrmada-recycle for the longest library folder holding it. A single bin used to
@@ -52,7 +65,7 @@ type RootBins struct {
 }
 
 // For returns the bin path should go to, creating a library folder's bin (and its
-// .plexignore) on first use.
+// marker files) on first use.
 func (b *RootBins) For(path string) (string, error) {
 	if b.Off {
 		return "", ErrRecycleDisabled
@@ -141,9 +154,10 @@ func topDir(path string) string {
 }
 
 // PrepareHiddenDir makes one of Arrmada's hidden folders at the top of a library folder (a
-// recycle bin, Convert's originals hold) and its .plexignore. Without the .plexignore Plex
-// would list every file in it as a library item, so a folder that can't have one is an
-// error like any other.
+// recycle bin, Convert's originals hold) and its marker files (.plexignore, .ignore).
+// Without them a media server could list every file in it as a library item, so a folder
+// that can't have them is an error like any other. A folder made before a marker existed
+// gets it the next time it's prepared.
 //
 // The library folder itself must already be there: MkdirAll on a share that isn't
 // mounted would quietly build it on the container's own disk and fill that instead.
@@ -156,13 +170,18 @@ func PrepareHiddenDir(dir string) error {
 	if err := os.Mkdir(dir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
-	p := filepath.Join(dir, plexignoreName)
-	if _, err := os.Stat(p); err == nil {
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
+	for _, name := range []string{plexignoreName, jellyfinIgnoreName} {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			continue
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := os.WriteFile(p, []byte(markerContent[name]), 0o644); err != nil {
+			return err
+		}
 	}
-	return os.WriteFile(p, []byte("*\n"), 0o644)
+	return nil
 }
 
 // rootLabels names the libraries for the UI.
@@ -217,7 +236,7 @@ func (b *RootBins) All() []BinDir {
 	return out
 }
 
-// binHasItems reports whether a bin holds anything besides its .plexignore. Only the top
+// binHasItems reports whether a bin holds anything besides its marker files. Only the top
 // level is read, so it's cheap enough for every delete dialog.
 func binHasItems(dir string) bool {
 	kids, err := os.ReadDir(dir)
@@ -225,7 +244,7 @@ func binHasItems(dir string) bool {
 		return false
 	}
 	for _, k := range kids {
-		if k.Name() != plexignoreName {
+		if !MarkerFiles[k.Name()] {
 			return true
 		}
 	}

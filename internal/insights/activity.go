@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/geoip"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
 
 // Stream is one live playback session, enriched for the Activity view + deep-dive.
 type Stream struct {
+	Server      string         `json:"server"` // plex | jellyfin
 	SessionKey  string         `json:"session_key"`
 	User        string         `json:"user"`
 	UserID      string         `json:"user_id"` // the Plex account id the People page is under
@@ -36,16 +38,19 @@ type Stream struct {
 	Geo         geoip.Location `json:"geo"`
 
 	// Deep-dive.
-	Video       Detail   `json:"video"`
-	Audio       Detail   `json:"audio"`
-	Container   Detail   `json:"container"`
-	HWTranscode bool     `json:"hw_transcode"` // the GPU is doing some of the work (decode or encode)
-	HWDecode    bool     `json:"hw_decode"`
-	HWEncode    bool     `json:"hw_encode"`
-	HWRequested bool     `json:"hw_requested"` // asked for; without HWEncode it means Plex fell back to CPU
-	HWTitle     string   `json:"hw_title,omitempty"`
-	Throttled   bool     `json:"throttled"`
-	Reasons     []string `json:"reasons"` // why it's transcoding (empty for direct play)
+	Video       Detail `json:"video"`
+	Audio       Detail `json:"audio"`
+	Container   Detail `json:"container"`
+	HWTranscode bool   `json:"hw_transcode"` // the GPU is doing some of the work (decode or encode)
+	HWDecode    bool   `json:"hw_decode"`
+	HWEncode    bool   `json:"hw_encode"`
+	HWRequested bool   `json:"hw_requested"` // asked for; without HWEncode it means Plex fell back to CPU
+	// HWTitle names the hardware: Plex's ("Intel (QuickSync)"), or for Jellyfin the
+	// configured acceleration ("vaapi") with HWTranscode set and the three above false —
+	// Jellyfin doesn't say which part the GPU did, or whether it took the stream at all.
+	HWTitle   string   `json:"hw_title,omitempty"`
+	Throttled bool     `json:"throttled"`
+	Reasons   []string `json:"reasons"` // why it's transcoding (empty for direct play)
 }
 
 // Detail is a source→stream comparison line for the deep-dive.
@@ -59,6 +64,9 @@ type Activity struct {
 	Streams   []Stream  `json:"streams"`
 	Bandwidth Bandwidth `json:"bandwidth"`
 	GeoActive bool      `json:"geo_active"` // full city resolution available
+	// Errors says which connected server didn't answer (by server), when another did: its
+	// streams are missing from the list.
+	Errors map[string]string `json:"errors,omitempty"`
 }
 
 // Bandwidth is the summed stream bandwidth, split by network location.
@@ -68,24 +76,47 @@ type Bandwidth struct {
 	WANKbps   int64 `json:"wan_kbps"`
 }
 
-// Activity returns the current live streams from Plex, enriched with geolocation, the stream
-// decision, source→stream detail, and human "why it's transcoding" reasons.
-func (s *Service) Activity(ctx context.Context) (Activity, error) {
-	sessions, err := s.client(ctx).Sessions(ctx)
-	if err != nil {
-		return Activity{}, err
+// Activity returns the current live streams from the connected servers the filter allows
+// (server: "" for both, "plex", "jellyfin"), Plex's first, enriched with geolocation, the
+// stream decision, source→stream detail, and human "why it's transcoding" reasons. It asks
+// the servers directly, so it works whether or not monitoring is on. One server failing
+// leaves its streams out (Errors says so); it's an error only when none answered.
+func (s *Service) Activity(ctx context.Context, server string) (Activity, error) {
+	srcs := s.liveSources(ctx, server)
+	if len(srcs) == 0 {
+		return Activity{}, plex.ErrNotConfigured
 	}
-	out := Activity{Streams: make([]Stream, 0, len(sessions)), GeoActive: s.geo.Enabled()}
-	for _, sess := range sessions {
-		st := s.enrich(sess)
-		st.UserID = s.knownUserID(ctx, sess.UserID)
-		out.Streams = append(out.Streams, st)
-		out.Bandwidth.TotalKbps += st.Bandwidth
-		if strings.EqualFold(sess.Location, "lan") || st.Geo.Local {
-			out.Bandwidth.LANKbps += st.Bandwidth
-		} else {
-			out.Bandwidth.WANKbps += st.Bandwidth
+	out := Activity{Streams: []Stream{}, GeoActive: s.geo.Enabled()}
+	var firstErr error
+	for _, src := range srcs {
+		sessions, err := src.Sessions(ctx)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			if out.Errors == nil {
+				out.Errors = map[string]string{}
+			}
+			out.Errors[string(src.Kind())] = err.Error()
+			continue
 		}
+		for _, sess := range sessions {
+			st := s.enrich(sess)
+			st.UserID = sess.UserID
+			if src.Kind() == mediaserver.Plex {
+				st.UserID = s.knownUserID(ctx, sess.UserID)
+			}
+			out.Streams = append(out.Streams, st)
+			out.Bandwidth.TotalKbps += st.Bandwidth
+			if strings.EqualFold(sess.Location, "lan") || st.Geo.Local {
+				out.Bandwidth.LANKbps += st.Bandwidth
+			} else {
+				out.Bandwidth.WANKbps += st.Bandwidth
+			}
+		}
+	}
+	if len(out.Errors) == len(srcs) {
+		return Activity{}, firstErr
 	}
 	return out, nil
 }
@@ -96,7 +127,7 @@ func (s *Service) enrich(p plex.Session) Stream {
 		ip = p.Address
 	}
 	st := Stream{
-		SessionKey: p.SessionKey, User: p.UserName, Title: p.Title, Type: p.Type,
+		Server: string(serverOf(p.Server)), SessionKey: p.SessionKey, User: p.UserName, Title: p.Title, Type: p.Type,
 		Thumb: proxyImage(posterPath(p.Type, p.Thumb, p.ShowThumb)), Art: proxyImage(p.Art), OffsetMS: p.OffsetMS, DurationMS: p.DurationMS,
 		State: p.State, Player: p.PlayerName, Platform: p.Platform, Product: p.Product,
 		Decision: p.Decision(), Bandwidth: p.Bandwidth, Location: p.Location,
@@ -215,7 +246,8 @@ func posterPath(mediaType, thumb, showThumb string) string {
 	return thumb
 }
 
-// proxyImage turns a Plex image path into an Arrmada-proxied URL (token stays server-side).
+// proxyImage turns a Plex image path (or a Jellyfin one, "jellyfin:/Items/…") into an
+// Arrmada-proxied URL (the token or key stays server-side).
 func proxyImage(path string) string {
 	if path == "" {
 		return ""
@@ -223,8 +255,13 @@ func proxyImage(path string) string {
 	return "/api/v1/insights/image?path=" + url.QueryEscape(path)
 }
 
-// Image proxies a Plex image (poster/art) to the caller, keeping the token server-side.
+// Image fetches a poster or art for the caller, keeping the server's credential
+// server-side: a Plex image path, or a Jellyfin one in its strict form (IsJellyfinImage).
+// The image proxy and alert posters both come through here.
 func (s *Service) Image(ctx context.Context, path string) (*http.Response, error) {
+	if strings.HasPrefix(path, jellyfinImagePrefix) {
+		return s.jellyfinImage(ctx, path)
+	}
 	return s.client(ctx).Image(ctx, path)
 }
 

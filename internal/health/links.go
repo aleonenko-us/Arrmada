@@ -20,6 +20,14 @@ var (
 	FixBackups         = &Fix{Key: "backups", Path: "/settings/system#backups", Label: "Backups"}
 	FixStatus          = &Fix{Key: "status", Path: "/settings/status", Label: "Status"}
 
+	// The Jellyfin card on Settings → Connections (a link to it opens its editor while
+	// Jellyfin isn't connected).
+	FixJellyfinConnection = &Fix{Key: "jellyfinConnection", Path: "/settings/connections#jellyfin", Label: "Jellyfin connection"}
+	// Both media server cards on Connections (Plex and Jellyfin side by side), for "connect
+	// a media server" when either will do.
+	// (How Arrmada uses them is Settings → Media servers, /settings/media-servers: LINKS.mediaServers.)
+	FixMediaServerCards = &Fix{Key: "mediaServerCards", Path: "/settings/connections#media-servers", Label: "Media servers"}
+
 	// Where the Needs-you feed (internal/attention) sends each kind of item. Pending
 	// requests open the Requests page on what's waiting for approval; stuck downloads open
 	// their section of Activity → Needs you (#stalled, #import-failures, #wrong-category),

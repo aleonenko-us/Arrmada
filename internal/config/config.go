@@ -92,6 +92,11 @@ type Config struct {
 	// AllowNewerSchema starts the app on a database a newer Arrmada has upgraded, which
 	// it otherwise refuses (old code on a newer schema can damage it). A last resort.
 	AllowNewerSchema bool
+	// Channel is which Arrmada this install's updates bring (ARRMADA_CHANNEL, written by
+	// install.sh and update.sh): "stable" (the published releases) or "main" (the newest
+	// code, compiled on the server). "" when it isn't set (a plain `go run`, or a container
+	// from before the setting). The update check compares the build with the same thing.
+	Channel string
 }
 
 // Load builds a Config from environment variables, falling back to defaults.
@@ -147,6 +152,12 @@ func Load() (Config, error) {
 	// choice, so a typo shouldn't make it.
 	c.SkipMigrationSnapshot, _ = strconv.ParseBool(env("ARRMADA_SKIP_MIGRATION_SNAPSHOT", "false"))
 	c.AllowNewerSchema, _ = strconv.ParseBool(env("ARRMADA_ALLOW_NEWER_SCHEMA", "false"))
+	// Anything else (a typo) is treated as unset: it only steers what the update check
+	// compares with, never what runs.
+	switch ch := strings.ToLower(strings.TrimSpace(env("ARRMADA_CHANNEL", ""))); ch {
+	case "stable", "main":
+		c.Channel = ch
+	}
 
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":

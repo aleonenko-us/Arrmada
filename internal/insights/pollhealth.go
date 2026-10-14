@@ -116,10 +116,11 @@ func (s *Service) PollHealth(ctx context.Context) PlexHealth {
 	return h
 }
 
-// MonitoringActive reports whether the poller is meant to be recording: monitoring switched
-// on with a server to talk to. Convert's "pause while someone is watching" only works then.
+// MonitoringActive reports whether a poller is meant to be recording: monitoring switched
+// on with a server to talk to, on Plex or on Jellyfin. Convert's "pause while someone is
+// watching" only works then.
 func (s *Service) MonitoringActive(ctx context.Context) bool {
-	return s.PollHealth(ctx).Monitoring
+	return s.PollHealth(ctx).Monitoring || s.jellyfinMonitoring(ctx)
 }
 
 // Status is the monitoring state the Insights header shows.

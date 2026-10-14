@@ -66,6 +66,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     ] }),
     // Your own Plex link (sidebar footer, Me page): not linked.
     get("/api/v1/me/plex", { linked: false, can_unlink: false }),
+    // Your own Jellyfin link (Me page): none, and no Jellyfin connected to link to.
+    get("/api/v1/me/jellyfin", { linked: false, can_unlink: false, available: false, quickconnect: false }),
 
     // Discover (requester and staff)
     { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url) },
@@ -126,6 +128,14 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/indexers/prowlarr", { url: "", has_key: false, ui_port: "9696", ui_url: "" }),
     get("/api/v1/connections", media.connections),
     { method: "POST", path: /^\/api\/v1\/connections\/([a-z_]+)\/([^/]+)\/test$/, respond: ({ params }) => media.connectionTest(params[0], params[1]) },
+    // The Jellyfin connection, edited in its card on Connections.
+    get("/api/v1/jellyfin", media.jellyfinConfig),
+    { method: "PUT", path: "/api/v1/jellyfin", respond: ({ body }) => media.jellyfinSave(body as Parameters<typeof media.jellyfinSave>[0]) },
+    { method: "POST", path: "/api/v1/jellyfin/test", respond: ({ body }) => media.jellyfinTest(body as { url?: string }) },
+    { method: "DELETE", path: "/api/v1/jellyfin", body: media.jellyfinConfig },
+    // Its library updates and watch monitoring, on Settings → Media servers.
+    get("/api/v1/jellyfin/scan", mod.jellyfinScan),
+    { method: "PUT", path: "/api/v1/jellyfin/monitoring", respond: ({ body }) => ({ ...media.jellyfinConfig, ...(body as object) }) },
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
@@ -205,9 +215,12 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/subtitles/library", { items: [], groups: [], scanning: false, stale: false }),
     get("/api/v1/languages", mod.languages),
     get("/api/v1/insights/plex", mod.plexConfig),
+    // The media servers Insights can watch: Plex only, not connected (Jellyfin isn't wired).
+    get("/api/v1/insights/servers", { servers: [{ server: "plex", configured: false, monitoring: false, status: "unconfigured", poll_seconds: 30 }] }),
     get("/api/v1/insights/plex/scan", mod.plexScan),
-    // Watch on Plex: no Plex connected, so no title is in it.
+    // Watch links: no media server connected, so no title is on one.
     { method: "GET", path: "/api/v1/plex/link", status: 204 },
+    get("/api/v1/media/links", { links: [] }),
     get(/^\/api\/v1\/(movies|series)\/\d+\/watch-stats$/, { available: false, plays: 0, last_played: 0, users: [] }),
     get("/api/v1/insights/stats", mod.insightsStats),
     // Settings → Import (admin): no double-counted plays, live recording since NOW - 30d.
@@ -219,6 +232,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/settings", sys.settings),
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
+    get("/api/v1/users/jellyfin-blocks", { blocks: [] }),
     get("/api/v1/users", sys.users),
     get("/api/v1/people", sys.people),
     // Answers like the server: the account as it now stands.

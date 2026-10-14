@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData } from "../../lib/connectionsApi";
+import { jellyfinApi } from "../../lib/jellyfinApi";
 import { clearQueryCache } from "../../lib/query";
 import { ConfirmProvider } from "../../ui";
 import { ConnectionsSettings } from "./Connections";
@@ -24,7 +25,7 @@ const sections = (items: Partial<Record<ConnectionSectionData["id"], ConnectionI
   { id: "search", title: "Search", items: items.search ?? [] },
   { id: "downloads", title: "Downloads", items: items.downloads ?? [] },
   { id: "metadata", title: "Metadata", items: items.metadata ?? [] },
-  { id: "other", title: "Plex, alerts and apps", items: items.other ?? [] },
+  { id: "other", title: "Alerts and apps", items: items.other ?? [] },
 ];
 
 const page = (at = "/settings/connections") =>
@@ -82,6 +83,43 @@ describe("Connections", () => {
     expect((document.getElementById("indexer-2") as HTMLElement).style.border).toContain("var(--accent)");
     expect((document.getElementById("indexer-1") as HTMLElement).style.border).not.toContain("var(--accent)");
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("puts the media servers side by side at the top, Jellyfin quiet until it's connected", async () => {
+    vi.spyOn(connectionsApi, "list").mockResolvedValue(sections({
+      other: [
+        item({ kind: "plex", ref: "default", card: "plex", name: "Plex", state: "ok", detail: "Basement · watch monitoring on", last_ok_at: new Date().toISOString() }),
+        item({ kind: "notifications", ref: "default", card: "notifications", name: "Alerts", testable: false }),
+      ],
+    }));
+    page();
+    await screen.findByText("Basement · watch monitoring on");
+    const servers = document.getElementById("media-servers") as HTMLElement;
+    const plex = within(servers).getByText("Plex").closest("#plex") as HTMLElement;
+    expect(within(plex).getByText("Connected")).toBeTruthy();
+    expect(within(plex).getByRole("list", { name: "What Arrmada uses Plex for" }).textContent).toBe("Watch linksLibrary updatesSign-inInsights");
+    const jf = within(servers).getByText("Jellyfin").closest("#jellyfin") as HTMLElement;
+    expect(within(jf).getByText("Not connected")).toBeTruthy();
+    expect(within(jf).getByRole("button", { name: "Connect Jellyfin" })).toBeTruthy();
+    // Plex left the old section, which is now just alerts and apps.
+    const other = document.getElementById("other-connections") as HTMLElement;
+    expect(within(other).getByRole("heading", { name: "Alerts and apps" })).toBeTruthy();
+    expect(other.querySelector("#plex")).toBeNull();
+    expect(other.querySelector("#notifications")).toBeTruthy();
+  });
+
+  it("shows only what a server reports it's used for", async () => {
+    vi.spyOn(connectionsApi, "list").mockResolvedValue(sections({
+      other: [item({ kind: "jellyfin", ref: "default", card: "jellyfin", name: "Jellyfin", state: "ok", used_for: ["watch", "library"] })],
+    }));
+    vi.spyOn(jellyfinApi, "get").mockResolvedValue({
+      url: "http://jellyfin:8096", public_url: "https://jf.example.com", key_set: true, server_name: "Attic", server_id: "s1",
+      version: "10.10.3", monitoring_enabled: false, poll_seconds: 10,
+    });
+    page();
+    expect(await screen.findByText("Attic · Jellyfin 10.10.3")).toBeTruthy();
+    const jf = document.getElementById("jellyfin") as HTMLElement;
+    expect(within(jf).getByRole("list", { name: "What Arrmada uses Jellyfin for" }).textContent).toBe("Watch linksLibrary updates");
   });
 
   it("says what went wrong when the list can't load", async () => {

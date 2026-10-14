@@ -62,8 +62,10 @@ export function requestStage(rq: StagedRequest, queueKnown = true): RequestStage
       // A held or retrying import says "Being checked" — never the staff reason.
       return { badge: STAGE.importing.label, tone: "accent", detail: tr.note || "Adding to the library…", detailTone: "var(--accent-text)" };
     case "adding":
-      // On disk; the 'ready' notice waits until Plex shows it (or half an hour passes).
-      return { badge: "Almost ready", tone: "good", detail: "Adding to Plex…", detailTone: "var(--good-text)" };
+      // On disk; the 'ready' notice waits until a media server shows it (or half an hour
+      // passes). The server names where: one, or "your library" when both are connected
+      // (an older server doesn't say, and only knew Plex).
+      return { badge: "Almost ready", tone: "good", detail: `Adding to ${addingTo(tr.adding_to)}…`, detailTone: "var(--good-text)" };
     case "queued":
       return { badge: STAGE.queued.label, tone: "accent", detail: tr.note || "Starting the download" };
     case "paused":
@@ -84,6 +86,14 @@ export function requestStage(rq: StagedRequest, queueKnown = true): RequestStage
     : rq.status === "declined" ? { badge: "Declined", tone: "reject", detail: rq.decline_reason || "Declined" }
     : rq.status === "approved" ? { badge: "Requested", tone: "accent", detail: "Looking for a release" }
     : { badge: "Pending", tone: "avoid", detail: "Waiting for approval" };
+}
+
+// addingTo names where an "adding" title is going: "Plex" or "Jellyfin", "your library"
+// with both. Absent (an older server) is Plex, the only server it knew.
+export function addingTo(servers?: readonly string[]): string {
+  if (!servers || servers.length === 0) return "Plex";
+  if (servers.length > 1) return "your library";
+  return servers[0] === "jellyfin" ? "Jellyfin" : "Plex";
 }
 
 // sortForRequester puts a requester's strip in moving-first order, newest change first

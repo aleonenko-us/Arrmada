@@ -81,6 +81,12 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"plex_login_auto_approve": a.plexAutoApproval(ctx).All(),
 		// Which media types a new Plex sign-in auto-approves ("movie,series,book").
 		"plex_login_auto_approve_types": a.plexAutoApproval(ctx).String(),
+		// Sign in with Jellyfin (off until the owner turns it on), its Quick Connect (on with
+		// it), whether it may open a staff account, and what a new sign-in auto-approves.
+		"jellyfin_login_enabled":            a.deps.Settings.GetBool(ctx, keyJellyfinLoginEnabled, false),
+		"jellyfin_quickconnect_enabled":     a.jellyfinQuickConnectOn(ctx),
+		"jellyfin_signin_staff":             a.deps.Settings.GetBool(ctx, keyJellyfinSignInStaff, false),
+		"jellyfin_login_auto_approve_types": a.jellyfinAutoApproval(ctx).String(),
 		// Recycle bin guard rails. These default to REAL limits, not 0/unlimited: the
 		// bin is on by default and every delete, quality upgrade and Convert original
 		// lands in it, so an unlimited default silently grows until the volume fills.
@@ -170,6 +176,10 @@ type settingsUpdate struct {
 	PlexLoginAutoApprove *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
 	// PlexLoginAutoApproveTypes wins over the legacy bool when both are sent.
 	PlexLoginAutoApproveTypes *string   `json:"plex_login_auto_approve_types"`
+	JellyfinLoginEnabled      *bool     `json:"jellyfin_login_enabled"`
+	JellyfinQuickConnect      *bool     `json:"jellyfin_quickconnect_enabled"`
+	JellyfinSignInStaff       *bool     `json:"jellyfin_signin_staff"`
+	JellyfinAutoApproveTypes  *string   `json:"jellyfin_login_auto_approve_types"`
 	RecycleMaxGB              *string   `json:"recycle_max_gb"`
 	RecycleRetentionDays      *string   `json:"recycle_retention_days"`
 	DiskGuard                 *bool     `json:"downloads_disk_guard"`
@@ -214,6 +224,14 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 	case req.PlexLoginAutoApproveTypes != nil && auth.ParseAutoApproval(*req.PlexLoginAutoApproveTypes) != a.plexAutoApproval(ctx),
 		req.PlexLoginAutoApproveTypes == nil && req.PlexLoginAutoApprove != nil && auth.AllTypes(*req.PlexLoginAutoApprove) != a.plexAutoApproval(ctx):
 		return "auto-approval of Plex sign-ins' requests"
+	case boolChanged(req.JellyfinLoginEnabled, st.GetBool(ctx, keyJellyfinLoginEnabled, false)):
+		return "Jellyfin sign-in"
+	case boolChanged(req.JellyfinQuickConnect, a.jellyfinQuickConnectOn(ctx)):
+		return "Jellyfin Quick Connect sign-in"
+	case boolChanged(req.JellyfinSignInStaff, st.GetBool(ctx, keyJellyfinSignInStaff, false)):
+		return "whether staff may sign in with Jellyfin"
+	case req.JellyfinAutoApproveTypes != nil && auth.ParseAutoApproval(*req.JellyfinAutoApproveTypes) != a.jellyfinAutoApproval(ctx):
+		return "auto-approval of Jellyfin sign-ins' requests"
 	case req.TMDBRegion != nil && !strings.EqualFold(strings.TrimSpace(*req.TMDBRegion), strings.TrimSpace(st.Get(ctx, "tmdb_region", ""))):
 		return "the Discovery region"
 	case strChanged(req.RecycleMaxGB, st.Get(ctx, "recycle_max_gb", recyclebin.DefaultMaxGB)):
@@ -417,6 +435,17 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if types, ok := plexAutoApproveUpdate(&req); ok && !save(a.deps.Settings.Set(ctx, keyPlexAutoApproveTypes, types)) {
+		return
+	}
+	for key, v := range map[string]*bool{
+		keyJellyfinLoginEnabled: req.JellyfinLoginEnabled, keyJellyfinQuickConnect: req.JellyfinQuickConnect,
+		keyJellyfinSignInStaff: req.JellyfinSignInStaff,
+	} {
+		if v != nil && !save(a.deps.Settings.SetBool(ctx, key, *v)) {
+			return
+		}
+	}
+	if req.JellyfinAutoApproveTypes != nil && !save(a.deps.Settings.Set(ctx, keyJellyfinAutoApproveTypes, auth.ParseAutoApproval(*req.JellyfinAutoApproveTypes).String())) {
 		return
 	}
 	// The page sends every setting on each save, so note whether the bin's rules really changed.

@@ -30,7 +30,7 @@ test.describe("admin on a phone", () => {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
     // The Plex connection opens in its card too (CFG-16).
-    await page.locator("#plex").getByRole("button", { name: "Set up" }).click();
+    await page.locator("#plex").getByRole("button", { name: "Connect Plex" }).click();
     await expect(page.locator("#plex").getByRole("button", { name: "Sign in with Plex" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
@@ -47,12 +47,34 @@ test.describe("admin on a phone", () => {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 
-  // PLEX-17: the one Plex page, every card on it, fits a phone too.
-  test("Settings → Plex fits a 375 px screen", async ({ page, api }) => {
-    await page.goto("/settings/plex");
+  // J5a: the media server cards stack on a phone, and the Jellyfin editor fits.
+  test("the media server cards stack on a 375 px screen", async ({ page, api }) => {
+    await page.goto("/settings/connections");
+    const plex = page.locator("#media-servers #plex");
+    const jf = page.locator("#media-servers #jellyfin");
+    await expect(jf.getByRole("button", { name: "Connect Jellyfin" })).toBeVisible();
+    await api.quiet();
+    const a = await plex.boundingBox();
+    const b = await jf.boundingBox();
+    expect(a && b && b.y >= a.y + a.height - 1 && Math.abs(a.x - b.x) < 2).toBe(true);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+    await jf.getByRole("button", { name: "Connect Jellyfin" }).click();
+    await jf.getByLabel("Server URL").fill("http://192.168.1.20:8096");
+    await expect(jf.getByText(/only works on your home network/)).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  // PLEX-17 / J5b: Settings → Media servers, both groups and every card, fits a phone too,
+  // and its jump links reach the Jellyfin group.
+  test("Settings → Media servers fits a 375 px screen", async ({ page, api }) => {
+    await page.goto("/settings/media-servers");
     await expect(page.locator("#plex-accounts").getByText("Plex · grandadplex")).toBeVisible();
     await expect(page.locator("#plex-tautulli")).toBeVisible();
+    await expect(page.locator("#jellyfin-library-updates").getByRole("switch", { name: /Tell Jellyfin to scan after changes/ })).toBeVisible();
     await api.quiet();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+    await page.getByRole("navigation", { name: "Media servers on this page" }).getByRole("link", { name: "Jellyfin" }).click();
+    await expect(page.getByRole("heading", { name: "Jellyfin", exact: true })).toBeInViewport();
   });
 });

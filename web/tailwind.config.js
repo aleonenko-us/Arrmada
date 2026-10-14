@@ -59,6 +59,10 @@ export default {
         "good-text": "var(--good-text)",
         "avoid-text": "var(--avoid-text)",
         "reject-text": "var(--reject-text)",
+        // Media server brands: a fill and the ink on it (components/brand).
+        plex: "var(--plex)",
+        "plex-ink": "var(--plex-ink)",
+        "jellyfin-ink": "var(--jellyfin-ink)",
       },
       boxShadow: {
         panel: "var(--shadow)",
@@ -84,6 +88,8 @@ export default {
       },
       backgroundImage: {
         "accent-grad": "linear-gradient(150deg, var(--accent), var(--accent-deep))",
+        // Jellyfin's purple-to-blue: bg-jellyfin.
+        jellyfin: "var(--jellyfin)",
       },
       fontFamily: {
         sans: ["-apple-system", "Segoe UI", "Inter", "Roboto", "system-ui", "sans-serif"],

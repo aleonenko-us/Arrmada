@@ -3,6 +3,7 @@ import type {
   FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
+import type { JellyfinConfig, JellyfinSave, JellyfinTestResult } from "../../src/lib/jellyfinApi";
 import { NOW, day } from "./clock";
 
 const poster = (n: number) => `https://image.tmdb.org/t/p/w500/e2e-lib-${n}.jpg`;
@@ -374,13 +375,14 @@ export const blocklist: { items: BlocklistRow[]; total: number } = {
   total: 2,
 };
 
-// A connection's Test: it answers, and its card comes back working.
+// A connection's Test: it answers, and its card comes back working (and set up: a spec may
+// have swapped in a connected card the default list has as not set up).
 export function connectionTest(kind: string, ref: string) {
   const item = connections.sections.flatMap((s) => s.items).find((i) => i.kind === kind && i.ref === ref);
   if (!item) return { message: "no such connection" };
   return {
     ok: true, detail: "Connected",
-    item: { ...item, state: "ok", last_error: undefined, failing_since: undefined, last_ok_at: new Date(NOW).toISOString(), checked_at: new Date(NOW).toISOString() },
+    item: { ...item, configured: true, state: "ok", last_error: undefined, failing_since: undefined, last_ok_at: new Date(NOW).toISOString(), checked_at: new Date(NOW).toISOString() },
   };
 }
 
@@ -422,10 +424,36 @@ export const connections: { sections: ConnectionSectionData[] } = {
       ],
     },
     {
-      id: "other", title: "Plex, alerts and apps", items: [
+      id: "other", title: "Alerts and apps", items: [
         { kind: "plex", ref: "default", card: "plex", name: "Plex", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/connections#plex" },
+        { kind: "jellyfin", ref: "default", card: "jellyfin", name: "Jellyfin", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/connections#jellyfin" },
         { kind: "notifications", ref: "default", card: "notifications", name: "Alerts", configured: false, enabled: false, state: "unknown", testable: false, fix_path: "/settings/alerts", detail: "No alert connections yet" },
       ],
     },
   ],
 };
+
+// The Jellyfin connection (GET /api/v1/jellyfin): nothing saved yet. Its editor saves and
+// tests against the routes in routes.ts; the key is never part of an answer.
+export const jellyfinConfig: JellyfinConfig = {
+  url: "", public_url: "", key_set: false, server_name: "", server_id: "", version: "", monitoring_enabled: false, poll_seconds: 10,
+};
+
+// A connected Jellyfin, for specs that override the list and the config.
+export const jellyfinConnected: JellyfinConfig = {
+  url: "http://jellyfin:8096", public_url: "https://jellyfin.example.com", key_set: true, server_name: "Attic", server_id: "f00dfeed",
+  version: "10.10.3", monitoring_enabled: true, poll_seconds: 10,
+};
+
+// PUT /api/v1/jellyfin: answers with what was saved, the key only as key_set. A public
+// address the same as the URL is saved blank (it follows the URL), as the server does.
+export function jellyfinSave(body: JellyfinSave): JellyfinConfig {
+  const publicURL = body.public_url.replace(/\/+$/, "") === body.url.replace(/\/+$/, "") ? "" : body.public_url;
+  return { ...jellyfinConfig, url: body.url, public_url: publicURL, key_set: !!body.api_key, server_name: "Attic", server_id: "f00dfeed", version: "10.10.3" };
+}
+
+// POST /api/v1/jellyfin/test: an address with "unreachable" in it doesn't answer.
+export function jellyfinTest(body: { url?: string }): JellyfinTestResult {
+  if (body.url?.includes("unreachable")) return { ok: false, detail: "dial tcp: connection refused" };
+  return { ok: true, detail: "Connected", server_name: "Attic", version: "10.10.3" };
+}

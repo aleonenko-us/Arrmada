@@ -1,8 +1,26 @@
 # Arrmada + bundled qBittorrent + FlareSolverr. Normally started by ./install.sh, which
-# writes .env and docker-compose.override.yml; `docker compose up -d --build` also works.
+# writes .env and docker-compose.override.yml. A plain `docker compose up -d` also works:
+# it downloads the published image (64-bit Intel/AMD servers only).
 # Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080)
 services:
   arrmada-app:
+    # The image the app runs. With nothing in .env it's the published release, downloaded
+    # rather than compiled: compiling takes 30–60 minutes and more memory than a small
+    # server has. `docker compose up -d --build` still compiles the code in this folder.
+    #
+    # Installs made by install.sh or updated by update.sh have ARRMADA_APP_IMAGE=arrmada:dev
+    # in .env (the scripts add it): update.sh builds the code here, or downloads the image
+    # named by ARRMADA_IMAGE, and tags the result arrmada:dev, keeping the one before as
+    # arrmada:previous for ./update.sh --rollback.
+    #
+    # An install from before this line existed has a .env without it, and a deploy tool
+    # (Komodo, say) may run `docker compose up -d` there straight after a git pull, before
+    # update.sh has added it. Switching such an install to the published image without a
+    # word could start an older version on a newer database, so a .env that has
+    # ARRMADA_PORT (every install.sh has written one) but no ARRMADA_APP_IMAGE gets an image
+    # name Docker refuses: up, build and pull stop with the message below and leave the
+    # running container alone. Add the line to .env and run it again (docs/updating.md).
+    image: "${ARRMADA_APP_IMAGE:-${ARRMADA_PORT:+ARRMADA_APP_IMAGE is missing from .env, see docs/updating.md (arrmada:dev builds here, ghcr.io/tristenlammi/arrmada:stable downloads) -- }ghcr.io/tristenlammi/arrmada:stable}"
     build:
       context: .
       # What the build is stamped with (Dashboard, /api/health). update.sh and install.sh
@@ -10,11 +28,6 @@ services:
       args:
         VERSION: ${ARRMADA_VERSION:-dev}
         COMMIT: ${ARRMADA_COMMIT:-unknown}
-    # update.sh keeps the build that ran before as arrmada:previous (./update.sh --rollback).
-    # With ARRMADA_IMAGE in .env (e.g. ghcr.io/tristenlammi/arrmada:stable), update.sh
-    # downloads that published image and tags it arrmada:dev instead of building here, so
-    # this name stays the same either way.
-    image: arrmada:dev
     container_name: Arrmada-app
     # x265 binds its worker thread pools to NUMA nodes with set_mempolicy(2), which
     # Docker's default seccomp profile blocks — the encode then logs "set_mempolicy:
@@ -47,6 +60,10 @@ services:
       # An older build refuses to start on a database a newer one has upgraded (after a
       # rollback without --with-db, say). Set this to 1 in .env only to start it anyway.
       ARRMADA_ALLOW_NEWER_SCHEMA: "${ARRMADA_ALLOW_NEWER_SCHEMA:-}"
+      # Which Arrmada updates bring: stable (the published releases) or main (the newest
+      # code, compiled here). install.sh and update.sh keep it in .env; the in-app update
+      # check compares the running build with the same thing.
+      ARRMADA_CHANNEL: "${ARRMADA_CHANNEL:-stable}"
       # The host's timezone (install.sh writes it to .env). Schedules — the Convert encode
       # window, the nightly sweeps, listening-per-day — run on this clock; without it the
       # app ran on UTC while its companions below were already on local time.

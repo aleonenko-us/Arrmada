@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/safego"
@@ -292,8 +293,12 @@ func (a *api) handleDiscoverByGenre(w http.ResponseWriter, r *http.Request) {
 type mediaDetailResponse struct {
 	*metadata.MediaDetail
 	Card discoverCard `json:"card"`
-	// PlexURL is the title's app.plex.tv page when the owner's Plex has it.
+	// PlexURL is the title's app.plex.tv page when the owner's Plex has it (older pages;
+	// WatchLinks is the full list).
 	PlexURL string `json:"plex_url,omitempty"`
+	// WatchLinks is a Watch link per media server that has the title, the viewer's own
+	// server first.
+	WatchLinks []mediaserver.WatchLink `json:"watch_links,omitempty"`
 }
 
 // itemFromDetail is a detail record as the browse card it would be in a row.
@@ -338,10 +343,12 @@ func (a *api) handleMediaDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	card := a.enrichCards(r.Context(), []metadata.DiscoverItem{itemFromDetail(d)})[0]
-	// Watch on Plex, when the owner's Plex has it (from memory; never waits on Plex). The
-	// detail's IMDb id finds it in a legacy-agent library too.
-	plexURL := a.plexURLWith(r.Context(), d.MediaType, insights.ExternalIDs{TMDB: id, IMDB: d.IMDBID})
-	a.writeJSON(w, http.StatusOK, mediaDetailResponse{MediaDetail: d, Card: card, PlexURL: plexURL})
+	// Watch buttons, one per media server that has it (from memory; never waits on a
+	// server). The detail's IMDb id finds it in a legacy-agent Plex library too.
+	links := a.watchLinks(r.Context(), d.MediaType, insights.ExternalIDs{TMDB: id, IMDB: d.IMDBID})
+	viewer, _ := userFrom(r)
+	a.writeJSON(w, http.StatusOK, mediaDetailResponse{MediaDetail: d, Card: card,
+		PlexURL: linkFor(links, mediaserver.Plex), WatchLinks: a.leadWith(r.Context(), links, viewer)})
 }
 
 // ratingsWait is how long a detail sheet waits for OMDb, and ratingsBudget how long the

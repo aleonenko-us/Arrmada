@@ -98,13 +98,56 @@ func validatePlexImagePath(raw string) (string, bool) {
 	return clean, true
 }
 
+// validateInsightsImagePath is validatePlexImagePath, or a Jellyfin image path in its exact
+// strict form (anything else with the jellyfin: prefix is refused, never cleaned up).
+func validateInsightsImagePath(raw string) (string, bool) {
+	if strings.HasPrefix(raw, "jellyfin:") {
+		return raw, insights.IsJellyfinImage(raw)
+	}
+	return validatePlexImagePath(raw)
+}
+
+// handleInsightsServers answers GET /api/v1/insights/servers: each media server Insights can
+// watch, whether it's connected and what its monitoring is doing — the page's server chips
+// and badges.
+func (a *api) handleInsightsServers(w http.ResponseWriter, r *http.Request) {
+	a.writeJSON(w, http.StatusOK, map[string]any{"servers": a.deps.Insights.Servers(r.Context())})
+}
+
+// handleJellyfinMonitoring answers PUT /api/v1/jellyfin/monitoring {monitoring_enabled?,
+// poll_seconds?}: Jellyfin's "record what's played" switch and its poll interval. Like
+// Plex's monitoring switch, it's a manager's to change (the connection itself is an
+// admin's). Answers with the saved connection.
+func (a *api) handleJellyfinMonitoring(w http.ResponseWriter, r *http.Request) {
+	if !a.jellyfinReady(w) {
+		return
+	}
+	var req struct {
+		MonitoringEnabled *bool `json:"monitoring_enabled"`
+		PollSeconds       *int  `json:"poll_seconds"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if err := a.deps.Insights.SetJellyfinMonitoring(r.Context(), req.MonitoringEnabled, req.PollSeconds); err != nil {
+		if errors.Is(err, insights.ErrNoJellyfin) {
+			a.writeError(w, http.StatusServiceUnavailable, "Jellyfin isn't available")
+			return
+		}
+		a.writeError(w, http.StatusInternalServerError, "could not save Jellyfin monitoring")
+		return
+	}
+	a.recheckHealth(r, jellyfinHealthKey)
+	a.writeJSON(w, http.StatusOK, a.deps.Jellyfin.Config(r.Context()))
+}
+
 // handleInsightsConfig returns the Plex connection settings (token presence only, never the value).
 func (a *api) handleInsightsConfig(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, a.deps.Insights.Config(r.Context()))
 }
 
 // handleUpdateInsightsConfig persists the Plex connection settings. Every field is
-// optional: Settings → Plex's monitoring switch and poll interval each save on their own
+// optional: Settings → Media servers' Plex monitoring switch and poll interval each save on their own
 // ({"enabled": false}), without sending the server address back; a missing url keeps the
 // saved one, like a missing token does.
 func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +252,7 @@ func (a *api) handleInsightsPlexAuthPoll(w http.ResponseWriter, r *http.Request)
 func (a *api) handleInsightsActivity(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	act, err := a.deps.Insights.Activity(ctx)
+	act, err := a.deps.Insights.Activity(ctx, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -260,7 +303,14 @@ func historyFilter(r *http.Request) insights.HistoryFilter {
 		From:     epoch("from"),
 		To:       epoch("to"),
 		Group:    q.Get("group") == "1",
+		Server:   serverParam(r),
 	}
+}
+
+// serverParam reads ?server= on an Insights read: "plex", "jellyfin", or both (absent,
+// "all", or anything else).
+func serverParam(r *http.Request) string {
+	return insights.NormalizeServer(r.URL.Query().Get("server"))
 }
 
 // handleInsightsHistoryCSV downloads the plays History's filters match (newest first, up to
@@ -271,10 +321,10 @@ func (a *api) handleInsightsHistoryCSV(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="plex-history-`+time.Now().Format("2006-01-02")+`.csv"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="watch-history-`+time.Now().Format("2006-01-02")+`.csv"`)
 	w.Header().Set("Cache-Control", "no-store")
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"when", "user", "title", "show", "season_episode", "player", "platform", "ip", "decision", "watched_secs", "progress_pct", "sessions"})
+	_ = cw.Write([]string{"when", "user", "title", "show", "season_episode", "player", "platform", "ip", "decision", "watched_secs", "progress_pct", "sessions", "server"})
 	rows := 0
 	err := a.deps.Insights.HistoryExport(ctx, f, func(e insights.HistoryEntry) error {
 		rows++
@@ -289,7 +339,7 @@ func (a *api) handleInsightsHistoryCSV(w http.ResponseWriter, r *http.Request) {
 		return cw.Write([]string{
 			time.Unix(e.StartedAt, 0).UTC().Format(time.RFC3339), csvCell(e.UserName), csvCell(e.Title), csvCell(e.GrandparentTitle), se,
 			csvCell(e.Player), csvCell(e.Platform), csvCell(e.IPAddress), e.Decision,
-			strconv.FormatInt(e.WatchedSecs, 10), strconv.Itoa(e.ProgressPct), strconv.Itoa(sessions),
+			strconv.FormatInt(e.WatchedSecs, 10), strconv.Itoa(e.ProgressPct), strconv.Itoa(sessions), e.Server,
 		})
 	})
 	if err != nil && rows == 0 {
@@ -318,7 +368,7 @@ func (a *api) handleInsightsStats(w http.ResponseWriter, r *http.Request) {
 	byDuration := r.URL.Query().Get("metric") == "duration"
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	res, err := a.deps.Insights.Stats(ctx, window, byDuration)
+	res, err := a.deps.Insights.Stats(ctx, window, byDuration, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not compute stats")
 		return
@@ -331,7 +381,7 @@ func (a *api) handleInsightsGraphs(w http.ResponseWriter, r *http.Request) {
 	window := clampWindow(atoiQuery(r, "window"))
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	g, err := a.deps.Insights.Graphs(ctx, window, r.URL.Query().Get("metric"))
+	g, err := a.deps.Insights.Graphs(ctx, window, r.URL.Query().Get("metric"), serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not compute graphs")
 		return
@@ -344,7 +394,7 @@ func (a *api) handleInsightsReliability(w http.ResponseWriter, r *http.Request) 
 	window := clampWindow(atoiQuery(r, "window"))
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	res, err := a.deps.Insights.Reliability(ctx, window)
+	res, err := a.deps.Insights.Reliability(ctx, window, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not compute reliability")
 		return
@@ -356,7 +406,7 @@ func (a *api) handleInsightsReliability(w http.ResponseWriter, r *http.Request) 
 func (a *api) handleInsightsUsers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	users, err := a.deps.Insights.Users(ctx)
+	users, err := a.deps.Insights.Users(ctx, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not load users")
 		return
@@ -388,7 +438,7 @@ func (a *api) handleInsightsPerson(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleInsightsLibrary(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	v, err := a.deps.Insights.Library(ctx, clampWindow(atoiQuery(r, "window")), r.URL.Query().Get("metric") == "duration")
+	v, err := a.deps.Insights.Library(ctx, clampWindow(atoiQuery(r, "window")), r.URL.Query().Get("metric") == "duration", serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not build the library view")
 		return
@@ -450,7 +500,7 @@ func (a *api) linkLibraryItems(ctx context.Context, items []*insights.LibraryIte
 func (a *api) handleInsightsLibraries(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	libs, err := a.deps.Insights.Libraries(ctx)
+	libs, err := a.deps.Insights.Libraries(ctx, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -463,7 +513,7 @@ func (a *api) handleInsightsRecentlyAdded(w http.ResponseWriter, r *http.Request
 	limit := clampPageSize(atoiQuery(r, "limit"))
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	items, err := a.deps.Insights.RecentlyAdded(ctx, limit)
+	items, err := a.deps.Insights.RecentlyAdded(ctx, limit, serverParam(r))
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -471,10 +521,12 @@ func (a *api) handleInsightsRecentlyAdded(w http.ResponseWriter, r *http.Request
 	a.writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// handleInsightsImage proxies a Plex poster/art image so the browser never sees the token. Only
-// image paths under /library/ or /photo/ are allowed (no arbitrary Plex-endpoint proxying).
+// handleInsightsImage proxies a Plex or Jellyfin poster/art image so the browser never sees
+// the token or key. Only Plex image paths under /library/ or /photo/ are allowed (no
+// arbitrary Plex-endpoint proxying), and only the two strict Jellyfin forms
+// "jellyfin:/Items/<32 hex>/Images/Primary" and "jellyfin:/Users/<32 hex>/Images/Primary".
 func (a *api) handleInsightsImage(w http.ResponseWriter, r *http.Request) {
-	clean, ok := validatePlexImagePath(r.URL.Query().Get("path"))
+	clean, ok := validateInsightsImagePath(r.URL.Query().Get("path"))
 	if !ok {
 		a.writeError(w, http.StatusBadRequest, "unsupported image path")
 		return

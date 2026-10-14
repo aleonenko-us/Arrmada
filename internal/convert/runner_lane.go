@@ -178,7 +178,7 @@ func (s *Service) RequestPlace(ctx context.Context, key string) RequestPlace {
 		return RequestPlace{Starting: true} // claimed in the meantime
 	}
 	if watching {
-		return RequestPlace{Position: idx + 1, Reason: "someone is watching Plex — it starts when they stop"}
+		return RequestPlace{Position: idx + 1, Reason: "someone is watching — it starts when they stop"}
 	}
 	// Free normal slots take the first requests; the lane takes one more when it's open
 	// once those are filled (the automatic conversion holding a slot is still there).

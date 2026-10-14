@@ -29,7 +29,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
+	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
@@ -145,6 +147,18 @@ type Deps struct {
 	PlexScan *plexscan.Scanner
 	// PlexLinks finds titles in Plex for Watch on Plex links. nil = no links anywhere.
 	PlexLinks PlexLinker
+	// Jellyfin is the Jellyfin connection (its card on Connections, its health check).
+	// nil = its routes answer 503 and it has no card.
+	Jellyfin *jellyfinsvc.Service
+	// JellyfinScan tells Jellyfin which folder changed (its own switch and path mappings).
+	// nil = the scan routes answer 503.
+	JellyfinScan *plexscan.Scanner
+	// MediaServers is every media server (Plex, then Jellyfin) for features that work
+	// with whichever is connected. nil = none.
+	MediaServers *mediaserver.Registry
+	// HomeServer is the media server a person watches on: their Watch links lead with it.
+	// nil = Plex first for everyone.
+	HomeServer func(ctx context.Context, userID int64) mediaserver.Kind
 	// ImportFailures is every download whose import has failed and will be retried (the
 	// movie importer's and the series sweep's), for the queue's Finishing stages. nil =
 	// the movie importer's alone (Library.Failures).
@@ -159,6 +173,7 @@ type api struct {
 	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
 	icsLimiter   *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
+	jfQC         *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
@@ -170,7 +185,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -291,6 +306,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/auth/login", a.public(a.handleLogin).ext())
 	mux.HandleFunc("POST /api/v1/auth/plex/pin", a.public(a.handlePlexLoginStart).ext())
 	mux.HandleFunc("GET /api/v1/auth/plex/pin/{id}", a.public(a.handlePlexLoginPoll).ext())
+	// Sign in with Jellyfin: username + password (throttled per address and username), or
+	// Quick Connect (the secret stays on the server, bound to the browser that started it).
+	mux.HandleFunc("POST /api/v1/auth/jellyfin", a.public(a.handleJellyfinLogin).ext())
+	mux.HandleFunc("POST /api/v1/auth/jellyfin/quickconnect", a.public(a.handleJellyfinQCStart).ext())
+	mux.HandleFunc("GET /api/v1/auth/jellyfin/quickconnect/{id}", a.public(a.handleJellyfinQCPoll).ext())
 	mux.HandleFunc("POST /api/v1/auth/logout", a.public(a.handleLogout).ext())
 	mux.HandleFunc("GET /api/v1/auth/me", a.signedIn(a.handleMe).ext())
 	// Per-user notifications (in-app inbox + personal Apprise URL).
@@ -307,6 +327,12 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/me/plex/link", a.signedIn(a.handlePlexLinkStart).ext())
 	mux.HandleFunc("GET /api/v1/me/plex/link/{id}", a.signedIn(a.handlePlexLinkPoll).ext())
 	mux.HandleFunc("DELETE /api/v1/me/plex/link", a.signedIn(a.handlePlexUnlink).ext())
+	// Your own Jellyfin link: by signing in to Jellyfin once (password or Quick Connect).
+	mux.HandleFunc("GET /api/v1/me/jellyfin", a.signedIn(a.handleMyJellyfin).ext())
+	mux.HandleFunc("POST /api/v1/me/jellyfin/link", a.signedIn(a.handleJellyfinLink).ext())
+	mux.HandleFunc("POST /api/v1/me/jellyfin/link/quickconnect", a.signedIn(a.handleJellyfinLinkQCStart).ext())
+	mux.HandleFunc("GET /api/v1/me/jellyfin/link/quickconnect/{id}", a.signedIn(a.handleJellyfinLinkQCPoll).ext())
+	mux.HandleFunc("DELETE /api/v1/me/jellyfin/link", a.signedIn(a.handleJellyfinUnlink).ext())
 	mux.HandleFunc("GET /api/v1/me/apprise", a.signedIn(a.handleGetMyApprise).ext())
 	mux.HandleFunc("GET /api/v1/me/books", a.signedIn(a.handleMyBooks).ext())
 	// Send to Kindle: the person's own Kindle address, and the send (an email only ever goes
@@ -337,11 +363,17 @@ func (a *api) registerRoutes(mux *router) {
 	// "Sign out everywhere": ends every browser session of the account (a count back only).
 	mux.HandleFunc("POST /api/v1/users/{id}/sessions/revoke", a.requireRole(auth.RoleAdmin, a.handleRevokeUserSessions))
 	mux.HandleFunc("GET /api/v1/users/plex-blocks", a.requireRole(auth.RoleAdmin, a.handleListPlexBlocks))
-	// Merge a duplicate Plex requester into the account it belongs with (preview first).
+	// Merge a duplicate Plex or Jellyfin requester into the account it belongs with (preview
+	// first). The /plex/merge paths are the old names of the same two.
+	mux.HandleFunc("GET /api/v1/users/{id}/merge", a.requireRole(auth.RoleAdmin, a.handlePlexMergePreview))
+	mux.HandleFunc("POST /api/v1/users/{id}/merge", a.requireRole(auth.RoleAdmin, a.handlePlexMerge))
 	mux.HandleFunc("GET /api/v1/users/{id}/plex/merge", a.requireRole(auth.RoleAdmin, a.handlePlexMergePreview))
 	mux.HandleFunc("POST /api/v1/users/{id}/plex/merge", a.requireRole(auth.RoleAdmin, a.handlePlexMerge))
 	mux.HandleFunc("POST /api/v1/users/{id}/block-plex", a.requireRole(auth.RoleAdmin, a.handleBlockUserPlex))
 	mux.HandleFunc("DELETE /api/v1/users/plex-blocks/{plexID}", a.requireRole(auth.RoleAdmin, a.handleUnblockPlex))
+	mux.HandleFunc("GET /api/v1/users/jellyfin-blocks", a.requireRole(auth.RoleAdmin, a.handleListJellyfinBlocks))
+	mux.HandleFunc("POST /api/v1/users/{id}/block-jellyfin", a.requireRole(auth.RoleAdmin, a.handleBlockUserJellyfin))
+	mux.HandleFunc("DELETE /api/v1/users/jellyfin-blocks/{jellyfinID}", a.requireRole(auth.RoleAdmin, a.handleUnblockJellyfin))
 
 	// Realtime updates
 	mux.HandleFunc("GET /api/v1/ws", a.signedIn(a.handleWS))
@@ -646,6 +678,24 @@ func (a *api) registerRoutes(mux *router) {
 	// Watch on Plex: anyone signed in may ask for a title's app.plex.tv link (no token,
 	// no server address in it); 204 when Plex doesn't have it.
 	mux.HandleFunc("GET /api/v1/plex/link", a.signedIn(a.handlePlexLink).ext())
+	// Watch links on every media server that has a title (Plex's app.plex.tv page,
+	// Jellyfin's at its public address — never a key or an internal address), the
+	// caller's own server first. Signed in, like /plex/link: each opens the server's own
+	// sign-in.
+	mux.HandleFunc("GET /api/v1/media/links", a.signedIn(a.handleMediaLinks).ext())
+	// Jellyfin: the connection (the API key is a credential, so saving it is an admin's
+	// job; it never comes back), its Test, and its library updates like Plex's.
+	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig))
+	mux.HandleFunc("PUT /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinSave))
+	mux.HandleFunc("DELETE /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinDisconnect))
+	mux.HandleFunc("POST /api/v1/jellyfin/test", a.requireRole(auth.RoleManager, a.handleJellyfinTest))
+	mux.HandleFunc("GET /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanView))
+	mux.HandleFunc("PUT /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanSave))
+	mux.HandleFunc("POST /api/v1/jellyfin/scan/test", a.requireRole(auth.RoleManager, a.handleJellyfinScanTest))
+	// Watch monitoring on Jellyfin: a switch and an interval, a manager's like Plex's.
+	mux.HandleFunc("PUT /api/v1/jellyfin/monitoring", a.requireRole(auth.RoleManager, a.handleJellyfinMonitoring))
+	// Every /insights read takes ?server=plex|jellyfin (both when absent); servers lists them.
+	mux.HandleFunc("GET /api/v1/insights/servers", a.requireRole(auth.RoleManager, a.handleInsightsServers))
 	mux.HandleFunc("GET /api/v1/insights/activity", a.requireRole(auth.RoleManager, a.handleInsightsActivity))
 	mux.HandleFunc("GET /api/v1/insights/history", a.requireRole(auth.RoleManager, a.handleInsightsHistory))
 	mux.HandleFunc("GET /api/v1/insights/history.csv", a.requireRole(auth.RoleManager, a.handleInsightsHistoryCSV))
@@ -925,6 +975,10 @@ func (a *api) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated":  authed,
 		"plex_login":     a.deps.Settings.GetBool(r.Context(), "plex_login_enabled", false),
 		"external":       isExternalRequest(r), // request came from outside the LAN → Discover-only
+
+		// Sign in with Jellyfin, and whether its sheet offers Quick Connect.
+		"jellyfin_login":        a.jellyfinLoginEnabled(r.Context()),
+		"jellyfin_quickconnect": a.jellyfinLoginEnabled(r.Context()) && a.jellyfinQuickConnectOn(r.Context()),
 
 		"modules":       a.modules(r.Context()),
 		"books_enabled": a.booksEnabled(r.Context()),

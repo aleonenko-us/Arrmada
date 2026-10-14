@@ -98,6 +98,10 @@ func TestHoldKeepsTheOriginalOnItsDrive(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(r.lib, library.HoldDirName, ".plexignore")); strings.TrimSpace(string(b)) != "*" {
 		t.Fatalf(".plexignore = %q", b)
 	}
+	// Jellyfin skips a folder holding a .ignore (an empty one ignores everything).
+	if b, err := os.ReadFile(filepath.Join(r.lib, library.HoldDirName, ".ignore")); err != nil || len(b) != 0 {
+		t.Fatalf(".ignore = %q, %v", b, err)
+	}
 	if sizeOf(src) != 500 || r.moviePath(t, 1) != src {
 		t.Fatal("the converted file isn't in place")
 	}
@@ -331,7 +335,8 @@ func TestHoldSelfCheck(t *testing.T) {
 	}
 	for _, d := range []string{movies, tv} {
 		kids, _ := os.ReadDir(filepath.Join(d, library.HoldDirName))
-		if len(kids) != 1 || kids[0].Name() != ".plexignore" {
+		// Only the marker files: .ignore and .plexignore, in name order.
+		if len(kids) != 2 || kids[0].Name() != ".ignore" || kids[1].Name() != ".plexignore" {
 			t.Fatalf("hold in %s holds %v after the check", d, kids)
 		}
 		if exists(filepath.Join(d, library.HoldDirName+".probe")) {

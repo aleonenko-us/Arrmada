@@ -74,8 +74,14 @@ var bannedCopy = []bannedPhrase{
 	// CFG-16 / PLEX-17: the Plex connection is the Plex card on Settings → Connections.
 	phrase(`connect (your )?Plex( server)? in (Insights|Settings → Plex)`, "the Plex connection is the Plex card in Settings → Connections (LINKS.plexConnection)"),
 	webPhrase(`/settings/plex#plex-connection|/audiobooks\?tab=import`, "those cards moved (Settings → Connections' Plex card, Settings → Import & migrate) — link through LINKS"),
+	// J5b: Settings → Plex became Settings → Media servers (a Plex and a Jellyfin group).
+	phrase(`Settings → Plex\b`, "the section is Settings → Media servers (LINKS.mediaServers, or a card like LINKS.plexSignIn)"),
+	webPhrase("[\"'`]/settings/plex\\b", "/settings/plex only redirects now — link through LINKS (LINKS.mediaServers, LINKS.plexServer…)"),
+	phrase(`Plex settings →`, "the button is 'Media server settings →' (LINKS.mediaServers): one page for Plex and Jellyfin"),
 	// COPY-08: the Insights intro only asks to connect while Plex isn't connected.
 	webPhrase(`Connect your server in`, "the intro's call to action is the 'Connect your Plex server in the Settings tab' button, shown only while not connected"),
+	// J2: Insights watches Plex and Jellyfin, so its sidebar group is "Watching".
+	webPhrase(`group: "Plex"`, "the sidebar group holding Insights is 'Watching' — it covers Plex and Jellyfin (lib/nav.ts)"),
 	// COPY-10: system strings that described an older build.
 	webPhrase(`auth_enabled`, "sign-in is always enforced, so a constant Auth stat says nothing — leave it off the Dashboard"),
 	phrase(`kept in memory, up to`, "the viewer loads up to LOG_LIMIT lines; Arrmada keeps 50,000 in memory and writes rotating log files"),
@@ -245,7 +251,11 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`change them in Settings → Users.`,
 		`connect your Plex server in Insights first`,
 		`<Link to="/settings/plex#plex-connection">Plex connection</Link>`,
+		`Who may sign in with Plex is in Settings → Plex.`,
+		`<Link to="/settings/plex">`,
+		`>Plex settings →</Link>`,
 		`Connect your server in <b>Settings</b> to begin.`,
+		`    group: "Plex",`,
 		`<Stat k="Auth" v={status?.auth_enabled ? "enabled" : "disabled"} />`,
 		`lines — kept in memory, up to 5000.`,
 		`set ARRMADA_BASE_URL to serve under a path`,
@@ -288,6 +298,11 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`Settings → Downloads → Recycle bin`,
 		`/settings/system#api-keys`,
 		`Connect your Plex server in Settings → Connections`,
+		`is in Settings → Media servers`,
+		`<Link to="/settings/media-servers#plex-monitoring">`,
+		`Media server settings →`,
+		`// the old Plex section (/settings/plex) redirects here`,
+		`    group: "Watching",`,
 		"flash(`${selected.size} ${mon ? \"monitored\" : \"unmonitored\"}.`);",
 		`{ key: "wanted", label: "Wanted" },`,
 		`turbo transcribes any language; it can't translate`,

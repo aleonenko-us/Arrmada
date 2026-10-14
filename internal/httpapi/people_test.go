@@ -17,6 +17,7 @@ var peopleKeys = map[string]bool{
 	"id": true, "username": true, "role": true, "disabled": true, "created_at": true,
 	"auto_approve_movie": true, "auto_approve_series": true, "auto_approve_book": true,
 	"plex_linked": true, "plex_username": true, "plex_only": true, "plex_blocked": true, "quota": true,
+	"jellyfin_linked": true, "jellyfin_username": true, "jellyfin_only": true, "jellyfin_blocked": true,
 	"sessions": true, "web_last": true, "audio_last": true, "listen_last": true, "last_seen": true,
 	"audio_eligible": true, "audio_allowed": true, "audio_password_set": true, "audio_devices": true,
 }

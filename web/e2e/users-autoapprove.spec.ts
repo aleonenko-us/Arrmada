@@ -2,7 +2,7 @@ import { test, expect } from "./mockApi";
 
 // REQ-09: auto-approve is per media type. The people list flags a Plex sign-in that still
 // approves whole shows; each type saves on its own from the row, and the Plex sign-in
-// default lives in Settings → Plex.
+// default lives in Settings → Media servers.
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
@@ -22,9 +22,9 @@ test.describe("admin", () => {
     ]);
     await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
 
-    // The Plex sign-in default (in Settings → Plex) starts at movies only.
-    await page.getByRole("link", { name: "Settings → Plex" }).click();
-    await expect(page).toHaveURL(/\/settings\/plex#plex-sign-in$/);
+    // The Plex sign-in default (in Settings → Media servers) starts at movies only.
+    await page.getByRole("link", { name: "Plex sign-in" }).click();
+    await expect(page).toHaveURL(/\/settings\/media-servers#plex-sign-in$/);
     const plex = page.getByRole("group", { name: "New Plex sign-ins auto-approve" });
     await expect(plex.getByRole("checkbox", { name: "Movies" })).toBeChecked();
     await expect(plex.getByRole("checkbox", { name: "Series" })).not.toBeChecked();

@@ -3,7 +3,7 @@ import type { SystemStatus, UpdateStatus } from "../../lib/api";
 import { setQueryData } from "../../lib/query";
 import { systemApi } from "../../lib/systemApi";
 import { ago } from "../../lib/taskTime";
-import { noteBlocks, updateHeadline } from "../../lib/updateStatus";
+import { noteBlocks, updateHeadline, updateHint } from "../../lib/updateStatus";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { Button } from "../../ui";
 import { AutoToggle } from "../settings/auto";
@@ -11,8 +11,9 @@ import { AutoToggle } from "../settings/auto";
 const TONE = { update: "var(--accent-text)", ok: "var(--good-text)", muted: "var(--ink-dim)" } as const;
 
 // UpdateCheck is the Updates card on Settings → Status: whether a newer release is out
-// (or, for a build of main, how far behind main it is), the release notes, Check now and
-// the switch. The check only ever reads GitHub's public releases; the hint says so.
+// (or, for a build of main, how far behind main it is), how this server gets it, the
+// release notes, Check now and the switch. The check only ever reads GitHub's public
+// releases; the hint says so.
 export function UpdateCheck({ update }: { update: UpdateStatus }) {
   const [checking, setChecking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
   };
 
   const head = updateHeadline(update);
+  const hint = updateHint(update);
   const latest = update.enabled ? update.latest : null;
   return (
     <section id="updates" className="scroll-mt-20 rounded-xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
@@ -43,8 +45,11 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
           )}
         </div>
         {update.enabled && update.problem && <p className="m-0 text-sm text-ink-dim">{update.problem}</p>}
-        {update.available && latest && (
-          <p className="m-0 text-sm text-ink-dim">Update Arrmada the way you installed it to get this release.</p>
+        {hint && (
+          <div className="flex flex-col gap-1">
+            <p className="m-0 text-sm text-ink-dim">{hint.text}</p>
+            <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{hint.command}</code>
+          </div>
         )}
         {latest && <ReleaseNotes release={latest} open={update.available} label={update.available ? "What changed" : `Newest release: ${latest.tag}`} />}
         {err && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text, var(--reject))" }}>{err}</p>}

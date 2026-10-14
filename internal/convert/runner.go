@@ -537,7 +537,7 @@ func (s *Service) Status(ctx context.Context) Status {
 	case active > 0:
 		st.State, st.Message = "working", fmt.Sprintf("Converting %d file%s", active, plural(active))
 	case watchBlock && (len(st.Requests) > 0 || (p.auto && inHours && st.Remaining > 0)):
-		st.State, st.Message = "paused", "Waiting — someone is watching Plex"
+		st.State, st.Message = "paused", "Waiting — someone is watching"
 	case len(st.Requests) > 0:
 		st.State, st.Message = "starting", "Starting your requested files"
 	case !p.auto:
@@ -566,7 +566,8 @@ func (s *Service) Status(ctx context.Context) Status {
 // a requested file is running on the request lane: an automatic job waits for it.
 func (s *Service) pauseReason(job *Job, p prefs, watching, laneBusy bool) string {
 	if watching {
-		return "someone is watching Plex"
+		// On Plex or Jellyfin: Insights' Watching covers every monitored server.
+		return "someone is watching"
 	}
 	if !job.Requested && laneBusy {
 		return laneWaitReason

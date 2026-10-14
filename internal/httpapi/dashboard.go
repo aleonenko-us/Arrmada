@@ -13,6 +13,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
 
@@ -29,11 +30,14 @@ type dashboardPayload struct {
 	StreamsNote string             `json:"streams_note,omitempty"`
 	// PlexConfigured: a server URL and token are set. Without one there's nothing to be
 	// unreachable, so StreamsNote stays empty and the page offers to connect instead.
-	PlexConfigured bool            `json:"plex_configured"`
-	Queue          queueSummary    `json:"queue"`
-	QueueNote      string          `json:"queue_note,omitempty"`
-	Library        libraryCounts   `json:"library"`
-	Activity       []activityEvent `json:"activity"`
+	PlexConfigured bool `json:"plex_configured"`
+	// JellyfinConfigured: a Jellyfin address and key are set. Now playing lists both
+	// servers' streams, each with its server.
+	JellyfinConfigured bool            `json:"jellyfin_configured"`
+	Queue              queueSummary    `json:"queue"`
+	QueueNote          string          `json:"queue_note,omitempty"`
+	Library            libraryCounts   `json:"library"`
+	Activity           []activityEvent `json:"activity"`
 	// Listening is who's listening to audiobooks right now. AudioOff: the audiobook
 	// server isn't running, so there's nothing to show.
 	Listening []nowListening `json:"listening"`
@@ -141,6 +145,17 @@ type activityEvent struct {
 	AtMS   int64  `json:"at_ms"`
 }
 
+// streamsNote says which servers' streams are missing from Now playing ("Jellyfin: …").
+func streamsNote(errs map[string]string) string {
+	var parts []string
+	for _, k := range []string{insights.ServerPlex, insights.ServerJellyfin} {
+		if e, ok := errs[k]; ok {
+			parts = append(parts, mediaserver.Kind(k).Label()+": "+e)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
 func (a *api) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardTimeout)
 	defer cancel()
@@ -162,17 +177,23 @@ func (a *api) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if a.deps.Insights != nil {
 		cfg := a.deps.Insights.Config(ctx)
 		out.PlexConfigured = cfg.URL != "" && cfg.TokenSet
-		if out.PlexConfigured {
-			if act, err := a.deps.Insights.Activity(ctx); err != nil {
+		out.JellyfinConfigured = a.deps.Insights.JellyfinConfigured(ctx)
+		if out.PlexConfigured || out.JellyfinConfigured {
+			// Both servers' streams, each with its server; one not answering is a note
+			// beside the other's streams.
+			if act, err := a.deps.Insights.Activity(ctx, insights.ServerAll); err != nil {
 				// The settings can be cleared between the check and the call; that is
 				// still "not connected", not a failure to report.
 				if errors.Is(err, plex.ErrNotConfigured) {
-					out.PlexConfigured = false
+					out.PlexConfigured, out.JellyfinConfigured = false, false
 				} else {
 					out.StreamsNote = err.Error()
 				}
 			} else {
 				out.Streams = &act
+				if len(act.Errors) > 0 {
+					out.StreamsNote = streamsNote(act.Errors)
+				}
 			}
 		}
 	}

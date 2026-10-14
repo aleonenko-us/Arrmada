@@ -10,6 +10,8 @@ import { BookFormatBadge } from "./BookFormats";
 import { SeasonTrim } from "./SeasonTrim";
 import { DeclineReasonField, ReRequestFlag, decisionLine } from "./DeclineReason";
 import { refreshAttention } from "../lib/useAttention";
+import { WatchButton } from "./brand/WatchPills";
+import { watchLinksOf } from "./brand/servers";
 
 // RequestSheet is one request, opened from the Discover strip, a row on the Requests page
 // or a notification's ?id= link: who asked and when, their note, where it has got to, and
@@ -215,7 +217,8 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
               {!declining && <Button className={big} onClick={() => setDeclining(true)} disabled={!!busy}>Decline…</Button>}
             </>
           )}
-          {rq.plex_url && <a href={rq.plex_url} target="_blank" rel="noopener noreferrer" className={`${big} inline-flex items-center rounded-lg bg-accent-grad px-4 text-base font-semibold text-accent-ink`}>▶ Watch on Plex</a>}
+          {/* A Watch button per media server that has it, the viewer's own first. */}
+          {watchLinksOf(rq).map((l, i) => <WatchButton key={`${l.server}:${l.url}`} link={l} primary={i === 0} className={big} />)}
           {lib && <Link to={lib} className={`${big} inline-flex items-center rounded-lg px-4 text-base font-semibold`} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>Open in library</Link>}
           {!staff && own && pending && <Button className={big} onClick={withdraw} busy={busy === "withdraw"} disabled={!!busy}>Withdraw</Button>}
           {following && <Button className={big} onClick={unfollow} busy={busy === "unfollow"} disabled={!!busy}>Stop following</Button>}

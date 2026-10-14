@@ -1,6 +1,7 @@
 // Thin typed client for Arrmada's JSON API.
 
 import type { PipelineStage } from "./stages";
+import type { MediaServerKind, WatchLink } from "../components/brand/servers";
 
 export interface Module {
   id: string;
@@ -22,6 +23,10 @@ export interface Status {
   books_enabled: boolean;
   music_enabled: boolean;
   plex_login: boolean;
+  /** Sign in with Jellyfin is on (and a Jellyfin server is connected). */
+  jellyfin_login?: boolean;
+  /** Its sheet offers Quick Connect too. */
+  jellyfin_quickconnect?: boolean;
   /** Whether TMDB browsing works (a key is set). Sent to signed-in callers only. */
   metadata_ready?: boolean;
 }
@@ -745,6 +750,8 @@ export interface UserNotification {
   id: number; title: string; body: string; media_type: string; ref: string; read: boolean; created_at: number;
   /** A 'ready' notice for a title the owner's Plex has: its app.plex.tv page (absent while Plex is off). */
   plex_url?: string;
+  /** A 'ready' notice's Watch buttons: one per media server that has the title, the reader's own first. */
+  watch_links?: WatchLink[];
 }
 
 export interface CalendarItem {
@@ -838,11 +845,15 @@ export interface SetupState {
   can_restart: boolean;
   mounts: string[];
   suggestions: Partial<LibraryPaths>;
-  /** The Plex step: a server is connected (address and token saved), and its name. */
+  /** The Media server step: Plex is connected (address and token saved), and its name. */
   plex_connected?: boolean;
   plex_server?: string;
-  /** The family sign-in switches; auto_approve_types is "" until the owner has chosen. */
+  /** Plex's family sign-in switches; auto_approve_types is "" until the owner has chosen. */
   plex_family?: { enabled: boolean; auto_approve_types: string };
+  /** The same for Jellyfin (address and API key saved; Sign in with Jellyfin's switches). */
+  jellyfin_connected?: boolean;
+  jellyfin_server?: string;
+  jellyfin_family?: { enabled: boolean; auto_approve_types: string };
   /** The Indexers step: how many indexers searches can use. */
   indexers_enabled?: number;
   /** Whether a Prowlarr answers at the saved address; null unless asked (?prowlarr=1). */
@@ -991,6 +1002,8 @@ export interface DashboardData {
   streams_note?: string;
   /** A Plex URL and token are set; without them streams_note stays empty. */
   plex_configured: boolean;
+  /** A Jellyfin address and key are set: streams then include Jellyfin's, each with its server. */
+  jellyfin_configured?: boolean;
   queue: QueueSummary;
   queue_note?: string;
   library: LibraryCounts;
@@ -1092,6 +1105,14 @@ export interface AppSettings {
   plex_login_auto_approve: boolean;
   /** The types a new Plex sign-in auto-approves, "movie,series,book" (any subset). */
   plex_login_auto_approve_types: string;
+  /** Sign in with Jellyfin (username + password). */
+  jellyfin_login_enabled: boolean;
+  /** Jellyfin sign-in and linking also offer Quick Connect. */
+  jellyfin_quickconnect_enabled: boolean;
+  /** Sign in with Jellyfin may open an admin or manager account linked to that user. */
+  jellyfin_signin_staff: boolean;
+  /** The types a new Jellyfin sign-in auto-approves, "movie,series,book" (any subset). */
+  jellyfin_login_auto_approve_types: string;
   /** Request limits per person per window of days (0 = unlimited). */
   request_quota_days: number;
   request_quota_movies: number;
@@ -1571,6 +1592,8 @@ export interface MediaRequest {
   rerequest?: number;
   /** Delivered and in the owner's Plex: the title's app.plex.tv page. */
   plex_url?: string;
+  /** Delivered: a Watch link per media server that has it, the viewer's own server first. */
+  watch_links?: WatchLink[];
 }
 
 /** A section of the request list (GET /api/v1/requests?section=). */
@@ -1597,7 +1620,7 @@ export interface RequestList {
 // RequestTracking is where a request has got to, from its own downloads.
 export type RequestStage =
   | "pending" | "declined" | "searching" | "queued" | "downloading" | "paused"
-  | "failed" | "importing" | "partial" | "adding" | "available"; // adding: on disk, waiting for Plex
+  | "failed" | "importing" | "partial" | "adding" | "available"; // adding: on disk, waiting for a media server
 export interface RequestTracking {
   stage: RequestStage;
   progress?: number; // 0..1 across its active downloads
@@ -1617,6 +1640,8 @@ export interface RequestTracking {
   misses?: number;
   /** A book the searches have slowed to a monthly check. */
   search_stopped?: boolean;
+  /** Stage "adding": the media servers it's being added to ("Adding to Plex…"; both = "your library"). */
+  adding_to?: MediaServerKind[];
 }
 
 // MyBook is one library book as a requester sees it: an ebook to download, an
@@ -1727,6 +1752,11 @@ export interface AuthUser {
   plex_username?: string;
   /** Plex is their only way in (no password anyone knows): unlinking would strand them. */
   plex_only?: boolean;
+  // The same for a linked Jellyfin user.
+  jellyfin_linked?: boolean;
+  jellyfin_blocked?: boolean;
+  jellyfin_username?: string;
+  jellyfin_only?: boolean;
 }
 
 /** One filesystem on System → Status, with the other folders that share it. */
@@ -1771,13 +1801,20 @@ export interface UpdateRelease {
 export interface UpdateStatus {
   enabled: boolean;
   current: string;
-  /** release: a v-tag build, compared with the newest release; main: a commit build, compared with main; dev: neither. */
-  channel: "release" | "main" | "dev";
+  /**
+   * release: a v-tag build, compared with the newest release; main: a commit build on an install
+   * that follows main, compared with main; build: a commit build on an install that follows the
+   * releases (updates keep it until a release includes it), compared with the newest release;
+   * dev: none of these.
+   */
+  channel: "release" | "main" | "build" | "dev";
   checked_at: string | null;
   latest: UpdateRelease | null;
   available: boolean;
   /** Commits main has that this build lacks; null = unknown or not a build of main. */
   behind: number | null;
+  /** channel build: commits this build has that the newest release lacks; null = unknown. */
+  ahead?: number | null;
   /** Why the last attempt couldn't check, in words. */
   problem?: string;
 }
@@ -1799,6 +1836,10 @@ export interface Person {
   plex_username?: string;
   plex_only?: boolean;
   plex_blocked?: boolean;
+  jellyfin_linked?: boolean;
+  jellyfin_username?: string;
+  jellyfin_only?: boolean;
+  jellyfin_blocked?: boolean;
   quota: UserQuota;
   /** Browsers signed in (only they see which). */
   sessions: number;
@@ -1835,6 +1876,13 @@ export interface PlexBlock {
   at: string;
 }
 
+// The same for a Jellyfin user.
+export interface JellyfinBlock {
+  jellyfin_id: string;
+  name: string;
+  at: string;
+}
+
 // What deleting a user takes with them — counts only, never which books (privacy rule).
 export interface UserImpact {
   places: number;
@@ -1845,6 +1893,7 @@ export interface UserImpact {
   sessions: number;
   push_subscriptions: number;
   plex_linked: boolean;
+  jellyfin_linked?: boolean;
 }
 
 export interface CrewMember {
@@ -1884,6 +1933,7 @@ export interface MediaDetail {
   /** The title as a Discover card with this viewer's badge state, for a sheet opened cold from its address. */
   card?: DiscoverCard;
   plex_url?: string; // app.plex.tv page for the title, when the owner's Plex has it
+  watch_links?: WatchLink[]; // a Watch link per media server that has it, the viewer's own first
   collection?: { id: number; name: string }; // a movie's franchise, for "Part of the … collection"
 }
 /** One "Complete the <name>" row on Discover. */
@@ -2467,6 +2517,8 @@ export interface ConvertRequest { key: string; title: string; requested_at: numb
 // "no" = only ever had its video transcoded, "unknown" = never played that format.
 export interface ConvertDeviceCodec { state: "yes" | "no" | "unknown"; direct: number; transcoded: number }
 export interface ConvertDevice {
+  /** The server whose app it is: the same TV plays through Plex's app and Jellyfin's. */
+  server?: InsightsServer;
   product: string; platform: string; player: string; last_seen: number; plays: number;
   hevc: ConvertDeviceCodec; hevc10: ConvertDeviceCodec; av1: ConvertDeviceCodec;
 }
@@ -2548,7 +2600,15 @@ export interface PlexConfig {
 export interface PlexTestResult { ok: boolean; error?: string; machine_id?: string; server_name?: string; version?: string; libraries?: PlexLibrary[] }
 export interface GeoLocation { ip: string; local: boolean; city?: string; country?: string; country_code?: string; lat?: number; lon?: number }
 export interface StreamDetail { src: string; stream?: string }
+/** The media server a stream, play, person or title row belongs to ("" = both, on a title watched on each). */
+export type InsightsServer = "plex" | "jellyfin";
+/** Each media server Insights can watch (GET /insights/servers): connected, and what its monitoring is doing. */
+export interface InsightsServerStatus {
+  server: InsightsServer; name?: string; configured: boolean; monitoring: boolean; status: PlexStatus;
+  poll_seconds: number; last_poll_at?: number; last_error?: string;
+}
 export interface InsightsStream {
+  server?: InsightsServer;
   /** thumb is the portrait poster (an episode's show poster); still is an episode's own frame, art the background. */
   session_key: string; user: string; user_id?: string; title: string; subtitle: string; type: string; thumb: string; still?: string; art?: string;
   progress_pct: number; offset_ms: number; duration_ms: number; state: string;
@@ -2556,11 +2616,17 @@ export interface InsightsStream {
   bandwidth_kbps: number; location: string; ip: string; geo: GeoLocation;
   video: StreamDetail; audio: StreamDetail; container: StreamDetail;
   hw_transcode: boolean; throttled: boolean; reasons: string[];
-  /** What Plex is really running on the GPU; hw_requested without hw_encode = fell back to CPU. */
+  /** What Plex is really running on the GPU; hw_requested without hw_encode = fell back to CPU.
+   *  Jellyfin: hw_transcode with hw_title = its configured acceleration ("vaapi"); it doesn't say more. */
   hw_decode: boolean; hw_encode: boolean; hw_requested: boolean; hw_title?: string;
 }
-export interface InsightsActivity { streams: InsightsStream[]; bandwidth: { total_kbps: number; lan_kbps: number; wan_kbps: number }; geo_active: boolean }
+export interface InsightsActivity {
+  streams: InsightsStream[]; bandwidth: { total_kbps: number; lan_kbps: number; wan_kbps: number }; geo_active: boolean;
+  /** A connected server that didn't answer, by server, while another did. */
+  errors?: Partial<Record<InsightsServer, string>>;
+}
 export interface HistoryEntry {
+  server?: InsightsServer;
   id: number; user_id: string; user_name: string; title: string; grandparent_title: string; parent_title: string;
   media_index: number; parent_index: number; year: number; media_type: string; thumb: string; thumb_url: string;
   /** The show an episode belongs to, recorded since PLEX-20 ("" before that and for movies). */
@@ -2573,12 +2639,12 @@ export interface HistoryEntry {
   sessions?: number;
 }
 export interface InsightsHistory { rows: HistoryEntry[]; total: number }
-export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number }
-export interface NameStat { id: string; name: string; plays: number; secs: number }
+export interface TitleStat { title: string; thumb_url: string; plays: number; secs: number; server?: InsightsServer | "" }
+export interface NameStat { id: string; name: string; plays: number; secs: number; server?: InsightsServer | "" }
 export interface InsightsStats { most_watched_movies: TitleStat[]; most_watched_shows: TitleStat[]; most_active_users: NameStat[]; most_active_platforms: NameStat[]; recently_watched: HistoryEntry[] }
-export interface UserEntry { id: string; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
-export interface LibraryStat { title: string; type: string; count: number }
-export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number }
+export interface UserEntry { id: string; server?: InsightsServer; username: string; avatar_url?: string; last_seen: number; last_ip: string; last_platform: string; last_player: string; last_title: string; total_plays: number; total_secs: number; geo: GeoLocation }
+export interface LibraryStat { title: string; type: string; count: number; server?: InsightsServer }
+export interface RecentItem { title: string; subtitle: string; type: string; thumb_url: string; added_at: number; server?: InsightsServer }
 export interface BWPoint { t: string; total_kbps: number; lan_kbps: number; wan_kbps: number }
 // Every play series is in `metric`: plays, or hours watched ("duration").
 export interface InsightsGraphs {
@@ -2599,6 +2665,7 @@ export interface LibraryItem {
   kind: "movie" | "show"; title: string; year?: number; thumb_url: string; rating_key?: string;
   media?: "movie" | "series"; tmdb?: number; arrmada_id?: number;
   plays?: number; secs?: number; added_at?: number;
+  server?: InsightsServer | "";
 }
 export interface HotSpot extends LibraryItem {
   transcodes: number; total_plays: number; top_pair: string; platforms: string[]; top_cause?: string; cause_label?: string;
@@ -2609,9 +2676,11 @@ export interface InsightsLibrary {
   never_watched: LibraryItem[]; never_watched_total: number; never_watched_unavailable: boolean;
   hot_spots: HotSpot[];
 }
-// One Plex user's People page (GET /insights/users/{id}): Plex video plays only.
+// One person's People page (GET /insights/users/{id}): their video plays on one server
+// (someone on both servers has a page per server). Jellyfin reports no buffering, so a
+// Jellyfin person's stalls stay zero.
 export interface PersonProfile {
-  id: string; username: string; avatar_url: string; window_days: number;
+  id: string; server?: InsightsServer; username: string; avatar_url: string; window_days: number;
   first_seen: number; last_seen: number; total_plays: number; total_secs: number;
   /** Share of plays with a known runtime that reached 90%, out of completion_of plays. */
   completion_pct: number; completion_of: number;
@@ -2621,7 +2690,11 @@ export interface PersonProfile {
   stalls: { events: number; stall_ms: number; rate_pct: number };
   recent: HistoryEntry[];
 }
-export interface Reliability { summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[] }
+export interface Reliability {
+  summary: ReliabilitySummary; causes: CauseCount[]; by_user: BufferGroup[]; by_platform: BufferGroup[]; by_title: BufferGroup[]; events: BufferEvent[];
+  /** Jellyfin plays in the window, left out of every figure (Jellyfin reports no buffering). */
+  jellyfin_plays?: number;
+}
 
 // ApiError is still an Error (every existing catch keeps reading .message), but it also
 // carries the status and the decoded body, so a refusal can show its details — e.g.

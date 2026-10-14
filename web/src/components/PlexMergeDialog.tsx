@@ -15,13 +15,15 @@ export function mergeLines(p: PlexMergePreview): string[] {
   if (p.quota_usage) out.push(plural(p.quota_usage, "request-limit entry", "request-limit entries"));
   if (p.audiobook_progress) out.push("audiobook progress");
   if (p.audiobook_password) out.push("their audiobook password");
-  out.push(`the Plex link${p.plex_username ? ` (${p.plex_username})` : ""}`);
+  // Older servers didn't say: their merges always moved a Plex link.
+  if (p.plex_link !== false) out.push(`the Plex link${p.plex_username ? ` (${p.plex_username})` : ""}`);
+  if (p.jellyfin_link) out.push(`the Jellyfin link${p.jellyfin_username ? ` (${p.jellyfin_username})` : ""}`);
   return out;
 }
 
-// PlexMergeDialog (admin) merges a duplicate Plex requester into the account it belongs
-// with: a preview of exactly what moves, then one all-or-nothing merge after the server
-// copies the database.
+// PlexMergeDialog (admin) merges a duplicate Plex or Jellyfin requester into the account it
+// belongs with: a preview of exactly what moves (both links among it), then one
+// all-or-nothing merge after the server copies the database.
 export function PlexMergeDialog({ targetId, fromId, onClose, onMerged }: {
   targetId: number;
   fromId: number;
