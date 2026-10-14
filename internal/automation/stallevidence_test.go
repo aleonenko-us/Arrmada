@@ -55,8 +55,9 @@ func TestUpgradedGrabNotFailedOverOnAFlakyFirstRead(t *testing.T) {
 	if s := h.status(t, gid); s != "failed" {
 		t.Fatalf("gone for the full grace: grab status = %q, want failed", s)
 	}
-	if n := h.blocklistCount(t); n != 1 {
-		t.Errorf("blocklist rows = %d, want 1", n)
+	// Gone is failed over without a blocklist row the first time (vanished.go).
+	if n := h.blocklistCount(t); n != 0 {
+		t.Errorf("blocklist rows = %d, want none", n)
 	}
 	if calls := h.qbit.callLog(); len(calls) != 1 || calls[0] != "add "+magnetFor(alt) {
 		t.Errorf("client calls = %q, want just the alternate added", calls)

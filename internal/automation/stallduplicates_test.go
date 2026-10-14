@@ -88,7 +88,8 @@ func (h *stallHarness) captureLog() *bytes.Buffer {
 
 // The same release recorded three times for one film — re-grabbed on later days while the
 // first never imported — and then gone from the client: one fail-over, not three. One
-// blocklist row, one history line, one search, and every row closed by it.
+// history line, one search, every row closed (and stamped vanished) by it, and no
+// blocklist row — the first disappearance isn't held against the release.
 func TestDuplicateGrabsFailOverOnce(t *testing.T) {
 	h := newStallHarness(t)
 	const gone = "Rare.Film.1971.1080p.BluRay.x264-OLD"
@@ -106,9 +107,13 @@ func TestDuplicateGrabsFailOverOnce(t *testing.T) {
 		if s := h.status(t, gid); s != grabStatusFailed {
 			t.Errorf("grab %d status = %q, want failed with the others", gid, s)
 		}
+		var at int64
+		if err := h.c.db.QueryRow(`SELECT vanished_at FROM grabs WHERE id = ?`, gid).Scan(&at); err != nil || at == 0 {
+			t.Errorf("grab %d vanished_at = %d (%v), want it stamped with the others", gid, at, err)
+		}
 	}
-	if n := h.blocklistCount(t); n != 1 {
-		t.Errorf("blocklist rows = %d, want 1 — one download, one decision", n)
+	if n := h.blocklistCount(t); n != 0 {
+		t.Errorf("blocklist rows = %d, want none", n)
 	}
 	if n := h.movieEvents(t, mid, gone+" disappeared from the download client"); n != 1 {
 		t.Errorf("'disappeared' history lines = %d, want 1", n)
@@ -124,8 +129,8 @@ func TestDuplicateGrabsFailOverOnce(t *testing.T) {
 	// Nothing is left to fail over on the next check.
 	h.later(stallEvidenceGrace)
 	h.observe()
-	if n := h.blocklistCount(t); n != 1 {
-		t.Errorf("after another check, blocklist rows = %d, want still 1", n)
+	if n := h.blocklistCount(t); n != 0 {
+		t.Errorf("after another check, blocklist rows = %d, want still none", n)
 	}
 	if n := h.ix.searchCount(); n != searches {
 		t.Errorf("the next check searched again (%d more requests)", n-searches)
