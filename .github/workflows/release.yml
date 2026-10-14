@@ -28,7 +28,7 @@ jobs:
     name: Build and push the image
     # A manual run started on a branch publishes nothing.
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
       contents: read
@@ -45,7 +45,7 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Registry paths must be lower case; the owner's name is used as GitHub has it.
       # COMMIT is the short commit, as update.sh stamps a local build.
       - name: Names
@@ -60,7 +60,7 @@ jobs:
       # re-run on a tag gets them too.
       - name: Image tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.names.outputs.image }}
           flavor: |
@@ -73,9 +73,9 @@ jobs:
           labels: |
             org.opencontainers.image.title=Arrmada
             org.opencontainers.image.description=Self-hosted movies, series, books and music in one app
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Log in to GitHub's container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -84,7 +84,7 @@ jobs:
       # release. The cache from main's image.yml runs is read, not written: a tag's own
       # cache entries would only ever be used by that tag.
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -100,7 +100,7 @@ jobs:
     # After the image is pushed, so "Update available" never points at an image that
     # can't be pulled yet.
     needs: image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

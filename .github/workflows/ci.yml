@@ -16,6 +16,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Runners are pinned to ubuntu-24.04 rather than ubuntu-latest, which moved to Ubuntu 26
+# on 2026-10-19: a new OS image should be a change made on purpose here, not a surprise
+# red build. Actions are on their Node 24 majors (Node 20 actions are deprecated).
 env:
   # Keep in step with the Dockerfile's web stage (FROM node:24-alpine), so CI checks
   # the UI with the same Node major that builds the shipped image.
@@ -24,15 +27,15 @@ env:
 jobs:
   go:
     name: Go build, vet & test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The binary embeds the built web UI (//go:embed all:dist in internal/webui), and
       # dist is generated rather than committed. Without this step the embed pattern
       # matches nothing on a fresh checkout and `go build ./...` fails before any of the
       # real checks run — which is exactly what happened: every run since this workflow
       # landed failed here, never reaching vet, gofmt or the tests.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -40,7 +43,7 @@ jobs:
       - name: Build the embedded web UI
         run: npm ci && npm run build
         working-directory: web
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25.x"
           cache: true
@@ -90,24 +93,24 @@ jobs:
 
   scripts:
     name: Shell scripts (shellcheck)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # update.sh runs on the owner's server and has to survive a bad pull or a failed
       # build without leaving the app down; a quoting slip there is not caught anywhere
-      # else. shellcheck is preinstalled on ubuntu-latest. -s sh: they are POSIX sh.
+      # else. shellcheck is preinstalled on the runner image. -s sh: they are POSIX sh.
       - name: shellcheck
         run: shellcheck -s sh update.sh install.sh docker/entrypoint.sh
 
   web:
     name: Web build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -131,7 +134,7 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
@@ -148,7 +151,7 @@ jobs:
           E2E_NO_BUILD: "1"
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
