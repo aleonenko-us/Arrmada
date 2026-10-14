@@ -3,6 +3,7 @@
 ## What you need
 
 - A 64-bit Intel or AMD (x86-64) server running Linux, with **Docker** and **Docker Compose v2**.
+  ARM machines aren't supported: the published image is x86-64 only.
   - **Unraid:** Docker is built in (Settings → Docker). Install the **Docker Compose Manager**
     plugin from the Apps tab for Compose.
   - **Other Linux:** [Docker Engine](https://docs.docker.com/engine/install/) and its
@@ -40,7 +41,7 @@ It works out everything else and shows a summary before it starts:
 | Timezone | Your server's own (asked only if it can't be found) |
 | GPU | `/dev/dri` is passed through when your server has one |
 | Convert's scratch folder | `transcode/` next to the database |
-| The app | Downloaded from `ghcr.io/tristenlammi/arrmada:stable` (compiled on the server only if no release has been published yet — that takes 30–60 minutes) |
+| The app | Downloaded from `ghcr.io/tristenlammi/arrmada:stable` (compiled on the server only with `--build` or if the download fails — that takes 30–60 minutes and [a few GB of memory](troubleshooting.md#the-build-fails-or-gets-killed)) |
 
 When it's done it prints the address, e.g. `http://192.168.1.10:7878`.
 
@@ -129,8 +130,40 @@ Arrmada's folder holds `docker-compose.yml`, your settings in `.env`, the mounts
 > ⚠ Never mount media at `/data` inside the container — that's where Arrmada keeps its
 > database. The installer always mounts media at `/storage`.
 
-## Komodo, Portainer and plain `docker compose`
+## Plain `docker compose`
+
+No installer at all:
+
+```sh
+git clone https://github.com/tristenlammi/Arrmada
+cd Arrmada
+docker compose up -d
+```
+
+That downloads the published image (`ghcr.io/tristenlammi/arrmada:stable`) and starts it with
+the bundled qBittorrent and FlareSolverr, the database and media in Docker volumes. Open
+`http://<server>:7878`. To change ports or the run-as user, put the settings from
+[Configuration](configuration.md) in a `.env` next to `docker-compose.yml`; if that `.env` sets
+`ARRMADA_PORT`, also add `ARRMADA_APP_IMAGE=ghcr.io/tristenlammi/arrmada:stable` (see
+[Updating](updating.md#upgrading-from-v010-or-earlier) for why). Update with
+`git pull && docker compose pull && docker compose up -d`.
+
+The image is built for 64-bit Intel/AMD (x86-64) only. On an ARM machine (a Raspberry Pi,
+Apple Silicon, Ampere) the download fails with `no matching manifest for linux/arm64`, and
+Compose then tries to compile instead, which fails too (`no match for platform in manifest`).
+
+### Compiling it yourself
+
+`docker compose up -d --build` compiles the code in the folder instead (30–60 minutes the
+first time: the subtitle and GPU tooling are built from source too). It needs **at least
+4 GB of memory free for the build**; with less, the compilers are killed part-way and the
+build fails (see [Troubleshooting](troubleshooting.md#the-build-fails-or-gets-killed)). Put
+`ARRMADA_APP_IMAGE=arrmada:dev` in `.env` first, so your build is kept under its own name
+rather than the published image's.
+
+## Komodo, Portainer and other tools
 
 The installer writes a normal Compose project, so tools that run `docker compose up -d` in
-that folder work. If such a tool also does your updates, mirror what `update.sh` does — see
-[Updating → Other deploy tools](updating.md#other-deploy-tools).
+that folder work: `.env` names the image (`ARRMADA_APP_IMAGE=arrmada:dev`, the one `update.sh`
+builds or downloads). If such a tool also does your updates, mirror what `update.sh` does —
+see [Updating → Other deploy tools](updating.md#other-deploy-tools).

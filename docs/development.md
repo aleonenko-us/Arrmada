@@ -14,6 +14,11 @@ For a single binary with the UI inside it:
 cd web && npm run build && cd .. && go build -o arrmada ./cmd/arrmada
 ```
 
+To build the Docker image from your checkout, put `ARRMADA_APP_IMAGE=arrmada:dev` in `.env`
+(otherwise the build is tagged with the published image's name) and run
+`docker compose up -d --build`. Without `--build`, `docker compose up -d` runs the published
+image. A cold image build needs about 4 GB of free memory.
+
 ## Checks
 
 CI runs these on every push:
