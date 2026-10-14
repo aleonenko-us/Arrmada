@@ -38,6 +38,9 @@ func newTracker(kind mediaserver.Kind) *tracker {
 
 // watching: something was playing at the server's last poll, and that poll was recent.
 func (t *tracker) watching(now time.Time) bool {
+	if t == nil {
+		return false
+	}
 	at := t.playingAt.Load()
 	if at == 0 || now.Sub(time.Unix(at, 0)) > 3*time.Minute {
 		return false
