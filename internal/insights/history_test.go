@@ -128,10 +128,10 @@ func TestHistoryExportIgnoresPaging(t *testing.T) {
 	}
 }
 
-// BenchmarkHistoryGrouped runs one grouped page over 10k and 100k seeded plays. The
-// spec asked for under 200 ms at 100k; window functions over every filtered play put it
-// near half a second there (about a tenth of that at 10k, a large real history), which
-// is why grouping is a toggle and the plain list stays the default.
+// BenchmarkHistoryGrouped runs one grouped page over 10k and 100k seeded plays. A window
+// function over every play put it near half a second at 100k; reading the starts marked
+// by migration 0308 it is a few milliseconds at either size. (Grouping with other filters
+// still takes the window path: around 0.45 s when 100k plays match.)
 func BenchmarkHistoryGrouped(b *testing.B) {
 	for _, n := range []int{10_000, 100_000} {
 		b.Run(fmt.Sprint(n), func(b *testing.B) {
