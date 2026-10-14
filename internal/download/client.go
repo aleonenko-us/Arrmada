@@ -11,9 +11,7 @@ type Kind string
 
 const (
 	KindQbittorrent Kind = "qbittorrent"
-	// KindSABnzbd is a SABnzbd usenet client. Its implementation is registered separately
-	// (sabnzbd.go); until it is, a row of this kind reads as "no downloader" and is sent
-	// nothing.
+	// KindSABnzbd is a SABnzbd usenet client (sabnzbd.go).
 	KindSABnzbd Kind = "sabnzbd"
 )
 
@@ -143,6 +141,18 @@ func (i Item) Phase() string {
 		case "QuickCheck", "Verifying", "Repairing", "Extracting", "Moving", "Running":
 			return PhaseUnpacking
 		}
+		// A job waiting its turn, for its articles to propagate, or for its NZB to be
+		// fetched is held, not stuck. A paused queue reads as paused whatever each job says.
+		switch {
+		case i.State == "paused" || i.RawState == "Paused":
+			return "paused"
+		case i.RawState == "Queued" || i.RawState == "Propagating" || i.RawState == "Fetching" || i.RawState == "Grabbing":
+			return "queued"
+		case i.RawState == "Downloading":
+			return "downloading"
+		case i.RawState == "Failed":
+			return "error"
+		}
 	}
 	switch i.RawState {
 	case "metaDL", "forcedMetaDL":
@@ -179,9 +189,20 @@ const PhaseUnpacking = "unpacking"
 // and a download that wasn't there yet would be imported and later deleted for seeding.
 // RemainingBytes is an independent second opinion from the same payload — it costs nothing
 // and both must agree.
+//
+// A usenet job is complete only when its client says so (State "completed": SABnzbd's
+// history reads Completed). Its bytes are all down long before that — while it is verified,
+// repaired and unpacked — and importing then would take half-extracted files.
 func (i Item) Complete() bool {
+	if i.Transport == TransportUsenet && i.State != StateCompleted {
+		return false
+	}
 	return i.Progress >= 1.0 && i.RemainingBytes <= 0
 }
+
+// StateCompleted is a usenet job its client has finished with: downloaded, verified and
+// unpacked into its final folder (Item.ContentPath).
+const StateCompleted = "completed"
 
 // PartiallySelected reports whether files were excluded from the download, so a caller can
 // say why a "complete" torrent didn't yield everything the release promised.
@@ -275,6 +296,7 @@ type Registry struct {
 func NewRegistry() *Registry {
 	return &Registry{impls: map[Kind]Downloader{
 		KindQbittorrent: NewQBittorrent(),
+		KindSABnzbd:     NewSABnzbd(),
 	}}
 }
 

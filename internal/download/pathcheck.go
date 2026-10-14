@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/diskspace"
@@ -39,6 +40,9 @@ type PathCheck struct {
 	// Gone marks a newest download that's missing although its folder is visible through
 	// the same mapping: the files were moved or deleted, which no mapping would fix.
 	Gone bool `json:"gone,omitempty"`
+	// Category names the category a "category_folder" check is for (a usenet client can
+	// give a category a folder of its own, outside its completed folder).
+	Category string `json:"category,omitempty"`
 }
 
 // PathReport is the path check's answer.
@@ -88,7 +92,49 @@ func (s *Service) TestPaths(ctx context.Context, id int64, env PathEnv) (PathRep
 	if items, err := impl.List(ctx, c); err == nil {
 		newest = newestFinished(items)
 	}
-	return checkPaths(c, save, newest, env), nil
+	rep := checkPaths(c, save, newest, env)
+	// SABnzbd saves into its completed folder (save above), except for categories given a
+	// folder of their own: each of Arrmada's must be visible too.
+	if cfr, ok := impl.(categoryFolderReader); ok {
+		folders, err := cfr.CategoryFolders(ctx, c)
+		if err != nil {
+			return PathReport{}, err
+		}
+		addCategoryFolders(&rep, c, folders)
+	}
+	return rep, nil
+}
+
+// categoryFolderReader is a client whose categories can have folders of their own
+// (SABnzbd), as the client names them, keyed by category.
+type categoryFolderReader interface {
+	CategoryFolders(ctx context.Context, dc Client) (map[string]string, error)
+}
+
+// addCategoryFolders adds a check per category folder to the report, in name order; one
+// Arrmada can't see makes the report not OK.
+func addCategoryFolders(rep *PathReport, c Client, folders map[string]string) {
+	names := make([]string, 0, len(folders))
+	for name := range folders {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var unseen []string
+	for _, name := range names {
+		pc := folderCheck(c, "category_folder", folders[name])
+		pc.Category = name
+		rep.Checks = append(rep.Checks, pc)
+		if !pc.Visible {
+			unseen = append(unseen, fmt.Sprintf("%s (%s)", pc.Remote, name))
+		}
+	}
+	if len(unseen) == 0 {
+		return
+	}
+	rep.OK = false
+	rep.Summary = strings.TrimSuffix(strings.TrimSuffix(rep.Summary, "."), " ✓")
+	rep.Summary += fmt.Sprintf(". Arrmada can't see the category %s %s. Mount %s into the Arrmada container, or add a path mapping.",
+		plural(len(unseen), "folder", "folders"), strings.Join(unseen, ", "), plural(len(unseen), "it", "them"))
 }
 
 // newestFinished is the most recently added complete torrent with a content path, leaving

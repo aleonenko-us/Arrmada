@@ -364,6 +364,7 @@ func TestHasTransportCache(t *testing.T) {
 
 	// A kind with no implementation can't take anything.
 	bare, _ := newTestService(t)
+	delete(bare.registry.impls, KindSABnzbd)
 	mustCreate(t, bare, Client{Name: "SAB", Kind: KindSABnzbd, URL: "http://sab"})
 	if bare.HasTransport(ctx, TransportUsenet) {
 		t.Error("a usenet client with no implementation counted as available")
