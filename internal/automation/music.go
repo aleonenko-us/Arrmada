@@ -744,12 +744,12 @@ func (c *Coordinator) recordMusicGrab(ctx context.Context, albumID int64, title,
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// Same profile the album was chosen under (musicProfile), so the stall window matches.
 	profile = c.effectiveProfile(ctx, profile, quality.MediaMusic)
-	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexerName)
+	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexerName, infoHash)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash)
-		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'music', ?)`,
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, transport)
+		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'music', ?, ?)`,
 		albumID, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, infoHash)
+		boolToInt(seedEnabled), seedRatio, seedHours, infoHash, transport)
 	if err != nil {
 		c.log.Warn("music: recording the grab failed", "album", albumID, "err", err)
 		return

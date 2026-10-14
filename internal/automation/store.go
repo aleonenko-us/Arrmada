@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
@@ -251,17 +252,36 @@ func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionI
 	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	c.noteHashless("movie", title, infoHash)
-	seedEnabled, seedRatio, seedHours := c.seedRules(ctx, indexer)
+	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexer, infoHash)
 	decidedBy, decidedMode := pickOf(ctx, title) // what decided the pick (pickkey.go)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path, decided_by, decided_mode)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath, decidedBy, decidedMode)
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, info_hash, replaces_path, decided_by, decided_mode, transport)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		movieID, versionID, title, indexer, profile, stallMinutes, boolToInt(seedEnabled), seedRatio, seedHours, infoHash, replacesPath, decidedBy, decidedMode, transport)
 	if err != nil {
 		c.log.Warn("automation: record grab failed", "err", err)
 		return
 	}
 	c.grabbed(ctx, "movie", movieID)
+}
+
+// grabPolicy is what a new grab records about its download: the transport, and the seed
+// policy that goes with it.
+//
+// The transport comes from the download key (key.go) — a "sab-…" key is a usenet job, a
+// hash a torrent — and, for a grab recorded without a key, from the indexer it came from.
+// A usenet download never seeds, so it gets no seed goal whatever the indexer says; that
+// includes the manual paths, which would otherwise default to seeding (seedRules).
+func (c *Coordinator) grabPolicy(ctx context.Context, indexerName, key string) (transport download.Transport, seedEnabled bool, seedRatio float64, seedHours int) {
+	transport = download.KeyTransport(key)
+	if transport == "" {
+		transport = c.indexerTransport(ctx, indexerName)
+	}
+	if transport == download.TransportUsenet {
+		return transport, false, 0, 0
+	}
+	seedEnabled, seedRatio, seedHours = c.seedRules(ctx, indexerName)
+	return transport, seedEnabled, seedRatio, seedHours
 }
 
 // seedRules returns the seed policy of the named indexer.

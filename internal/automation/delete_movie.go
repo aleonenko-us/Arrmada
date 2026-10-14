@@ -109,7 +109,7 @@ func (c *Coordinator) DeleteMovie(ctx context.Context, id int64, opts DeleteMovi
 		for _, g := range grabs {
 			// Data is deleted only for this grab's own torrent, named by its exact hash; a
 			// grab without a usable hash stays orphaned rather than guessing.
-			if remove == nil || !download.ValidHash(g.hash) {
+			if remove == nil || !download.ValidKey(g.hash) {
 				continue
 			}
 			if err := remove(ctx, g.hash, true); err != nil {

@@ -5,6 +5,7 @@
 package automation
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -59,6 +60,9 @@ type Coordinator struct {
 
 	// removeTorrent overrides downloads.Remove in tests; nil uses the real client.
 	removeTorrent func(ctx context.Context, hash string, deleteData bool) error
+	// fetchRelease overrides indexers.Fetch in tests (a usenet grab's NZB); nil uses the
+	// indexer service.
+	fetchRelease func(ctx context.Context, indexerName, downloadURL string) (indexer.FetchResult, error)
 
 	// guard caches the library's own title keys (movies.PrimaryKeys) for movieKeys, so a
 	// sweep over every movie reads them once rather than once per movie.
@@ -319,15 +323,11 @@ func (c *Coordinator) Grab(ctx context.Context, indexerName, downloadURL, title 
 // to what the client holds. An empty hash is not an error — a tracker may serve something
 // we can't parse — and the caller falls back to name matching as before.
 func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, title, category string) (string, error) {
-	// The only download-client kind is a torrent client. Handing it an .nzb URL
-	// "succeeds" (qBittorrent fetches URLs async and answers 2xx), records an
-	// in-flight grab, and nothing ever arrives — refuse up front instead.
-	if idxs, err := c.indexers.List(ctx); err == nil {
-		for _, ix := range idxs {
-			if ix.Name == indexerName && ix.Transport() == indexer.TransportUsenet {
-				return "", fmt.Errorf("%q is a usenet indexer and no usenet download client is configured — this release can't be downloaded", indexerName)
-			}
-		}
+	// A usenet release goes only to a usenet client. Handing a torrent client an .nzb URL
+	// "succeeds" (qBittorrent fetches URLs async and answers 2xx), records an in-flight
+	// grab, and nothing ever arrives.
+	if c.indexerTransport(ctx, indexerName) == download.TransportUsenet {
+		return c.grabUsenet(ctx, indexerName, downloadURL, title, category)
 	}
 	res, err := c.indexers.Fetch(ctx, indexerName, downloadURL)
 	if err != nil {
@@ -372,6 +372,83 @@ func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, titl
 	return hash, nil
 }
 
+// indexerTransport is the transport of the named indexer's releases: usenet for a Newznab
+// indexer, torrent for everything else — including a name no indexer has ("manual", a
+// removed indexer) and an unreadable indexer list, which is what grabbing has always done.
+func (c *Coordinator) indexerTransport(ctx context.Context, indexerName string) download.Transport {
+	if c.indexers == nil {
+		return download.TransportTorrent
+	}
+	idxs, err := c.indexers.List(ctx)
+	if err != nil {
+		return download.TransportTorrent
+	}
+	for _, ix := range idxs {
+		if ix.Name == indexerName && ix.Transport() == indexer.TransportUsenet {
+			return download.TransportUsenet
+		}
+	}
+	return download.TransportTorrent
+}
+
+// grabUsenet hands a usenet release to a usenet client and returns its download key
+// ("sab-…"), which is what the grab records.
+//
+// The NZB is fetched here and sent as a file, never as a link for the client to fetch: an
+// indexer's NZB link carries its API key, which would then sit in the client's history.
+// A fetch that yields no NZB file fails the grab rather than falling back to the link.
+func (c *Coordinator) grabUsenet(ctx context.Context, indexerName, downloadURL, title, category string) (string, error) {
+	if !c.downloads.HasTransport(ctx, download.TransportUsenet) {
+		return "", fmt.Errorf("%q is a usenet indexer and no usenet download client is configured — this release can't be downloaded", indexerName)
+	}
+	fetch := c.fetchRelease
+	if fetch == nil {
+		fetch = c.indexers.Fetch
+	}
+	res, err := fetch(ctx, indexerName, downloadURL)
+	if err != nil {
+		return "", err
+	}
+	if len(res.File) == 0 {
+		return "", fmt.Errorf("couldn't fetch the NZB for this release from %q", indexerName)
+	}
+	return c.addNZB(ctx, res.File, res.Filename, title, category, indexerName)
+}
+
+// addNZB sends NZB bytes to the usenet clients and returns the job's download key ("" when
+// the client didn't say it — the grab is recorded all the same, so nothing grabs it twice).
+func (c *Coordinator) addNZB(ctx context.Context, file []byte, filename, title, category, source string) (string, error) {
+	if filename == "" {
+		filename = "arrmada.nzb"
+	}
+	added, err := c.downloads.AddDownload(ctx, download.AddRequest{
+		Name: title, SavePath: c.downloadsPath(), Category: category,
+		File: file, Filename: filename, Transport: download.TransportUsenet,
+	})
+	if err != nil {
+		return "", err
+	}
+	c.clearRemovedImport(ctx, added.Key)
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source})
+	return added.Key, nil
+}
+
+// looksLikeNZB reports whether an uploaded file is an NZB rather than a .torrent. A
+// torrent is a bencoded dictionary and always starts with "d"; an NZB is XML.
+func looksLikeNZB(file []byte, filename string) bool {
+	if len(file) == 0 || file[0] == 'd' {
+		return false
+	}
+	if strings.HasSuffix(strings.ToLower(filename), ".nzb") {
+		return true
+	}
+	head := file
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	return bytes.Contains(bytes.ToLower(head), []byte("<nzb"))
+}
+
 // clearRemovedImport lets a release whose imported file the user deleted import again,
 // now that it has been grabbed again on purpose. Without a new grab, the deletion
 // stands and the still-seeding torrent is left alone.
@@ -386,10 +463,14 @@ func (c *Coordinator) clearRemovedImport(ctx context.Context, hash string) {
 
 // addTorrentFile hands an uploaded .torrent file straight to the download client (no
 // indexer fetch, so it works for private trackers where the user downloaded the file
-// while logged in), in the given category, recorded as a manual grab source.
+// while logged in), in the given category, recorded as a manual grab source. An uploaded
+// .nzb goes to the usenet clients instead, and its key is the usenet job's.
 func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename, title, category string) (string, error) {
 	if len(file) == 0 {
 		return "", fmt.Errorf("no torrent file provided")
+	}
+	if looksLikeNZB(file, filename) {
+		return c.addNZB(ctx, file, filename, title, category, "manual")
 	}
 	if filename == "" {
 		filename = "arrmada.torrent"
