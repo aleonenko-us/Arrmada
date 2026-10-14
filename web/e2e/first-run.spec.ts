@@ -51,12 +51,19 @@ test.describe("admin", () => {
     ]);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Welcome to Arrmada" })).toBeVisible();
-    await expect(page.getByText("Skip for now — you can run it again from Settings → System")).toBeVisible();
-    await page.getByRole("button", { name: "Continue" }).click();
+    // No TMDB key at hand: the step says what that means and moves on to the folders, it
+    // doesn't end setup.
+    await expect(page.getByText(/No key yet\? Movies, TV and Discover find nothing until one is added/)).toBeVisible();
+    await page.getByRole("button", { name: "Continue without a key" }).click();
 
     await expect(page.getByRole("heading", { name: "Where's your media?" })).toBeVisible();
     await expect(page.getByText(/Skip/)).toHaveCount(0);
+    // No folder at all is allowed, but only once asked.
     await page.getByRole("button", { name: "Save and continue" }).click();
+    const noFolders = page.getByRole("dialog", { name: "Continue without library folders?" });
+    await expect(noFolders).toBeVisible();
+    expect(api.callsTo("PUT", "/api/v1/system/library")).toHaveLength(0);
+    await noFolders.getByRole("button", { name: "Continue without them" }).click();
 
     await expect(page.getByRole("heading", { name: "Connect Plex" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Let family sign in with Plex" })).not.toBeChecked();
@@ -77,6 +84,26 @@ test.describe("admin", () => {
     // Nothing was typed into the wizard, so nothing was saved behind the admin's back.
     expect(api.callsTo("PUT", "/api/v1/settings")).toHaveLength(0);
     expect(api.callsTo("PUT", "/api/v1/apikeys")).toHaveLength(0);
+  });
+
+  // Ending setup early is its own small link, and it says what's still left first.
+  test("finishing setup later from the first step says what's left", async ({ page, api }) => {
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/setup", body: fresh },
+      { method: "POST", path: "/api/v1/setup/complete", body: { status: "ok" } },
+    ]);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Welcome to Arrmada" })).toBeVisible();
+    await page.getByRole("button", { name: "Finish setup later" }).click();
+    const dialog = page.getByRole("dialog", { name: "Finish setup later?" });
+    await expect(dialog.getByText(/The TMDB key, library folders, Plex and indexers aren't set up yet/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Keep going" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome to Arrmada" })).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/setup/complete")).toHaveLength(0);
+
+    await page.getByRole("button", { name: "Finish setup later" }).click();
+    await page.getByRole("dialog", { name: "Finish setup later?" }).getByRole("button", { name: "Finish later" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/setup/complete").length).toBe(1);
   });
 
   // The optional keys are open under TMDB, Hardcover first; a typed one is checked before

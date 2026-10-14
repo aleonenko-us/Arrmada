@@ -17,7 +17,7 @@ const paths = { movies: "", tv: "", ebooks: "", audiobooks: "", music: "", downl
 const tmdbKey: APIKeyStatus = { id: "tmdb", label: "TMDB", purpose: "", help_url: "", steps: "", secret: true, testable: true, tests_candidate: true, configured: false, source: "", env_set: false };
 const state: SetupState = {
   needed: true, complete: false, tmdb_configured: false, libraries_chosen: false, keys: [tmdbKey],
-  library: paths, running: paths, restart_needed: false, can_restart: false, mounts: [], suggestions: {},
+  library: paths, running: paths, restart_needed: false, can_restart: false, mounts: [], suggestions: { movies: "/media/movies", tv: "/media/tv", downloads: "/media/downloads" },
 };
 
 beforeEach(() => {
@@ -198,24 +198,52 @@ describe("SetupWizard steps", () => {
     dismissed: false,
   };
 
-  it("offers Skip on the first step only", async () => {
-    vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+  it("continuing without a TMDB key goes on to the folders, saving nothing", async () => {
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
     page();
-    expect(await screen.findByText(/Skip for now — you can run it again from Settings → System/)).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByText("Continue")); });
+    expect(await screen.findByText(/No key yet\? Movies, TV and Discover find nothing until one is added/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("OMDb"), { target: { value: "typed-but-skipped" } });
+    await act(async () => { fireEvent.click(screen.getByText("Continue without a key")); });
     expect(await screen.findByText("Where's your media?")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
     expect(screen.queryByText(/Skip/)).toBeNull();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
   });
 
-  it("skipping from the first step finishes setup", async () => {
+  it("finishing early is its own link, and says what's left first", async () => {
     const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
     const done = vi.fn();
     page(done);
-    const skip = await screen.findByText(/Skip for now/);
-    await act(async () => { fireEvent.click(skip); });
+    const later = await screen.findByText("Finish setup later");
+    await act(async () => { fireEvent.click(later); });
+    const dialog = await screen.findByRole("dialog", { name: "Finish setup later?" });
+    expect(within(dialog).getByText(/The TMDB key, library folders, Plex and indexers aren't set up yet/)).toBeTruthy();
+    await act(async () => { fireEvent.click(within(dialog).getByText("Keep going")); });
+    expect(complete).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByText("Finish setup later")); });
+    await act(async () => { fireEvent.click(within(await screen.findByRole("dialog")).getByText("Finish later")); });
     expect(complete).toHaveBeenCalledOnce();
     expect(done).toHaveBeenCalledWith(undefined);
+  });
+
+  it("asks before continuing with no library folders at all", async () => {
+    vi.spyOn(api, "setupState").mockResolvedValue({ ...state, suggestions: {} });
+    const savePaths = vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+    page();
+    await click("Continue");
+    await click("Save and continue");
+    const dialog = await screen.findByRole("dialog", { name: "Continue without library folders?" });
+    await act(async () => { fireEvent.click(within(dialog).getByText("Pick folders")); });
+    expect(savePaths).not.toHaveBeenCalled();
+    expect(screen.getByText("Where's your media?")).toBeTruthy();
+
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    await act(async () => { fireEvent.click(within(await screen.findByRole("dialog")).getByText("Continue without them")); });
+    expect(savePaths).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Connect Plex")).toBeTruthy();
   });
 
   it("ends on the live checklist, whose links finish setup and open the step", async () => {

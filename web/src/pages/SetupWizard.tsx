@@ -17,8 +17,9 @@ import { PlexConnect } from "./settings/PlexConnection";
 // Connections' own sign-in, plus the family switches), then indexers (a Prowlarr sync, or
 // one tracker tested before it's saved — Connections' own dialog), then the Getting
 // started checklist with a link to each step that's left. Folders apply live, so the restart only
-// appears if a startup-only setting is waiting. Only the first step can be skipped
-// outright; Settings → System → Run setup again opens it again with what's set filled in.
+// appears if a startup-only setting is waiting. Skipping a step only moves on to the next;
+// ending setup early is its own small "Finish setup later" link, which says what's left.
+// Settings → System → Run setup again opens it again with what's set shown.
 
 type Step = "keys" | "folders" | "plex" | "indexers" | "finish";
 
@@ -166,9 +167,35 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const go = (s: Step) => { setError(null); setStep(s); };
   const finish = (to?: string) => run(async () => { await api.completeSetup(); onDone(to); });
 
-  // Every key typed on the first step is checked before it's saved (useKeyChecks).
   const confirm = useConfirm();
   const toast = useToast();
+
+  // Ending setup early is a deliberate choice, made from a small link on every step (not
+  // the main skip, which only moves on a step), and the confirm names what's still not set
+  // up. Setup used to end from the first step's Skip, so an admin without a TMDB key at
+  // hand was never asked where their media is.
+  const finishLater = async () => {
+    if (!state) return;
+    const left = [
+      !state.tmdb_configured && "the TMDB key",
+      !state.libraries_chosen && "library folders",
+      !state.plex_connected && "Plex",
+      !state.indexers_enabled && "indexers",
+    ].filter((s): s is string => !!s);
+    if (left.length > 0) {
+      const list = left.length === 1 ? left[0] : `${left.slice(0, -1).join(", ")} and ${left[left.length - 1]}`;
+      const ok = await confirm({
+        title: "Finish setup later?",
+        body: `${list[0].toUpperCase()}${list.slice(1)} ${left.length === 1 ? "isn't" : "aren't"} set up yet. You can run setup again from Settings → System, and the Dashboard keeps a list of what's left.`,
+        confirmLabel: "Finish later",
+        cancelLabel: "Keep going",
+      });
+      if (!ok) return;
+    }
+    await finish();
+  };
+
+  // Every key typed on the first step is checked before it's saved (useKeyChecks).
   const { checks, check } = useKeyChecks();
   const typed = (id: string) => (keys[id] ?? "").trim();
   const checkKey = (id: string, value: string) => check(id, value.trim(), () => api.testAPIKey(id, value.trim()));
@@ -217,6 +244,13 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   });
 
   const saveFolders = () => run(async () => {
+    // Passing this step with no library folder at all is allowed, but never by accident.
+    if (folders && !folders.movies.trim() && !folders.tv.trim() && !folders.downloads.trim() && !(await confirm({
+      title: "Continue without library folders?",
+      body: "Arrmada can't find, download or import anything until Movies, TV and Downloads each have a folder. You can pick them later in Settings → Library.",
+      confirmLabel: "Continue without them",
+      cancelLabel: "Pick folders",
+    }))) return;
     if (folders) await api.setLibraryPaths(folders);
     await load();
     go("plex");
@@ -264,8 +298,16 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const stepIndex = STEPS.findIndex((s) => s.id === step);
   const restartFirst = state.restart_needed && state.can_restart;
 
+  // Ending early, on every step but the last: small and under the card, so it's chosen,
+  // not hit by mistake. Run again just goes back (its first step already has that button).
+  const endEarly = step !== "finish" && !(rerun && step === "keys") && (
+    <button type="button" onClick={() => (rerun ? onDone() : void finishLater())} disabled={busy} className="text-xs text-ink-faint underline hover:text-[var(--ink)]">
+      {rerun ? "Back to Settings → System" : "Finish setup later"}
+    </button>
+  );
+
   return (
-    <Frame>
+    <Frame after={endEarly || undefined}>
       <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-xs font-semibold uppercase tracking-wide text-ink-faint">
         {STEPS.map((s, i) => (
           <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent-text)" : undefined }}>
@@ -281,14 +323,17 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
         <>
           <h1 className="m-0 text-2xl font-bold">{rerun ? "Run setup again" : "Welcome to Arrmada"}</h1>
           <p className="mb-4 mt-1 text-md text-ink-dim">
-            {rerun ? "What's already set is filled in; change anything, or carry on to the next step." : "A few quick steps and you're ready. Everything here can be changed later in Settings."}
+            {rerun ? "What's already set is shown; change anything, or carry on to the next step." : "A few quick steps and you're ready. Everything here can be changed later in Settings."}
           </p>
 
           <KeyField
             id="tmdb"
             status={tmdb}
             label="TMDB API key"
-            note="Needed for Movies and TV — titles, artwork and Discover. It's free."
+            // Not set: say what that means, without stopping anyone (Continue without a key).
+            note={tmdb?.configured || typed("tmdb")
+              ? "Needed for Movies and TV — titles, artwork and Discover. It's free."
+              : <span style={{ color: "var(--avoid-text)" }}>No key yet? Movies, TV and Discover find nothing until one is added, now or in Settings → Connections. It's free.</span>}
             value={keys.tmdb ?? ""}
             onChange={(v, pasted) => { setKeys({ ...keys, tmdb: v }); if (pasted) void checkKey("tmdb", v); }}
             onBlur={(v) => { if (v.trim()) void checkKey("tmdb", v); }}
@@ -359,10 +404,11 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           </section>
           <Nav
             busy={busy}
-            skip={{
-              label: rerun ? "Back to Settings → System" : "Skip for now — you can run it again from Settings → System",
-              onClick: () => (rerun ? onDone() : finish()),
-            }}
+            // The skip here only moves on a step, saving nothing: setup carries on to the
+            // folders. Ending setup is the Finish setup later link.
+            skip={rerun
+              ? { label: "Back to Settings → System", onClick: () => onDone() }
+              : !tmdb?.configured ? { label: "Continue without a key", onClick: () => go("folders") } : undefined}
             onNext={saveKeys}
             nextLabel={Object.values(keys).some((v) => v.trim()) ? "Save and continue" : "Continue"}
           />
@@ -557,6 +603,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           </div>
         </>
       )}
+
     </Frame>
   );
 }
@@ -576,7 +623,8 @@ export function SetupAgain() {
   return <SetupWizard rerun onDone={(to) => navigate(to ?? "/settings/system")} />;
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+// Frame is the wizard's page: the logo, the card, and (after) anything set apart below it.
+function Frame({ children, after }: { children: React.ReactNode; after?: ReactNode }) {
   return (
     <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-10 font-sans">
       <div className="w-full max-w-[600px]">
@@ -587,6 +635,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-extrabold tracking-[0.12em]">ARRMADA</span>
         </div>
         <div className="rounded-2xl p-6" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>{children}</div>
+        {after && <div className="mt-3 flex justify-center">{after}</div>}
       </div>
     </div>
   );
@@ -663,8 +712,8 @@ function CheckLine({ provider, check, value }: { provider: string; check?: KeyCh
   return <p role="status" className="m-0 mt-1 break-words text-sm" style={{ color }}>{text}</p>;
 }
 
-// Nav is a step's buttons. skip: the first step's "Skip for now" (the whole wizard), or a
-// later optional step's "Skip this step". Only those two kinds exist.
+// Nav is a step's buttons. skip: a quiet way past the step without saving it ("Continue
+// without a key", "Skip this step"), or Run setup again's way back to Settings.
 function Nav({ busy, blocked, onBack, skip, onNext, nextLabel }: {
   busy: boolean;
   blocked?: boolean;
