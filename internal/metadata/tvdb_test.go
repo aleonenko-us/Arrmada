@@ -90,6 +90,26 @@ func TestTVDBEpisodesWithAbsoluteNumbers(t *testing.T) {
 	}
 }
 
+// TVDB lists an announced-but-unnumbered season as "TBA" episodes sharing a placeholder
+// number. They're passed on in TVDB's own order (the series module keeps the first), not
+// in whatever order an unstable sort leaves them.
+func TestTVDBPlaceholderNumbersKeepSourceOrder(t *testing.T) {
+	eps := []tvdbEpisode{{SeasonNumber: 3, Number: 100, Name: "after"}}
+	names := []string{"The Last Astronauts", "Wonderwall", "Dr. Georgia", "Everyone", "e", "f", "g", "h", "i", "j", "k", "l", "m"}
+	for _, n := range names {
+		eps = append(eps, tvdbEpisode{SeasonNumber: 3, Number: 99, Name: n})
+	}
+	got := groupTVDB(eps)
+	if len(got) != 1 || len(got[0].Episodes) != len(names)+1 {
+		t.Fatalf("grouped = %+v", got)
+	}
+	for i, n := range names {
+		if e := got[0].Episodes[i]; e.EpisodeNumber != 99 || e.Title != n {
+			t.Fatalf("episode %d = %+v, want S03E99 %q (TVDB's order)", i, e, n)
+		}
+	}
+}
+
 // No key means unavailable — the decorator skips TVDB entirely and falls back.
 func TestTVDBUnavailableWithoutKey(t *testing.T) {
 	tv := NewTVDB(func() string { return "" })
