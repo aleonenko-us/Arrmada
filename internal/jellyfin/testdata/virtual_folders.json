@@ -1,0 +1,160 @@
+[
+  {
+    "CollectionType": "movies",
+    "ItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+    "LibraryOptions": {
+      "AllowEmbeddedSubtitles": "AllowAll",
+      "AutomaticRefreshIntervalDays": 0,
+      "AutomaticallyAddToCollection": false,
+      "CustomTagDelimiters": [
+        "/",
+        "|",
+        ";",
+        "\\"
+      ],
+      "DelimiterWhitelist": [],
+      "DisabledLocalMetadataReaders": [],
+      "DisabledLyricFetchers": [],
+      "DisabledMediaSegmentProviders": [],
+      "DisabledSubtitleFetchers": [],
+      "EnableAutomaticSeriesGrouping": true,
+      "EnableChapterImageExtraction": false,
+      "EnableEmbeddedEpisodeInfos": false,
+      "EnableEmbeddedExtrasTitles": false,
+      "EnableEmbeddedTitles": false,
+      "EnableInternetProviders": false,
+      "EnableLUFSScan": false,
+      "EnablePhotos": true,
+      "EnableRealtimeMonitor": false,
+      "EnableTrickplayImageExtraction": false,
+      "Enabled": true,
+      "ExtractChapterImagesDuringLibraryScan": false,
+      "ExtractTrickplayImagesDuringLibraryScan": false,
+      "LyricFetcherOrder": [],
+      "MediaSegmentProviderOrder": [],
+      "MetadataSavers": [],
+      "PathInfos": [
+        {
+          "Path": "/media/Movies"
+        }
+      ],
+      "PreferNonstandardArtistsTag": false,
+      "RequirePerfectSubtitleMatch": true,
+      "SaveLocalMetadata": false,
+      "SaveLyricsWithMedia": false,
+      "SaveSubtitlesWithMedia": true,
+      "SaveTrickplayWithMedia": false,
+      "SeasonZeroDisplayName": "Specials",
+      "SkipSubtitlesIfAudioTrackMatches": true,
+      "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+      "SubtitleFetcherOrder": [],
+      "TypeOptions": [
+        {
+          "ImageFetcherOrder": [],
+          "ImageFetchers": [],
+          "ImageOptions": [],
+          "MetadataFetcherOrder": [],
+          "MetadataFetchers": [],
+          "SimilarItemProviderOrder": [],
+          "SimilarItemProviders": [],
+          "Type": "Movie"
+        }
+      ],
+      "UseCustomTagDelimiters": false
+    },
+    "Locations": [
+      "/media/Movies"
+    ],
+    "Name": "Movies",
+    "RefreshStatus": "Idle"
+  },
+  {
+    "CollectionType": "tvshows",
+    "ItemId": "4514ec850e5ad0c47b58444e17b6346c",
+    "LibraryOptions": {
+      "AllowEmbeddedSubtitles": "AllowAll",
+      "AutomaticRefreshIntervalDays": 0,
+      "AutomaticallyAddToCollection": false,
+      "CustomTagDelimiters": [
+        "/",
+        "|",
+        ";",
+        "\\"
+      ],
+      "DelimiterWhitelist": [],
+      "DisabledLocalMetadataReaders": [],
+      "DisabledLyricFetchers": [],
+      "DisabledMediaSegmentProviders": [],
+      "DisabledSubtitleFetchers": [],
+      "EnableAutomaticSeriesGrouping": true,
+      "EnableChapterImageExtraction": false,
+      "EnableEmbeddedEpisodeInfos": false,
+      "EnableEmbeddedExtrasTitles": false,
+      "EnableEmbeddedTitles": false,
+      "EnableInternetProviders": false,
+      "EnableLUFSScan": false,
+      "EnablePhotos": true,
+      "EnableRealtimeMonitor": false,
+      "EnableTrickplayImageExtraction": false,
+      "Enabled": true,
+      "ExtractChapterImagesDuringLibraryScan": false,
+      "ExtractTrickplayImagesDuringLibraryScan": false,
+      "LyricFetcherOrder": [],
+      "MediaSegmentProviderOrder": [],
+      "MetadataSavers": [],
+      "PathInfos": [
+        {
+          "Path": "/media/TV"
+        }
+      ],
+      "PreferNonstandardArtistsTag": false,
+      "RequirePerfectSubtitleMatch": true,
+      "SaveLocalMetadata": false,
+      "SaveLyricsWithMedia": false,
+      "SaveSubtitlesWithMedia": true,
+      "SaveTrickplayWithMedia": false,
+      "SeasonZeroDisplayName": "Specials",
+      "SkipSubtitlesIfAudioTrackMatches": true,
+      "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+      "SubtitleFetcherOrder": [],
+      "TypeOptions": [
+        {
+          "ImageFetcherOrder": [],
+          "ImageFetchers": [],
+          "ImageOptions": [],
+          "MetadataFetcherOrder": [],
+          "MetadataFetchers": [],
+          "SimilarItemProviderOrder": [],
+          "SimilarItemProviders": [],
+          "Type": "Series"
+        },
+        {
+          "ImageFetcherOrder": [],
+          "ImageFetchers": [],
+          "ImageOptions": [],
+          "MetadataFetcherOrder": [],
+          "MetadataFetchers": [],
+          "SimilarItemProviderOrder": [],
+          "SimilarItemProviders": [],
+          "Type": "Season"
+        },
+        {
+          "ImageFetcherOrder": [],
+          "ImageFetchers": [],
+          "ImageOptions": [],
+          "MetadataFetcherOrder": [],
+          "MetadataFetchers": [],
+          "SimilarItemProviderOrder": [],
+          "SimilarItemProviders": [],
+          "Type": "Episode"
+        }
+      ],
+      "UseCustomTagDelimiters": false
+    },
+    "Locations": [
+      "/media/TV"
+    ],
+    "Name": "TV",
+    "RefreshStatus": "Idle"
+  }
+]

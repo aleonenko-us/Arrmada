@@ -139,6 +139,64 @@ func TestTestAPIKeyDispatchesAndNeverStoresCandidate(t *testing.T) {
 	}
 }
 
+// First-run setup checks every optional key before saving it: a typed Hardcover key goes
+// to its verifier, and the OpenSubtitles key with a typed username and password goes to
+// the login verifier. Neither is stored, nor recorded as a Test of the saved key, and the
+// answer never repeats what was typed back.
+func TestTestAPIKeyTypedHardcoverAndOpenSubtitlesLogin(t *testing.T) {
+	var hc []string
+	var login [][3]string
+	s := newRouteServer(t, func(d *Deps) {
+		d.APIKeys = apikeys.NewStore(d.Settings)
+		d.KeyVerifiers = map[string]func(context.Context, string) (string, error){
+			"hardcover": func(_ context.Context, candidate string) (string, error) {
+				hc = append(hc, candidate)
+				return "OK: Hardcover accepted the key.", nil
+			},
+		}
+		d.SubtitleLoginVerifier = func(_ context.Context, key, user, pass string) (string, error) {
+			login = append(login, [3]string{key, user, pass})
+			if pass != "right" {
+				return "", errors.New("Login rejected (401): the API key works, but OpenSubtitles rejected the username or password")
+			}
+			return "OK: signed in as " + user + ", 20 downloads left today.", nil
+		}
+	})
+	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+
+	rec := s.doBody("POST", "/api/v1/apikeys/hardcover/test", `{"value":" hc-typed "}`, admin)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok":true`) || strings.Join(hc, ",") != "hc-typed" {
+		t.Errorf("typed Hardcover key: HTTP %d %s, verifier saw %q", rec.Code, rec.Body, hc)
+	}
+
+	rec = s.doBody("POST", "/api/v1/apikeys/opensubtitles_api/test", `{"value":"os-key","username":"me","password":"wrong-secret"}`, admin)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok":false`) || strings.Contains(rec.Body.String(), "wrong-secret") {
+		t.Errorf("typed login: HTTP %d %s", rec.Code, rec.Body)
+	}
+	// Only the password typed: the saved key and username are the verifier's to fill in.
+	rec = s.doBody("POST", "/api/v1/apikeys/opensubtitles_api/test", `{"password":"right"}`, admin)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Errorf("typed password only: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if len(login) != 2 || login[0] != [3]string{"os-key", "me", "wrong-secret"} || login[1] != [3]string{"", "", "right"} {
+		t.Errorf("login verifier saw %q", login)
+	}
+	for _, id := range []string{"hardcover", "opensubtitles_api", "opensubtitles_username", "opensubtitles_password"} {
+		if v := s.deps.APIKeys.Value(t.Context(), id); v != "" {
+			t.Errorf("%s stored %q after a typed test", id, v)
+		}
+	}
+
+	// A login belongs to OpenSubtitles only; managers can't test keys at all.
+	if rec := s.doBody("POST", "/api/v1/apikeys/omdb/test", `{"value":"x","username":"me"}`, admin); rec.Code != http.StatusBadRequest {
+		t.Errorf("login on OMDb: HTTP %d, want 400", rec.Code)
+	}
+	if rec := s.doBody("POST", "/api/v1/apikeys/opensubtitles_api/test", `{"password":"right"}`, mgr); rec.Code != http.StatusForbidden {
+		t.Errorf("manager: HTTP %d, want 403", rec.Code)
+	}
+}
+
 // DELETE clears the saved key and the status falls back to the install-time env var.
 func TestDeleteAPIKeyFallsBackToEnv(t *testing.T) {
 	t.Setenv("ARRMADA_TMDB_API_KEY", "fromenv1a2b")

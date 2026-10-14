@@ -230,11 +230,13 @@ func (o *OpenSubtitles) login(ctx context.Context) (string, error) {
 
 // accountFingerprint identifies the credentials a token was signed in with, without
 // keeping another copy of the password.
-func (o *OpenSubtitles) accountFingerprint() string { return o.fingerprintFor(o.apiKey()) }
+func (o *OpenSubtitles) accountFingerprint() string {
+	return fingerprintOf(o.apiKey(), o.username(), o.password())
+}
 
-// fingerprintFor is accountFingerprint with another API key (a Test of a typed one).
-func (o *OpenSubtitles) fingerprintFor(apiKey string) string {
-	sum := sha256.Sum256([]byte(apiKey + "\x00" + o.username() + "\x00" + o.password()))
+// fingerprintOf is accountFingerprint for any set of credentials (a Test of typed ones).
+func fingerprintOf(apiKey, username, password string) string {
+	sum := sha256.Sum256([]byte(apiKey + "\x00" + username + "\x00" + password))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -247,25 +249,39 @@ func (o *OpenSubtitles) fingerprintFor(apiKey string) string {
 // obey: a rejected login pauses downloads until the credentials change, a good one clears
 // that. A second press within two seconds gets the same answer without signing in again.
 func (o *OpenSubtitles) Verify(ctx context.Context, candidateKey string) (string, error) {
-	key := strings.TrimSpace(candidateKey)
+	return o.VerifyLogin(ctx, candidateKey, "", "")
+}
+
+// VerifyLogin is Verify with a username and password that may also be typed and not yet
+// saved (first-run setup asks for all three at once). Each one left empty means the saved
+// value. Like the key, typed ones are sent once and kept nowhere, and only a Test of
+// exactly the saved credentials changes the state the jobs obey.
+func (o *OpenSubtitles) VerifyLogin(ctx context.Context, candidateKey, candidateUser, candidatePass string) (string, error) {
+	key, user, pass := strings.TrimSpace(candidateKey), strings.TrimSpace(candidateUser), strings.TrimSpace(candidatePass)
 	if key == "" {
 		key = o.apiKey()
+	}
+	if user == "" {
+		user = o.username()
+	}
+	if pass == "" {
+		pass = o.password()
 	}
 	if key == "" {
 		return "", ErrNotConfigured
 	}
-	fp := o.fingerprintFor(key)
+	fp := fingerprintOf(key, user, pass)
 	if detail, ok, err := o.verifyCached(fp); ok {
 		return detail, err
 	}
-	detail, err := o.verify(ctx, key, key == o.apiKey())
+	detail, err := o.verify(ctx, key, user, pass, fp == o.accountFingerprint())
 	if ctx.Err() == nil {
 		o.rememberVerify(fp, detail, err)
 	}
 	return detail, err
 }
 
-func (o *OpenSubtitles) verify(ctx context.Context, key string, saved bool) (string, error) {
+func (o *OpenSubtitles) verify(ctx context.Context, key, user, pass string, saved bool) (string, error) {
 	rejected := func(what string, status int) {
 		if saved {
 			o.noteAuth(false, (&authError{what: what, status: status}).Error())
@@ -287,7 +303,6 @@ func (o *OpenSubtitles) verify(ctx context.Context, key string, saved bool) (str
 		return "", fmt.Errorf("OpenSubtitles answered HTTP %d", resp.StatusCode)
 	}
 
-	user, pass := o.username(), o.password()
 	var missing []string
 	if user == "" {
 		missing = append(missing, "username")

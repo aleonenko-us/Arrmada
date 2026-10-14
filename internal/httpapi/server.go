@@ -96,8 +96,13 @@ type Deps struct {
 	ConnStatus *connstatus.Tracker
 	// KeyVerifiers back the API key Test button, by key id: each makes one real request
 	// with candidate (a value typed and not yet saved) or, when that's empty, the saved
-	// key, and answers in words. Built in main; Hardcover is tested through Books.
+	// key, and answers in words. Built in main; the saved Hardcover key is tested through
+	// Books (search and fetch too), a typed one through its entry here.
 	KeyVerifiers map[string]func(ctx context.Context, candidate string) (string, error)
+	// SubtitleLoginVerifier is the OpenSubtitles Test with a username and password typed
+	// alongside the key (first-run setup): each empty one means the saved value. nil = a
+	// typed login can't be tested.
+	SubtitleLoginVerifier func(ctx context.Context, key, username, password string) (string, error)
 	// The audiobook server for listening apps, and its listener.
 	AudioServer  *audioserver.Server
 	AudioManager *audioserver.Manager

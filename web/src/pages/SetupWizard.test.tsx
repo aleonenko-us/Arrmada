@@ -17,7 +17,7 @@ const paths = { movies: "", tv: "", ebooks: "", audiobooks: "", music: "", downl
 const tmdbKey: APIKeyStatus = { id: "tmdb", label: "TMDB", purpose: "", help_url: "", steps: "", secret: true, testable: true, tests_candidate: true, configured: false, source: "", env_set: false };
 const state: SetupState = {
   needed: true, complete: false, tmdb_configured: false, libraries_chosen: false, keys: [tmdbKey],
-  library: paths, running: paths, restart_needed: false, can_restart: false, mounts: [], suggestions: {},
+  library: paths, running: paths, restart_needed: false, can_restart: false, mounts: [], suggestions: { movies: "/media/movies", tv: "/media/tv", downloads: "/media/downloads" },
 };
 
 beforeEach(() => {
@@ -38,7 +38,7 @@ describe("SetupWizard TMDB key check", () => {
   it("checks a pasted key before saving and shows TMDB's answer", async () => {
     const test = vi.spyOn(api, "testAPIKey").mockResolvedValue({ ok: false, detail: "TMDB rejected the key; use the v3 API key, not the v4 read access token" });
     page();
-    const field = await screen.findByPlaceholderText("Paste the key");
+    const field = await screen.findByLabelText("TMDB API key");
     await act(async () => {
       fireEvent.paste(field);
       fireEvent.change(field, { target: { value: "wrong-key" } });
@@ -51,11 +51,11 @@ describe("SetupWizard TMDB key check", () => {
     vi.spyOn(api, "testAPIKey").mockResolvedValue({ ok: false, detail: "TMDB rejected the key" });
     const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([tmdbKey]);
     page();
-    const field = await screen.findByPlaceholderText("Paste the key");
+    const field = await screen.findByLabelText("TMDB API key");
     fireEvent.change(field, { target: { value: "wrong-key" } });
     await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
     const dialog = await screen.findByRole("dialog", { name: "Save this TMDB key anyway?" });
-    await act(async () => { fireEvent.click(within(dialog).getByText("Cancel")); });
+    await act(async () => { fireEvent.click(within(dialog).getByText("Keep editing")); });
     expect(save).not.toHaveBeenCalled();
     expect(screen.getByText("Welcome to Arrmada")).toBeTruthy();
 
@@ -68,7 +68,7 @@ describe("SetupWizard TMDB key check", () => {
     const test = vi.spyOn(api, "testAPIKey").mockResolvedValue({ ok: true, detail: "OK: images from https://image.tmdb.org/t/p/" });
     const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([tmdbKey]);
     page();
-    const field = await screen.findByPlaceholderText("Paste the key");
+    const field = await screen.findByLabelText("TMDB API key");
     fireEvent.change(field, { target: { value: "good-key" } });
     await act(async () => { fireEvent.blur(field); });
     expect(await screen.findByText(/✓ OK: images from/)).toBeTruthy();
@@ -76,6 +76,114 @@ describe("SetupWizard TMDB key check", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(save).toHaveBeenCalledWith("tmdb", "good-key");
     expect(test).toHaveBeenCalledTimes(1); // the blur and Next shared one check
+  });
+});
+
+// The optional keys sit open under TMDB, Hardcover first and recommended; each typed one is
+// checked before it's saved, and none of them is needed to carry on.
+describe("SetupWizard optional keys", () => {
+  const status = (id: string, over: Partial<APIKeyStatus> = {}): APIKeyStatus => ({
+    id, label: id, purpose: "", help_url: "", steps: "", secret: id !== "opensubtitles_username", testable: true, tests_candidate: true,
+    configured: false, source: "", env_set: false, ...over,
+  });
+
+  it("shows every optional key, Hardcover first and recommended, with a link to a free key", async () => {
+    page();
+    const section = await screen.findByRole("region", { name: "Optional keys — Arrmada works without them" });
+    const names = within(section).getAllByText(/^(Hardcover|TheTVDB|OMDb|OpenSubtitles)$/).map((n) => n.textContent);
+    expect(names).toEqual(["Hardcover", "TheTVDB", "OMDb", "OpenSubtitles"]);
+    expect(within(section).getAllByText("Recommended")).toHaveLength(1);
+    expect(within(section).getAllByText("Optional")).toHaveLength(3);
+    expect(within(section).getByRole("link", { name: /Get a free Hardcover key/ }).getAttribute("href")).toBe("https://hardcover.app/account/api");
+    expect(within(section).getByRole("link", { name: /Get a free OpenSubtitles key/ }).getAttribute("href")).toBe("https://www.opensubtitles.com/en/consumers");
+    const os = within(section).getByRole("group", { name: /^OpenSubtitles/ });
+    expect(within(os).getByLabelText("API key")).toBeTruthy();
+    expect(within(os).getByLabelText("Username")).toBeTruthy();
+    expect((within(os).getByLabelText("Password") as HTMLInputElement).type).toBe("password");
+    expect(screen.getByText(/the key alone only searches/i)).toBeTruthy();
+  });
+
+  it("checks a pasted Hardcover key before saving and saves it once it passes", async () => {
+    const test = vi.spyOn(api, "testAPIKey").mockResolvedValue({ ok: true, detail: "OK: Hardcover accepted the key (signed in as reader)." });
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    page();
+    const field = await screen.findByLabelText("Hardcover");
+    await act(async () => {
+      fireEvent.paste(field);
+      fireEvent.change(field, { target: { value: "hc-token" } });
+    });
+    expect(test).toHaveBeenCalledWith("hardcover", "hc-token");
+    expect(await screen.findByText(/✓ OK: Hardcover accepted the key/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(save).toHaveBeenCalledWith("hardcover", "hc-token");
+    expect(test).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks before saving an optional key its provider turned down", async () => {
+    vi.spyOn(api, "testAPIKey").mockResolvedValue({ ok: false, detail: "OMDb: Invalid API key!" });
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    page();
+    fireEvent.change(await screen.findByLabelText("OMDb"), { target: { value: "bad" } });
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    const dialog = await screen.findByRole("dialog", { name: "Save this OMDb key anyway?" });
+    expect(within(dialog).getByText(/Optional keys can stay blank/)).toBeTruthy();
+    await act(async () => { fireEvent.click(within(dialog).getByText("Keep editing")); });
+    expect(save).not.toHaveBeenCalled();
+
+    // Clearing the field carries on without it.
+    fireEvent.change(screen.getByLabelText("OMDb"), { target: { value: "" } });
+    await act(async () => { fireEvent.click(screen.getByText("Continue")); });
+    expect(await screen.findByText("Where's your media?")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("saves a key that couldn't be checked without asking, and says so", async () => {
+    vi.spyOn(api, "testAPIKey").mockRejectedValue(new Error("no test is available for that key"));
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    page();
+    const field = await screen.findByLabelText("TheTVDB");
+    fireEvent.change(field, { target: { value: "tvdb-key" } });
+    await act(async () => { fireEvent.blur(field); });
+    expect(await screen.findByText(/Couldn't check it \(no test is available for that key\)/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(save).toHaveBeenCalledWith("tvdb", "tvdb-key");
+    expect(await screen.findByText("Where's your media?")).toBeTruthy();
+  });
+
+  it("checks the OpenSubtitles key with the login typed beside it, once focus leaves the group", async () => {
+    const os = vi.spyOn(setupApi, "testOpenSubtitles").mockResolvedValue({ ok: true, detail: "OK: signed in as me, 20 downloads left today." });
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    page();
+    const group = await screen.findByRole("group", { name: /^OpenSubtitles/ });
+    const key = within(group).getByLabelText("API key");
+    const user = within(group).getByLabelText("Username");
+    const pass = within(group).getByLabelText("Password");
+    fireEvent.change(key, { target: { value: "os-key" } });
+    fireEvent.blur(key, { relatedTarget: user });
+    fireEvent.change(user, { target: { value: "me" } });
+    fireEvent.change(pass, { target: { value: "secret" } });
+    expect(os).not.toHaveBeenCalled(); // moving between its own fields isn't leaving it
+    await act(async () => { fireEvent.blur(pass, { relatedTarget: null }); });
+    expect(os).toHaveBeenCalledWith("os-key", "me", "secret");
+    expect(await screen.findByText(/✓ OK: signed in as me/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    expect(os).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls).toEqual([["opensubtitles_api", "os-key"], ["opensubtitles_username", "me"], ["opensubtitles_password", "secret"]]);
+  });
+
+  it("shows which keys are already set, masked, when setup runs again — and fills nothing in", async () => {
+    vi.spyOn(api, "setupState").mockResolvedValue({
+      ...state,
+      keys: [tmdbKey, status("hardcover", { configured: true, source: "settings", hint: "…ab12" }), status("opensubtitles_username", { configured: true, source: "settings", hint: "me" })],
+    });
+    page();
+    const hc = await screen.findByLabelText("Hardcover");
+    expect((hc as HTMLInputElement).value).toBe("");
+    expect(hc.getAttribute("placeholder")).toBe("Leave blank to keep the saved key");
+    expect(screen.getByText("✓ saved (…ab12)")).toBeTruthy();
+    expect(screen.getByText("✓ saved (me)")).toBeTruthy();
   });
 });
 
@@ -90,24 +198,52 @@ describe("SetupWizard steps", () => {
     dismissed: false,
   };
 
-  it("offers Skip on the first step only", async () => {
-    vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+  it("continuing without a TMDB key goes on to the folders, saving nothing", async () => {
+    const save = vi.spyOn(api, "setAPIKey").mockResolvedValue([]);
+    const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
     page();
-    expect(await screen.findByText(/Skip for now — you can run it again from Settings → System/)).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByText("Continue")); });
+    expect(await screen.findByText(/No key yet\? Movies, TV and Discover find nothing until one is added/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("OMDb"), { target: { value: "typed-but-skipped" } });
+    await act(async () => { fireEvent.click(screen.getByText("Continue without a key")); });
     expect(await screen.findByText("Where's your media?")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
     expect(screen.queryByText(/Skip/)).toBeNull();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
   });
 
-  it("skipping from the first step finishes setup", async () => {
+  it("finishing early is its own link, and says what's left first", async () => {
     const complete = vi.spyOn(api, "completeSetup").mockResolvedValue({ status: "ok" });
     const done = vi.fn();
     page(done);
-    const skip = await screen.findByText(/Skip for now/);
-    await act(async () => { fireEvent.click(skip); });
+    const later = await screen.findByText("Finish setup later");
+    await act(async () => { fireEvent.click(later); });
+    const dialog = await screen.findByRole("dialog", { name: "Finish setup later?" });
+    expect(within(dialog).getByText(/The TMDB key, library folders, Plex and indexers aren't set up yet/)).toBeTruthy();
+    await act(async () => { fireEvent.click(within(dialog).getByText("Keep going")); });
+    expect(complete).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByText("Finish setup later")); });
+    await act(async () => { fireEvent.click(within(await screen.findByRole("dialog")).getByText("Finish later")); });
     expect(complete).toHaveBeenCalledOnce();
     expect(done).toHaveBeenCalledWith(undefined);
+  });
+
+  it("asks before continuing with no library folders at all", async () => {
+    vi.spyOn(api, "setupState").mockResolvedValue({ ...state, suggestions: {} });
+    const savePaths = vi.spyOn(api, "setLibraryPaths").mockResolvedValue(paths);
+    page();
+    await click("Continue");
+    await click("Save and continue");
+    const dialog = await screen.findByRole("dialog", { name: "Continue without library folders?" });
+    await act(async () => { fireEvent.click(within(dialog).getByText("Pick folders")); });
+    expect(savePaths).not.toHaveBeenCalled();
+    expect(screen.getByText("Where's your media?")).toBeTruthy();
+
+    await act(async () => { fireEvent.click(screen.getByText("Save and continue")); });
+    await act(async () => { fireEvent.click(within(await screen.findByRole("dialog")).getByText("Continue without them")); });
+    expect(savePaths).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Connect Plex")).toBeTruthy();
   });
 
   it("ends on the live checklist, whose links finish setup and open the step", async () => {
