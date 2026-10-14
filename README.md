@@ -1,316 +1,112 @@
 <div align="center">
 
-# ⛵ Arrmada
+<img src="web/public/icon-512.png" alt="" width="96" height="96">
 
-**One app instead of the whole `*arr` stack.**
+# Arrmada
+
+**Your whole media server in one app — movies, TV, books and requests, without the `*arr` stack.**
+
+[Install](#install) · [Features](docs/features.md) · [Docs](#documentation) · [Issues](https://github.com/tristenlammi/Arrmada/issues)
+
+<img src="docs/images/series-detail.png" alt="A TV series in Arrmada: seasons, episodes and what it's searching for" width="900">
 
 </div>
 
----
+Arrmada finds, downloads and organises your movies, TV, books and audiobooks, lets your
+household request what they want to watch, and keeps your Plex library tidy — with one
+database and one web page instead of half a dozen apps. qBittorrent comes with it, already
+set up.
 
-Arrmada is a self-hosted app that does the jobs of Radarr, Sonarr, Readarr, Bazarr,
-Overseerr, Tautulli and Tdarr in one place, with one database and one web UI. It ships
-with qBittorrent and FlareSolverr already wired up.
+> **Early days:** Arrmada is under active development (v0.x). Expect rough edges, and keep
+> backups.
 
-> **Status:** early and under active development. Expect rough edges.
+## What it does
 
-## Features
+- 🎬 **Movies and TV** — search, download, import, rename and upgrade, the way Radarr and Sonarr do. Anime numbering included.
+- 📚 **Books and audiobooks** — ebooks and audiobooks with series tracking, plus a built-in audiobook server for listening apps like Lissen.
+- 🙋 **Requests** — family and friends browse and request titles, Overseerr-style, and get told when they're ready. Sign in with Plex.
+- 💬 **Subtitles** — pulls them out of the file, downloads them, or writes them with local AI.
+- 🗜️ **Convert** — shrinks wasteful video overnight to HEVC or AV1, checking every result against the original.
+- 📈 **Plex insights** — who's watching what, history and stats, Tautulli-style.
+- 🛟 **Safety nets** — hardlinked imports, a recycle bin, nightly backups and one-step rollbacks.
 
-**Library and downloads**
-
-- **Movies** — search, grab, import, rename and upgrade. Keep several versions of a movie (say 4K and 1080p).
-- **TV** — episodes and season packs, anime numbering (TheXEM and TheTVDB), and airing shows kept up to date.
-- **Books** — ebooks and audiobooks with Hardcover or Open Library metadata, series tracking, several audiobook versions per book (standard and full cast), and multi-file audiobooks merged into one M4B.
-- **Audiobook server** — listening apps built for Audiobookshelf (Lissen) connect to Arrmada directly. Places sync reliably across devices and restarts, a glitch can't reset anyone to the start, and earlier places can be put back. Everyone gets their own audiobook password, per-device sign-out and a page showing where they're up to and how much they've listened. The admin sees how much and when people listen, never what. Imports everyone's places from Audiobookshelf.
-- **Music** (preview, off by default) — artists, albums and whole-discography grabs. Switch it on in Settings → System → Modules.
-- **Quality profiles** — a bitrate ceiling, required formats (Atmos, HDR, Dolby Vision), and preferred or rejected words.
-- **Indexers** — any Torznab indexer, one-click sync from Prowlarr, and built-in MyAnonaMouse, TorrentLeech and 1337x. FlareSolverr handles Cloudflare-protected trackers.
-- **Downloads** — the bundled qBittorrent sets itself up. Imports hardlink instead of copying, seeding rules clean up, stalled downloads fail over, and mismatched downloads wait in a review queue.
-- **Safety nets** — a blocklist, a recycle bin, and a full history for every item.
-
-**Requests and people**
-
-- **Discover and requests** — browse and request movies, TV and books, Overseerr-style. Auto-approve per user, and import your existing Overseerr requests.
-- **Users** — admin, manager, requester and read-only roles, with optional Plex sign-in. Requesters get Discover, Calendar, Books and Audiobooks; from outside your network, everything but Calendar.
-- **Books shelf** — requesters can download any ebook in the library.
-- **Calendar** — what's coming up.
-- **Notifications** — Apprise alerts for admins; an in-app inbox and web push for requesters.
-
-**Media tools**
-
-- **Subtitles** — pulls embedded subtitles out, fetches them from OpenSubtitles, or writes them with local Whisper AI (GPU-accelerated on Intel).
-- **Convert** — switch it on and it works through your library during the hours you choose, re-encoding only wasteful video to HEVC (or AV1, when a quick test shows it's clearly smaller and your devices play it). Every result is checked against the original and must look the same and save at least 20%, or the original stays. Atmos and every audio track are copied untouched, HDR10 and HDR10+ are kept, and Dolby Vision keeps its HDR10 base. Pauses while someone is watching Plex, can use the GPU, and trims audio and subtitle tracks to your languages.
-- **Insights** — Plex watch history, stats and buffering diagnostics, Tautulli-style.
+[See everything it does →](docs/features.md)
 
 ## Install
 
-You need Docker with Compose v2. On Unraid, the Compose Manager plugin provides it.
+You need a Linux server with Docker and Docker Compose (on Unraid: the **Docker Compose
+Manager** plugin). On the server, run:
 
 ```sh
-git clone https://github.com/tristenlammi/Arrmada
-cd Arrmada
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh
 ```
 
-The installer asks three things: the folder that holds your media and downloads, where to
-transcode, and your timezone (it suggests the one your machine uses; find yours in the "TZ
-identifier" column of [this list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)).
-It works out the rest itself — free ports, the user to run as, where the database lives and
-your GPU. The first build compiles everything, so it takes a while.
-It waits until Arrmada is ready and prints the address.
+It asks where to keep Arrmada's files and where your media lives (press Enter to accept the
+suggestions), then starts everything. Open the address it prints —
+**`http://<your-server>:7878`** — create your admin account, and a short setup walks you
+through the rest in the browser: your free TMDB key, your library folders, Plex and indexers.
 
-Open that address and create your admin account. A short setup then asks for your free
-[TMDB key](https://www.themoviedb.org/settings/api) and lets you pick each library folder.
-You can skip it and do both later in Settings.
-
-`./install.sh --with-prowlarr` also starts Prowlarr, if you'd rather manage indexers there.
+[Install guide, options and Unraid notes →](docs/install.md)
 
 ## Update
 
-```sh
-./update.sh
-```
-
-This pulls the latest code, rebuilds only the app (or downloads a published release, see
-[Updating from a published image](#updating-from-a-published-image)), and waits until it's
-running again. Your
-`.env`, downloads and media files aren't touched, and the companions keep running. The
-database is kept too, but a new version may upgrade its tables when it starts, so a
-snapshot is taken automatically before any schema change (`<data>/backups`, newest 5 kept),
-and another every night after 04:00 local time (newest 7 kept). If the data disk is too full
-for the pre-upgrade copy, Arrmada refuses to upgrade and says so; free some space, or set
-`ARRMADA_SKIP_MIGRATION_SNAPSHOT=1` in `.env` to upgrade without one.
-
-Before it rebuilds, the script also backs the database up with the running app's own
-`arrmada backup --kind pre-update` (`<data>/backups/arrmada-pre-update-*.db`, newest 3 kept),
-and stops if that fails; `./update.sh --no-backup` updates without it. Builds older than
-this feature can't take one, so the first update after it says so and carries on.
-
-Restarting abandons a conversion in progress, so if one has been running for over two
-hours the script says so and asks before it changes anything. `./update.sh -y` (or
-`ARRMADA_UPDATE_FORCE=1`) goes ahead without asking, and so does a run with no terminal,
-such as a scheduled one: it prints the warning and updates.
-
-If the pull fails (local edits, or a branch that has diverged), the script stops without
-rebuilding anything; `git status` shows what's in the way. `./update.sh --force-local` skips
-the pull and rebuilds the code that's in the folder.
-
-The Dashboard and `/api/health` show the version and commit that's running.
-
-If you deploy with Komodo or another tool instead of `update.sh`, mirror these steps there:
-pass `ARRMADA_VERSION` (a release tag, or the commit date:
-`git log -1 --format=%cd --date=format:%Y.%m.%d`) and `ARRMADA_COMMIT`
-(`git rev-parse --short HEAD`) as build environment, run
-`docker exec -u <PUID>:<PGID> Arrmada-app arrmada backup --kind pre-update` and tag the
-running image `arrmada:previous` before each build. Otherwise none of this protection applies.
-
-`docker exec Arrmada-app arrmada help` lists the maintenance commands built into the app
-(`version`, `backup`, …). With no command, `arrmada` is the server.
-
-### Rolling back an update
-
-The build that was running before an update is kept as the Docker image `arrmada:previous`,
-so `./update.sh --rollback` can start it again in a few seconds (the build you leave is kept
-as `arrmada:rolled-back`, and the next `./update.sh` goes forward again). If the previous
-build doesn't come up, the script starts the newer one again rather than leave Arrmada down.
-Keeping the old image costs one extra image of disk, several GB with the subtitle and GPU
-tooling.
-
-An older build won't start on a database a newer one has upgraded: it stops with a message
-saying so, because running old code on tables it doesn't know can damage them. So before it
-stops anything, `--rollback` asks the previous build whether it can run on the database as
-it is, and if the update changed the database it stops and says to use
-`./update.sh --rollback --with-db`. That also puts back the pre-update backup, which means
-everything Arrmada recorded since the update is lost, so it asks first (`-y` skips the
-question). If the previous build can't restore a backup itself, the script changes nothing
-and prints the steps to do it by hand. `ARRMADA_ALLOW_NEWER_SCHEMA=1` in `.env` starts an
-older build on a newer database anyway; it's a last resort.
-
-The first rollback after updating an install from before this tooling is the exception: that
-build has no such check (it starts on an upgraded database) and can't restore a backup, and
-the update couldn't take a pre-update backup with it. `--rollback` warns about this before it
-changes anything. Put the database back by hand first: stop the app
-(`docker compose stop arrmada-app`), copy the newest `<data>/backups/arrmada-pre-migrate-*.db`
-(taken by the new build just before it upgraded the tables) over `<data>/arrmada.db`, delete
-`arrmada.db-wal` and `arrmada.db-shm` next to it, then run `./update.sh --rollback`.
-
-### Updating from a published image
-
-By default `update.sh` compiles the app on your server, which takes a long time (the
-subtitle and GPU tooling are built from source). It can download a published release
-instead. Add this line to `.env`:
+Run the same line again:
 
 ```sh
-ARRMADA_IMAGE=ghcr.io/tristenlammi/arrmada:stable
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh
 ```
 
-From then on `./update.sh` still backs up the database, keeps the running build as
-`arrmada:previous` for `--rollback` and pulls the latest scripts, but it downloads the
-image rather than building it, usually in a few minutes. `stable` is always the newest
-release; pin one with a version instead (`ghcr.io/tristenlammi/arrmada:0.17.0`). Delete the
-line to go back to building here, or run `./update.sh --force-local` to build once without
-changing `.env`.
+It backs up the database, updates, and checks Arrmada comes back — if the new version doesn't
+start, it goes back to the one you had. (In Arrmada's folder, `sh update.sh` does the same.)
+[More about updating →](docs/updating.md)
 
-If you deploy with Komodo or plain `docker compose` instead of `update.sh`, set the
-`arrmada-app` service's `image:` to the published tag in your `docker-compose.override.yml`
-and let that tool pull it.
+## Screenshots
 
-## Releases
+<table>
+<tr>
+<td><img src="docs/images/discover.png" alt="Discover: requests on the way and titles ready to watch"></td>
+<td><img src="docs/images/movies.png" alt="The movie library"></td>
+</tr>
+<tr>
+<td><img src="docs/images/requests.png" alt="Requests waiting for approval and on their way"></td>
+<td><img src="docs/images/activity.png" alt="The download queue"></td>
+</tr>
+<tr>
+<td><img src="docs/images/quality-profile.png" alt="Describing the file you want in a quality profile"></td>
+<td><img src="docs/images/setup-wizard.png" alt="The first-run setup"></td>
+</tr>
+</table>
 
-A release is a version tag. From an up-to-date `main`:
+<p align="center">
+<img src="docs/images/phone-discover.png" alt="Discover on a phone" width="260">
+&nbsp;&nbsp;
+<img src="docs/images/phone-requests.png" alt="Requests on a phone" width="260">
+</p>
 
-```sh
-git tag -a v0.17.0 -m "Arrmada 0.17.0"
-git push origin v0.17.0
-```
+## Requirements
 
-Pushing the tag runs the Release workflow: it builds the image stamped with the version and
-commit, pushes it to `ghcr.io/tristenlammi/arrmada` as `0.17.0`, `0.17`, `sha-<commit>` and
-`stable`, and then creates the GitHub release with generated notes. A tag with a hyphen
-(`v0.18.0-rc.1`) is published as a pre-release: it gets its own version tag but never
-`stable`, and the in-app update check doesn't offer it. Pushes to `main` and pull requests
-only build the image as a check; they never publish one.
+- A 64-bit Intel or AMD (x86-64) server running Linux — Unraid, Debian, Ubuntu and the like.
+- Docker with Compose v2.
+- A free [TMDB API key](https://www.themoviedb.org/settings/api) (entered in the app).
+- Optional: Intel or AMD graphics for faster Convert and AI subtitles, and a Plex server.
 
-The first time, the package is private: open it from the repository's Packages list and
-make it public in its settings, or have each server sign in once with
-`docker login ghcr.io` and a token of its own that can only read packages. Never put a
-token in the repository or in `.env`.
+## Documentation
 
-Settings → Status shows when a newer release is out, with its notes (a build of `main`
-shows how many commits behind `main` it is instead). It reads GitHub's public list of
-releases every 12 hours and sends nothing about your server; switch it off on the same
-card and it asks GitHub nothing at all.
+| | |
+|---|---|
+| [Install](docs/install.md) | The one-liner, its options, Unraid, the git checkout way |
+| [Updating](docs/updating.md) | Updates, rollbacks, published images |
+| [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, GPU, recycle bin, reverse proxies |
+| [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
+| [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
+| [Features](docs/features.md) | Everything Arrmada does |
+| [Development](docs/development.md) | Building and testing it yourself |
+| [Releasing](docs/releasing.md) | For maintainers |
 
-### Unraid template
+## Contributing
 
-[templates/arrmada.xml](templates/arrmada.xml) runs the app container alone from the
-published `stable` image, for people who already run qBittorrent. It keeps the database in
-`/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, and takes your media share at
-`/storage`. Mount the same share at `/storage` in qBittorrent too, then pick each library
-folder and the Downloads folder in the app. The compose install above bundles qBittorrent
-and FlareSolverr instead.
-
-## Locked out?
-
-If you've forgotten the admin password, set a new one from the server:
-
-```sh
-docker exec -it Arrmada-app arrmada reset-password you@example.com
-```
-
-It prints a new password once, in your terminal only (never in a log), and signs that
-account out everywhere. To choose the password yourself, pipe it in with
-`--password-stdin`. A name that matches no account lists the admin accounts. Anyone with
-shell access to the server can do this, the same as they could edit the database.
-
-## Backups
-
-Arrmada copies its database into `<data>/backups` (on Unraid,
-`/mnt/user/appdata/arrmada/backups` when the data dir is in appdata):
-
-| Kind | When | Kept |
-|---|---|---|
-| Nightly | once a day after 04:00 server time (changeable), or at once after a long downtime | newest 7 (changeable) |
-| Before update | before any schema change | newest 5 |
-| Pre-update | when `update.sh` runs | newest 3 |
-| Manual | **Back up now** | newest 10 |
-| Before restore, Before user delete, Uploaded | automatically | newest 3 each |
-
-Admins manage them in **Settings → System → Backups**: see every copy with its size and
-schema version, take one now, change the nightly schedule, delete one, or **Download** it as a
-`.db.gz` (decompress it with `gunzip` to get a plain SQLite file). The copies sit on the same
-disk as the database, so they cover a bad update, corruption or a mistake, not a failed disk;
-download one now and then to keep a copy somewhere else. Backups contain your API keys, the
-Plex token and password hashes, so keep downloaded copies somewhere private.
-
-**Restore** on a row puts that backup back (type `RESTORE` to confirm). The backup is checked
-first (a damaged file, or one from a newer Arrmada, is refused), then staged, and swapped in
-the next time Arrmada starts — never while it's running. Inside Docker the app restarts itself
-straight away; otherwise restart the container (`docker restart Arrmada-app`), or cancel the
-staged restore on the card. The database it replaces is kept as a "Before restore" backup, and
-if the swap fails at start-up Arrmada starts on the database as it was and the card says why.
-Everything since the backup was taken is lost: requests, watch history, listening places,
-users and settings.
-
-**Restore from file…** takes a `.db`, or a `.db.gz` from Download (up to 4 GB). It's checked
-the same way, listed as "Uploaded", and restored with that row's Restore. Behind Cloudflare,
-request bodies over 100 MB are refused, so upload big backups from your home network.
-
-### Restoring when Arrmada won't start
-
-The same restore works from the command line, without the web UI. It only stages the
-backup; the swap happens when Arrmada next starts:
-
-```sh
-docker compose run --rm --no-deps arrmada-app backups          # list them
-docker compose run --rm --no-deps arrmada-app restore arrmada-nightly-20261008T040012Z.db
-docker compose up -d arrmada-app
-```
-
-If the container is running, `docker exec Arrmada-app arrmada restore <name>` followed by
-`docker restart Arrmada-app` does the same. `restore` also takes a path to a `.db` or `.db.gz`
-the container can see (it's copied into the backups folder first), and
-`restore --cancel` drops a staged restore that hasn't run.
-
-## Ports
-
-The installer picks free ports so nothing clashes with apps you already run. It prints them
-at the end and saves them in `.env`.
-
-| Service           | Default | Setting                   |
-| ----------------- | ------- | ------------------------- |
-| Arrmada           | 7878    | `ARRMADA_PORT`            |
-| qBittorrent WebUI | 8080    | `ARRMADA_QBIT_WEBUI_PORT` |
-| BitTorrent        | random  | `ARRMADA_QBIT_PORT` — forward this on your router (TCP and UDP) |
-| Audiobook server  | 13379   | `ARRMADA_AUDIOBOOK_PORT` — for listening apps; off until switched on in Audiobooks |
-
-Change a value in `.env`, then run `./update.sh`.
-
-Behind a reverse proxy or tunnel, give Arrmada its own hostname (for example
-`arrmada.example.com`) and proxy it from the root. Serving it under a path such as
-`example.com/arrmada` isn't supported: the old `ARRMADA_BASE_URL` setting never worked with the
-web app and has been removed. If your `.env` still sets it, it's ignored and the app runs at the
-root.
-
-## Existing library
-
-Give the installer the folder that contains your media, and pick each library inside it
-during setup. Keep downloads on the same drive or share as your libraries so imports
-hardlink. For read-only trials or unusual layouts, see
-[docker-compose.override.example.yml](docker-compose.override.example.yml).
-
-> ⚠ Never mount media at `/data`. That path holds Arrmada's own database.
-
-Changing a library or the Downloads folder in Settings → Library takes effect straight
-away: the next import, grab and disk-guard check use the new folder, and qBittorrent's
-save path follows. Files already imported stay where they are.
-
-### Recycle bin
-
-Deleted and replaced files go to a hidden `.arrmada-recycle` folder at the top of the
-library folder they came from (Movies, TV, and so on), so a delete is a quick move on the
-same drive rather than a copy. Each of those folders has a `.plexignore`, so Plex doesn't
-list what's in it, and Arrmada's own library scans skip hidden folders. Restore, size and
-age limits are in Settings → System → Recycle bin; the size limit counts every bin together.
-
-Older versions kept one shared bin in the app's library volume. It stays listed (marked
-"Legacy") until you empty it, and only takes files that sit outside every library folder.
-
-`ARRMADA_RECYCLE_DIR` in `.env` is now just an override: set it to a folder to use that one
-bin for everything, or to `off` to delete files straight away.
-
-## Develop
-
-```sh
-go run ./cmd/arrmada                  # backend (Go 1.25+) on :7878
-cd web && npm install && npm run dev  # UI (Node 20+) on :5173, proxies /api
-```
-
-For a single binary with the UI inside it:
-
-```sh
-cd web && npm run build && cd .. && go build -o arrmada ./cmd/arrmada
-```
+Bug reports and ideas are welcome in [Issues](https://github.com/tristenlammi/Arrmada/issues).
+For code, see [Development](docs/development.md) — please open an issue before a big change.
 
 ## License
 
