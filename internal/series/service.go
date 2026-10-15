@@ -37,9 +37,9 @@ type Service struct {
 	// folders is every TV folder when there are several; nil = rootFn only.
 	folders Folders
 	bin     library.Bin // where deleted files go (a bin that's off hard-deletes)
-	bus    *eventbus.Bus
-	log    *slog.Logger
-	scene  SceneMapper // TheXEM client (nil → scene mapping falls back to air-date gaps)
+	bus     *eventbus.Bus
+	log     *slog.Logger
+	scene   SceneMapper // TheXEM client (nil → scene mapping falls back to air-date gaps)
 
 	muUnmatched   sync.Mutex
 	lastUnmatched []UnmatchedFolder // folders the last scan couldn't identify, for manual pick

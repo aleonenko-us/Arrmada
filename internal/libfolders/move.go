@@ -50,10 +50,10 @@ type Mover struct {
 
 // MoveResult is what a move did, stored as the job's result.
 type MoveResult struct {
-	Folder  string     `json:"folder"`         // the destination folder's label
-	Method  string     `json:"method"`         // "rename", "copy", "none" (no files) or "mixed"
-	Moved   []MovedDir `json:"moved"`          // each title folder that moved
-	Paths   int64      `json:"paths"`          // stored paths repointed
+	Folder  string     `json:"folder"` // the destination folder's label
+	Method  string     `json:"method"` // "rename", "copy", "none" (no files) or "mixed"
+	Moved   []MovedDir `json:"moved"`  // each title folder that moved
+	Paths   int64      `json:"paths"`  // stored paths repointed
 	Warning string     `json:"warning,omitempty"`
 }
 

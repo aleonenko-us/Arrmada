@@ -18,7 +18,9 @@ import (
 )
 
 // shelfMeta knows a few shows by title and id.
-type shelfMeta struct{ shows map[int]metadata.SeriesDetails }
+type shelfMeta struct {
+	shows map[int]metadata.SeriesDetails
+}
 
 func (m shelfMeta) Available() bool { return true }
 func (m shelfMeta) SearchSeries(_ context.Context, q string) ([]metadata.SeriesResult, error) {
