@@ -11,39 +11,52 @@ import (
 	"time"
 )
 
-// Shadow mode. While "quality_ranking" is v1 (the default), classic ranking decides every
-// pick and ranking v2 runs alongside it on the same evaluations. Where the two would pick
-// differently the service logs it and records it in ranking_shadow (migration 0273), one
-// row per profile and pair of winners however often it recurs, and counts decisions and
-// disagreements per day in ranking_shadow_days — so after a couple of weeks the owner can
-// read exactly what v2 would have changed (GET /api/v1/quality/ranking-shadow, or ?format=csv)
-// before it becomes the default.
+// Shadow mode. Whichever ranking "quality_ranking" puts in effect decides every pick — v2,
+// the default, or classic v1, the rollback — and the other runs alongside it on the same
+// evaluations. Where the two would pick differently the service logs it and records it in
+// ranking_shadow (migration 0273), one row per profile and pair of winners however often
+// it recurs, and counts decisions and disagreements per day in ranking_shadow_days. Rows
+// are kept as "classic picked X, v2 picked Y" whichever of the two decided, so the record
+// reads the same before and after the default changed (GET /api/v1/quality/ranking-shadow,
+// or ?format=csv).
 
-// ShadowPick is v2's choice on a decision classic ranking made.
+// ShadowPick is the other ranking's choice on a decision: v2's while classic decides,
+// classic's while v2 decides.
 type ShadowPick struct {
-	Winner    string  `json:"winner"`     // the release v2 would pick
-	DecidedBy RankKey `json:"decided_by"` // what decided v2's pick (over its own runner-up)
-	Differs   bool    `json:"differs"`    // v2 picks a different release than v1 did
-	// When it differs: OverKey is the key v2's pick beats v1's on, and V1Key the step
-	// classic ranking preferred its own pick on.
+	Mode      string  `json:"mode"`       // the ranking that ran in the shadow (RankingV1 or RankingV2)
+	Winner    string  `json:"winner"`     // the release the shadow ranking would pick
+	DecidedBy RankKey `json:"decided_by"` // what decided the shadow's pick (over its own runner-up)
+	Differs   bool    `json:"differs"`    // the shadow picks a different release than the decision did
+	// When it differs, whichever ranking decided: OverKey is the key v2's pick beats
+	// classic's on, and V1Key the step classic ranking preferred its own pick on.
 	OverKey RankKey `json:"over_key,omitempty"`
 	V1Key   RankKey `json:"v1_key,omitempty"`
 }
 
-// shadowV2 ranks a classic decision's eligible releases with v2 and says what it would
-// have picked. nil when nothing was eligible. The evaluations are shared — only the order
-// differs — so this costs a sort, not a second evaluation.
-func shadowV2(p Profile, d Decision) *ShadowPick {
+// shadowOf ranks a decision's eligible releases with the ranking that didn't decide it and
+// says what that one would have picked. nil when nothing was eligible. The evaluations are
+// shared — only the order differs — so this costs a sort, not a second evaluation.
+func shadowOf(p Profile, d Decision) *ShadowPick {
 	if d.Winner == nil || len(d.Eligible) == 0 {
 		return nil
 	}
 	evs := append([]Evaluation(nil), d.Eligible...)
-	sortV2(p, evs)
-	sp := &ShadowPick{Winner: evs[0].Candidate.Name, DecidedBy: decidedBy(evs)}
+	sp := &ShadowPick{Mode: RankingV2}
+	if d.Ranking == RankingV2 {
+		sp.Mode = RankingV1
+		sortV1(p, evs)
+	} else {
+		sortV2(p, evs)
+	}
+	sp.Winner, sp.DecidedBy = evs[0].Candidate.Name, decidedBy(evs)
 	if evs[0].Candidate.Name != d.Winner.Candidate.Name {
 		sp.Differs = true
-		_, sp.OverKey = compareV2(p, &evs[0], d.Winner)
-		if k, _ := decidingFactor(p, *d.Winner, evs[0]); k != "" {
+		v1, v2 := d.Winner, &evs[0]
+		if sp.Mode == RankingV1 {
+			v1, v2 = &evs[0], d.Winner
+		}
+		_, sp.OverKey = compareV2(p, v2, v1)
+		if k, _ := decidingFactor(p, *v1, *v2); k != "" {
 			sp.V1Key = k
 		} else {
 			sp.V1Key = KeyTie
@@ -52,15 +65,24 @@ func shadowV2(p Profile, d Decision) *ShadowPick {
 	return sp
 }
 
+// winners is the decision's pick and its shadow's, as classic's and v2's.
+func (sp *ShadowPick) winners(d Decision) (v1, v2 string) {
+	if sp.Mode == RankingV1 {
+		return sp.Winner, d.Winner.Candidate.Name
+	}
+	return d.Winner.Candidate.Name, sp.Winner
+}
+
 // SetLogger gives the service a logger for shadow-mode disagreements.
 func (s *Service) SetLogger(l *slog.Logger) { s.log = l }
 
-// RankingMode is the ranking mode in effect ("quality_ranking", v1 unless set to v2).
+// RankingMode is the ranking mode in effect ("quality_ranking": DefaultRanking, v2, unless
+// "v1" was saved — the rollback).
 func (s *Service) RankingMode(ctx context.Context) string {
-	if s == nil || s.settings == nil { // nil-safe: a server built without quality reads classic
-		return RankingV1
+	if s == nil || s.settings == nil { // nil-safe: a server built without quality reads the default
+		return DefaultRanking
 	}
-	return NormalizeRanking(s.settings.Get(ctx, KeyRanking, RankingV1))
+	return ReadRanking(func(key, def string) string { return s.settings.Get(ctx, key, def) })
 }
 
 // shadowStats buffers the per-day decision counts in memory and writes them at most once
@@ -102,7 +124,7 @@ func (s *Service) recordShadow(ctx context.Context, ref string, d Decision) {
 
 	wctx := context.WithoutCancel(ctx)
 	if d.Shadow.Differs {
-		v1, v2 := d.Winner.Candidate.Name, d.Shadow.Winner
+		v1, v2 := d.Shadow.winners(d)
 		var seen int
 		err := s.repo.db.QueryRowContext(wctx, `INSERT INTO ranking_shadow
 			(profile, v1_winner, v1_key, v2_winner, v2_key, candidates, first_seen, last_seen, seen)
@@ -114,7 +136,10 @@ func (s *Service) recordShadow(ctx context.Context, ref string, d Decision) {
 			ref, v1, string(d.Shadow.V1Key), v2, string(d.Shadow.OverKey), len(d.Eligible), now.Unix(), now.Unix()).Scan(&seen)
 		switch {
 		case err != nil:
-			s.warn("quality: couldn't record a ranking v2 disagreement", "err", err)
+			s.warn("quality: couldn't record a ranking disagreement", "err", err)
+		case seen == 1 && s.log != nil && d.Shadow.Mode == RankingV1:
+			s.log.Info(fmt.Sprintf("quality: classic ranking would pick %s instead of %s (v2 decided by %s)", v1, v2, d.Shadow.OverKey),
+				"profile", ref, "v1_reason", string(d.Shadow.V1Key), "eligible", len(d.Eligible))
 		case seen == 1 && s.log != nil:
 			s.log.Info(fmt.Sprintf("quality: ranking v2 would pick %s instead of %s (decided by %s)", v2, v1, d.Shadow.OverKey),
 				"profile", ref, "v1_reason", string(d.Shadow.V1Key), "eligible", len(d.Eligible))
@@ -162,8 +187,9 @@ type ShadowDay struct {
 	Disagreements int    `json:"disagreements"`
 }
 
-// ShadowRow is one recorded disagreement: under a profile, classic ranking picked
-// V1Winner (preferring it on V1Key) where v2 would have picked V2Winner (on V2Key).
+// ShadowRow is one recorded disagreement: under a profile, classic ranking's pick was
+// V1Winner (preferring it on V1Key) and v2's was V2Winner (on V2Key) — one of them decided
+// and the other ran in the shadow, and the row reads the same either way.
 type ShadowRow struct {
 	ID         int64     `json:"id"`
 	Profile    string    `json:"profile"`
@@ -240,6 +266,7 @@ func (s *Service) WriteShadowCSV(ctx context.Context, w io.Writer) error {
 		return err
 	}
 	cw := csv.NewWriter(w)
+	// Classic and v2 columns whichever ranking decided: the row is the pair of picks.
 	_ = cw.Write([]string{"profile", "classic_pick", "classic_preferred_on", "v2_pick", "v2_preferred_on",
 		"eligible", "times_seen", "first_seen", "last_seen"})
 	for _, r := range rep.Rows {

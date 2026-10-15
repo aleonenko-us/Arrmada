@@ -222,8 +222,9 @@ func isTargetFormat(name string) bool {
 	return false
 }
 
-// qualityGain is the "it scores higher" half of an upgrade decision, shared by the upgrade
-// sweep (UpgradeCandidate) and the import gate (IsQualityUpgrade) so they can't disagree:
+// qualityGain is the "it scores higher" half of an upgrade decision under classic ranking
+// (v2's is v2Gain), shared by the upgrade sweep (UpgradeCandidate) and the import gate
+// (IsQualityUpgrade) through upgradeBar.gain so they can't disagree:
 // cand must outscore cur, and the gain must be one the profile's trigger counts — or be a
 // same-group PROPER of the file, which is always taken.
 func qualityGain(trigger string, cand, cur Evaluation) bool {

@@ -10,9 +10,11 @@ import (
 // can't be outweighed by stacked preferences, a custom format scored −5 is a score rather
 // than a cliff, and every pick names what decided it.
 //
-// It ships behind the "quality_ranking" setting, default "v1" (classic). While v1 decides,
-// the service runs v2 alongside every decision and records where the two pick differently
-// (shadow.go), so the owner can review the disagreements before v2 becomes the default.
+// It is the default ranking: "quality_ranking" never saved reads v2. Classic ranking (v1)
+// stays one setting away as the rollback — saving "v1" puts every grab and every upgrade
+// back on the summed score. Whichever decides, the service runs the other alongside every
+// decision and records where the two pick differently (shadow.go), so they can still be
+// compared.
 
 // Ranking modes ("quality_ranking").
 const (
@@ -23,12 +25,31 @@ const (
 // KeyRanking is the settings key holding the ranking mode.
 const KeyRanking = "quality_ranking"
 
-// NormalizeRanking reads a stored mode: anything but "v2" is classic.
+// DefaultRanking is the mode in effect while "quality_ranking" has never been saved. It is
+// a settings default, not a stored value, so an install that saved "v1" keeps classic
+// ranking whatever the default is.
+const DefaultRanking = RankingV2
+
+// NormalizeRanking reads a mode: anything but "v2" is classic. An engine's own Ranking
+// field reads through it too, where "" (an engine built outside the service) is classic;
+// the setting reads through ReadRanking, which supplies DefaultRanking when nothing is saved.
 func NormalizeRanking(mode string) string {
 	if strings.TrimSpace(strings.ToLower(mode)) == RankingV2 {
 		return RankingV2
 	}
 	return RankingV1
+}
+
+// ReadRanking is the mode a "quality_ranking" setting puts in effect, from get (a settings
+// read that returns def when the key was never saved): DefaultRanking unless "v1" or "v2"
+// was saved — a saved blank is no choice, so it reads the default too. The service and the
+// settings API both read it here, so they can't disagree.
+func ReadRanking(get func(key, def string) string) string {
+	v := strings.TrimSpace(get(KeyRanking, DefaultRanking))
+	if v == "" {
+		return DefaultRanking
+	}
+	return NormalizeRanking(v)
 }
 
 // ValidRanking reports whether a mode may be saved.
@@ -68,20 +89,8 @@ func compareV2(p Profile, a, b *Evaluation) (int, RankKey) {
 	if as, bs := a.Candidate.alive(), b.Candidate.alive(); as != bs {
 		return order(as), KeyHealth
 	}
-	if a.ResTier != b.ResTier {
-		return order(a.ResTier > b.ResTier), KeyResolution
-	}
-	if a.PrefCount != b.PrefCount {
-		return order(a.PrefCount > b.PrefCount), KeyPreferences
-	}
-	if a.CustomScore != b.CustomScore {
-		return order(a.CustomScore > b.CustomScore), KeyCustom
-	}
-	if a.SourceTier != b.SourceTier {
-		return order(a.SourceTier > b.SourceTier), KeySource
-	}
-	if a.ProperFix != b.ProperFix {
-		return order(a.ProperFix), KeyProper
+	if c, k := compareQualityKeys(a, b); c != 0 {
+		return c, k
 	}
 	if a.GroupTier != b.GroupTier {
 		return order(a.GroupTier > b.GroupTier), KeyGroup
@@ -102,6 +111,29 @@ func compareV2(p Profile, a, b *Evaluation) (int, RankKey) {
 	}
 	if am != bm {
 		return order((am > bm) != small), KeySize
+	}
+	return 0, KeyTie
+}
+
+// compareQualityKeys is compareV2's middle run (keys 3 to 6): resolution, preferences,
+// custom, source and proper — what the release is, rather than who made it or how it
+// travels. They are also the only keys an upgrade is ever decided on (upgradev2.go), so
+// the upgrade sweeps and the import gates read them from the comparator that ranks grabs.
+func compareQualityKeys(a, b *Evaluation) (int, RankKey) {
+	if a.ResTier != b.ResTier {
+		return order(a.ResTier > b.ResTier), KeyResolution
+	}
+	if a.PrefCount != b.PrefCount {
+		return order(a.PrefCount > b.PrefCount), KeyPreferences
+	}
+	if a.CustomScore != b.CustomScore {
+		return order(a.CustomScore > b.CustomScore), KeyCustom
+	}
+	if a.SourceTier != b.SourceTier {
+		return order(a.SourceTier > b.SourceTier), KeySource
+	}
+	if a.ProperFix != b.ProperFix {
+		return order(a.ProperFix), KeyProper
 	}
 	return 0, KeyTie
 }

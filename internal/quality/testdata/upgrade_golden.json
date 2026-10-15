@@ -1,0 +1,2640 @@
+{
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "preferences",
+    "v2": "source",
+    "why": "both upgrade: classic names the first part of the score that rose (preferences), v2 the key that decided (source)"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "preferences",
+    "v2": "source",
+    "why": "both upgrade: classic names the first part of the score that rose (preferences), v2 the key that decided (source)"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "preferences",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: decided on proper, which the \"source\" trigger doesn't count (classic named the gain source)"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "source",
+    "v2": "no",
+    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "avoid-dv-source | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "custom",
+    "v2": "custom"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "avoid",
+    "v2": "avoid"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "custom-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "size",
+    "v2": "no",
+    "why": "a size-lean gain: classic scores −GB × bias, v2 never upgrades on size"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "size",
+    "v2": "no",
+    "why": "a size-lean gain: classic scores −GB × bias, v2 never upgrades on size"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "resolution",
+    "why": "v2: wins on resolution, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "source",
+    "why": "v2: wins on source, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "source",
+    "why": "v2: wins on source, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "size",
+    "v2": "no",
+    "why": "a size-lean gain: classic scores −GB × bias, v2 never upgrades on size"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "resolution",
+    "why": "v2: wins on resolution, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "source",
+    "why": "v2: wins on source, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "source",
+    "why": "v2: wins on source, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "avoid",
+    "why": "v2: wins on avoid, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "avoid",
+    "why": "v2: wins on avoid, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "proper",
+    "why": "v2: wins on proper, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "avoid",
+    "why": "v2: wins on avoid, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "avoid",
+    "why": "v2: wins on avoid, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "resolution",
+    "why": "v2: wins on resolution, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "no",
+    "v2": "source",
+    "why": "v2: wins on source, which ranks above what classic's summed score favoured"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "size",
+    "v2": "no",
+    "why": "a size-lean gain: classic scores −GB × bias, v2 never upgrades on size"
+  },
+  "lean-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "lean-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "size",
+    "v2": "no",
+    "why": "a size-lean gain: classic scores −GB × bias, v2 never upgrades on size"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "must-hevc | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "source",
+    "v2": "proper",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (proper)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "avoid",
+    "v2": "avoid"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "plain-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "source",
+    "v2": "source"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "source",
+    "v2": "proper",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (proper)"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "avoid",
+    "v2": "avoid"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-any | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-any | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "preferences",
+    "v2": "preferences"
+  },
+  "target-format | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-format | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "proper",
+    "v2": "proper"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEB-DL.DDP5.1.H.264-EVO ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.2160p.WEB-DL.DDP5.1.H.265-GRPC ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x264-DEAD": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.1080p.WEBRip.x264-GRPD": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.UHD.BluRay.x265.HDR10.DTS-HD.MA.5.1-GRPA": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEB-DL.H.265-GRPX": {
+    "v1": "resolution",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.2160p.WEBRip.DDP5.1.HDR10.x265-GRPB": {
+    "v1": "resolution",
+    "v2": "resolution"
+  },
+  "target-resolution | Film.2021.720p.BluRay.x264-SEVEN ← Film.2021.720p.WEB-DL.AV1-AVONE": {
+    "v1": "no",
+    "v2": "no"
+  }
+}
