@@ -42,7 +42,10 @@ func TestRankingShadowReport(t *testing.T) {
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &rep) != nil {
 		t.Fatalf("HTTP %d: %s", w.Code, w.Body.String())
 	}
-	if rep.Mode != "v1" || rep.Decisions != 1 || rep.Disagreements != 1 || len(rep.Rows) != 1 || rep.Rows[0].V2Key != "resolution" {
+	// v2 decides by default and classic runs in the shadow; the row is the same pair of
+	// picks it would be the other way round.
+	if rep.Mode != "v2" || rep.Decisions != 1 || rep.Disagreements != 1 || len(rep.Rows) != 1 || rep.Rows[0].V2Key != "resolution" ||
+		rep.Rows[0].V2Winner != "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD" || rep.Rows[0].V1Winner != "Film.2021.1080p.BluRay.HDR10+.TrueHD.Atmos.x265-FHD" {
 		t.Fatalf("report = %+v", rep)
 	}
 
@@ -60,22 +63,30 @@ func TestRankingShadowReport(t *testing.T) {
 	}
 }
 
-// quality_ranking takes only v1 or v2.
+// quality_ranking takes only v1 or v2, reads v2 until something is saved, and an explicit
+// v1 (the rollback) sticks.
 func TestQualityRankingSettingValidated(t *testing.T) {
 	a := settingsAPI(t)
 	if w := putSettings(t, a, `{"quality_ranking":"v3"}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("v3: HTTP %d", w.Code)
 	}
 	_, got := getSettings(t, a)
-	if got["quality_ranking"] != "v1" {
+	if got["quality_ranking"] != "v2" {
 		t.Fatalf("default = %v", got["quality_ranking"])
 	}
 	// It changes what every profile grabs: the owner's call, not a manager's.
-	if w := putSettingsAs(t, a, auth.RoleManager, `{"quality_ranking":"v2"}`); w.Code != http.StatusForbidden {
+	if w := putSettingsAs(t, a, auth.RoleManager, `{"quality_ranking":"v1"}`); w.Code != http.StatusForbidden {
 		t.Fatalf("manager: HTTP %d", w.Code)
 	}
 	// Sending it back unchanged is fine for a manager (the page saves whole objects).
-	if w := putSettingsAs(t, a, auth.RoleManager, `{"quality_ranking":"v1"}`); w.Code != http.StatusOK {
+	if w := putSettingsAs(t, a, auth.RoleManager, `{"quality_ranking":"v2"}`); w.Code != http.StatusOK {
 		t.Fatalf("manager, unchanged: HTTP %d", w.Code)
+	}
+	// The rollback: an admin saves v1 and it reads back as v1.
+	if w := putSettings(t, a, `{"quality_ranking":"v1"}`); w.Code != http.StatusOK {
+		t.Fatalf("v1: HTTP %d", w.Code)
+	}
+	if _, got := getSettings(t, a); got["quality_ranking"] != "v1" {
+		t.Fatalf("after saving v1 = %v", got["quality_ranking"])
 	}
 }

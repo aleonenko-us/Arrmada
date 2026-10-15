@@ -112,8 +112,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 		// The languages automatic book grabs accept, canonical codes in order; [] = any.
 		"books_languages": a.bookLanguages(ctx),
-		// How releases are ranked: v1 (classic, the default) or v2 (ordered keys, preview).
-		// Under v1, v2 runs in the shadow and its disagreements are recorded for review.
+		// How releases are ranked: v2 (ordered keys, the default) or v1 (classic, the
+		// rollback). Whichever decides, the other runs in the shadow and the disagreements
+		// are recorded for review.
 		"quality_ranking": a.qualityRanking(ctx),
 		// When a release is on both Usenet and torrents: best (the better release wins,
 		// the default), usenet or torrent (preferred between releases that score the same).
@@ -124,9 +125,10 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// qualityRanking is the ranking mode in effect (quality_ranking: v1 unless set to v2).
+// qualityRanking is the ranking mode in effect (quality_ranking: v2 unless "v1" was saved
+// — the rollback), read the way the quality service reads it.
 func (a *api) qualityRanking(ctx context.Context) string {
-	return quality.NormalizeRanking(a.deps.Settings.Get(ctx, quality.KeyRanking, quality.RankingV1))
+	return quality.ReadRanking(func(key, def string) string { return a.deps.Settings.Get(ctx, key, def) })
 }
 
 // bookLanguages is the saved book languages list (default English).

@@ -494,8 +494,9 @@ type Decision struct {
 	// records what decided it.
 	Ranking   string  `json:"ranking,omitempty"`
 	DecidedBy RankKey `json:"decided_by,omitempty"`
-	// Shadow is what ranking v2 would have picked while classic ranking decides (shadow
-	// mode, shadow.go); nil under v2 or with nothing eligible.
+	// Shadow is what the other ranking would have picked (shadow mode, shadow.go): v2's
+	// while classic decides, classic's while v2 decides. Set by the service only; nil with
+	// nothing eligible.
 	Shadow *ShadowPick `json:"shadow,omitempty"`
 }
 
@@ -529,7 +530,8 @@ func (ev *Evaluation) reject(code, reason string) {
 type Engine struct {
 	formats map[string]CustomFormat
 	// Ranking is how Decide orders eligible releases: RankingV1 (classic, also "") or
-	// RankingV2 (ordered keys, rankv2.go). The service sets it from "quality_ranking".
+	// RankingV2 (ordered keys, rankv2.go). The service sets it from "quality_ranking",
+	// which reads v2 unless "v1" was saved; "" here is only an engine built outside it.
 	Ranking string
 	// regex holds every release_title pattern the formats use, compiled once here rather
 	// than per release (nil for a pattern that doesn't compile: it never matches).

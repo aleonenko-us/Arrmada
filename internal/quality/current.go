@@ -50,13 +50,71 @@ type upgradeBar struct {
 	curCodec parser.Codec
 	orig     string // the release it was converted from, "" when none
 	// ev is the file as it is, scored: what the profile's upgrade trigger names a gain
-	// against (rank.go).
+	// against (rank.go). Under ranking v2 a file the profile no longer accepts is scored
+	// with the profile's gates lifted (describe), so it still has rank keys to compare.
 	ev Evaluation
+	// mode is the ranking in effect (RankingV1 or RankingV2): which rule decides an upgrade.
+	mode string
+	// fits is whether the profile would still grab the file as it is (ev's eligibility
+	// before describe).
+	fits bool
+	// origEv is the converted file's original, scored like ev; nil when never converted.
+	// Under v2 an upgrade must rank above it as well as above the file.
+	origEv *Evaluation
 }
 
-// qualityGain is the "it scores higher" half of an upgrade: cand must beat the bar (the
-// file and, for a converted file, its original), and its gain over the file must be one
-// the profile's "Replace for" trigger counts — or a same-group PROPER of the file.
+// gain is THE verdict on whether cand's quality is worth replacing the file for, and on
+// which key — shared by the upgrade sweeps (UpgradePick, for movies, single episodes and
+// season packs alike) and the import gate (IsQualityUpgrade), so a release grabbed as an
+// upgrade is never refused when it arrives. The ranking in effect decides how: the summed
+// score under classic ranking (qualityGain, gainKey), the ordered keys under v2 (v2Gain).
+func (b upgradeBar) gain(trigger string, cand Evaluation) (RankKey, bool) {
+	if b.mode == RankingV2 {
+		return b.v2Gain(trigger, cand)
+	}
+	if b.qualityGain(trigger, cand) {
+		return b.gainKey(cand), true
+	}
+	return "", false
+}
+
+// intoAvoid reports a candidate the profile avoids where the file isn't avoided: never an
+// upgrade, whatever else it has. Keeping the current file is always the preferable
+// alternative. Under v2 only the avoids that are a tier count (TargetAvoided) — a negative
+// custom format is a score there, as it is when ranking grabs.
+func (b upgradeBar) intoAvoid(cand Evaluation) bool {
+	if b.mode == RankingV2 {
+		return cand.TargetAvoided && !b.ev.TargetAvoided
+	}
+	return cand.Avoided && !b.avoided
+}
+
+// noWorse is the bitrate upgrade's other half: a heavier encode only replaces the file
+// when it gives nothing up in quality — no lower score than the file and its original
+// under classic ranking; under v2, ranked no lower than either on the avoid and quality
+// keys, and a torrent someone is seeding.
+func (b upgradeBar) noWorse(cand Evaluation) bool {
+	if b.mode != RankingV2 {
+		return cand.Total >= b.total
+	}
+	if !cand.Eligible || !cand.Candidate.alive() {
+		return false
+	}
+	if c, _ := upgradeOrder(&cand, &b.ev); c > 0 {
+		return false
+	}
+	if b.origEv != nil {
+		if c, _ := upgradeOrder(&cand, b.origEv); c > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// qualityGain is the "it scores higher" half of an upgrade under classic ranking: cand
+// must beat the bar (the file and, for a converted file, its original), and its gain over
+// the file must be one the profile's "Replace for" trigger counts — or a same-group PROPER
+// of the file.
 func (b upgradeBar) qualityGain(trigger string, cand Evaluation) bool {
 	// Leaving a low-quality group's encode for a clean release that scores no worse is a
 	// gain of its own: such files carried a hidden −180 that any clean release beat, and
@@ -95,6 +153,10 @@ func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 		total: cur.Total, avoided: cur.Avoided, resRank: resRank[curCand.Release.Resolution],
 		encode:  Encode{SizeGB: c.SizeGB, Codec: curCand.Release.Codec},
 		current: c.Release, curCodec: curCand.Release.Codec, ev: cur,
+		mode: NormalizeRanking(e.Ranking), fits: cur.Eligible,
+	}
+	if b.mode == RankingV2 && !cur.Eligible {
+		b.ev = e.describe(p, curCand)
 	}
 	if orig := strings.TrimSpace(c.OrigRelease); orig != "" && !strings.EqualFold(orig, strings.TrimSpace(c.Release)) {
 		size := c.OrigSizeGB
@@ -102,8 +164,15 @@ func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 			size = c.SizeGB
 		}
 		oc := NewCandidate(orig, size, 1_000_000)
-		if o := e.Evaluate(p, oc); o.Total > b.total {
+		o := e.Evaluate(p, oc)
+		if o.Total > b.total {
 			b.total = o.Total
+		}
+		if b.mode == RankingV2 {
+			if !o.Eligible {
+				o = e.describe(p, oc)
+			}
+			b.origEv = &o
 		}
 		if r := resRank[oc.Release.Resolution]; r > b.resRank {
 			b.resRank = r

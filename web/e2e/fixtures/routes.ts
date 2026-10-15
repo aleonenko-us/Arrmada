@@ -194,7 +194,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Settings → Downloads and → Audiobook server (only the full Settings sweep visits them).
     get("/api/v1/downloads/disk-guard", { enabled: true, measurable: true, path: "/downloads", used_pct: 42, pause_pct: 95, resume_pct: 90, holding: 0, shared_with: [], shared_with_library: false }),
     get("/api/v1/audioserver", { enabled: false, running: false, host_port: "13378", public_url: "", users: [], devices: [], items: 0, items_ready: 0, trace_until: 0 }),
-    get(/^\/api\/v1\/quality\/ranking-shadow/, { mode: "v1", decisions: 0, disagreements: 0, days: [], disagreement_rows: [] }),
+    get(/^\/api\/v1\/quality\/ranking-shadow/, { mode: "v2", decisions: 0, disagreements: 0, days: [], disagreement_rows: [] }),
     get("/api/v1/library/fit/profiles", media.fitProfiles),
     get("/api/v1/convert/stats", mod.convertStats),
     get("/api/v1/convert/hardware", mod.convertHardware),

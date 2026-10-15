@@ -3,10 +3,10 @@ import { api } from "../../lib/api";
 import { isAdmin, useMe } from "../../lib/me";
 import { qualityApi, type RankingShadowReport } from "../../lib/qualityApi";
 
-// RankingCard is the Quality page's small Advanced switch between classic ranking and the
-// ordered-key ranking (preview), with what the preview would have changed so far. Only an
-// admin sees it: it changes what every profile grabs. While classic ranking decides, the
-// ordered ranking runs alongside and every disagreement is recorded for review.
+// RankingCard is the Quality page's small Advanced switch between the ordered-key ranking
+// (the default) and classic ranking (the rollback), with how often the two disagreed. Only
+// an admin sees it: it changes what every profile grabs and upgrades. Whichever ranking
+// decides, the other runs alongside and every disagreement is recorded for review.
 export function RankingCard() {
   const { user } = useMe();
   const admin = isAdmin(user);
@@ -16,7 +16,7 @@ export function RankingCard() {
 
   useEffect(() => {
     if (!admin) return;
-    api.settings().then((s) => setMode(s.quality_ranking === "v2" ? "v2" : "v1")).catch(() => setMode(null));
+    api.settings().then((s) => setMode(modeOf(s.quality_ranking))).catch(() => setMode(null));
     qualityApi.rankingShadow(0).then(setReport).catch(() => setReport(null));
   }, [admin]);
 
@@ -27,12 +27,13 @@ export function RankingCard() {
     setError(null);
     try {
       const s = await api.updateSettings({ quality_ranking: next });
-      setMode(s.quality_ranking === "v2" ? "v2" : "v1");
+      setMode(modeOf(s.quality_ranking));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't change the ranking");
     }
   };
-  const opts: { v: "v1" | "v2"; label: string }[] = [{ v: "v1", label: "Classic" }, { v: "v2", label: "Ordered (preview)" }];
+  const opts: { v: "v1" | "v2"; label: string }[] = [{ v: "v2", label: "Ordered" }, { v: "v1", label: "Classic" }];
+  const other = mode === "v2" ? "Classic ranking" : "The ordered ranking";
 
   return (
     <div id="ranking" className="mt-6 rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
@@ -40,7 +41,7 @@ export function RankingCard() {
         <span className="min-w-0 flex-1">
           <span className="block text-md font-semibold">Ranking</span>
           <span className="block text-xs text-ink-faint">
-            Classic adds every score together. Ordered compares releases one rule at a time — resolution, then your preferences, custom formats, source, bitrate — and records which rule decided.
+            Ordered, the default, compares releases one rule at a time — resolution, then your preferences, custom formats, source, bitrate — and records which rule decided. Upgrades follow the same rules. Classic adds every score together; switch back to it if Ordered picks badly.
           </span>
         </span>
         <div role="radiogroup" aria-label="Ranking" className="inline-flex flex-none rounded-lg p-0.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
@@ -55,11 +56,11 @@ export function RankingCard() {
           })}
         </div>
       </div>
-      {report && mode === "v1" && (
+      {report && (
         <p className="mt-2 text-xs text-ink-dim">
           {report.decisions === 0
-            ? "The ordered ranking runs alongside classic on every automatic pick; nothing to compare yet."
-            : `Alongside classic, the ordered ranking would have picked differently ${report.disagreements} time${report.disagreements === 1 ? "" : "s"} in ${report.decisions} decision${report.decisions === 1 ? "" : "s"}.`}
+            ? `${other} runs alongside on every automatic pick; nothing to compare yet.`
+            : `${other} runs alongside on every automatic pick. The two picked differently ${report.disagreements} time${report.disagreements === 1 ? "" : "s"} in ${report.decisions} decision${report.decisions === 1 ? "" : "s"}.`}
           {report.disagreement_rows.length > 0 && (
             <> <a href="/api/v1/quality/ranking-shadow?format=csv" className="text-accent-text underline-offset-2 hover:underline">Download the differences (CSV)</a></>
           )}
@@ -68,4 +69,9 @@ export function RankingCard() {
       {error && <p className="mt-2 text-xs" style={{ color: "var(--reject-text)" }}>{error}</p>}
     </div>
   );
+}
+
+// modeOf reads the setting as the server does: ordered (v2) unless classic was chosen.
+function modeOf(v: string | undefined): "v1" | "v2" {
+  return v === "v1" ? "v1" : "v2";
 }

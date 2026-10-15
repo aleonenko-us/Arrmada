@@ -194,31 +194,28 @@ func (s *Service) Known(ctx context.Context, ref string) bool {
 	return false
 }
 
-// Decide resolves the profile reference and ranks the candidates. Under classic ranking
-// (the default) it also runs ranking v2 in the shadow — the pick is v1's, and v2's choice
-// rides along in Decision.Shadow and, where the two differ, in the shadow record.
+// Decide resolves the profile reference and ranks the candidates in the ranking mode in
+// effect, and runs the other mode in the shadow: the pick is the mode in effect's, and the
+// other's choice rides along in Decision.Shadow and, where the two differ, in the shadow
+// record.
 func (s *Service) Decide(ctx context.Context, ref string, cands []Candidate) Decision {
 	p, e := s.Resolve(ctx, ref)
 	d := e.Decide(p, cands)
-	if d.Ranking == RankingV1 {
-		d.Shadow = shadowV2(p, d)
-		s.recordShadow(ctx, ref, d)
-	}
+	d.Shadow = shadowOf(p, d)
+	s.recordShadow(ctx, ref, d)
 	return d
 }
 
 // decideUnsaved ranks for a profile that may not be saved yet (the builder): the ranking
-// mode in effect, and v2's shadow pick shown alongside — but never recorded, since these
-// are samples and edits, not the library's real choices.
+// mode in effect, and the other mode's shadow pick shown alongside — but never recorded,
+// since these are samples and edits, not the library's real choices.
 func (s *Service) decideUnsaved(sp StoredProfile, cands []Candidate) Decision {
 	ctx := context.Background()
 	normalize(&sp)
 	p, e := s.withNetwork(ctx, s.profileOf(ctx, sp)), sp.Engine()
 	e.Ranking = s.RankingMode(ctx)
 	d := e.Decide(p, cands)
-	if d.Ranking == RankingV1 {
-		d.Shadow = shadowV2(p, d)
-	}
+	d.Shadow = shadowOf(p, d)
 	return d
 }
 
@@ -231,10 +228,11 @@ func (s *Service) decideUnsaved(sp StoredProfile, cands []Candidate) Decision {
 //     on a guess);
 //   - a file that already meets the profile's target is done (JudgeFile);
 //   - a candidate never drops resolution (that's a downgrade, handled elsewhere);
-//   - it wins if it scores strictly higher (better resolution/formats) in a way the
-//     profile's upgrade trigger counts (rank.go — a same-group PROPER always counts), OR — when
-//     upgrade_min_percent > 0 — it's at least that much better on bitrate and no worse
-//     on quality.
+//   - it wins if it is better (resolution, formats, source…) in a way the profile's
+//     upgrade trigger counts (a same-group PROPER always counts) — by the summed score
+//     under classic ranking (rank.go), by the ordered keys under v2 (upgradev2.go) — OR,
+//     when upgrade_min_percent > 0, it's at least that much better on bitrate and no
+//     worse on quality.
 //
 // current.RuntimeMin is the content length (movie/episode minutes), needed to turn
 // sizes into bitrates; 0 disables the bitrate-based upgrade (quality-only still applies).
@@ -245,8 +243,9 @@ func (s *Service) UpgradeCandidate(ctx context.Context, ref string, current Curr
 
 // UpgradePick is UpgradeCandidate with the key that decided it, so an upgrade grab records
 // what kind of gain it was: the improvement the profile's trigger accepted (resolution,
-// preferences, custom, source, proper), KeyAvoid for leaving a low-quality group's file,
-// KeySize for a gain only the size lean scores, or KeyBitrate for the bitrate step.
+// preferences, custom, source, proper), KeyAvoid for leaving a low-quality group's file
+// (under v2 also a file the profile no longer accepts), KeySize for a gain only the size
+// lean scores (classic ranking only), or KeyBitrate for the bitrate step.
 func (s *Service) UpgradePick(ctx context.Context, ref string, current CurrentFile, cands []Candidate) (Candidate, RankKey, bool) {
 	currentRelease, runtimeMin := current.Release, current.RuntimeMin
 	sp, err := s.GetStored(ctx, ref)
@@ -264,11 +263,11 @@ func (s *Service) UpgradePick(ctx context.Context, ref string, current CurrentFi
 	bar := current.upgradeBar(p, e)
 
 	d := e.Decide(p, cands)
-	for _, ev := range d.Eligible { // sorted best-first
+	for _, ev := range d.Eligible { // sorted best-first, in the ranking mode in effect
 		// Never auto-upgrade INTO a format you avoid. Keeping the current file is always the
 		// preferable alternative, so "Avoid Dolby Vision" also means the upgrader won't swap
 		// a clean file for a DV one — matching how the picker now treats avoided releases.
-		if ev.Avoided && !bar.avoided {
+		if bar.intoAvoid(ev) {
 			continue
 		}
 		if resRank[ev.Candidate.Release.Resolution] < bar.resRank {
@@ -279,30 +278,28 @@ func (s *Service) UpgradePick(ctx context.Context, ref string, current CurrentFi
 			// Grabbing that would undo the conversion and loop forever.
 			continue
 		}
-		// A higher score than the file (and its original), of a kind the profile's
-		// "Replace for" counts (rank.go).
-		qualityBetter := bar.qualityGain(sp.UpgradeTrigger, ev)
+		// Better than the file (and its original) in a way the profile's "Replace for"
+		// counts — the one verdict the import gate also applies (upgradeBar.gain).
+		if key, ok := bar.gain(sp.UpgradeTrigger, ev); ok {
+			return ev.Candidate, key, true
+		}
 		// Same helper the import gate uses, so the two can't drift apart again — the
 		// searcher deciding a release is worth grabbing and the importer then refusing to
 		// place it is exactly the bug this shares its logic to prevent. It also brings the
 		// margin floors and codec normalization to the grab side, which compared raw
 		// bitrates and so over-valued a bloated older-codec encode.
-		bitrateBetter := ev.Total >= bar.total && s.IsBitrateUpgrade(ctx, ref,
+		if bar.noWorse(ev) && s.IsBitrateUpgrade(ctx, ref,
 			Encode{SizeGB: sizeOver(ev.Candidate, runtimeMin), Codec: ev.Candidate.Release.Codec},
-			bar.encode, runtimeMin)
-		if qualityBetter {
-			return ev.Candidate, bar.gainKey(ev), true
-		}
-		if bitrateBetter {
+			bar.encode, runtimeMin) {
 			return ev.Candidate, KeyBitrate, true
 		}
 	}
 	return Candidate{}, "", false
 }
 
-// IsQualityUpgrade reports whether a candidate scores strictly higher than the current
-// file under this profile — the OTHER half of what UpgradeCandidate accepts, exposed so
-// the import gate can honour the same verdict.
+// IsQualityUpgrade reports whether a candidate is a quality upgrade of the current file
+// under this profile — the OTHER half of what UpgradeCandidate accepts (upgradeBar.gain,
+// in the ranking mode in effect), exposed so the import gate can honour the same verdict.
 //
 // The two used to disagree on exactly this. The searcher took a release on a quality gain
 // that wasn't a resolution gain (a WEB-DL with Atmos over a plain WEB rip, say), the
@@ -335,12 +332,14 @@ func (s *Service) IsQualityUpgrade(ctx context.Context, ref, candRelease string,
 	// Seeders are irrelevant here and unknown for a file on disk, so both sides get the
 	// same large value rather than letting a seeder term skew the comparison.
 	cand := e.Evaluate(p, NewCandidate(candRelease, candSizeGB, 1_000_000))
-	if cand.Avoided && !bar.avoided {
+	if bar.intoAvoid(cand) {
 		return false
 	}
-	// The same "Replace for" rule the searcher applied, so a release it wouldn't have
-	// grabbed as an upgrade isn't placed as one either.
-	return bar.qualityGain(sp.UpgradeTrigger, cand)
+	// The same verdict the searcher applied (upgradeBar.gain, in the ranking mode in
+	// effect), so a release it grabbed as an upgrade is placed, and one it wouldn't have
+	// grabbed isn't placed as one either.
+	_, ok := bar.gain(sp.UpgradeTrigger, cand)
+	return ok
 }
 
 // convertedFrom reports whether cand looks like the release the current file was

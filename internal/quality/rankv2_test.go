@@ -241,7 +241,7 @@ func TestShadowModeLeavesPicksUnchanged(t *testing.T) {
 	got := map[string]goldenDecision{}
 	for _, f := range rankFixtures() {
 		d := f.e.Decide(f.p, f.cands)
-		d.Shadow = shadowV2(f.p, d)
+		d.Shadow = shadowOf(f.p, d)
 		got[f.name] = goldenOf(d)
 		if d.Winner != nil && (d.Shadow == nil || d.Shadow.Winner == "" || d.Shadow.DecidedBy == "") {
 			t.Fatalf("%s: shadow = %+v", f.name, d.Shadow)
@@ -291,6 +291,8 @@ func TestShadowLogsAndRecordsDisagreements(t *testing.T) {
 	uhd := NewCandidate("Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD", 20, 50)
 	fhd := NewCandidate("Film.2021.1080p.BluRay.HDR10+.TrueHD.Atmos.x265-FHD", 14, 50)
 
+	// Classic ranking deciding (the rollback, saved explicitly): v2 runs in the shadow.
+	setRanking(t, s, RankingV1)
 	// They agree: no log, no row.
 	d := s.Decide(ctx, ref, []Candidate{uhd, NewCandidate("Film.2021.1080p.WEB-DL.H.264-LOW", 4, 50)})
 	if d.Ranking != RankingV1 || d.Shadow == nil || d.Shadow.Differs || len(msgs) != 0 {
@@ -336,23 +338,48 @@ func TestShadowLogsAndRecordsDisagreements(t *testing.T) {
 		t.Fatalf("a lone release was counted: %d", rep.Decisions)
 	}
 
-	// Under v2 there is no shadow: v2 decides and nothing more is recorded.
-	setRanking(t, s, RankingV2)
-	d = s.Decide(ctx, ref, []Candidate{uhd, fhd})
-	if d.Ranking != RankingV2 || winnerName(d) != uhd.Name || d.Shadow != nil || d.DecidedBy != KeyResolution {
-		t.Fatalf("v2 mode: %+v", d)
-	}
-	if rep, _ := s.ShadowReport(ctx, 0); rep.Decisions != 3 || rep.Mode != RankingV2 {
-		t.Fatalf("v2 mode recorded a shadow: %+v", rep)
-	}
 	// Unsaved profiles (the builder) show the shadow pick but never record it.
-	setRanking(t, s, RankingV1)
-	if d := s.DecideSpec(sp, []Candidate{uhd, fhd}); d.Shadow == nil || !d.Shadow.Differs {
+	if d := s.DecideSpec(sp, []Candidate{uhd, fhd}); d.Shadow == nil || !d.Shadow.Differs || d.Shadow.Mode != RankingV2 {
 		t.Fatalf("DecideSpec shadow = %+v", d.Shadow)
 	}
 	var n int
 	if err := db.QueryRow(`SELECT seen FROM ranking_shadow`).Scan(&n); err != nil || n != 2 {
 		t.Fatalf("DecideSpec recorded: seen %d (%v)", n, err)
+	}
+
+	// v2 deciding (the default once "v1" is cleared): classic runs in the shadow, in reverse.
+	// The pick is v2's, classic's rides along, and the disagreement lands on the SAME row —
+	// recorded as classic picked fhd, v2 picked uhd — so the record reads the same across
+	// the switch.
+	setRanking(t, s, "")
+	d = s.Decide(ctx, ref, []Candidate{uhd, fhd})
+	if d.Ranking != RankingV2 || winnerName(d) != uhd.Name || d.DecidedBy != KeyResolution {
+		t.Fatalf("v2 mode: %+v", d)
+	}
+	if d.Shadow == nil || d.Shadow.Mode != RankingV1 || !d.Shadow.Differs || d.Shadow.Winner != fhd.Name ||
+		d.Shadow.OverKey != KeyResolution || d.Shadow.V1Key != KeyPreferences {
+		t.Fatalf("v2 mode shadow = %+v", d.Shadow)
+	}
+	rep, err = s.ShadowReport(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Mode != RankingV2 || rep.Decisions != 4 || rep.Disagreements != 3 || len(rep.Rows) != 1 {
+		t.Fatalf("v2 mode report = %+v", rep)
+	}
+	if row := rep.Rows[0]; row.V1Winner != fhd.Name || row.V2Winner != uhd.Name || row.V1Key != "preferences" ||
+		row.V2Key != "resolution" || row.Seen != 3 {
+		t.Fatalf("v2 mode row = %+v", row)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("a disagreement already on record was logged again: %q", msgs)
+	}
+	// A new disagreement under v2 is logged the reverse way round.
+	low := NewCandidate("Film.2021.1080p.BluRay.HDR10+.TrueHD.Atmos.x265-OTHER", 14, 50)
+	s.Decide(ctx, ref, []Candidate{low, uhd})
+	want = "quality: classic ranking would pick " + low.Name + " instead of " + uhd.Name + " (v2 decided by resolution)"
+	if len(msgs) != 2 || msgs[1] != want {
+		t.Fatalf("v2 mode logs = %q, want second %q", msgs, want)
 	}
 }
 

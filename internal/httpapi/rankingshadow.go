@@ -6,11 +6,12 @@ import (
 	"time"
 )
 
-// handleRankingShadow is ranking v2's shadow-mode record for review: per-day counts of the
-// decisions that had a choice to make and how many v2 would have picked differently, and
-// each disagreement (most recently seen first). ?limit= caps the rows (default 500);
-// ?format=csv downloads every disagreement as a spreadsheet. Admin-only: it decides
-// whether the ranking default changes.
+// handleRankingShadow is the shadow-mode record for review: per-day counts of the
+// decisions that had a choice to make and how many the two rankings (v2, the default, and
+// classic v1, the rollback) would have picked differently, and each disagreement (most
+// recently seen first) — recorded whichever of the two decides. ?limit= caps the rows
+// (default 500); ?format=csv downloads every disagreement as a spreadsheet. Admin-only: it
+// is what the choice between the two rankings rests on.
 func (a *api) handleRankingShadow(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if r.URL.Query().Get("format") == "csv" {

@@ -114,7 +114,7 @@ const UPGRADE_STEPS = [
 // first: each one also takes every gain the ones below it take. A PROPER of the same
 // release always counts.
 const UPGRADE_TRIGGERS: { v: UpgradeTrigger; l: string; short: string; detail: string }[] = [
-  { v: "any", l: "Any improvement", short: "any improvement", detail: "A higher resolution, a format you prefer, a better source or a PROPER — anything that scores higher." },
+  { v: "any", l: "Any improvement", short: "any improvement", detail: "A higher resolution, a format you prefer, a custom format that scores higher, a better source or a PROPER. A tier-1 release group or more seeders never count on their own." },
   { v: "source", l: "A better source or a format you prefer", short: "better source or format", detail: "Also a higher resolution. A PROPER only when it fixes the release you have." },
   { v: "format", l: "A format you prefer or a higher resolution", short: "format or resolution", detail: "A better source alone (WEB-DL → BluRay) isn't worth a re-download. A PROPER only when it fixes the release you have." },
   { v: "resolution", l: "Higher resolution only", short: "resolution only", detail: "Only a resolution gain, or a PROPER that fixes the release you have." },
@@ -761,7 +761,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
                   </select>
                 </label>
               </div>
-              <p className="mt-2 text-xs text-ink-faint">Releases rank by resolution, then your preferences, then source; bitrate breaks ties.</p>
+              <p className="mt-2 text-xs text-ink-faint">Releases rank by resolution, then your preferences and custom formats, then source and release group; bitrate breaks ties. Upgrades follow the same order. (Classic ranking, under Ranking on the profiles list, adds the scores together instead.)</p>
             </Collapsible>
 
             <Collapsible n={3} title="Rules" summary={rulesSummary(sp, unwanted)}>

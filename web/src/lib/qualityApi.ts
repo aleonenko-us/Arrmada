@@ -19,8 +19,9 @@ export interface TrashImport { formats: TrashFormat[]; warnings: string[] }
 
 // Quality profile and library-fit calls. They live here rather than in api.ts so they only
 // download with the staff pages that use them, not with a requester's first load.
-// RankingShadowReport mirrors quality.ShadowReport: what ranking v2 would have picked
-// differently while classic ranking decides (GET /api/v1/quality/ranking-shadow, admin).
+// RankingShadowReport mirrors quality.ShadowReport: where ranking v2 (the default) and
+// classic ranking (the rollback) would pick differently, recorded whichever of the two
+// decides; mode is the one deciding now (GET /api/v1/quality/ranking-shadow, admin).
 export interface RankingShadowReport {
   mode: "v1" | "v2";
   decisions: number;

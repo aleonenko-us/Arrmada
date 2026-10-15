@@ -589,7 +589,8 @@ export type RankKey = "avoid" | "resolution" | "preferences" | "custom" | "sourc
 // Decision fields from ranking v2 (shadow mode): merged into Decision.
 export interface Decision {
   ranking?: "v1" | "v2"; // the mode that ordered it
-  shadow?: { winner: string; decided_by: RankKey; differs: boolean; over_key?: RankKey; v1_key?: RankKey }; // v2's pick while v1 decides
+  // The other mode's pick: classic's while v2 (the default) decides, v2's while classic does.
+  shadow?: { mode?: "v1" | "v2"; winner: string; decided_by: RankKey; differs: boolean; over_key?: RankKey; v1_key?: RankKey };
 }
 
 export type UpgradeTrigger = "any" | "source" | "format" | "resolution";
@@ -1136,7 +1137,7 @@ export interface AppSettings {
   upgrade_max_grabs_per_sweep: number;
   /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
   books_languages: string[];
-  /** How releases are ranked: "v1" classic (default) or "v2" ordered keys (preview). Admin-only. */
+  /** How releases are ranked: "v2" ordered keys (default) or "v1" classic (the rollback). Admin-only. */
   quality_ranking?: "v1" | "v2";
   /** When a release is on both Usenet and torrents: the better release wins (best, the default), or the preferred network between equals. */
   download_network_preference?: NetworkPreference;

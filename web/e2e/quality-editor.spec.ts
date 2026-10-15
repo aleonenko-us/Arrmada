@@ -155,4 +155,13 @@ test.describe("Quality editor", () => {
     await expect(page.getByText(/Couldn't duplicate Ultra HD: database is locked/)).toBeVisible();
     await expect(page).toHaveURL(/\/quality$/);
   });
+
+  test("Ranking: ordered is the default, classic the rollback, and the other runs alongside", async ({ page }) => {
+    // The settings fixture has never saved quality_ranking, as on a fresh install.
+    await page.goto("/quality");
+    const ranking = page.getByRole("radiogroup", { name: "Ranking" });
+    await expect(ranking.getByRole("radio", { name: "Ordered" })).toHaveAttribute("aria-checked", "true");
+    await expect(ranking.getByRole("radio", { name: "Classic" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByText("Classic ranking runs alongside on every automatic pick; nothing to compare yet.")).toBeVisible();
+  });
 });
