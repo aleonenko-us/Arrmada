@@ -28,7 +28,7 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const seriesCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, status, network,
 	monitored, quality_profile, extra_json, series_type, tvdb_id, added_at, numbering_source,
-	last_refreshed_at, monitor_new_seasons`
+	last_refreshed_at, monitor_new_seasons, library_folder_id`
 
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var (
@@ -38,7 +38,7 @@ func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	)
 	err := row.Scan(&s.ID, &s.TMDBID, &s.IMDBID, &s.Title, &s.Year, &s.Overview, &s.PosterURL,
 		&s.Status, &s.Network, &mon, &s.QualityProfile, &extraJSON, &s.SeriesType, &s.TVDBID, &s.AddedAt, &s.NumberingSource,
-		&s.LastRefreshedAt, &mns)
+		&s.LastRefreshedAt, &mns, &s.LibraryFolderID)
 	if err != nil {
 		return Series{}, err
 	}
@@ -251,6 +251,12 @@ func (r *Repo) Get(ctx context.Context, id int64) (Series, error) {
 }
 
 // Create inserts a series row.
+// SetLibraryFolder records which TV folder a show belongs to (0 = the default).
+func (r *Repo) SetLibraryFolder(ctx context.Context, id, folderID int64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE series SET library_folder_id = ? WHERE id = ?`, folderID, id)
+	return err
+}
+
 func (r *Repo) Create(ctx context.Context, s Series) (Series, error) {
 	extraJSON := ""
 	if s.Extra != nil {
@@ -264,10 +270,10 @@ func (r *Repo) Create(ctx context.Context, s Series) (Series, error) {
 	}
 	res, err := r.db.ExecContext(ctx,
 		`INSERT INTO series (tmdb_id, imdb_id, title, year, overview, poster_url, status, network,
-			monitored, quality_profile, extra_json, series_type, tvdb_id, monitor_new_seasons)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			monitored, quality_profile, extra_json, series_type, tvdb_id, monitor_new_seasons, library_folder_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.TMDBID, s.IMDBID, s.Title, s.Year, s.Overview, s.PosterURL, s.Status, s.Network,
-		b2i(s.Monitored), s.QualityProfile, extraJSON, stype, s.TVDBID, b2i(s.MonitorNewSeasons))
+		b2i(s.Monitored), s.QualityProfile, extraJSON, stype, s.TVDBID, b2i(s.MonitorNewSeasons), s.LibraryFolderID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return Series{}, ErrExists

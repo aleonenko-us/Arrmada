@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -33,7 +34,9 @@ type Service struct {
 	meta   metadata.SeriesProvider
 	root   string        // library root, for delete-with-files and library scan (see libRoot)
 	rootFn func() string // the live library root; nil = root
-	bin    library.Bin   // where deleted files go (a bin that's off hard-deletes)
+	// folders is every TV folder when there are several; nil = rootFn only.
+	folders Folders
+	bin     library.Bin // where deleted files go (a bin that's off hard-deletes)
 	bus    *eventbus.Bus
 	log    *slog.Logger
 	scene  SceneMapper // TheXEM client (nil → scene mapping falls back to air-date gaps)
@@ -70,7 +73,9 @@ func (s *Service) SetSceneMapper(m SceneMapper) { s.scene = m }
 // UnmatchedFolder is a scanned series folder the scan couldn't confidently
 // identify, with the search candidates offered for a manual pick.
 type UnmatchedFolder struct {
-	Folder     string                  `json:"folder"`
+	Folder string `json:"folder"`
+	// Root is the TV folder it was found in, for the manual pick to import from.
+	Root       string                  `json:"root,omitempty"`
 	Title      string                  `json:"title"`
 	Year       int                     `json:"year"`
 	Candidates []metadata.SeriesResult `json:"candidates"`
@@ -89,12 +94,107 @@ func (s *Service) SetBin(b library.Bin) { s.bin = b }
 // without a restart. Call it at startup, before anything runs.
 func (s *Service) SetRootFunc(fn func() string) { s.rootFn = fn }
 
-// libRoot is the TV folder now.
+// libRoot is the TV folder now — the default one when there are several.
 func (s *Service) libRoot() string {
 	if s.rootFn != nil {
 		return strings.TrimSpace(s.rootFn())
 	}
 	return s.root
+}
+
+// Folders is the TV library's folders when it has more than one (internal/libfolders).
+type Folders interface {
+	Path(ctx context.Context, media string, id int64) string
+	Paths(ctx context.Context, media string) []string
+	Pick(ctx context.Context, media string, facts libfolders.Facts) int64
+	Owner(ctx context.Context, media, path string) (libfolders.Folder, bool)
+	OwnerID(ctx context.Context, media, path string) int64
+	Valid(ctx context.Context, media string, id int64) bool
+}
+
+// SetFolders lets the series service place shows in, and scan, every TV folder. Without
+// it there is one folder, libRoot. Call it at startup, before anything runs.
+func (s *Service) SetFolders(f Folders) { s.folders = f }
+
+// ErrUnknownFolder is an add naming a folder the TV library doesn't have.
+var ErrUnknownFolder = errors.New("that library folder doesn't exist")
+
+// libRoots is every TV folder now, the default first.
+func (s *Service) libRoots() []string {
+	if s.folders != nil {
+		return s.folders.Paths(context.Background(), libfolders.MediaSeries)
+	}
+	if r := s.libRoot(); r != "" {
+		return []string{r}
+	}
+	return nil
+}
+
+// isRoot reports whether dir is one of the TV folders.
+func (s *Service) isRoot(dir string) bool {
+	for _, r := range s.libRoots() {
+		if filepath.Clean(r) == filepath.Clean(dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// RootFor is the TV folder show sr lives in, for importing and renaming its episodes:
+// the folder its files are in when that's one of the library's, otherwise the folder it's
+// assigned to. "" (the importer's default TV folder) when the library has one folder.
+// Files win over the assignment, so new episodes always join the show's existing folder.
+func (s *Service) RootFor(ctx context.Context, sr Series) string {
+	if s.folders == nil {
+		return ""
+	}
+	if p := s.FolderPath(ctx, sr.ID); p != "" {
+		if f, ok := s.folders.Owner(ctx, libfolders.MediaSeries, p); ok {
+			return f.Path
+		}
+	}
+	return s.folders.Path(ctx, libfolders.MediaSeries, sr.LibraryFolderID)
+}
+
+// FactsOf is what the folder rules know about a show.
+func FactsOf(sr Series) libfolders.Facts {
+	f := libfolders.Facts{Anime: sr.IsAnime()}
+	if sr.Extra != nil {
+		f.Genres, f.OriginalLanguage, f.Certification = sr.Extra.Genres, sr.Extra.OriginalLanguage, sr.Extra.ContentRating
+	}
+	return f
+}
+
+// pickFolder is the folder a new show goes to: want when given (it must exist), else the
+// first folder whose rule matches, else the default.
+func (s *Service) pickFolder(ctx context.Context, want *int64, sr Series) (int64, error) {
+	if s.folders == nil {
+		if want != nil && *want != libfolders.DefaultID {
+			return 0, ErrUnknownFolder
+		}
+		return libfolders.DefaultID, nil
+	}
+	if want != nil {
+		if !s.folders.Valid(ctx, libfolders.MediaSeries, *want) {
+			return 0, ErrUnknownFolder
+		}
+		return *want, nil
+	}
+	return s.folders.Pick(ctx, libfolders.MediaSeries, FactsOf(sr)), nil
+}
+
+// SuggestFolder is the folder a show would go to if it were added now by its rules, for
+// the add and approve dialogs to preselect.
+func (s *Service) SuggestFolder(ctx context.Context, tmdbID int) (int64, error) {
+	if s.folders == nil {
+		return libfolders.DefaultID, nil
+	}
+	d, err := s.meta.GetSeries(ctx, tmdbID)
+	if err != nil {
+		return libfolders.DefaultID, err
+	}
+	sr := Series{Extra: extraFrom(d), SeriesType: detectSeriesType(d)}
+	return s.folders.Pick(ctx, libfolders.MediaSeries, FactsOf(sr)), nil
 }
 
 // SetBus lets deletes announce file.removed, so the import pipeline forgets a deleted
@@ -233,6 +333,9 @@ type AddOptions struct {
 	// seasons" is then off unless MonitorNewSeasons says otherwise, so a show added for
 	// some seasons doesn't start grabbing the next one on its own.
 	Seasons map[int]bool
+	// FolderID is the TV folder chosen for the show (0 = the default); nil lets the folder
+	// rules pick, the default when none matches.
+	FolderID *int64
 }
 
 // Add adds a show monitored with every regular episode, or — monitored=false, as the
@@ -266,6 +369,9 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 		PosterURL: d.PosterURL, Status: d.Status, Network: d.Network,
 		Monitored: monitored, MonitorNewSeasons: presetNewSeasons(preset), QualityProfile: qualityProfile, Extra: extraFrom(d),
 		SeriesType: detectSeriesType(d),
+	}
+	if sr.LibraryFolderID, err = s.pickFolder(ctx, opts.FolderID, sr); err != nil {
+		return Series{}, err
 	}
 	created, err := s.repo.Create(ctx, sr)
 	if err != nil {
@@ -1510,10 +1616,17 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) (Delet
 // never the root itself, even when the last show in it was just deleted.
 func (s *Service) pruneEmptyDirs(dirs map[string]bool) {
 	ordered := make([]string, 0, len(dirs))
+	roots := s.libRoots()
 	for d := range dirs {
-		if root := s.libRoot(); root != "" {
-			rel, err := filepath.Rel(root, d)
-			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		if len(roots) > 0 {
+			inside := false
+			for _, root := range roots {
+				if libfolders.StrictlyUnder(d, root) {
+					inside = true
+					break
+				}
+			}
+			if !inside {
 				continue
 			}
 		}
@@ -1622,11 +1735,12 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 	if !s.meta.Available() {
 		return res, fmt.Errorf("series metadata isn't configured — add a TMDB key in Settings → Connections")
 	}
-	root := rootOverride
-	if root == "" {
-		root = s.libRoot()
+	// Every TV folder, the default first — or just the one asked for.
+	roots := s.libRoots()
+	if rootOverride != "" {
+		roots = []string{rootOverride}
 	}
-	if root == "" {
+	if len(roots) == 0 {
 		return res, fmt.Errorf("no library directory configured")
 	}
 	existing, err := s.repo.List(ctx)
@@ -1637,16 +1751,22 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 	for _, sr := range existing {
 		have[sr.TMDBID] = true
 	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return res, err
+	type showDir struct {
+		root string
+		os.DirEntry
 	}
-	var shows []os.DirEntry
-	for _, e := range entries {
-		if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
-			continue // series live in per-show folders; skip the recycle bins and other hidden ones
+	var shows []showDir
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return res, err
 		}
-		shows = append(shows, e)
+		for _, e := range entries {
+			if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
+				continue // series live in per-show folders; skip the recycle bins and other hidden ones
+			}
+			shows = append(shows, showDir{root, e})
+		}
 	}
 	report := func(done int) {
 		if progress != nil {
@@ -1660,6 +1780,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			// "needs review" because its search couldn't run.
 			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
 		}
+		root := e.root
 		folder := filepath.Join(root, e.Name())
 		videos, _ := library.FindVideos(folder)
 		if len(videos) == 0 {
@@ -1671,13 +1792,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		}
 		results, err := s.meta.SearchSeries(ctx, rel.Title)
 		if err != nil || len(results) == 0 {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Title: rel.Title, Year: rel.Year})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
 		match, ok := bestSeriesMatch(results, rel.Title, rel.Year)
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6)})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6)})
 			continue
 		}
 		if have[match.TMDBID] {
@@ -1685,7 +1806,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			continue
 		}
 		if err := s.importSeriesFolder(ctx, videos, match.TMDBID); err != nil {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Title: rel.Title, Year: rel.Year})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
 		have[match.TMDBID] = true
@@ -1699,7 +1820,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 // importSeriesFolder adds a series by TMDB id (unmonitored, unset profile — an
 // adopted library must not auto-upgrade) and marks its episode files present.
 func (s *Service) importSeriesFolder(ctx context.Context, videos []library.FoundVideo, tmdbID int) error {
-	added, err := s.Add(ctx, tmdbID, "n/a", false)
+	// The show belongs to the TV folder its files were found in, whatever the rules say.
+	var folderID *int64
+	if s.folders != nil && len(videos) > 0 {
+		id := s.folders.OwnerID(ctx, libfolders.MediaSeries, videos[0].Path)
+		folderID = &id
+	}
+	added, err := s.AddWith(ctx, tmdbID, "n/a", AddOptions{Monitored: false, Preset: PresetNone, FolderID: folderID})
 	if err != nil {
 		return err
 	}
@@ -1725,6 +1852,9 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	root := rootOverride
 	if root == "" {
 		root = s.libRoot()
+	}
+	if !s.isRoot(root) {
+		return fmt.Errorf("%s isn't one of the TV folders", root)
 	}
 	videos, _ := library.FindVideos(filepath.Join(root, folder))
 	if len(videos) == 0 {
@@ -2063,7 +2193,8 @@ func NormTitle(s string) string { return parser.TitleKey(s) }
 
 // extraFrom projects metadata into the stored extra blob.
 func extraFrom(d *metadata.SeriesDetails) *SeriesExtra {
-	ex := &SeriesExtra{Genres: d.Genres, BackdropURL: d.BackdropURL, OriginalLanguage: d.OriginalLang, OriginCountry: d.OriginCountry}
+	ex := &SeriesExtra{Genres: d.Genres, BackdropURL: d.BackdropURL, OriginalLanguage: d.OriginalLang, OriginCountry: d.OriginCountry,
+		ContentRating: d.ContentRating}
 	// Keep the original-language title only when it differs from the display title, so
 	// anime searches can also query the name releases are actually tagged with.
 	if d.OriginalName != "" && !strings.EqualFold(d.OriginalName, d.Title) {

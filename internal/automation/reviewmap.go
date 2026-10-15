@@ -178,7 +178,7 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 		if parser.Parse(sourceName).Resolution == "" && release.Resolution != "" {
 			sourceName = releaseName // the pack names the quality once, on its folder
 		}
-		ei, ok, err := c.imp.ImportEpisodeAs(folder, s.Title, s.Year, f.season, f.episodes[0], f.path)
+		ei, ok, err := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, f.season, f.episodes[0], f.path)
 		if err != nil || !ok {
 			if err == nil {
 				err = errors.New("empty file")

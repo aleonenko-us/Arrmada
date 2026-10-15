@@ -669,6 +669,16 @@ type ApproveOptions struct {
 	Silent bool
 	// DeferSearch leaves the search to the scheduled sweeps.
 	DeferSearch bool
+	// FolderID is the library folder staff chose for the title when approving (0 = the
+	// default); nil lets the folder rules pick. Requesters never choose one. Ignored for a
+	// title already in the library: it already has a folder.
+	FolderID *int64
+}
+
+// movieAdderWith is the movies module's add with options (a folder), which the narrowed
+// movieLib leaves out so test fakes needn't carry it.
+type movieAdderWith interface {
+	AddWith(ctx context.Context, tmdbID int, o movies.AddOptions) (movies.Movie, error)
 }
 
 // DeclineOptions says how a request is declined.
@@ -750,7 +760,15 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	trigger := fmt.Sprintf("request:%d", id)
 	switch req.MediaType {
 	case "movie":
-		m, addErr := s.movies.Add(ctx, req.TMDBID, profile, true)
+		var (
+			m      movies.Movie
+			addErr error
+		)
+		if mw, ok := s.movies.(movieAdderWith); ok && o.FolderID != nil {
+			m, addErr = mw.AddWith(ctx, req.TMDBID, movies.AddOptions{QualityProfile: profile, Monitored: true, FolderID: o.FolderID})
+		} else {
+			m, addErr = s.movies.Add(ctx, req.TMDBID, profile, true)
+		}
 		if addErr != nil && !errors.Is(addErr, movies.ErrExists) {
 			return Request{}, addErr
 		}
@@ -782,7 +800,7 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		// A whole-show request starts from the configured monitoring preset (Settings →
 		// Library), as an owner's own add does. One for some seasons monitors exactly
 		// those, with "monitor new seasons" off so later seasons aren't grabbed unasked.
-		addOpts := series.AddOptions{Monitored: true}
+		addOpts := series.AddOptions{Monitored: true, FolderID: o.FolderID}
 		if len(req.Seasons) > 0 {
 			only, off := map[int]bool{}, false
 			for _, n := range req.Seasons {

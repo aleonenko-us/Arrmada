@@ -14,6 +14,9 @@ type AddOptions struct {
 	// MinAvailability is when it becomes eligible for searching: announced, inCinemas or
 	// released ("" = released, the default).
 	MinAvailability string
+	// FolderID is the Movies folder chosen for it (0 = the default); nil lets the folder
+	// rules pick, the default when none matches.
+	FolderID *int64
 }
 
 // AddWith pulls full metadata for a TMDB id and adds the movie to the library as o says.
@@ -39,6 +42,9 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie,
 		QualityProfile:  o.QualityProfile,
 		MinAvailability: o.MinAvailability,
 		Extra:           extraFrom(details),
+	}
+	if m.LibraryFolderID, err = s.pickFolder(ctx, o.FolderID, m.Extra); err != nil {
+		return Movie{}, err
 	}
 	created, err := s.repo.Create(ctx, m)
 	if err != nil {

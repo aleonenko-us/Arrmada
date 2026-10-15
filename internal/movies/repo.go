@@ -49,7 +49,8 @@ func (r *Repo) inTx(ctx context.Context, fn func(tx *sql.Tx, r *Repo) error) err
 
 const movieCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, runtime, status,
 	monitored, quality_profile, min_availability, has_file, movie_file_path, added_at, extra_json, media_json,
-	source_release, upgrade_hold, converted_from_release, converted_from_size, COALESCE(file_missing_since, '')`
+	source_release, upgrade_hold, converted_from_release, converted_from_size, COALESCE(file_missing_since, ''),
+	library_folder_id`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (Movie, error) {
 	var (
@@ -59,7 +60,8 @@ func (r *Repo) scan(row interface{ Scan(...any) error }) (Movie, error) {
 	)
 	err := row.Scan(&m.ID, &m.TMDBID, &m.IMDBID, &m.Title, &m.Year, &m.Overview, &m.PosterURL,
 		&m.Runtime, &m.Status, &mon, &m.QualityProfile, &m.MinAvailability, &hf, &m.MovieFilePath,
-		&m.AddedAt, &extraJSON, &mediaJSON, &m.SourceRelease, &hold, &m.ConvertedFromRelease, &m.ConvertedFromSize, &m.FileMissingSince)
+		&m.AddedAt, &extraJSON, &mediaJSON, &m.SourceRelease, &hold, &m.ConvertedFromRelease, &m.ConvertedFromSize, &m.FileMissingSince,
+		&m.LibraryFolderID)
 	if err != nil {
 		return Movie{}, err
 	}
@@ -297,10 +299,10 @@ func (r *Repo) Create(ctx context.Context, m Movie) (Movie, error) {
 	}
 	res, err := r.q().ExecContext(ctx,
 		`INSERT INTO movies (tmdb_id, imdb_id, title, year, overview, poster_url, runtime, status,
-			monitored, quality_profile, min_availability, extra_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			monitored, quality_profile, min_availability, extra_json, library_folder_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.TMDBID, m.IMDBID, m.Title, m.Year, m.Overview, m.PosterURL, m.Runtime, m.Status,
-		boolToInt(m.Monitored), m.QualityProfile, m.MinAvailability, extraJSON)
+		boolToInt(m.Monitored), m.QualityProfile, m.MinAvailability, extraJSON, m.LibraryFolderID)
 	if err != nil {
 		if isUnique(err) {
 			return Movie{}, ErrExists
@@ -332,6 +334,12 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 }
 
 // SetMonitored toggles monitoring.
+// SetLibraryFolder records which Movies folder a film belongs to (0 = the default).
+func (r *Repo) SetLibraryFolder(ctx context.Context, id, folderID int64) error {
+	_, err := r.q().ExecContext(ctx, `UPDATE movies SET library_folder_id = ? WHERE id = ?`, folderID, id)
+	return err
+}
+
 func (r *Repo) SetMonitored(ctx context.Context, id int64, monitored bool) error {
 	_, err := r.q().ExecContext(ctx, `UPDATE movies SET monitored = ? WHERE id = ?`, boolToInt(monitored), id)
 	return err

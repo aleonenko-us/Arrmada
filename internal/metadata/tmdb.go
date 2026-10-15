@@ -247,7 +247,7 @@ func (t *TMDB) SearchSeries(ctx context.Context, query string) ([]SeriesResult, 
 // its episodes. Seasons are fetched concurrently.
 func (t *TMDB) GetSeries(ctx context.Context, tmdbID int) (*SeriesDetails, error) {
 	q := url.Values{}
-	q.Set("append_to_response", "credits,external_ids,alternative_titles")
+	q.Set("append_to_response", "credits,external_ids,alternative_titles,content_ratings")
 	body, err := t.get(ctx, "/tv/"+strconv.Itoa(tmdbID), q)
 	if err != nil {
 		return nil, err
@@ -264,6 +264,7 @@ func (t *TMDB) GetSeries(ctx context.Context, tmdbID int) (*SeriesDetails, error
 		OriginalLang:  s.OriginalLanguage,
 		OriginCountry: s.OriginCountry,
 		TVDBID:        s.ExternalIDs.TVDBID,
+		ContentRating: usContentRating(s.ContentRatings.Results),
 	}
 	if s.BackdropPath != "" {
 		d.BackdropURL = tmdbBackdropBase + s.BackdropPath
@@ -355,6 +356,11 @@ func (t *TMDB) seasonEpisodes(ctx context.Context, tmdbID, season int) ([]Episod
 	return out, nil
 }
 
+type tmdbContentRating struct {
+	Country string `json:"iso_3166_1"`
+	Rating  string `json:"rating"`
+}
+
 type tmdbSeries struct {
 	ID               int         `json:"id"`
 	Adult            bool        `json:"adult"`
@@ -390,6 +396,10 @@ type tmdbSeries struct {
 			Type    string `json:"type"`
 		} `json:"results"`
 	} `json:"alternative_titles"`
+	// content_ratings: one TV rating per country.
+	ContentRatings struct {
+		Results []tmdbContentRating `json:"results"`
+	} `json:"content_ratings"`
 	CreatedBy []tmdbCast `json:"created_by"`
 	Credits   struct {
 		Cast []tmdbCast `json:"cast"`
@@ -666,6 +676,16 @@ func movieAltTitles(m tmdbMovie) (original string, alts []string) {
 		}
 	}
 	return original, alts
+}
+
+// usContentRating returns a show's US TV rating ("TV-Y7"), if TMDB has one.
+func usContentRating(results []tmdbContentRating) string {
+	for _, r := range results {
+		if r.Country == "US" && strings.TrimSpace(r.Rating) != "" {
+			return strings.TrimSpace(r.Rating)
+		}
+	}
+	return ""
 }
 
 // usCertification returns the US content rating (e.g. "R"), if present.

@@ -393,8 +393,8 @@ var folderSidecars = []string{
 // there, the film's metadata and artwork follow it (never replacing what newDir already
 // has) and the emptied folder is removed. The library root itself is never removed.
 func (s *Service) leaveOldFolder(oldDir, newDir string) {
-	if root := s.libRoot(); root != "" && filepath.Clean(oldDir) == filepath.Clean(root) {
-		return // a file that sat in the root: its neighbours aren't this film's
+	if s.isRoot(oldDir) {
+		return // a file that sat in a library folder itself: its neighbours aren't this film's
 	}
 	entries, err := os.ReadDir(oldDir)
 	if err != nil {

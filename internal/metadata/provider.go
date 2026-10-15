@@ -194,6 +194,8 @@ type SeriesDetails struct {
 	// same-named shows apart when a release tags its country ("The.Office.US").
 	OriginCountry []string `json:"origin_country,omitempty"`
 	TVDBID        int      `json:"tvdb_id,omitempty"` // for TheXEM scene mapping
+	// ContentRating is the US TV rating ("TV-Y7"), for the Kids library-folder rule.
+	ContentRating string `json:"content_rating,omitempty"`
 
 	// NumberingSource names whose listing Seasons came from: "tmdb", "tvdb" or "tvmaze".
 	// NumberingFallback is set when that listing is NOT the one the show would normally

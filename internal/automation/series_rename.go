@@ -235,7 +235,8 @@ func (c *Coordinator) restoreRenameTemps(s series.Series) {
 }
 
 // seriesRenameRows lists every episode row with a file, and its canonical path.
-func (c *Coordinator) seriesRenameRows(s series.Series, folder string) []renameRow {
+func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, folder string) []renameRow {
+	imp := c.tvImp(ctx, s)
 	var rows []renameRow
 	for _, sn := range s.Seasons {
 		for _, e := range sn.Episodes {
@@ -249,7 +250,7 @@ func (c *Coordinator) seriesRenameRows(s series.Series, folder string) []renameR
 			if orig, ok := renameTempOriginal(name); ok {
 				name = orig
 			}
-			target := c.imp.EpisodeTargetIn(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, filepath.Base(name), filepath.Ext(name))
+			target := imp.EpisodeTargetIn(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, filepath.Base(name), filepath.Ext(name))
 			rows = append(rows, renameRow{Season: e.SeasonNumber, Episode: e.EpisodeNumber, Path: e.FilePath, Target: target, Size: e.SizeBytes})
 		}
 	}
@@ -273,7 +274,7 @@ func (c *Coordinator) SeriesRenamePreview(ctx context.Context, seriesID int64) (
 	if err != nil {
 		return nil, err
 	}
-	steps, conflicts := planSeriesRename(c.seriesRenameRows(s, c.series.ExistingFolderName(ctx, seriesID)), renameOccupied)
+	steps, conflicts := planSeriesRename(c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID)), renameOccupied)
 	items := make([]SeriesRenameItem, 0, len(steps)+len(conflicts))
 	for _, st := range steps {
 		items = append(items, SeriesRenameItem{From: st.From, To: st.To, Season: st.Rows[0].Season, Episode: st.Rows[0].Episode})
@@ -307,7 +308,7 @@ func (c *Coordinator) SeriesRename(ctx context.Context, seriesID int64, only []S
 		return res, err
 	}
 	c.restoreRenameTemps(s)
-	rows := c.seriesRenameRows(s, c.series.ExistingFolderName(ctx, seriesID))
+	rows := c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID))
 
 	if only != nil {
 		rows, res.Skipped = holdUnpreviewed(rows, only)

@@ -36,6 +36,9 @@ type Series struct {
 	// LastRefreshedAt is when metadata was last pulled successfully (SQLite datetime, UTC),
 	// or "" when never. The weekly re-check of ended shows reads it.
 	LastRefreshedAt string `json:"last_refreshed_at,omitempty"`
+	// LibraryFolderID is the TV folder the show belongs to when there's more than one
+	// (internal/libfolders): 0 is the default folder.
+	LibraryFolderID int64 `json:"library_folder_id"`
 
 	Extra *SeriesExtra `json:"extra,omitempty"`
 	// Aliases are the other titles this show is released under. Populated on read so
@@ -84,6 +87,9 @@ type SeriesExtra struct {
 	// ("The.Office.US") only matches a show from that country. Empty for shows not
 	// refreshed since it was stored, which keeps their old matching until they are.
 	OriginCountry []string `json:"origin_country,omitempty"`
+	// ContentRating is the show's US TV rating ("TV-Y7", "TV-MA"), for the Kids folder
+	// rule. Empty for shows not refreshed since it was stored.
+	ContentRating string `json:"content_rating,omitempty"`
 }
 
 // IsAnime reports whether the series uses anime (absolute) episode numbering.

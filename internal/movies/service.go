@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/metadata"
@@ -47,6 +48,7 @@ type Service struct {
 	log      *slog.Logger
 	root     string            // library root, for rescan/rename/manual-import (see libRoot)
 	rootFn   func() string     // the live library root; nil = root
+	folders  Folders           // every Movies folder when there are several; nil = rootFn only
 	bin      library.Bin       // where deleted/replaced files go (off = permanent delete)
 	imp      *library.Importer // reused for naming + import
 	resolver ProfileResolver
@@ -82,7 +84,9 @@ type Service struct {
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently
 // identify, with the search candidates offered for a manual pick.
 type UnmatchedFolder struct {
-	Folder     string                 `json:"folder"`
+	Folder string `json:"folder"`
+	// Root is the Movies folder it was found in, for the manual pick to import from.
+	Root       string                 `json:"root,omitempty"`
 	Title      string                 `json:"title"`
 	Year       int                    `json:"year"`
 	Candidates []metadata.MovieResult `json:"candidates"`
@@ -125,12 +129,127 @@ func (s *Service) SetBin(b library.Bin) {
 	s.imp.SetBin(b)
 }
 
-// libRoot is the movies folder now.
+// libRoot is the movies folder now — the default one when there are several.
 func (s *Service) libRoot() string {
 	if s.rootFn != nil {
 		return strings.TrimSpace(s.rootFn())
 	}
 	return s.root
+}
+
+// Folders is the Movies library's folders when it has more than one (internal/libfolders).
+type Folders interface {
+	Path(ctx context.Context, media string, id int64) string
+	Paths(ctx context.Context, media string) []string
+	Pick(ctx context.Context, media string, facts libfolders.Facts) int64
+	Owner(ctx context.Context, media, path string) (libfolders.Folder, bool)
+	OwnerID(ctx context.Context, media, path string) int64
+	Valid(ctx context.Context, media string, id int64) bool
+}
+
+// SetFolders lets the movies service place films in, and scan, every Movies folder. Without
+// it there is one folder, libRoot. Call it at startup, before anything runs.
+func (s *Service) SetFolders(f Folders) { s.folders = f }
+
+// ErrUnknownFolder is an add or move naming a folder the Movies library doesn't have.
+var ErrUnknownFolder = errors.New("that library folder doesn't exist")
+
+// libRoots is every Movies folder now, the default first.
+func (s *Service) libRoots() []string {
+	if s.folders != nil {
+		return s.folders.Paths(context.Background(), libfolders.MediaMovie)
+	}
+	if r := s.libRoot(); r != "" {
+		return []string{r}
+	}
+	return nil
+}
+
+// rootFor is the Movies folder film m lives in: the folder its file is in when that's one
+// of the library's, otherwise the folder it's assigned to. "" (the importer's default) when
+// the library has one folder. Files win over the assignment so an import or a rename never
+// splits a film across two folders.
+func (s *Service) rootFor(m Movie) string {
+	if s.folders == nil {
+		return ""
+	}
+	ctx := context.Background()
+	if m.MovieFilePath != "" {
+		if f, ok := s.folders.Owner(ctx, libfolders.MediaMovie, m.MovieFilePath); ok {
+			return f.Path
+		}
+	}
+	return s.folders.Path(ctx, libfolders.MediaMovie, m.LibraryFolderID)
+}
+
+// FactsOf is what the folder rules know about a film.
+func FactsOf(ex *MovieExtra) libfolders.Facts {
+	if ex == nil {
+		return libfolders.Facts{}
+	}
+	return libfolders.Facts{Genres: ex.Genres, OriginalLanguage: ex.OriginalLanguage, Certification: ex.Certification}
+}
+
+// pickFolder is the folder a new film goes to: want when given (it must exist), else the
+// first folder whose rule matches, else the default.
+func (s *Service) pickFolder(ctx context.Context, want *int64, ex *MovieExtra) (int64, error) {
+	if s.folders == nil {
+		if want != nil && *want != libfolders.DefaultID {
+			return 0, ErrUnknownFolder
+		}
+		return libfolders.DefaultID, nil
+	}
+	if want != nil {
+		if !s.folders.Valid(ctx, libfolders.MediaMovie, *want) {
+			return 0, ErrUnknownFolder
+		}
+		return *want, nil
+	}
+	return s.folders.Pick(ctx, libfolders.MediaMovie, FactsOf(ex)), nil
+}
+
+// SuggestFolder is the folder a film would go to if it were added now by its rules, for
+// the add and approve dialogs to preselect.
+func (s *Service) SuggestFolder(ctx context.Context, tmdbID int) (int64, error) {
+	if s.folders == nil {
+		return libfolders.DefaultID, nil
+	}
+	details, err := s.meta.GetMovie(ctx, tmdbID)
+	if err != nil {
+		return libfolders.DefaultID, err
+	}
+	return s.folders.Pick(ctx, libfolders.MediaMovie, FactsOf(extraFrom(details))), nil
+}
+
+// isRoot reports whether dir is one of the Movies folders.
+func (s *Service) isRoot(dir string) bool {
+	for _, r := range s.libRoots() {
+		if filepath.Clean(r) == filepath.Clean(dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// ownerID is the Movies folder holding path (the default when none of them does).
+func (s *Service) ownerID(ctx context.Context, path string) int64 {
+	if s.folders == nil {
+		return libfolders.DefaultID
+	}
+	return s.folders.OwnerID(ctx, libfolders.MediaMovie, path)
+}
+
+// assignOwner points a film at the folder holding its file, when that's one of the
+// library's (a scan or an attach found the file there).
+func (s *Service) assignOwner(ctx context.Context, id int64, path string) {
+	if s.folders == nil || path == "" {
+		return
+	}
+	if f, ok := s.folders.Owner(ctx, libfolders.MediaMovie, path); ok {
+		if err := s.repo.SetLibraryFolder(ctx, id, f.ID); err != nil {
+			s.log.Warn("couldn't record which Movies folder a film is in", "id", id, "err", err)
+		}
+	}
 }
 
 // SetFileAccess replaces how the service probes and stats library files (nil keeps the
@@ -371,9 +490,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		return res, ErrScanRunning
 	}
 	defer s.scanning.Unlock()
-	root := rootOverride
-	if root == "" {
-		root = s.libRoot()
+	// Every Movies folder, the default first — or just the one asked for.
+	roots := s.libRoots()
+	if rootOverride != "" {
+		roots = []string{rootOverride}
+	}
+	if len(roots) == 0 {
+		return res, fmt.Errorf("no movies folder is set — choose one in Settings → Library")
 	}
 	tracks, existing, err := s.LibraryVersionRows(ctx)
 	if err != nil {
@@ -394,9 +517,19 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		}
 	}
 
-	entries, err := ScanFolders(root) // not the recycle bins or other hidden folders
-	if err != nil {
-		return res, err
+	type scanEntry struct {
+		root string
+		e    os.DirEntry
+	}
+	var entries []scanEntry
+	for _, root := range roots {
+		list, err := ScanFolders(root) // not the recycle bins or other hidden folders
+		if err != nil {
+			return res, err
+		}
+		for _, e := range list {
+			entries = append(entries, scanEntry{root, e})
+		}
 	}
 	progress := opts.Progress
 	if progress == nil {
@@ -404,7 +537,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	}
 	total, done := len(entries), 0
 	progress(0, total)
-	for _, e := range entries {
+	for _, se := range entries {
 		if ctx.Err() != nil {
 			break
 		}
@@ -412,6 +545,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 			progress(done, total)
 		}
 		done++
+		root, e := se.root, se.e
 		name := e.Name()
 		full := filepath.Join(root, name)
 		video, _, verr := library.FindVideo(full)
@@ -424,13 +558,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		}
 		results, err := s.meta.SearchMovie(ctx, rel.Title)
 		if err != nil || len(results) == 0 {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Title: rel.Title, Year: rel.Year})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
 		match, ok := bestMatch(results, rel.Title, rel.Year)
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Title: rel.Title, Year: rel.Year, Candidates: topMovies(results, 6)})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year, Candidates: topMovies(results, 6)})
 			continue
 		}
 		if m, inLibrary := byTMDB[match.TMDBID]; inLibrary {
@@ -441,7 +575,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 				if err := s.attachExisting(ctx, m, video, "Attached during library scan: "); err != nil {
 					s.log.Warn("library scan: couldn't attach the file to the film already in the library",
 						"title", m.Title, "path", video, "err", err)
-					res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Title: rel.Title, Year: rel.Year})
+					res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 					continue
 				}
 				m.HasFile, m.MovieFilePath = true, video
@@ -455,7 +589,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		}
 		created, err := s.importMovieFile(ctx, video, match.TMDBID, opts)
 		if err != nil {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Title: rel.Title, Year: rel.Year})
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
 		byTMDB[match.TMDBID] = created
@@ -465,11 +599,11 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	if err := ctx.Err(); err != nil {
 		// Stopped part-way (a cancel, the time budget, shutdown): keep what it did find,
 		// and don't wipe the review rows of the folders it never reached.
-		s.recordUnmatched(ctx, root, res.Unmatched, false)
+		s.recordUnmatched(ctx, res.Unmatched, false)
 		return res, fmt.Errorf("the scan stopped after %d of %d folders: %w", done, total, err)
 	}
 	progress(total, total)
-	s.recordUnmatched(ctx, root, res.Unmatched, true)
+	s.recordUnmatched(ctx, res.Unmatched, true)
 	return res, nil
 }
 
@@ -488,6 +622,7 @@ func (s *Service) importMovieFile(ctx context.Context, video string, tmdbID int,
 		TMDBID: details.TMDBID, IMDBID: details.IMDBID, Title: details.Title, Year: details.Year,
 		Overview: details.Overview, PosterURL: details.PosterURL, Runtime: details.Runtime, Status: details.Status,
 		Monitored: opts.Monitor, QualityProfile: profile, Extra: extraFrom(details),
+		LibraryFolderID: s.ownerID(ctx, video),
 	})
 	if err != nil {
 		return Movie{}, err
@@ -532,6 +667,8 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 	if err != nil {
 		return err
 	}
+	// The file decides the folder: a film found in the Kids folder belongs to it.
+	s.assignOwner(ctx, m.ID, video)
 	s.log.Info("library scan: attached file to film in library", "title", m.Title, "path", video)
 	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title})
 	return nil
@@ -540,10 +677,14 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 // ImportFolderAs catalogs a specific library folder as the chosen TMDB movie —
 // the manual pick for a folder the scan couldn't confidently identify. A film already in
 // the library without a file gets this one attached; one that has a file says which.
+// rootOverride is the Movies folder the scan found it in ("" = the default).
 func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder string, tmdbID int) error {
 	root := rootOverride
 	if root == "" {
 		root = s.libRoot()
+	}
+	if !s.isRoot(root) {
+		return fmt.Errorf("%s isn't one of the Movies folders", root)
 	}
 	video, _, err := library.FindVideo(filepath.Join(root, folder))
 	if err != nil || video == "" {
@@ -1193,7 +1334,8 @@ func releaseEdition(sourceRelease, path string) string {
 func (s *Service) TrackNaming(m Movie, versions []Version, v Version) library.MovieTrack {
 	t := library.MovieTrack{
 		Title: m.Title, Year: m.Year, Edition: v.Edition, Label: v.Label,
-		IDs: library.MovieIDs{TMDB: m.TMDBID, IMDB: m.IMDBID},
+		IDs:  library.MovieIDs{TMDB: m.TMDBID, IMDB: m.IMDBID},
+		Root: s.rootFor(m),
 	}
 	for _, o := range versions {
 		if o.ID != v.ID && o.FilePath != "" {
@@ -1251,10 +1393,10 @@ func (s *Service) ImportNaming(ctx context.Context, id, versionID int64, replace
 // existingFolder is the library folder a movie's files already live in, so an import
 // keeps the movie there after a naming change ("Existing folders only change when you
 // rename them"): the default track's file's folder, else any track's. "" when no track
-// has a file, or the folder isn't a movie folder inside the current Movies root.
+// has a file, or the folder isn't a movie folder inside one of the Movies folders.
 func (s *Service) existingFolder(versions []Version) string {
-	root := s.libRoot()
-	if root == "" {
+	roots := s.libRoots()
+	if len(roots) == 0 {
 		return ""
 	}
 	for _, v := range versions {
@@ -1262,11 +1404,12 @@ func (s *Service) existingFolder(versions []Version) string {
 			continue
 		}
 		dir := filepath.Dir(v.FilePath)
-		rel, err := filepath.Rel(root, dir)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			continue // the root itself, or somewhere else: let the scheme decide
+		for _, root := range roots {
+			if libfolders.StrictlyUnder(dir, root) {
+				return dir
+			}
 		}
-		return dir
+		// The root itself, or somewhere else: let the scheme decide.
 	}
 	return ""
 }
