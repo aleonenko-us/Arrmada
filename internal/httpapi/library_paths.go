@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/config"
+	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/libroots"
 )
@@ -37,7 +38,13 @@ func (a *api) roots() *libroots.Roots {
 	if a.deps.Settings != nil {
 		get = a.deps.Settings.Get
 	}
-	return libroots.New(get, a.deps.Config)
+	r := libroots.New(get, a.deps.Config)
+	if a.deps.Folders != nil {
+		// The extra Movies and TV folders: manual import, the download client checks and
+		// everything else listing the libraries see them too.
+		r.WithExtras(a.deps.Folders.Extras)
+	}
+	return r
 }
 
 // libMovies etc. return the effective (settings-or-default) path for each library.
@@ -65,6 +72,13 @@ func (a *api) handleGetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 // config.Config: the health panel and the disk guard panel.
 func (a *api) pickedConfig(ctx context.Context) config.Config {
 	return a.roots().Config(ctx)
+}
+
+// healthFolders is every folder the health panel, the disk panels and System → Status
+// judge: the picked ones plus any extra Movies and TV folders.
+func (a *api) healthFolders(ctx context.Context, booksOn, musicOn bool) []health.Folder {
+	r := a.roots()
+	return health.LibraryFolders(r.Config(ctx), booksOn, musicOn, r.Extras(ctx)...)
 }
 
 // folderLabel is how the UI names each library folder, for messages.
@@ -161,6 +175,14 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 		}
 		if *f.value == "" || *f.value == f.current {
 			continue
+		}
+		// A library folder can't land on, in or around an extra Movies or TV folder: one
+		// file must belong to exactly one folder.
+		if a.deps.Folders != nil {
+			if msg := a.deps.Folders.Conflict(r.Context(), *f.value); msg != "" {
+				a.writeFolderError(w, f.name, label+": "+msg+".", false)
+				return
+			}
 		}
 		if !filepath.IsAbs(*f.value) {
 			a.writeFolderError(w, f.name, fmt.Sprintf("%s: use the full path, starting with / (for example /storage/media/%s).", label, f.name), false)

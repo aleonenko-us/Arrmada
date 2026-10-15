@@ -67,7 +67,7 @@ func (a *api) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	folders := health.LibraryFolders(a.pickedConfig(ctx), a.booksEnabled(ctx), a.musicEnabled(ctx))
+	folders := a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx))
 	if dataDir != "" {
 		folders = append(folders, health.Folder{Role: "data", Label: "Database & backups", Path: dataDir})
 	}

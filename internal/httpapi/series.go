@@ -73,6 +73,9 @@ func (a *api) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 		// default (Settings → series_monitor_default).
 		Monitor           string `json:"monitor"`
 		MonitorNewSeasons *bool  `json:"monitor_new_seasons"`
+		// FolderID is the TV folder chosen in the add dialog (0 = the default); absent
+		// lets the folder rules pick.
+		FolderID *int64 `json:"folder_id"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -104,10 +107,14 @@ func (a *api) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), "series")
 	}
 	s, err := a.deps.Series.AddWith(r.Context(), req.TMDBID, req.QualityProfile, series.AddOptions{
-		Monitored: monitored, Preset: req.Monitor, MonitorNewSeasons: req.MonitorNewSeasons,
+		Monitored: monitored, Preset: req.Monitor, MonitorNewSeasons: req.MonitorNewSeasons, FolderID: req.FolderID,
 	})
 	if errors.Is(err, series.ErrExists) {
 		a.writeError(w, http.StatusConflict, "that series is already in your library")
+		return
+	}
+	if errors.Is(err, series.ErrUnknownFolder) {
+		a.writeError(w, http.StatusBadRequest, "that TV folder doesn't exist — reload and pick again")
 		return
 	}
 	if err != nil {
@@ -680,13 +687,13 @@ func (a *api) handleSeriesHistory(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
-// handleScanSeriesLibrary catalogs series already present in the library folder.
+// handleScanSeriesLibrary catalogs series already present in the library folders (every
+// TV folder, when there are several).
 func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
-	root := a.libTV(r)
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: 10 * time.Minute,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			// Progress rides the job (job.updated on the live socket), as the movie scan's does.
-			res, err := a.deps.Series.ScanLibrary(ctx, root, func(done, total int) {
+			res, err := a.deps.Series.ScanLibrary(ctx, "", func(done, total int) {
 				if total > 0 {
 					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s show folders", thousands(done), thousands(total)))
 				}
@@ -722,6 +729,9 @@ func (a *api) handleSeriesImportFolder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Folder string `json:"folder"`
 		TMDBID int    `json:"tmdb_id"`
+		// Root is the TV folder the scan found it in ("" = the default). The service
+		// accepts only one of the library's folders.
+		Root string `json:"root"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -730,9 +740,13 @@ func (a *api) handleSeriesImportFolder(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "folder and tmdb_id are required")
 		return
 	}
+	root := strings.TrimSpace(req.Root)
+	if root == "" {
+		root = a.libTV(r)
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	if err := a.deps.Series.ImportFolderAs(ctx, a.libTV(r), req.Folder, req.TMDBID); err != nil {
+	if err := a.deps.Series.ImportFolderAs(ctx, root, req.Folder, req.TMDBID); err != nil {
 		a.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -86,6 +86,8 @@ type Service struct {
 	roots    func(ctx context.Context) map[string]string
 	pathMaps func(ctx context.Context) []plexscan.PathMap
 	log      *slog.Logger
+	// extraRoots is the extra Movies and TV folders per kind (SetExtraRoots), read live.
+	extraRoots func(ctx context.Context) map[string][]string
 
 	deviceMu sync.Mutex
 	health   pollHealth
@@ -113,6 +115,10 @@ func New(o Options) *Service {
 // SetPathMaps sets where the path mappings come from (the Jellyfin scanner, built after
 // the service).
 func (s *Service) SetPathMaps(fn func(ctx context.Context) []plexscan.PathMap) { s.pathMaps = fn }
+
+// SetExtraRoots tells the Watch-link lookup about the extra Movies and TV folders, per
+// plexscan kind, read live. Call it at startup.
+func (s *Service) SetExtraRoots(fn func(ctx context.Context) map[string][]string) { s.extraRoots = fn }
 
 // SetPolling tells the service whether a poller is recording Jellyfin's answers (Insights,
 // once it watches Jellyfin): the health check then stops probing on its own.

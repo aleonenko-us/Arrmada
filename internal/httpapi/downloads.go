@@ -337,7 +337,7 @@ func (a *api) sharedWithDownloads(ctx context.Context, downloads string) []healt
 	if downloads == "" {
 		return shared
 	}
-	for _, f := range health.LibraryFolders(a.pickedConfig(ctx), a.booksEnabled(ctx), a.musicEnabled(ctx)) {
+	for _, f := range a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)) {
 		if f.Role == "downloads" {
 			continue
 		}

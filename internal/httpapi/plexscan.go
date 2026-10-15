@@ -89,13 +89,15 @@ func (a *api) scanTest(w http.ResponseWriter, r *http.Request, sc *plexscan.Scan
 	var req struct {
 		Kind string `json:"kind"`
 		Run  bool   `json:"run"`
+		// Root picks one of the kind's folders when there are several ("" = the default).
+		Root string `json:"root"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	rv, err := sc.ScanNow(ctx, req.Kind, req.Run)
+	rv, err := sc.ScanRootNow(ctx, req.Kind, req.Root, req.Run)
 	if err != nil {
 		status := http.StatusBadGateway // the server didn't answer, or refused
 		if errors.Is(err, plexscan.ErrUnavailable) {

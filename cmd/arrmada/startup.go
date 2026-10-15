@@ -60,8 +60,8 @@ func logEnvironment(log *slog.Logger, cfg config.Config) {
 // in the log the user already exports. cfg holds the folders as resolved at startup
 // (libroots.Roots.Config); a folder changed later applies live and is logged by the
 // Settings save instead.
-func logFolders(log *slog.Logger, cfg config.Config, booksOn, musicOn bool) {
-	folders := health.LibraryFolders(cfg, booksOn, musicOn)
+func logFolders(log *slog.Logger, cfg config.Config, booksOn, musicOn bool, extra ...libroots.Extra) {
+	folders := health.LibraryFolders(cfg, booksOn, musicOn, extra...)
 	for _, f := range folders {
 		logFolder(log, f.Role, f.Path)
 	}

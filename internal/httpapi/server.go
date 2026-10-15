@@ -30,6 +30,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
@@ -165,6 +166,12 @@ type Deps struct {
 	ImportFailures func() []library.FailureInfo
 	// Issues is "Report a problem" (Requests → Issues). nil = reporting answers 503.
 	Issues *issues.Service
+	// Folders is the extra Movies and TV library folders (Settings → Library). nil = one
+	// folder per library: no folder pickers, and the folder routes answer 503.
+	Folders *libfolders.Service
+	// FolderMover moves a title's files to another folder of its library (a job). nil =
+	// "Move to folder" answers 503.
+	FolderMover *libfolders.Mover
 }
 
 type api struct {
@@ -242,6 +249,14 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/system/library", a.requireRole(auth.RoleManager, a.handleGetLibraryPaths))
 	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.handleSetLibraryPaths))
 	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
+	// Extra Movies and TV folders: staff read them (pickers on add/approve/detail), only
+	// admins change them, like every folder setting.
+	mux.HandleFunc("GET /api/v1/library/folders", a.requireRole(auth.RoleManager, a.handleLibraryFolders))
+	mux.HandleFunc("GET /api/v1/library/folders/suggest", a.requireRole(auth.RoleManager, a.handleSuggestFolder))
+	mux.HandleFunc("POST /api/v1/system/library/folders", a.requireRole(auth.RoleAdmin, a.handleAddLibraryFolder))
+	mux.HandleFunc("PUT /api/v1/system/library/folders/order", a.requireRole(auth.RoleAdmin, a.handleOrderLibraryFolders))
+	mux.HandleFunc("PUT /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateLibraryFolder))
+	mux.HandleFunc("DELETE /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleRemoveLibraryFolder))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).
@@ -519,6 +534,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/movies", a.requireRole(auth.RoleManager, a.handleAddMovie))
 	mux.HandleFunc("POST /api/v1/movies/bulk-add", a.requireRole(auth.RoleManager, a.handleBulkAddMovies))
 	mux.HandleFunc("POST /api/v1/movies/{id}/search", a.requireRole(auth.RoleManager, a.handleSearchMovie))
+	mux.HandleFunc("POST /api/v1/movies/{id}/move", a.requireRole(auth.RoleManager, a.handleMoveMovieFolder))
 	mux.HandleFunc("GET /api/v1/movies/{id}/releases", a.requireRole(auth.RoleManager, a.handleMovieReleases))
 	mux.HandleFunc("GET /api/v1/movies/{id}/history", a.requireRole(auth.RoleManager, a.handleMovieHistory))
 	mux.HandleFunc("GET /api/v1/movies/{id}/collection", a.requireRole(auth.RoleManager, a.handleMovieCollection))
@@ -532,6 +548,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/series", a.requireRole(auth.RoleManager, a.handleAddSeries))
 	mux.HandleFunc("GET /api/v1/series/{id}/history", a.requireRole(auth.RoleManager, a.handleSeriesHistory))
 	mux.HandleFunc("POST /api/v1/series/{id}/search", a.requireRole(auth.RoleManager, a.handleSearchSeries))
+	mux.HandleFunc("POST /api/v1/series/{id}/move", a.requireRole(auth.RoleManager, a.handleMoveSeriesFolder))
 	mux.HandleFunc("GET /api/v1/series/{id}/releases", a.requireRole(auth.RoleManager, a.handleSeriesReleases))
 	mux.HandleFunc("POST /api/v1/series/{id}/grab", a.requireRole(auth.RoleManager, a.handleGrabSeries))
 	mux.HandleFunc("POST /api/v1/series/{id}/autograb", a.requireRole(auth.RoleManager, a.handleAutoGrabSeries))
