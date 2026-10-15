@@ -877,7 +877,7 @@ The Avoid cliff for target Avoids is intended and documented (Quality.tsx:126), 
   - **Risk:** Even dark, the shadow run doubles Decide cost; it is negligible next to indexer I/O. The default must stay v1 until the owner has reviewed a week of shadow logs.
   - **Resolves:** quality-6
 <a id="qual-23"></a>
-- [ ] **QUAL-23 · Ranking v2, step 3: upgrades decide by key, the default flips to v2, and v1 stays as a one-setting rollback** — `P2` · `M` · Phase 14
+- [x] **QUAL-23 · Ranking v2, step 3: upgrades decide by key, the default flips to v2, and v1 stays as a one-setting rollback** — `P2` · `M` · Phase 14
   - **Problem:** Upgrade decisions still use the summed Total (UpgradeCandidate, IsQualityUpgrade), so after the comparator changes, the grab side and the upgrade side would disagree. That disagreement is exactly what produces grab-then-refuse loops.
   - **Approach:** 1. **Upgrade decisions under v2.** UpgradeCandidate and IsQualityUpgrade accept a candidate when `compare(cand, cur)` says better and its key is allowed by the profile's upgrade trigger ([QUAL-11](#qual-11) maps directly):
        - any: resolution, preferences, custom, source, proper
