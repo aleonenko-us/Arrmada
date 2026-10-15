@@ -120,6 +120,10 @@ func RecycleFile(recycleDir, path string) (string, error) {
 	return dst, nil
 }
 
+// CopyVerified is copyVerified for moves between library folders on different drives
+// (internal/libfolders): the copy is only in place once it matches the original.
+func CopyVerified(src, dst string) (int64, error) { return copyVerified(src, dst) }
+
 // copyVerified copies src to dst through a temp file in dst's folder, which the bin
 // manager never counts as recycled, and only renames it into place once its size and
 // content match the original. On any error nothing is left at dst.

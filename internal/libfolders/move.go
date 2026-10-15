@@ -1,0 +1,514 @@
+package libfolders
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"syscall"
+
+	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/store"
+)
+
+// movingSuffix marks a folder still being copied onto another drive. It's hidden from
+// nothing on purpose: a half-copied folder must never look like a finished one, and the
+// name makes plain what it is if a crash leaves one behind.
+const movingSuffix = ".arrmada-moving"
+
+// Mover moves a title's files to another folder of its library, as a background job.
+//
+// On one filesystem a folder is renamed, which is instant. Across filesystems (two shares,
+// two disks, two bind mounts) it's copied into a temp folder, every file checked against
+// its original, the temp folder renamed into place, and only then are the originals
+// retired through the recycle bin — never deleted outright. The database follows in one
+// transaction per folder (RewritePrefix), the title is reassigned last, and Plex and
+// Jellyfin are told about both the old and the new folder.
+type Mover struct {
+	DB      *sql.DB
+	Folders *Service
+	// Bin takes the originals after a verified cross-drive copy (library.RootBins).
+	Bin library.Bin
+	// Scan asks the media servers for a partial scan of a folder ("movie" / "show" kind).
+	Scan func(kind, dir string)
+	// Busy says why a title can't move right now ("" when it can): a download on its way
+	// in, for instance, would land in the old folder half-way through.
+	Busy func(ctx context.Context, media string, id int64) string
+	// ShowFolder is the show folder an episode file lives in (series.ShowFolder).
+	ShowFolder func(episodePath string) string
+	Log        *slog.Logger
+
+	// rename is os.Rename; tests make it fail with EXDEV to take the copy path.
+	rename func(oldpath, newpath string) error
+}
+
+// MoveResult is what a move did, stored as the job's result.
+type MoveResult struct {
+	Folder  string     `json:"folder"`         // the destination folder's label
+	Method  string     `json:"method"`         // "rename", "copy", "none" (no files) or "mixed"
+	Moved   []MovedDir `json:"moved"`          // each title folder that moved
+	Paths   int64      `json:"paths"`          // stored paths repointed
+	Warning string     `json:"warning,omitempty"`
+}
+
+// MovedDir is one title folder that moved.
+type MovedDir struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Method string `json:"method"` // "rename" or "copy"
+	Files  int    `json:"files"`
+}
+
+// ErrBusy is a title that can't move right now; the message says why.
+var ErrBusy = errors.New("this title can't move right now")
+
+// Progress is the job runner's reporter, narrowed (a nil one is fine).
+type Progress interface {
+	Set(pct float64, msg string)
+}
+
+type title struct {
+	media    string
+	id       int64
+	name     string
+	folderID int64
+	files    []string
+}
+
+// Move moves title id of library media to folder to (0 = the default folder).
+func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress) (MoveResult, error) {
+	report := func(pct float64, msg string) {
+		if p != nil {
+			p.Set(pct, msg)
+		}
+	}
+	if !ValidMedia(media) {
+		return MoveResult{}, ErrBadMedia
+	}
+	dest, ok := m.Folders.Get(ctx, media, to)
+	if !ok {
+		return MoveResult{}, ErrNotFound
+	}
+	if strings.TrimSpace(dest.Path) == "" {
+		return MoveResult{}, fmt.Errorf("%w: the %s folder isn't set", ErrBadPath, dest.Label)
+	}
+	t, err := m.load(ctx, media, id)
+	if err != nil {
+		return MoveResult{}, err
+	}
+	res := MoveResult{Folder: dest.Label, Moved: []MovedDir{}}
+	if m.Busy != nil {
+		if why := m.Busy(ctx, media, id); why != "" {
+			return res, fmt.Errorf("%w: %s", ErrBusy, why)
+		}
+	}
+	if why, err := m.convertOpen(ctx, t); err != nil {
+		return res, err
+	} else if why != "" {
+		return res, fmt.Errorf("%w: %s", ErrBusy, why)
+	}
+	if fi, err := os.Stat(dest.Path); err != nil || !fi.IsDir() {
+		return res, fmt.Errorf("%w: %s isn't there (is it mounted?)", ErrBadPath, dest.Path)
+	}
+
+	report(0.02, "Checking "+t.name+"'s files")
+	plans, err := m.plan(ctx, t, dest)
+	if err != nil {
+		return res, err
+	}
+	kind := "movie"
+	if media == MediaSeries {
+		kind = "show"
+	}
+	methods := map[string]bool{}
+	for i, pl := range plans {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		base := 0.05 + 0.9*float64(i)/float64(len(plans))
+		span := 0.9 / float64(len(plans))
+		report(base, "Moving "+filepath.Base(pl.from))
+		md, n, err := m.moveDir(ctx, pl, func(f float64, msg string) { report(base+span*f, msg) })
+		res.Paths += n
+		if err != nil {
+			if len(res.Moved) > 0 {
+				return res, fmt.Errorf("moved %d of %d folders, then: %w — run Move again to finish", len(res.Moved), len(plans), err)
+			}
+			return res, err
+		}
+		res.Moved = append(res.Moved, md)
+		methods[md.Method] = true
+		if m.Scan != nil {
+			m.Scan(kind, filepath.Dir(pl.from))
+			m.Scan(kind, pl.to)
+		}
+	}
+	// Every folder is where it belongs: now the title itself.
+	if err := m.assign(ctx, t, to, dest.Label); err != nil {
+		return res, err
+	}
+	switch len(methods) {
+	case 0:
+		res.Method = "none"
+	case 1:
+		for k := range methods {
+			res.Method = k
+		}
+	default:
+		res.Method = "mixed"
+	}
+	report(1, "Moved to "+dest.Label)
+	if m.Log != nil {
+		m.Log.Info("library folders: moved a title", "media", media, "id", id, "title", t.name, "to", dest.Path, "folders", len(res.Moved), "method", res.Method)
+	}
+	return res, nil
+}
+
+// load reads the title and every library file it has.
+func (m *Mover) load(ctx context.Context, media string, id int64) (title, error) {
+	t := title{media: media, id: id}
+	var q string
+	var fq []string
+	if media == MediaSeries {
+		q = `SELECT title, library_folder_id FROM series WHERE id = ?`
+		fq = []string{`SELECT file_path FROM episodes WHERE series_id = ? AND has_file = 1 AND file_path <> ''`}
+	} else {
+		q = `SELECT title, library_folder_id FROM movies WHERE id = ?`
+		fq = []string{
+			`SELECT movie_file_path FROM movies WHERE id = ? AND has_file = 1 AND movie_file_path <> ''`,
+			`SELECT file_path FROM movie_versions WHERE movie_id = ? AND has_file = 1 AND file_path <> ''`,
+		}
+	}
+	if err := m.DB.QueryRowContext(ctx, q, id).Scan(&t.name, &t.folderID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return t, fmt.Errorf("%w: no such title", ErrNotFound)
+		}
+		return t, err
+	}
+	seen := map[string]bool{}
+	for _, query := range fq {
+		rows, err := m.DB.QueryContext(ctx, query, id)
+		if err != nil {
+			return t, err
+		}
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err != nil {
+				rows.Close()
+				return t, err
+			}
+			if !seen[p] {
+				seen[p] = true
+				t.files = append(t.files, p)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return t, err
+		}
+	}
+	sort.Strings(t.files)
+	return t, nil
+}
+
+// convertOpen says why Convert holds the title ("" when it doesn't): an open swap means a
+// converted file is being put in place, and moving its folder underneath would strand it.
+func (m *Mover) convertOpen(ctx context.Context, t title) (string, error) {
+	var n int
+	var err error
+	if t.media == MediaSeries {
+		err = m.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM convert_swaps WHERE kind = 'episode' AND series_id = ?`, t.id).Scan(&n)
+	} else {
+		err = m.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM convert_swaps WHERE kind = 'movie' AND movie_id = ?`, t.id).Scan(&n)
+	}
+	if err != nil {
+		return "", err
+	}
+	if n > 0 {
+		return "Convert is replacing one of its files — try again once that finishes", nil
+	}
+	return "", nil
+}
+
+// movePlan is one title folder and where it goes.
+type movePlan struct {
+	from, to string
+	files    int
+}
+
+// plan works out which folders move: each folder holding the title's files (for a show,
+// the show folder above its season folders), from the library folder it's in to the same
+// place under dest. It refuses anything it can't move cleanly — a file sitting loose in a
+// library folder, a folder shared with another title, or a destination already taken —
+// before a single file moves.
+func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, error) {
+	dirs := map[string]int{}
+	for _, f := range t.files {
+		dir := filepath.Dir(f)
+		if t.media == MediaSeries && m.ShowFolder != nil {
+			dir = m.ShowFolder(f)
+		}
+		dirs[filepath.Clean(dir)]++
+	}
+	// A folder inside another of the title's folders moves with it.
+	var list []string
+	for d := range dirs {
+		list = append(list, d)
+	}
+	sort.Strings(list)
+	var tops []string
+	for _, d := range list {
+		inside := false
+		for _, top := range tops {
+			if strictlyUnder(d, top) {
+				dirs[top] += dirs[d]
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			tops = append(tops, d)
+		}
+	}
+	var out []movePlan
+	for _, dir := range tops {
+		if strictlyUnder(dir, dest.Path) || samePath(dir, dest.Path) {
+			continue // already in the destination folder
+		}
+		owner, ok := m.Folders.Owner(ctx, t.media, dir)
+		if !ok {
+			if loose, isRoot := m.isRoot(ctx, t.media, dir); isRoot {
+				return nil, fmt.Errorf("%w: %s sits loose in the %s folder, not in a folder of its own — rename it (Organize) first so it has one", ErrBadPath, t.name, loose)
+			}
+			return nil, fmt.Errorf("%w: %s isn't inside any of this library's folders, so Arrmada won't move it", ErrBadPath, dir)
+		}
+		rel, err := filepath.Rel(filepath.Clean(owner.Path), dir)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return nil, fmt.Errorf("%w: can't place %s under %s", ErrBadPath, dir, dest.Path)
+		}
+		if other, err := m.sharedWith(ctx, t, dir); err != nil {
+			return nil, err
+		} else if other != "" {
+			return nil, fmt.Errorf("%w: %s also holds files of %s — move or tidy that first", ErrBusy, dir, other)
+		}
+		to := filepath.Join(dest.Path, rel)
+		if _, err := os.Lstat(to); err == nil {
+			return nil, fmt.Errorf("%w: there's already a folder %s in %s", ErrBadPath, rel, dest.Label)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if _, err := os.Lstat(to + movingSuffix); err == nil {
+			return nil, fmt.Errorf("%w: a copy left by an earlier move is in the way (%s) — remove it, then try again", ErrBadPath, to+movingSuffix)
+		}
+		out = append(out, movePlan{from: dir, to: to, files: dirs[dir]})
+	}
+	return out, nil
+}
+
+// isRoot reports whether dir is one of the library's folders, and its label.
+func (m *Mover) isRoot(ctx context.Context, media, dir string) (string, bool) {
+	for _, f := range m.Folders.List(ctx, media) {
+		if strings.TrimSpace(f.Path) != "" && samePath(f.Path, dir) {
+			return f.Label, true
+		}
+	}
+	return "", false
+}
+
+// sharedWith names another title with a file under dir ("" when none has one).
+func (m *Mover) sharedWith(ctx context.Context, t title, dir string) (string, error) {
+	prefix := filepath.Clean(dir) + string(filepath.Separator)
+	var name string
+	var err error
+	if t.media == MediaSeries {
+		err = m.DB.QueryRowContext(ctx, `SELECT s.title FROM episodes e JOIN series s ON s.id = e.series_id
+			WHERE e.series_id <> ?1 AND e.has_file = 1 AND substr(e.file_path, 1, length(?2)) = ?2 LIMIT 1`, t.id, prefix).Scan(&name)
+	} else {
+		err = m.DB.QueryRowContext(ctx, `SELECT title FROM movies WHERE id <> ?1 AND (
+				(has_file = 1 AND substr(movie_file_path, 1, length(?2)) = ?2)
+				OR id IN (SELECT movie_id FROM movie_versions WHERE has_file = 1 AND substr(file_path, 1, length(?2)) = ?2))
+			LIMIT 1`, t.id, prefix).Scan(&name)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
+// moveDir moves one title folder and repoints the database at it. It returns how many
+// stored paths changed.
+func (m *Mover) moveDir(ctx context.Context, pl movePlan, report func(float64, string)) (MovedDir, int64, error) {
+	md := MovedDir{From: pl.from, To: pl.to, Files: pl.files}
+	if err := os.MkdirAll(filepath.Dir(pl.to), 0o775); err != nil {
+		return md, 0, fmt.Errorf("couldn't make %s: %w", filepath.Dir(pl.to), err)
+	}
+	rename := m.rename
+	if rename == nil {
+		rename = os.Rename
+	}
+	err := rename(pl.from, pl.to)
+	if err == nil {
+		md.Method = "rename"
+		n, derr := m.repoint(ctx, pl.from, pl.to)
+		if derr != nil {
+			// Put the folder back so the database (unchanged) is right again.
+			if berr := rename(pl.to, pl.from); berr != nil {
+				return md, 0, fmt.Errorf("the folder moved to %s but the database couldn't follow (%v), and moving it back failed too (%v) — move it back by hand", pl.to, derr, berr)
+			}
+			return md, 0, fmt.Errorf("the database couldn't follow the move, so the folder was put back: %w", derr)
+		}
+		return md, n, nil
+	}
+	if !errors.Is(err, syscall.EXDEV) {
+		return md, 0, fmt.Errorf("couldn't move %s: %w", pl.from, err)
+	}
+
+	// Another drive: copy, verify, swap in, repoint, then retire the originals.
+	md.Method = "copy"
+	tmp := pl.to + movingSuffix
+	if err := m.copyTree(ctx, pl.from, tmp, report); err != nil {
+		m.retireTree(tmp)
+		return md, 0, err
+	}
+	if err := rename(tmp, pl.to); err != nil {
+		m.retireTree(tmp)
+		return md, 0, fmt.Errorf("couldn't put the copy in place: %w", err)
+	}
+	n, derr := m.repoint(ctx, pl.from, pl.to)
+	if derr != nil {
+		// The originals are untouched and the database still points at them: take the
+		// copy back out through the bin.
+		m.retireTree(pl.to)
+		return md, 0, fmt.Errorf("the database couldn't follow the copy, so the copy was taken back out: %w", derr)
+	}
+	report(0.95, "Retiring the originals to the recycle bin")
+	if left := m.retireTree(pl.from); left > 0 {
+		return md, n, fmt.Errorf("the copy is in place and in use, but %d original file(s) couldn't go to the recycle bin and are still in %s", left, pl.from)
+	}
+	return md, n, nil
+}
+
+// repoint rewrites every stored path under from to to, in one transaction.
+func (m *Mover) repoint(ctx context.Context, from, to string) (int64, error) {
+	var n int64
+	err := store.WithTx(ctx, m.DB, func(tx *sql.Tx) error {
+		c, err := RewritePrefix(ctx, tx, from, to)
+		if err != nil {
+			return err
+		}
+		n = c.Total()
+		return nil
+	})
+	return n, err
+}
+
+// copyTree copies every file under src into dst (made fresh), each one verified against
+// its original and given the original's modification time. Symlinks are refused: a link
+// in a title folder could point anywhere, and copying what it points at isn't a move.
+func (m *Mover) copyTree(ctx context.Context, src, dst string, report func(float64, string)) error {
+	var total, done int64
+	_ = filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if fi, e := d.Info(); e == nil {
+				total += fi.Size()
+			}
+		}
+		return nil
+	})
+	if err := os.Mkdir(dst, 0o775); err != nil {
+		return fmt.Errorf("couldn't start the copy in %s: %w", filepath.Dir(dst), err)
+	}
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if cerr := ctx.Err(); cerr != nil {
+			return cerr
+		}
+		rel, rerr := filepath.Rel(src, p)
+		if rerr != nil {
+			return rerr
+		}
+		target := filepath.Join(dst, rel)
+		switch {
+		case rel == ".":
+			return nil
+		case d.IsDir():
+			return os.MkdirAll(target, 0o775)
+		case d.Type()&fs.ModeSymlink != 0:
+			return fmt.Errorf("%s is a symlink — Arrmada won't move a title folder holding links", p)
+		case !d.Type().IsRegular():
+			return nil // sockets, devices: nothing a library holds
+		}
+		fi, ierr := d.Info()
+		if ierr != nil {
+			return ierr
+		}
+		if total > 0 {
+			report(0.9*float64(done)/float64(total), "Copying "+d.Name())
+		}
+		if _, err := library.CopyVerified(p, target); err != nil {
+			return fmt.Errorf("copying %s: %w", d.Name(), err)
+		}
+		_ = os.Chtimes(target, fi.ModTime(), fi.ModTime())
+		done += fi.Size()
+		return nil
+	})
+}
+
+// retireTree sends every file under dir to the recycle bin (deepest first, the same as a
+// delete) and then removes the folders it emptied. It returns how many files couldn't
+// go; those are left exactly where they were. A dir that isn't there is nothing to do.
+func (m *Mover) retireTree(dir string) int {
+	var files, dirs []string
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			dirs = append(dirs, p)
+		} else {
+			files = append(files, p)
+		}
+		return nil
+	})
+	left := 0
+	for _, f := range files {
+		if _, err := library.RemoveToBin(m.Bin, f); err != nil {
+			left++
+			if m.Log != nil {
+				m.Log.Warn("library folders: couldn't retire a moved file's original", "path", f, "err", err)
+			}
+		}
+	}
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
+	for _, d := range dirs {
+		_ = os.Remove(d) // only empty folders go
+	}
+	return left
+}
+
+// assign records the title's new folder and a timeline event.
+func (m *Mover) assign(ctx context.Context, t title, to int64, label string) error {
+	return store.WithTx(ctx, m.DB, func(tx *sql.Tx) error {
+		detail := "Moved to the " + label + " folder"
+		if t.media == MediaSeries {
+			if _, err := tx.ExecContext(ctx, `UPDATE series SET library_folder_id = ? WHERE id = ?`, to, t.id); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `INSERT INTO series_events (series_id, event, detail) VALUES (?, 'moved', ?)`, t.id, detail)
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE movies SET library_folder_id = ? WHERE id = ?`, to, t.id); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO movie_events (movie_id, event, detail) VALUES (?, 'moved', ?)`, t.id, detail)
+		return err
+	})
+}

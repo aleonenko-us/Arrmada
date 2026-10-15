@@ -224,7 +224,12 @@ func (b *RootBins) All() []BinDir {
 		if _, ok := labels[root]; !ok {
 			order = append(order, root)
 		}
-		name := rootLabels[r.Name]
+		// An extra Movies or TV folder is named by its own label ("Kids movies"), not its
+		// library's, so two Movies bins can be told apart.
+		name := strings.TrimSpace(r.Label)
+		if name == "" {
+			name = rootLabels[r.Name]
+		}
 		if name == "" {
 			name = r.Name
 		}
