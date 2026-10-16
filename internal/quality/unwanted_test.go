@@ -364,13 +364,13 @@ func TestUnwantedRejectsDontReachTheLibrary(t *testing.T) {
 }
 
 // A low-quality group's file is still upgraded to a clean release that scores no worse
-// (it used to carry a hidden −180), under the "any" trigger only.
+// (it used to carry a hidden −180), whatever the trigger: the profile avoids that file.
 func TestLowQualityGroupFileUpgrades(t *testing.T) {
 	s, ctx := testService(t)
 	for _, tc := range []struct {
 		trigger string
 		want    bool
-	}{{TriggerAny, true}, {TriggerSource, false}} {
+	}{{TriggerAny, true}, {TriggerSource, true}, {TriggerResolution, true}} {
 		sp, err := s.Create(ctx, StoredProfile{MediaType: MediaMovie, Name: "up", UpgradesEnabled: true, UpgradeTrigger: tc.trigger})
 		if err != nil {
 			t.Fatal(err)

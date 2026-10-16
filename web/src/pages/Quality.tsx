@@ -112,12 +112,12 @@ const UPGRADE_STEPS = [
 
 // Which kind of gain is worth re-downloading for (StoredProfile.upgrade_trigger), broadest
 // first: each one also takes every gain the ones below it take. A PROPER of the same
-// release always counts.
+// release, and leaving a release the profile avoids, always count.
 const UPGRADE_TRIGGERS: { v: UpgradeTrigger; l: string; short: string; detail: string }[] = [
   { v: "any", l: "Any improvement", short: "any improvement", detail: "A higher resolution, a format you prefer, a custom format that scores higher, a better source or a PROPER. A tier-1 release group or more seeders never count on their own." },
-  { v: "source", l: "A better source or a format you prefer", short: "better source or format", detail: "Also a higher resolution. A PROPER only when it fixes the release you have." },
-  { v: "format", l: "A format you prefer or a higher resolution", short: "format or resolution", detail: "A better source alone (WEB-DL → BluRay) isn't worth a re-download. A PROPER only when it fixes the release you have." },
-  { v: "resolution", l: "Higher resolution only", short: "resolution only", detail: "Only a resolution gain, or a PROPER that fixes the release you have." },
+  { v: "source", l: "A better source or a format you prefer", short: "better source or format", detail: "Also a higher resolution. A PROPER only when it fixes the release you have. A file from a release you avoid is always replaced." },
+  { v: "format", l: "A format you prefer or a higher resolution", short: "format or resolution", detail: "A better source alone (WEB-DL → BluRay) isn't worth a re-download. A PROPER only when it fixes the release you have. A file from a release you avoid is always replaced." },
+  { v: "resolution", l: "Higher resolution only", short: "resolution only", detail: "Only a resolution gain, or a PROPER that fixes the release you have. A file from a release you avoid is always replaced." },
 ];
 
 // How strongly smaller files win among equals (StoredProfile.small_bias).

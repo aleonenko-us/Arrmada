@@ -142,28 +142,28 @@
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: decided on proper, which the \"source\" trigger doesn't count (classic named the gain source)"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
     "v1": "source",
@@ -172,12 +172,12 @@
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
     "v1": "source",
-    "v2": "no",
-    "why": "v2: WEB-DL and WEBRip are one source tier, so a WEBRip→WEB-DL step is no upgrade"
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "avoid",
+    "v2": "avoid"
   },
   "avoid-dv-source | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
     "v1": "resolution",
@@ -2118,44 +2118,50 @@
     "v2": "no"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
     "v1": "preferences",
     "v2": "preferences"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
     "v1": "preferences",
     "v2": "preferences"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
     "v1": "preferences",
     "v2": "preferences"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "avoid",
+    "v2": "avoid"
   },
   "target-format | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
     "v1": "resolution",
@@ -2443,44 +2449,53 @@
     "v2": "no"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.BluRay.x264.PROPER.DTS-HD.MA.5.1-SPARKS": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-NTb": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "preferences",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (preferences), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264-GRPX": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.H.264.PROPER-EVO": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.DDP5.1.HDR10.H.265-GRPE": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "preferences",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (preferences), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.IMAX.x264-IMX": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (source), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x264-DEAD": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "source",
+    "v2": "no",
+    "why": "a dead torrent: v2 ranks a release no one seeds below the file (health), so it never upgrades"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEB-DL.x265.10bit.AAC5.1-PSA": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "preferences",
+    "v2": "avoid",
+    "why": "both upgrade: classic names the first part of the score that rose (preferences), v2 the key that decided (avoid)"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.1080p.WEBRip.x264-GRPD": {
-    "v1": "no",
-    "v2": "no"
+    "v1": "avoid",
+    "v2": "avoid"
   },
   "target-resolution | Film.2021.1080p.WEBRip.x264-YTS ← Film.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1-FraMeSToR": {
     "v1": "resolution",

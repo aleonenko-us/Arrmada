@@ -31,8 +31,12 @@ import (
 
 // v2TriggerAllows reports whether an upgrade decided by key k is worth a re-download under
 // a profile's trigger. Unlike classic ranking's triggerAllows, "any" is a list too: the
-// keys that never upgrade stay out of it.
+// keys that never upgrade stay out of it. Leaving the avoided tier (KeyAvoid) counts under
+// every trigger: the profile already said it doesn't want that file.
 func v2TriggerAllows(trigger string, k RankKey) bool {
+	if k == KeyAvoid {
+		return true
+	}
 	switch NormalizeTrigger(trigger) {
 	case TriggerSource:
 		return k == KeyResolution || k == KeyPreferences || k == KeyCustom || k == KeySource
@@ -103,7 +107,7 @@ func (b upgradeBar) v2Gain(trigger string, cand Evaluation) (RankKey, bool) {
 // same in both modes: a target format the profile avoids (Dolby Vision under "Avoid") is a
 // preferences gain, an avoided "Other formats" built-in (AMZN) a custom one. Leaving a
 // low-quality group's encode, or a file the profile would no longer grab at all, is KeyAvoid,
-// which only "any" takes — as classic ranking's low-quality-group escape. "" when the avoid
+// which every trigger takes — as classic ranking's low-quality-group escape. "" when the avoid
 // was an Unwanted item that never reaches back into the library (an upscale, Dolby Vision
 // without a fallback): those rank what is grabbed from now on and don't start a wave of
 // re-downloads on their own.
