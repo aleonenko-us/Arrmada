@@ -25,6 +25,7 @@ const get = (path: string | RegExp, body: unknown): MockRoute => ({ method: "GET
 // routes is the fake backend: what each endpoint answers for this persona. Order
 // matters only where a regex could shadow a later exact path.
 export function routes(p: PersonaInfo): MockRoute[] {
+  const staff = p.user.role === "admin" || p.user.role === "manager";
   return [
     // Boot and shell
     get("/api/v1/status", sys.status(p)),
@@ -70,7 +71,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/me/jellyfin", { linked: false, can_unlink: false, available: false, quickconnect: false }),
 
     // Discover (requester and staff)
-    { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url) },
+    // Staff see what approving a waiting request would grab; a requester never does.
+    { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url, staff) },
     // Answered (not left unmocked) so a spec can assert on it: the tap spec checks
     // this is never called.
     { method: "POST", path: "/api/v1/requests", respond: ({ body }) => discover.created(p, body) },
@@ -79,7 +81,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/issues", { issues: [], total: 0, counts: { open: 0, closed: 0 } }),
     { method: "POST", path: "/api/v1/issues", respond: ({ body }) => ({ issue: { id: 1, status: "open", reporter_count: 1, ...(body as object) }, joined: false }) },
     get(/^\/api\/v1\/issues\/episodes\/\d+$/, { seasons: [{ season: 1, episodes: [{ episode: 3, title: "Low Water" }, { episode: 4, title: "Fog Bank" }] }] }),
-    { method: "GET", path: /^\/api\/v1\/requests\/(\d+)$/, respond: ({ params }) => discover.requestDetail(Number(params[0])) },
+    { method: "GET", path: /^\/api\/v1\/requests\/(\d+)$/, respond: ({ params }) => discover.requestDetail(Number(params[0]), staff) },
+    { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/preview$/, status: 202, body: { job_id: discover.previewJob.id } },
+    get(`/api/v1/jobs/${discover.previewJob.id}`, discover.previewJob),
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/approve$/, respond: ({ params, body }) => discover.approved(Number(params[0]), body) },
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/decline$/, body: { status: "declined" } },
     get("/api/v1/discover/trending", discover.items),

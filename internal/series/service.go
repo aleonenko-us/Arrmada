@@ -443,6 +443,24 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 	return created, nil
 }
 
+// Draft is the show a TMDB id would become, read from the metadata provider but never
+// stored: what a request's release preview searches for before anyone has approved adding
+// it. It has no id (0) and nothing on disk. The seasons in only are monitored (nil: every
+// regular season — a whole-show request; the monitoring preset is applied only on add).
+func (s *Service) Draft(ctx context.Context, tmdbID int, qualityProfile string, only map[int]bool) (Series, error) {
+	d, err := s.meta.GetSeries(ctx, tmdbID)
+	if err != nil {
+		return Series{}, fmt.Errorf("fetch metadata: %w", err)
+	}
+	sr := Series{
+		TMDBID: d.TMDBID, TVDBID: d.TVDBID, IMDBID: d.IMDBID, Title: d.Title, Year: d.Year,
+		Status: d.Status, Network: d.Network, Monitored: true, QualityProfile: qualityProfile,
+		Extra: extraFrom(d), SeriesType: detectSeriesType(d),
+	}
+	sr.Seasons = seasonsFromDetails(d, func(n int) bool { return only == nil || only[n] })
+	return sr, nil
+}
+
 // seasonsFromDetails projects TMDB season/episode metadata into storage rows.
 // monitorFor says whether a season (and so its episodes) is monitored; specials (season 0)
 // never are. Only rows that don't exist yet take these flags — a refresh never rewrites

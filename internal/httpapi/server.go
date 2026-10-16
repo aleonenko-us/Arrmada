@@ -608,6 +608,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/requests/{id}/subscription", a.requireRole(auth.RoleRequester, a.handleUnsubscribeRequest).ext())
 	mux.HandleFunc("POST /api/v1/requests/{id}/approve", a.requireRole(auth.RoleManager, a.handleApproveRequest).ext())
 	mux.HandleFunc("POST /api/v1/requests/{id}/decline", a.requireRole(auth.RoleManager, a.handleDeclineRequest).ext())
+	// What approving a pending request would grab, checked again now (staff only, a job).
+	mux.HandleFunc("POST /api/v1/requests/{id}/preview", a.requireRole(auth.RoleManager, a.handleRequestPreview).ext())
 	mux.HandleFunc("POST /api/v1/requests/bulk", a.requireRole(auth.RoleManager, a.handleBulkRequests).ext())
 	// Owner-withdraw is allowed (own request, still pending), so the route admits
 	// requesters; the handler enforces ownership vs manager.

@@ -1620,6 +1620,65 @@ export interface MediaRequest {
   plex_url?: string;
   /** Delivered: a Watch link per media server that has it, the viewer's own server first. */
   watch_links?: WatchLink[];
+  /** Staff only, on a request waiting for approval: the release approving it would grab. */
+  preview?: RequestPreview;
+  /** On an approval's answer: whether it grabs the previewed release or searches. */
+  approve_grab?: { mode: "preview" | "search"; reason?: "expired" | "profile" | "seasons" | "none" | "already queued" };
+}
+
+/** A request's release preview (staff only): what a search would grab, checked in advance. */
+export interface RequestPreview {
+  state: "queued" | "checking" | "done" | "busy";
+  /** Unix seconds of the last finished check; 0 = never. */
+  checked_at: number;
+  /** The quality profile it was ranked under. */
+  profile: string;
+  seasons?: number[];
+  /** Never checked, or more than six hours ago: opening the request checks again. */
+  stale: boolean;
+  /** "Approve & grab this" would take exactly these releases. */
+  grabbable: boolean;
+  result?: PreviewResult;
+}
+
+export interface PreviewResult {
+  outcome: "found" | "none" | "unavailable" | "busy" | "not_wanted";
+  reason: string;
+  profile: string;
+  releases: PreviewRelease[];
+  why?: string[];
+  chosen_over?: string;
+  returned: number;
+  matching: number;
+  eligible: number;
+  top_reasons?: { code: string; label: string; count: number }[];
+  indexer_issues?: IndexerIssue[];
+  searched: number;
+  queries: number;
+  season?: number;
+  seasons_note?: string;
+  /** The title is in the library already: ranked under its own profile, whatever the approval picks. */
+  in_library?: boolean;
+  /** A caveat about this preview ("Preview may miss anime not yet in the library"). */
+  note?: string;
+}
+
+export interface PreviewRelease {
+  title: string;
+  indexer: string;
+  summary: string;
+  resolution?: string;
+  source?: string;
+  codec?: string;
+  hdr?: string[];
+  size_gb: number;
+  seeders: number;
+  transport?: "torrent" | "usenet";
+  kind?: "complete series" | "pack" | "episode" | "ebook" | "audiobook";
+  covers?: string;
+  format?: string;
+  matched?: string[];
+  avoided?: string[];
 }
 
 /** A section of the request list (GET /api/v1/requests?section=). */

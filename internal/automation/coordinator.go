@@ -146,6 +146,10 @@ type Coordinator struct {
 	// search hands the browser (releasetokens.go). Made on first use.
 	tokensOnce sync.Once
 	tokens     *releaseTokens
+	// previewTok holds the release tokens of request previews (preview.go), apart from
+	// the interactive ones. Made on first use.
+	previewOnce sync.Once
+	previewTok  *previewTokenStore
 
 	// The manual missing-editions sweep for books (books_sweep.go).
 	bookSweepMu sync.Mutex

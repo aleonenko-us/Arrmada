@@ -31,6 +31,7 @@ type searchNotes struct {
 	skipped map[string]string // indexer -> why it was paused
 	asked   int               // the most indexers any one query went to
 	ran     bool              // at least one indexer query was made
+	queries int               // indexer searches sent (each to every indexer that serves it)
 
 	// What became of each distinct release the search looked at, for a recorded attempt
 	// (searchlog.go). Empty for an interactive list, which shows every release instead.
@@ -78,6 +79,7 @@ func (n *searchNotes) note(res indexer.SearchResult, err error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.ran = true
+	n.queries++
 	add := func(dst *map[string]string, src map[string]string) {
 		for name, msg := range src {
 			if *dst == nil {
@@ -119,6 +121,16 @@ func (n *searchNotes) errorMap() map[string]string {
 		out[is.Indexer] = is.Error
 	}
 	return out
+}
+
+// queryCount is how many indexer searches were sent (a release preview reports its cost).
+func (n *searchNotes) queryCount() int {
+	if n == nil {
+		return 0
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.queries
 }
 
 // searched is how many indexers were actually asked by the widest query.

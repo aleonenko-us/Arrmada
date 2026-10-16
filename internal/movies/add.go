@@ -178,3 +178,18 @@ func (s *Service) LookupInLibrary(ctx context.Context, query string) ([]LookupRe
 	}
 	return out, nil
 }
+
+// Draft is the film a TMDB id would become, read from the metadata provider but never
+// stored: what a request's release preview searches for before anyone has approved
+// adding it. It carries no id (0), no folder and no versions.
+func (s *Service) Draft(ctx context.Context, tmdbID int, qualityProfile string) (Movie, error) {
+	details, err := s.meta.GetMovie(ctx, tmdbID)
+	if err != nil {
+		return Movie{}, fmt.Errorf("fetch metadata: %w", err)
+	}
+	return Movie{
+		TMDBID: details.TMDBID, IMDBID: details.IMDBID, Title: details.Title, Year: details.Year,
+		Runtime: details.Runtime, Status: details.Status, Monitored: true,
+		QualityProfile: qualityProfile, Extra: extraFrom(details),
+	}, nil
+}

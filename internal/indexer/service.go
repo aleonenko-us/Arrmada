@@ -181,11 +181,13 @@ func (s *Service) allow(ctx context.Context, idx Indexer) (ok bool, reason strin
 // was called with: when it is done (the person closed the release modal, Arrmada is
 // shutting down), a failure says nothing about the indexer and is dropped. The
 // per-indexer deadline is not the caller's, so an indexer that hangs past it does count.
-// backoff is false for a Test: its failure shows on the row but pauses nothing.
+// backoff is false for a Test: its failure shows on the row but pauses nothing. A search
+// made under WithoutBackoff (a release preview) is recorded the same way.
 func (s *Service) record(caller context.Context, idx Indexer, err error, dur time.Duration, backoff bool) {
 	if s.status == nil || (err != nil && caller.Err() != nil) {
 		return
 	}
+	backoff = backoff && !noBackoff(caller)
 	o := connstatus.Outcome{Err: err, Dur: dur, Backoff: backoff, Name: idx.Name}
 	var he *HTTPStatusError
 	var ne *nzbIndexerError

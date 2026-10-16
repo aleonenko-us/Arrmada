@@ -74,6 +74,7 @@ var jobKindLabels = map[string]string{
 	"convert.reindex":           "Re-read the Convert library",
 	"subtitles.sync-check":      "Check subtitle timing",
 	"requests.import-overseerr": "Import from Overseerr",
+	"request.preview":           "Check what a request would grab",
 	"insights.import-tautulli":  "Import from Tautulli",
 	"insights.remove-import":    "Remove a Tautulli import",
 	"insights.remove-overlaps":  "Remove overlapping plays",

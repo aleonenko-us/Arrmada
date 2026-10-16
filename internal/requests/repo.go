@@ -65,6 +65,12 @@ type Request struct {
 	LibraryID int64 `json:"library_id,omitempty"`
 	// Followers names who else follows it, on the staff detail view only.
 	Followers []Follower `json:"followers,omitempty"`
+	// Preview is the release approving it would grab (preview.go), for staff on a request
+	// waiting for approval. Filled by AttachPreviews; requesters never get it.
+	Preview *Preview `json:"preview,omitempty"`
+	// Grab, on an approval's answer only, says whether it grabs the previewed release or
+	// searches.
+	Grab *ApproveGrab `json:"approve_grab,omitempty"`
 
 	// The last decision: who made it (staff only — 0 and "" for an auto-approval) and
 	// when (unix seconds, 0 while undecided). DeclineReason is what staff told the
@@ -496,6 +502,7 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM request_subscribers WHERE request_id = ?`, id)
+	r.deletePreview(ctx, id)
 	return nil
 }
 
