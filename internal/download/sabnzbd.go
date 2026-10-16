@@ -720,24 +720,25 @@ func historyItem(j sabHistoryJob) (Item, bool) {
 // linkRE finds web addresses in what SABnzbd says about a job.
 var linkRE = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>]+`)
 
-// hideLinks cuts the query (and any user info) out of every web address in s. A job SABnzbd
-// fetched from a link (an indexer that blocked Arrmada's own download) is named after that
-// link while it's fetched and when the fetch fails ("Trying to fetch NZB from <link>",
-// "<name> - <link>"), and the link's query holds the indexer's key. What Arrmada shows and
-// logs keeps the address up to its path, never the key.
+// hideLinks reduces every web address in s to its scheme and host ("https://host/…"). A job
+// SABnzbd fetched from a link (an indexer that blocked Arrmada's own download) is named after
+// that link while it's fetched and when the fetch fails ("Trying to fetch NZB from <link>",
+// "<name> - <link>"), and the link holds the indexer's key — in its query, or in its path
+// with no query at all (/getnzb/<id>.nzb&i=…&r=<key>, /api/<key>/nzb/1). So nothing of a
+// link but where it points survives into what Arrmada shows, logs or sends.
 func hideLinks(s string) string {
 	if !strings.Contains(strings.ToLower(s), "http") {
 		return s
 	}
 	return linkRE.ReplaceAllStringFunc(s, func(link string) string {
-		u, err := url.Parse(link)
-		if err != nil {
-			return "[link]"
+		// Sentence punctuation after a link ("(… <link>).") isn't part of it.
+		trimmed := strings.TrimRight(link, ").,;]")
+		tail := link[len(trimmed):]
+		u, err := url.Parse(trimmed)
+		if err != nil || u.Host == "" {
+			return "[link]" + tail
 		}
-		u.User = nil
-		u.RawQuery, u.Fragment, u.RawFragment = "", "", ""
-		u.ForceQuery = false
-		return u.String()
+		return strings.ToLower(u.Scheme) + "://" + u.Host + "/…" + tail
 	})
 }
 

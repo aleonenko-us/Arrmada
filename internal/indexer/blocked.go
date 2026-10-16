@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -14,8 +15,9 @@ import (
 // which sent people chasing a key that was fine. A blocked request is reported as what it
 // is, and (for an NZB download) the usenet client may be handed the link to fetch itself.
 
-// BlockedError is an indexer, or a proxy in front of it, answering Arrmada's request with
-// a web page or a block instead of an NZB or search results.
+// BlockedError is an indexer, or a proxy in front of it, turning Arrmada's request away —
+// a Cloudflare challenge, or a 403 that isn't the indexer's own <error> — instead of
+// sending an NZB or search results.
 //
 // It isn't counted against the indexer for an NZB download: its searches may well work
 // (through Prowlarr they do), and pausing them over a blocked download would stop the
@@ -25,15 +27,12 @@ type BlockedError struct {
 	Status  int
 	// Page is true when the answer was a web page (HTML), false for a bare refusal.
 	Page bool
-	// AppGate is true for a 403 or a Cloudflare challenge/block: the site lets some apps in
-	// and not others.
-	AppGate bool
 	// What was asked for: "an NZB" or "results".
 	What string
 
-	// link is, for an NZB download, the address that was blocked (after any redirect) for
-	// the usenet client to fetch itself; "" when it mustn't be handed over. It carries the
-	// indexer's key, so it is never part of the error's text.
+	// link is, for an NZB download, the indexer's link for the usenet client to fetch itself
+	// (handoffLink); "" when none may be handed over. It carries the indexer's key, so it is
+	// never part of the error's text.
 	link string
 	// key (the indexer's) and original (the link as the release gave it) are what Redact
 	// cuts out, besides link.
@@ -46,11 +45,8 @@ func (e *BlockedError) Error() string {
 	if e.Page {
 		got = "a web page instead of " + e.What
 	}
-	msg := fmt.Sprintf("%s blocked Arrmada's request (HTTP %d, %s)", e.Indexer, e.Status, got)
-	if e.AppGate {
-		msg += " — it may only allow certain apps"
-	}
-	return msg
+	// Every block is a 403 or a Cloudflare challenge: the site lets some apps in and not others.
+	return fmt.Sprintf("%s blocked Arrmada's request (HTTP %d, %s) — it may only allow certain apps", e.Indexer, e.Status, got)
 }
 
 // ClientLink is the NZB link a usenet client may fetch itself because the indexer blocked
@@ -90,15 +86,13 @@ func startsHTML(body []byte) bool {
 }
 
 // isCloudflareBlock reports whether an answer is Cloudflare's challenge or block: the
-// cf-mitigated header it sets on a challenge, its cf-ray header on a 403 or 503, or its
-// challenge page's own markers. The markers are looked for only in a body that is an HTML
-// document, never in a feed that merely came labelled text/html (a release could be
-// called anything).
-func isCloudflareBlock(status int, h http.Header, body []byte) bool {
+// cf-mitigated header it sets on a challenge, or its challenge page's own markers. The
+// markers are looked for only in a body that is an HTML document, never in a feed that
+// merely came labelled text/html (a release could be called anything). Cloudflare's cf-ray
+// header alone says nothing: every answer through Cloudflare carries it, an indexer down
+// for maintenance included.
+func isCloudflareBlock(h http.Header, body []byte) bool {
 	if h.Get("Cf-Mitigated") != "" {
-		return true
-	}
-	if h.Get("Cf-Ray") != "" && (status == http.StatusForbidden || status == http.StatusServiceUnavailable) {
 		return true
 	}
 	if !startsHTML(body) {
@@ -118,49 +112,91 @@ func isCloudflareBlock(status int, h http.Header, body []byte) bool {
 }
 
 // blockedAnswer decides whether an answer that isn't what was asked for is a block: a
-// Cloudflare challenge or block, a 403, or a web page — but never a 429 (a limit), a 404
-// or 410 (gone), or a plain server error (5xx without Cloudflare's markers), which keep
-// their own meaning. The caller has already ruled out the indexer's own <error> document.
-func blockedAnswer(status int, h http.Header, body []byte) (blocked, page, appGate bool) {
+// Cloudflare challenge (cf-mitigated, or its challenge page) or a plain 403. Anything else
+// keeps its own meaning — a 429 is a limit, a 404 or 410 gone, a 5xx the indexer struggling
+// (backed off, its Retry-After honoured), a 401 the key, and a web page served with a 200
+// "not an NZB". The caller has already ruled out the indexer's own <error> document.
+func blockedAnswer(status int, h http.Header, body []byte) (blocked, page bool) {
 	page = isWebPage(h, body)
-	cf := isCloudflareBlock(status, h, body)
 	switch {
 	case status == http.StatusTooManyRequests || status == http.StatusNotFound || status == http.StatusGone:
-		return false, page, false
-	case cf:
-		return true, page, true
+		return false, page
+	case isCloudflareBlock(h, body):
+		return true, page
 	case status == http.StatusForbidden:
-		return true, page, true
-	case page && status < 500:
-		return true, page, false
+		return true, page
 	}
-	return false, page, false
+	return false, page
+}
+
+// Hops whose path says they're not the NZB: a login, a block or a challenge page an
+// indexer or its proxy redirects to.
+var notNZBPath = regexp.MustCompile(`(?i)(^|/)(cdn-cgi|login|log-in|signin|sign-in|logon|auth|account|blocked|block|captcha|challenge|forbidden|denied|error)(/|$|\.|\?)`)
+
+// prowlarrDownloadPath is Prowlarr's own download link (/{id}/download) and the v1 API's.
+var prowlarrDownloadPath = regexp.MustCompile(`(?i)^(/[^/]+)*/\d+/download/?$|/api/v1/indexer/\d+/download`)
+
+// isAggregatorLink reports whether link points at Prowlarr or NZBHydra rather than at an
+// indexer: its own download link carries the aggregator's API key, which unlocks every
+// indexer it holds and must never end up in a usenet client's history. aggregatorHosts are
+// the addresses (host:port, lowercase) Prowlarr-synced rows reach Prowlarr by. When in
+// doubt, it says yes.
+func isAggregatorLink(idx Indexer, u *url.URL, aggregatorHosts map[string]bool) bool {
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case prowlarrDownloadPath.MatchString(u.Path):
+		return true
+	case strings.Contains(strings.ToLower(u.Path), "/getnzb/api/"): // NZBHydra2's download link
+		return true
+	case strings.Contains(host, "prowlarr") || strings.Contains(host, "hydra"):
+		return true
+	case u.Port() == "9696" || u.Port() == "5076" || u.Port() == "5075":
+		return true
+	case aggregatorHosts[strings.ToLower(u.Host)]:
+		return true
+	}
+	if idx.ProwlarrID != 0 {
+		// The row's key is Prowlarr's, and its address Prowlarr's.
+		if row, err := url.Parse(idx.URL); err == nil && strings.EqualFold(row.Host, u.Host) {
+			return true
+		}
+		if k := strings.TrimSpace(idx.APIKey); k != "" && (strings.Contains(u.String(), k) || strings.Contains(u.String(), url.QueryEscape(k))) {
+			return true
+		}
+	}
+	return false
 }
 
 // handoffLink is the address the usenet client may be given when the indexer blocked
-// Arrmada's download: the last address asked (after Prowlarr's redirect to the indexer,
-// say), but never a Cloudflare challenge address, only http(s), and never a link that
-// carries a Prowlarr-synced row's key — that is Prowlarr's own API key, which must not end
-// up in the usenet client's history.
-func handoffLink(idx Indexer, link string) string {
+// Arrmada's download, "" when none may be. hops are every address asked, the release's own
+// link first and each redirect after.
+//
+// Through Prowlarr (or NZBHydra) it is the first hop away from it — the indexer's own link
+// it redirected to — and never the aggregator's link itself. Straight from an indexer it is
+// the release's own link. A later redirect (to a login page, a block page, the indexer's
+// home page) is never what's handed over: the usenet client follows redirects itself. Only
+// http(s), and never an address whose path looks like a login, block or challenge page.
+func handoffLink(idx Indexer, hops []string, aggregatorHosts map[string]bool) string {
+	if len(hops) == 0 {
+		return ""
+	}
+	first, err := url.Parse(hops[0])
+	if err != nil {
+		return ""
+	}
+	link := hops[0]
+	if isAggregatorLink(idx, first, aggregatorHosts) {
+		if len(hops) < 2 {
+			return "" // blocked at the aggregator itself: its link is its key
+		}
+		link = hops[1]
+	}
 	u, err := url.Parse(link)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return ""
 	}
-	if strings.HasPrefix(u.Path, "/cdn-cgi/") {
+	if notNZBPath.MatchString(u.Path) || isAggregatorLink(idx, u, aggregatorHosts) {
 		return ""
-	}
-	if idx.ProwlarrID != 0 && strings.TrimSpace(idx.APIKey) != "" {
-		for _, vs := range u.Query() {
-			for _, v := range vs {
-				if v == idx.APIKey {
-					return ""
-				}
-			}
-		}
-		if strings.Contains(link, idx.APIKey) || strings.Contains(link, url.QueryEscape(idx.APIKey)) {
-			return ""
-		}
 	}
 	return link
 }

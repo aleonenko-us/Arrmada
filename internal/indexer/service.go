@@ -308,7 +308,7 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 		// neither does a block: searching it may work fine (through Prowlarr it does).
 		// A delivered NZB is the indexer answering.
 		start := time.Now()
-		res, err := fetchNZBPayload(ctx, *found, downloadURL)
+		res, err := fetchNZBPayload(ctx, *found, downloadURL, prowlarrHosts(indexers))
 		var ie *nzbIndexerError
 		if err == nil || errors.As(err, &ie) {
 			s.record(ctx, *found, err, time.Since(start), true)
@@ -327,6 +327,22 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 		return FetchResult{URL: downloadURL}, nil
 	}
 	return res, nil
+}
+
+// prowlarrHosts is every address (host:port, lowercase) Prowlarr-synced rows reach
+// Prowlarr by: a link there is Prowlarr's own, carrying its API key, and is never handed to
+// a usenet client.
+func prowlarrHosts(indexers []Indexer) map[string]bool {
+	hosts := map[string]bool{}
+	for _, ix := range indexers {
+		if ix.ProwlarrID == 0 {
+			continue
+		}
+		if u, err := url.Parse(ix.URL); err == nil && u.Host != "" {
+			hosts[strings.ToLower(u.Host)] = true
+		}
+	}
+	return hosts
 }
 
 // fetchTorrentTimeout bounds the server-side resolution of a torrent URL. Grabs

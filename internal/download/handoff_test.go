@@ -127,25 +127,36 @@ func TestSABnzbdNamesHideLinks(t *testing.T) {
 	}
 	for _, it := range items {
 		for _, s := range []string{it.Name, it.FailMessage} {
-			if strings.Contains(s, "FINDERDOWNLOADKEY") || strings.Contains(s, "?") {
+			if strings.Contains(s, "FINDERDOWNLOADKEY") || strings.Contains(s, "?") || strings.Contains(s, "getnzb") {
 				t.Errorf("a link's query reached Arrmada: %q", s)
 			}
 		}
 	}
-	if items[0].Name != "Trying to fetch NZB from https://nzbfinder.example/getnzb/abc123def.nzb" || items[0].Phase() != "queued" {
+	if items[0].Name != "Trying to fetch NZB from https://nzbfinder.example/…" || items[0].Phase() != "queued" {
 		t.Errorf("queue item = %q (%s)", items[0].Name, items[0].Phase())
 	}
-	if items[1].Name != "Film.2021 - https://nzbfinder.example/getnzb/abc123def.nzb" ||
-		!strings.HasPrefix(items[1].FailMessage, "URL Fetching failed; Maximum retries") {
+	if items[1].Name != "Film.2021 - https://nzbfinder.example/…" ||
+		items[1].FailMessage != "URL Fetching failed; Maximum retries (https://nzbfinder.example/…)" {
 		t.Errorf("history item = %q / %q", items[1].Name, items[1].FailMessage)
 	}
+	const pathKey = "PATHKEY0123456789abcdef"
 	for in, want := range map[string]string{
 		"plain name":                      "plain name",
-		"http://u:p@host:8080/a/b?k=v#f":  "http://host:8080/a/b",
-		"see https://x.example/?apikey=z": "see https://x.example/",
+		"http://u:p@host:8080/a/b?k=v#f":  "http://host:8080/…",
+		"see https://x.example/?apikey=z": "see https://x.example/…",
+		// Classic newznab+ links: the key in the path, no "?" at all.
+		"Film - https://site.example/getnzb/0123abcd.nzb&i=42&r=" + pathKey:       "Film - https://site.example/…",
+		"Trying to fetch NZB from https://site.example/api/" + pathKey + "/nzb/1": "Trying to fetch NZB from https://site.example/…",
+		"HTTPS://Site.Example/rss/" + pathKey:                                     "https://Site.Example/…",
+		// Several links in one string, each reduced.
+		"a http://one.example/x&r=" + pathKey + " b https://two.example:8443/api/" + pathKey + "/get c": "a http://one.example/… b https://two.example:8443/… c",
 	} {
-		if got := hideLinks(in); got != want {
+		got := hideLinks(in)
+		if got != want {
 			t.Errorf("hideLinks(%q) = %q, want %q", in, got, want)
+		}
+		if strings.Contains(got, pathKey) || strings.Contains(got, "apikey") {
+			t.Errorf("hideLinks(%q) kept a key: %q", in, got)
 		}
 	}
 }

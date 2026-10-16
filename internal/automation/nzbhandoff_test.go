@@ -252,6 +252,17 @@ func TestUsenetGrabNoHandoffUnlessBlocked(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`<html><body>not found</body></html>`))
 		}, "no longer has this NZB"},
+		{"down for maintenance behind Cloudflare", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Cf-Ray", "8d1f2e3a4b5c6d7e-SYD")
+			w.Header().Set("Retry-After", "600")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`<html><body>maintenance</body></html>`))
+		}, "couldn't send the NZB (HTTP 503)"},
+		{"a page served as a 200", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>Daily download limit reached</body></html>`))
+		}, "didn't send an NZB file"},
 		{"newznab gone", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`<error code="300" description="No such item"/>`))
 		}, "no longer has this NZB"},

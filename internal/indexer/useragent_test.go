@@ -49,7 +49,7 @@ func TestIndexerRequestsSendUserAgent(t *testing.T) {
 	if _, err := ts.Search(ctx, idx, SearchQuery{Text: "x"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fetchNZBPayload(ctx, idx, srv.URL+"/getnzb/a.nzb"); err != nil {
+	if _, err := fetchNZBPayload(ctx, idx, srv.URL+"/getnzb/a.nzb", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fetchTorrentPayload(ctx, srv.URL+"/t.torrent"); err != nil {

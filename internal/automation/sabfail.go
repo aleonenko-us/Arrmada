@@ -18,8 +18,10 @@ import "strings"
 // nzbhandoff.go) can also fail before it starts: SABnzbd couldn't fetch the NZB ("URL
 // Fetching failed; …"). That is the indexer turning SABnzbd away too, or its key or limit —
 // not the release — so it is an environment failure: blocklisting would lose a good release
-// for good, and another release from the same indexer would fail the same way. Only "File
-// not on server" (the indexer no longer has it) is the release's.
+// for good, and another release from the same indexer would fail the same way. That holds
+// with no reason given ("URL Fetching failed; " — what SABnzbd got wasn't an NZB, most often
+// a page the indexer served instead) and for an unknown filetype too. Only "File not on
+// server" (the indexer no longer has it) is the release's.
 //
 // SABnzbd translates its reasons into its interface language, and only the English ones
 // are known here. A reason that matches nothing is taken as the release's fault — SABnzbd
@@ -71,7 +73,7 @@ var usenetFailRules = []usenetFailRule{
 		"", []string{"url fetching failed; file not on server"}, true},
 	{UsenetFailEnvironment, "the indexer didn't let SABnzbd download the NZB either",
 		"Check that the indexer lets SABnzbd download (its API key, its download limit, anything like Cloudflare in front of it), then remove the failed download in Activity and search again",
-		[]string{"url fetching failed", "untrusted https certificate", "server name does not resolve"}, true},
+		[]string{"url fetching failed", "unknown filetype", "untrusted https certificate", "server name does not resolve"}, true},
 
 	{UsenetFailEnvironment, "the disk is full",
 		"Free up space on the drive SABnzbd downloads to, then Retry the download in Activity",
@@ -112,10 +114,6 @@ var usenetFailRules = []usenetFailRule{
 // ClassifyUsenetFailure reads a failed usenet job's reason (download.Item.FailMessage).
 func ClassifyUsenetFailure(msg string) UsenetFailure {
 	low := strings.ToLower(msg)
-	// "URL Fetching failed; " with no reason: SABnzbd got a file it couldn't read as an NZB.
-	if strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(low), ";")) == "url fetching failed" {
-		return UsenetFailure{Kind: UsenetFailBadRelease, Reason: "SABnzbd couldn't read the NZB", Known: true, Fetch: true}
-	}
 	for _, r := range usenetFailRules {
 		for _, p := range r.phrases {
 			if strings.Contains(low, p) {

@@ -121,10 +121,9 @@ func TestFetchNZBFailures(t *testing.T) {
 				}
 			}
 		}, "Geek: the indexer sent something larger than 64 MB instead of an NZB"},
-		// A web page where the NZB should be is a block (blocked_test.go), not a bad file.
 		{"a web page", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`<!doctype html><html><body>Log in</body></html>`))
-		}, "Geek blocked Arrmada's request (HTTP 200, a web page instead of an NZB)"},
+		}, "Geek: the indexer didn't send an NZB file"},
 		{"a bare 401", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 		}, "Geek refused the API key"},

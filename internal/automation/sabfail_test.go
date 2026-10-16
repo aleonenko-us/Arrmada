@@ -39,8 +39,9 @@ func TestClassifyUsenetFailure(t *testing.T) {
 		{"Script exit code is 1", UsenetFailEnvironment, true},
 
 		// A handed-over link SABnzbd couldn't fetch (urlgrabber.py, 5.1.3): the indexer, its
-		// key or its limit — never a reason to blocklist the release for good. Only "File not
-		// on server" (the indexer's 404) and an unreadable file are the release's.
+		// key or its limit — never a reason to blocklist the release for good, an empty reason
+		// (a page instead of an NZB) included. Only "File not on server" (the indexer's 404)
+		// is the release's.
 		{"URL Fetching failed; Maximum retries", UsenetFailEnvironment, true},
 		{"URL Fetching failed; Unauthorized access", UsenetFailEnvironment, true},
 		{"URL Fetching failed; Server could not complete request", UsenetFailEnvironment, true},
@@ -48,7 +49,9 @@ func TestClassifyUsenetFailure(t *testing.T) {
 		{"URL Fetching failed; Server  uses an untrusted HTTPS certificate - https://sabnzbd.org/certificate-errors", UsenetFailEnvironment, true},
 		{"URL Fetching failed; Forbidden", UsenetFailEnvironment, true},
 		{"URL Fetching failed; File not on server", UsenetFailBadRelease, true},
-		{"URL Fetching failed; ", UsenetFailBadRelease, true},
+		{"URL Fetching failed; ", UsenetFailEnvironment, true},
+		{"URL Fetching failed;", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Unknown filetype when fetching NZB", UsenetFailEnvironment, true},
 		{"Unusable NZB file", UsenetFailBadRelease, true},
 
 		// What SABnzbd says with no reason, and a translated reason: the release's fault,

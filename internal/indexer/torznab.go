@@ -343,11 +343,12 @@ func (c *TorznabSearcher) TestCaps(ctx context.Context, idx Indexer) (Caps, erro
 	return caps, scrub(endpoint, err)
 }
 
-// get asks the indexer one API question. A non-200 answer is an HTTPStatusError, unless it
-// is a block — a Cloudflare challenge, a 403 or a web page where results should be — which
-// is a BlockedError, so nobody is told the key was refused when it never got that far.
-// A 200 web page without Cloudflare's markers is left to the parser: that is most often a
-// wrong address (Prowlarr's own page), and errWebPage says how to fix it.
+// get asks the indexer one API question. A non-200 answer is an HTTPStatusError (a 5xx
+// backs the indexer off, honouring its Retry-After, as always), unless it is a block — a
+// Cloudflare challenge or a plain 403 — which is a BlockedError, so nobody is told the key
+// was refused when it never got that far. A 200 web page without Cloudflare's markers is
+// left to the parser: that is most often a wrong address (Prowlarr's own page), and
+// errWebPage says how to fix it.
 func (c *TorznabSearcher) get(ctx context.Context, idx Indexer, endpoint string) ([]byte, error) {
 	if err := c.queue.wait(ctx, endpoint); err != nil {
 		return nil, err
@@ -371,9 +372,8 @@ func (c *TorznabSearcher) get(ctx context.Context, idx Indexer, endpoint string)
 	root, attrs, _, isXML := xmlRoot(body)
 	isError := isXML && root == "error"
 	if !isError {
-		if blocked, page, gate := blockedAnswer(resp.StatusCode, resp.Header, body); blocked &&
-			(resp.StatusCode != http.StatusOK || gate) {
-			return nil, &BlockedError{Indexer: idx.Name, Status: resp.StatusCode, Page: page, AppGate: gate, What: "results"}
+		if blocked, page := blockedAnswer(resp.StatusCode, resp.Header, body); blocked {
+			return nil, &BlockedError{Indexer: idx.Name, Status: resp.StatusCode, Page: page, What: "results"}
 		}
 	}
 	if resp.StatusCode != http.StatusOK {

@@ -40,23 +40,22 @@ var (
 
 // fetchNZBPayload downloads a Newznab release's NZB and returns its bytes. Every failure is
 // a plain sentence with no link or key in it: the indexer's own <error> answer (bad key,
-// download limit reached, item gone), an HTTP status, a block (BlockedError: a web page or
-// a Cloudflare challenge instead of the NZB), a file too large, or a body that isn't an NZB.
-func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (FetchResult, error) {
+// download limit reached, item gone), an HTTP status, a block (BlockedError: a Cloudflare
+// challenge or a 403 instead of the NZB), a file too large, or a body that isn't an NZB.
+// aggregatorHosts are the addresses Prowlarr is reached by (handoffLink).
+func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string, aggregatorHosts map[string]bool) (FetchResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchNZBTimeout)
 	defer cancel()
-	// last is the address asked most recently: through Prowlarr, the indexer's own link it
-	// redirects to. It is what a block is about, so it is what a usenet client would fetch.
-	last := downloadURL
+	// hops is every address asked: the release's link, then each redirect (through
+	// Prowlarr, the indexer's own link first). A block picks its hand-off link from them.
+	hops := []string{downloadURL}
 	client := &http.Client{
 		Transport: httpua.Transport(nil),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
 			}
-			if !strings.HasPrefix(req.URL.Path, "/cdn-cgi/") {
-				last = req.URL.String()
-			}
+			hops = append(hops, req.URL.String())
 			return nil
 		},
 	}
@@ -66,13 +65,13 @@ func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (Fetc
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL, last))}
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, hops...))}
 	}
 	defer resp.Body.Close()
 
 	body, err := readNZB(resp.Body)
 	if err != nil && !errors.Is(err, errNZBTooLarge) {
-		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL, last))}
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, hops...))}
 	}
 	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	// The indexer's own <error> answer says why, whatever status it came with.
@@ -83,11 +82,14 @@ func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (Fetc
 	if resp.StatusCode == http.StatusOK && err == nil && looksLikeNZBFile(body) {
 		return FetchResult{File: body, Filename: nzbFilename(resp.Header.Get("Content-Disposition"), resp.Request)}, nil
 	}
-	if blocked, page, gate := blockedAnswer(resp.StatusCode, resp.Header, body); blocked {
-		return FetchResult{}, &BlockedError{
-			Indexer: idx.Name, Status: resp.StatusCode, Page: page, AppGate: gate, What: "an NZB",
-			link: handoffLink(idx, last), key: idx.APIKey, original: downloadURL,
+	if blocked, page := blockedAnswer(resp.StatusCode, resp.Header, body); blocked {
+		be := &BlockedError{Indexer: idx.Name, Status: resp.StatusCode, Page: page, What: "an NZB", key: idx.APIKey, original: downloadURL}
+		// Never on a 200: a page served as an answer (a limit, a login) would only fail
+		// in the usenet client too.
+		if resp.StatusCode != http.StatusOK {
+			be.link = handoffLink(idx, hops, aggregatorHosts)
 		}
+		return FetchResult{}, be
 	}
 	if resp.StatusCode != http.StatusOK {
 		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, nil, downloadURL, retryAfter)
@@ -155,6 +157,14 @@ func newznabFetchError(idx Indexer, status int, ne *TorznabError, downloadURL st
 			msg += " (" + detail + ")"
 		}
 		return &nzbIndexerError{err: errors.New(msg + " — check the indexer in Settings → Connections")}
+	// The indexer's own refusal with another code, sent as a 401 or 403: still the indexer
+	// turning the account away, so it counts against it as it always has.
+	case ne != nil && (status == http.StatusUnauthorized || status == http.StatusForbidden):
+		msg := fmt.Sprintf("%s refused the download (HTTP %d", idx.Name, status)
+		if detail != "" {
+			msg += ": " + detail
+		}
+		return &nzbIndexerError{err: errors.New(msg + ") — check the indexer in Settings → Connections")}
 	case status == http.StatusNotFound || status == http.StatusGone || code == 300:
 		return fmt.Errorf("%s no longer has this NZB", idx.Name)
 	case detail != "":

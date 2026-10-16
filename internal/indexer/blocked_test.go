@@ -171,35 +171,56 @@ func TestFetchNZBBlockOrNot(t *testing.T) {
 			_, _ = w.Write([]byte(body))
 		}
 	}
+	challenge := func(status int) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(cfBlockPage))
+		}
+	}
+	const (
+		handOff  = iota // a block, with the link for SABnzbd
+		noLink          // a block, nothing handed over
+		notBlock        // keeps its own meaning
+	)
 	cases := []struct {
-		name    string
-		h       http.HandlerFunc
-		blocked bool
-		want    string
+		name string
+		h    http.HandlerFunc
+		kind int
+		want string
+		// counts: the failure is the indexer's and counts against it (backoff, Retry-After).
+		counts bool
 	}{
-		{"403 web page", html(403, nil), true, "Geek blocked Arrmada's request (HTTP 403, a web page instead of an NZB) — it may only allow certain apps"},
-		{"403 bare", plain(403, "Forbidden"), true, "Geek blocked Arrmada's request (HTTP 403, a refusal instead of an NZB) — it may only allow certain apps"},
-		{"cf-mitigated challenge", html(403, map[string]string{"Cf-Mitigated": "challenge"}), true, "— it may only allow certain apps"},
-		{"Cloudflare 503", html(503, map[string]string{"Cf-Ray": "1-SYD"}), true, "(HTTP 503, a web page instead of an NZB) — it may only allow certain apps"},
-		{"200 web page", html(200, nil), true, "Geek blocked Arrmada's request (HTTP 200, a web page instead of an NZB)"},
-		{"200 page by its start", plain(200, "\n  <!doctype html><html><body>Log in</body></html>"), true, "(HTTP 200, a web page instead of an NZB)"},
-		{"401 web page", html(401, nil), true, "(HTTP 401, a web page instead of an NZB)"},
-		// Not blocks: the indexer's own <error>, a limit, gone, a plain server error.
-		{"newznab error 100", plain(200, `<error code="100" description="Incorrect user credentials"/>`), false, "Geek refused the API key (Incorrect user credentials)"},
-		{"newznab error 100 with a 403", plain(403, `<error code="100" description="Incorrect user credentials"/>`), false, "Geek refused the API key"},
-		{"newznab error 101 with a 403", plain(403, `<?xml version="1.0"?><error code="101" description="Account suspended"/>`), false, "Geek refused the API key (Account suspended)"},
-		{"bare 401", plain(401, ""), false, "Geek refused the API key"},
-		{"429 web page", html(429, nil), false, "Geek says its API or download limit is reached"},
-		{"newznab limit", plain(200, `<error code="429" description="Request limit reached"/>`), false, "Geek says its API or download limit is reached"},
-		{"404 web page", html(404, nil), false, "Geek no longer has this NZB"},
-		{"410", plain(410, ""), false, "Geek no longer has this NZB"},
-		{"newznab gone", plain(200, `<error code="300" description="No such item"/>`), false, "Geek no longer has this NZB"},
-		{"502 web page", html(502, nil), false, "Geek couldn't send the NZB (HTTP 502)"},
-		{"200 JSON", plain(200, `{"error":"x"}`), false, "Geek: the indexer didn't send an NZB file"},
+		{"403 web page", html(403, nil), handOff, "Geek blocked Arrmada's request (HTTP 403, a web page instead of an NZB) — it may only allow certain apps", false},
+		{"403 bare", plain(403, "Forbidden"), handOff, "Geek blocked Arrmada's request (HTTP 403, a refusal instead of an NZB) — it may only allow certain apps", false},
+		{"cf-mitigated challenge", html(403, map[string]string{"Cf-Mitigated": "challenge"}), handOff, "— it may only allow certain apps", false},
+		{"Cloudflare challenge page as a 503", challenge(503), handOff, "(HTTP 503, a web page instead of an NZB) — it may only allow certain apps", false},
+		// A challenge served as a 200 is reported, but nothing is handed over on a 200.
+		{"Cloudflare challenge page as a 200", challenge(200), noLink, "(HTTP 200, a web page instead of an NZB)", false},
+		// Not blocks: the indexer's own <error>, a limit, gone, a server error (behind
+		// Cloudflare or not), a page served as an answer.
+		{"Cloudflare 503 without a challenge", html(503, map[string]string{"Cf-Ray": "1-SYD"}), notBlock, "Geek couldn't send the NZB (HTTP 503)", true},
+		{"Cloudflare 403 cf-ray and a plain page is still a 403", html(403, map[string]string{"Cf-Ray": "1-SYD"}), handOff, "HTTP 403", false},
+		{"200 web page", html(200, nil), notBlock, "Geek: the indexer didn't send an NZB file", false},
+		{"200 page by its start", plain(200, "\n  <!doctype html><html><body>Log in</body></html>"), notBlock, "Geek: the indexer didn't send an NZB file", false},
+		{"401 web page", html(401, nil), notBlock, "Geek refused the API key", true},
+		{"newznab error 100", plain(200, `<error code="100" description="Incorrect user credentials"/>`), notBlock, "Geek refused the API key (Incorrect user credentials)", true},
+		{"newznab error 100 with a 403", plain(403, `<error code="100" description="Incorrect user credentials"/>`), notBlock, "Geek refused the API key", true},
+		{"newznab error 101 with a 403", plain(403, `<?xml version="1.0"?><error code="101" description="Account suspended"/>`), notBlock, "Geek refused the API key (Account suspended)", true},
+		{"newznab error 900 with a 403", plain(403, `<error code="900" description="Account disabled"/>`), notBlock, "Geek refused the download (HTTP 403: Account disabled)", true},
+		{"newznab error 300 with a 401", plain(401, `<error code="300" description="No such item"/>`), notBlock, "Geek refused the download (HTTP 401: No such item)", true},
+		{"bare 401", plain(401, ""), notBlock, "Geek refused the API key", true},
+		{"429 web page", html(429, nil), notBlock, "Geek says its API or download limit is reached", true},
+		{"newznab limit", plain(200, `<error code="429" description="Request limit reached"/>`), notBlock, "Geek says its API or download limit is reached", true},
+		{"404 web page", html(404, nil), notBlock, "Geek no longer has this NZB", false},
+		{"410", plain(410, ""), notBlock, "Geek no longer has this NZB", false},
+		{"newznab gone", plain(200, `<error code="300" description="No such item"/>`), notBlock, "Geek no longer has this NZB", false},
+		{"502 web page", html(502, nil), notBlock, "Geek couldn't send the NZB (HTTP 502)", true},
+		{"200 JSON", plain(200, `{"error":"x"}`), notBlock, "Geek: the indexer didn't send an NZB file", false},
 		{"NZB served as text/html", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = w.Write([]byte(nzbBody))
-		}, false, ""},
+		}, notBlock, "", false},
 	}
 	for _, tc := range cases {
 		s, link := nzbIndexer(t, tc.h)
@@ -211,19 +232,25 @@ func TestFetchNZBBlockOrNot(t *testing.T) {
 			continue
 		}
 		var be *BlockedError
+		var ie *nzbIndexerError
 		switch {
 		case err == nil:
 			t.Errorf("%s: no error", tc.name)
 			continue
-		case errors.As(err, &be) != tc.blocked:
-			t.Errorf("%s: blocked = %v, want %v (%v)", tc.name, !tc.blocked, tc.blocked, err)
-		case tc.blocked && be.ClientLink() != link:
+		case errors.As(err, &be) != (tc.kind != notBlock):
+			t.Errorf("%s: blocked = %v, want kind %d (%v)", tc.name, be != nil, tc.kind, err)
+		case tc.kind == handOff && be.ClientLink() != link:
 			t.Errorf("%s: ClientLink = %q, want the link", tc.name, be.ClientLink())
+		case tc.kind == noLink && be.ClientLink() != "":
+			t.Errorf("%s: ClientLink = %q, want none", tc.name, be.ClientLink())
+		}
+		if errors.As(err, &ie) != tc.counts {
+			t.Errorf("%s: counts against the indexer = %v, want %v (%v)", tc.name, !tc.counts, tc.counts, err)
 		}
 		if !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: error %q, want it to contain %q", tc.name, err, tc.want)
 		}
-		if tc.blocked && strings.Contains(err.Error(), "API key") {
+		if tc.kind != notBlock && strings.Contains(err.Error(), "API key") {
 			t.Errorf("%s: a block reads as a key problem: %q", tc.name, err)
 		}
 		noSecrets(t, tc.name, err.Error())
@@ -316,7 +343,7 @@ func TestTorznabBlockedAnswers(t *testing.T) {
 func TestBlockedAnswerReadsFeedsAsFeeds(t *testing.T) {
 	feed := []byte(`<?xml version="1.0"?><rss><channel><item><title>Just a moment...</title><description>cf-chl</description><link>http://x/1</link></item></channel></rss>`)
 	h := http.Header{"Content-Type": {"text/html"}}
-	if blocked, _, gate := blockedAnswer(http.StatusOK, h, feed); blocked && gate {
+	if blocked, _ := blockedAnswer(http.StatusOK, h, feed); blocked {
 		t.Error("a feed with a challenge-like title read as a Cloudflare block")
 	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -327,5 +354,103 @@ func TestBlockedAnswerReadsFeedsAsFeeds(t *testing.T) {
 	got, err := NewTorznabSearcher().Search(context.Background(), Indexer{Name: "T", Kind: KindTorznab, URL: ts.URL}, SearchQuery{Text: "x"})
 	if err != nil || len(got) != 1 {
 		t.Errorf("search = %d releases, %v; want the feed's one", len(got), err)
+	}
+}
+
+// Which link a block hands to SABnzbd: through Prowlarr, only the indexer link it redirected
+// to — never Prowlarr's own link, nor a later redirect to a login or block page; straight
+// from an indexer, the release's own link; never anything at Prowlarr's or NZBHydra's address.
+func TestHandoffLinkChoice(t *testing.T) {
+	synced := Indexer{Name: "S", Kind: KindNewznab, URL: "http://10.0.0.5:9797/7/api", APIKey: prowlarrKey, ProwlarrID: 7}
+	direct := Indexer{Name: "D", Kind: KindNewznab, URL: "https://nzbfinder.example/api", APIKey: finderKey}
+	prowlarrHosts := map[string]bool{"10.0.0.5:9797": true}
+	prowlarrLink := "http://10.0.0.5:9797/7/download?apikey=" + prowlarrKey + "&link=abc&file=Film"
+	indexerLink := "https://nzbfinder.example/getnzb/abc123.nzb?i=1&r=" + finderKey
+	directLink := "https://nzbfinder.example/api?t=get&id=abc123&apikey=" + finderKey
+	cases := []struct {
+		name string
+		idx  Indexer
+		hops []string
+		want string
+	}{
+		{"Prowlarr redirected to the indexer", synced, []string{prowlarrLink, indexerLink}, indexerLink},
+		{"then on to a login page", synced, []string{prowlarrLink, indexerLink, "https://nzbfinder.example/login?next=x"}, indexerLink},
+		{"then on to the home page", synced, []string{prowlarrLink, indexerLink, "https://nzbfinder.example/"}, indexerLink},
+		{"blocked at Prowlarr itself", synced, []string{prowlarrLink}, ""},
+		{"Prowlarr redirected straight to a login page", synced, []string{prowlarrLink, "https://nzbfinder.example/login"}, ""},
+		{"Prowlarr redirected to a block page", synced, []string{prowlarrLink, "https://nzbfinder.example/account/blocked"}, ""},
+		{"Prowlarr redirected to a challenge", synced, []string{prowlarrLink, "https://nzbfinder.example/cdn-cgi/challenge-platform/x"}, ""},
+		{"Prowlarr redirected back to itself", synced, []string{prowlarrLink, "http://10.0.0.5:9797/api/v1/indexer/7/download?x=1"}, ""},
+		{"a Prowlarr-shaped link on an unknown address", direct, []string{"http://192.168.1.9:8080/prowlarr/12/download?apikey=k", indexerLink}, indexerLink},
+		{"a Prowlarr-shaped link not redirected", direct, []string{"http://192.168.1.9:8080/12/download?apikey=k"}, ""},
+		{"a direct indexer", direct, []string{directLink}, directLink},
+		{"a direct indexer redirecting to a login page", direct, []string{directLink, "https://nzbfinder.example/login"}, directLink},
+		{"NZBHydra's download link", direct, []string{"http://192.168.1.9:8080/getnzb/api/123456?apikey=" + finderKey}, ""},
+		{"an address named for an aggregator", direct, []string{"http://nzbhydra:8080/api?t=get&apikey=k"}, ""},
+		{"Prowlarr's port", direct, []string{"http://192.168.1.9:9696/x?apikey=k"}, ""},
+		{"a synced row's link carrying its key", synced, []string{"https://elsewhere.example/get?apikey=" + prowlarrKey}, ""},
+		{"not http", direct, []string{"ftp://nzbfinder.example/x.nzb"}, ""},
+	}
+	for _, tc := range cases {
+		if got := handoffLink(tc.idx, tc.hops, prowlarrHosts); got != tc.want {
+			t.Errorf("%s: handoffLink = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// End to end: Prowlarr redirects to the indexer, the indexer redirects Arrmada on to a login
+// page that turns it away. SABnzbd gets the indexer's link, not the login page.
+func TestFetchNZBBlockedAfterLoginRedirect(t *testing.T) {
+	var gate *httptest.Server
+	gate = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/getnzb/") {
+			http.Redirect(w, r, gate.URL+"/login?next=getnzb", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(cfBlockPage))
+	}))
+	defer gate.Close()
+	finderLink := gate.URL + "/getnzb/abc123def.nzb?i=4242&r=" + finderKey
+	var uas []string
+	prowlarr := prowlarrRedirect(t, finderLink, &uas)
+	s, _, _ := healthService(t)
+	idx, err := s.Create(context.Background(), Indexer{Name: "F", Kind: KindNewznab, URL: prowlarr.URL + "/7/api", APIKey: prowlarrKey, Enabled: true, ProwlarrID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Fetch(context.Background(), idx.Name, prowlarr.URL+"/7/download?apikey="+prowlarrKey+"&link=x")
+	var be *BlockedError
+	if !errors.As(err, &be) || be.ClientLink() != finderLink {
+		t.Fatalf("err = %v; want a block handing over the indexer's link", err)
+	}
+}
+
+// A Cloudflare-fronted indexer that's down (a 503 with cf-ray and no challenge) is a
+// struggling indexer, as before: its searches back off and honour its Retry-After.
+func TestTorznabCloudflare503IsNotABlock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cf-Ray", "8d1f2e3a4b5c6d7e-SYD")
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Retry-After", "600")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>Down for maintenance</body></html>`))
+	}))
+	defer srv.Close()
+	_, err := NewTorznabSearcher().TestCaps(context.Background(), Indexer{Name: "M", Kind: KindNewznab, URL: srv.URL})
+	var he *HTTPStatusError
+	if !errors.As(err, &he) || he.Code != 503 || he.RetryAfter != 600*time.Second {
+		t.Fatalf("err = %#v, want HTTP 503 with its Retry-After", err)
+	}
+	s, link := nzbIndexer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cf-Ray", "8d1f2e3a4b5c6d7e-SYD")
+		w.Header().Set("Retry-After", "600")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	_, err = s.Fetch(context.Background(), "Geek", link)
+	var ie *nzbIndexerError
+	if !errors.As(err, &ie) || ie.retryAfter != 600*time.Second {
+		t.Fatalf("NZB fetch = %v, want the indexer's error with its Retry-After", err)
 	}
 }
