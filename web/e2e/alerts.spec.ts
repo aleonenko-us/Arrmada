@@ -65,6 +65,49 @@ test.describe("admin", () => {
     expect(sent).toMatchObject({ kind: "discord", name: "Discord", fields: { webhook_url: "https://discord.com/api/webhooks/1/test-token" } });
     expect(sent).not.toHaveProperty("url");
   });
+
+  // n8n / Webhook: the page makes the signing secret and shows it until it's saved; the
+  // auth fields follow the chosen authentication; Add sends them all as fields.
+  test("Add alert → n8n / Webhook makes a signing secret and sends the fields", async ({ page, api }) => {
+    await page.goto("/settings/alerts");
+    await page.getByRole("button", { name: "+ Add alert" }).click();
+    await page.getByRole("button", { name: /^n8n \/ Webhook/ }).click();
+    const secret = page.getByLabel("Signing secret");
+    await expect(secret).toHaveValue(/^[A-Za-z0-9_-]{43}$/);
+    const first = await secret.inputValue();
+    await expect(page.getByText("Copy it into n8n now: once saved it’s never shown again.")).toBeVisible();
+    await page.getByRole("button", { name: "Make a new one" }).click();
+    await expect(secret).not.toHaveValue(first);
+
+    await expect(page.getByLabel("Header name")).toHaveCount(0);
+    await page.getByLabel("Authentication").selectOption("header");
+    await page.getByLabel("Header name").fill("X-Arrmada-Key");
+    await page.getByLabel("Header value").fill("a-long-random-value");
+    await page.getByLabel("Webhook URL").fill("http://192.168.1.10:5678/webhook/arrmada");
+    // No wording to customise: a webhook gets JSON.
+    await expect(page.getByRole("button", { name: /Customise message/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/notifications").filter((c) => c.path === "/api/v1/notifications").length).toBe(1);
+    const sent = api.callsTo("POST", "/api/v1/notifications").find((c) => c.path === "/api/v1/notifications")!.body as { kind: string; fields: Record<string, string> };
+    expect(sent.kind).toBe("n8n");
+    expect(sent.fields).toMatchObject({ url: "http://192.168.1.10:5678/webhook/arrmada", auth: "header", header_name: "X-Arrmada-Key", header_value: "a-long-random-value" });
+    expect(sent.fields.signing_secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(sent.fields.signing_secret).not.toBe(first);
+  });
+
+  test("a saved n8n connection keeps its secrets hidden and sends an event's sample as its test", async ({ page, api }) => {
+    await page.goto("/settings/alerts");
+    const card = page.locator("div.rounded-xl", { has: page.locator('input[value="Home n8n"]') }).last();
+    await expect(card.getByText("n8n / Webhook")).toBeVisible();
+    // URL, header value and signing secret: saved, never shown.
+    await expect(card.getByText("•••• saved")).toHaveCount(3);
+    await expect(card.getByLabel("Header name")).toHaveValue("X-Arrmada-Key");
+    await expect(card.getByLabel("Event to send as a test")).toHaveValue("movie.imported");
+    await card.getByLabel("Event to send as a test").selectOption("episodes.imported");
+    await card.getByRole("button", { name: "Send test" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/notifications/4/test").length).toBe(1);
+    expect(api.callsTo("POST", "/api/v1/notifications/4/test")[0].body).toEqual({ event: "episodes.imported" });
+  });
 });
 
 test.describe("manager", () => {

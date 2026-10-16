@@ -17,7 +17,7 @@ export const alertsApi = {
     req<void>(`/api/v1/notifications/${id}`, { method: "DELETE" }),
   testNotification: (body: NotificationInput) =>
     req<{ ok: boolean; error?: string }>("/api/v1/notifications/test", { method: "POST", body: JSON.stringify(body) }),
-  /** Test a saved connection through its stored URL. */
-  testSavedNotification: (id: number) =>
-    req<{ ok: boolean; error?: string }>(`/api/v1/notifications/${id}/test`, { method: "POST" }),
+  /** Test a saved connection through its stored URL; event sends that event's sample. */
+  testSavedNotification: (id: number, event?: string) =>
+    req<{ ok: boolean; error?: string }>(`/api/v1/notifications/${id}/test`, { method: "POST", ...(event ? { body: JSON.stringify({ event }) } : {}) }),
 };

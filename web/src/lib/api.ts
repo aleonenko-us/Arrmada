@@ -730,10 +730,20 @@ export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events
   id?: number;
   /** Left out keeps the saved choices. */
   options?: AlertOptions;
+  /** On a Test: the catalog event whose realistic sample is sent ("" or absent = a plain test). */
+  event?: string;
 };
 
 /** One input on an alert preset's form. options = a choice, the first being the default. */
-export interface AlertPresetField { name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[] }
+export interface AlertPresetField {
+  name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[];
+  /** The words shown for options, in the same order. */
+  option_labels?: string[];
+  /** Shown only while another field has a value: "auth=header". */
+  show_when?: string;
+  /** The page makes a random value (a signing secret) to copy before saving. */
+  generate?: boolean;
+}
 /** A "Where should alerts go?" tile. */
 export interface AlertPreset { kind: string; label: string; hint: string; fields: AlertPresetField[] }
 
