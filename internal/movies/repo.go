@@ -417,6 +417,31 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, movieID int64) {
 		`UPDATE movies SET last_search_at = datetime('now'), search_misses = 0 WHERE id = ?`, movieID)
 }
 
+// SetSearchPaced marks (or unmarks) a movie as added in bulk: the missing sweep searches
+// only a few marked movies per run (migration 0323).
+func (r *Repo) SetSearchPaced(ctx context.Context, movieID int64, on bool) error {
+	_, err := r.q().ExecContext(ctx, `UPDATE movies SET search_paced = ? WHERE id = ?`, boolToInt(on), movieID)
+	return err
+}
+
+// PacedSearchIDs is every movie still marked as added in bulk, in one query.
+func (r *Repo) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := r.q().QueryContext(ctx, `SELECT id FROM movies WHERE search_paced = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // SetFile marks a movie as having a file at path.
 func (r *Repo) SetFile(ctx context.Context, id int64, path string) error {
 	// A file recorded now is one that's there: any old "missing" flag goes with the old record.

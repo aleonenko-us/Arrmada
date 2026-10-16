@@ -882,6 +882,35 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, seriesID int64) {
 		`UPDATE series SET last_search_at = datetime('now'), search_misses = 0 WHERE id = ?`, seriesID)
 }
 
+// SetSearchPaced marks (or unmarks) a show as added in bulk: the missing sweep searches
+// only a few marked shows per run (migration 0323).
+func (r *Repo) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE series SET search_paced = ? WHERE id = ?`, v, seriesID)
+	return err
+}
+
+// PacedSearchIDs is every show still marked as added in bulk, in one query.
+func (r *Repo) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM series WHERE search_paced = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // SearchCursors returns where the last sweep stopped in the season fan-out and in the
 // anime absolute-number follow-up, so the next one resumes instead of restarting at the
 // lowest season and starving everything past the query budget.

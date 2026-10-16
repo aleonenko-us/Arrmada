@@ -140,6 +140,22 @@ func (s *Service) isRoot(dir string) bool {
 	return false
 }
 
+// LibraryFolderOf is the TV folder holding path (its id; 0 is the default folder), and
+// whether path is inside any TV folder at all.
+func (s *Service) LibraryFolderOf(ctx context.Context, path string) (int64, bool) {
+	if s.folders != nil {
+		f, ok := s.folders.Owner(ctx, libfolders.MediaSeries, path)
+		return f.ID, ok
+	}
+	root := s.libRoot()
+	if root == "" {
+		return libfolders.DefaultID, false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	ok := err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return libfolders.DefaultID, ok
+}
+
 // RootFor is the TV folder show sr lives in, for importing and renaming its episodes:
 // the folder its files are in when that's one of the library's, otherwise the folder it's
 // assigned to. "" (the importer's default TV folder) when the library has one folder.
@@ -2092,6 +2108,17 @@ func (s *Service) RecordSearchMiss(ctx context.Context, seriesID int64) {
 // ResetSearchMisses clears the search backoff (a grab succeeded).
 func (s *Service) ResetSearchMisses(ctx context.Context, seriesID int64) {
 	s.repo.ResetSearchMisses(ctx, seriesID)
+}
+
+// SetSearchPaced marks a show as added in bulk (a Sonarr import), so the missing sweep
+// takes it in its turn rather than searching every imported show at once; off clears it.
+func (s *Service) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
+	return s.repo.SetSearchPaced(ctx, seriesID, on)
+}
+
+// PacedSearchIDs is every show still waiting its turn after a bulk add.
+func (s *Service) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	return s.repo.PacedSearchIDs(ctx)
 }
 
 // SearchCursors returns where the last sweep stopped in the season fan-out and the
