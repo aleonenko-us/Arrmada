@@ -393,8 +393,27 @@ func (c *Coordinator) HoldMovieImport(ctx context.Context, hash, name, contentPa
 		return "couldn't check the movie it was grabbed for", true
 	}
 	parsed := parser.Parse(name)
-	if m, matched := c.movies.Match(ctx, parsed.Title, parsed.Year); matched && m.ID == expected.ID {
+	m, matched := c.movies.Match(ctx, parsed.Title, parsed.Year)
+	if matched && m.ID == expected.ID {
 		return "", false // content matches the movie it was grabbed for
+	}
+	if !matched {
+		// No library film goes by this name. A download named in another language — a
+		// German tracker's "Der.grosse.Trip.Wild" grabbed for Wild — is still the film it
+		// was grabbed for when the name is one of that film's in any language. This only
+		// confirms the grab's own film; it can never pick another one. A name another
+		// library film goes by never gets here (matched above), and when the names can't
+		// be read it's held for review as before.
+		ok, err := c.movies.KnownAs(ctx, expected, parsed.Title, parsed.Year)
+		if ok {
+			c.log.Info("movie import: download is named by one of the film's other titles",
+				"movie", expected.Title, "release", name)
+			return "", false
+		}
+		if err != nil {
+			c.log.Warn("movie import: couldn't read the film's other titles — holding for review",
+				"movie", expected.Title, "release", name, "err", err)
+		}
 	}
 	reason := fmt.Sprintf("Grabbed for %q but the download looks like %q", titleYear(expected.Title, expected.Year), titleYear(parsed.Title, parsed.Year))
 	c.addReview(ctx, Review{
