@@ -231,7 +231,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 				}
 				// e.Runtime (episode minutes) drives the bitrate threshold; 0 (unknown)
 				// falls back to quality-only upgrades inside UpgradeCandidate.
-				cur := c.currentEpisodeFile(ctx, e)
+				cur := c.currentEpisodeFile(ctx, s, e)
 				// Out of headroom: the file meets the profile's target, or it's at the best
 				// resolution the profile allows and far enough up the bitrate ceiling that
 				// the next percentage step lands above it. Nothing the profile would accept

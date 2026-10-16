@@ -64,7 +64,11 @@ func (s *Service) IndexedFiles(ctx context.Context, mediaType string, seriesID i
 // Facts is what the ideal-file check needs from an analysis. A Dolby Vision file reports
 // the format under its Dolby Vision layer as its HDR; the bitrate is the whole file's,
 // the same figure the library tables show.
-func Facts(mi *MediaInfo) quality.FileFacts {
+func Facts(mi *MediaInfo) quality.FileFacts { return FactsHeard(mi, nil) }
+
+// FactsHeard is Facts with the languages the subtitle AI heard on untagged audio tracks
+// (by 0:a:N index), for the profile's language rules.
+func FactsHeard(mi *MediaInfo, heard map[int]string) quality.FileFacts {
 	f := quality.FileFacts{
 		Resolution:  mi.Resolution,
 		Codec:       codecClass(mi.VideoCodec),
@@ -85,6 +89,7 @@ func Facts(mi *MediaInfo) quality.FileFacts {
 			f.LosslessCodec = losslessLabel(au.Codec)
 		}
 	}
+	f.AudioLangs, f.AudioUntagged = audioLangs(mi, heard)
 	return f
 }
 
@@ -127,7 +132,17 @@ func (s *Service) FactsForPath(ctx context.Context, path string, sizeBytes int64
 	if err != nil {
 		return quality.FileFacts{}, false
 	}
-	return factsIfCurrent(indexedFacts{size: size, ver: ver, codec: codec, infoJSON: infoJSON}, sizeBytes)
+	r := indexedFacts{size: size, ver: ver, codec: codec, infoJSON: infoJSON}
+	mi, ok := r.current(sizeBytes)
+	if !ok {
+		return quality.FileFacts{}, false
+	}
+	// An untagged audio track is read as what the subtitle AI heard on it, when it listened.
+	var heard map[int]string
+	if untaggedAudio(mi) {
+		heard = s.heardFor(ctx, path, sizeBytes)
+	}
+	return FactsHeard(mi, heard), true
 }
 
 // indexedFacts is one convert_library row as the facts lookup reads it.
@@ -136,19 +151,30 @@ type indexedFacts struct {
 	ver      int
 	codec    string
 	infoJSON string
+	// heard is what the subtitle AI heard on the file's untagged audio tracks (FactsByPath).
+	heard map[int]string
 }
 
-// factsIfCurrent applies the gates FactsForPath and FactsIndex share.
-func factsIfCurrent(r indexedFacts, sizeBytes int64) (quality.FileFacts, bool) {
+// current applies the gates FactsForPath and FactsIndex share, and decodes the analysis.
+func (r indexedFacts) current(sizeBytes int64) (*MediaInfo, bool) {
 	// An empty codec marks a probe that failed; a size mismatch, a different file.
 	if sizeBytes <= 0 || r.size != sizeBytes || r.ver != probeSchemaVersion || r.codec == "" || r.infoJSON == "" {
-		return quality.FileFacts{}, false
+		return nil, false
 	}
 	var mi MediaInfo
 	if json.Unmarshal([]byte(r.infoJSON), &mi) != nil || mi.VideoCodec == "" {
+		return nil, false
+	}
+	return &mi, true
+}
+
+// factsIfCurrent is the facts of a row that still describes the file.
+func factsIfCurrent(r indexedFacts, sizeBytes int64) (quality.FileFacts, bool) {
+	mi, ok := r.current(sizeBytes)
+	if !ok {
 		return quality.FileFacts{}, false
 	}
-	return Facts(&mi), true
+	return FactsHeard(mi, r.heard), true
 }
 
 // FactsIndex is every analysed file of one media type, for callers judging many files at
@@ -186,5 +212,21 @@ func (s *Service) FactsByPath(ctx context.Context, mediaType string) (FactsIndex
 		}
 		out[p] = r
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// What the subtitle AI heard on untagged tracks, read once for the whole index.
+	if s.detected != nil && len(out) > 0 {
+		sizes := make(map[string]int64, len(out))
+		for p, r := range out {
+			sizes[p] = r.size
+		}
+		for p, heard := range s.detected(ctx, sizes) {
+			if r, ok := out[p]; ok {
+				r.heard = heard
+				out[p] = r
+			}
+		}
+	}
+	return out, nil
 }

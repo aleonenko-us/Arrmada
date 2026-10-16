@@ -138,7 +138,7 @@ func TestEpisodeImportGateHonoursConvertedFrom(t *testing.T) {
 
 	// The sweep sees the same baseline.
 	s, _ = svc.Get(ctx, 1)
-	cur := c.currentEpisodeFile(ctx, s.Seasons[0].Episodes[0])
+	cur := c.currentEpisodeFile(ctx, s, s.Seasons[0].Episodes[0])
 	if cur.OrigRelease != orig || cur.OrigSizeGB != 4 {
 		t.Fatalf("episode current file = %+v", cur)
 	}

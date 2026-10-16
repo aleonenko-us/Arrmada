@@ -1286,7 +1286,7 @@ func (c *Coordinator) wantsEpisodeFile(ctx context.Context, s series.Series, sea
 	}
 	// What Convert's analysis found in the file beats both names: a converted file is
 	// AV1 or HEVC whatever it was released as, and its real resolution is known.
-	curFile := c.episodeFileOf(ctx, cur)
+	curFile := c.episodeFileOf(ctx, s, cur)
 	if curFile.Facts != nil {
 		probed := quality.ReleaseWithFacts(curParsed, *curFile.Facts)
 		curParsed.Resolution, curParsed.Codec = probed.Resolution, probed.Codec

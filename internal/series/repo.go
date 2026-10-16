@@ -1294,6 +1294,9 @@ type LibraryEpisodeFile struct {
 	// What the file was before Convert first shrank it ("" / 0 when never converted).
 	ConvertedFromRelease string
 	ConvertedFromSize    int64
+	// OrigLanguage is the show's original language (TMDB), for a profile's Audio language
+	// rules; "" when unknown.
+	OrigLanguage string
 }
 
 // LibraryEpisodeFiles lists every episode that has a file, across all shows, in one query —
@@ -1302,7 +1305,8 @@ func (r *Repo) LibraryEpisodeFiles(ctx context.Context) ([]LibraryEpisodeFile, e
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT e.id, e.series_id, s.title, s.quality_profile, s.monitored, e.season_number, e.episode_number,
 		        e.monitored, e.file_path, e.size_bytes, e.source_release, e.runtime, e.upgrade_hold,
-		        e.converted_from_release, e.converted_from_size
+		        e.converted_from_release, e.converted_from_size,
+		        COALESCE(CASE WHEN json_valid(s.extra_json) THEN json_extract(s.extra_json, '$.original_language') END, '')
 		   FROM episodes e JOIN series s ON s.id = e.series_id
 		  WHERE e.has_file = 1
 		  ORDER BY s.title, e.season_number, e.episode_number`)
@@ -1316,7 +1320,7 @@ func (r *Repo) LibraryEpisodeFiles(ctx context.Context) ([]LibraryEpisodeFile, e
 		var smon, emon, hold int
 		if err := rows.Scan(&f.EpisodeID, &f.SeriesID, &f.SeriesTitle, &f.SeriesProfile, &smon, &f.Season, &f.Episode,
 			&emon, &f.Path, &f.SizeBytes, &f.SourceRelease, &f.RuntimeMin, &hold,
-			&f.ConvertedFromRelease, &f.ConvertedFromSize); err != nil {
+			&f.ConvertedFromRelease, &f.ConvertedFromSize, &f.OrigLanguage); err != nil {
 			return nil, err
 		}
 		f.SeriesMonitored, f.Monitored, f.Held = smon != 0, emon != 0, hold != 0
