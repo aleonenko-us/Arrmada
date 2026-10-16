@@ -48,8 +48,10 @@ func TestReleaseLangs(t *testing.T) {
 	}
 }
 
-// Probed tracks win over the name; an untagged track is read the way the name reads, and
-// with no audio probed the name stands.
+// A file on disk: probed tracks win over the name, an untagged track is read as the name
+// states, and nothing is ever assumed from an untagged name — a file with nothing to read
+// stays unknown. An all-English probe (the tag tools write when nobody set one) can't
+// contradict a name that explicitly names other languages: the file is read as both.
 func TestFileLangsProbedWinOverTheName(t *testing.T) {
 	german := releaseLangs(parser.Parse("Film.2021.GERMAN.1080p.BluRay.x264-GRP"), "en")
 	untagged := releaseLangs(parser.Parse("Film.2021.1080p.BluRay.x264-GRP"), "en")
@@ -61,14 +63,19 @@ func TestFileLangsProbedWinOverTheName(t *testing.T) {
 		open  bool
 		known bool
 	}{
-		{"no facts", nil, german, []string{"de"}, false, true},
+		{"no facts, a name that says German", nil, german, []string{"de"}, false, true},
+		{"no facts, an untagged name: unknown", nil, untagged, nil, false, false},
 		{"facts without audio", &FileFacts{}, german, []string{"de"}, false, true},
-		{"the probe says English only, whatever the name", &FileFacts{AudioLangs: []string{"eng"}}, german, []string{"en"}, false, true},
+		{"facts without audio, untagged name: unknown", &FileFacts{}, untagged, nil, false, false},
+		{"a tagged Italian track wins over the name", &FileFacts{AudioLangs: []string{"ita"}}, german, []string{"it"}, false, true},
+		{"an all-English probe and a name that says German: both", &FileFacts{AudioLangs: []string{"eng"}}, german, []string{"en", "de"}, false, true},
+		{"an all-English probe and an untagged name: English", &FileFacts{AudioLangs: []string{"eng"}}, untagged, []string{"en"}, false, true},
 		{"two tagged tracks", &FileFacts{AudioLangs: []string{"ger", "eng"}}, untagged, []string{"de", "en"}, false, true},
-		{"a tagged track and an untagged one read as the name", &FileFacts{AudioLangs: []string{"ger"}, AudioUntagged: true}, untagged, []string{"de", "en"}, false, true},
+		{"an untagged track beside an untagged name may be anything", &FileFacts{AudioLangs: []string{"ger"}, AudioUntagged: true}, untagged, []string{"de"}, true, true},
 		{"only untagged tracks: the name speaks", &FileFacts{AudioUntagged: true}, german, []string{"de"}, false, true},
 		{"untagged with nothing to read it by", &FileFacts{AudioLangs: []string{"ger"}, AudioUntagged: true}, langSet{}, []string{"de"}, true, true},
 		{"nothing at all", &FileFacts{AudioUntagged: true}, langSet{}, nil, true, false},
+		{"Norwegian written forms fold", &FileFacts{AudioLangs: []string{"nob", "nno"}}, untagged, []string{"no"}, false, true},
 	}
 	for _, tc := range cases {
 		s := fileLangs(tc.f, tc.named)
@@ -118,16 +125,23 @@ func TestLanguageMustRefusesByName(t *testing.T) {
 		d := engineIn(mode).Decide(p, []Candidate{
 			enCand("Film.2021.1080p.BluRay.x264-ENG", 12),
 			enCand("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6),
-			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // MULTi alone doesn't say German
+			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // MULTi alone may carry German
 			enCand("Film.2021.GERMAN.1080p.WEB-DL.x264-GO", 5),
+			enCand("Film.2021.iTALiAN.1080p.WEB-DL.x264-IT", 5),
 		})
-		if len(d.Eligible) != 2 {
-			t.Fatalf("eligible %d, want the two German releases", len(d.Eligible))
+		if len(d.Eligible) != 3 || len(d.Rejected) != 2 {
+			t.Fatalf("eligible %d rejected %d, want the two German releases and the MULTi one", len(d.Eligible), len(d.Rejected))
 		}
 		for _, ev := range d.Rejected {
 			if ev.RejectCode != RejectMissingLanguage || !strings.HasPrefix(ev.RejectReason, "Missing German audio") {
 				t.Errorf("%s: %s %q", ev.Candidate.Name, ev.RejectCode, ev.RejectReason)
 			}
+		}
+		// A MULTi that doesn't name German isn't refused, and earns no German credit: the
+		// releases that say German rank above it.
+		last := d.Eligible[2]
+		if last.Candidate.Name != "Film.2021.MULTi.1080p.BluRay.x264-MUL" || containsStr(last.Matched, "German audio") {
+			t.Errorf("MULTi ranked %+v", last)
 		}
 		// German with the original beats German alone on nothing language-wise (both have
 		// the Must); the heavier one wins as it would without the rule.
@@ -135,6 +149,52 @@ func TestLanguageMustRefusesByName(t *testing.T) {
 			t.Errorf("winner %s", winnerName(d))
 		}
 	})
+}
+
+// DUAL / Dual Audio on a foreign title is the original plus English, so an English Must
+// grabs anime dual-audio releases; a MULTi that names nothing is the original and unnamed
+// others, so a French Must doesn't refuse a French film's MULTi either.
+func TestDualAudioAndMultiUnderAMust(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		en := Profile{AllowedResolutions: []parser.Resolution{parser.Res1080p}, Languages: map[string]string{"en": PrefMust}}
+		for _, n := range []string{"[Group] Show - 05 (1080p) [Dual Audio] [ABCD1234]", "Show.S01E05.1080p.BluRay.x264.Dual-Audio-GRP"} {
+			ev := engineIn(mode).Evaluate(en, NewCandidate(n, 1, 50).WithLanguage("ja"))
+			if !ev.Eligible || !containsStr(ev.Matched, "English audio") || !reflect.DeepEqual(ev.AudioLangs, []string{"ja", "en"}) {
+				t.Errorf("%s: eligible %v %q matched %v langs %v", n, ev.Eligible, ev.RejectReason, ev.Matched, ev.AudioLangs)
+			}
+		}
+		multi := engineIn(mode).Evaluate(en, NewCandidate("Show.S01E05.1080p.WEB.x264.MULTi-GRP", 1, 50).WithLanguage("ja"))
+		if !multi.Eligible || containsStr(multi.Matched, "English audio") {
+			t.Errorf("MULTi on a Japanese title: eligible %v %q, matched %v", multi.Eligible, multi.RejectReason, multi.Matched)
+		}
+		fr := Profile{Languages: map[string]string{"fr": PrefMust}}
+		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("en")); !ev.Eligible {
+			t.Errorf("French Must refused an English film's MULTi: %q", ev.RejectReason)
+		}
+		// Dual Audio on an English title names only English: German stays unknown.
+		de := Profile{Languages: map[string]string{"de": PrefMust}}
+		if ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en")); !ev.Eligible || ev.AudioLangsNote == "" {
+			t.Errorf("Dual Audio on an English film: %+v", ev)
+		}
+	})
+}
+
+// Foreign-only stands aside per release, only for one carrying a language the profile
+// asked for: "Prefer original" or "Prefer German" doesn't let an Italian-only 2160p beat
+// the English 1080p.
+func TestForeignOnlyStillGuardsPreferProfiles(t *testing.T) {
+	for _, row := range []map[string]string{nil, {LangOriginal: PrefWant}, {"de": PrefWant}} {
+		forEachRanking(t, func(t *testing.T, mode string) {
+			p := Profile{AllowedResolutions: []parser.Resolution{parser.Res1080p, parser.Res2160p}, Languages: row, OwnerLanguages: []string{"en", "de"}}
+			d := engineIn(mode).Decide(p, []Candidate{
+				enCand("Film.2021.1080p.BluRay.x264-GRP", 10),
+				enCand("Film.2021.iTALiAN.2160p.UHD.BluRay.x265-GRP", 30),
+			})
+			if winnerName(d) != "Film.2021.1080p.BluRay.x264-GRP" {
+				t.Errorf("rules %v: winner %s", row, winnerName(d))
+			}
+		})
+	}
 }
 
 // Prefer ranks a release with the language up — on the preferences key under v2, as a
@@ -277,14 +337,17 @@ func onDisk(release string, facts *FileFacts) CurrentFile {
 	return CurrentFile{Release: release, SizeGB: 8, RuntimeMin: 120, Facts: facts, OrigLanguage: "en"}
 }
 
-// A file missing a Want language is upgraded to a release that has it, on the preferences
-// key, by the sweep and the import gate alike, in both rankings.
+// englishOnly is a probed file whose one track is English.
+var englishOnly = &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"eng"}}
+
+// A file known to lack a Want language is upgraded to a release that has it, on the
+// preferences key, by the sweep and the import gate alike, in both rankings.
 func TestLanguageWantUpgrades(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
 		s, ctx := testService(t)
 		setRanking(t, s, mode)
 		ref := upgradeProfile(t, s, langStored(map[string]string{"de": PrefWant}, TriggerFormat))
-		cur := onDisk("Film.2021.1080p.BluRay.x264-ENG", nil)
+		cur := onDisk("Film.2021.1080p.BluRay.x264-ENG", englishOnly)
 		german := enCand("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6)
 		pick, key, ok := s.UpgradePick(ctx, ref, cur, []Candidate{german})
 		if !ok || pick.Name != german.Name || key != KeyPreferences {
@@ -306,9 +369,50 @@ func TestLanguageWantUpgrades(t *testing.T) {
 	})
 }
 
+// A file with nothing to read — no analysis and a name that states no language, or only
+// untagged tracks — is never judged on a guess: it still fits a Must, isn't upgraded for
+// a language under a Must or a Prefer (sweep and import gate alike), meets the target
+// otherwise, and gets no badge colour.
+func TestUnreadFilesAreLeftAlone(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		s, ctx := testService(t)
+		setRanking(t, s, mode)
+		german := enCand("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6)
+		for _, row := range []map[string]string{{"de": PrefMust}, {"de": PrefWant}, {LangOriginal: PrefMust, "de": PrefWant}} {
+			ref := upgradeProfile(t, s, langStored(row, TriggerAny))
+			sp, _ := s.GetStored(ctx, ref)
+			for _, cur := range []CurrentFile{
+				onDisk("Film.2021.1080p.BluRay.x264-ENG", nil),
+				onDisk("Film 2021 1080p BluRay x264", &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioUntagged: true}),
+			} {
+				if v := sp.JudgeFile(cur); !v.Eligible || v.Current.langShort {
+					t.Errorf("%v %q: eligible %v short %v %q", row, cur.Release, v.Eligible, v.Current.langShort, v.Current.RejectReason)
+				}
+				if _, key, ok := s.UpgradePick(ctx, ref, cur, []Candidate{german}); ok {
+					t.Errorf("%v %q: upgraded for a language nobody read (%s)", row, cur.Release, key)
+				}
+				if s.IsQualityUpgrade(ctx, ref, german.Name, 6, cur) {
+					t.Errorf("%v %q: the import gate took a language upgrade over an unread file", row, cur.Release)
+				}
+				if f := sp.LanguageFit(cur); f != nil {
+					t.Errorf("%v %q: coloured %+v", row, cur.Release, f)
+				}
+			}
+		}
+		// An untagged track beside a German one may be English: under "German + Prefer
+		// original" the file isn't upgraded for English, and has no colour.
+		ref := upgradeProfile(t, s, langStored(map[string]string{"de": PrefMust, LangOriginal: PrefWant}, TriggerAny))
+		cur := onDisk("Film.2021.1080p.BluRay.x264-GRP", &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"ger"}, AudioUntagged: true})
+		if _, _, ok := s.UpgradePick(ctx, ref, cur, []Candidate{enCand("Film.2021.German.DL.1080p.WEB-DL.x264-DUAL", 6)}); ok {
+			t.Error("upgraded for English the untagged track may already be")
+		}
+	})
+}
+
 // A file on disk is judged by its probed tracks, which win over its name: a file named
-// GERMAN whose only track is English lacks German; an untagged-name file whose tracks
-// include German has it.
+// GERMAN whose tagged track is Italian lacks German. A probe that says only English can't
+// contradict the name, though — "eng" is what tools write when nobody set a language — so
+// that file is read as both. An untagged-name file whose tracks include German has it.
 func TestLanguageProbedFileWinsOverName(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
 		s, ctx := testService(t)
@@ -323,9 +427,13 @@ func TestLanguageProbedFileWinsOverName(t *testing.T) {
 		ref := upgradeProfile(t, s, langStored(map[string]string{"de": PrefMust}, trigger))
 		sp, _ := s.GetStored(ctx, ref)
 
-		namedOnly := onDisk("Film.2021.GERMAN.1080p.BluRay.x264-GO", &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"eng"}})
+		namedOnly := onDisk("Film.2021.GERMAN.1080p.BluRay.x264-GO", &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"ita"}})
 		if v := sp.JudgeFile(namedOnly); v.Eligible || v.Current.RejectCode != RejectMissingLanguage {
-			t.Errorf("an English-only file named GERMAN fits a German Must: %+v", v.Current.RejectReason)
+			t.Errorf("an Italian-only file named GERMAN fits a German Must: %+v", v.Current.RejectReason)
+		}
+		defaultTag := onDisk("Film.2021.GERMAN.1080p.BluRay.x264-GO", englishOnly)
+		if v := sp.JudgeFile(defaultTag); !v.Eligible {
+			t.Errorf("an eng-tagged file named GERMAN doesn't fit: %s", v.Current.RejectReason)
 		}
 		probedDE := onDisk("Film.2021.1080p.BluRay.x264-ENG", &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"eng", "ger"}})
 		if v := sp.JudgeFile(probedDE); !v.Eligible {
@@ -469,22 +577,24 @@ func TestIdealLanguageRoundTripAndSummary(t *testing.T) {
 }
 
 // The save dry run counts what a new language Must would make replaceable, reading each
-// file the way the sweeps do: its probed tracks, its title's original language.
+// file the way the sweeps do: its probed tracks, its name when it states languages, and
+// never a guess — a file with nothing to read isn't counted.
 func TestImpactCountsALanguageMust(t *testing.T) {
 	s, ctx := testService(t)
 	old := impactProfile(t, s, ctx, nil)
 	files := []ImpactFile{
-		{Title: "English only", Release: "A.2020.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en"},
+		{Title: "English only", Release: "A.2020.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en", Facts: englishOnly},
 		{Title: "Dual audio", Release: "B.2020.German.DL.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en"},
-		{Title: "German film", Release: "C.2020.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "de"},
+		{Title: "French dub", Release: "C.2020.FRENCH.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en"},
 		{Title: "Probed German", Release: "D.2020.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en",
 			Facts: &FileFacts{Resolution: "1080p", Codec: "h264", HDR: "SDR", AudioLangs: []string{"en", "de"}}},
+		{Title: "Not read", Release: "E.2020.1080p.BluRay.x264-GRP", Bytes: bytesAt(10), RuntimeMin: 120, OrigLanguage: "en"},
 	}
 	edited := old
 	edited.Ideal = &IdealFile{Language: map[string]string{"de": PrefMust}}
 	got := s.Impact(ctx, old, edited, files)
-	if got.Replace.Files != 1 || got.Replace.Examples[0] != "English only" {
-		t.Errorf("replace = %+v, want only the English-only file", got.Replace)
+	if got.Replace.Files != 2 || got.Replace.Examples[0] != "English only" || got.Replace.Examples[1] != "French dub" {
+		t.Errorf("replace = %+v, want the English-only file and the French dub", got.Replace)
 	}
 }
 
@@ -504,10 +614,52 @@ func TestConvertedOriginalReadWithTheTitleLanguage(t *testing.T) {
 	s, ctx := testService(t)
 	setRanking(t, s, RankingV2)
 	ref := upgradeProfile(t, s, langStored(map[string]string{"de": PrefWant}, TriggerFormat))
-	cur := onDisk("Film.2021.1080p.BluRay.x265-GRP", nil)
+	cur := onDisk("Film.2021.1080p.BluRay.x265-GRP", englishOnly)
 	cur.OrigRelease, cur.OrigSizeGB = "Film.2021.1080p.BluRay.x264-GRP", 14
 	german := enCand("Film.2021.German.DL.1080p.BluRay.x264-GER", 12)
 	if _, key, ok := s.UpgradePick(ctx, ref, cur, []Candidate{german}); !ok || key != KeyPreferences {
 		t.Errorf("upgrade over a converted English file = %v %s, want the German release on preferences", ok, key)
+	}
+}
+
+// German TV's dub names carry German under a German Must, however they're written; an
+// episode title with a language word in it doesn't.
+func TestGermanTVNamesUnderAGermanMust(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		p := Profile{AllowedResolutions: []parser.Resolution{parser.Res720p, parser.Res1080p}, Languages: map[string]string{"de": PrefMust}}
+		for _, n := range []string{
+			"Show.S01E01.German.720p.WEB.h264-GRP",
+			"Show.S01E01.German.Dubbed.720p.WEB.h264-GRP",
+			"Show.S01E01.German.DL.720p.WEB.h264-GRP",
+			"Show.S01E01.GERMAN.720p.WEB.h264-GRP",
+			"Show.S01.German.720p.WEB.h264-GRP",
+			"Show.S01E01.German.AC3.720p.WEB.h264-GRP",
+		} {
+			if ev := engineIn(mode).Evaluate(p, NewCandidate(n, 1, 50).WithLanguage("en")); !ev.Eligible {
+				t.Errorf("%s refused: %q", n, ev.RejectReason)
+			}
+		}
+		if ev := engineIn(mode).Evaluate(p, NewCandidate("Show.S01E01.Going.Dutch.720p.WEB.h264-GRP", 1, 50).WithLanguage("en")); ev.Eligible {
+			t.Error("an episode titled Going Dutch read as a dub")
+		}
+	})
+}
+
+// Norwegian's written forms are one language: a Bokmål or Nynorsk track meets a Norwegian
+// title's "Original language" Must, and a nb/nn rule matches a "nor" track.
+func TestNorwegianFolds(t *testing.T) {
+	sp := StoredProfile{MediaType: MediaMovie, Ideal: &IdealFile{Language: map[string]string{LangOriginal: PrefMust}}}
+	for _, tag := range []string{"nor", "nob", "no", "nb", "nno"} {
+		cur := CurrentFile{Release: "Film.2021.1080p.BluRay.x264-GRP", SizeGB: 10, OrigLanguage: "no",
+			Facts: &FileFacts{Resolution: "1080p", Codec: "h264", AudioLangs: []string{tag}}}
+		if v := sp.JudgeFile(cur); !v.Eligible {
+			t.Errorf("track %s: %q", tag, v.Current.RejectReason)
+		}
+		if f := sp.LanguageFit(cur); f == nil || f.Status != langs.AudioFitGood {
+			t.Errorf("track %s: fit %+v", tag, f)
+		}
+	}
+	if row := normLanguageRow(map[string]string{"nb": PrefMust}); row["no"] != PrefMust {
+		t.Errorf("a Bokmål rule: %v", row)
 	}
 }

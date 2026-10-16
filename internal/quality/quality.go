@@ -333,9 +333,11 @@ type Candidate struct {
 	// setting OrigLanguage there would start the Unwanted pack's foreign-only check on
 	// files it has never judged.
 	ruleLang string
-	// heard is the file's probed facts when the candidate is a file on disk: its tracks'
-	// languages win over what its name says (lang.go fileLangs).
-	heard *FileFacts
+	// onDisk marks the candidate as a file in the library (CurrentFile.candidate): its
+	// languages are read by fileLangs, never assumed from an untagged name, and heard is
+	// its probed facts (nil without an analysis).
+	onDisk bool
+	heard  *FileFacts
 }
 
 // alive reports whether the release can download at all: a usenet release always can, a
@@ -499,6 +501,11 @@ type Evaluation struct {
 	langPrefs   int
 	langMatched []string
 	langShort   bool
+	// langPrefCodes are the codes behind langPrefs, and langUnknown the Must or Prefer
+	// languages it may or may not carry: an upgrade gets no credit for a language the file
+	// might already have (upgradeBar.creditable).
+	langPrefCodes []string
+	langUnknown   []string
 	// langAvoided: every language it carries is avoided (it's in the avoided tier for that).
 	langAvoided bool
 	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
@@ -599,7 +606,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		audio = c.audioLangs()
 		ev.AudioLangs, ev.AudioLangsNote = audio.describe()
 		lv = judgeLangs(p.languageRules(c), audio)
-		ev.langShort = lv.short
+		ev.langShort, ev.langPrefCodes, ev.langUnknown = lv.short, lv.prefs, lv.unknown
 	}
 
 	if len(p.AllowedResolutions) > 0 && !containsRes(p.AllowedResolutions, r.Resolution) {

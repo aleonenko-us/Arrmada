@@ -73,6 +73,7 @@ type upgradeBar struct {
 // upgrade is never refused when it arrives. The ranking in effect decides how: the summed
 // score under classic ranking (qualityGain, gainKey), the ordered keys under v2 (v2Gain).
 func (b upgradeBar) gain(trigger string, cand Evaluation) (RankKey, bool) {
+	cand = b.creditable(cand)
 	if b.mode == RankingV2 {
 		return b.v2Gain(trigger, cand)
 	}
@@ -80,6 +81,29 @@ func (b upgradeBar) gain(trigger string, cand Evaluation) (RankKey, bool) {
 		return b.gainKey(cand), true
 	}
 	return "", false
+}
+
+// creditable takes back the language credit cand earns for a language the file may already
+// carry (b.ev.langUnknown: nothing to read on it, or an untagged track that might be it).
+// An upgrade is only ever for a language the file is known to lack, so adding a language
+// rule never re-downloads files whose audio nobody has read.
+func (b upgradeBar) creditable(cand Evaluation) Evaluation {
+	n := 0
+	for _, code := range cand.langPrefCodes {
+		if containsStr(b.ev.langUnknown, code) {
+			n++
+		}
+	}
+	if n == 0 {
+		return cand
+	}
+	s := n * preferScore
+	cand.langPrefs -= n
+	cand.PrefCount -= n
+	cand.TargetScore -= s
+	cand.FormatScore -= s
+	cand.Total -= s
+	return cand
 }
 
 // intoAvoid reports a candidate the profile avoids where the file isn't avoided: never an
@@ -98,6 +122,7 @@ func (b upgradeBar) intoAvoid(cand Evaluation) bool {
 // under classic ranking; under v2, ranked no lower than either on the avoid and quality
 // keys, and a torrent someone is seeding.
 func (b upgradeBar) noWorse(cand Evaluation) bool {
+	cand = b.creditable(cand)
 	if b.mode != RankingV2 {
 		return cand.Total >= b.total
 	}
@@ -314,7 +339,7 @@ func (c CurrentFile) bitrateMbps() float64 {
 // facts, whose audio tracks the language rules read over the name.
 func (c CurrentFile) candidate() Candidate {
 	return Candidate{Name: c.Release, Release: c.release(), SizeGB: c.SizeGB, Seeders: 1_000_000,
-		ruleLang: strings.TrimSpace(c.OrigLanguage), heard: c.Facts}
+		ruleLang: strings.TrimSpace(c.OrigLanguage), onDisk: true, heard: c.Facts}
 }
 
 // known reports whether there is anything to judge the file by.

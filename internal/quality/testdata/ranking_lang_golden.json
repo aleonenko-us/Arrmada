@@ -138,6 +138,12 @@
         "format": 50,
         "target": 50,
         "quality": 258
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
       }
     ],
     "rejected": [
@@ -147,10 +153,6 @@
       },
       {
         "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
-        "Code": "missing_language"
-      },
-      {
-        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "Code": "missing_language"
       },
       {
@@ -215,6 +217,12 @@
         "format": 50,
         "target": 50,
         "quality": 258
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
       }
     ],
     "rejected": [
@@ -224,10 +232,6 @@
       },
       {
         "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
-        "Code": "missing_language"
-      },
-      {
-        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "Code": "missing_language"
       },
       {
@@ -461,18 +465,6 @@
         "quality": 258
       },
       {
-        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
-        "total": 268,
-        "format": 0,
-        "quality": 268
-      },
-      {
-        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
-        "total": 258,
-        "format": 0,
-        "quality": 258
-      },
-      {
         "name": "Film.2021.720p.WEB-DL.x264-SMALL",
         "total": 148,
         "matched": [
@@ -481,6 +473,24 @@
         "format": 50,
         "target": 50,
         "quality": 98
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
       }
     ]
   },
@@ -558,28 +568,34 @@
         "quality": 268
       },
       {
-        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
-        "total": 268,
-        "format": 0,
-        "quality": 268
-      },
-      {
         "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "total": 268,
         "format": 0,
         "quality": 268
       },
       {
-        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
-        "total": 258,
-        "format": 0,
-        "quality": 258
-      },
-      {
         "name": "Film.2021.720p.WEB-DL.x264-SMALL",
         "total": 98,
         "format": 0,
         "quality": 98
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
       }
     ]
   },
@@ -722,6 +738,12 @@
         "format": 50,
         "target": 50,
         "quality": 258
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
       }
     ],
     "rejected": [
@@ -731,10 +753,6 @@
       },
       {
         "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
-        "Code": "missing_language"
-      },
-      {
-        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "Code": "missing_language"
       },
       {
@@ -799,6 +817,12 @@
         "format": 50,
         "target": 50,
         "quality": 258
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
       }
     ],
     "rejected": [
@@ -808,10 +832,6 @@
       },
       {
         "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
-        "Code": "missing_language"
-      },
-      {
-        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "Code": "missing_language"
       },
       {
@@ -1045,18 +1065,6 @@
         "quality": 258
       },
       {
-        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
-        "total": 268,
-        "format": 0,
-        "quality": 268
-      },
-      {
-        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
-        "total": 258,
-        "format": 0,
-        "quality": 258
-      },
-      {
         "name": "Film.2021.720p.WEB-DL.x264-SMALL",
         "total": 148,
         "matched": [
@@ -1065,6 +1073,24 @@
         "format": 50,
         "target": 50,
         "quality": 98
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
       }
     ]
   },
@@ -1142,28 +1168,34 @@
         "quality": 268
       },
       {
-        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
-        "total": 268,
-        "format": 0,
-        "quality": 268
-      },
-      {
         "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
         "total": 268,
         "format": 0,
         "quality": 268
       },
       {
-        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
-        "total": 258,
-        "format": 0,
-        "quality": 258
-      },
-      {
         "name": "Film.2021.720p.WEB-DL.x264-SMALL",
         "total": 98,
         "format": 0,
         "quality": 98
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "avoided": [
+          "Foreign-only audio (French)"
+        ],
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
       }
     ]
   }

@@ -13,10 +13,9 @@ import (
 // code or LangOriginal, which stands for the title's own original language (TMDB's
 // original_language) — so "Original + German" is one profile for every title.
 //
-//   - Must: a release whose name doesn't carry the language is refused; a file on disk
-//     without it no longer fits (it is judged by its probed tracks, which win over its
-//     name). Each Must is needed — they are languages a file has together, not
-//     alternatives like codecs.
+//   - Must: a release whose name is known not to carry the language is refused; a file on
+//     disk known to lack it no longer fits. Each Must is needed — they are languages a
+//     file has together, not alternatives like codecs.
 //   - Prefer: every preferred (or required) language a release has counts on the
 //     preferences key (ranking v2), and scores like a preferred format (classic).
 //   - Avoid: a release whose every language is avoided drops to the avoided tier. An extra
@@ -25,10 +24,15 @@ import (
 // No entries is no rules: every release and file is judged exactly as before.
 //
 // What a release carries, by its name: an untagged release is the original language; a
-// MULTi/DUAL/DL one the original plus the languages it names (MULTi alone: the original and
-// others it doesn't name); a tagged one ("GERMAN", "iTALiAN") exactly the languages it
-// names. A title whose original language isn't known, with a release that names none,
-// can't be judged, and no rule is applied to it.
+// MULTi/DL one the original plus the languages it names; DUAL / Dual Audio on a foreign
+// title the original plus English; a tagged one ("GERMAN", "iTALiAN") exactly the
+// languages it names. MULTi naming none may carry others: a Must or Prefer it doesn't name
+// is unknown — neither refused nor credited. A title whose original language isn't known,
+// with a release that names none, can't be judged, and no rule is applied to it.
+//
+// A file on disk is read by fileLangs: its probed tracks, and its name only where the name
+// states languages — never assumed from an untagged name. A file with nothing to read is
+// left alone: it fits, isn't upgraded for a language, and has no badge colour.
 
 // LangOriginal is the Audio language entry for the title's original language.
 const LangOriginal = "original"
@@ -69,8 +73,9 @@ func (s *langSet) add(code string) {
 	}
 }
 
-// baseLang is a tag's base code, "" when the table doesn't know it.
-func baseLang(tag string) string { return langs.ISO1(tag) }
+// baseLang is a tag's base code ("" when the table doesn't know it), with Norwegian's
+// written forms folded together (langs.AudioBase).
+func baseLang(tag string) string { return langs.AudioBase(tag) }
 
 // releaseLangs reads the audio languages a release name carries (see the top of the file).
 func releaseLangs(r parser.Release, orig string) langSet {
@@ -82,6 +87,10 @@ func releaseLangs(r parser.Release, orig string) langSet {
 			return langSet{}
 		}
 		return langSet{codes: []string{o}, known: true, assumed: true}
+	case r.Multi && r.Dual && len(r.Languages) == 0 && o != "" && o != "en":
+		// DUAL / Dual Audio on a foreign title is the original plus English, the way anime
+		// and foreign-film groups use it. On an English title the second one is unnamed.
+		return langSet{codes: []string{o, "en"}, known: true}
 	case r.Multi:
 		s = langSet{known: true, open: len(r.Languages) == 0}
 		s.add(o)
@@ -94,27 +103,45 @@ func releaseLangs(r parser.Release, orig string) langSet {
 	return s
 }
 
-// fileLangs lays a file's probed audio over what its name says: the probe's tagged tracks
-// win; an untagged track is read the way its name reads (an untagged name: the original
-// language), and with nothing to read it by the set stays open. No probed audio at all
-// leaves the name's reading.
+// fileLangs reads a file on disk: its probed audio over what its name says. A file is
+// never judged on an assumption — an untagged name says nothing about it (where a release
+// on offer is read as the original language), so a file with nothing to read stays
+// unknown, and the rules leave it alone rather than replace a library on a guess.
+//
+//   - No probed audio: the name, when it states languages; else unknown.
+//   - Tagged tracks: those win. The one exception: tools write "eng" when nobody set a
+//     language, so when every tagged track is English and the name explicitly names other
+//     languages, the file is read as both rather than letting a default tag contradict
+//     the name.
+//   - An untagged track: read as the name states, when it does; else it may be anything,
+//     and the set stays open (an unnamed Must is unknown, never missing).
 func fileLangs(f *FileFacts, name langSet) langSet {
+	if name.assumed {
+		name = langSet{}
+	}
 	if f == nil || (len(f.AudioLangs) == 0 && !f.AudioUntagged) {
 		return name
 	}
 	s := langSet{known: true}
+	allEnglish := len(f.AudioLangs) > 0
 	for _, c := range f.AudioLangs {
-		s.add(baseLang(c))
+		code := baseLang(c)
+		s.add(code)
+		allEnglish = allEnglish && code == "en"
 	}
-	if f.AudioUntagged {
-		if name.known {
-			for _, c := range name.codes {
-				s.add(c)
-			}
-			s.open, s.assumed = name.open, name.assumed
-		} else {
-			s.open = true
-			s.known = len(s.codes) > 0
+	nameSays := name.known && len(name.codes) > 0
+	switch {
+	case f.AudioUntagged && nameSays:
+		for _, c := range name.codes {
+			s.add(c)
+		}
+		s.open = name.open
+	case f.AudioUntagged:
+		s.open = true
+		s.known = len(s.codes) > 0
+	case allEnglish && nameSays:
+		for _, c := range name.codes {
+			s.add(c)
 		}
 	}
 	return s
@@ -175,35 +202,49 @@ type langVerdict struct {
 	judged  bool     // there were rules and something to judge them by
 	missing []string // the Musts it lacks
 	prefs   []string // the preferred or required languages it has
-	short   bool     // a Must or a Prefer it lacks: it isn't the target yet
-	wants   int      // how many languages the rules prefer
-	wanted  int      // how many of those it has
-	avoided bool     // every language it carries is avoided
+	// unknown are the Must and Prefer languages it may or may not carry: an open set that
+	// doesn't name them (MULTi alone, an untagged track), or every rule when nothing can be
+	// told. Neither refused nor credited.
+	unknown []string
+	short   bool // a Must or a Prefer it's known to lack: it isn't the target yet
+	wants   int  // how many languages the rules prefer
+	wanted  int  // how many of those it has
+	avoided bool // every language it carries is avoided
 }
 
 func judgeLangs(rules map[string]string, s langSet) langVerdict {
 	var v langVerdict
-	if len(rules) == 0 || !s.known {
+	if len(rules) == 0 {
+		return v
+	}
+	if !s.known {
+		for _, code := range sortedLangKeys(rules) {
+			if st := rules[code]; st == PrefMust || st == PrefWant {
+				v.unknown = append(v.unknown, code)
+			}
+		}
 		return v
 	}
 	v.judged = true
 	for _, code := range sortedLangKeys(rules) {
 		st, has := rules[code], s.has(code)
-		switch st {
-		case PrefMust:
-			if has {
-				v.prefs = append(v.prefs, code)
-			} else {
-				v.missing = append(v.missing, code)
-			}
-		case PrefWant:
+		if st == PrefWant {
 			v.wants++
-			if has {
-				v.prefs = append(v.prefs, code)
+		}
+		switch {
+		case st != PrefMust && st != PrefWant:
+		case has:
+			v.prefs = append(v.prefs, code)
+			if st == PrefWant {
 				v.wanted++
 			}
-		}
-		if (st == PrefMust || st == PrefWant) && !has {
+		case s.open:
+			// It may carry it among the languages it doesn't name.
+			v.unknown = append(v.unknown, code)
+		case st == PrefMust:
+			v.missing = append(v.missing, code)
+			v.short = true
+		default:
 			v.short = true
 		}
 	}
@@ -229,11 +270,12 @@ func sortedLangKeys(m map[string]string) []string {
 	return keys
 }
 
-// positiveLangRules reports rules that say which languages are wanted (a Must or a Prefer):
-// the Unwanted pack's foreign-only item then defers to them.
-func positiveLangRules(rules map[string]string) bool {
-	for _, st := range rules {
-		if st == PrefMust || st == PrefWant {
+// carriesWanted reports a set that carries one of the rules' Must or Prefer languages: a
+// release the profile asked for by language is never foreign-only to it. Decided per
+// release, so "Prefer original" doesn't let an Italian-only dub of an English film in.
+func carriesWanted(rules map[string]string, s langSet) bool {
+	for code, st := range rules {
+		if (st == PrefMust || st == PrefWant) && s.has(code) {
 			return true
 		}
 	}
@@ -269,7 +311,7 @@ func (c Candidate) titleLang() string {
 // audioLangs is what the release (or, for a file on disk, the file) carries.
 func (c Candidate) audioLangs() langSet {
 	s := releaseLangs(c.Release, c.titleLang())
-	if c.heard != nil {
+	if c.onDisk {
 		s = fileLangs(c.heard, s)
 	}
 	return s
@@ -281,9 +323,9 @@ func (p Profile) languageRules(c Candidate) map[string]string {
 }
 
 // LanguageFit judges a file's audio languages against the profile's language rules, the
-// way the engine reads them (probed tracks over the release name, an untagged one as the
-// name reads it): the colour of the detail pages' language badges. nil when the profile
-// has no rules for this title, or nothing about the file can be judged.
+// way the engine reads them (fileLangs): the colour of the detail pages' language badges.
+// nil when the profile has no rules for this title, or when the file can't be judged on
+// them — nothing to read, or an untagged track that might be the language asked for.
 func (sp StoredProfile) LanguageFit(cur CurrentFile) *langs.AudioFit {
 	if sp.Ideal == nil {
 		return nil
@@ -297,9 +339,14 @@ func (sp StoredProfile) LanguageFit(cur CurrentFile) *langs.AudioFit {
 		return nil
 	}
 	var wants []string
+	unknownMust, unknownWant := false, false
 	for _, code := range sortedLangKeys(rules) {
 		if rules[code] == PrefWant {
 			wants = append(wants, code)
+		}
+		if containsStr(v.unknown, code) {
+			unknownMust = unknownMust || rules[code] == PrefMust
+			unknownWant = unknownWant || rules[code] == PrefWant
 		}
 	}
 	switch {
@@ -307,7 +354,12 @@ func (sp StoredProfile) LanguageFit(cur CurrentFile) *langs.AudioFit {
 		return &langs.AudioFit{Status: langs.AudioFitBad, Note: "No " + langNames(v.missing) + " audio, which this profile requires"}
 	case v.avoided:
 		return &langs.AudioFit{Status: langs.AudioFitBad, Note: "Only languages this profile avoids"}
+	case unknownMust:
+		return nil // an untagged track might be it: no colour rather than a guess
 	case v.wants > 0 && v.wanted == 0:
+		if unknownWant {
+			return nil
+		}
 		return &langs.AudioFit{Status: langs.AudioFitPartial, Note: "No " + langNamesOr(wants) + " audio, which this profile prefers"}
 	}
 	if len(v.prefs) == 0 {
