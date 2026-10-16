@@ -13,6 +13,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
@@ -161,7 +162,7 @@ func (a *api) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	out := dashboardPayload{
-		Storage:  a.storageVolumes(),
+		Storage:  a.storageVolumes(ctx),
 		Library:  a.libraryCounts(ctx),
 		Activity: a.recentActivity(ctx),
 	}
@@ -255,18 +256,31 @@ func (a *api) nowListening(ctx context.Context, r *http.Request) ([]nowListening
 // storageVolumes measures every configured root and folds the ones sharing a
 // filesystem together. Two roots on one array report byte-identical totals, which is
 // a cheaper and more portable identity than digging out a device id.
-func (a *api) storageVolumes() []storageVolume {
-	c := a.deps.Config
+func (a *api) storageVolumes(ctx context.Context) []storageVolume {
+	// The folders in use now (saved in the app, else the environment's) — not the
+	// environment's alone, which named the wrong disks after a folder was changed in the
+	// app — plus any extra Movies and TV folders.
+	rs := a.roots()
+	c := rs.Config(ctx)
 	type root struct{ label, path string }
 	roots := []root{
 		{"Movies", c.MoviesDir},
 		{"TV", c.TVDir},
-		{"Ebooks", c.EbooksDir},
-		{"Audiobooks", c.AudiobooksDir},
-		{"Music", c.MusicDir},
-		{"Downloads", c.DownloadsDir},
-		{"App data", c.DataDir},
 	}
+	for _, e := range rs.Extras(ctx) {
+		lib := "Movies"
+		if e.Media == libroots.MediaSeries {
+			lib = "TV"
+		}
+		roots = append(roots, root{lib + ": " + e.Label, e.Path})
+	}
+	roots = append(roots,
+		root{"Ebooks", c.EbooksDir},
+		root{"Audiobooks", c.AudiobooksDir},
+		root{"Music", c.MusicDir},
+		root{"Downloads", c.DownloadsDir},
+		root{"App data", c.DataDir},
+	)
 
 	var out []storageVolume
 	index := map[[2]uint64]int{}

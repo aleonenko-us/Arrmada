@@ -9,9 +9,11 @@ package health
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,7 +171,10 @@ func existing(path string) (string, bool) {
 // the same folder); Music when it's on; then Downloads. cfg should hold the folders the
 // user picked — the running config is overridden by the app's saved folders at boot, and
 // handlers overlay the saved values again so a pick made since boot is what's judged.
-func LibraryFolders(cfg config.Config, booksOn, musicOn bool) []Folder {
+//
+// extra are the additional Movies and TV folders (libroots.Extra), listed right after the
+// default ones, each judged like any other folder.
+func LibraryFolders(cfg config.Config, booksOn, musicOn bool, extra ...libroots.Extra) []Folder {
 	var out []Folder
 	add := func(role, label, path string) {
 		if path != "" {
@@ -178,6 +183,17 @@ func LibraryFolders(cfg config.Config, booksOn, musicOn bool) []Folder {
 	}
 	add("movies", "Movies", cfg.MoviesDir)
 	add("tv", "TV", cfg.TVDir)
+	for _, e := range extra {
+		lib, name := "movies", "Movies"
+		if e.Media == libroots.MediaSeries {
+			lib, name = "tv", "TV"
+		}
+		label := strings.TrimSpace(e.Label)
+		if label == "" {
+			label = filepath.Base(e.Path)
+		}
+		add(fmt.Sprintf("%s-%d", lib, e.ID), name+": "+label, e.Path)
+	}
 	if booksOn {
 		if cfg.EbooksDir != "" && filepath.Clean(cfg.EbooksDir) == filepath.Clean(cfg.AudiobooksDir) {
 			add("books", "Books & audiobooks", cfg.EbooksDir)

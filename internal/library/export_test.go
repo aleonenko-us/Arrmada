@@ -18,6 +18,3 @@ func SwapRecycleOps(t testing.TB, rename func(oldpath, newpath string) error, cp
 		removeFn = remove
 	}
 }
-
-// CopyVerified is copyVerified, for tests that wrap it.
-var CopyVerified = copyVerified

@@ -506,6 +506,30 @@ func (im *Importer) rootFor(fn func() string) string {
 func (im *Importer) movieDir() string { return im.rootFor(im.roots.Movie) }
 func (im *Importer) tvDir() string    { return im.rootFor(im.roots.TV) }
 
+// movieRoot is the library folder track t belongs in: its own Root when the movie lives in
+// one of several Movies folders, else the Movies folder.
+func (im *Importer) movieRoot(t MovieTrack) string {
+	if r := strings.TrimSpace(t.Root); r != "" {
+		return r
+	}
+	return im.movieDir()
+}
+
+// InTV is this importer with its TV folder fixed to root, for a show that lives in one of
+// several TV folders (internal/libfolders): every episode import, target and rescan
+// through it places files under root. "" returns the importer itself. The copy shares the
+// naming, bin and lookups; the importer keeps no other state, so it's safe to make one
+// per import.
+func (im *Importer) InTV(root string) *Importer {
+	root = strings.TrimSpace(root)
+	if im == nil || root == "" {
+		return im
+	}
+	c := *im
+	c.roots.TV = func() string { return root }
+	return &c
+}
+
 // TVRoot is the TV library folder, read live.
 func (im *Importer) TVRoot() string { return im.tvDir() }
 
@@ -596,6 +620,10 @@ type MovieTrack struct {
 	// the movie there instead of starting a second folder after a naming change. Only a
 	// rename moves a movie to the scheme's folder. "" derives the folder from the scheme.
 	Folder string
+	// Root is the library folder the movie belongs to when the Movies library has more
+	// than one (internal/libfolders): a new folder for it is made there. "" is the
+	// importer's Movies folder — the default, and the only one before extra folders.
+	Root string
 	// Edition is the track's own edition ("Director's Cut"). It fills {edition} and
 	// {plexedition} in place of whatever the release says, and when the scheme has neither
 	// token it's added as Plex's {edition-…}, so a Director's Cut track never shares a file
@@ -1397,7 +1425,7 @@ func (im *Importer) MovieTarget(title string, year int, qualitySource, ext strin
 // rename all name a track's file with this.
 func (im *Importer) MovieTrackTarget(t MovieTrack, qualitySource, ext string) string {
 	folder, file := im.movieParts(t, parser.Parse(qualitySource))
-	dir := filepath.Join(im.movieDir(), folder)
+	dir := filepath.Join(im.movieRoot(t), folder)
 	if t.Folder != "" {
 		dir = t.Folder
 	}
@@ -1471,7 +1499,7 @@ func (im *Importer) ImportAsNamed(t MovieTrack, contentPath string) (*Result, er
 	if size == 0 {
 		return nil, fmt.Errorf("refusing to import empty (0-byte) source: %s", src)
 	}
-	if err := im.checkRoot(im.movieDir()); err != nil {
+	if err := im.checkRoot(im.movieRoot(t)); err != nil {
 		return nil, err
 	}
 	target := im.MovieTrackTarget(t, filepath.Base(src), filepath.Ext(src))

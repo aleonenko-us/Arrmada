@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MediaRequest, type QualityProfileInfo } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
@@ -12,6 +12,10 @@ import { DeclineReasonField, ReRequestFlag, decisionLine } from "./DeclineReason
 import { refreshAttention } from "../lib/useAttention";
 import { WatchButton } from "./brand/WatchPills";
 import { watchLinksOf } from "./brand/servers";
+
+// The folder picker is staff-only and shows only with several library folders: it loads
+// on demand, so a requester's sheet never downloads it.
+const FolderSelect = lazy(() => import("./FolderSelect").then((m) => ({ default: m.FolderSelect })));
 
 // RequestSheet is one request, opened from the Discover strip, a row on the Requests page
 // or a notification's ?id= link: who asked and when, their note, where it has got to, and
@@ -47,6 +51,8 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
   const [profile, setProfile] = useState("");
   // Staff trimming a series request: the seasons left ticked, or null to approve it as asked.
   const [keep, setKeep] = useState<number[] | null>(null);
+  // The library folder staff chose (undefined: the folder rules decide, as the picker shows).
+  const [folder, setFolder] = useState<number | undefined>(undefined);
   // Declining: the reason box is open (the Decline button there is the confirmation).
   const [declining, setDeclining] = useState(startDeclining);
   const [reason, setReason] = useState("");
@@ -114,7 +120,12 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
       setBusy(null);
     }
   };
-  const approve = () => act("approve", () => api.approveRequest(rq.id, { quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}) }), `Approved “${rq.title}”${keep ? ` ${formatSeasons(keep)}` : ""} — searching now`, false);
+  // A picked folder (only offered with several) goes through the lazily loaded folder calls.
+  const approveWith = async (body: { quality_profile?: string; seasons?: number[] }) =>
+    folder === undefined
+      ? api.approveRequest(rq.id, body)
+      : (await import("../lib/foldersApi")).foldersApi.approve(rq.id, { ...body, folder_id: folder });
+  const approve = () => act("approve", () => approveWith({ quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}) }), `Approved “${rq.title}”${keep ? ` ${formatSeasons(keep)}` : ""} — searching now`, false);
   const decline = () => act("decline", async () => { await api.declineRequest(rq.id, reason.trim()); setDeclining(false); }, `Declined “${rq.title}”`, false);
   const decided = staff ? decisionLine(rq) : "";
   const remove = async () => {
@@ -194,6 +205,11 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
               )}
             </select>
           </label>
+        )}
+        {staff && pending && rq.media_type !== "book" && (
+          <Suspense fallback={null}>
+            <FolderSelect media={rq.media_type} tmdbId={rq.tmdb_id} value={folder} onChange={setFolder} disabled={!!busy} />
+          </Suspense>
         )}
         {staff && pending && rq.media_type === "series" && <SeasonTrim rq={rq} disabled={!!busy} onChange={setKeep} />}
 

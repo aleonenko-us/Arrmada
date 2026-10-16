@@ -53,6 +53,21 @@ To mount a different folder later, run the install line again with `--media /new
 
 > ⚠ Never mount media at `/data`. That path holds Arrmada's own database.
 
+### More than one Movies or TV folder
+
+Movies and TV can each have extra folders — a Kids or Animation movies folder, an Anime or
+Cartoons TV folder, often its own Plex or Jellyfin library. Add them in **Settings → Library →
+More Movies and TV folders**. Each can have a rule (Kids, Animation or Anime): a new title goes
+to the first folder whose rule matches, otherwise to the main folder, and you can pick another
+when adding a title or approving a request. A scan walks every folder and files each title
+under the folder it's in. **Move to folder** on a movie or show moves its files (a rename on the
+same drive; to another drive each file is copied and checked, then the originals go to the
+recycle bin). A folder still holding titles can't be removed. Extra folders must be inside a
+folder mounted into the container — under `/storage` with the rest, or added to
+`docker-compose.override.yml` (see the example file). Moving from Radarr or Sonarr with several
+root folders? **Settings → Import & migrate → Folders from Radarr or Sonarr** sets up the same
+folders. With one folder per library, nothing about folders shows anywhere.
+
 ### Hardlinks
 
 For hardlinks, the library and the download folder must sit under **one** mount: one share

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DeleteSeriesDialog } from "../../components/DeleteSeriesDialog";
+import { MoveFolderDialog } from "../../components/MoveFolderDialog";
+import { useLibraryFolders } from "../../components/FolderSelect";
+import { folderLabel } from "../../lib/foldersApi";
 import { ReleaseSearchModal } from "../../components/ReleaseSearchModal";
 import { UploadTorrentModal } from "../../components/UploadTorrentModal";
 import { LastSearches, refreshSearches } from "../../components/LastSearch";
@@ -61,8 +64,12 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
   useJob(importJob, {
     onDone: (j) => { setImportJob(null); flash(jobToast(j, "Import finished."), jobFailed(j)); onChange(); },
   });
-  const [open, setOpen] = useState<null | "import" | "choose" | "upload" | "rename" | "delete">(null);
+  const [open, setOpen] = useState<null | "import" | "choose" | "upload" | "rename" | "delete" | "move">(null);
   const close = () => setOpen(null);
+  // More than one TV folder: the show's folder shows, and it can move to another one.
+  // With one folder neither appears.
+  const folders = useLibraryFolders().data?.series;
+  const multiFolder = !!folders?.multi;
 
   const searchMissing = async () => {
     setStarting(true);
@@ -92,6 +99,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
     { label: "Manual import…", onSelect: () => setOpen("import") },
     { label: "Upload .torrent or .nzb…", onSelect: () => setOpen("upload") },
     { label: numberingLabel(series), busyLabel: "Saving…", onSelect: () => switchNumbering(series, onChange, flash) },
+    ...(multiFolder ? [{ label: "Move to folder…", onSelect: () => setOpen("move") }] : []),
     ...extraItems,
     { label: "Delete…", tone: "danger", onSelect: () => setOpen("delete") },
   ];
@@ -117,6 +125,11 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
           itemClassName={MENU_ITEM}
           items={overflow}
         />
+        {multiFolder && (
+          <span className="min-w-0 truncate text-sm text-ink-faint" title={folders?.folders.find((f) => f.id === (series.library_folder_id ?? 0))?.path}>
+            Folder: <b className="font-semibold text-ink-dim">{folderLabel(folders, series.library_folder_id)}</b>
+          </span>
+        )}
       </div>
       {(search.running || searchResult) && (
         <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject-text)" : "var(--ink)" }}>
@@ -152,6 +165,13 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
         />
       )}
       {open === "delete" && <DeleteSeriesDialog series={series} onClose={close} onDeleted={() => navigate("/series")} />}
+      {open === "move" && folders && (
+        <MoveFolderDialog
+          media="series" id={series.id} title={series.title} current={series.library_folder_id ?? 0} folders={folders}
+          onClose={close}
+          onMoved={() => { onChange(); flash(`Moved “${series.title}”.`); }}
+        />
+      )}
     </>
   );
 }

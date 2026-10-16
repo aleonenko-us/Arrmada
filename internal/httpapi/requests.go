@@ -13,7 +13,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/requests"
+	"github.com/tristenlammi/arrmada/internal/series"
 )
 
 // Paging for GET /api/v1/requests: a page of 50 unless asked, never more than 200.
@@ -384,11 +386,14 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		// Seasons trims a series request on approve: only these (a subset of what it
 		// asked for) are monitored. Empty or absent approves it as asked.
 		Seasons []int `json:"seasons"`
+		// FolderID is the library folder chosen for the title (staff only — this route
+		// is); absent lets the folder rules pick.
+		FolderID *int64 `json:"folder_id"`
 	}
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&req) // body is optional (profile override, season trim)
+		_ = json.NewDecoder(r.Body).Decode(&req) // body is optional (profile override, season trim, folder)
 	}
-	o := requests.ApproveOptions{Profile: req.QualityProfile, Seasons: req.Seasons}
+	o := requests.ApproveOptions{Profile: req.QualityProfile, Seasons: req.Seasons, FolderID: req.FolderID}
 	if u, ok := userFrom(r); ok {
 		o.DecidedBy, o.DecidedByName = u.ID, u.Username
 	}
@@ -403,6 +408,10 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, requests.ErrSeasonsNotRequested) {
 		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, movies.ErrUnknownFolder) || errors.Is(err, series.ErrUnknownFolder) {
+		a.writeError(w, http.StatusBadRequest, "that library folder doesn't exist — reload and pick again")
 		return
 	}
 	if err != nil {

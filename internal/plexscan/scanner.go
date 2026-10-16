@@ -139,8 +139,57 @@ type Scanner struct {
 	failing   bool            // the last attempt failed: later failures log quietly
 	toldWhole map[string]bool // roots already told "add a path mapping"
 	listeners []func(kind, sectionKey, plexPath string)
+	// extra is the extra Movies and TV folders per kind (SetExtraRoots), read live.
+	extra func(ctx context.Context) map[string][]string
 
 	wake chan struct{}
+}
+
+// SetExtraRoots tells the scanner about Arrmada's extra Movies and TV folders, per kind,
+// read live: a change in one is resolved against its own folder (its own Plex library,
+// often) rather than the default one. Call it at startup, before Run.
+func (s *Scanner) SetExtraRoots(fn func(ctx context.Context) map[string][]string) {
+	if s != nil {
+		s.extra = fn
+	}
+}
+
+// rootsOf is every Arrmada folder of kind: the default first, then the extras.
+func (s *Scanner) rootsOf(ctx context.Context, kind string) []string {
+	var out []string
+	if s.roots != nil {
+		if r := s.roots(ctx)[kind]; r != "" {
+			out = append(out, r)
+		}
+	}
+	if s.extra != nil {
+		for _, r := range s.extra(ctx)[kind] {
+			if r != "" {
+				out = append(out, r)
+			}
+		}
+	}
+	return out
+}
+
+// rootFor is the Arrmada folder of kind that dir lies in (the longest), else the default.
+func (s *Scanner) rootFor(ctx context.Context, kind, dir string) string {
+	return RootFor(s.rootsOf(ctx, kind), dir)
+}
+
+// RootFor is the folder among roots holding dir (the longest, dir itself counts), else the
+// first — the library folder a changed folder belongs to.
+func RootFor(roots []string, dir string) string {
+	best := ""
+	for _, r := range roots {
+		if _, ok := under(dir, r); ok && len(canon(r)) > len(canon(best)) {
+			best = r
+		}
+	}
+	if best == "" && len(roots) > 0 {
+		return roots[0]
+	}
+	return best
 }
 
 // New builds a scanner. Run starts its worker.
@@ -272,10 +321,7 @@ func (s *Scanner) Request(kind, dir string) {
 	if !s.active(ctx) {
 		return
 	}
-	var root string
-	if s.roots != nil {
-		root = s.roots(ctx)[kind]
-	}
+	root := s.rootFor(ctx, kind, dir)
 	s.mu.Lock()
 	s.add(kind, dir, root, s.now())
 	s.mu.Unlock()
@@ -415,10 +461,6 @@ func (s *Scanner) runDue(ctx context.Context) {
 		s.recordFailure(Status{At: now, Kind: due[0].kind, Error: err.Error()}, s.logPrefix+"couldn't read the "+s.server+" libraries to send a scan", err)
 		return
 	}
-	roots := map[string]string{}
-	if s.roots != nil {
-		roots = s.roots(ctx)
-	}
 	maps := s.PathMaps(ctx)
 	sent := map[target]bool{}
 	// A client that takes several folders in one request gets every due folder in one
@@ -427,15 +469,17 @@ func (s *Scanner) runDue(ctx context.Context) {
 	var batcher PathBatcher
 	askedBatcher := false
 	for _, p := range due {
-		res := Resolve(p.kind, s.existing(p.dir, roots[p.kind]), roots[p.kind], secs, maps)
+		// The library folder this change is in: the default, or an extra one.
+		root := s.rootFor(ctx, p.kind, p.dir)
+		res := Resolve(p.kind, s.existing(p.dir, root), root, secs, maps)
 		if len(res.SectionKeys) == 0 {
 			s.logOnce("none:"+p.kind, s.logPrefix+"no "+s.server+" library to scan for this change", "kind", p.kind, "note", s.note(res.Note))
 			continue
 		}
 		if res.How == HowSection {
-			s.logOnce("whole:"+p.kind+":"+roots[p.kind],
+			s.logOnce("whole:"+p.kind+":"+root,
 				s.logPrefix+"scanning the whole "+s.server+" library because this folder couldn't be matched to "+s.server+"'s — add a path mapping in the "+s.server+" settings for faster scans",
-				"kind", p.kind, "arrmada_folder", roots[p.kind])
+				"kind", p.kind, "arrmada_folder", root)
 		}
 		targets := make([]target, 0, len(res.SectionKeys))
 		var wait time.Time
@@ -745,10 +789,6 @@ func (s *Scanner) View(ctx context.Context) View {
 	if last := s.LastScan(); !last.At.IsZero() {
 		v.LastScan = &last
 	}
-	roots := map[string]string{}
-	if s.roots != nil {
-		roots = s.roots(ctx)
-	}
 	var secs []plex.Library
 	if v.Configured && s.client != nil {
 		var err error
@@ -757,15 +797,23 @@ func (s *Scanner) View(ctx context.Context) View {
 		}
 	}
 	for _, kind := range []string{KindMovie, KindShow} {
-		rv := RootView{Kind: kind, ArrmadaRoot: roots[kind]}
-		if v.Configured && v.Error == "" && rv.ArrmadaRoot != "" {
-			rv.Resolution = Resolve(kind, rv.ArrmadaRoot, rv.ArrmadaRoot, secs, v.PathMap)
-			rv.Note = s.note(rv.Note)
+		// One line per Arrmada folder: the default, then any extra Movies or TV folders
+		// (each often a library of its own). A kind with no folder still gets its line.
+		roots := s.rootsOf(ctx, kind)
+		if len(roots) == 0 {
+			roots = []string{""}
 		}
-		if rv.Sections == nil {
-			rv.Sections = []string{}
+		for _, root := range roots {
+			rv := RootView{Kind: kind, ArrmadaRoot: root}
+			if v.Configured && v.Error == "" && rv.ArrmadaRoot != "" {
+				rv.Resolution = Resolve(kind, rv.ArrmadaRoot, rv.ArrmadaRoot, secs, v.PathMap)
+				rv.Note = s.note(rv.Note)
+			}
+			if rv.Sections == nil {
+				rv.Sections = []string{}
+			}
+			v.Roots = append(v.Roots, rv)
 		}
-		v.Roots = append(v.Roots, rv)
 	}
 	return v
 }
@@ -777,6 +825,12 @@ var ErrUnavailable = errors.New("plex scan unavailable")
 // ScanNow resolves kind's library folder against Plex's current sections and, when run
 // is set, asks Plex to scan it straight away (the settings card's Test and Scan now).
 func (s *Scanner) ScanNow(ctx context.Context, kind string, run bool) (RootView, error) {
+	return s.ScanRootNow(ctx, kind, "", run)
+}
+
+// ScanRootNow is ScanNow for one of kind's folders: root "" is the default one, anything
+// else must be one of Arrmada's folders of that kind (an extra Movies or TV folder).
+func (s *Scanner) ScanRootNow(ctx context.Context, kind, want string, run bool) (RootView, error) {
 	if kind != KindMovie && kind != KindShow {
 		return RootView{}, fmt.Errorf("%w: unknown library kind %q", ErrUnavailable, kind)
 	}
@@ -784,8 +838,19 @@ func (s *Scanner) ScanNow(ctx context.Context, kind string, run bool) (RootView,
 		return RootView{}, fmt.Errorf("%w: %s isn't connected", ErrUnavailable, s.server)
 	}
 	root := ""
-	if s.roots != nil {
-		root = s.roots(ctx)[kind]
+	if roots := s.rootsOf(ctx, kind); want == "" {
+		if s.roots != nil {
+			root = s.roots(ctx)[kind]
+		}
+	} else {
+		for _, r := range roots {
+			if canon(r) == canon(want) {
+				root = r
+			}
+		}
+		if root == "" {
+			return RootView{}, fmt.Errorf("%w: %s isn't one of Arrmada's %s folders", ErrUnavailable, want, kindNoun(kind))
+		}
 	}
 	if root == "" {
 		return RootView{}, fmt.Errorf("%w: no %s folder is set", ErrUnavailable, kindNoun(kind))

@@ -1989,6 +1989,8 @@ export interface MatchCandidate {
 // A library folder the scan couldn't confidently identify, with candidates to pick from.
 export interface UnmatchedFolder {
   folder: string;
+  /** The library folder it was found in (a Movies or TV library can have several). */
+  root?: string;
   title: string;
   year: number;
   candidates: MatchCandidate[];
@@ -2067,6 +2069,8 @@ export interface SceneOverride {
 export interface Series {
   id: number;
   tmdb_id: number;
+  /** The TV folder it belongs to (0: the default), when there are several. */
+  library_folder_id?: number;
   imdb_id?: string;
   title: string;
   year: number;
@@ -3029,7 +3033,7 @@ export const api = {
   browseFolders: (path?: string) => req<BrowseResult>(`/api/v1/system/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   // search_on_add applies to this add only; the global default changes only in Settings
   // (or through updateSettings when the dialog's "Remember as default" is ticked).
-  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability }) =>
+  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability; folder_id?: number }) =>
     req<Movie>("/api/v1/movies", { method: "POST", body: JSON.stringify(body) }),
   // Several films in one call (a collection's Add all): films already in the library are
   // skipped, each new one's search is queued. search defaults to the search-on-add setting.
@@ -3075,7 +3079,7 @@ export const api = {
   lookupSeries: (q: string) =>
     req<{ results: SeriesLookup[] }>(`/api/v1/series/lookup?q=${encodeURIComponent(q)}`).then((r) => r.results),
   // monitor is a monitoring preset; left out, the server uses Settings' default.
-  addSeries: (body: { tmdb_id: number; quality_profile?: string; monitored?: boolean; search_on_add?: boolean; monitor?: string; monitor_new_seasons?: boolean }) =>
+  addSeries: (body: { tmdb_id: number; quality_profile?: string; monitored?: boolean; search_on_add?: boolean; monitor?: string; monitor_new_seasons?: boolean; folder_id?: number }) =>
     req<Series>("/api/v1/series", { method: "POST", body: JSON.stringify(body) }),
   seriesDetail: (id: number) => req<Series>(`/api/v1/series/${id}`),
   seriesDownloads: (id: number) => req<SeriesEpisodeDownload[]>(`/api/v1/series/${id}/downloads`),
@@ -3635,6 +3639,8 @@ export interface ReleaseList {
 export interface Movie {
   id: number;
   tmdb_id: number;
+  /** The Movies folder it belongs to (0: the default), when there are several. */
+  library_folder_id?: number;
   imdb_id?: string;
   title: string;
   year: number;

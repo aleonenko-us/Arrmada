@@ -305,10 +305,9 @@ func tmdbValidate(ctx context.Context, v tmdbValidator) error {
 // libraryState is the folders the user picked (saved in the app, not just the ones the
 // app started with), for the library-folders check.
 func (a *api) libraryState(ctx context.Context) health.LibraryState {
-	picked := a.pickedConfig(ctx)
 	return health.LibraryState{
-		Folders: health.LibraryFolders(picked, a.booksEnabled(ctx), a.musicEnabled(ctx)),
-		All:     health.LibraryFolders(picked, true, true),
+		Folders: a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)),
+		All:     a.healthFolders(ctx, true, true),
 		DataDir: a.deps.Config.DataDir,
 	}
 }

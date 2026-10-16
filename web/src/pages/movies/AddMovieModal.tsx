@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MinAvailability, type MovieLookup } from "../../lib/api";
 import { qualityApi } from "../../lib/qualityApi";
+import { FolderSelect } from "../../components/FolderSelect";
 import { Button, Modal } from "../../ui";
 
 // AddMovieModal is the library's "+ Add movie" (MOV-23): search TMDB, see which films are already in the
@@ -130,6 +131,7 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
   onAdded: () => void;
 }) {
   const [availability, setAvailability] = useState<MinAvailability>("released");
+  const [folder, setFolder] = useState<number | undefined>(undefined);
   const [searchNow, setSearchNow] = useState(defaultSearch);
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -140,7 +142,7 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
     setBusy(true);
     setError(null);
     try {
-      await api.addMovie({ tmdb_id: film.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchNow, min_availability: availability });
+      await api.addMovie({ tmdb_id: film.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchNow, min_availability: availability, folder_id: folder });
       // Only an explicit tick changes the shared default.
       if (remember && searchNow !== defaultSearch) await api.updateSettings({ search_on_add: searchNow }).catch(() => {});
       onAdded();
@@ -174,6 +176,8 @@ function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack,
           </select>
           <span className="text-xs text-ink-faint">{AVAILABILITY.find((a) => a.value === availability)?.hint}</span>
         </label>
+        {/* Only with more than one Movies folder; otherwise nothing renders. */}
+        <FolderSelect media="movie" tmdbId={film.tmdb_id} value={folder} onChange={setFolder} disabled={busy} compact />
       </div>
 
       <fieldset className="mt-4 flex flex-col gap-2 text-base">

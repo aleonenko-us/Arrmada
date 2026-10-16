@@ -5,6 +5,7 @@ import { Field } from "../../ui/Field";
 
 import { importApi } from "../../lib/importApi";
 import { AudiobookshelfImport } from "./AudiobookshelfImport";
+import { ArrFoldersImport } from "./ArrFoldersImport";
 import { TautulliImport } from "./TautulliImport";
 
 // Settings → Import & migrate (admin only): every one-time migration from the apps Arrmada
@@ -14,6 +15,7 @@ export function ImportSettings() {
   return (
     <div className="flex flex-col gap-6">
       <OverseerrImport />
+      <ArrFoldersImport />
       <TautulliImport />
       <AudiobookshelfImport />
     </div>

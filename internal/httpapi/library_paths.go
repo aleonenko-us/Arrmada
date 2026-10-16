@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/config"
+	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/libroots"
 )
@@ -37,7 +38,13 @@ func (a *api) roots() *libroots.Roots {
 	if a.deps.Settings != nil {
 		get = a.deps.Settings.Get
 	}
-	return libroots.New(get, a.deps.Config)
+	r := libroots.New(get, a.deps.Config)
+	if a.deps.Folders != nil {
+		// The extra Movies and TV folders: manual import, the download client checks and
+		// everything else listing the libraries see them too.
+		r.WithExtras(a.deps.Folders.Extras)
+	}
+	return r
 }
 
 // libMovies etc. return the effective (settings-or-default) path for each library.
@@ -65,6 +72,13 @@ func (a *api) handleGetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 // config.Config: the health panel and the disk guard panel.
 func (a *api) pickedConfig(ctx context.Context) config.Config {
 	return a.roots().Config(ctx)
+}
+
+// healthFolders is every folder the health panel, the disk panels and System → Status
+// judge: the picked ones plus any extra Movies and TV folders.
+func (a *api) healthFolders(ctx context.Context, booksOn, musicOn bool) []health.Folder {
+	r := a.roots()
+	return health.LibraryFolders(r.Config(ctx), booksOn, musicOn, r.Extras(ctx)...)
 }
 
 // folderLabel is how the UI names each library folder, for messages.
@@ -158,6 +172,19 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 		if err := a.dataDirConflict(label, *f.value); err != nil {
 			a.writeFolderError(w, f.name, err.Error(), false)
 			return
+		}
+		// A library folder can't land on, in or around an extra Movies or TV folder: one
+		// file must belong to exactly one folder. A blank save is judged by the folder it
+		// falls back to (the environment's), since that's where the library would be.
+		effective := *f.value
+		if effective == "" {
+			effective = resolvedFolder(a.deps.Config, f.name)
+		}
+		if a.deps.Folders != nil && strings.TrimSpace(effective) != "" && effective != f.current {
+			if msg := a.deps.Folders.Conflict(r.Context(), effective); msg != "" {
+				a.writeFolderError(w, f.name, label+": "+msg+".", false)
+				return
+			}
 		}
 		if *f.value == "" || *f.value == f.current {
 			continue

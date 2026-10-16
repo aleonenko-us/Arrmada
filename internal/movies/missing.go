@@ -121,11 +121,23 @@ func within(root, p string) bool {
 }
 
 // anchorOf is the folder that has to be there for a missing file to count as missing: the
-// movies folder for a file inside it, else the folder holding the film's own folder (a
-// file left in an old library folder).
-func anchorOf(root, path string) string {
-	if root != "" && within(root, path) {
-		return root
+// Movies folder holding the file (the longest, when there are several), else the folder
+// holding the film's own folder (a file left in an old library folder). Each Movies folder
+// is judged on its own, so a Kids share that's unmounted never marks its films missing
+// while the main share is fine.
+func anchorOf(roots []string, path string) string {
+	best := ""
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		root = filepath.Clean(root)
+		if within(root, path) && len(root) > len(best) {
+			best = root
+		}
+	}
+	if best != "" {
+		return best
 	}
 	return filepath.Dir(filepath.Dir(path))
 }
@@ -146,10 +158,7 @@ func (s *Service) CheckMissingFiles(ctx context.Context) (MissingSweep, error) {
 	if err != nil {
 		return out, err
 	}
-	root := s.libRoot()
-	if root != "" {
-		root = filepath.Clean(root)
-	}
+	roots := s.libRoots()
 	mounted := map[string]bool{}
 	anchorOK := func(dir string) bool {
 		ok, seen := mounted[dir]
@@ -173,7 +182,7 @@ func (s *Service) CheckMissingFiles(ctx context.Context) (MissingSweep, error) {
 				clear = append(clear, f)
 			}
 		case errors.Is(statErr, fs.ErrNotExist):
-			anchor := anchorOf(root, filepath.Clean(f.Path))
+			anchor := anchorOf(roots, filepath.Clean(f.Path))
 			switch {
 			case !anchorOK(anchor):
 				unmounted[anchor]++
@@ -260,11 +269,7 @@ func (s *Service) noteDefaultFile(ctx context.Context, id int64, path, missingSi
 			_ = s.repo.AddEvent(ctx, id, "detected", "File is back on disk: "+filepath.Base(path))
 		}
 	case errors.Is(statErr, fs.ErrNotExist) && missingSince == "":
-		root := s.libRoot()
-		if root != "" {
-			root = filepath.Clean(root)
-		}
-		if !library.FolderLooksMounted(anchorOf(root, filepath.Clean(path))) {
+		if !library.FolderLooksMounted(anchorOf(s.libRoots(), filepath.Clean(path))) {
 			return
 		}
 		if ok, _ := s.repo.flagMissing(ctx, id, path, time.Now().UTC().Format(time.RFC3339)); ok {

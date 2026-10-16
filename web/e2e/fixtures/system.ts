@@ -4,6 +4,7 @@ import type {
 } from "../../src/lib/api";
 import type { LogLevelState, LogPage } from "../../src/lib/systemApi";
 import type { SetupChecklist } from "../../src/lib/setupApi";
+import type { LibraryFolders } from "../../src/lib/foldersApi";
 import type { PersonaInfo } from "./users";
 import { NOW } from "./clock";
 
@@ -82,6 +83,20 @@ const paths: LibraryPaths = { movies: "/media/movies", tv: "/media/tv", ebooks: 
 
 // The Library section of the Settings hub reads the same folders.
 export const libraryPaths: LibraryPaths = paths;
+
+// The Movies and TV folders: one each, the default — what an install that never added a
+// folder answers, so no picker or Move to folder shows anywhere. Specs for extra folders
+// override it with libraryFoldersMulti.
+export const libraryFolders: LibraryFolders = {
+  movie: { multi: false, folders: [{ id: 0, media: "movie", path: paths.movies, label: "Movies", rule: "", position: 0, default: true, titles: 12 }] },
+  series: { multi: false, folders: [{ id: 0, media: "series", path: paths.tv, label: "TV", rule: "", position: 0, default: true, titles: 4 }] },
+};
+
+// Movies with a Kids folder (rule: kids) and TV with an Anime folder (rule: anime).
+export const libraryFoldersMulti: LibraryFolders = {
+  movie: { multi: true, folders: [...libraryFolders.movie.folders, { id: 3, media: "movie", path: "/media/kids", label: "Kids", rule: "kids", position: 1, default: false, titles: 2 }] },
+  series: { multi: true, folders: [...libraryFolders.series.folders, { id: 4, media: "series", path: "/media/anime", label: "Anime", rule: "anime", position: 1, default: false, titles: 1 }] },
+};
 
 // Every folder checks out: there, writable, and hardlink-able with downloads.
 export function folderCheck(path: string): FolderCheck {

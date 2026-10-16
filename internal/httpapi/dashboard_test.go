@@ -141,7 +141,7 @@ func TestStorageVolumesFoldSharedFilesystems(t *testing.T) {
 		}
 	}
 
-	vols := a.storageVolumes()
+	vols := a.storageVolumes(context.Background())
 	if len(vols) == 0 {
 		t.Skip("this platform can't measure disk usage")
 	}

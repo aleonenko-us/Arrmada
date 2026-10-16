@@ -469,10 +469,17 @@ func (s *Service) locateFolder(ctx context.Context, idx *index, media, folder st
 	if isShow(media) {
 		kind, byFolder = plexscan.KindShow, idx.showByFolder
 	}
-	var root string
+	// The Arrmada folder the title lives in: the default, or an extra Movies/TV folder.
+	var roots []string
 	if s.roots != nil {
-		root = s.roots(ctx)[kind]
+		if r := s.roots(ctx)[kind]; r != "" {
+			roots = append(roots, r)
+		}
 	}
+	if s.extraRoots != nil {
+		roots = append(roots, s.extraRoots(ctx)[kind]...)
+	}
+	root := plexscan.RootFor(roots, folder)
 	var maps []plexscan.PathMap
 	if s.pathMaps != nil {
 		maps = s.pathMaps(ctx)

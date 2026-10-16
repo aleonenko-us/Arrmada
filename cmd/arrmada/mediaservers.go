@@ -41,7 +41,9 @@ type mediaServerDeps struct {
 	Plex *plexscan.Scanner
 	// Roots is Arrmada's movie and TV folder per plexscan kind, read live.
 	Roots func(ctx context.Context) map[string]string
-	Log   *slog.Logger // tagged "jellyfin"
+	// ExtraRoots is the extra Movies and TV folders per plexscan kind, read live.
+	ExtraRoots func(ctx context.Context) map[string][]string
+	Log        *slog.Logger // tagged "jellyfin"
 }
 
 // setupMediaServers builds the Jellyfin connection, its library index and its scanner,
@@ -53,7 +55,9 @@ func setupMediaServers(d mediaServerDeps) *mediaServers {
 	// Tell Jellyfin which folder changed, like Plex: one report per burst of changes,
 	// translated to Jellyfin's paths with its own mappings. The index looks again once
 	// Jellyfin's own wait after the last report is over.
+	jf.SetExtraRoots(d.ExtraRoots)
 	jfScan := jf.NewScanner(d.Settings, d.Roots, d.Log)
+	jfScan.SetExtraRoots(d.ExtraRoots)
 	d.Group.Loop("jellyfin: library scans", jfScan.Run)
 	// The Jellyfin library index behind its Watch links: rebuilt every 30 minutes and
 	// after each scan.

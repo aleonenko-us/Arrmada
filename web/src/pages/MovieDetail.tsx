@@ -7,6 +7,9 @@ import { FileDetailsModal } from "../components/FileDetailsModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DeleteMovieDialog } from "../components/DeleteMovieDialog";
 import { MovieRenameModal } from "../components/MovieRenameModal";
+import { MoveFolderDialog } from "../components/MoveFolderDialog";
+import { useLibraryFolders } from "../components/FolderSelect";
+import { folderLabel } from "../lib/foldersApi";
 import { LastSearchLine } from "../components/LastSearch";
 import { TitleWatchPills, WatchedBy } from "../components/PlexBits";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
@@ -1176,6 +1179,11 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
   // Rename previews every track (old → new) in a modal before anything moves.
   const [showRename, setShowRename] = useState(false);
   const hasAnyFile = movie.has_file || !!movie.versions?.some((v) => v.has_file);
+  // More than one Movies folder: the film's folder shows, and it can move to another one.
+  // With one folder neither appears.
+  const folders = useLibraryFolders().data?.movie;
+  const multiFolder = !!folders?.multi;
+  const [showMove, setShowMove] = useState(false);
 
   // At most one primary button, and it matches the movie's state: Search when it's
   // monitored and has no file (or its file is gone), Search for upgrade when it has a
@@ -1237,11 +1245,24 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
             { label: "Manual import", onSelect: () => setShowImport(true) },
             { label: "Upload .torrent or .nzb", onSelect: () => setShowPaste(true) },
             ...(hasAnyFile ? [{ label: "Rename…", onSelect: () => setShowRename(true) }] : []),
+            ...(multiFolder ? [{ label: "Move to folder…", onSelect: () => setShowMove(true) }] : []),
             { label: "Refresh & rescan", busyLabel: "Refreshing…", onSelect: () => run("refresh", async () => { await api.refreshMovie(movie.id); onChange(); flash("Refreshed metadata and rescanned disk."); }) },
             { label: "Delete movie…", tone: "danger" as const, onSelect: () => setShowDelete(true) },
           ]}
         />
+        {multiFolder && (
+          <span className="text-sm text-ink-faint" title={folders?.folders.find((f) => f.id === (movie.library_folder_id ?? 0))?.path}>
+            Folder: <b className="font-semibold text-ink-dim">{folderLabel(folders, movie.library_folder_id)}</b>
+          </span>
+        )}
       </div>
+      {showMove && folders && (
+        <MoveFolderDialog
+          media="movie" id={movie.id} title={movie.title} current={movie.library_folder_id ?? 0} folders={folders}
+          onClose={() => setShowMove(false)}
+          onMoved={() => { onChange(); flash(`Moved “${movie.title}”.`); }}
+        />
+      )}
       {(search.running || searchResult) && (
         <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject-text)" : "var(--ink)" }}>
           {search.running ? "Searching…" : searchResult?.text}

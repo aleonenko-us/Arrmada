@@ -121,6 +121,9 @@ type addMovieRequest struct {
 	SearchOnAdd    *bool  `json:"search_on_add"`
 	// MinAvailability: announced | inCinemas | released ("" = released).
 	MinAvailability string `json:"min_availability"`
+	// FolderID is the Movies folder chosen in the add dialog (0 = the default); absent
+	// lets the folder rules pick.
+	FolderID *int64 `json:"folder_id"`
 }
 
 func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
@@ -159,9 +162,14 @@ func (a *api) handleAddMovie(w http.ResponseWriter, r *http.Request) {
 
 	m, err := a.deps.Movies.AddWith(r.Context(), req.TMDBID, movies.AddOptions{
 		QualityProfile: req.QualityProfile, Monitored: monitored, MinAvailability: req.MinAvailability,
+		FolderID: req.FolderID,
 	})
 	if errors.Is(err, movies.ErrExists) {
 		a.writeError(w, http.StatusConflict, "that movie is already in your library")
+		return
+	}
+	if errors.Is(err, movies.ErrUnknownFolder) {
+		a.writeError(w, http.StatusBadRequest, "that Movies folder doesn't exist — reload and pick again")
 		return
 	}
 	if err != nil {
@@ -309,7 +317,19 @@ func movieScanMessage(res movies.ScanResult) string {
 	if n := len(res.Duplicates); n > 0 {
 		msg += "; " + countOf(n, "folder") + " left alone (the movie already has a different file)"
 	}
-	return msg
+	return msg + unreadFolders(len(res.FailedFolders), func(i int) string { return res.FailedFolders[i].Root })
+}
+
+// unreadFolders is the end of a scan message naming library folders it couldn't read.
+func unreadFolders(n int, root func(int) string) string {
+	if n == 0 {
+		return ""
+	}
+	names := make([]string, n)
+	for i := range names {
+		names[i] = root(i)
+	}
+	return "; couldn't read " + strings.Join(names, ", ") + " (is it mounted?), so it wasn't scanned"
 }
 
 // handleScanLibrary scans the library folder for existing movie files and catalogs them
@@ -330,11 +350,15 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
 		return
 	}
-	root := a.libMovies(r) // resolve the configured folder before we detach
-	// The time budget grows with the library (one listing of the folder, which the scan
-	// reads first anyway); an unreadable folder gets the minimum and fails in the scan.
-	folders, _ := movies.ScanFolders(root)
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: movies.ScanBudget(len(folders)),
+	// The scan walks every Movies folder (there's usually one). The time budget grows with
+	// the library (one listing of each folder, which the scan reads first anyway); an
+	// unreadable folder gets the minimum and fails in the scan.
+	n := 0
+	for _, root := range a.roots().MovieFolders(r.Context()) {
+		folders, _ := movies.ScanFolders(root)
+		n += len(folders)
+	}
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: movies.ScanBudget(n),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			// Progress rides the job: the runner records it and announces it as job.updated
 			// (at most once a second) on the one live socket the page already has.
@@ -343,7 +367,7 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s folders", thousands(done), thousands(total)))
 				}
 			}
-			res, err := a.deps.Movies.ScanLibrary(ctx, root, opts)
+			res, err := a.deps.Movies.ScanLibrary(ctx, "", opts)
 			if err != nil {
 				return nil, err
 			}
@@ -403,6 +427,9 @@ func (a *api) handleMovieImportFolder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Folder string `json:"folder"`
 		TMDBID int    `json:"tmdb_id"`
+		// Root is the Movies folder the scan found it in ("" = the default). The service
+		// accepts only one of the library's folders.
+		Root string `json:"root"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -411,9 +438,13 @@ func (a *api) handleMovieImportFolder(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "folder and tmdb_id are required")
 		return
 	}
+	root := strings.TrimSpace(req.Root)
+	if root == "" {
+		root = a.libMovies(r)
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	if err := a.deps.Movies.ImportFolderAs(ctx, a.libMovies(r), req.Folder, req.TMDBID); err != nil {
+	if err := a.deps.Movies.ImportFolderAs(ctx, root, req.Folder, req.TMDBID); err != nil {
 		if errors.Is(err, movies.ErrExists) {
 			a.writeError(w, http.StatusConflict, err.Error())
 			return

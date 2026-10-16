@@ -62,7 +62,7 @@ func TestRootsFallbackOnEmptySaved(t *testing.T) {
 		t.Errorf("Config = %+v", c)
 	}
 	all := r.All(ctx)
-	if len(all) != 6 || all[5].Name != "downloads" || all[0] != (Root{"movies", "/storage/movies"}) {
+	if len(all) != 6 || all[5].Name != "downloads" || all[0] != (Root{Name: "movies", Path: "/storage/movies"}) {
 		t.Errorf("All = %+v", all)
 	}
 	if libs := r.Libraries(ctx); len(libs) != 5 {
@@ -102,4 +102,39 @@ func TestRootsConcurrentReads(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// Extra Movies and TV folders join the library lists after the five defaults, each under
+// its library's name with its own label, and the per-library lists put the default first.
+// Without a source of extras nothing changes.
+func TestRootsExtras(t *testing.T) {
+	r := New(nil, envCfg)
+	ctx := context.Background()
+	if got := r.MovieFolders(ctx); len(got) != 1 || got[0] != "/env/movies" {
+		t.Errorf("MovieFolders without extras = %v", got)
+	}
+	r.WithExtras(func(context.Context) []Extra {
+		return []Extra{
+			{Media: MediaMovie, ID: 1, Path: "/storage/kids", Label: "Kids"},
+			{Media: MediaSeries, ID: 2, Path: "/storage/anime", Label: "Anime"},
+			{Media: MediaMovie, ID: 3, Path: "  "}, // resolves to nothing: left out
+		}
+	})
+	libs := r.Libraries(ctx)
+	if len(libs) != 7 || libs[5] != (Root{Name: "movies", Path: "/storage/kids", Label: "Kids"}) || libs[6].Name != "tv" {
+		t.Errorf("Libraries = %+v", libs)
+	}
+	if all := r.All(ctx); all[len(all)-1].Name != "downloads" {
+		t.Errorf("All = %+v, want downloads last", all)
+	}
+	if got := r.MovieFolders(ctx); len(got) != 2 || got[0] != "/env/movies" || got[1] != "/storage/kids" {
+		t.Errorf("MovieFolders = %v", got)
+	}
+	if got := r.TVFolders(ctx); len(got) != 2 || got[1] != "/storage/anime" {
+		t.Errorf("TVFolders = %v", got)
+	}
+	// The default folders themselves are untouched by extras.
+	if r.Movies(ctx) != "/env/movies" || r.Config(ctx).MoviesDir != "/env/movies" {
+		t.Error("an extra folder changed the default")
+	}
 }

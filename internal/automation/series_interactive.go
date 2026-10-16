@@ -522,7 +522,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// others' paths, and reported nothing: the extra copies became invisible to Arrmada
 	// while still filling the disk and showing up as duplicates in Plex.
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
 		// Run each file through the full resolver: SxxExx, multi-episode, and — for anime
 		// — absolute ("S2 29") and per-cour numbering all map onto the metadata's episodes.
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
@@ -551,7 +551,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 		}
 	}
 	if len(gone) > 0 {
-		if reason := rescanRefusal(c.imp.TVRoot(), s.Title, gone, recorded); reason != "" {
+		if reason := rescanRefusal(c.tvImp(ctx, s).TVRoot(), s.Title, gone, recorded); reason != "" {
 			c.log.Warn("series rescan: the files' folders don't look mounted — nothing was changed",
 				"series", s.Title, "would_clear", len(gone), "reason", reason)
 			return &RescanRefusedError{Reason: reason}
@@ -718,7 +718,7 @@ func (c *Coordinator) ManualImportSeries(ctx context.Context, seriesID int64, pa
 	}
 
 	folder := c.series.ExistingFolderName(ctx, seriesID)
-	ei, ok, err := c.imp.ImportEpisodeInto(folder, s.Title, s.Year, path)
+	ei, ok, err := c.tvImp(ctx, s).ImportEpisodeInto(folder, s.Title, s.Year, path)
 	if err != nil {
 		return err
 	}
@@ -823,7 +823,7 @@ func (c *Coordinator) SeriesDuplicates(ctx context.Context, seriesID int64) ([]D
 	folder := c.series.ExistingFolderName(ctx, seriesID)
 
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
 			key := [2]int{ref.Season, ref.Episode}
 			byEpisode[key] = append(byEpisode[key], v)

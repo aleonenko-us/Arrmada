@@ -1019,7 +1019,7 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 		if c.refsAgreeWithFile(ctx, s.ID, rel, refs) {
 			// The filename's own numbering is correct — the standard path, which also
 			// handles multi-episode naming.
-			ei, ok, ierr := c.imp.ImportEpisodeIntoWith(folder, s.Title, s.Year, v.Path, release)
+			ei, ok, ierr := c.tvImp(ctx, s).ImportEpisodeIntoWith(folder, s.Title, s.Year, v.Path, release)
 			if ierr != nil {
 				failed++
 				c.log.Warn("series import: couldn't place file",
@@ -1064,7 +1064,7 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 		// the file landed and was recorded as E03, and E03's legitimate file could be
 		// recycled by a supersede the gate never sanctioned.
 		ref := wanted[0]
-		ei, ok, ierr := c.imp.ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, v.Path)
+		ei, ok, ierr := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, v.Path)
 		if ierr != nil || !ok {
 			failed++
 			c.log.Warn("series import: couldn't place file under its resolved episode",
@@ -1134,7 +1134,7 @@ func (c *Coordinator) importAbsoluteEpisode(ctx context.Context, s series.Series
 	refs := c.series.ResolveEpisodes(ctx, s.ID, parser.Parse(filepath.Base(path)))
 	var placed []series.EpisodeRef
 	for _, ref := range refs {
-		ei, ok, err := c.imp.ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, path)
+		ei, ok, err := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, path)
 		if err != nil || !ok || ei.Method == "already" {
 			continue
 		}

@@ -43,6 +43,7 @@ DELETE /api/v1/subtitles/overrides/{kind}/{id} staff -
 DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
+DELETE /api/v1/system/library/folders/{id} admin -
 DELETE /api/v1/users/jellyfin-blocks/{jellyfinID} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
 DELETE /api/v1/users/{id} admin -
@@ -160,6 +161,8 @@ GET /api/v1/jobs/{id} staff -
 GET /api/v1/languages user -
 GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
+GET /api/v1/library/folders staff -
+GET /api/v1/library/folders/suggest staff -
 GET /api/v1/logs admin -
 GET /api/v1/logs/download admin -
 GET /api/v1/logs/level admin -
@@ -343,6 +346,7 @@ POST /api/v1/downloadclients/{id}/categories staff -
 POST /api/v1/downloadclients/{id}/test staff -
 POST /api/v1/grab staff -
 POST /api/v1/grab/preview staff -
+POST /api/v1/import/arr/roots admin -
 POST /api/v1/imports/{hash}/retry staff -
 POST /api/v1/indexers staff -
 POST /api/v1/indexers/prowlarr/sync staff -
@@ -393,6 +397,7 @@ POST /api/v1/movies/{id}/blocklist staff -
 POST /api/v1/movies/{id}/file/forget staff -
 POST /api/v1/movies/{id}/grabtorrent staff -
 POST /api/v1/movies/{id}/manualimport staff -
+POST /api/v1/movies/{id}/move staff -
 POST /api/v1/movies/{id}/refresh staff -
 POST /api/v1/movies/{id}/regrab staff -
 POST /api/v1/movies/{id}/rename staff -
@@ -447,6 +452,7 @@ POST /api/v1/series/{id}/blocklist staff -
 POST /api/v1/series/{id}/grab staff -
 POST /api/v1/series/{id}/grabtorrent staff -
 POST /api/v1/series/{id}/manualimport staff -
+POST /api/v1/series/{id}/move staff -
 POST /api/v1/series/{id}/numbering/apply staff -
 POST /api/v1/series/{id}/refresh staff -
 POST /api/v1/series/{id}/rename staff -
@@ -476,6 +482,7 @@ POST /api/v1/subtitles/sync-check staff -
 POST /api/v1/system/backups admin -
 POST /api/v1/system/backups/upload admin -
 POST /api/v1/system/backups/{name}/restore admin -
+POST /api/v1/system/library/folders admin -
 POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
 POST /api/v1/system/update-check admin -
@@ -535,5 +542,7 @@ PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -
 PUT /api/v1/system/backups/settings admin -
 PUT /api/v1/system/library admin -
+PUT /api/v1/system/library/folders/order admin -
+PUT /api/v1/system/library/folders/{id} admin -
 PUT /api/v1/system/update-check admin -
 PUT /api/v1/users/{id} admin -

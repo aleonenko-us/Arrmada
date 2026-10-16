@@ -42,6 +42,10 @@ type Movie struct {
 	// flag. Read from the database: nothing on a list stats the file.
 	FileMissingSince string `json:"file_missing_since,omitempty"`
 	FileMissing      bool   `json:"file_missing,omitempty"`
+	// LibraryFolderID is the Movies folder the film belongs to when there's more than one
+	// (internal/libfolders): 0 is the default folder, which is every film's until an
+	// extra folder is added.
+	LibraryFolderID int64 `json:"library_folder_id"`
 
 	// Extra holds enriched metadata (genres, cast, collection, …), stored as
 	// JSON. Present on both list and detail responses.

@@ -46,6 +46,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/listening"
@@ -298,6 +299,11 @@ func main() {
 	// they're resolved on every use, so a change applies without a restart. cfg keeps the
 	// environment's folders: they're what a blank setting falls back to.
 	roots := libroots.New(settingsSvc.Get, cfg)
+	// Extra Movies and TV folders (Settings → Library): the folder above stays the
+	// default; these sit beside it. roots.Libraries — the recycle bins, Convert's holds,
+	// the download client checks, manual import — includes them from here on.
+	libFolders := libfolders.New(st.DB(), roots, cfg.DataDir)
+	roots.WithExtras(libFolders.Extras)
 	rootFuncs := library.RootFuncs{
 		Movie:     libroots.Func(roots.Movies),
 		TV:        libroots.Func(roots.TV),
@@ -319,7 +325,8 @@ func main() {
 	httpapi.LogLibraryDirs(context.Background(), roots, cfg, log)
 	logFolders(log, roots.Config(context.Background()),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleBooks, true),
-		settingsSvc.GetBool(context.Background(), settings.KeyModuleMusic, settings.ModuleMusicDefault))
+		settingsSvc.GetBool(context.Background(), settings.KeyModuleMusic, settings.ModuleMusicDefault),
+		roots.Extras(context.Background())...)
 	// Catalogue answers are kept in SQLite across restarts and served stale while a
 	// refresh runs, so Discover opens instantly even right after a deploy.
 	diskCache := metadata.NewDiskCache(st.DB())
@@ -369,6 +376,7 @@ func main() {
 	)
 	seriesSvc := series.NewService(st.DB(), tvSeries, cfg.TVDir, modLog(log, "series"))
 	seriesSvc.SetRootFunc(rootFuncs.TV)                                   // scans and manual imports follow Settings → Library
+	seriesSvc.SetFolders(libFolders)                                      // and every extra TV folder
 	seriesSvc.SetSceneMapper(xem.New(keyStore.Func("flaresolverr"), log)) // TheXEM scene mapping (via FlareSolverr past Cloudflare)
 	// The monitoring preset an add or a request uses when it doesn't pick one.
 	seriesSvc.SetMonitorDefaultFunc(func(ctx context.Context) string {
@@ -411,6 +419,7 @@ func main() {
 	}
 	movieSvc := movies.NewService(st.DB(), tmdb, qualitySvc, cfg.MoviesDir, "", bus, modLog(log, "movies"))
 	movieSvc.SetRootFunc(rootFuncs.Movie) // scans, manual imports and renames follow Settings → Library
+	movieSvc.SetFolders(libFolders)       // and every extra Movies folder
 	movieSvc.SetBin(bins)                 // deletes and replaced files go to the bins
 	seriesSvc.SetBin(bins)                // per-episode file deletes go to the recycle bin, like movies
 	seriesSvc.SetBus(bus)                 // deletes announce file.removed so imports forget them
@@ -1032,6 +1041,18 @@ func main() {
 	scanRoots := func(ctx context.Context) map[string]string {
 		return map[string]string{plexscan.KindMovie: roots.Movies(ctx), plexscan.KindShow: roots.TV(ctx)}
 	}
+	// The extra Movies and TV folders, each resolved against its own media-server library.
+	extraScanRoots := func(ctx context.Context) map[string][]string {
+		out := map[string][]string{}
+		for _, e := range roots.Extras(ctx) {
+			kind := plexscan.KindMovie
+			if e.Media == libroots.MediaSeries {
+				kind = plexscan.KindShow
+			}
+			out[kind] = append(out[kind], e.Path)
+		}
+		return out
+	}
 	plexScanner := plexscan.New(plexscan.Options{
 		Client:     func(ctx context.Context) plexscan.Client { return insightsSvc.PlexClient(ctx) },
 		Configured: insightsSvc.Configured,
@@ -1039,12 +1060,13 @@ func main() {
 		Roots:      scanRoots,
 		Log:        log,
 	})
+	plexScanner.SetExtraRoots(extraScanRoots)
 	grp.Loop("plex: library scans", plexScanner.Run)
 	// Jellyfin next to Plex: its connection, library index and scanner, and one fan-out
 	// (media.Request) that tells every server about a changed folder (mediaservers.go).
 	media := setupMediaServers(mediaServerDeps{
 		Group: grp, Settings: settingsSvc, Keys: keyStore, Insights: insightsSvc, Plex: plexScanner,
-		Roots: scanRoots, Log: modLog(log, "jellyfin"),
+		Roots: scanRoots, ExtraRoots: extraScanRoots, Log: modLog(log, "jellyfin"),
 	})
 	// The Plex library index (TMDB/TVDB/IMDb → rating key) behind Watch on Plex: rebuilt
 	// every 30 minutes and about 90 seconds after each scan, once Plex has added the files.
@@ -1234,7 +1256,27 @@ func main() {
 		"hardcover": hardcover.VerifyKey,
 	}
 	restartCh := make(chan struct{}, 1)
+	// "Move to folder": a title's files to another Movies or TV folder, as a job. A
+	// download on its way in would land in the old folder half-way, so a title with one
+	// in flight waits (fail closed: an unreadable check refuses too).
+	folderMover := &libfolders.Mover{
+		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolder: series.ShowFolder,
+		Hold: coordinator.HoldSearches, // no search grabs into the old folder half-way
+		Log:  modLog(log, "import"),
+		Busy: func(ctx context.Context, lib string, id int64) string {
+			acqs, err := coordinator.Active(ctx, lib, id)
+			if err != nil {
+				return "Arrmada couldn't check for downloads in flight just now — try again"
+			}
+			if len(acqs) > 0 {
+				return "a download for it is on its way in — move it once that has imported"
+			}
+			return ""
+		},
+	}
 	srv := httpapi.New(httpapi.Deps{
+		Folders:      libFolders,
+		FolderMover:  folderMover,
 		Config:       cfg,
 		Log:          modLog(log, "api"),
 		Store:        st,

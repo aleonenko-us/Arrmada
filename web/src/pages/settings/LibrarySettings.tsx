@@ -6,6 +6,7 @@ import { useMe } from "../../lib/me";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { useLoadedSettings, useSetting } from "../../lib/useSettings";
 import { LibraryFolders } from "../Library";
+import { ExtraFolders } from "./ExtraFolders";
 import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "../series/presets";
 
 // Settings → Library: where each library lives on disk, and what happens when a title is
@@ -50,6 +51,9 @@ export function LibrarySettings() {
     <div className="flex flex-col gap-6">
       <Section id="media-folders" title="Media folders" subtitle="Where each library lives on disk.">
         <LibraryFolders />
+      </Section>
+      <Section id="more-folders" title="More Movies and TV folders" subtitle="Keep kids', animation or anime titles in folders of their own — often their own Plex or Jellyfin library. New titles go to the first folder whose rule matches, else the main folder.">
+        <ExtraFolders />
       </Section>
       <Section id="adding-titles" title="Adding titles" subtitle="Defaults when adding movies and series.">
         <AutoToggle label="Search on add" hint="Start searching for a release as soon as a title is added." save={searchOnAdd} />

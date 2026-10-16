@@ -49,6 +49,18 @@ func (c *claims) claimed(key string) bool {
 	return c.held[key]
 }
 
+// HoldSearches keeps every search of one movie or show (media "movie" or "series") from
+// starting until release is called: the sweeps skip it and a Search click says it's
+// already being searched. Moving a title's files to another folder holds it, so nothing
+// is grabbed into the old folder half-way. ok is false while a search of it is running.
+func (c *Coordinator) HoldSearches(media string, id int64) (release func(), ok bool) {
+	key := movieKey(id)
+	if media == "series" {
+		key = seriesKey(id)
+	}
+	return c.claims.claim(key)
+}
+
 func movieKey(id int64) string  { return "movie:" + strconv.FormatInt(id, 10) }
 func seriesKey(id int64) string { return "series:" + strconv.FormatInt(id, 10) }
 func bookKey(id int64) string   { return "book:" + strconv.FormatInt(id, 10) }

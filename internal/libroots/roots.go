@@ -3,6 +3,7 @@ package libroots
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 
 	"github.com/tristenlammi/arrmada/internal/config"
 )
@@ -29,8 +30,49 @@ type Getter func(ctx context.Context, key, def string) string
 // resolved a handful of times per import or minute, and a cache would only add a window
 // in which two parts of the app disagree about where the library is.
 type Roots struct {
-	get Getter
-	cfg config.Config
+	get    Getter
+	cfg    config.Config
+	extras atomic.Pointer[ExtrasFunc]
+}
+
+// Extra is one additional Movies or TV folder (internal/libfolders keeps them). The
+// folder in Settings → Library stays the default; these sit beside it.
+type Extra struct {
+	Media string // MediaMovie or MediaSeries
+	ID    int64
+	Path  string
+	Label string
+}
+
+// The two libraries that can have more than one folder.
+const (
+	MediaMovie  = "movie"
+	MediaSeries = "series"
+)
+
+// ExtrasFunc lists the extra folders as they are now.
+type ExtrasFunc func(ctx context.Context) []Extra
+
+// WithExtras makes Libraries, All, MovieFolders and TVFolders include the extra Movies and
+// TV folders fn lists, read on every use like the rest. It returns r for chaining. With
+// none set (or none added) everything reads exactly as it did before extra folders.
+func (r *Roots) WithExtras(fn ExtrasFunc) *Roots {
+	if r != nil && fn != nil {
+		r.extras.Store(&fn)
+	}
+	return r
+}
+
+// extraList is the extra folders now (nil without a source).
+func (r *Roots) extraList(ctx context.Context) []Extra {
+	if r == nil {
+		return nil
+	}
+	fn := r.extras.Load()
+	if fn == nil || *fn == nil {
+		return nil
+	}
+	return (*fn)(ctx)
 }
 
 // New builds the resolver. cfg must be the environment's config as loaded (never one
@@ -38,10 +80,12 @@ type Roots struct {
 // falls back to.
 func New(get Getter, cfg config.Config) *Roots { return &Roots{get: get, cfg: cfg} }
 
-// Root is one named folder ("movies", "downloads", …) and where it resolves to now.
+// Root is one named folder ("movies", "downloads", …) and where it resolves to now. An
+// extra Movies or TV folder carries its library's Name and its own Label.
 type Root struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	Label string `json:"label,omitempty"`
 }
 
 // resolve is the saved folder, or def when nothing (or only whitespace) is saved.
@@ -83,18 +127,59 @@ func (r *Roots) env() config.Config {
 }
 
 // Libraries lists the five library folders (movies, tv, ebooks, audiobooks, music), in
-// that order, skipping any that resolve to nothing. Downloads isn't a library.
+// that order, then any extra Movies and TV folders, skipping any that resolve to nothing.
+// Downloads isn't a library.
 func (r *Roots) Libraries(ctx context.Context) []Root {
 	var out []Root
 	for _, x := range []Root{
-		{"movies", r.Movies(ctx)},
-		{"tv", r.TV(ctx)},
-		{"ebooks", r.Ebooks(ctx)},
-		{"audiobooks", r.Audiobooks(ctx)},
-		{"music", r.Music(ctx)},
+		{Name: "movies", Path: r.Movies(ctx)},
+		{Name: "tv", Path: r.TV(ctx)},
+		{Name: "ebooks", Path: r.Ebooks(ctx)},
+		{Name: "audiobooks", Path: r.Audiobooks(ctx)},
+		{Name: "music", Path: r.Music(ctx)},
 	} {
 		if x.Path != "" {
 			out = append(out, x)
+		}
+	}
+	for _, e := range r.extraList(ctx) {
+		if p := strings.TrimSpace(e.Path); p != "" {
+			out = append(out, Root{Name: LibraryName(e.Media), Path: p, Label: e.Label})
+		}
+	}
+	return out
+}
+
+// LibraryName is the Root name of a library's folders ("movies" or "tv").
+func LibraryName(media string) string {
+	if media == MediaSeries {
+		return "tv"
+	}
+	return "movies"
+}
+
+// MovieFolders is every Movies folder: the default first, then the extras in their order.
+// Folders that resolve to nothing are left out.
+func (r *Roots) MovieFolders(ctx context.Context) []string {
+	return r.folders(ctx, MediaMovie, r.Movies(ctx))
+}
+
+// TVFolders is every TV folder: the default first, then the extras in their order.
+func (r *Roots) TVFolders(ctx context.Context) []string {
+	return r.folders(ctx, MediaSeries, r.TV(ctx))
+}
+
+// Extras is the extra Movies and TV folders as they are now (none without a source).
+func (r *Roots) Extras(ctx context.Context) []Extra { return r.extraList(ctx) }
+
+func (r *Roots) folders(ctx context.Context, media, def string) []string {
+	var out []string
+	if def != "" {
+		out = append(out, def)
+	}
+	for _, e := range r.extraList(ctx) {
+		if p := strings.TrimSpace(e.Path); e.Media == media && p != "" {
+			out = append(out, p)
 		}
 	}
 	return out
@@ -104,7 +189,7 @@ func (r *Roots) Libraries(ctx context.Context) []Root {
 func (r *Roots) All(ctx context.Context) []Root {
 	out := r.Libraries(ctx)
 	if d := r.Downloads(ctx); d != "" {
-		out = append(out, Root{"downloads", d})
+		out = append(out, Root{Name: "downloads", Path: d})
 	}
 	return out
 }

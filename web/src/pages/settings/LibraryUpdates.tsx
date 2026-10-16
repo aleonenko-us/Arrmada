@@ -22,7 +22,7 @@ import { Button } from "../../ui";
 interface ScanApi {
   scanView: () => Promise<PlexScanView>;
   saveScan: (body: { enabled: boolean; path_map: PlexPathMap[] }) => Promise<PlexScanView>;
-  testScan: (kind: "movie" | "show", run: boolean) => Promise<{ root: PlexScanRoot; last_scan: PlexScanStatus }>;
+  testScan: (kind: "movie" | "show", run: boolean, root?: string) => Promise<{ root: PlexScanRoot; last_scan: PlexScanStatus }>;
 }
 
 const SCAN_API: Record<MediaServerKind, ScanApi> = { plex: plexLibraryApi, jellyfin: jellyfinApi };
@@ -45,7 +45,7 @@ function howLabel(r: PlexScanRoot, name: string): string {
   }
 }
 
-function RootLine({ r, name, busy, onTest }: { r: PlexScanRoot; name: string; busy: string; onTest: (kind: "movie" | "show", run: boolean) => void }) {
+function RootLine({ r, name, busy, onTest }: { r: PlexScanRoot; name: string; busy: string; onTest: (kind: "movie" | "show", run: boolean, root: string) => void }) {
   const label = KIND_LABEL[r.kind] ?? r.kind;
   if (!r.arrmada_root) {
     return <div className="text-sm text-ink-faint">{label}: no folder set</div>;
@@ -66,8 +66,8 @@ function RootLine({ r, name, busy, onTest }: { r: PlexScanRoot; name: string; bu
           </>
         )}
         <span className="ml-auto flex gap-1.5">
-          <Button size="sm" busy={busy === `${r.kind}:test`} onClick={() => onTest(r.kind, false)}>Test</Button>
-          <Button size="sm" busy={busy === `${r.kind}:run`} busyLabel="Scanning…" onClick={() => onTest(r.kind, true)}>Scan now</Button>
+          <Button size="sm" busy={busy === `${r.kind}:${r.arrmada_root}:test`} onClick={() => onTest(r.kind, false, r.arrmada_root)}>Test</Button>
+          <Button size="sm" busy={busy === `${r.kind}:${r.arrmada_root}:run`} busyLabel="Scanning…" onClick={() => onTest(r.kind, true, r.arrmada_root)}>Scan now</Button>
         </span>
       </div>
       {r.how === "section" && (
@@ -125,12 +125,13 @@ export function LibraryUpdates({ server }: { server: MediaServerKind }) {
       setBusy("");
     }
   };
-  const test = async (kind: "movie" | "show", run: boolean) => {
-    setBusy(`${kind}:${run ? "run" : "test"}`);
+  // A kind can have several lines (extra Movies or TV folders): each tests its own folder.
+  const test = async (kind: "movie" | "show", run: boolean, root: string) => {
+    setBusy(`${kind}:${root}:${run ? "run" : "test"}`);
     setMsg(null);
     try {
-      const res = await scan.testScan(kind, run);
-      setView((v) => v && { ...v, roots: v.roots.map((r) => (r.kind === kind ? res.root : r)), last_scan: run ? res.last_scan : v.last_scan });
+      const res = await scan.testScan(kind, run, root);
+      setView((v) => v && { ...v, roots: v.roots.map((r) => (r.kind === kind && r.arrmada_root === root ? res.root : r)), last_scan: run ? res.last_scan : v.last_scan });
       setMsg({ tone: "ok", text: run ? `Asked ${name} to scan ${res.root.plex_path || "the whole library"}.` : `${KIND_LABEL[kind]} resolves to ${res.root.plex_path || "the whole library"} (${howLabel(res.root, name)}).` });
     } catch (e) {
       setMsg({ tone: "err", text: (e as Error).message });
@@ -159,7 +160,7 @@ export function LibraryUpdates({ server }: { server: MediaServerKind }) {
       {view.configured && view.error && <Note tone="warn">Couldn't read {name}'s libraries: {view.error}</Note>}
       {view.configured && !view.error && (
         <div className="flex flex-col gap-3">
-          {view.roots.map((r) => <RootLine key={r.kind} r={r} name={name} busy={busy} onTest={test} />)}
+          {view.roots.map((r) => <RootLine key={`${r.kind}:${r.arrmada_root}`} r={r} name={name} busy={busy} onTest={test} />)}
         </div>
       )}
 
