@@ -79,3 +79,58 @@ jobs:
           build-args: |
             VERSION=${{ github.head_ref || github.ref_name }}-${{ github.sha }}
             COMMIT=${{ github.sha }}
+
+  # The Unraid all-in-one variant (the Dockerfile's aio target), which release.yml
+  # publishes as the -aio tags: a pinned download that moved or a checksum that no longer
+  # matches fails here rather than in a release. A job of its own, so it never turns the
+  # plain image's check red. It runs after that build, whose cache then holds every plain
+  # stage, so only the aio stages are built here.
+  aio:
+    name: ${{ matrix.arch == 'amd64' && 'Docker build (Unraid all-in-one)' || 'Docker build (Unraid all-in-one, arm64)' }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            cache-from: |
+              type=gha
+              type=gha,scope=aio
+            cache-to: type=gha,mode=max,scope=aio
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            cache-from: |
+              type=gha,scope=arm64
+              type=gha,scope=aio-arm64
+            cache-to: type=gha,mode=max,scope=aio-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      # The plain image's layers come out of the cache onto the runner's disk too.
+      - name: Free disk space
+        if: matrix.arch == 'amd64'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # Same build arguments as the plain build, so its cached layers match.
+      - name: Build the all-in-one image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: aio
+          push: false
+          cache-from: ${{ matrix.cache-from }}
+          # arm64 writes from main only, like the plain build above.
+          cache-to: ${{ (matrix.arch != 'arm64' || github.event_name != 'pull_request') && matrix.cache-to || '' }}
+          build-args: |
+            VERSION=${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+            COMMIT=${{ github.sha }}

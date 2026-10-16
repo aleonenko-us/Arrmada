@@ -2,7 +2,9 @@ package download
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -173,13 +175,20 @@ func (s *Service) EnsureBundled(ctx context.Context, url string) error {
 // for the bundled qBittorrent nor brings it back. An existing row is recognised by URL
 // only among clients of the same kind.
 func (s *Service) EnsureBundledOf(ctx context.Context, kind Kind, url string) error {
-	_, err := s.ensureBundled(ctx, Client{Kind: kind, URL: url})
+	_, err := s.ensureBundled(ctx, Client{Kind: kind, URL: url}, false)
 	return err
 }
 
 // ensureBundled is EnsureBundledOf for a template carrying the kind, the URL and, for a
 // client that needs one, its key (Password). added says a new row was made.
-func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, err error) {
+//
+// An existing row at the URL is adopted as the bundled client (installs from before the
+// bundled flag). sameLogin limits that to a row that already has want's login: the
+// all-in-one image's qBittorrent answers at 127.0.0.1:8080, which on host networking is
+// also where an owner's own qBittorrent can be, and their row (and its password) must not
+// be taken over. A row with another login is left as it is and the bundled one is added
+// beside it.
+func (s *Service) ensureBundled(ctx context.Context, want Client, sameLogin bool) (added bool, err error) {
 	kind, url := want.Kind, want.URL
 	if _, ok, err := s.repo.BundledOf(ctx, kind); err != nil || ok {
 		return false, err
@@ -193,12 +202,17 @@ func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, e
 	}
 	for _, c := range clients {
 		if c.URL == url && c.Kind == kind {
+			if sameLogin && (c.Username != want.Username || c.Password != want.Password) {
+				s.log.Info("a download client of yours is at the bundled qBittorrent's address with another login; leaving it as it is and adding the bundled one beside it",
+					"name", c.Name, "url", url)
+				continue
+			}
 			if err := s.repo.MarkBundled(ctx, c.ID); err != nil {
 				return false, err
 			}
-			if want.Password != "" && c.Password != want.Password {
-				c.Password = want.Password
-				_, err = s.Update(ctx, c)
+			if want.Password != "" && (c.Password != want.Password || c.Username != want.Username) {
+				c.Username, c.Password = want.Username, want.Password
+				_, err = s.update(ctx, c)
 			}
 			return false, err
 		}
@@ -210,6 +224,7 @@ func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, e
 		Name:     name,
 		Kind:     kind,
 		URL:      url,
+		Username: want.Username,
 		Password: want.Password,
 		Enabled:  true,
 		Bundled:  true,
@@ -235,13 +250,13 @@ func (s *Service) EnsureBundledSAB(ctx context.Context, url, key string) (added 
 		return false, err
 	}
 	if !ok {
-		return s.ensureBundled(ctx, Client{Kind: KindSABnzbd, URL: url, Password: key})
+		return s.ensureBundled(ctx, Client{Kind: KindSABnzbd, URL: url, Password: key}, false)
 	}
 	if c.URL != url || c.Password == key {
 		return false, nil
 	}
 	c.Password = key
-	if _, err := s.Update(ctx, c); err != nil {
+	if _, err := s.update(ctx, c); err != nil {
 		return false, err
 	}
 	s.log.Info("bundled SABnzbd's API key changed in SABnzbd; using the new one", "name", c.Name)
@@ -281,6 +296,116 @@ func (s *Service) RestoreBundledOf(ctx context.Context, kind Kind, url string) e
 		}
 	}
 	return s.EnsureBundledOf(ctx, kind, url)
+}
+
+// KeyBundledLogin is a hash of the bundled qBittorrent login last given to its client
+// (EnsureBundledLogin), so a login the owner typed on the card isn't overwritten at every
+// start, while a new one (a fresh qBittorrent config) still reaches the client.
+const KeyBundledLogin = "download_bundled_login"
+
+// EnsureBundledLogin is EnsureBundled for the Unraid all-in-one image's qBittorrent, which
+// takes a login (Arrmada made it on first start, internal/aio): the client is registered
+// with it, and an existing bundled client still pointing at url is given it whenever it's
+// a different login from the one it was last given. A client the owner pointed elsewhere
+// keeps its own.
+func (s *Service) EnsureBundledLogin(ctx context.Context, url, username, password string) error {
+	h := sha256.Sum256([]byte(username + "\x00" + password))
+	mark := hex.EncodeToString(h[:])
+	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if _, err := s.ensureBundled(ctx, Client{Kind: KindQbittorrent, URL: url, Username: username, Password: password}, true); err != nil {
+			return err
+		}
+		if _, ok, err := s.repo.BundledOf(ctx, KindQbittorrent); err != nil || !ok {
+			return err // removed by the owner: nothing was registered
+		}
+		return s.setFlag(ctx, KeyBundledLogin, mark)
+	}
+	if c.URL != url || (s.flags != nil && s.flags.Get(ctx, KeyBundledLogin, "") == mark) {
+		return nil
+	}
+	if c.Username != username || c.Password != password {
+		c.Username, c.Password = username, password
+		if _, err := s.update(ctx, c); err != nil {
+			return err
+		}
+		s.log.Info("bundled qBittorrent has a new login; its client uses it now", "name", c.Name)
+	}
+	return s.setFlag(ctx, KeyBundledLogin, mark)
+}
+
+// RestoreBundledLogin is RestoreBundled for the all-in-one image's qBittorrent.
+func (s *Service) RestoreBundledLogin(ctx context.Context, url, username, password string) error {
+	if s.flags != nil {
+		if err := s.flags.Set(ctx, bundledRemovedKey(KindQbittorrent), ""); err != nil {
+			return err
+		}
+	}
+	return s.EnsureBundledLogin(ctx, url, username, password)
+}
+
+func (s *Service) setFlag(ctx context.Context, key, value string) error {
+	if s.flags == nil {
+		return nil
+	}
+	return s.flags.Set(ctx, key, value)
+}
+
+// KeyBundledSwitchedOff says the all-in-one image's built-in qBittorrent was switched off
+// in the container's settings and Arrmada switched its client off to match, so switching
+// it back on there switches the client back on. A client the owner switched off in
+// Arrmada doesn't carry it, and stays off.
+const KeyBundledSwitchedOff = "download_bundled_switched_off"
+
+// SyncBundledSwitch keeps the bundled qBittorrent's client in step with the all-in-one
+// image's switch for it: url is where the built-in qBittorrent answers, on whether it's
+// running. Off, an enabled bundled client still pointing there is switched off (not
+// removed: its torrents are still read, and the owner can switch it back on), so nothing
+// is sent to a qBittorrent that isn't running. On again, a client switched off that way
+// is switched back on. A bundled client the owner pointed somewhere else is left alone.
+func (s *Service) SyncBundledSwitch(ctx context.Context, url string, on bool) error {
+	if s.flags == nil {
+		return nil
+	}
+	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
+	if err != nil {
+		return err
+	}
+	if !ok || c.URL != url {
+		// Nothing of the switch's to undo. A note left from before (the row deleted, or
+		// pointed elsewhere, outside Update) mustn't wake a later client up.
+		if on {
+			return s.clearSwitchedOff(ctx)
+		}
+		return nil
+	}
+	paused := s.flags.Get(ctx, KeyBundledSwitchedOff, "") == "1"
+	switch {
+	case on && paused:
+		if !c.Enabled {
+			c.Enabled = true
+			if _, err := s.update(ctx, c); err != nil {
+				return err
+			}
+			s.log.Info("built-in qBittorrent switched back on; sending downloads to it again", "name", c.Name)
+		}
+		return s.flags.Set(ctx, KeyBundledSwitchedOff, "")
+	case !on && c.Enabled:
+		// The flag first: if the client is switched off without it, it would stay off
+		// when the owner switches qBittorrent back on.
+		if err := s.flags.Set(ctx, KeyBundledSwitchedOff, "1"); err != nil {
+			return err
+		}
+		c.Enabled = false
+		if _, err := s.update(ctx, c); err != nil {
+			return err
+		}
+		s.log.Info("built-in qBittorrent is switched off in the container settings; its client is switched off too (its torrents are kept)", "name", c.Name)
+	}
+	return nil
 }
 
 // ErrBundledInactive means there's no bundled qBittorrent to tune: it was removed, or it
@@ -338,7 +463,29 @@ func (s *Service) forget(id int64) {
 // returns it as saved. A disabled client gets no new downloads (Add reads ListEnabled)
 // and drops out of the health check, but the torrents already in it are still read and
 // acted on — see existingClients.
+//
+// This is the owner's edit. An edit of the bundled qBittorrent drops the note that the
+// all-in-one image's switch turned it off (KeyBundledSwitchedOff): from then on its
+// on/off is the owner's, and switching qBittorrent back on in the container won't undo it.
+// Arrmada's own changes go through update, which leaves the note alone.
 func (s *Service) Update(ctx context.Context, c Client) (Client, error) {
+	saved, err := s.update(ctx, c)
+	if err == nil && saved.Bundled && saved.Kind == KindQbittorrent {
+		err = s.clearSwitchedOff(ctx)
+	}
+	return saved, err
+}
+
+// clearSwitchedOff forgets that the all-in-one switch turned the bundled qBittorrent off.
+func (s *Service) clearSwitchedOff(ctx context.Context) error {
+	if s.flags == nil || s.flags.Get(ctx, KeyBundledSwitchedOff, "") == "" {
+		return nil
+	}
+	return s.flags.Set(ctx, KeyBundledSwitchedOff, "")
+}
+
+// update is Update without the owner's-edit bookkeeping, for Arrmada's own changes.
+func (s *Service) update(ctx context.Context, c Client) (Client, error) {
 	defer s.invalidateSnapshot()
 	defer s.invalidateTransports()
 	if err := s.repo.Update(ctx, c); err != nil {
@@ -368,6 +515,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if c.Bundled && s.flags != nil {
 		if err := s.flags.Set(ctx, bundledRemovedKey(c.Kind), "1"); err != nil {
 			return fmt.Errorf("couldn't record that the bundled client was removed: %w", err)
+		}
+		// A restored client starts fresh: the switch's note doesn't outlive its row.
+		if c.Kind == KindQbittorrent {
+			if err := s.clearSwitchedOff(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	defer s.invalidateSnapshot()

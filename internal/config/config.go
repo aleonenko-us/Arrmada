@@ -45,6 +45,15 @@ type Config struct {
 	// client (0 = leave it alone). Set once at install to a random value so it
 	// matches the Docker-published port; the user forwards this on their router.
 	QbittorrentPort int
+	// AIOQbittorrentURL is set only in the Unraid all-in-one image: where its built-in
+	// qBittorrent answers, whether or not it's switched on. With it switched off,
+	// QbittorrentURL is empty and the bundled client registered earlier is switched off
+	// too; switching it back on switches that client back on.
+	AIOQbittorrentURL string
+	// QbittorrentLogin is the all-in-one image's file holding the qBittorrent web UI
+	// login it generated, which admins can look up in Settings → Connections. Empty
+	// everywhere else (the Compose bundle's qBittorrent has no login of Arrmada's).
+	QbittorrentLogin string
 	// SABnzbdURL is where the optional bundled SABnzbd answers (docker-compose.yml's
 	// "sabnzbd" profile). Compose always passes it; the client is only registered once the
 	// bundled SABnzbd's config (with its API key) shows up at SABnzbdConfig, which happens
@@ -116,6 +125,8 @@ func Load() (Config, error) {
 		LogLevel:              strings.ToLower(env("ARRMADA_LOG_LEVEL", "info")),
 		ExternalHeader:        env("ARRMADA_EXTERNAL_HEADER", "Cf-Connecting-Ip"),
 		QbittorrentURL:        env("ARRMADA_QBITTORRENT_URL", ""),
+		AIOQbittorrentURL:     env("ARRMADA_AIO_QBITTORRENT_URL", ""),
+		QbittorrentLogin:      env("ARRMADA_QBITTORRENT_LOGIN", ""),
 		SABnzbdURL:            env("ARRMADA_SABNZBD_URL", ""),
 		SABnzbdConfig:         env("ARRMADA_SABNZBD_CONFIG", "/bundled/sabnzbd/sabnzbd.ini"),
 		LibraryDir:            env("ARRMADA_LIBRARY_DIR", "./library"),

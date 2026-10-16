@@ -122,6 +122,7 @@ GET /api/v1/discover/search user ext
 GET /api/v1/discover/trending user ext
 GET /api/v1/discover/upcoming user ext
 GET /api/v1/downloadclients staff -
+GET /api/v1/downloadclients/bundled-login admin -
 GET /api/v1/downloadclients/{id}/settings staff -
 GET /api/v1/downloadclients/{id}/status staff -
 GET /api/v1/downloads staff -
