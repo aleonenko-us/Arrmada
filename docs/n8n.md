@@ -19,7 +19,8 @@ request is ready") can't go to a webhook (see [Security](#security) for why).
 The quickest start is the example workflow: in n8n, **Workflows → Import from file** and pick
 [`examples/n8n-arrmada-alerts.json`](examples/n8n-arrmada-alerts.json). It has the Webhook
 node, a signature check, and a Switch that sends each kind of alert down its own branch,
-with placeholder steps to replace.
+with placeholder steps to replace. (It was tested on n8n 2.43; after importing, open
+**Sign it the same way** and create its Crypto credential — see step 2 below.)
 
 To build your own instead, add a **Webhook** node and set:
 
