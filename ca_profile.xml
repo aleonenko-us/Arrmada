@@ -6,7 +6,7 @@
   (docs/unraid-submission.md).
 -->
 <CommunityApplications>
-  <Profile>Arrmada is one self-hosted app for movies, series, books and audiobooks: it finds, downloads and organises them, takes requests from your household, and adds subtitles, Convert and Plex or Jellyfin watch insights. This repository's template is one container with qBittorrent and FlareSolverr built in and already connected; switch them off to use the qBittorrent, SABnzbd or FlareSolverr you already run. Setup guide: https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md. Questions and bugs: the support thread linked on the app, or https://github.com/tristenlammi/Arrmada/issues.</Profile>
+  <Profile>Arrmada is one self-hosted app for movies, series, books and audiobooks: it finds, downloads and organises them, takes requests from your household, and adds subtitles, Convert and Plex or Jellyfin watch insights. This repository's template runs the app container on its own and connects to the qBittorrent or SABnzbd you already run. Setup guide: https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md. Questions and bugs: the support thread linked on the app, or https://github.com/tristenlammi/Arrmada/issues.</Profile>
   <Icon>https://raw.githubusercontent.com/tristenlammi/Arrmada/main/web/public/icon-512.png</Icon>
   <WebPage>https://github.com/tristenlammi/Arrmada</WebPage>
   <!-- <Forum>https://forums.unraid.net/topic/REPLACE-WITH-THE-SUPPORT-THREAD/</Forum> -->

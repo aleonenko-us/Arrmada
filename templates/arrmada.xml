@@ -1,19 +1,14 @@
 <?xml version="1.0"?>
 <!--
-  Unraid Community Apps template for Arrmada's all-in-one image (the :stable-aio tag): the
-  app plus a qBittorrent and a FlareSolverr inside the same container, set up and connected
-  by Arrmada itself, like the Compose install's bundle. Either can be switched off with the
-  ARRMADA_BUNDLE_* variables to use your own instead. No keys or passwords belong here: TMDB,
-  Plex, indexers and the rest are entered in the app after it starts, and the qBittorrent
-  web UI login is generated on first start and shown to admins in Settings, Connections.
-  See docs/unraid.md.
+  Unraid Community Apps template for the Arrmada app container on its own, from the
+  published stable image. It assumes a download client you already run (qBittorrent or
+  SABnzbd from Community Apps, say); the Compose install in this repository bundles
+  qBittorrent and FlareSolverr instead. No keys or passwords belong here: TMDB, Plex,
+  indexers and the rest are entered in the app after it starts. See docs/unraid.md.
 
-  Layout: the database and qBittorrent's own settings live in appdata (/data). Media and
-  downloads come in through /storage, never /data, so imports hardlink.
-
-  The torrent port has to be the same number on both sides of both entries and in
-  ARRMADA_QBIT_PORT: qBittorrent tells peers the port it listens on, and can't know a
-  different host port. templates/template_test.go checks the defaults agree.
+  Layout: the database lives in appdata (/data). Media and downloads come in through
+  /storage, never /data. Give your download client the same share at the same /storage
+  path, so imports can hardlink and both containers name a file the same way.
 
   Unraid's Docker manager fills a blank field with its Default and adds TZ (the server's
   timezone) and HOST_OS=Unraid by itself. So there is no TZ entry here (it would override
@@ -26,7 +21,7 @@
 -->
 <Container version="2">
   <Name>Arrmada</Name>
-  <Repository>ghcr.io/tristenlammi/arrmada:stable-aio</Repository>
+  <Repository>ghcr.io/tristenlammi/arrmada:stable</Repository>
   <Registry>https://github.com/tristenlammi/Arrmada/pkgs/container/arrmada</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
@@ -37,37 +32,27 @@
   <License>MIT</License>
   <Overview>Arrmada finds, downloads and organises movies, series, books and audiobooks in one app, with requests for your household, subtitles, Convert and Plex or Jellyfin watch insights.&#xD;
 &#xD;
-This container includes qBittorrent and FlareSolverr, already connected: there's nothing to set up for them. To use your own instead, switch either off under Show more settings (ARRMADA_BUNDLE_QBITTORRENT, ARRMADA_BUNDLE_FLARESOLVERR) and add yours in Settings, Connections.&#xD;
+This template runs the app only. Use your own qBittorrent or SABnzbd (and FlareSolverr if your trackers need it) and add them in Settings, Connections. Map your media share to /storage here and in your download client, at the same path, so imports hardlink instead of copying.&#xD;
 &#xD;
-Map the share that holds your media and downloads to /storage, so imports hardlink instead of copying. On first start, open the web UI, create the admin account, and follow the setup: your TMDB key, then each library folder and the Downloads folder under /storage. Never put media in /data: that's the database.</Overview>
+On first start, open the web UI, create the admin account, and follow the setup: your TMDB key, then each library folder and the Downloads folder under /storage. Never put media in /data: that's the database.</Overview>
   <Category>Downloaders: MediaApp:Video MediaApp:Books</Category>
   <WebUI>http://[IP]:[PORT:7878]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/tristenlammi/Arrmada/main/templates/arrmada.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/tristenlammi/Arrmada/main/web/public/icon-512.png</Icon>
-  <!--
-    SYS_NICE lets x265 pin its threads (Convert); the restart policy brings the app back when
-    Settings restarts it; the stop timeout gives qBittorrent time to save its torrents' state.
-  -->
-  <ExtraParams>--cap-add=SYS_NICE --restart=unless-stopped --stop-timeout=30</ExtraParams>
+  <!-- SYS_NICE lets x265 pin its threads (Convert); the restart policy brings the app back when Settings restarts it. -->
+  <ExtraParams>--cap-add=SYS_NICE --restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
-  <Requires>One share holding your media and downloads, mapped to /storage. qBittorrent and FlareSolverr are built in; to seed well, forward the torrent port (56881, TCP and UDP) on your router.</Requires>
+  <Requires>A download client you run yourself (qBittorrent or SABnzbd), with your media share mounted at /storage in it too.</Requires>
   <Config Name="Web UI port" Target="7878" Default="7880" Mode="tcp" Description="The web interface. 7880 on the server, because Radarr usually has 7878." Type="Port" Display="always" Required="true" Mask="false">7880</Config>
-  <Config Name="Torrent port (TCP)" Target="56881" Default="56881" Mode="tcp" Description="The built-in qBittorrent's incoming port. Forward it on your router. To change it, use the same new number on both sides here, in the UDP entry and in Torrent port setting." Type="Port" Display="always" Required="false" Mask="false">56881</Config>
-  <Config Name="Torrent port (UDP)" Target="56881" Default="56881" Mode="udp" Description="The same port for UDP (DHT and peers). Keep it the same as the TCP entry." Type="Port" Display="always" Required="false" Mask="false">56881</Config>
   <Config Name="Audiobook server port" Target="13378" Default="13379" Mode="tcp" Description="For listening apps such as Lissen. Off until you switch it on in the app; 13379 stays clear of an Audiobookshelf on 13378." Type="Port" Display="always" Required="false" Mask="false">13379</Config>
-  <Config Name="qBittorrent web UI port" Target="8080" Default="8091" Mode="tcp" Description="Optional. The built-in qBittorrent's own page, if you want to look inside it. Arrmada doesn't need it. The login is in Arrmada, Settings, Connections (admins)." Type="Port" Display="advanced" Required="false" Mask="false">8091</Config>
-  <Config Name="App data" Target="/data" Default="/mnt/user/appdata/arrmada" Mode="rw" Description="The database, its backups and settings, and the built-in qBittorrent's settings and torrent list. Keep it in appdata. Never put media here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/arrmada</Config>
+  <Config Name="App data" Target="/data" Default="/mnt/user/appdata/arrmada" Mode="rw" Description="The database, its backups and settings. Keep it in appdata. Never put media here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/arrmada</Config>
   <Config Name="Media and downloads" Target="/storage" Default="" Mode="rw" Description="The share that holds your libraries and your downloads, for example /mnt/user/data with media and torrents inside. One share for both, so imports can hardlink. Each library folder is picked inside it in the app." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Transcode folder" Target="/transcode" Default="" Mode="rw" Description="Optional. Scratch space for Convert on a fast pool, not the array (for example /mnt/cache/transcode)." Type="Path" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Built-in qBittorrent" Target="ARRMADA_BUNDLE_QBITTORRENT" Default="true|false" Mode="" Description="true runs qBittorrent inside this container, connected and set up by Arrmada. false to use your own: add it in Settings, Connections. Switching it off keeps its settings and torrents in appdata for later." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-  <Config Name="Built-in FlareSolverr" Target="ARRMADA_BUNDLE_FLARESOLVERR" Default="true|false" Mode="" Description="true runs FlareSolverr inside this container, for trackers behind Cloudflare. false to use your own (FlareSolverr URL below) or none." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-  <Config Name="Torrent port setting" Target="ARRMADA_QBIT_PORT" Default="56881" Mode="" Description="The port the built-in qBittorrent listens on. Must be the same number as the torrent port entries above." Type="Variable" Display="advanced" Required="false" Mask="false">56881</Config>
-  <Config Name="qBittorrent web UI host port" Target="ARRMADA_QBIT_WEBUI_HOST_PORT" Default="8091" Mode="" Description="The same number as the qBittorrent web UI port above, so Arrmada links the right page." Type="Variable" Display="advanced" Required="false" Mask="false">8091</Config>
-  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="The user Arrmada and the built-in qBittorrent run as. 99 is Unraid's nobody." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
-  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="The group they run as. 100 is Unraid's users." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="The user Arrmada runs as. 99 is Unraid's nobody." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="The group Arrmada runs as. 100 is Unraid's users." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="Audiobook server host port" Target="ARRMADA_AUDIOBOOK_HOST_PORT" Default="13379" Mode="" Description="The same number as the audiobook server port above, so the app shows people the right address." Type="Variable" Display="advanced" Required="false" Mask="false">13379</Config>
   <Config Name="Starting library folder" Target="ARRMADA_LIBRARY_DIR" Default="/storage" Mode="" Description="Where a library you haven't picked a folder for goes (movies, tvshows, ebooks, audiobooks inside it). The folders you pick in the app win. Keep it under /storage." Type="Variable" Display="advanced" Required="false" Mask="false">/storage</Config>
   <Config Name="Starting downloads folder" Target="ARRMADA_DOWNLOADS_DIR" Default="/storage/downloads" Mode="" Description="Where downloads go until you pick the Downloads folder in the app. Keep it under /storage." Type="Variable" Display="advanced" Required="false" Mask="false">/storage/downloads</Config>
-  <Config Name="FlareSolverr URL" Target="ARRMADA_FLARESOLVERR_URL" Default="" Mode="" Description="Optional. Leave it blank to use the built-in FlareSolverr. Your own (for example http://192.168.1.10:8191) if you switched the built-in one off. Can also be set in the app." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="FlareSolverr URL" Target="ARRMADA_FLARESOLVERR_URL" Default="" Mode="" Description="Optional. Your FlareSolverr (for example http://192.168.1.10:8191), for trackers behind Cloudflare. Can also be set in the app." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 </Container>

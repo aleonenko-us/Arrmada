@@ -8,7 +8,7 @@ changed in June 2026, so older forum guides (messaging a moderator, a form) no l
 
 | File | What it's for |
 |---|---|
-| [`templates/arrmada.xml`](../templates/arrmada.xml) | The template: one container, `ghcr.io/tristenlammi/arrmada:stable-aio` (Arrmada with qBittorrent and FlareSolverr inside). `templates/template_test.go` keeps it to the rules below |
+| [`templates/arrmada.xml`](../templates/arrmada.xml) | The template: one container, `ghcr.io/tristenlammi/arrmada:stable`. `templates/template_test.go` keeps it to the rules below |
 | [`ca_profile.xml`](../ca_profile.xml) | The maintainer profile Community Apps requires at the repository root (a non-empty `<Profile>`) |
 | [`LICENSE`](../LICENSE) | MIT, at the root. Community Apps requires an OSI-approved licence there |
 | [`web/public/icon-512.png`](../web/public/icon-512.png) | The icon, 512 × 512 PNG, linked by its raw GitHub address |
@@ -28,16 +28,6 @@ to the new repository's raw address, and submit that one.
 The rules the template follows, and why:
 
 - **No keys or passwords.** TMDB, Plex, indexers and download clients are set up in the app.
-  The built-in qBittorrent's web UI login is generated on first start and shown to admins in
-  the app.
-- **The all-in-one image.** A template is one container, so the companions the Compose
-  install runs beside Arrmada (qBittorrent, FlareSolverr) run inside it, from the
-  `stable-aio` tag; `ARRMADA_BUNDLE_QBITTORRENT` / `ARRMADA_BUNDLE_FLARESOLVERR` switch them
-  off. The plain `stable` image is unchanged and still what the Compose install runs.
-- **The torrent port is the same number everywhere** (56881: both sides of the TCP and UDP
-  entries, and `ARRMADA_QBIT_PORT`). qBittorrent announces the port it listens on, so a
-  different host port would break incoming connections. Not 6881, which a server with a
-  torrent client already has.
 - **No `TZ` entry.** Unraid gives every container it creates the server's timezone (and
   `HOST_OS=Unraid`); a template `TZ` would override it.
 - **No `/dev/dri` Device entry.** Unraid passes a blank entry's default, and Docker won't start
@@ -52,17 +42,14 @@ The rules the template follows, and why:
 
 1. Merge the template work into `main`. The template's own address, its icon and the docs all
    point at `main`.
-2. Check a stable release with the all-in-one image is published:
-   `ghcr.io/tristenlammi/arrmada:stable-aio` must exist (the first release after this work
-   adds it; v0.2.0 has only `stable`), and the package must stay public on GitHub.
+2. Check a stable release is published: `ghcr.io/tristenlammi/arrmada:stable` must exist
+   (v0.2.0 does), and the package must stay public on GitHub.
 3. Install it by hand on your Unraid server
    ([Install before it's listed](unraid.md#install-before-its-listed)), as a second app next
    to your Compose install. Give it a spare appdata folder (for example
-   `/mnt/user/appdata/arrmada-catest`), free ports (the web UI, the torrent port in all three
-   places, the qBittorrent web UI), and a test share or an empty folder for **Media and
-   downloads**. It must not share appdata with your real install. Check it starts, the WebUI
-   button opens it, setup sees `/storage`, and Settings → Connections shows qBittorrent
-   (bundled) answering and FlareSolverr set. Then remove it.
+   `/mnt/user/appdata/arrmada-catest`), a free port, and a test share or an empty folder for
+   **Media and downloads**. It must not share appdata with your real install. Check it starts,
+   the WebUI button opens it, and setup sees `/storage`. Then remove it.
 
 ## Step 2: A support thread on the Unraid forum
 
@@ -80,22 +67,16 @@ in a forum thread. Users look for one there.
    > Convert (smaller files) and Plex or Jellyfin watch insights. It replaces Radarr, Sonarr,
    > Readarr, Overseerr and Tautulli in one container.
    >
-   > **Template:** one container with **qBittorrent and FlareSolverr built in** and already
-   > connected; there's no download client to set up. Already run your own qBittorrent,
-   > SABnzbd or FlareSolverr? Switch the built-in ones off under Show more settings and add
-   > yours in the app.
-   > **Image:** `ghcr.io/tristenlammi/arrmada:stable-aio` (the latest release, x86-64)
+   > **Template:** this thread's app in Community Apps runs Arrmada on its own and uses the
+   > qBittorrent or SABnzbd you already run.
+   > **Image:** `ghcr.io/tristenlammi/arrmada:stable` (the latest release, x86-64)
    > **Guide:** https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md
    > **Source and bug reports:** https://github.com/tristenlammi/Arrmada
    >
    > **Before you install:** put your libraries and downloads in one share (for example
-   > `/mnt/user/data`) and give it to Arrmada at `/storage`, so imports are hardlinks rather
-   > than copies. Never map media to `/data`; that's Arrmada's database. Forward the torrent
-   > port (56881, TCP and UDP) on your router to seed well; if you change it, change it in
-   > all three places the guide names.
-   >
-   > **qBittorrent's own page** is on port 8091; its login is in Arrmada under
-   > Settings → Connections (admins).
+   > `/mnt/user/data`) and give it to Arrmada and your download client at the same path,
+   > `/storage`, so imports are hardlinks rather than copies. Never map media to `/data`;
+   > that's Arrmada's database.
    >
    > **Updating:** Docker tab → Check for Updates. Arrmada copies its database before every
    > upgrade and backs it up nightly.
@@ -134,13 +115,12 @@ from the submit pages.
   the next time the feed is rebuilt, which happens several times a day.
 - **No download count.** Community Apps counts downloads from Docker Hub only; the image is on
   GitHub's registry, so the count stays empty. Updates work the same either way: Unraid
-  checks `ghcr.io` for a new `:stable-aio` like any registry.
+  checks `ghcr.io` for a new `:stable` like any registry.
 
 ## Afterwards
 
-**New releases need nothing here.** Users run `:stable-aio`; publishing a release moves that
-tag (release.yml builds the all-in-one image after the plain one), and Unraid shows "update
-ready". Arrmada's own Updates card tells Unraid users to update from
+**New releases need nothing here.** Users run `:stable`; publishing a release moves that tag,
+and Unraid shows "update ready". Arrmada's own Updates card tells Unraid users to update from
 the Docker tab (it recognises a container Unraid made by `HOST_OS=Unraid`).
 
 **Changing the template.** Edit `templates/arrmada.xml` on `main`, keep
@@ -157,11 +137,11 @@ whose maintainer has gone quiet.
 **Retiring the listing.** Add `<Deprecated>true</Deprecated>` to the template (new installs
 stop; people who have it keep it) and tell the moderators through the Community Apps board.
 
-**Why one image rather than a Compose package.** The Community Apps format now also accepts
-Compose packages (`<AppTemplateType>compose</AppTemplateType>` with a pinned commit of a
-`compose.yaml`), which could list the Compose install's separate containers instead. Its
-documentation was still incomplete in October 2026, so the template uses the all-in-one
-image: one container, managed and updated like any other on the Docker tab.
+**Later, maybe: the whole stack.** The Community Apps format now also accepts Compose
+packages (`<AppTemplateType>compose</AppTemplateType>` with a pinned commit of a
+`compose.yaml`), which could one day list the bundled qBittorrent and FlareSolverr setup
+too. Its documentation was still incomplete in October 2026, so this template is the app
+on its own.
 
 ## Sources
 

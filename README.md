@@ -67,10 +67,9 @@ Using Portainer? The same file works as a stack: [Using Portainer →](docs/inst
 
 ### On Unraid, from the Docker page
 
-Arrmada's Unraid template is one container with qBittorrent and FlareSolverr built in and
-already connected (switch either off to use your own), managed and updated from Unraid's
-Docker tab like your other containers, with your media share at `/storage`.
-[Arrmada on Unraid →](docs/unraid.md)
+Already running qBittorrent or SABnzbd on Unraid? Arrmada's template runs just the app, managed
+and updated from Unraid's Docker tab like your other containers, with your media share at
+`/storage`. [Arrmada on Unraid →](docs/unraid.md)
 
 ## Update
 
@@ -125,7 +124,7 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | | |
 |---|---|
 | [Install](docs/install.md) | The one-liner, its options, Unraid, the git checkout way |
-| [Unraid](docs/unraid.md) | The Unraid template: share layout, the built-in qBittorrent or your own, GPU, updates |
+| [Unraid](docs/unraid.md) | The Unraid template: share layout, your own download client, GPU, updates |
 | [Updating](docs/updating.md) | Updates, rollbacks, published images |
 | [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, GPU, recycle bin, reverse proxies |
 | [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
