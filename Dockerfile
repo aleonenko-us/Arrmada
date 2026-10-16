@@ -98,6 +98,16 @@ RUN apk add --no-cache wget tar && set -eux; \
 # retries with --no-gpu if it doesn't. Models are NOT baked in (multi-GB); the app
 # downloads them on demand into the data dir.
 # Built on Debian, matching the runtime: a musl-linked binary can't run on a glibc image.
+#
+# The CPU code is picked at run time, not compiled for the build machine. ggml's default
+# is -march=native, which made the published whisper-cli need whatever the release
+# runner's CPU had: it died with "Illegal instruction" on any CPU without AVX2 (a Celeron
+# J4125 or N5105, an older i5), and would on any without AVX-512 if a runner had it.
+# GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS build the CPU backend once per instruction-set
+# level (x64, SSE4.2, AVX, AVX2, AVX-512 …) as loadable libggml-cpu-*.so files, and
+# whisper-cli loads the best one this CPU can run, next to libggml-vulkan.so. They live
+# with the binary in /opt/whisper (whisper-cli finds its backends in its own folder, and
+# its libraries through an $ORIGIN RPATH).
 FROM debian:bookworm-slim AS whisper
 # v1.9.2+ matters: earlier builds didn't map timestamps back through VAD correctly
 # (v1.8.4 fixed drift, v1.9.2 the token-level ones), which is what misaligned subtitles.
@@ -122,17 +132,27 @@ COPY docker/whisper-vulkan-shaders.patch /tmp/whisper-vulkan-shaders.patch
 RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
     cd /src/whisper && \
     git apply /tmp/whisper-vulkan-shaders.patch && \
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=1 \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DGGML_VULKAN=1 \
+          -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
+          -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$ORIGIN' \
           -DVulkan_INCLUDE_DIR=/usr/local/include \
           -DCMAKE_CXX_FLAGS="--param ggc-min-expand=30 --param ggc-min-heapsize=65536"
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 ARG ARRMADA_BUILD_JOBS
+# Fails the build unless the backends are all there and every library resolves: a backend
+# that can't load is skipped without a word at run time, so a missing libggml-vulkan.so
+# would only ever show up as "running on the CPU".
 RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
     cd /src/whisper && \
-    build-heavy 1500 'cmake --build build -j"$JOBS"' && \
-    cp build/bin/whisper-cli /usr/local/bin/whisper-cli && \
-    strip /usr/local/bin/whisper-cli && \
-    (ldd /usr/local/bin/whisper-cli || true)
+    build-heavy 1500 'cmake --build build -j"$JOBS" --target whisper-cli' && \
+    mkdir -p /out && cp -a build/bin/whisper-cli build/bin/*.so* /out/ && \
+    find /out -type f -exec strip --strip-unneeded {} + && \
+    test -f /out/libggml-vulkan.so && \
+    for v in x64 sse42 haswell; do test -f "/out/libggml-cpu-$v.so" || { echo "libggml-cpu-$v.so missing" >&2; exit 1; }; done && \
+    for f in /out/whisper-cli /out/*.so; do \
+        if ldd "$f" | grep "not found"; then echo "$f: unresolved" >&2; exit 1; fi; \
+    done && \
+    ls -la /out
 
 # --- Stage 3c: whisper.cpp with Intel's oneAPI (SYCL) backend, amd64 ---
 # The Vulkan build never touches an Arc A-series card's XMX matrix units: ggml's Vulkan
@@ -146,6 +166,16 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
 # collected from ldd into one directory, so the runtime image carries a few hundred MB
 # of libraries rather than the multi-GB toolkit. The Unified Runtime adapters are
 # dlopen'd, not linked, so they're copied by name.
+#
+# Its CPU code is built for SSE4.2 (x86-64-v2), not for the build machine: ggml's default
+# -march=native would make it need whatever the release runner's CPU has. The run-time
+# CPU choice the Vulkan build uses doesn't fit here: with loadable backends, the SYCL one
+# initialises as whisper-cli starts and aborts ("No device of requested type available")
+# on every host without an Intel GPU, even for --help. This build only runs where an
+# Intel GPU does the work, so its CPU share is small; every CPU-only run (including
+# after this build is set aside) goes to the Vulkan build and its best CPU backend.
+# GGML_NATIVE=OFF alone isn't enough: ggml then switches AVX/AVX2/FMA/F16C/BMI2 on, so
+# each is turned off by name.
 FROM intel/deep-learning-essentials:2025.3.3-0-devel-ubuntu24.04 AS whisper-sycl
 ARG WHISPER_VERSION=v1.9.3
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -155,6 +185,8 @@ RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov
     (. /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true) && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
           -DGGML_SYCL=ON -DGGML_SYCL_F16=ON \
+          -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF \
+          -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF \
           -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 ARG ARRMADA_BUILD_JOBS
@@ -256,17 +288,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pip3 install --no-cache-dir --break-system-packages apprise && \
     apprise --version && ffmpeg -version | head -1 && \
     mkdir -p /data /media/downloads /media/library /transcode
-# whisper.cpp CLI for local AI subtitle generation (models downloaded on demand into /data/whisper).
-COPY --from=whisper /usr/local/bin/whisper-cli /usr/local/bin/whisper-cli
+# whisper.cpp CLI for local AI subtitle generation (models downloaded on demand into
+# /data/whisper): the binary with its backends and libraries in /opt/whisper, and a link
+# on the PATH (whisper-cli resolves the link to find its folder).
+COPY --from=whisper /out/ /opt/whisper/
 # The oneAPI build and its libraries, behind a wrapper that sets the library path and
 # device selection. The app prefers it and falls back to the Vulkan build above.
 COPY --from=whisper-sycl /out/whisper-cli /opt/whisper-sycl/whisper-cli
 COPY --from=whisper-sycl /out/lib /opt/whisper-sycl/lib
 COPY --chmod=755 docker/whisper-cli-sycl /usr/local/bin/whisper-cli-sycl
-# Fail the build, not the first subtitle job, if a library the SYCL build needs didn't
-# make it across — the run-time-loaded adapters included, since a missing dependency of
-# theirs shows up only as "No device of requested type available".
-RUN for f in /opt/whisper-sycl/whisper-cli /opt/whisper-sycl/lib/libur_adapter_*.so.0; do \
+# Fail the build, not the first subtitle job, if a library either build needs didn't
+# make it across — the run-time-loaded backends and adapters included, since a missing
+# dependency of theirs shows up only as "no GPU found" or "No device of requested type
+# available".
+RUN ln -s /opt/whisper/whisper-cli /usr/local/bin/whisper-cli && \
+    for f in /opt/whisper/whisper-cli /opt/whisper/*.so; do \
+        if ldd "$f" | grep "not found"; then echo "$f is missing shared libraries" >&2; exit 1; fi; \
+    done && \
+    for f in /opt/whisper-sycl/whisper-cli /opt/whisper-sycl/lib/libur_adapter_*.so.0; do \
         if LD_LIBRARY_PATH=/opt/whisper-sycl/lib ldd "$f" | grep "not found"; then \
             echo "$f is missing shared libraries" >&2; exit 1; fi; \
     done && \
