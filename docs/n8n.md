@@ -218,11 +218,17 @@ reads mentions or markdown, escape them there.
 - **Secrets.** The URL (n8n's webhook path works like a password), the auth value or password
   and the signing secret are write-only: once saved they never come back from the API, the
   page shows "•••• saved", errors and logs never quote them, and the support bundle blanks
-  them.
+  them. A saved header value or password is only ever sent to the server it was saved for:
+  point the URL at another server (or port, or http/https) and you're asked to type it again.
+  A different path on the same server — n8n's test URL and production URL — keeps them.
+- **Errors.** A failed send is described in fixed words (refused, timed out, no such server,
+  certificate problems, not HTTP); nothing the other end sent back is ever quoted.
 - **What's sent.** Only the fields listed below — nothing a future version adds to an
   internal event reaches a webhook until it's added here. People appear by display name only;
-  no email addresses, account ids, tokens, API keys or download links are ever sent. Nothing
-  about what anyone listens to is ever sent: there's no event for it.
+  no email addresses, account ids, tokens, API keys or download links are ever sent.
+  Arrmada's own audiobook listening is never sent: there's no event for it. (The Plex and
+  Jellyfin stream events carry what's playing — a music track's title included — just as
+  their chat alerts do.)
 
 ## Events
 
