@@ -35,6 +35,8 @@ func TestDescribeEveryStage(t *testing.T) {
 		{"held for review: mismatch", done(Input{Phase: "seeding", Linked: true, GrabStatus: "held", Review: &Review{Code: "mismatch", ExpectedTitle: "Dune"}}), NeedsReview, "Held for review: it doesn't look like Dune", GroupFinishing},
 		{"held, review unread", done(Input{Phase: "seeding", Linked: true, GrabStatus: "held"}), NeedsReview, "Held for review", GroupFinishing},
 		{"held: nothing inside", done(Input{Phase: "seeding", Review: &Review{Code: "no_media"}}), NeedsReview, "nothing inside", GroupFinishing},
+		{"held, being imported by hand", done(Input{Phase: "seeding", Linked: true, GrabStatus: "held", Review: &Review{Code: "mismatch", Importing: true, Progress: "Copying… 1.0 of 4.0 GB"}}), Importing, "Importing — chosen in Needs you: Copying… 1.0 of 4.0 GB", GroupFinishing},
+		{"not grabbed, being imported by hand", done(Input{Phase: "seeding", Review: &Review{Importing: true}}), Importing, "Importing — chosen in Needs you", GroupFinishing},
 		{"import retrying", done(Input{Phase: "seeding", Linked: true, Failure: &Failure{Attempts: 3, LastErr: "permission denied", NextRetry: now.Add(8 * time.Minute)}}), ImportRetrying, "Import failed 3× (permission denied) — next try in 8 min", GroupFinishing},
 		{"import retrying, next check", done(Input{Phase: "seeding", Failure: &Failure{Attempts: 1}}), ImportRetrying, "on the next import check", GroupFinishing},
 		{"wrong category", done(Input{Phase: "seeding", WrongCategory: true, Category: "arrmada"}), WrongCategory, "In category “arrmada” — it won't import as TV", GroupFinishing},

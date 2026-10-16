@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, type ImportReview, type ReviewFile, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
+import { ApiError, api, type ImportReview, type Job, type ReviewFile, type ReviewImportStarted, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
 import { formatAgo, formatBytes } from "../lib/format";
 import { useLiveRefresh } from "../lib/useLiveQuery";
 import { refreshAttention } from "../lib/useAttention";
+import { jobDone, jobFailed, jobToast, useJob } from "../lib/useJob";
 import { ConfirmDialog, Modal, StatusChip, useConfirm, useToast, type Tone } from "../ui";
 import { MapFilesModal } from "./reviews/MapFilesModal";
 import { guessLabel } from "./reviews/episodes";
@@ -47,6 +48,10 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
   const [reassign, setReassign] = useState<ImportReview | null>(null);
   const [removing, setRemoving] = useState<ImportReview | null>(null);
   const [mapping, setMapping] = useState<ImportReview | null>(null);
+  // The import job each importing card follows, and the reason each card's last import
+  // was refused or failed ("" once a new one starts).
+  const [imports, setImports] = useState<Record<number, { jobId: number; label?: string }>>({});
+  const [importErrors, setImportErrors] = useState<Record<number, string>>({});
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -65,12 +70,73 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
     });
   }, [list]);
 
+  // A list read mid-import (a reload, another tab started it) brings each review's running
+  // import job with it, and a failed last import its reason: pick both up, without
+  // overriding what this page is already following or has just been told.
+  useEffect(() => {
+    if (!list) return;
+    setImports((cur) => {
+      let next = cur;
+      for (const r of list) {
+        const j = r.import_job;
+        if (j && !jobDone(j.status) && !cur[r.id]) next = { ...next, [r.id]: { jobId: j.id } };
+      }
+      return next;
+    });
+    setImportErrors((cur) => {
+      let next = cur;
+      for (const r of list) {
+        const j = r.import_job;
+        if (j && jobFailed(j) && cur[r.id] === undefined) next = { ...next, [r.id]: j.error || "The import failed." };
+      }
+      return next;
+    });
+  }, [list]);
+
   const drop = (id: number) => setList((xs) => (xs ?? []).filter((r) => r.id !== id));
   const act = async (id: number, fn: () => Promise<unknown>, msg: string) => {
     setBusy(id);
     try { await fn(); drop(id); toast(msg); refreshAttention(); }
     catch (e) { toast((e as Error).message, { tone: "error" }); }
     finally { setBusy(null); }
+  };
+
+  // Importing runs as a job the card follows. What the server refuses at once (the
+  // download is gone, the module is off) comes back here and stays on the card.
+  const startImport = async (id: number, fn: () => Promise<ReviewImportStarted>, label?: string) => {
+    setBusy(id);
+    setImportErrors((cur) => ({ ...cur, [id]: "" }));
+    try {
+      const res = await fn();
+      const jobId = res.job_id;
+      if (jobId) setImports((cur) => ({ ...cur, [id]: { jobId, label: label ?? res.title } }));
+      else { drop(id); toast(label ? `Imported into ${label}.` : "Imported."); refreshAttention(); }
+    } catch (e) {
+      // Another import of this download is already running (another tab asked for a
+      // different title): say so, and follow that one instead.
+      const running = runningImport(e);
+      if (running) {
+        setImports((cur) => ({ ...cur, [id]: running }));
+        toast((e as Error).message, { tone: "error" });
+      } else {
+        setImportErrors((cur) => ({ ...cur, [id]: (e as Error).message }));
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+  const importDone = (id: number, job: Job) => {
+    const label = imports[id]?.label;
+    setImports((cur) => without(cur, id));
+    if (job.status === "succeeded") {
+      drop(id);
+      toast(job.message || (label ? `Imported into ${label}.` : "Imported."));
+      refreshAttention();
+      return;
+    }
+    const why = jobToast(job);
+    setImportErrors((cur) => ({ ...cur, [id]: why }));
+    toast(`Couldn't import: ${why}`, { tone: "error" });
   };
 
   // Reject deletes the download's files, so it always asks. One tied to nothing is blocked
@@ -180,9 +246,12 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
                 key={r.id}
                 r={r}
                 busy={busy === r.id || bulkBusy}
+                importJob={imports[r.id]?.jobId ?? null}
+                importError={importErrors[r.id] || null}
+                onImportDone={(job) => importDone(r.id, job)}
                 selected={selected.has(r.id)}
                 onSelect={() => toggle(r.id)}
-                onImport={() => act(r.id, () => api.importReview(r.id), `Imported into ${r.expected_title}.`)}
+                onImport={() => void startImport(r.id, () => api.importReview(r.id), r.expected_title || undefined)}
                 onReassign={() => setReassign(r)}
                 onReject={(findAnother) => reject(r, findAnother)}
                 onRetry={() => act(r.id, () => api.retryReview(r.id), "Retrying — the import runs again within a minute.")}
@@ -202,7 +271,7 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
             const id = reassign.id;
             const kind = reassign.media_type;
             setReassign(null);
-            act(id, () => api.importReview(id, targetId, kind), `Imported into ${label}.`);
+            void startImport(id, () => api.importReview(id, targetId, kind), label);
           }}
         />
       )}
@@ -210,7 +279,11 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
         <MapFilesModal
           review={mapping}
           onClose={() => setMapping(null)}
-          onDone={(msg) => { const id = mapping.id; setMapping(null); drop(id); toast(msg); }}
+          onStarted={(res) => {
+            const id = mapping.id;
+            setMapping(null);
+            void startImport(id, () => Promise.resolve(res));
+          }}
         />
       )}
       {removing && (
@@ -224,9 +297,34 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
   );
 }
 
+// A copy onto another drive can run for an hour or more; a card keeps following its import
+// for as long as the server would let it run.
+export const IMPORT_FOLLOW_MS = 12 * 60 * 60 * 1000;
+
+// runningImport is the import a 409 says is already running for this download — a
+// different one than was asked for — so the card can follow it.
+export function runningImport(e: unknown): { jobId: number; label?: string } | null {
+  if (!(e instanceof ApiError) || e.status !== 409) return null;
+  const jobId = Number(e.body?.job_id);
+  if (!jobId) return null;
+  const title = e.body?.title;
+  return { jobId, label: typeof title === "string" && title ? title : undefined };
+}
+
+function without<T>(rec: Record<number, T>, id: number): Record<number, T> {
+  const next = { ...rec };
+  delete next[id];
+  return next;
+}
+
 interface CardProps {
   r: ImportReview;
   busy: boolean;
+  // The import job this card is following, and the reason its last import was refused
+  // or failed.
+  importJob: number | null;
+  importError: string | null;
+  onImportDone: (job: Job) => void;
   selected: boolean;
   onSelect: () => void;
   onImport: () => void;
@@ -238,8 +336,12 @@ interface CardProps {
   onDismiss: () => void;
 }
 
-function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onReject, onRetry, onRemove, onMap, onDismiss }: CardProps) {
+function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, selected, onSelect, onImport, onReassign, onReject, onRetry, onRemove, onMap, onDismiss }: CardProps) {
   const [showFiles, setShowFiles] = useState(false);
+  const follow = useJob(importJob, { onDone: onImportDone, giveUpMs: IMPORT_FOLLOW_MS });
+  // Importing from the moment the job is known until it ends: every action waits for it.
+  const importing = !!importJob;
+  const busy = acting || importing;
   const reason = REASON[r.reason_code] ?? REASON.mismatch;
   const link = titleLink(r);
   const label = kindLabel(r.media_type);
@@ -252,9 +354,9 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
   const danger = { border: "1px solid var(--reject)", color: "var(--reject-text)" };
 
   return (
-    <div className="rounded-xl p-4" style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--avoid)"}`, background: "var(--panel)" }}>
+    <div className="rounded-xl p-4" data-testid="review-card" aria-busy={importing || undefined} style={{ border: `1px solid ${selected ? "var(--accent)" : "var(--avoid)"}`, background: "var(--panel)" }}>
       <div className="flex items-start gap-3">
-        <input type="checkbox" className="mt-1" checked={selected} onChange={onSelect} aria-label={`Select ${r.name}`} />
+        <input type="checkbox" className="mt-1" checked={selected} onChange={onSelect} disabled={importing} aria-label={`Select ${r.name}`} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{r.media_type}</span>
@@ -284,6 +386,12 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
             </div>
           )}
           {showFiles && <FileList reviewId={r.id} />}
+          {importing && <ImportingLine job={follow.job} />}
+          {!importing && importError && (
+            <div role="alert" className="mt-2 rounded-lg px-3 py-2 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
+              <b>Couldn't import:</b> {importError}
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
@@ -316,6 +424,28 @@ function ReviewCard({ r, busy, selected, onSelect, onImport, onReassign, onRejec
         )}
         <button onClick={onDismiss} disabled={busy} className="ml-auto rounded-lg px-3 py-1.5 text-sm text-ink-dim hover:text-[var(--ink)]" title="Leave the files in the downloads folder and handle it yourself">Dismiss</button>
       </div>
+    </div>
+  );
+}
+
+// ImportingLine is an importing card's status: a spinner (there's nothing to cancel — a
+// half-done copy is cleaned up by the import itself), what the job says it's doing, and
+// how far a copy has got.
+export function ImportingLine({ job }: { job: Job | null }) {
+  const queued = job?.status === "queued";
+  const pct = job && job.progress > 0 ? Math.round(job.progress * 100) : 0;
+  const msg = queued ? "Waiting for another import to finish…" : job?.message || "Importing…";
+  return (
+    <div className="mt-2 rounded-lg px-3 py-2" role="status" data-testid="review-importing" style={{ border: "1px solid var(--accent-line)", background: "var(--panel-2)" }}>
+      <div className="flex items-center gap-2 text-base" style={{ color: "var(--accent-text)" }}>
+        <span aria-hidden className="h-3 w-3 flex-none animate-spin rounded-full" style={{ border: "2px solid var(--line)", borderTopColor: "var(--accent)" }} />
+        <span className="min-w-0 flex-1">{msg}</span>
+      </div>
+      {pct > 0 && (
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--line)" }} role="progressbar" aria-label="Import progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -143,6 +143,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
+    { method: "POST", path: /^\/api\/v1\/reviews\/(\d+)\/(import|map)$/, status: 202, body: media.reviewImportStarted },
+    get(`/api/v1/jobs/${media.reviewImportJob.id}`, media.reviewImportJob),
     // Activity → Needs you's actions.
     { method: "POST", path: /^\/api\/v1\/imports\/([0-9a-f]+)\/retry$/, body: { status: "retrying" } },
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-f]+)\/failover$/, status: 202, body: { status: "searching", job_id: sys.failOverJob.id, existing: false } },
@@ -152,7 +154,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Finished torrents Arrmada didn't grab (ACQ-31).
     get("/api/v1/downloads/unmanaged", sys.unmanaged),
     { method: "GET", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/targets$/, respond: ({ url }) => sys.unmanagedTargets(url) },
-    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, body: { status: "imported" } },
+    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, status: 202, body: sys.unmanagedImportStarted },
+    get(`/api/v1/jobs/${sys.unmanagedImportJob.id}`, sys.unmanagedImportJob),
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/ignore$/, body: { status: "ignored" } },
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),

@@ -1838,7 +1838,7 @@ func (s *Service) ManualImportTo(ctx context.Context, id, versionID int64, srcPa
 	if err != nil {
 		return err
 	}
-	res, err := s.imp.ImportAsNamed(n.Track, srcPath)
+	res, err := s.imp.Using(ctx).ImportAsNamed(n.Track, srcPath)
 	if err != nil {
 		return err
 	}

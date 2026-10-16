@@ -67,7 +67,9 @@ var jobKindLabels = map[string]string{
 	"music.scan":                "Scan the music folder",
 	"download.block":            "Block a download and search again",
 	"download.failover":         "Replace a stalled download",
-	"review.map":                "Import a reviewed download",
+	"review.import":             "Import a reviewed download",
+	"download.import":           "Import a download Arrmada didn't grab",
+	"review.map":                "Import a reviewed download", // older rows: mapping imports are review.import now
 	"indexer.caps":              "Read Prowlarr's indexer capabilities",
 	"health.check":              "Run health checks",
 	"library.apply-folders":     "Apply new library folders",

@@ -684,7 +684,7 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 			continue
 		}
 		target := c.imp.AlbumTrackTarget(a.Name, al.Title, al.Year, t.DiscNumber, t.TrackNumber, t.Title, filepath.Ext(f.Path))
-		if err := c.imp.PlaceFile(f.Path, target); err != nil {
+		if err := c.imp.Using(ctx).PlaceFile(f.Path, target); err != nil {
 			c.log.Warn("music import: placing a track failed", "track", t.Title, "err", err)
 			continue
 		}
@@ -955,7 +955,7 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 			continue
 		}
 		target := c.imp.AlbumTrackTarget(a.Name, al.Title, al.Year, t.DiscNumber, t.TrackNumber, t.Title, filepath.Ext(file.Path))
-		if err := c.imp.PlaceFile(file.Path, target); err != nil {
+		if err := c.imp.Using(ctx).PlaceFile(file.Path, target); err != nil {
 			c.log.Warn("music import: placing a track failed", "track", t.Title, "err", err)
 			continue
 		}

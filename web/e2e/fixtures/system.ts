@@ -49,6 +49,13 @@ export function unmanagedTargets(url: URL): { targets: ReviewTarget[]; truncated
   const q = (url.searchParams.get("q") ?? "").toLowerCase();
   return { targets: targets.filter((t) => !q || t.title.toLowerCase().includes(q)), truncated: false };
 }
+// Import into… starts a download.import job (202); this is how it ends by default.
+export const unmanagedImportJob: Job = {
+  id: 913, kind: "download.import", target: "torrent:e2e0000000000000000000000000000000000006", trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Imported into Night Train.", error: "",
+  created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
+};
+export const unmanagedImportStarted = { status: "importing", job_id: unmanagedImportJob.id, existing: false, title: "Night Train" };
 // Needs you's "Try another release" job, finished.
 export const failOverJob: Job = {
   id: 901, kind: "download.failover", target: `torrent:${STALLED_HASH}`, trigger: "user:1", status: "succeeded", progress: 1,

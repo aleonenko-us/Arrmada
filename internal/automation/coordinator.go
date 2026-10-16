@@ -297,10 +297,11 @@ func (c *Coordinator) SetSeries(s *series.Service, imp *library.Importer) {
 // import, rename and rescan for a show goes through it, so a show in the Anime folder
 // never grows a second copy in the default one.
 func (c *Coordinator) tvImp(ctx context.Context, s series.Series) *library.Importer {
+	// Using(ctx): a hand import running as a job hears its own copies (WithCopyReport).
 	if c.series == nil {
-		return c.imp
+		return c.imp.Using(ctx)
 	}
-	return c.imp.InTV(c.series.RootFor(ctx, s))
+	return c.imp.InTV(c.series.RootFor(ctx, s)).Using(ctx)
 }
 
 // SetBooks wires the books module (shares the importer set by SetSeries).

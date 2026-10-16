@@ -6,10 +6,10 @@ import { formatAgo, formatBytes } from "../lib/format";
 import { LINKS, fixLink } from "../lib/links";
 import { USENET_KEY_PREFIX } from "../lib/network";
 import { loadAttention, refreshAttention, useAttention } from "../lib/useAttention";
-import { jobFailed, jobToast, useJob } from "../lib/useJob";
+import { jobDone, jobFailed, jobToast, useJob } from "../lib/useJob";
 import { Skeleton, useToast } from "../ui";
 import { CardActions, type CardAction } from "./activity/transfer";
-import { ReviewsPanel, TargetPicker, kindLabelOf } from "./Reviews";
+import { IMPORT_FOLLOW_MS, ImportingLine, ReviewsPanel, TargetPicker, kindLabelOf, runningImport } from "./Reviews";
 
 // Activity → Needs you: every stuck download in one place, each with the action that fits
 // it — decide a held import, retry a failing one, try another release for a stalled or
@@ -271,6 +271,46 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [kind, setKind] = useState<ReviewKind>(u.kind);
+  // The import job the card follows (a page opened mid-import picks the running one up),
+  // and why the last import was refused or failed.
+  const last = u.import_job;
+  const [jobId, setJobId] = useState<number | null>(last && !jobDone(last.status) ? last.id : null);
+  const [importError, setImportError] = useState<string | null>(last && jobFailed(last) ? last.error || "The import failed." : null);
+  const follow = useJob(jobId, {
+    giveUpMs: IMPORT_FOLLOW_MS,
+    onDone: (j) => {
+      setJobId(null);
+      if (j.status === "succeeded") {
+        toast(j.message || "Imported.", { ms: 5000 });
+        onGone();
+        return;
+      }
+      const why = jobToast(j);
+      setImportError(why);
+      toast(`Couldn't import: ${why}`, { tone: "error", ms: 7000 });
+    },
+  });
+  const importing = !!jobId;
+  const startImport = async (chosen: ReviewKind, id: number, label: string) => {
+    setBusy(true);
+    setImportError(null);
+    try {
+      const res = await api.importUnmanaged(u.hash, chosen, id);
+      if (res.job_id) setJobId(res.job_id);
+      else { toast(`Imported into ${label}.`, { ms: 5000 }); onGone(); }
+    } catch (e) {
+      // Already importing into another title (another tab): say so and follow that one.
+      const running = runningImport(e);
+      if (running) {
+        setJobId(running.jobId);
+        toast((e as Error).message, { tone: "error", ms: 7000 });
+      } else {
+        setImportError((e as Error).message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true);
     try {
@@ -291,11 +331,17 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
           <div className="mt-0.5 font-mono text-xs text-ink-faint">
             {formatBytes(u.size_bytes)}{u.category ? ` · category “${u.category}”` : " · no category"}
           </div>
+          {importing && <ImportingLine job={follow.job} />}
+          {!importing && importError && (
+            <div role="alert" className="mt-2 rounded-lg px-3 py-2 text-base" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
+              <b>Couldn't import:</b> {importError}
+            </div>
+          )}
         </div>
         <CardActions
           name={u.name}
-          primary={<PrimaryBtn label="Import into…" disabled={busy} title="Pick the title in your library it belongs to" onClick={() => setPicking(true)} />}
-          secondary={[{ label: "Ignore", disabled: busy, title: "Stop listing it here; it stays in the download client", onSelect: () => run(() => api.ignoreDownload(u.hash), "Ignored — it stays in the download client.") }]}
+          primary={<PrimaryBtn label="Import into…" disabled={busy || importing} title="Pick the title in your library it belongs to" onClick={() => setPicking(true)} />}
+          secondary={[{ label: "Ignore", disabled: busy || importing, title: "Stop listing it here; it stays in the download client", onSelect: () => run(() => api.ignoreDownload(u.hash), "Ignored — it stays in the download client.") }]}
         />
       </div>
       {picking && (
@@ -319,7 +365,7 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
           onPicked={(id, label) => {
             const chosen = kind;
             setPicking(false);
-            void run(() => api.importUnmanaged(u.hash, chosen, id), `Imported into ${label}.`);
+            void startImport(chosen, id, label);
           }}
         />
       )}

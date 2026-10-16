@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -425,6 +426,8 @@ type Importer struct {
 	epTitleFn func(seriesTitle string, year, season, episode int) string
 	// seriesIDsFn resolves a show's ids by name/year for a new series folder's id tokens.
 	seriesIDsFn func(seriesTitle string, year int) SeriesIDs
+	// copyReport hears this import's copies (Using); nil for every other importer.
+	copyReport CopyReport
 }
 
 // RootFuncs resolve each library folder at the moment it's needed. They're read on every
@@ -1975,13 +1978,16 @@ func (im *Importer) linkOrCopy(src, dst string) (string, error) {
 			}
 		}
 	}
-	return linkOrCopy(src, dst)
+	return linkOrCopyReport(src, dst, im.copyReport)
 }
 
 // linkOrCopy hardlinks src→dst (instant, no extra space, keeps seeding), falling
 // back to a copy across filesystems. It reports which path was taken ("hardlink"
 // or "copy") so callers can surface a misconfigured volume mapping.
-func linkOrCopy(src, dst string) (string, error) {
+func linkOrCopy(src, dst string) (string, error) { return linkOrCopyReport(src, dst, nil) }
+
+// linkOrCopyReport is linkOrCopy whose copy, if it has to copy, reports to report.
+func linkOrCopyReport(src, dst string, report CopyReport) (string, error) {
 	// If the destination already holds this exact file (a prior hardlinked import),
 	// do NOTHING. Re-copying would truncate dst — and since dst shares the source's
 	// inode, that truncation zeroes the source torrent too (the 0-byte-both bug).
@@ -1994,10 +2000,12 @@ func linkOrCopy(src, dst string) (string, error) {
 			}
 		}
 	}
-	if err := linkFn(src, dst); err == nil {
-		return "hardlink", nil
+	if !forceCopy.Load() {
+		if err := linkFn(src, dst); err == nil {
+			return "hardlink", nil
+		}
 	}
-	if err := copyFile(src, dst); err != nil {
+	if err := copyFile(src, dst, report); err != nil {
 		return "", err
 	}
 	return "copy", nil
@@ -2006,6 +2014,17 @@ func linkOrCopy(src, dst string) (string, error) {
 // linkFn is os.Link, swappable so tests can force the cross-device (EXDEV) failure that
 // sends an import down the copy branch.
 var linkFn = os.Link
+
+// forceCopy makes every import copy rather than hardlink (ForceCopies).
+var forceCopy atomic.Bool
+
+// ForceCopies makes every import take the copy path, as it does across filesystems, until
+// restore is called. It's for tests in other packages (an import job's copy progress);
+// nothing in the app calls it.
+func ForceCopies() (restore func()) {
+	forceCopy.Store(true)
+	return func() { forceCopy.Store(false) }
+}
 
 // Content comparison. Files up to fullCompareMax are compared byte for byte; larger
 // ones by three sampleSize slices (start, middle, end), which tells two releases apart
@@ -2087,8 +2106,9 @@ func readFull(r io.ReaderAt, buf []byte, off int64) error {
 // copyFile copies src → dst atomically: it writes to a uniquely-named temp file
 // (so two concurrent copies of the same target can't collide), fsyncs, and renames
 // into place — it never truncates an existing dst in-place (which would zero the
-// source when dst is a hardlink of it). The temp is removed on any error.
-func copyFile(src, dst string) error {
+// source when dst is a hardlink of it). The temp is removed on any error. report, when
+// set, hears how far the copy has got.
+func copyFile(src, dst string, report CopyReport) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -2105,7 +2125,13 @@ func copyFile(src, dst string) error {
 		_ = os.Remove(tmp)
 		return e
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	var size int64
+	if fi, err := in.Stat(); err == nil {
+		size = fi.Size()
+	}
+	// An import running as a job reports its bytes as it goes (copyContents keeps the
+	// kernel's fast copy either way).
+	if err := copyContents(out, in, src, size, report); err != nil {
 		return fail(err)
 	}
 	if err := out.Sync(); err != nil { // data on disk before the rename publishes it

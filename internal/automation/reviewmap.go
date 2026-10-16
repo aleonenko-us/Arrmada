@@ -46,6 +46,9 @@ type plannedFile struct {
 // Files is how many files the plan imports.
 func (p ReviewMapPlan) Files() int { return len(p.files) }
 
+// Title is the show the plan imports into.
+func (p ReviewMapPlan) Title() string { return p.show.Title }
+
 func badMapping(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{ErrBadMapping}, args...)...)
 }
@@ -165,6 +168,13 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 	if _, err := c.pendingReview(ctx, r.ID); err != nil {
 		return 0, err
 	}
+	// The job may have waited its turn: the download can have gone meanwhile. That's a
+	// refusal, not a failed import — nothing was tried.
+	if err := checkDownloadThere(r); err != nil {
+		return 0, err
+	}
+	// A copy across drives reports its bytes to ctx's ImportProgress.
+	ctx = withCopyAccounting(ctx, r)
 	folder := c.series.ExistingFolderName(ctx, s.ID)
 	releaseName := filepath.Base(r.ContentPath)
 	release := parser.Parse(releaseName)
@@ -202,8 +212,10 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 	if len(failures) > 0 {
 		// The review stays open so the rest can be tried again; what landed stays landed.
 		c.log.Warn("review: some mapped files couldn't be placed", "release", r.Name, "placed", n, "failed", len(failures))
-		return n, fmt.Errorf("%w: placed %d episode%s, but %d couldn't be: %s", ErrNothingToImport,
+		err := fmt.Errorf("%w: placed %d episode%s, but %d couldn't be: %s", ErrNothingToImport,
 			n, plural(n), len(failures), strings.Join(failures, "; "))
+		c.importFailed(ctx, r, s.ID, "review (mapped by hand)", err)
+		return n, err
 	}
 	c.closeReviewImported(ctx, r)
 	return n, c.resolveReview(ctx, r.ID, ResolutionMapped)
