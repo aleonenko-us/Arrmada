@@ -4,6 +4,8 @@
 // platform (indexers, download clients, quality) with Movies.
 package series
 
+import "github.com/tristenlammi/arrmada/internal/langs"
+
 // Series is a TV show in the library.
 type Series struct {
 	ID        int64  `json:"id"`
@@ -169,6 +171,12 @@ type Episode struct {
 	// Download reflects an in-flight download for this episode (attached by the HTTP
 	// layer from the live queue; nil when nothing is downloading).
 	Download *EpisodeDownload `json:"download,omitempty"`
+	// AudioLangs are the file's audio languages as the series page badges them, from the
+	// library index (attached by the HTTP layer on the detail endpoint only; nil while the
+	// file hasn't been analysed). AudioLangFit is how they meet the show's profile's Audio
+	// language rules, nil when it has none.
+	AudioLangs   []langs.AudioLang `json:"audio_langs,omitempty"`
+	AudioLangFit *langs.AudioFit   `json:"audio_lang_fit,omitempty"`
 }
 
 // EpisodeDownload is a lightweight view of an episode's in-flight download.

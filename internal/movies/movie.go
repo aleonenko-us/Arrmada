@@ -6,6 +6,7 @@ package movies
 import (
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -236,6 +237,12 @@ type Version struct {
 	// The track's pre-conversion baseline (see Movie.ConvertedFromRelease).
 	ConvertedFromRelease string `json:"converted_from_release,omitempty"`
 	ConvertedFromSize    int64  `json:"converted_from_size,omitempty"`
+	// AudioLangs are the file's audio languages as the detail page badges them, from the
+	// library index (attached by the HTTP layer on the detail endpoints only; nil while the
+	// file hasn't been analysed). AudioLangFit is how they meet the track's profile's Audio
+	// language rules, nil when it has none.
+	AudioLangs   []langs.AudioLang `json:"audio_langs,omitempty"`
+	AudioLangFit *langs.AudioFit   `json:"audio_lang_fit,omitempty"`
 
 	// missingSince is the default track's stored missing flag (Movie.FileMissingSince), so
 	// the detail page's live stat can set or clear it only when it changes.

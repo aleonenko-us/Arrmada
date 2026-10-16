@@ -282,6 +282,8 @@ func (a *api) handleGetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.attachEpisodeDownloads(r.Context(), &s)
+	// Each episode file's audio languages, from the library index (never probed here).
+	a.attachSeriesAudio(r.Context(), &s)
 	// What the History, Duplicates and Blocklist panels key their reloads on: it moves
 	// whenever something is recorded against the show (an import, a grab, a search).
 	s.LastEventID = a.deps.Series.LastEventID(r.Context(), id)
