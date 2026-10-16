@@ -74,7 +74,7 @@ export const PAGE_EXTRA: Record<string, Record<string, unknown>> = {
     "GET /api/v1/quality/profiles/hd-1080p": {
       id: 7, media_type: "movie", name: "HD 1080p", allowed_resolutions: ["1080p"], min_source: "WEB-DL", max_source: "",
       bitrate_cap_mbps: 0, small_bias: 0, min_format_score: 0, format_scores: {}, min_seeders: 1, stall_minutes: 0,
-      upgrades_enabled: true, upgrade_min_percent: 0, ideal: {},
+      upgrades_enabled: true, upgrade_min_percent: 0, ideal: { language: { original: "want", de: "must" } },
     },
     "POST /api/v1/quality/preview": { profile: "", decision: { winner: null, eligible: [], rejected: [] } },
     "POST /api/v1/library/fit/preview": { scope: "library", counts: { titles: 0, files: 0, fits: 0, over: 0, under: 0, mismatch: 0 } },

@@ -7,12 +7,15 @@ import "github.com/tristenlammi/arrmada/internal/quality"
 // preference, and what it lost on against the release ranked just above it.
 //
 // Only an eligible row gets any of it — a rejected one already says why in its reject
-// reason. The "lost on" line needs ranked as well: it compares the row with its neighbour
+// reason — except the audio languages, which every row shows. The "lost on" line needs ranked as well: it compares the row with its neighbour
 // in the main ranking, and a usenet, blocklisted or other-track release is ranked in a
 // separate list, where "lower than the one above" would point at a release it never
 // competed with. Call it after the row's eligibility is final (withIndexerFacts, the
 // track filter).
 func explainRow(rr RankedRelease, ev quality.Evaluation, ranked bool) RankedRelease {
+	// The languages show on every row: a refused one says why with them ("Missing German
+	// audio"), an eligible one ranks by them.
+	rr.AudioLangs, rr.AudioLangsNote = ev.AudioLangs, ev.AudioLangsNote
 	if !rr.Eligible {
 		return rr
 	}

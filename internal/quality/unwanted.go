@@ -200,7 +200,11 @@ func (p Profile) unwantedHits(c Candidate) []unwantedHit {
 	if r.Upscaled {
 		out = append(out, unwantedHit{UnwantedUpscaled, "Upscaled from a lower resolution — this profile refuses upscales", "Upscaled"})
 	}
-	if lang, ok := foreignOnly(r, c.OrigLanguage, p.OwnerLanguages); ok {
+	// A release carrying a language the profile requires or prefers (its Audio language
+	// row) isn't foreign to it, or a German-preferring profile would see every German
+	// release avoided as foreign-only. Any other dub still is: "Prefer original" doesn't
+	// make an Italian-only copy of an English film welcome.
+	if lang, ok := foreignOnly(r, c.OrigLanguage, p.OwnerLanguages); ok && !carriesWanted(p.languageRules(c), c.audioLangs()) {
 		name := langs.Name(lang)
 		out = append(out, unwantedHit{UnwantedForeign,
 			fmt.Sprintf("%s-only — this title's original language is %s", name, langs.Name(c.OrigLanguage)),

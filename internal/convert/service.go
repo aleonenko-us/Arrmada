@@ -109,6 +109,9 @@ type Service struct {
 	// subtitleLangs reads the Subtitles module's kept languages, for the SameAsSubtitles
 	// keep-list (sublangs.go). Nil until main wires it.
 	subtitleLangs func(ctx context.Context) []string
+	// detected reads what the subtitle AI heard on untagged audio tracks (audiolangs.go).
+	// Nil until main wires it: untagged tracks then stay untagged.
+	detected DetectedAudio
 
 	ffmpeg, ffprobe        string
 	scratchDir, recycleDir string

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { AudioLangChips } from "../components/AudioLangChips";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { UploadTorrentModal } from "../components/UploadTorrentModal";
 import { FileDetailsModal } from "../components/FileDetailsModal";
@@ -284,7 +285,7 @@ function VersionsArea({ movie, onChange, flash }: { movie: Movie; onChange: () =
     return (
       <>
         {clearedNotice}
-        {movie.file && <FilePanel file={movie.file} movieId={movie.id} onChange={onChange} onCleared={onCleared} />}
+        {movie.file && <FilePanel file={movie.file} movieId={movie.id} audio={versions[0]} onChange={onChange} onCleared={onCleared} />}
         <button onClick={() => setAdding(true)} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px dashed var(--line)", color: "var(--ink-dim)" }}>
           ＋ Keep another version <span className="text-ink-faint">(e.g. 1080p + 4K, or a Director's Cut)</span>
         </button>
@@ -394,7 +395,7 @@ function VersionCard({ movie, version, onChange, onCleared, flash, profileName }
         <StatusChip tone={status.tone}>{status.label}</StatusChip>
       </div>
       {line && <div className="mt-1.5 text-sm text-ink-dim" role="status">{line}</div>}
-      {f && <FileBody movieId={movieId} versionId={version.id} file={f} onAdopted={version.is_default ? onChange : undefined} />}
+      {f && <FileBody movieId={movieId} versionId={version.id} file={f} audio={version} onAdopted={version.is_default ? onChange : undefined} />}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <button onClick={toggleMonitor} disabled={busy} className={small} style={ghost} aria-pressed={version.monitored}>{version.monitored ? "Monitored" : "Monitor"}</button>
         <button onClick={() => setPanel("search")} disabled={busy} className={small} style={ghost}>Search</button>
@@ -1293,7 +1294,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
   );
 }
 
-function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; movieId: number; onChange: () => void; onCleared: () => void }) {
+function FilePanel({ file, movieId, audio, onChange, onCleared }: { file: MovieFile; movieId: number; audio?: TrackAudio; onChange: () => void; onCleared: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const tone = file.missing ? "var(--avoid)" : "var(--good)";
 
@@ -1302,7 +1303,7 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="font-mono text-2xs uppercase" style={{ color: tone }}>{file.missing ? "File missing from disk" : "On disk"}</div>
-          <FileBody movieId={movieId} versionId={0} file={file} onAdopted={onChange} />
+          <FileBody movieId={movieId} versionId={0} file={file} audio={audio} onAdopted={onChange} />
         </div>
         <div className="flex-none">
           <button onClick={() => setConfirming(true)} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={file.missing ? { border: "1px solid var(--line)", color: "var(--ink)" } : { border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{file.missing ? "Clear record" : "Delete file"}</button>
@@ -1336,7 +1337,10 @@ function FilePanel({ file, movieId, onChange, onCleared }: { file: MovieFile; mo
 // chips, size and runtime, the path (opening the file's details), its subtitles, the ones
 // that pair with no video (with Adopt, on the file Subtitles works on), and the
 // missing-from-disk note.
-function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; versionId: number; file: MovieFile; onAdopted?: () => void }) {
+// TrackAudio is the part of a track the language badges read.
+type TrackAudio = Pick<MovieVersion, "audio_langs" | "audio_lang_fit">;
+
+function FileBody({ movieId, versionId, file, audio, onAdopted }: { movieId: number; versionId: number; file: MovieFile; audio?: TrackAudio; onAdopted?: () => void }) {
   const [showFile, setShowFile] = useState(false);
   const [adopting, setAdopting] = useState<string | null>(null);
   const toast = useToast();
@@ -1369,6 +1373,7 @@ function FileBody({ movieId, versionId, file, onAdopted }: { movieId: number; ve
         {chips.map((c) => (
           <span key={c} className="rounded px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
         ))}
+        {!file.missing && <AudioLangChips langs={audio?.audio_langs} fit={audio?.audio_lang_fit} />}
         <span className="font-mono text-ink-dim">{fmtSize(file.size_bytes)}</span>
         {file.duration_min ? <span className="font-mono text-xs text-ink-faint">{file.duration_min}m</span> : null}
         {file.group && <span className="font-mono text-xs text-ink-faint">{file.group}</span>}

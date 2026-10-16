@@ -779,6 +779,11 @@ type RankedRelease struct {
 	BonusWaived bool     `json:"bonus_waived,omitempty"`
 	LostOn      string   `json:"lost_on,omitempty"`     // "lower resolution", "fewer seeders"…
 	LostOnKey   string   `json:"lost_on_key,omitempty"` // the quality.RankKey behind LostOn
+	// AudioLangs are the audio languages the name carries as the profile's language rules
+	// read it (base codes), and AudioLangsNote qualifies them ("not tagged — read as the
+	// original language"). Set on every row, eligible or not.
+	AudioLangs     []string `json:"audio_langs,omitempty"`
+	AudioLangsNote string   `json:"audio_langs_note,omitempty"`
 }
 
 // ReleaseList is the interactive-search response for one movie.

@@ -297,6 +297,9 @@ type Profile struct {
 	// OwnerLanguages are the audio languages the household keeps (Convert's audio
 	// languages); a release in one of them is never foreign-only. Empty means English.
 	OwnerLanguages []string `json:"owner_languages,omitempty"`
+	// Languages is the target's Audio language row (lang.go): base codes or LangOriginal
+	// to must/want/avoid. Empty is no language rules.
+	Languages map[string]string `json:"languages,omitempty"`
 	// PreferNetwork is the download_network_preference setting (NetworkUsenet or
 	// NetworkTorrent) when it prefers one: between a usenet and a torrent release that
 	// score the same, the preferred network ranks first (KeyNetwork). "" or NetworkBest
@@ -306,6 +309,9 @@ type Profile struct {
 	// Unwanted item set to reject only avoids it, so a file the pack now refuses (a 3D
 	// copy) isn't treated as worthless and replaced by any release at all (current.go).
 	onDisk bool
+	// noLangGate lifts the language Musts, for describing a file the profile no longer
+	// accepts (describe), like the other gates it lifts.
+	noLangGate bool
 }
 
 // Candidate is a release under consideration (release + indexer metadata).
@@ -322,6 +328,16 @@ type Candidate struct {
 	// always alive, the profile's minimum seeders doesn't apply, and seeders never decide
 	// between it and a torrent.
 	Usenet bool `json:"usenet,omitempty"`
+	// ruleLang is the title's original language for the language rules alone, where
+	// OrigLanguage is deliberately left unset (a file on disk, the import gate's release):
+	// setting OrigLanguage there would start the Unwanted pack's foreign-only check on
+	// files it has never judged.
+	ruleLang string
+	// onDisk marks the candidate as a file in the library (CurrentFile.candidate): its
+	// languages are read by fileLangs, never assumed from an untagged name, and heard is
+	// its probed facts (nil without an analysis).
+	onDisk bool
+	heard  *FileFacts
 }
 
 // alive reports whether the release can download at all: a usenet release always can, a
@@ -473,6 +489,25 @@ type Evaluation struct {
 	// explain.go). Empty for the winner and for rejected releases.
 	LostOn     RankKey `json:"lost_on,omitempty"`
 	LostOnText string  `json:"lost_on_text,omitempty"`
+	// AudioLangs are the audio languages the release carries as the language rules read
+	// them (lang.go) — base codes, set on every evaluation so a release row can show them —
+	// and AudioLangsNote qualifies them in words ("not tagged — read as the original
+	// language", "and others it doesn't name"). Both empty when nothing can be told.
+	AudioLangs     []string `json:"audio_langs,omitempty"`
+	AudioLangsNote string   `json:"audio_langs_note,omitempty"`
+	// langPrefs counts the preferred or required languages it has (the preferences key and
+	// classic's score), langMatched names them, and langShort says a Must or a Prefer is
+	// missing, so a file without one isn't the target yet (judge).
+	langPrefs   int
+	langMatched []string
+	langShort   bool
+	// langPrefCodes are the codes behind langPrefs, and langUnknown the Must or Prefer
+	// languages it may or may not carry: an upgrade gets no credit for a language the file
+	// might already have (upgradeBar.creditable).
+	langPrefCodes []string
+	langUnknown   []string
+	// langAvoided: every language it carries is avoided (it's in the avoided tier for that).
+	langAvoided bool
 	// lowGroup says the low-quality-group item put it in the avoided tier, so an upgrade
 	// out of it can be told apart (current.go).
 	lowGroup bool
@@ -512,6 +547,7 @@ const (
 	RejectTerm            = "rejected_term"    // carries a rejected term
 	RejectMissingRequired = "missing_required" // lacks a required format
 	RejectMinFormatScore  = "min_format_score" // below the minimum format score
+	RejectMissingLanguage = "missing_language" // lacks an audio language the profile requires
 	// RejectUnwanted ("unwanted", unwanted.go): an Unwanted item set to reject.
 )
 
@@ -519,6 +555,7 @@ const (
 var RejectCodes = []string{
 	RejectResolution, RejectSourceFloor, RejectPrerelease, RejectSourceCeiling, RejectBitrateCeiling,
 	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore, RejectUnwanted,
+	RejectMissingLanguage,
 }
 
 // reject sets both halves of a rejection: the sentence and its code.
@@ -561,6 +598,16 @@ func NewDefaultEngine() *Engine { return NewEngine(DefaultFormats()) }
 func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	r := c.Release
 	ev := Evaluation{Candidate: c}
+	// The audio languages it carries, for the language rules and for the release row. Book
+	// and music profiles (NoUnwanted) have none: their names are titles, not video tags.
+	var audio langSet
+	var lv langVerdict
+	if !p.NoUnwanted {
+		audio = c.audioLangs()
+		ev.AudioLangs, ev.AudioLangsNote = audio.describe()
+		lv = judgeLangs(p.languageRules(c), audio)
+		ev.langShort, ev.langPrefCodes, ev.langUnknown = lv.short, lv.prefs, lv.unknown
+	}
 
 	if len(p.AllowedResolutions) > 0 && !containsRes(p.AllowedResolutions, r.Resolution) {
 		ev.reject(RejectResolution, fmt.Sprintf("Not in profile — %s", resLabel(r.Resolution)))
@@ -627,6 +674,12 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		ev.reject(RejectMissingRequired, "No "+missing+" — your profile requires it")
 		return ev
 	}
+	// A language the profile requires: by the name for a release, by its probed tracks for
+	// a file on disk. A file without one no longer fits, like any other Must.
+	if len(lv.missing) > 0 && !p.noLangGate {
+		ev.reject(RejectMissingLanguage, "Missing "+langNames(lv.missing)+" audio — your profile requires it")
+		return ev
+	}
 
 	ev.QualityScore = qualityScore(r)
 	// tierAvoidScore is the (negative) part of FormatScore that came from built-in formats
@@ -687,6 +740,11 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 			ev.Matched = append(ev.Matched, name)
 		}
 	}
+	// The preferred and required languages it has, named like formats ("German audio").
+	for _, code := range lv.prefs {
+		ev.langMatched = append(ev.langMatched, langLabel(code))
+	}
+	ev.Matched = append(ev.Matched, ev.langMatched...)
 	sort.Strings(ev.Matched) // stable output
 	sort.Strings(ev.AvoidedFormats)
 
@@ -702,7 +760,18 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	}
 	// Unwanted items set to avoid join the avoided tier under their own names ("it has
 	// Low-quality group (YTS), which you avoid"), never as a hidden score.
+	// Every language it carries is one the profile avoids: the avoided tier, named.
+	if lv.avoided {
+		ev.Avoided = true
+		ev.TargetAvoided = true
+		ev.langAvoided = true
+		ev.AvoidedFormats = append(ev.AvoidedFormats, "only "+langNames(audio.codes)+" audio")
+	}
 	for _, h := range unwanted {
+		// The language rules already avoid it; the foreign-only item would say it twice.
+		if h.item == UnwantedForeign && lv.avoided {
+			continue
+		}
 		if a := p.unwantedAction(h.item); a == UnwantedAvoid || (a == UnwantedReject && p.onDisk) {
 			ev.Avoided = true
 			ev.TargetAvoided = true
@@ -722,6 +791,20 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if ev.FormatScore-tierAvoidScore < p.MinFormatScore {
 		ev.reject(RejectMinFormatScore, "Below the profile's minimum format score")
 		return ev
+	}
+	// Each preferred or required language it has scores like a preferred target format —
+	// after the floor above, so a language rule never lets in a release the minimum score
+	// refused. It isn't a bonus Decide waives for a thin bitrate: the language is the point.
+	if n := len(lv.prefs); n > 0 {
+		ev.FormatScore += n * preferScore
+		ev.TargetScore += n * preferScore
+		ev.langPrefs = n
+	}
+	// An avoided language costs what an avoided target format does, so under classic
+	// ranking leaving it is a preferences gain too (under v2 the avoided tier says it).
+	if lv.avoided {
+		ev.FormatScore -= preferScore
+		ev.TargetScore -= preferScore
 	}
 
 	// Any positive SmallBias nudges the score per GB — a mild bias (0.15) is a
@@ -931,7 +1014,9 @@ func waiveCollapsedBonuses(evs []Evaluation) {
 			ev.TargetScore -= ev.targetBonus
 			ev.CustomScore -= ev.PreferBonus - ev.targetBonus
 			ev.BonusWaived = true
-			ev.PrefCount = 0 // the preferences stopped counting, for the preferences key too
+			// The preferences stopped counting, for the preferences key too — all but the
+			// languages, which were never part of the bonus.
+			ev.PrefCount = ev.langPrefs
 		}
 	}
 }

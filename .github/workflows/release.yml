@@ -228,3 +228,176 @@ jobs:
           case "$TAG" in *-*) pre="--prerelease" ;; esac
           # shellcheck disable=SC2086
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" $pre
+
+  # The Unraid all-in-one variant (the Dockerfile's aio target: Arrmada plus a qBittorrent
+  # and a FlareSolverr in one container, for the Community Apps template). It's built on
+  # top of the plain image this release just pushed, by digest (the build context named
+  # "arrmada" replaces that Dockerfile stage), so it carries exactly the same Arrmada, and
+  # tagged x.y.z-aio, x.y-aio, sha-…-aio and stable-aio in the same repository.
+  #
+  # It never holds the plain release back: the jobs above don't wait for it, so a failure
+  # here leaves the release and its notes published (the run shows red) and the -aio tags
+  # where they were; Unraid users simply see the update a little later. Its tags are only
+  # written once the plain image's are, so stable-aio never runs ahead of stable.
+  aio:
+    name: Build the Unraid all-in-one image (${{ matrix.arch }})
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # The cache image.yml's all-in-one job writes on main.
+          - arch: amd64
+            runner: ubuntu-24.04
+            cache: type=gha,scope=aio
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            cache: type=gha,scope=aio-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Names
+        id: names
+        run: |
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/arrmada" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # The plain image's digest for this platform, from the build job above.
+      - uses: actions/download-artifact@v8
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/plain
+      - name: Plain image digest
+        id: plain
+        run: |
+          digests=("${RUNNER_TEMP}"/plain/*)
+          if [ "${#digests[@]}" -ne 1 ]; then
+            echo "Expected one plain-image digest, found: ${digests[*]}" >&2
+            exit 1
+          fi
+          echo "digest=sha256:$(basename "${digests[0]}")" >> "$GITHUB_OUTPUT"
+      - name: Image labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.names.outputs.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.ref_name }},suffix=-aio
+          labels: |
+            org.opencontainers.image.title=Arrmada (all-in-one)
+            org.opencontainers.image.description=Arrmada with qBittorrent and FlareSolverr built in, for Unraid
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GitHub's container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The cache only serves the aio stages' downloads; the plain image comes from the
+      # registry, by digest.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: aio
+          build-contexts: |
+            arrmada=docker-image://${{ steps.names.outputs.image }}@${{ steps.plain.outputs.digest }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.names.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: ${{ matrix.cache }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ steps.names.outputs.commit }}
+      # Named aio-digests-*, so the plain merge job's digests-* never picks these up.
+      - name: Keep the digest for the merge job
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aio-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          # A week, like the plain digests, so a failed merge can be re-run days later.
+          retention-days: 7
+
+  aio-merge:
+    name: Tag the all-in-one image (amd64 + arm64)
+    # After the plain image's tags, so stable-aio is never newer than stable.
+    needs: [aio, merge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Names
+        id: names
+        run: |
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/arrmada" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: aio-digests-*
+          merge-multiple: true
+      # The plain image's tag list with -aio on the end of each: 0.17.0-aio, 0.17-aio,
+      # sha-abc1234-aio, and stable-aio for a release that isn't a pre-release.
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.names.outputs.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.ref_name }},suffix=-aio
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.ref_name }},suffix=-aio
+            type=sha,prefix=sha-,suffix=-aio,format=short
+            type=raw,value=stable,suffix=-aio,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GitHub's container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the multi-platform tags
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ steps.names.outputs.image }}
+        run: |
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "Expected one digest per platform (2), found: ${digests[*]}" >&2
+            exit 1
+          fi
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          # Every tag must end in -aio: one without would overwrite the plain image's.
+          for tag in "${tags[@]}"; do
+            case "$tag" in
+              *-aio) ;;
+              *) echo "Refusing to write ${tag}: not an -aio tag" >&2; exit 1 ;;
+            esac
+          done
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for digest in "${digests[@]}"; do args+=("${IMAGE}@sha256:${digest}"); done
+          docker buildx imagetools create "${args[@]}"
+      - name: Check both platforms are published
+        run: |
+          tag="$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
+          docker buildx imagetools inspect "${tag}"
+          platforms="$(docker buildx imagetools inspect "${tag}" --format '{{json .Manifest}}' \
+            | jq -r '[.manifests[].platform | select(.os == "linux") | .architecture] | sort | unique | join(",")')"
+          echo "Platforms: ${platforms}"
+          [ "${platforms}" = "amd64,arm64" ]

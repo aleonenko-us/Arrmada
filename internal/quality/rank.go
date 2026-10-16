@@ -188,7 +188,7 @@ func scoreFactor(winner, runnerUp Evaluation) (RankKey, string) {
 func preferenceLoss(winner, runnerUp Evaluation) string {
 	var missing []string
 	for _, m := range winner.Matched {
-		if isTargetFormat(m) && !containsStr(runnerUp.Matched, m) {
+		if (isTargetFormat(m) || containsStr(winner.langMatched, m)) && !containsStr(runnerUp.Matched, m) {
 			missing = append(missing, m)
 		}
 	}

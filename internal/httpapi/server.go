@@ -449,6 +449,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleGetClientSettings))
 	mux.HandleFunc("PUT /api/v1/downloadclients/{id}/settings", a.requireRole(auth.RoleManager, a.handleSetClientSettings))
 	mux.HandleFunc("POST /api/v1/downloadclients/restore-bundled", a.requireRole(auth.RoleManager, a.handleRestoreBundledClient))
+	// The all-in-one image's qBittorrent web UI login: a credential, so admins only.
+	mux.HandleFunc("GET /api/v1/downloadclients/bundled-login", a.requireRole(auth.RoleAdmin, a.handleBundledQbitLogin))
 	mux.HandleFunc("GET /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrInfo))
 	mux.HandleFunc("PUT /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrSettings))
 	mux.HandleFunc("POST /api/v1/indexers/prowlarr/sync", a.requireRole(auth.RoleManager, a.handleProwlarrSync))

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -141,7 +142,7 @@ func (t tags) seq(words ...string) bool {
 // codec without an encoder tag and so are never inferred to be discs.
 func (r *Release) detectTraits(all []tagToken, fansub bool) {
 	t := newTags(all)
-	r.Languages, r.Multi = detectLanguages(t)
+	r.Languages, r.Multi, r.Dual = detectLanguages(t)
 	r.Streaming = detectStreaming(t)
 	r.FullDisc = detectFullDisc(t, r.Languages, fansub)
 	r.ThreeD = t.any("3d", "sbs", "hsbs", "hou") || t.seq("h", "sbs") || t.seq("half", "sbs") ||
@@ -187,17 +188,21 @@ func detectFullDisc(t tags, languages []string, fansub bool) bool {
 }
 
 // sceneLanguages are the language tags release names use that aren't language names:
-// French dub variants and the Spanish regional words. Mapped to codes the language table
-// knows; everything else is read through it.
+// French dub variants, the Spanish regional words and the Polish dub tags. Mapped to codes
+// the language table knows; everything else is read through it.
 var sceneLanguages = map[string]string{
 	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr",
-	"castellano": "es",
+	"castellano": "es", "pldub": "pl", "dubpl": "pl",
 }
 
 // languageCodes3 are the three-letter codes release names commonly carry as audio tags
-// ("ITA.ENG"). Only these, and only in capitals: most three-letter codes are words too.
+// ("ITA.ENG", "POL.ENG"). Only these, and only in capitals: most three-letter codes are
+// words too, which is why the ones that are everyday tags or words ("NOR", "FIN", "DAN")
+// stay out.
 var languageCodes3 = map[string]bool{
 	"ita": true, "eng": true, "ger": true, "fre": true, "spa": true, "jpn": true, "kor": true, "rus": true,
+	"pol": true, "por": true, "dut": true, "cze": true, "hun": true, "tur": true, "ukr": true,
+	"chi": true, "hin": true, "swe": true, "heb": true,
 }
 
 // subsWords after a language say it names the subtitles, not the audio ("German.Subbed",
@@ -210,21 +215,31 @@ var subsWords = map[string]bool{
 // detectLanguages reads the audio languages a name states, as ISO 639-1 codes in the order
 // written, and whether it says it carries several (MULTi, DUAL, or German "DL"/"ML" next
 // to a language). Language names are looked up in the one language table (internal/langs).
-func detectLanguages(t tags) ([]string, bool) {
-	var out []string
-	multi := false
+func detectLanguages(t tags) (out []string, multi, dual bool) {
 	words := t.all
-	for i, tok := range words {
-		if tok.title && !sceneCased(tok.raw) {
-			continue
+	// The words where an episode title would sit, less the dub tags that can share it.
+	titleWords := 0
+	for _, tok := range words {
+		if tok.title && !dubTags[tok.lc] && !reEpisodeMarkerWord.MatchString(tok.lc) {
+			titleWords++
 		}
+	}
+	for i, tok := range words {
 		next := ""
 		if i+1 < len(words) {
 			next = words[i+1].lc
 		}
+		// German TV names its dubs where an episode title would sit: "Show.S01E01.German.
+		// DL.1080p…", "…German.Dubbed.720p…", "…German.720p…". A language word there is the
+		// tag when a dub tag follows it, or when it's the only word in that place (so the
+		// technical tokens follow it) — "Going.Dutch.720p" is an episode title, not a dub.
+		if tok.title && !sceneCased(tok.raw) && !dubTags[next] && titleWords != 1 {
+			continue
+		}
 		if tok.lc == "multi" || tok.lc == "dual" {
 			if !subsWords[next] { // "Multi-Subs" is subtitles
 				multi = true
+				dual = dual || tok.lc == "dual"
 			}
 			continue
 		}
@@ -250,15 +265,23 @@ func detectLanguages(t tags) ([]string, bool) {
 	}
 	if !multi && len(out) > 0 {
 		// German "DL" (dual language) / "ML" (multi language) — but "WEB-DL" is a source.
-		for i, tok := range t.toks {
-			if (tok.lc == "dl" || tok.lc == "ml") && (i == 0 || t.toks[i-1].lc != "web") {
+		// Read over every word: in an episode name the "German.DL" sits where a title would.
+		for i, tok := range words {
+			if (tok.lc == "dl" || tok.lc == "ml") && (i == 0 || words[i-1].lc != "web") {
 				multi = true
 				break
 			}
 		}
 	}
-	return out, multi
+	return out, multi, dual
 }
+
+// reEpisodeMarkerWord is the episode marker the tail starts with ("s01e01", "1x05", "e12",
+// "05"): not a word of the episode title.
+var reEpisodeMarkerWord = regexp.MustCompile(`^(s\d{1,4}(e\d{1,4})*|e\d{1,4}|\d{1,2}x\d{1,4}|\d{1,4})$`)
+
+// dubTags say the language word beside them names the dub, wherever it sits.
+var dubTags = map[string]bool{"dl": true, "ml": true, "dubbed": true}
 
 // streamingServices are the services a WEB release names, by the tag as written. long ones
 // are distinctive enough in any case; short ones must be in capitals, since "Stan" or "Max"

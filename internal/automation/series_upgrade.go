@@ -215,7 +215,7 @@ func (c *Coordinator) packUpgrades(ctx context.Context, s series.Series, idx run
 		packRank := parser.ResolutionRank(cand.Release.Resolution)
 		ok, n := packUpgradeDecision(withFiles, func(k epKey) (better, worse bool) {
 			e := eps[k]
-			cur := c.currentEpisodeFile(ctx, e)
+			cur := c.currentEpisodeFile(ctx, s, e)
 			if r := fileResRank(cur); r > 0 && packRank < r {
 				worse = true
 			}

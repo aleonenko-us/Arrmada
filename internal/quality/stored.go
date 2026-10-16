@@ -124,7 +124,17 @@ func (sp StoredProfile) ToProfile() Profile {
 		Unwanted:   sp.Unwanted,
 		NoUnwanted: sp.MediaType != MediaMovie && sp.MediaType != MediaSeries,
 		GroupTiers: sp.groupTiers(),
+		Languages:  sp.languages(),
 	}
+}
+
+// languages is the target's Audio language row, for the engine: none for book and music
+// profiles, whose names aren't video release names.
+func (sp StoredProfile) languages() map[string]string {
+	if sp.Ideal == nil || (sp.MediaType != MediaMovie && sp.MediaType != MediaSeries && sp.MediaType != "") {
+		return nil
+	}
+	return normLanguageRow(sp.Ideal.Language)
 }
 
 // groupTiers is the tiers the engine ranks with: none for book and music profiles.

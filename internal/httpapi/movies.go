@@ -482,6 +482,8 @@ func (a *api) handleGetMovie(w http.ResponseWriter, r *http.Request) {
 		m.File = versions[0].File
 		// What the page just saw beats the stored flag, which that read brought up to date.
 		m.FileMissing = m.HasFile && m.File != nil && m.File.Missing
+		// Each track's audio languages, from the library index (never probed here).
+		a.attachMovieAudio(r.Context(), &m)
 	}
 	// What's in flight for it, by the acquisition record (ACQ-25), joined to the queue by
 	// info hash: the progress bar and the Acquisition card read the same grabs, whatever
