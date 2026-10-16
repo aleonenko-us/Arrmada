@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,13 +51,21 @@ func viewOf(c notify.Connection) notificationView {
 		v.Preset = c.Kind
 		v.Fields = notify.MaskedFields(c.Kind, fields)
 	}
-	if c.URL != "" && c.Kind != notify.KindWebPush {
+	switch {
+	case c.Kind == notify.KindN8N:
+		// Not an Apprise link: its fields are checked again at every send, and a setting
+		// that no longer passes says so in the delivery log rather than here.
+	case c.URL != "" && c.Kind != notify.KindWebPush:
 		if err := notify.ValidateAppriseURL(c.URL); err != nil {
 			v.InvalidReason = err.Error()
 		}
 	}
 	return v
 }
+
+// errWebhookNeedsFields refuses an n8n / Webhook connection sent as a bare link: it's set
+// up from its fields (URL, authentication, signing secret), never an Apprise URL.
+const errWebhookNeedsFields = "an n8n / Webhook connection is set up from its fields (url, auth, signing_secret), not a link"
 
 // notificationInput is what create and update accept. URL is a pointer so an update can
 // leave it out (or send "") to keep the stored one; Events likewise (a new connection
@@ -77,6 +87,13 @@ type notificationInput struct {
 	ID int64 `json:"id"`
 	// Options are the message choices (Plex stream filters); left out keeps the stored ones.
 	Options *notify.Options `json:"options"`
+	// Event, on a Test, is the catalog event whose sample is sent ("" = a plain test).
+	Event string `json:"event"`
+}
+
+// testEventBody is a saved connection's Test body: which event's sample to send.
+type testEventBody struct {
+	Event string `json:"event"`
 }
 
 // presetURL builds a preset connection's URL from the form, filling blank secrets from
@@ -225,6 +242,10 @@ func (a *api) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		c.URL, c.Config = u, notify.PresetConfigFor(c.Kind, fields)
 	} else {
+		if c.Kind == notify.KindN8N {
+			a.writeError(w, http.StatusBadRequest, errWebhookNeedsFields)
+			return
+		}
 		if c.Name == "" || c.URL == "" {
 			a.writeError(w, http.StatusBadRequest, "name and url are required")
 			return
@@ -292,6 +313,11 @@ func (a *api) handleUpdateNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch u := in.url(); {
+	case c.Kind == notify.KindN8N && !in.usesFields() && (stored.Kind != notify.KindN8N || (u != "" && u != notify.URLHint(stored.URL))):
+		// Becoming a webhook, or a new link for one, takes its fields. Renaming one or
+		// ticking its events (no fields, no link) keeps what's stored, below.
+		a.writeError(w, http.StatusBadRequest, errWebhookNeedsFields)
+		return
 	case in.usesFields():
 		// A preset's form: a secret left blank keeps the stored one — but only from the
 		// same kind of preset, so switching Discord to Telegram can't carry a token over.
@@ -362,7 +388,11 @@ func (a *api) handleTestNotification(w http.ResponseWriter, r *http.Request) {
 		if !a.pushTarget(w, r, &c) {
 			return
 		}
-		a.answerTest(w, r, c)
+		a.answerTest(w, r, c, in.Event)
+		return
+	}
+	if c.Kind == notify.KindN8N && !in.usesFields() {
+		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": errWebhookNeedsFields})
 		return
 	}
 	if in.usesFields() {
@@ -374,18 +404,21 @@ func (a *api) handleTestNotification(w http.ResponseWriter, r *http.Request) {
 				kept = notify.PresetFields(saved)
 			}
 		}
-		u, _, err := presetURL(c.Kind, in.Fields, kept)
+		u, fields, err := presetURL(c.Kind, in.Fields, kept)
 		if err != nil {
 			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		c.URL = u
+		// A webhook's send reads its auth and secret from the fields, not the URL.
+		c.URL, c.Config = u, notify.PresetConfigFor(c.Kind, fields)
 	}
-	if err := notify.ValidateAppriseURL(c.URL); err != nil {
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
-		return
+	if c.Kind != notify.KindN8N { // a webhook's URL was checked as one by presetURL
+		if err := notify.ValidateAppriseURL(c.URL); err != nil {
+			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
 	}
-	a.answerTest(w, r, c)
+	a.answerTest(w, r, c, in.Event)
 }
 
 // pushTarget makes c a push connection for the signed-in user, refusing a URL.
@@ -408,11 +441,28 @@ func (a *api) pushTarget(w http.ResponseWriter, r *http.Request, c *notify.Conne
 }
 
 // handleTestSavedNotification sends a sample message through a saved connection's
-// stored URL, which the browser never sees.
+// stored URL, which the browser never sees. The body is optional: {"event": "<key>"}
+// sends that event's sample instead of the plain test.
 func (a *api) handleTestSavedNotification(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
 		return
+	}
+	var in testEventBody
+	if r.ContentLength != 0 {
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
+		if err != nil {
+			a.writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if len(bytes.TrimSpace(raw)) > 0 {
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&in); err != nil {
+				a.writeError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+		}
 	}
 	c, err := a.deps.Notify.Get(r.Context(), id)
 	if errors.Is(err, notify.ErrNotFound) {
@@ -423,11 +473,17 @@ func (a *api) handleTestSavedNotification(w http.ResponseWriter, r *http.Request
 		a.writeError(w, http.StatusInternalServerError, "could not load notification")
 		return
 	}
-	a.answerTest(w, r, c)
+	a.answerTest(w, r, c, in.Event)
 }
 
-func (a *api) answerTest(w http.ResponseWriter, r *http.Request, c notify.Connection) {
-	if err := a.deps.Notify.Test(r.Context(), c); err != nil {
+func (a *api) answerTest(w http.ResponseWriter, r *http.Request, c notify.Connection, event string) {
+	if event != "" {
+		if err := notify.ValidEvents([]string{event}); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if err := a.deps.Notify.Test(r.Context(), c, event); err != nil {
 		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
