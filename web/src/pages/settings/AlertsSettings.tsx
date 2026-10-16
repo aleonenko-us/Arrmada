@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Section, input, inputStyle } from "../../components/settings/ui";
 import { LINKS } from "../../lib/links";
-import { api, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type AlertPresetField, type NotificationConn, type NotificationInput } from "../../lib/api";
+import { api, ApiError, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type AlertPresetField, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { alertsApi } from "../../lib/alertsApi";
 import { insightsApi } from "../../lib/insightsApi";
 import { ServerBadge } from "../../components/brand";
@@ -230,7 +230,16 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
   // "•••• saved" again.
   const [saves, setSaves] = useState(0);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
-  const isN8N = conn.kind === N8N;
+  // The preset, not the kind: a row labelled "n8n" over an Apprise link (from before the n8n
+  // kind existed) is edited and tested as the Apprise connection it is.
+  const isN8N = preset?.kind === N8N;
+  // A refusal about one field (the server's "field"), shown beside it until it's edited.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const showFieldError = (field: unknown, msg: string): boolean => {
+    if (typeof field !== "string" || !field) return false;
+    setFieldErrors({ [field]: msg });
+    return true;
+  };
   // Which event "Send test" sends a sample of ("" = a plain test). An n8n connection starts
   // on its first ticked event, so "Listen for test event" gets a payload with real fields.
   const [testEvent, setTestEvent] = useState(() => (isN8N ? catalog.events.find((e) => conn.events.includes(e.key))?.key ?? "" : ""));
@@ -273,7 +282,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       }
       toast("Saved", { tone: "good" });
       onChange();
-    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
+    } catch (e) {
+      if (!(e instanceof ApiError && showFieldError(e.body?.field, e.message))) toast((e as Error).message, { tone: "error" });
+    } finally { setBusy(null); }
   };
   // What's typed is tried as typed (before saving), with saved secrets filled in on the
   // server; an untouched saved card is tested through what's stored, and logged.
@@ -287,6 +298,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     try {
       const event = testEvent || undefined;
       const r = saved ? await alertsApi.testSavedNotification(c.id!, event) : await alertsApi.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}), ...(event ? { event } : {}) });
+      if (!r.ok && showFieldError(r.field, r.error || "")) return;
       toast(r.ok ? "Test sent" : `Test failed — ${r.error || "no reason given"}`, { tone: r.ok ? "good" : "error" });
       if (saved) onChange(); // the test is in the card's log and status now
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
@@ -323,7 +335,16 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
           values={values}
           readOnly={readOnly}
           savedSecret={savedSecret}
-          onChange={(name, v) => setValues((p) => ({ ...p, [name]: v }))}
+          errors={fieldErrors}
+          onChange={(name, v) => {
+            setValues((p) => ({ ...p, [name]: v }));
+            setFieldErrors((p) => {
+              if (!(name in p)) return p;
+              const rest = { ...p };
+              delete rest[name];
+              return rest;
+            });
+          }}
         />
       ) : readOnly ? (
         <div className={`mt-2 ${input}`} style={inputStyle}>{conn.url_hint || "—"}</div>
@@ -377,10 +398,12 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
 }
 
 // PresetForm is a preset's fields with its one-line hint. A saved secret shows as
-// "•••• saved" with Replace; until it's replaced, the server keeps the saved one.
-function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
+// "•••• saved" with Replace; until it's replaced, the server keeps the saved one. errors are
+// the server's refusals about one field (a saved webhook secret it won't send to a new
+// server), shown beside that field — with its input open, so it can be typed again.
+function PresetForm({ preset, values, readOnly, savedSecret, errors, onChange }: {
   preset: AlertPreset; values: Record<string, string>; readOnly?: boolean;
-  savedSecret: (name: string) => boolean; onChange: (name: string, value: string) => void;
+  savedSecret: (name: string) => boolean; errors?: Record<string, string>; onChange: (name: string, value: string) => void;
 }) {
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
   const toast = useToast();
@@ -393,7 +416,9 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
       <p className="mb-2 text-xs text-ink-faint">{preset.hint}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {preset.fields.filter((f) => shownField(preset, f, values)).map((f) => {
-          const kept = f.secret && savedSecret(f.name) && !replacing[f.name];
+          const fieldError = errors?.[f.name];
+          const errorId = `alert-field-error-${preset.kind}-${f.name}`;
+          const kept = f.secret && savedSecret(f.name) && !replacing[f.name] && !fieldError;
           const label = `${f.label}${f.required ? "" : " (optional)"}`;
           if (f.generate) {
             // A secret the page makes: shown until saved so it can be copied into n8n, then
@@ -455,6 +480,8 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                     disabled={readOnly}
                     onChange={(e) => onChange(f.name, e.target.value)}
                     placeholder={f.placeholder}
+                    aria-invalid={fieldError ? true : undefined}
+                    aria-describedby={fieldError ? errorId : undefined}
                     autoComplete={f.secret ? "new-password" : "off"}
                     className={`min-w-0 flex-1 ${input}`}
                     style={inputStyle}
@@ -466,6 +493,7 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                   )}
                 </span>
               )}
+              {fieldError && <span id={errorId} role="alert" className="text-xs" style={{ color: "var(--reject-text)" }}>{fieldError}</span>}
               {f.hint && <span className="text-xs text-ink-faint">{f.hint}</span>}
             </label>
           );

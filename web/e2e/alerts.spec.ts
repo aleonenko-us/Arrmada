@@ -111,6 +111,27 @@ test.describe("admin", () => {
     await expect.poll(() => api.callsTo("POST", "/api/v1/notifications/4/test").length).toBe(1);
     expect(api.callsTo("POST", "/api/v1/notifications/4/test")[0].body).toEqual({ event: "episodes.imported" });
   });
+
+  // Moving a saved webhook to another server: the server won't send the saved header value
+  // there and says which field it needs; the page shows that beside the field, opened.
+  test("a refusal about one field shows beside that field", async ({ page }) => {
+    const msg = "Header value: the webhook URL now points at another server — the saved one isn't sent to a different server than it was saved for, so enter it again";
+    await page.route("**/api/v1/notifications/4", (route) =>
+      route.request().method() === "PUT"
+        ? route.fulfill({ status: 400, json: { status: "error", message: msg, field: "header_value" } })
+        : route.fallback());
+    await page.goto("/settings/alerts");
+    const card = page.locator("div.rounded-xl", { has: page.locator('input[value="Home n8n"]') }).last();
+    await card.getByRole("button", { name: /Webhook URL/ }).click(); // Replace
+    await card.getByRole("textbox", { name: "Webhook URL" }).fill("http://192.168.1.99:5678/webhook/arrmada");
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    const value = card.getByRole("textbox", { name: "Header value" });
+    await expect(value).toBeVisible();
+    await expect(value).toHaveAttribute("aria-invalid", "true");
+    await expect(card.getByRole("alert")).toHaveText(msg);
+    await value.fill("typed-again");
+    await expect(card.getByRole("alert")).toHaveCount(0);
+  });
 });
 
 test.describe("manager", () => {
