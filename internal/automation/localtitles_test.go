@@ -90,6 +90,29 @@ func TestHoldMovieImportAcceptsLocalizedTitle(t *testing.T) {
 		}
 	})
 
+	t.Run("a German title two films share imports to the grabbed one", func(t *testing.T) {
+		src := wildNames()
+		h, wild := setup(t, src)
+		h.c.movies.SetTitleLanguages(func() []string { return []string{"de"} })
+		shared := []metadata.TranslatedTitle{{Lang: "de", Title: "Der große Trip – Wild"}}
+		mustExec(t, h.c, `UPDATE movies SET extra_json = json_set(extra_json, '$.local_titles', json(?), '$.local_langs', json('["de"]')) WHERE id = ?`,
+			`[{"lang":"de","title":"Der große Trip – Wild"}]`, wild.ID)
+		if _, err := movies.NewRepo(h.c.db).Create(h.ctx, movies.Movie{TMDBID: 7, Title: "Wilder", Year: 2014,
+			Extra: &movies.MovieExtra{TitlesRead: true, LocalTitles: shared, LocalLangs: []string{"de"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := h.c.movies.Match(h.ctx, "Der grosse Trip Wild", 2014); ok {
+			t.Fatal("a translated title two films share matched one of them library-wide")
+		}
+		addGrab(t, h.c, "movie", wild.ID, wildRelease, hashFor(wildRelease))
+		if reason, hold := h.c.HoldMovieImport(h.ctx, hashFor(wildRelease), wildRelease, t.TempDir()); hold {
+			t.Fatalf("held the grabbed film's German release: %s", reason)
+		}
+		if src.calls.Load() != 0 {
+			t.Errorf("%d TMDB reads, want none: the stored German title answers", src.calls.Load())
+		}
+	})
+
 	t.Run("the year guard", func(t *testing.T) {
 		h, wild := setup(t, wildNames())
 		const remake = "Der.grosse.Trip.Wild.2009.German.DL.1080p.BluRay.x264-GRP"
@@ -154,6 +177,28 @@ func TestSeriesImportAcceptsLocalizedTitle(t *testing.T) {
 		h.c.ImportSeriesDownloads(h.ctx)
 		if src.calls.Load() != calls || pendingReviews(t, h) != 0 {
 			t.Errorf("a later sweep asked TMDB %d more times, %d reviews", src.calls.Load()-calls, pendingReviews(t, h))
+		}
+	})
+
+	t.Run("a German title two shows share", func(t *testing.T) {
+		// With German set, both shows are translated "Die Sendung": a download nobody
+		// grabbed names them both for a human; one grabbed for this show imports here.
+		h := setup(t, showNames())
+		h.c.series.SetTitleLanguages(func() []string { return []string{"de"} })
+		const shared = `{"local_titles":[{"lang":"de","title":"Die Sendung"}],"local_langs":["de"]}`
+		mustExec(t, h.c, `UPDATE series SET extra_json = ? WHERE id = ?`, shared, h.seriesID)
+		mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored, extra_json) VALUES (99, 'Other Show', 2017, 1, ?)`, shared)
+
+		loose := "Die.Sendung.S01E01.German.720p.HDTV.x264-LOOSE"
+		looseHash := h.completedTorrent(loose, seriesCategory, h.download(t, loose, loose+".mkv"))
+		grab(t, h, "Die.Sendung.S01E02.German.1080p.WEB-DL.x264-GRP")
+		h.c.ImportSeriesDownloads(h.ctx)
+
+		if r := reviewFor(t, h.c, looseHash); r.ReasonCode != ReasonUnmatched || !strings.Contains(r.Reason, "Other Show") {
+			t.Errorf("ungrabbed download: review %q (%s), want both shows named", r.Reason, r.ReasonCode)
+		}
+		if !episodeHasFile(t, h, 1, 2) || pendingReviews(t, h) != 1 {
+			t.Errorf("the grabbed download didn't import into the show it was grabbed for (%d reviews)", pendingReviews(t, h))
 		}
 	})
 

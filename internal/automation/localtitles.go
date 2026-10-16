@@ -34,3 +34,13 @@ func (c *Coordinator) seriesKnownAs(ctx context.Context, hash string, show serie
 	}
 	return ok, err
 }
+
+// seriesAmong reports whether the show with id is one of shows.
+func seriesAmong(shows []series.Series, id int64) bool {
+	for _, s := range shows {
+		if s.ID == id {
+			return true
+		}
+	}
+	return false
+}
