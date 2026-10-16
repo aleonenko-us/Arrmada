@@ -48,7 +48,7 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
         {hint && (
           <div className="flex flex-col gap-1">
             <p className="m-0 text-sm text-ink-dim">{hint.text}</p>
-            <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{hint.command}</code>
+            {hint.command && <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{hint.command}</code>}
           </div>
         )}
         {latest && <ReleaseNotes release={latest} open={update.available} label={update.available ? "What changed" : `Newest release: ${latest.tag}`} />}
