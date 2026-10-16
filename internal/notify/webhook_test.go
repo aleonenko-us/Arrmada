@@ -230,6 +230,13 @@ func TestWebhookEnvelope(t *testing.T) {
 	if env["url"] != nil || env["path"] != "/activity/needs-you" || env["image_url"] != nil {
 		t.Fatalf("links = %v %v %v", env["url"], env["path"], env["image_url"])
 	}
+	// A resolved problem carries the problem's level; the good news is still "info".
+	if got := severityOf(EventHealthResolved, map[string]any{"count": 1, "title": "x", "level": "error"}); got != "info" {
+		t.Fatalf("health.resolved severity = %q", got)
+	}
+	if got := severityOf(EventImportHeld, map[string]any{"count": 1, "title": "x"}); got != "warning" {
+		t.Fatalf("import.held without a level = %q", got)
+	}
 	inst, _ := env["instance"].(map[string]any)
 	if inst["name"] != "Arrmada" || inst["version"] == "" || inst["url"] != nil {
 		t.Fatalf("instance = %v", inst)

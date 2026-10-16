@@ -294,7 +294,7 @@ A health check found something wrong: a client or Plex unreachable, downloads pa
 
 #### `health.resolved` — Health problem resolved
 
-A health problem you were told about has cleared. Severity: info (or the item's level).
+A health problem you were told about has cleared. Severity: info.
 
 | Field | Type | Meaning |
 |---|---|---|

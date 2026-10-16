@@ -448,14 +448,16 @@ func fallbackWebhookPayload(event string, m Message, at time.Time, base string) 
 	return b
 }
 
-// severityOf is "info", "warning" or "error": what the event's payload says (the Needs-you
-// and health events carry a level), else the event's own default.
+// severityOf is "info", "warning" or "error": for a problem, the level its payload says
+// (the Needs-you and health problems carry one), else the event's own default.
 func severityOf(key string, d map[string]any) string {
-	switch str(d, "level") {
-	case "error":
-		return "error"
-	case "warning":
-		return "warning"
+	if levelSeverity[key] {
+		switch str(d, "level") {
+		case "error":
+			return "error"
+		case "warning":
+			return "warning"
+		}
 	}
 	if spec, ok := webhookEvents[key]; ok && spec.severity != "" {
 		return spec.severity

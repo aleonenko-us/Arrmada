@@ -401,6 +401,14 @@ var webhookEvents = map[string]webhookEvent{
 	},
 }
 
+// levelSeverity are the events whose severity is the item's own level ("warning" or
+// "error") when its payload carries one: the problems. health.resolved carries the level
+// of the problem that cleared, which is not how severe the good news is.
+var levelSeverity = map[string]bool{
+	EventImportHeld: true, EventImportStuck: true, EventDownloadFailed: true, EventDownloadStalled: true,
+	EventHealthProblem: true, EventConvertStalled: true,
+}
+
 // WebhookFields lists an event's data fields, for the docs.
 func WebhookFields(key string) []DataField {
 	return append([]DataField(nil), webhookEvents[key].fields...)

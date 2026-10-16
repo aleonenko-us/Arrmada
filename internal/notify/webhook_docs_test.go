@@ -33,11 +33,8 @@ func eventReference() string {
 		if sev == "" {
 			sev = "info"
 		}
-		for _, f := range spec.fields {
-			if f.Name == "level" {
-				sev += " (or the item's level)"
-				break
-			}
+		if levelSeverity[def.Key] {
+			sev += " (or the item's level)"
 		}
 		fmt.Fprintf(&b, "\n#### `%s` — %s\n\n%s Severity: %s.", def.Key, def.Label, def.Hint, sev)
 		if def.Module != "" {
