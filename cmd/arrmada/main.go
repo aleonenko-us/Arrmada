@@ -1261,6 +1261,7 @@ func main() {
 	// in flight waits (fail closed: an unreadable check refuses too).
 	folderMover := &libfolders.Mover{
 		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolder: series.ShowFolder,
+		Hold: coordinator.HoldSearches, // no search grabs into the old folder half-way
 		Log: modLog(log, "import"),
 		Busy: func(ctx context.Context, lib string, id int64) string {
 			acqs, err := coordinator.Active(ctx, lib, id)

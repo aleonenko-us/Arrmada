@@ -140,7 +140,7 @@ func TestMoveRenamesOnOneFilesystem(t *testing.T) {
 	if got := queryString(t, f, `SELECT detail FROM movie_events WHERE movie_id = 1 AND event = 'moved'`); !strings.Contains(got, "kids") {
 		t.Errorf("event = %q", got)
 	}
-	want := map[string]bool{"movie:" + f.movies: true, "movie:" + dst: true}
+	want := map[string]bool{"movie:" + src: true, "movie:" + dst: true}
 	for _, d := range sc.dirs {
 		delete(want, d)
 	}

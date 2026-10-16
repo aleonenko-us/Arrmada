@@ -40,6 +40,10 @@ type Mover struct {
 	// Busy says why a title can't move right now ("" when it can): a download on its way
 	// in, for instance, would land in the old folder half-way through.
 	Busy func(ctx context.Context, media string, id int64) string
+	// Hold keeps searches of the title from starting while it moves (and release lets
+	// them go again), so nothing is grabbed into the old folder half-way. ok is false
+	// while a search of it is already running. nil = no hold.
+	Hold func(media string, id int64) (release func(), ok bool)
 	// ShowFolder is the show folder an episode file lives in (series.ShowFolder).
 	ShowFolder func(episodePath string) string
 	Log        *slog.Logger
@@ -103,6 +107,13 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 		return MoveResult{}, err
 	}
 	res := MoveResult{Folder: dest.Label, Moved: []MovedDir{}}
+	if m.Hold != nil {
+		release, ok := m.Hold(media, id)
+		if !ok {
+			return res, fmt.Errorf("%w: a search for it is running — try again once it finishes", ErrBusy)
+		}
+		defer release()
+	}
 	if m.Busy != nil {
 		if why := m.Busy(ctx, media, id); why != "" {
 			return res, fmt.Errorf("%w: %s", ErrBusy, why)
@@ -145,7 +156,9 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 		res.Moved = append(res.Moved, md)
 		methods[md.Method] = true
 		if m.Scan != nil {
-			m.Scan(kind, filepath.Dir(pl.from))
+			// The old folder is gone: the scanner widens to the nearest folder still there,
+			// as it does after a delete, so the server drops the title from there.
+			m.Scan(kind, pl.from)
 			m.Scan(kind, pl.to)
 		}
 	}
@@ -376,6 +389,12 @@ func (m *Mover) moveDir(ctx context.Context, pl movePlan, report func(float64, s
 		m.retireTree(tmp)
 		return md, 0, err
 	}
+	// Nothing may have changed in the original while it was copied (an import that slipped
+	// in, a subtitle written): the originals are about to go, so the copy must be all of them.
+	if !sameTree(manifest(pl.from), manifest(tmp)) {
+		m.retireTree(tmp)
+		return md, 0, fmt.Errorf("%w: files in %s changed while they were being copied — nothing was moved; try again", ErrBusy, filepath.Base(pl.from))
+	}
 	if err := rename(tmp, pl.to); err != nil {
 		m.retireTree(tmp)
 		return md, 0, fmt.Errorf("couldn't put the copy in place: %w", err)
@@ -460,6 +479,37 @@ func (m *Mover) copyTree(ctx context.Context, src, dst string, report func(float
 		done += fi.Size()
 		return nil
 	})
+}
+
+// manifest is every regular file under dir by its path inside it, with its size.
+func manifest(dir string) map[string]int64 {
+	out := map[string]int64{}
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(dir, p)
+		if rerr != nil {
+			return nil
+		}
+		if fi, ierr := d.Info(); ierr == nil {
+			out[rel] = fi.Size()
+		}
+		return nil
+	})
+	return out
+}
+
+func sameTree(a, b map[string]int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
 }
 
 // retireTree sends every file under dir to the recycle bin (deepest first, the same as a
