@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -225,7 +224,7 @@ func (a *api) handleMapReview(w http.ResponseWriter, r *http.Request) {
 	jobID, existing, ok := a.submitOr503(w, r, a.reviewImportSpec(id, rv.Hash, func(ctx context.Context, p *jobs.Progress) (any, error) {
 		n, err := a.deps.Automation.ApplyReviewMap(withImportProgress(ctx, p), plan)
 		if err != nil {
-			return nil, reviewJobError(err)
+			return nil, err // the import's own reason, which the card shows
 		}
 		res := importedInto(p, title)
 		p.SetMessage("Imported " + countOf(n, "episode") + " into " + title + ".")
@@ -334,7 +333,7 @@ func (a *api) handleImportReview(w http.ResponseWriter, r *http.Request) {
 	targetID, targetKind := req.TargetID, req.TargetKind
 	jobID, existing, ok := a.submitOr503(w, r, a.reviewImportSpec(id, t.Review.Hash, func(ctx context.Context, p *jobs.Progress) (any, error) {
 		if err := a.deps.Automation.ImportReview(withImportProgress(ctx, p), id, targetID, targetKind); err != nil {
-			return nil, reviewJobError(err)
+			return nil, err // the import's own reason, which the card shows
 		}
 		return importedInto(p, t.Title), nil
 	}))
@@ -402,15 +401,6 @@ func importedInto(p *jobs.Progress, title string) map[string]any {
 	}
 	p.SetMessage(msg)
 	return map[string]any{"imported": true, "title": title}
-}
-
-// reviewJobError is a review import's failure as the job records it. The errors a person
-// can act on already say what happened; anything else is a fault, said as one.
-func reviewJobError(err error) error {
-	if reviewErrorStatus(err) != http.StatusInternalServerError || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-	return fmt.Errorf("the import failed: %w", err)
 }
 
 // reviewImportJobs is the newest import job of each review that has one, by review id:
