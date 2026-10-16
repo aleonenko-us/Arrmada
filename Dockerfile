@@ -346,7 +346,8 @@ COPY --from=whisper-cpu /usr/local/bin/whisper-cli /usr/local/bin/whisper-cli
 ENV ARRMADA_WHISPER_CPU_ONLY=1
 
 # --- Final: the image's own platform, plus what every platform shares ---
-FROM runtime-${TARGETARCH}
+# Named so the Unraid all-in-one variant (the aio stages below) can build on it.
+FROM runtime-${TARGETARCH} AS arrmada
 COPY --from=build /out/arrmada /usr/local/bin/arrmada
 # Dolby Vision (dovi_tool) + HDR10+ (hdr10plus_tool) metadata extractors/injectors.
 COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr/local/bin/
@@ -383,3 +384,120 @@ LABEL org.arrmada.restore="1"
 ARG VERSION=docker
 ARG COMMIT=unknown
 LABEL org.arrmada.version="${VERSION}" org.arrmada.commit="${COMMIT}"
+
+# ==========================================================================================
+# The Unraid all-in-one variant (--target aio; published as x.y.z-aio, x.y-aio, stable-aio)
+# ==========================================================================================
+#
+# An Unraid template is one container, so the template's image carries Arrmada's two
+# companions inside it: qBittorrent and FlareSolverr, each switched off with a template
+# variable. It is the plain image above plus these stages, built FROM it, so it runs the
+# exact same Arrmada. The plain image and the Compose install don't change: nothing below
+# is in them, and a build without --target still ends on the plain image (the last line).
+#
+# cmd/arrmada-aio supervises the three processes behind tini (docs/unraid.md says how).
+# arm64 gets qBittorrent only: FlareSolverr's Chromium is published for x86-64 Linux alone.
+
+# qBittorrent: the static qbittorrent-nox build (no Qt or Boost to install, one file),
+# the same 5.2.3 the Compose bundle pins, with libtorrent 2.0. Checked against the SHA-256
+# GitHub records for each release asset.
+FROM alpine:3.20 AS aio-qbittorrent
+ARG QBITTORRENT_RELEASE=release-5.2.3_v2.0.15
+ARG QBITTORRENT_SHA256_AMD64=eab445f0e7adfca8e33afcd5724cdfd76a09e610d914bec25e8788efbb4e55e2
+ARG QBITTORRENT_SHA256_ARM64=335fb2d8038f4b66a444f5645300a98abb2fcebaccf74baf5b30b48c8106082d
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ARCH=x86_64; SHA=${QBITTORRENT_SHA256_AMD64} ;; \
+        arm64) ARCH=aarch64; SHA=${QBITTORRENT_SHA256_ARM64} ;; \
+        *) echo "no qBittorrent for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    wget -qO /qbittorrent-nox "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBITTORRENT_RELEASE}/${ARCH}-qbittorrent-nox"; \
+    echo "${SHA}  /qbittorrent-nox" | sha256sum -c -; \
+    chmod 755 /qbittorrent-nox
+
+# The supervisor: standard library only, so it builds from its own two folders, on the
+# build machine's platform (Go cross-compiles it, like arrmada), without the web UI.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS aio-supervisor
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY internal/aio ./internal/aio
+COPY cmd/arrmada-aio ./cmd/arrmada-aio
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "-s -w" -o /out/arrmada-aio ./cmd/arrmada-aio
+
+# FlareSolverr (x86-64): its source at a checked commit, its Python packages pinned by hash
+# in a virtualenv on the runtime's own Python, and the Chromium build its own Linux release
+# bundles (a chromium-browser-snapshots revision) with the chromedriver of that same
+# revision, both checked by SHA-256. It sits at /app, where FlareSolverr's code looks for
+# the chromedriver and Chromium, as in its own image. Ubuntu 24.04 ships Chromium only as a
+# snap, which can't run in a container, hence the upstream build.
+FROM ubuntu:24.04 AS aio-flaresolverr
+ARG FLARESOLVERR_VERSION=v3.5.2
+ARG FLARESOLVERR_COMMIT=93125d6ea6956906c8dfa29e169b2dc67d993dc3
+ARG CHROMIUM_REVISION=1681097
+ARG CHROMIUM_SHA256=8ae6cec7a56e2966b0523e2857c381ee35df92f034ffd57708465de7b6e60513
+ARG CHROMEDRIVER_SHA256=c1be2d78ab1065040f87bfba22131d738dccb257ef3c2476f0eef705d2521d27
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git unzip python3 python3-venv && rm -rf /var/lib/apt/lists/*
+COPY docker/aio/flaresolverr-requirements.txt /tmp/requirements.txt
+RUN set -eux; \
+    git clone --depth 1 --branch "${FLARESOLVERR_VERSION}" https://github.com/FlareSolverr/FlareSolverr /tmp/fs; \
+    test "$(git -C /tmp/fs rev-parse HEAD)" = "${FLARESOLVERR_COMMIT}"; \
+    mkdir -p /app; cp -r /tmp/fs/src/. /app/; cp /tmp/fs/package.json /app/package.json; \
+    rm -rf /app/build_package.py /app/tests* /tmp/fs; \
+    python3 -m venv /opt/flaresolverr/venv; \
+    /opt/flaresolverr/venv/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt; \
+    base="https://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/${CHROMIUM_REVISION}"; \
+    curl -fsSL -o /tmp/chrome.zip "${base}/chrome-linux.zip"; \
+    curl -fsSL -o /tmp/driver.zip "${base}/chromedriver_linux64.zip"; \
+    echo "${CHROMIUM_SHA256}  /tmp/chrome.zip" | sha256sum -c -; \
+    echo "${CHROMEDRIVER_SHA256}  /tmp/driver.zip" | sha256sum -c -; \
+    unzip -q /tmp/chrome.zip -d /tmp/chrome; mv /tmp/chrome/chrome-linux /app/chrome; \
+    unzip -q /tmp/driver.zip -d /tmp/driver; mv /tmp/driver/chromedriver_linux64/chromedriver /app/chromedriver; \
+    rm -rf /tmp/chrome* /tmp/driver*; \
+    # undetected-chromedriver edits the driver the first time it runs it, which a file
+    # owned by root (and shared by every start) can't take. The same edit, made here.
+    /opt/flaresolverr/venv/bin/python -I -c 'import re,sys; p="/app/chromedriver"; b=open(p,"rb").read(); m=re.search(rb"\{window\.cdc.*?;\}", b); m or sys.exit("chromedriver: no cdc block to patch"); open(p,"wb").write(b.replace(m[0], b"{console.log(\"undetected chromedriver 1337!\")}".ljust(len(m[0]), b" ")))'; \
+    grep -q "undetected chromedriver" /app/chromedriver; \
+    chmod 755 /app/chromedriver /app/chrome/chrome
+
+# x86-64: FlareSolverr and what its Chromium needs (the libraries Google's own Chrome
+# package depends on, fonts, and Xvfb for the hidden display it runs on).
+FROM arrmada AS aio-amd64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 \
+        libcups2t64 libdbus-1-3 libdrm2 libexpat1 libgbm1 libglib2.0-0t64 libgtk-3-0t64 \
+        libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 \
+        libxext6 libxfixes3 libxkbcommon0 libxrandr2 libxshmfence1 fonts-liberation \
+        xvfb && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=aio-flaresolverr /opt/flaresolverr /opt/flaresolverr
+COPY --from=aio-flaresolverr /app /app
+# Fail the build, not the first Cloudflare challenge, over a missing library.
+RUN if ldd /app/chrome/chrome /app/chromedriver | grep "not found"; then \
+        echo "Chromium is missing shared libraries" >&2; exit 1; fi && \
+    /app/chrome/chrome --version && /app/chromedriver --version && \
+    cd /app && /opt/flaresolverr/venv/bin/python -c 'import flaresolverr_service, utils, undetected_chromedriver'
+
+# arm64: no FlareSolverr (see above); the supervisor says so and leaves it off.
+FROM arrmada AS aio-arm64
+
+FROM aio-${TARGETARCH} AS aio
+# tini is PID 1: it passes the stop signal to the supervisor and reaps the processes
+# Chromium leaves behind.
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+COPY --from=aio-qbittorrent /qbittorrent-nox /usr/local/bin/qbittorrent-nox
+COPY --from=aio-supervisor /out/arrmada-aio /usr/local/bin/arrmada-aio
+RUN qbittorrent-nox --version
+# Both companions run unless the template switches them off.
+ENV ARRMADA_BUNDLE_QBITTORRENT=true \
+    ARRMADA_BUNDLE_FLARESOLVERR=true
+# 8080: qBittorrent's web UI. The incoming torrent port is the template's ARRMADA_QBIT_PORT.
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/arrmada-aio"]
+LABEL org.arrmada.variant="aio"
+
+# The default target (a build without --target) is the plain image, unchanged.
+FROM arrmada AS plain
