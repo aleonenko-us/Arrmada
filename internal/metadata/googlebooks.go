@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // gbKeyPrefix marks a Google Books volume key so the fallback provider can route GetBook back to
@@ -53,7 +55,7 @@ func (g *GoogleBooks) fetch(ctx context.Context, u string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Arrmada/1.0 (self-hosted media manager)")
+	req.Header.Set("User-Agent", httpua.UserAgent())
 	resp, err := g.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)

@@ -124,6 +124,9 @@ func TestFetchNZBFailures(t *testing.T) {
 		{"a web page", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`<!doctype html><html><body>Log in</body></html>`))
 		}, "Geek: the indexer didn't send an NZB file"},
+		{"a bare 401", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}, "Geek refused the API key"},
 		{"a torrent", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("d4:infod4:name5:alphaee"))
 		}, "Geek: the indexer didn't send an NZB file"},

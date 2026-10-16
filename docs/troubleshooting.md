@@ -34,8 +34,10 @@ install line without `--channel main` (or `--build`), or put `ARRMADA_CHANNEL=st
 already downloads it. To compile on a small machine anyway, add swap, or pass the build
 argument `ARRMADA_BUILD_JOBS=1`.
 
-The published image is for 64-bit Intel/AMD (x86-64) only: on ARM, Docker says
-`no matching manifest for linux/arm64`, and compiling fails too.
+On ARM, `no matching manifest for linux/arm64` means an image from before ARM was published
+(v0.2.0 or older); the installer compiles instead, and the next release downloads. On a
+32-bit OS (an older Raspberry Pi OS, even on a 64-bit Pi) nothing runs: install the 64-bit OS.
+See [Install → ARM](install.md#arm).
 
 **I can't open the web page.**
 Use the address the installer printed — it may not be 7878 if something else had that port
@@ -63,7 +65,8 @@ Set `TZ` in `.env` to your Region/City timezone and run `sh update.sh`.
 
 **The update check says a new release is out.**
 Run the install line again (or `sh update.sh`). Settings → Status has the release notes; the
-check reads GitHub's public list of releases every 12 hours, sends nothing about your server,
+check reads GitHub's public list of releases every 12 hours, sends nothing about your server
+but Arrmada's version,
 and can be switched off on the same card.
 
 **Something else?**

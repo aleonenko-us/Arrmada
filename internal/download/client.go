@@ -55,6 +55,11 @@ type AddRequest struct {
 	// to a usenet client, nor an NZB to a torrent client. Empty means torrent — all Add has
 	// ever sent.
 	Transport Transport
+	// ClientFetches (usenet only) hands the usenet client URL to fetch the NZB itself, in
+	// place of File. Arrmada fetches NZBs itself so the indexer's key never sits in the
+	// client's history; this is for the one case it can't — the indexer blocked Arrmada's
+	// download but admits the usenet client. Without it a usenet client refuses a link.
+	ClientFetches bool
 }
 
 // Added is where a download went and the key it is known by there (key.go). Key may be

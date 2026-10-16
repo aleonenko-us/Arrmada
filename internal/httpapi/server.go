@@ -172,6 +172,9 @@ type Deps struct {
 	// FolderMover moves a title's files to another folder of its library (a job). nil =
 	// "Move to folder" answers 503.
 	FolderMover *libfolders.Mover
+	// SeriesByTVDB finds a show's TMDB id from its TVDB id (TMDB's /find), for bringing a
+	// Sonarr library over. nil = Sonarr shows without a TMDB id can't be matched.
+	SeriesByTVDB func(ctx context.Context, tvdbID int) (int, error)
 }
 
 type api struct {
@@ -259,6 +262,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleRemoveLibraryFolder))
 	// Import & migrate: a Radarr's or Sonarr's root folders, matched to Arrmada's (reads only).
 	mux.HandleFunc("POST /api/v1/import/arr/roots", a.requireRole(auth.RoleAdmin, a.handleArrRoots))
+	// …and their titles: what an import would do (reads only), then the import (a job).
+	mux.HandleFunc("POST /api/v1/import/arr/preview", a.requireRole(auth.RoleAdmin, a.handleArrPreview))
+	mux.HandleFunc("POST /api/v1/import/arr/run", a.requireRole(auth.RoleAdmin, a.handleArrImport))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).

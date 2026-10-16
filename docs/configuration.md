@@ -65,8 +65,37 @@ same drive; to another drive each file is copied and checked, then the originals
 recycle bin). A folder still holding titles can't be removed. Extra folders must be inside a
 folder mounted into the container — under `/storage` with the rest, or added to
 `docker-compose.override.yml` (see the example file). Moving from Radarr or Sonarr with several
-root folders? **Settings → Import & migrate → Folders from Radarr or Sonarr** sets up the same
-folders. With one folder per library, nothing about folders shows anywhere.
+root folders? **Settings → Import & migrate → Import from Radarr / Sonarr** sets up the same
+folders as part of the import (below). With one folder per library, nothing about folders shows
+anywhere.
+
+### Moving from Radarr and Sonarr
+
+**Settings → Import & migrate → Import from Radarr / Sonarr** (admins) brings a library over.
+Enter the app's address and API key (Settings → General in Radarr or Sonarr; it's used for the
+import and never saved) and Arrmada reads it without changing anything there. The preview shows:
+
+- **The titles**: how many are already in Arrmada (films by TMDB id, shows by TMDB or TVDB id),
+  how many are new, and any it can't match.
+- **Folders**: each root folder and the Arrmada folder its titles go to — matched by path or by
+  name, or added on the spot as an extra folder.
+- **Where the files are**: Radarr and Sonarr often see your share at another path (`/movies`
+  there, `/storage/media/movies` here). Map the start of their paths to Arrmada's and press
+  **Check again** until the files are found. A file must be inside one of Arrmada's library
+  folders to be used.
+- **Quality profiles**: an Arrmada profile for each of theirs — the one of the same name, else
+  one reaching the same resolution, else your default.
+
+**Import** runs in the background. Each title is added with its profile, monitoring and minimum
+availability (films), or its monitored seasons and episodes, anime type and "monitor new
+seasons" (shows); the files already on disk are recorded where they are — nothing is moved or
+downloaded again. A title whose files can't be found is skipped and named in the summary (fix
+the mapping and run it again), unless you ask for such titles to come over anyway and be
+downloaded again. Nothing is searched when you import: wanted titles join the regular missing
+searches ten at a time per run, so a big library doesn't start hundreds of downloads at once.
+Running the import again — or for a second instance, like Sonarr and Sonarr-anime — adds only
+what's new; a title already in Arrmada keeps its settings and only gets files it was missing.
+Tags, blocklists, history and download-client settings aren't brought over.
 
 ### Hardlinks
 
@@ -91,6 +120,11 @@ For read-only trials or unusual layouts, see
 If your server has `/dev/dri` (Intel or AMD graphics), the installer passes it through, and
 Convert and Whisper subtitles use it. Intel Arc and other Gen12+ chips are used through VAAPI
 (HEVC, H.264 and AV1 encoding); `docker exec Arrmada-app vainfo` shows what the container sees.
+
+On ARM (arm64) there's no GPU acceleration: the image carries no GPU encoders or GPU subtitle
+build, Convert and Whisper use the CPU, and the installer doesn't pass `/dev/dri` through.
+Passing it through by hand does no harm; Convert tests every encoder at start-up and only
+offers the ones that work.
 
 ## Convert's scratch folder
 

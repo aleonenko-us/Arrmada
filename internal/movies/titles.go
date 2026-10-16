@@ -105,12 +105,39 @@ func TitleMatches(keys []string, m Movie, title string, year int) bool {
 }
 
 // BackfillAltTitles reads the original and alternative titles of every movie stored before
-// they were kept (Extra.TitlesRead unset), one movie per every so a large library never
-// bursts TMDB, and returns how many it filled. It stops when none are left, when TMDB
-// isn't configured (the next start tries again), or when ctx ends. A movie TMDB can't
-// answer right now is left for the next start; one TMDB no longer has is marked read.
-// New movies and Refresh fill the titles themselves.
+// they were kept (Extra.TitlesRead unset), and the translated titles of every movie not
+// yet read for all the "Also match titles in" languages (needsLocalTitles), one movie per
+// every so a large library never bursts TMDB, and returns how many it filled. It stops
+// when none are left, when TMDB isn't configured (the next start tries again), or when ctx
+// ends. A movie TMDB can't answer right now is left for the next start; one TMDB no longer
+// has is marked read. New movies and Refresh fill the titles themselves.
+//
+// It runs at start and again whenever the languages change. One pass runs at a time: a
+// call while one is running asks it to go round once more (the languages it read may be
+// out of date) and returns at once with 0.
 func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (int, error) {
+	total := 0
+	s.titlesAgain.Store(true)
+	for s.titlesAgain.Load() {
+		if !s.titlesPass.TryLock() {
+			return total, nil // the pass running now sees titlesAgain and goes round again
+		}
+		var err error
+		for err == nil && s.titlesAgain.Swap(false) {
+			var n int
+			n, err = s.backfillTitlesOnce(ctx, every)
+			total += n
+		}
+		s.titlesPass.Unlock()
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// backfillTitlesOnce is one pass of BackfillAltTitles over the library.
+func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (int, error) {
 	if s.meta == nil || !s.meta.Available() {
 		return 0, nil
 	}
@@ -118,9 +145,12 @@ func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (i
 	if err != nil {
 		return 0, err
 	}
+	langs := s.localLangs()
 	filled := 0
 	for _, m := range all {
-		if m.TMDBID <= 0 || (m.Extra != nil && m.Extra.TitlesRead) {
+		needAlt := m.TMDBID > 0 && (m.Extra == nil || !m.Extra.TitlesRead)
+		needLocal := s.titles != nil && needsLocalTitles(m, langs)
+		if !needAlt && !needLocal {
 			continue
 		}
 		t := time.NewTimer(every)
@@ -130,21 +160,41 @@ func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (i
 			return filled, ctx.Err()
 		case <-t.C:
 		}
-		d, err := s.meta.GetMovie(ctx, m.TMDBID)
-		switch {
-		case errors.Is(err, metadata.ErrNotConfigured):
-			return filled, nil
-		case errors.Is(err, metadata.ErrNotFound):
-			d = &metadata.MovieDetails{}
-		case err != nil:
-			if ctx.Err() != nil {
-				return filled, ctx.Err()
+		if needAlt {
+			d, err := s.meta.GetMovie(ctx, m.TMDBID)
+			switch {
+			case errors.Is(err, metadata.ErrNotConfigured):
+				return filled, nil
+			case errors.Is(err, metadata.ErrNotFound):
+				d = &metadata.MovieDetails{}
+			case err != nil:
+				if ctx.Err() != nil {
+					return filled, ctx.Err()
+				}
+				s.log.Debug("movies: couldn't read alternative titles; trying again next start", "movie", m.Title, "err", err)
+				continue
 			}
-			s.log.Debug("movies: couldn't read alternative titles; trying again next start", "movie", m.Title, "err", err)
-			continue
+			if err := s.repo.SetTitles(ctx, m.ID, d.OriginalTitle, d.AltTitles); err != nil {
+				return filled, err
+			}
 		}
-		if err := s.repo.SetTitles(ctx, m.ID, d.OriginalTitle, d.AltTitles); err != nil {
-			return filled, err
+		if needLocal {
+			got, err := s.readLocalTitles(ctx, m.TMDBID, m.Title, langs)
+			switch {
+			case errors.Is(err, metadata.ErrNotConfigured):
+				return filled, nil
+			case errors.Is(err, metadata.ErrNotFound):
+				got = []metadata.TranslatedTitle{} // TMDB no longer has it: read, nothing to match
+			case err != nil:
+				if ctx.Err() != nil {
+					return filled, ctx.Err()
+				}
+				s.log.Debug("movies: couldn't read translated titles; trying again next start", "movie", m.Title, "err", err)
+				continue
+			}
+			if err := s.repo.SetLocalTitles(ctx, m.ID, got, langs); err != nil {
+				return filled, err
+			}
 		}
 		filled++
 	}
@@ -166,5 +216,29 @@ func (r *Repo) SetTitles(ctx context.Context, id int64, original string, alts []
 			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
 			'$.original_title', ?, '$.alt_titles', json(?), '$.titles_read', json('true'))
 		WHERE id = ?`, original, string(b), id)
+	return err
+}
+
+// SetLocalTitles stores a movie's translated titles and the languages they were read for,
+// leaving the rest of its extra metadata as it is (json_set, as SetTitles).
+func (r *Repo) SetLocalTitles(ctx context.Context, id int64, titles []metadata.TranslatedTitle, langs []string) error {
+	if titles == nil {
+		titles = []metadata.TranslatedTitle{}
+	}
+	if langs == nil {
+		langs = []string{}
+	}
+	tb, err := json.Marshal(titles)
+	if err != nil {
+		return err
+	}
+	lb, err := json.Marshal(langs)
+	if err != nil {
+		return err
+	}
+	_, err = r.q().ExecContext(ctx, `UPDATE movies SET extra_json = json_set(
+			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
+			'$.local_titles', json(?), '$.local_langs', json(?))
+		WHERE id = ?`, string(tb), string(lb), id)
 	return err
 }

@@ -676,8 +676,10 @@ new_install() {
   [ -n "$SABNZBD" ] && SABPORT=$(free_port 8085 8086 8087)
   AUDIOPORT=$(free_port 13379 13380 13381 13382)
   BTPORT=$(rand_port)
+  # Only on Intel/AMD: the ARM image has no GPU encoders or GPU AI build, so a Raspberry
+  # Pi's /dev/dri (which every Pi has) would be passed in for nothing.
   GPU=""
-  [ -e /dev/dri ] && GPU=1
+  [ "$ARCH" = amd64 ] && [ -e /dev/dri ] && GPU=1
 
   # Download, or compile here? The published image takes minutes; compiling takes the
   # better part of an hour. Decided before anything is written, so the summary says which.
@@ -699,7 +701,13 @@ new_install() {
   say "   • Web UI port:   $WEBPORT"
   say "   • Timezone:      $TZONE"
   say "   • Run as:        $PUID:$PGID"
-  if [ -n "$GPU" ]; then say "   • GPU:           /dev/dri found → hardware transcoding"; else say "   • GPU:           none found → Convert uses the CPU"; fi
+  if [ -n "$GPU" ]; then
+    say "   • GPU:           /dev/dri found → hardware transcoding"
+  elif [ "$ARCH" = arm64 ]; then
+    say "   • GPU:           not used on ARM → Convert and AI subtitles use the CPU"
+  else
+    say "   • GPU:           none found → Convert uses the CPU"
+  fi
   [ -n "$PROWLARR" ] && say "   • Prowlarr:      yes"
   [ -n "$SABNZBD" ] && say "   • SABnzbd:       yes, for Usenet (web page on port $SABPORT)"
   if [ -n "$IMAGE_REF" ]; then
@@ -730,6 +738,11 @@ new_install() {
     say "! The published image couldn't be downloaded, so Arrmada will be compiled on this server."
     say "  That takes 30–60 minutes. This install still follows the published releases: update.sh"
     say "  moves it to the release image once one includes the code compiled now."
+    if [ "$ARCH" = arm64 ]; then
+      say "  (Releases up to v0.2.0 were published for Intel/AMD only, so on ARM this is expected"
+      say "  until the next one. A Raspberry Pi takes longer to compile, and needs about 2 GB of"
+      say "  memory free while it does.)"
+    fi
     IMAGE_REF=""
   fi
 
@@ -879,9 +892,13 @@ main() {
   say ""
 
   # Prerequisites, each with what to do about it.
+  # Two platforms: 64-bit Intel/AMD, and 64-bit ARM (a Raspberry Pi 4/5, an ARM NAS).
   case "$(uname -m)" in
-    x86_64 | amd64) ;;
-    *) die "Arrmada runs on 64-bit Intel/AMD (x86-64) servers; this one is $(uname -m)." ;;
+    x86_64 | amd64) ARCH=amd64 ;;
+    aarch64 | arm64) ARCH=arm64 ;;
+    armv7* | armv6* | armhf | arm)
+      die "This is a 32-bit ARM system, and Arrmada needs a 64-bit one. On a Raspberry Pi 4 or 5, install the 64-bit Raspberry Pi OS (or another 64-bit Linux), then run the installer again." ;;
+    *) die "Arrmada runs on 64-bit Intel/AMD (x86-64) and 64-bit ARM (arm64) servers; this one is $(uname -m)." ;;
   esac
   if ! have docker; then
     if is_unraid; then die "Docker isn't running. Enable it in Settings → Docker, then run the installer again."; fi
@@ -902,6 +919,14 @@ main() {
     err "✗ Docker Compose (v2, \"docker compose\") isn't available. Install the docker-compose-plugin"
     err "  package (https://docs.docker.com/compose/install/linux/), then run the installer again."
     exit 1
+  fi
+  # A 64-bit kernel can still run a 32-bit Docker (an older Raspberry Pi OS does that), and
+  # Docker's own platform is what it downloads and builds for.
+  if [ "$ARCH" = arm64 ]; then
+    case "$(docker version --format '{{.Server.Arch}}' 2>/dev/null)" in
+      arm | armhf | armv7*)
+        die "Docker here is the 32-bit ARM build, and Arrmada needs 64-bit Docker. Install the 64-bit Raspberry Pi OS (or another 64-bit Linux) with Docker, then run the installer again." ;;
+    esac
   fi
 
   # From a checkout (./install.sh), install right here. Piped in, find or pick a folder.

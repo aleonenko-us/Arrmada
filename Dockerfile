@@ -11,9 +11,18 @@
 # build-heavy fits each one's parallel jobs to the free memory. The image now builds in
 # 2 GB (peak 2.0 GB measured; a cold build takes about 20% longer on four cores, since the
 # compiles no longer overlap). ARRMADA_BUILD_JOBS (a build argument) fixes the job count.
+#
+# Platforms: linux/amd64 and linux/arm64, from this one file. The web UI and the Go binary
+# are built on the build machine's own platform (Go cross-compiles; the UI is just files),
+# so an arm64 image built under emulation only emulates what has to run as arm64. The GPU
+# pieces are amd64 only: Intel's oneAPI (SYCL) whisper and Level Zero driver, and the
+# Vulkan whisper. arm64 gets a CPU-only whisper instead; the runtime-amd64 and
+# runtime-arm64 stages near the end hold everything that differs, and the final stage
+# picks one by TARGETARCH (which BuildKit sets), so an arm64 build never touches the
+# amd64-only stages. (The amd64 whisper stages changed too, for CPU dispatch; see below.)
 
 # --- Stage 1: build the web UI ---
-FROM node:24-alpine AS web
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /src/web
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 # Install deps first (cached unless the lockfile changes).
@@ -26,7 +35,7 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
     mkdir -p /src/internal/webui/dist && build-heavy 800 'npm run build'
 
 # --- Stage 2: build the static Go binary (UI embedded) ---
-FROM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
 WORKDIR /src
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 COPY go.mod go.sum ./
@@ -39,8 +48,12 @@ ARG COMMIT=unknown
 ARG ARRMADA_BUILD_JOBS
 # CGO off → fully static (modernc.org/sqlite is pure Go), so it runs on scratch. The
 # compiler's memory is mostly the one big SQLite package, so it isn't split into jobs.
+# GOOS/GOARCH are the image's platform: this stage runs on the build machine's own, and Go
+# cross-compiles an arm64 binary without emulation.
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
-    build-heavy 900 'CGO_ENABLED=0 go build \
+    build-heavy 900 'CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags "-s -w \
       -X github.com/tristenlammi/arrmada/internal/buildinfo.Version=${VERSION} \
       -X github.com/tristenlammi/arrmada/internal/buildinfo.Commit=${COMMIT}" \
@@ -51,16 +64,25 @@ FROM alpine:3.20 AS hdrtools
 # Pinned, and checked: dovi_tool carries Dolby Vision through Convert's "keep" choice and
 # hdr10plus_tool HDR10+ through every HEVC conversion, so a swapped release binary would
 # write the metadata of every converted film. The releases publish no checksums, so these
-# are the SHA-256 of the binaries inside those tarballs; a version bump updates them too.
+# are the SHA-256 of the binaries inside those tarballs, one per platform (both projects
+# publish the same musl build for x86-64 and aarch64); a version bump updates them too.
 ARG DOVI_VERSION=2.3.3
-ARG DOVI_SHA256=871a0a5c44d1fd6baa6b972ec65167095e572f572d6c4da80c4b29483e4dfc1e
+ARG DOVI_SHA256_AMD64=871a0a5c44d1fd6baa6b972ec65167095e572f572d6c4da80c4b29483e4dfc1e
+ARG DOVI_SHA256_ARM64=7958fd93b551bba91720239a645307281c6d5b8c46ca6b327071b353e476ad11
 ARG HDR10PLUS_VERSION=1.7.2
-ARG HDR10PLUS_SHA256=7845916b549c36e5d7fe9dbb3d24c124466d7c71ec3442e207551b677949d0be
+ARG HDR10PLUS_SHA256_AMD64=7845916b549c36e5d7fe9dbb3d24c124466d7c71ec3442e207551b677949d0be
+ARG HDR10PLUS_SHA256_ARM64=90caed8d955ba7c16e485b23fb34555c95224568869b50daefa5f52ef4824a24
+ARG TARGETARCH
 RUN apk add --no-cache wget tar && set -eux; \
-    wget -qO /tmp/dovi.tgz "https://github.com/quietvoid/dovi_tool/releases/download/${DOVI_VERSION}/dovi_tool-${DOVI_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
+    case "${TARGETARCH}" in \
+        amd64) TRIPLE=x86_64-unknown-linux-musl; DOVI_SHA256=${DOVI_SHA256_AMD64}; HDR10PLUS_SHA256=${HDR10PLUS_SHA256_AMD64} ;; \
+        arm64) TRIPLE=aarch64-unknown-linux-musl; DOVI_SHA256=${DOVI_SHA256_ARM64}; HDR10PLUS_SHA256=${HDR10PLUS_SHA256_ARM64} ;; \
+        *) echo "Arrmada builds for amd64 and arm64, not ${TARGETARCH}." >&2; exit 1 ;; \
+    esac; \
+    wget -qO /tmp/dovi.tgz "https://github.com/quietvoid/dovi_tool/releases/download/${DOVI_VERSION}/dovi_tool-${DOVI_VERSION}-${TRIPLE}.tar.gz" && \
     mkdir -p /tmp/dovi && tar -xzf /tmp/dovi.tgz -C /tmp/dovi && \
     cp "$(find /tmp/dovi -type f -name dovi_tool | head -1)" /usr/local/bin/dovi_tool && \
-    wget -qO /tmp/h10.tgz "https://github.com/quietvoid/hdr10plus_tool/releases/download/${HDR10PLUS_VERSION}/hdr10plus_tool-${HDR10PLUS_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
+    wget -qO /tmp/h10.tgz "https://github.com/quietvoid/hdr10plus_tool/releases/download/${HDR10PLUS_VERSION}/hdr10plus_tool-${HDR10PLUS_VERSION}-${TRIPLE}.tar.gz" && \
     mkdir -p /tmp/h10 && tar -xzf /tmp/h10.tgz -C /tmp/h10 && \
     cp "$(find /tmp/h10 -type f -name hdr10plus_tool | head -1)" /usr/local/bin/hdr10plus_tool && \
     echo "${DOVI_SHA256}  /usr/local/bin/dovi_tool" | sha256sum -c - && \
@@ -68,7 +90,7 @@ RUN apk add --no-cache wget tar && set -eux; \
     chmod +x /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool && \
     /usr/local/bin/dovi_tool --version && /usr/local/bin/hdr10plus_tool --version
 
-# --- Stage 3b: whisper.cpp CLI (local AI subtitle generation) ---
+# --- Stage 3b: whisper.cpp CLI (local AI subtitle generation), amd64 ---
 # Built with the Vulkan backend so the GPU that already does hardware transcoding (Intel
 # Arc / any Mesa- or proprietary-Vulkan card behind /dev/dri) also runs the AI. Vulkan
 # is the one backend that covers Intel, AMD and NVIDIA from a single binary; on a host
@@ -76,6 +98,16 @@ RUN apk add --no-cache wget tar && set -eux; \
 # retries with --no-gpu if it doesn't. Models are NOT baked in (multi-GB); the app
 # downloads them on demand into the data dir.
 # Built on Debian, matching the runtime: a musl-linked binary can't run on a glibc image.
+#
+# The CPU code is picked at run time, not compiled for the build machine. ggml's default
+# is -march=native, which made the published whisper-cli need whatever the release
+# runner's CPU had: it died with "Illegal instruction" on any CPU without AVX2 (a Celeron
+# J4125 or N5105, an older i5), and would on any without AVX-512 if a runner had it.
+# GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS build the CPU backend once per instruction-set
+# level (x64, SSE4.2, AVX, AVX2, AVX-512 …) as loadable libggml-cpu-*.so files, and
+# whisper-cli loads the best one this CPU can run, next to libggml-vulkan.so. They live
+# with the binary in /opt/whisper (whisper-cli finds its backends in its own folder, and
+# its libraries through an $ORIGIN RPATH).
 FROM debian:bookworm-slim AS whisper
 # v1.9.2+ matters: earlier builds didn't map timestamps back through VAD correctly
 # (v1.8.4 fixed drift, v1.9.2 the token-level ones), which is what misaligned subtitles.
@@ -100,19 +132,29 @@ COPY docker/whisper-vulkan-shaders.patch /tmp/whisper-vulkan-shaders.patch
 RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
     cd /src/whisper && \
     git apply /tmp/whisper-vulkan-shaders.patch && \
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=1 \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DGGML_VULKAN=1 \
+          -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
+          -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$ORIGIN' \
           -DVulkan_INCLUDE_DIR=/usr/local/include \
           -DCMAKE_CXX_FLAGS="--param ggc-min-expand=30 --param ggc-min-heapsize=65536"
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 ARG ARRMADA_BUILD_JOBS
+# Fails the build unless the backends are all there and every library resolves: a backend
+# that can't load is skipped without a word at run time, so a missing libggml-vulkan.so
+# would only ever show up as "running on the CPU".
 RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
     cd /src/whisper && \
-    build-heavy 1500 'cmake --build build -j"$JOBS"' && \
-    cp build/bin/whisper-cli /usr/local/bin/whisper-cli && \
-    strip /usr/local/bin/whisper-cli && \
-    (ldd /usr/local/bin/whisper-cli || true)
+    build-heavy 1500 'cmake --build build -j"$JOBS" --target whisper-cli' && \
+    mkdir -p /out && cp -a build/bin/whisper-cli build/bin/*.so* /out/ && \
+    find /out -type f -exec strip --strip-unneeded {} + && \
+    test -f /out/libggml-vulkan.so && \
+    for v in x64 sse42 haswell; do test -f "/out/libggml-cpu-$v.so" || { echo "libggml-cpu-$v.so missing" >&2; exit 1; }; done && \
+    for f in /out/whisper-cli /out/*.so; do \
+        if ldd "$f" | grep "not found"; then echo "$f: unresolved" >&2; exit 1; fi; \
+    done && \
+    ls -la /out
 
-# --- Stage 3c: whisper.cpp with Intel's oneAPI (SYCL) backend ---
+# --- Stage 3c: whisper.cpp with Intel's oneAPI (SYCL) backend, amd64 ---
 # The Vulkan build never touches an Arc A-series card's XMX matrix units: ggml's Vulkan
 # backend switches cooperative-matrix off for Alchemist outright ("performance
 # regressions"), which left a 55-minute episode taking 38 minutes on an A380. SYCL is the
@@ -124,15 +166,35 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
 # collected from ldd into one directory, so the runtime image carries a few hundred MB
 # of libraries rather than the multi-GB toolkit. The Unified Runtime adapters are
 # dlopen'd, not linked, so they're copied by name.
+#
+# Its CPU code is built for SSE4.2 (x86-64-v2), not for the build machine: ggml's default
+# -march=native would make it need whatever the release runner's CPU has. The run-time
+# CPU choice the Vulkan build uses doesn't fit here: with loadable backends, the SYCL one
+# initialises as whisper-cli starts and aborts ("No device of requested type available")
+# on every host without an Intel GPU, even for --help. This build only runs where an
+# Intel GPU does the work, so its CPU share is small; every CPU-only run (including
+# after this build is set aside) goes to the Vulkan build and its best CPU backend.
+# GGML_NATIVE=OFF alone isn't enough: ggml then switches AVX/AVX2/FMA/F16C/BMI2 on, so
+# each is turned off by name.
 FROM intel/deep-learning-essentials:2025.3.3-0-devel-ubuntu24.04 AS whisper-sycl
 ARG WHISPER_VERSION=v1.9.3
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git cmake make ca-certificates && rm -rf /var/lib/apt/lists/*
+# WHISPER_SYCL_NATIVE=1 builds that CPU code for the build machine instead: right for an
+# image built and run on the same server (docker-compose.yml passes it for builds there),
+# never for one published to other machines. CI and releases leave it at 0.
+ARG WHISPER_SYCL_NATIVE=0
 RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
     cd /src/whisper && \
     (. /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true) && \
+    if [ "${WHISPER_SYCL_NATIVE}" = 1 ]; then \
+        CPU_FLAGS="-DGGML_NATIVE=ON"; \
+    else \
+        CPU_FLAGS="-DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF"; \
+    fi && \
+    echo "SYCL whisper CPU flags: ${CPU_FLAGS}" && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-          -DGGML_SYCL=ON -DGGML_SYCL_F16=ON \
+          -DGGML_SYCL=ON -DGGML_SYCL_F16=ON ${CPU_FLAGS} \
           -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 ARG ARRMADA_BUILD_JOBS
@@ -156,6 +218,32 @@ RUN cd /src/whisper && \
     done && \
     du -sh /out/lib && ls -la /out/lib
 
+# --- Stage 3d: whisper.cpp CLI, CPU only, arm64 ---
+# No GPU backend on ARM: oneAPI is x86-only, and the GPUs these boxes have (a Raspberry
+# Pi's VideoCore, a NAS's Mali) are slower than their own CPU cores at this through
+# Vulkan, when ggml runs on them at all. Same whisper.cpp tag as the other builds.
+#
+# GGML_NATIVE=OFF matters: left on, ggml compiles for the build machine's own CPU
+# (-mcpu=native), and the arm64 image is built on a server-class Neoverse core; the
+# result would die with "Illegal instruction" on a Raspberry Pi 4. armv8-a is every
+# 64-bit ARM CPU (NEON included).
+FROM debian:bookworm-slim AS whisper-cpu
+ARG WHISPER_VERSION=v1.9.3
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git cmake g++ make ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
+    cd /src/whisper && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+          -DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8-a
+COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
+ARG ARRMADA_BUILD_JOBS
+RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=locked \
+    cd /src/whisper && \
+    build-heavy 600 'cmake --build build -j"$JOBS" --target whisper-cli' && \
+    cp build/bin/whisper-cli /usr/local/bin/whisper-cli && \
+    strip /usr/local/bin/whisper-cli && \
+    (ldd /usr/local/bin/whisper-cli || true)
+
 # --- Stage 4: runtime ---
 #
 # Ubuntu 24.04 + jellyfin-ffmpeg, NOT Alpine's ffmpeg package. (Ubuntu rather than
@@ -171,7 +259,13 @@ RUN cd /src/whisper && \
 # on the same hardware where Alpine's build failed all three (QSV had been exiting 171). It
 # also bundles the Intel media drivers rather than depending on whatever the base image
 # ships, which is one less thing to drift.
-FROM ubuntu:24.04
+#
+# Everything that differs by platform is in runtime-amd64 / runtime-arm64; the final stage
+# starts from the one for the image's platform and adds what both share.
+
+# amd64: the GPU stack (VAAPI/Quick Sync drivers, Vulkan, Level Zero) and both GPU whisper
+# builds.
+FROM ubuntu:24.04 AS runtime-amd64
 # gosu is the su-exec equivalent: the entrypoint drops from root to a configurable PUID/PGID.
 # apprise (Python) is bundled for notifications — one image, 80+ services, no extra container.
 # jellyfin-ffmpeg7 brings libva and the Intel media drivers it needs for /dev/dri passthrough.
@@ -202,27 +296,62 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pip3 install --no-cache-dir --break-system-packages apprise && \
     apprise --version && ffmpeg -version | head -1 && \
     mkdir -p /data /media/downloads /media/library /transcode
-
-COPY --from=build /out/arrmada /usr/local/bin/arrmada
-# Dolby Vision (dovi_tool) + HDR10+ (hdr10plus_tool) metadata extractors/injectors.
-COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr/local/bin/
-# whisper.cpp CLI for local AI subtitle generation (models downloaded on demand into /data/whisper).
-COPY --from=whisper /usr/local/bin/whisper-cli /usr/local/bin/whisper-cli
+# whisper.cpp CLI for local AI subtitle generation (models downloaded on demand into
+# /data/whisper): the binary with its backends and libraries in /opt/whisper, and a link
+# on the PATH (whisper-cli resolves the link to find its folder).
+COPY --from=whisper /out/ /opt/whisper/
 # The oneAPI build and its libraries, behind a wrapper that sets the library path and
 # device selection. The app prefers it and falls back to the Vulkan build above.
 COPY --from=whisper-sycl /out/whisper-cli /opt/whisper-sycl/whisper-cli
 COPY --from=whisper-sycl /out/lib /opt/whisper-sycl/lib
-COPY docker/whisper-cli-sycl /usr/local/bin/whisper-cli-sycl
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh /usr/local/bin/whisper-cli-sycl && \
-    # Fail the build, not the first subtitle job, if a library the SYCL build needs
-    # didn't make it across — the run-time-loaded adapters included, since a missing
-    # dependency of theirs shows up only as "No device of requested type available".
+COPY --chmod=755 docker/whisper-cli-sycl /usr/local/bin/whisper-cli-sycl
+# Fail the build, not the first subtitle job, if a library either build needs didn't
+# make it across — the run-time-loaded backends and adapters included, since a missing
+# dependency of theirs shows up only as "no GPU found" or "No device of requested type
+# available".
+RUN ln -s /opt/whisper/whisper-cli /usr/local/bin/whisper-cli && \
+    for f in /opt/whisper/whisper-cli /opt/whisper/*.so; do \
+        if ldd "$f" | grep "not found"; then echo "$f is missing shared libraries" >&2; exit 1; fi; \
+    done && \
     for f in /opt/whisper-sycl/whisper-cli /opt/whisper-sycl/lib/libur_adapter_*.so.0; do \
         if LD_LIBRARY_PATH=/opt/whisper-sycl/lib ldd "$f" | grep "not found"; then \
             echo "$f is missing shared libraries" >&2; exit 1; fi; \
     done && \
-    whisper-cli-sycl --help >/dev/null 2>&1 && whisper-cli --help >/dev/null 2>&1
+    whisper-cli-sycl --help >/dev/null 2>&1
+# Intel's VAAPI driver, which jellyfin-ffmpeg bundles.
+ENV LIBVA_DRIVER_NAME=iHD
+
+# arm64: CPU only. The same jellyfin-ffmpeg (Jellyfin publishes it for arm64 too), so
+# Convert encodes with the same x265 / SVT-AV1 on the CPU; Convert's start-up check finds
+# no Intel/AMD/NVIDIA encoder here and never offers one. libgomp1 is whisper-cli's OpenMP
+# runtime. No Vulkan, VAAPI or Level Zero packages: nothing in this image would use them.
+FROM ubuntu:24.04 AS runtime-arm64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg gosu python3 python3-pip libgomp1 && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg arch=arm64] https://repo.jellyfin.org/ubuntu noble main" \
+        > /etc/apt/sources.list.d/jellyfin.list && \
+    apt-get update && apt-get install -y --no-install-recommends jellyfin-ffmpeg7 && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg && \
+    ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe && \
+    pip3 install --no-cache-dir --break-system-packages apprise && \
+    apprise --version && ffmpeg -version | head -1 && \
+    mkdir -p /data /media/downloads /media/library /transcode
+COPY --from=whisper-cpu /usr/local/bin/whisper-cli /usr/local/bin/whisper-cli
+# Tells the app this whisper has no GPU backend, so Settings says "CPU only on ARM" rather
+# than "check that /dev/dri is passed", which no setting here could fix.
+ENV ARRMADA_WHISPER_CPU_ONLY=1
+
+# --- Final: the image's own platform, plus what every platform shares ---
+FROM runtime-${TARGETARCH}
+COPY --from=build /out/arrmada /usr/local/bin/arrmada
+# Dolby Vision (dovi_tool) + HDR10+ (hdr10plus_tool) metadata extractors/injectors.
+COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr/local/bin/
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && whisper-cli --help >/dev/null 2>&1
 
 # Runs as root only long enough to fix data-dir ownership, then drops to PUID:PGID.
 ENV ARRMADA_HOST=0.0.0.0 \
@@ -230,7 +359,6 @@ ENV ARRMADA_HOST=0.0.0.0 \
     ARRMADA_DATA_DIR=/data \
     ARRMADA_LIBRARY_DIR=/media/library \
     ARRMADA_DOWNLOADS_DIR=/media/downloads \
-    LIBVA_DRIVER_NAME=iHD \
     PUID=1000 \
     PGID=1000
 EXPOSE 7878

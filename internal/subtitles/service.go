@@ -155,6 +155,7 @@ type Settings struct {
 	AIReady       bool     `json:"ai_ready"`       // local whisper.cpp binary + a model present
 	AIBackend     string   `json:"ai_backend"`     // "sycl" | "vulkan" | "cpu" | "" until the first run
 	AINote        string   `json:"ai_note"`        // why the oneAPI build isn't in use, when it was bundled but set aside
+	AICPUOnly     bool     `json:"ai_cpu_only"`    // the bundled whisper has no GPU backend (the ARM image)
 	// Download quota, when the provider reports one. OpenSubtitles free accounts get a
 	// small number of downloads a day; once it's spent every download fails until the
 	// reset, and the UI should say that rather than showing a run of failures.
@@ -188,6 +189,7 @@ func (s *Service) GetSettings(ctx context.Context) Settings {
 		AIReady:        s.whisper.available(),
 		AIBackend:      s.whisper.Backend(),
 		AINote:         s.whisper.SyclNote(),
+		AICPUOnly:      s.whisper.CPUOnly(),
 		QuotaRemaining: -1,
 		Pending:        s.Pending(),
 		MinScore:       s.minScore(ctx),

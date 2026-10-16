@@ -2,8 +2,8 @@
 // Status. It reads the repository's public releases (and, for a build of a commit, how
 // it compares with main or with the latest release, whichever its install follows) with
 // plain unauthenticated GETs: nothing about the server,
-// its library or its users is sent, not even the version, and the User-Agent is just
-// "Arrmada". It is on by default, says what it does, and can be switched off; while off
+// its library or its users is sent. The User-Agent is the one every Arrmada request
+// carries (httpua): the program, its version and its homepage. It is on by default, says what it does, and can be switched off; while off
 // it makes no requests at all.
 //
 // Trouble with GitHub (no releases yet, the rate limit, no network) is never an error
@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 const (
@@ -342,7 +344,7 @@ func (c *Checker) get(ctx context.Context, path, etag string) (*http.Response, e
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "Arrmada")
+	req.Header.Set("User-Agent", httpua.UserAgent())
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}

@@ -15,23 +15,27 @@
 #   TestUsenetPar2RepairLive   (automation) ~3% of the articles gone, par2 repairs it → imported
 #   TestUsenetPasswordedLive   (automation) a passworded 7z → failed, bad release, searched again
 #   TestUsenetSABRestartLive   (automation) SABnzbd restarts mid-download → nothing condemned
+#   TestUsenetBlockedIndexerHandoffLive (automation) an indexer that blocks Arrmada but admits
+#                                           SABnzbd: SABnzbd fetches the NZB → imported; one
+#                                           that refuses SABnzbd too → failed, not blocklisted
 #
 # The API key SABnzbd generated is read inside its container and handed to the tests in
 # their environment; it's never printed. Everything is removed on exit, pass or fail, and
 # only the rig's own containers, network and volumes are touched (all named
-# arrmada-tests-usenet-<random>).
+# arrmada-tests-usenet-<random>, or RIG_NAME-<random>).
 #
 # Usage (from anywhere in the repo; needs docker):
 #   scripts/usenet-it.sh                         # every test above
 #   scripts/usenet-it.sh -run TestUsenetSABRestartLive   # extra arguments go to `go test`
 #
-# Overridable images: SAB_IMAGE (keep it on the version docker-compose.yml pins), GO_IMAGE.
+# Overridable images: SAB_IMAGE (keep it on the version docker-compose.yml pins), GO_IMAGE;
+# and RIG_NAME, the rig's name prefix (it must start with arrmada-tests-).
 
 set -eu
 
 SAB_IMAGE=${SAB_IMAGE:-lscr.io/linuxserver/sabnzbd:5.1.3}
 GO_IMAGE=${GO_IMAGE:-golang:1.25}
-TESTS='^(TestSABnzbdLive|TestUsenetLifecycleLive|TestUsenetPar2RepairLive|TestUsenetPasswordedLive|TestUsenetSABRestartLive)$'
+TESTS='^(TestSABnzbdLive|TestUsenetLifecycleLive|TestUsenetPar2RepairLive|TestUsenetPasswordedLive|TestUsenetSABRestartLive|TestUsenetBlockedIndexerHandoffLive)$'
 
 # Git Bash would rewrite /downloads and friends into Windows paths before docker sees them.
 MSYS_NO_PATHCONV=1
@@ -44,7 +48,15 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 
 tag=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
-name=arrmada-tests-usenet-$tag
+rig=${RIG_NAME:-arrmada-tests-usenet}
+case $rig in
+arrmada-tests-*) ;;
+*)
+	printf 'usenet-it: RIG_NAME must start with arrmada-tests-\n' >&2
+	exit 1
+	;;
+esac
+name=$rig-$tag
 net=$name-net
 dl=$name-downloads
 fix=$name-fixtures
