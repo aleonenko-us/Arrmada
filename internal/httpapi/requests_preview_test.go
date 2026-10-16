@@ -31,6 +31,9 @@ func (stubPreviewer) GrabPreviewed(context.Context, string, int64, []string, str
 	return automation.SearchOutcome{}, nil
 }
 func (stubPreviewer) PreviewTokensLive([]string, string, string) bool { return true }
+func (stubPreviewer) SearchProfile(_ context.Context, in automation.PreviewInput) string {
+	return in.Profile
+}
 
 // previewServer is requestsServer with release previews wired, and the service at hand.
 func previewServer(t *testing.T) (*routeServer, *requests.Service) {
@@ -122,6 +125,10 @@ func TestRequestPreviewEndpoint(t *testing.T) {
 	pv, err := svc.RefreshPreview(context.Background(), id, "", nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Approve & grab must name the preview the approver saw.
+	if rec := s.doJSON("POST", fmt.Sprintf("/api/v1/requests/%d/approve", id), asManager, `{"grab_preview": true}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("approve & grab without preview_checked_at: HTTP %d %s", rec.Code, rec.Body)
 	}
 	body := fmt.Sprintf(`{"grab_preview": true, "preview_checked_at": %d}`, pv.CheckedAt-60)
 	if rec := s.doJSON("POST", fmt.Sprintf("/api/v1/requests/%d/approve", id), asManager, body); rec.Code != http.StatusConflict {

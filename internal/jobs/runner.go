@@ -65,6 +65,10 @@ const (
 	// ClassLibraryMove is a title moving to another library folder: a copy onto another
 	// drive can run for hours, so it has its own lane rather than holding up imports.
 	ClassLibraryMove = "library-move"
+	// ClassRequestPreview is a request's release preview checked on demand. It may wait
+	// for a slot in the previews' per-minute budget, so it waits in a lane of its own
+	// rather than holding one other work needs.
+	ClassRequestPreview = "request-preview"
 )
 
 var defaultLimits = map[string]int{
@@ -75,6 +79,7 @@ var defaultLimits = map[string]int{
 	ClassTask:           4,
 	ClassOther:          2,
 	ClassLibraryMove:    1,
+	ClassRequestPreview: 1,
 }
 
 // Errors.

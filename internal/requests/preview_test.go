@@ -22,12 +22,25 @@ type fakePreviewer struct {
 	started chan struct{} // when set, signalled as a preview starts
 	inputs  []automation.PreviewInput
 	grabs   []string // "<kind>:<id>:<key>:<tokens>"
+	// libProfile, when set, is a library title's own profile: previews rank under it and so
+	// does the search after approving.
+	libProfile string
+	panics     bool
+}
+
+func (f *fakePreviewer) SearchProfile(_ context.Context, in automation.PreviewInput) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.libProfile != "" {
+		return f.libProfile
+	}
+	return in.Profile
 }
 
 func (f *fakePreviewer) PreviewTitle(_ context.Context, in automation.PreviewInput) (automation.Preview, error) {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, in)
-	outcome, block, started := f.outcome, f.block, f.started
+	outcome, block, started, panics := f.outcome, f.block, f.started, f.panics
 	f.mu.Unlock()
 	if started != nil {
 		started <- struct{}{}
@@ -35,10 +48,19 @@ func (f *fakePreviewer) PreviewTitle(_ context.Context, in automation.PreviewInp
 	if block != nil {
 		<-block
 	}
+	if panics {
+		panic("preview blew up")
+	}
 	if outcome == "" {
 		outcome = automation.PreviewFound
 	}
-	p := automation.Preview{Outcome: outcome, Profile: in.Profile, Releases: []automation.PreviewRelease{}}
+	f.mu.Lock()
+	profile := in.Profile
+	if f.libProfile != "" {
+		profile = f.libProfile
+	}
+	f.mu.Unlock()
+	p := automation.Preview{Outcome: outcome, Profile: profile, InLibrary: profile != in.Profile, Releases: []automation.PreviewRelease{}}
 	if outcome == automation.PreviewFound {
 		p.Reason = automation.ReasonGrabbed
 		p.Releases = append(p.Releases, automation.PreviewRelease{Title: "Heat.1995.1080p.BluRay.x264-GRP", Indexer: "Fake", Resolution: "1080p", SizeGB: 12})

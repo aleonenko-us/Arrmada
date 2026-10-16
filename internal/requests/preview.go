@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,9 @@ type previewer interface {
 	PreviewTitle(ctx context.Context, in automation.PreviewInput) (automation.Preview, error)
 	GrabPreviewed(ctx context.Context, kind string, id int64, tokens []string, key string) (automation.SearchOutcome, error)
 	PreviewTokensLive(tokens []string, key, kind string) bool
+	// SearchProfile is the profile, resolved, the search after approving would rank under:
+	// a library title's own, else the one asked for.
+	SearchProfile(ctx context.Context, in automation.PreviewInput) string
 }
 
 var _ previewer = (*automation.Coordinator)(nil)
@@ -73,7 +77,8 @@ func (s *Service) SetPreviewer(p previewer) { s.previewer = p }
 type Preview struct {
 	State     string `json:"state"`      // queued | checking | done | busy
 	CheckedAt int64  `json:"checked_at"` // unix seconds of the last finished check; 0 = never
-	// Profile is the quality profile the result was ranked under; a different pick in the
+	// Profile is the quality profile the result was ranked under, resolved — for a title
+	// already in the library, its own; a different pick in the
 	// sheet makes it a preview "for" that profile.
 	Profile string `json:"profile"`
 	Seasons []int  `json:"seasons,omitempty"` // series: the seasons it covered
@@ -306,22 +311,30 @@ func (s *Service) RunPreviewQueue(ctx context.Context) error {
 		if err != nil || req.Status != StatusPending {
 			continue
 		}
-		done, _, ok := s.beginPreview(id)
-		if !ok {
-			continue // being checked on demand right now
-		}
-		if s.takePreviewSlot(previewPerMinute-1) > 0 {
-			done()
+		if spent := s.runQueuedPreview(ctx, req); spent {
 			return nil // the budget is spent; the next run carries on
-		}
-		_, err = s.checkPreview(ctx, req, "")
-		done()
-		if err != nil {
-			s.log.Info("request: release preview failed; trying again later", "request", id, "err", err)
-			_ = s.repo.retryPreview(ctx, id, s.clock().Add(previewRetry).Unix(), PreviewQueued)
 		}
 	}
 	return nil
+}
+
+// runQueuedPreview checks one queued request, unless it's being checked on demand right
+// now. spent says the per-minute budget had no slot for it. Its own function so the
+// running mark is dropped even if the check panics: a request must never stay "checking".
+func (s *Service) runQueuedPreview(ctx context.Context, req Request) (spent bool) {
+	done, _, ok := s.beginPreview(req.ID)
+	if !ok {
+		return false
+	}
+	defer done()
+	if s.takePreviewSlot(previewPerMinute-1) > 0 {
+		return true
+	}
+	if _, err := s.checkPreview(ctx, req, ""); err != nil {
+		s.log.Info("request: release preview failed; trying again later", "request", req.ID, "err", err)
+		_ = s.repo.retryPreview(ctx, req.ID, s.clock().Add(previewRetry).Unix(), PreviewQueued)
+	}
+	return false
 }
 
 // RefreshPreview checks a pending request's release preview now, ranked under profile
@@ -356,7 +369,7 @@ func (s *Service) RefreshPreview(ctx context.Context, id int64, profile string, 
 		}
 		// The check that was running may have been for this profile: that answers it.
 		if got, ok, _ := s.repo.getPreview(ctx, id); ok && got.State == PreviewDone && got.CheckedAt >= s.clock().Add(-time.Minute).Unix() &&
-			got.Profile == s.previewProfile(ctx, req, profile) {
+			got.Profile == s.previewer.SearchProfile(ctx, s.previewInput(ctx, req, s.previewProfile(ctx, req, profile))) {
 			return s.shapePreview(got, req), nil
 		}
 	}
@@ -381,17 +394,7 @@ func (s *Service) RefreshPreview(ctx context.Context, id int64, profile string, 
 // checkPreview runs one preview of req and stores what it found. A title being searched
 // for real keeps the result it had and is queued again for later.
 func (s *Service) checkPreview(ctx context.Context, req Request, profile string) (Preview, error) {
-	profile = s.previewProfile(ctx, req, profile)
-	in := automation.PreviewInput{
-		MediaType: req.MediaType, TMDBID: req.TMDBID, Seasons: req.Seasons,
-		BookID: req.BookID, Title: req.Title, Author: req.Author,
-		Profile: profile, Key: previewKey(req.ID),
-	}
-	if in.MediaType == "book" && in.BookID == 0 && s.books != nil {
-		if id, ok := s.books.BookIDForKey(ctx, req.OLKey); ok {
-			in.BookID = id
-		}
-	}
+	in := s.previewInput(ctx, req, s.previewProfile(ctx, req, profile))
 	res, err := s.previewer.PreviewTitle(ctx, in)
 	if err != nil {
 		return Preview{}, err
@@ -405,7 +408,9 @@ func (s *Service) checkPreview(ctx context.Context, req Request, profile string)
 		}
 		return s.shapePreview(got, req), nil
 	}
-	p := Preview{State: PreviewDone, CheckedAt: s.clock().Unix(), Profile: profile, Seasons: req.Seasons, Result: &res, tokens: res.Tokens}
+	// Stored under the profile it actually ranked under (a library title's own), which is
+	// what an approval's search is compared with.
+	p := Preview{State: PreviewDone, CheckedAt: s.clock().Unix(), Profile: res.Profile, Seasons: req.Seasons, Result: &res, tokens: res.Tokens}
 	saved, err := s.repo.savePreview(ctx, req.ID, p)
 	if err != nil {
 		return Preview{}, err
@@ -416,6 +421,21 @@ func (s *Service) checkPreview(ctx context.Context, req Request, profile string)
 		s.publishPreview(req)
 	}
 	return s.shapePreview(p, req), nil
+}
+
+// previewInput is what previewing req under profile asks the pipeline for.
+func (s *Service) previewInput(ctx context.Context, req Request, profile string) automation.PreviewInput {
+	in := automation.PreviewInput{
+		MediaType: req.MediaType, TMDBID: req.TMDBID, Seasons: req.Seasons,
+		BookID: req.BookID, Title: req.Title, Author: req.Author,
+		Profile: profile, Key: previewKey(req.ID),
+	}
+	if in.MediaType == "book" && in.BookID == 0 && s.books != nil {
+		if id, ok := s.books.BookIDForKey(ctx, req.OLKey); ok {
+			in.BookID = id
+		}
+	}
+	return in
 }
 
 // previewProfile is the profile a preview ranks under: the one asked for, else the one
@@ -506,7 +526,7 @@ var ErrPreviewChanged = errors.New("the release preview was updated — look at 
 // ("preview"), or the ordinary search ("search", with why when a grab was asked for).
 type ApproveGrab struct {
 	Mode   string `json:"mode"`
-	Reason string `json:"reason,omitempty"` // expired | profile | seasons | none
+	Reason string `json:"reason,omitempty"` // expired | profile | seasons | none | already queued
 }
 
 // previewGrab is the previewed releases an approval grabs. used is set once the approval
@@ -515,6 +535,14 @@ type previewGrab struct {
 	tokens []string
 	key    string
 	used   bool
+	joined bool // the job went to a search of the title already queued, which runs instead
+}
+
+// noteJoined records that the approval's job joined one already queued. Nil-safe.
+func (g *previewGrab) noteJoined(joined bool) {
+	if g != nil && g.used && joined {
+		g.joined = true
+	}
 }
 
 // planPreviewGrab decides whether approving req under profile can grab its previewed
@@ -540,11 +568,15 @@ func (s *Service) planPreviewGrab(ctx context.Context, req Request, profile stri
 	if p.Result.Outcome != automation.PreviewFound || len(p.tokens) == 0 {
 		return search("none")
 	}
-	if p.Profile != profile {
+	// The profile the approval's search will really rank under: a library title's own,
+	// else the one approved with.
+	if p.Profile != s.previewer.SearchProfile(ctx, s.previewInput(ctx, req, profile)) {
 		return search("profile")
 	}
-	if req.MediaType == "series" && p.Result.Season > 0 && len(req.Seasons) > 0 && !containsInt(req.Seasons, p.Result.Season) {
-		return search("seasons") // the season it previewed was trimmed off
+	// Exactly the seasons it was checked for, the whole show only as the whole show: a pack
+	// chosen for four seasons is no pick for an approval trimmed to one.
+	if req.MediaType == "series" && !sameSeasons(sortedSeasonsCopy(p.Seasons), sortedSeasonsCopy(req.Seasons)) {
+		return search("seasons")
 	}
 	key := previewKey(req.ID)
 	if !s.previewer.PreviewTokensLive(p.tokens, key, req.MediaType) {
@@ -553,13 +585,10 @@ func (s *Service) planPreviewGrab(ctx context.Context, req Request, profile stri
 	return &previewGrab{tokens: p.tokens, key: key}, ApproveGrab{Mode: "preview"}, nil
 }
 
-func containsInt(xs []int, n int) bool {
-	for _, x := range xs {
-		if x == n {
-			return true
-		}
-	}
-	return false
+func sortedSeasonsCopy(xs []int) []int {
+	out := append([]int(nil), xs...)
+	sort.Ints(out)
+	return out
 }
 
 // approvalSearch is the search an approval starts for library item id: the ordinary one,

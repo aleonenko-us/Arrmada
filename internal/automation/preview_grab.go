@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
 
@@ -91,6 +92,9 @@ func (c *Coordinator) tryPreviewedMovie(ctx context.Context, id int64, ref Relea
 	if len(want) == 0 {
 		return "", inFlight, nil // in flight: done; nothing wanted at all: the search says so
 	}
+	if len(want) > 1 {
+		return "", false, nil // a search per track: one previewed release can't stand for them all
+	}
 	v := want[0]
 	for _, w := range want {
 		if w.IsDefault {
@@ -151,7 +155,11 @@ func (c *Coordinator) grabPreviewedSeries(ctx context.Context, id int64, refs []
 }
 
 // tryPreviewedSeries grabs the previewed releases for show id under its search claim and
-// returns those it grabbed.
+// returns those it grabbed. What the show wants is read again first, as approved: a release
+// is taken only while it still covers a wanted episode no download in flight holds, and a
+// pack only while it's proportionate to what's wanted — so an approval trimmed to one
+// season never takes the complete-series pack previewed for four. Whatever is skipped is
+// left to the search that follows.
 func (c *Coordinator) tryPreviewedSeries(ctx context.Context, id int64, refs []ReleaseRef) ([]string, error) {
 	release, claimed := c.claims.claim(seriesKey(id))
 	if !claimed {
@@ -162,9 +170,31 @@ func (c *Coordinator) tryPreviewedSeries(ctx context.Context, id int64, refs []R
 	if err != nil {
 		return nil, nil
 	}
+	wanted, seriesSeasons := wantedEpisodes(s)
+	inSeasons, whole, _, err := c.seriesInFlightFor(ctx, s, nil)
+	if err != nil || whole {
+		return nil, nil // unreadable, or a pack for the whole show is on its way: the search says so
+	}
+	needed := map[epKey]bool{}
+	for _, k := range wanted {
+		if !inSeasons[k.season] {
+			needed[k] = true
+		}
+	}
 	var titles []string
 	gb := 0.0
 	for _, ref := range refs {
+		if len(needed) == 0 {
+			break
+		}
+		r := parser.Parse(ref.Title)
+		covers := c.coveredByFor(ctx, s, r, needed)
+		if len(covers) == 0 {
+			continue // nothing it holds is still wanted
+		}
+		if r.Kind() != parser.KindEpisode && !packIsProportionate(seasonsOf(needed), packSeasonsOf(r, seriesSeasons)) {
+			continue // more seasons than the approval wants
+		}
 		if !c.previewGrabbable(ctx, "series", id, ref) || !c.diskOKFor(gb+ref.SizeGB) {
 			continue
 		}
@@ -172,6 +202,9 @@ func (c *Coordinator) tryPreviewedSeries(ctx context.Context, id int64, refs []R
 		if err := c.grabForSeries(ctx, id, ref.Indexer, ref.DownloadURL, ref.Title, false, WholeShow); err != nil {
 			c.log.Warn("request: couldn't grab a previewed release", "series", s.Title, "release", ref.Title, "err", err)
 			continue
+		}
+		for _, k := range covers {
+			delete(needed, k)
 		}
 		gb += ref.SizeGB
 		titles = append(titles, ref.Title)
@@ -190,8 +223,6 @@ func (c *Coordinator) grabPreviewedBook(ctx context.Context, id int64, refs []Re
 	if len(titles) == 0 {
 		return c.SearchBookNow(ctx, id)
 	}
-	// An edition the preview found nothing for is left to the book sweep, which knows
-	// this one is on its way and won't grab it twice.
 	return c.previewGrabbed(ctx, AttemptBook, id, titles), nil
 }
 
@@ -206,6 +237,7 @@ func (c *Coordinator) tryPreviewedBook(ctx context.Context, id int64, refs []Rel
 		return nil, nil
 	}
 	var titles []string
+	taken := map[string]bool{}
 	for _, ref := range refs {
 		kind := ref.Edition
 		if (kind == books.KindEbook && b.Ebook != nil) || (kind == books.KindAudiobook && b.Audiobook != nil) {
@@ -222,6 +254,25 @@ func (c *Coordinator) tryPreviewedBook(ctx context.Context, id int64, refs []Rel
 		c.recordBookGrab(ctx, id, 0, ref.Title, ref.Indexer, b.QualityProfile, hash)
 		c.books.AddEvent(ctx, id, "grabbed", "Grabbed the release previewed on approval from "+ref.Indexer+": "+ref.Title)
 		titles = append(titles, ref.Title)
+		taken[kind] = true
 	}
-	return titles, nil
+	if len(titles) == 0 {
+		return nil, nil
+	}
+	// An edition the book wants that the preview didn't cover (it found none, or the grab
+	// failed) is searched now, still under the claim, as the approval's search would have
+	// — never the edition just grabbed, which is on its way.
+	sp := c.bookProfile(ctx, b.QualityProfile)
+	wantEbook, wantAudio := books.WantedEditions(sp.FormatScores)
+	var out SearchOutcome
+	for _, kind := range []string{books.KindEbook, books.KindAudiobook} {
+		want := (kind == books.KindEbook && wantEbook && b.Ebook == nil) || (kind == books.KindAudiobook && wantAudio && b.Audiobook == nil)
+		if !want || taken[kind] {
+			continue
+		}
+		if err := c.searchEdition(ctx, b, kind, sp, &out); err != nil {
+			break
+		}
+	}
+	return append(titles, out.GrabbedTitles...), nil
 }

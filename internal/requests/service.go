@@ -107,7 +107,10 @@ func (s *Service) SetJobs(sub jobs.Submitter) { s.jobs = sub }
 // movieID > 0 marks a movie search: it goes through the movie search queue
 // (automation.EnqueueMovieSearch) like every other movie search, so the sweeps leave the
 // movie alone while it waits.
-func (s *Service) background(kind, target, trigger, title, noun string, movieID int64, timeout time.Duration, fn func(ctx context.Context) (automation.SearchOutcome, error)) {
+//
+// joined reports that the work went to a job already queued or running for the same title
+// (a Search click, another approval), which runs instead of fn.
+func (s *Service) background(kind, target, trigger, title, noun string, movieID int64, timeout time.Duration, fn func(ctx context.Context) (automation.SearchOutcome, error)) (joined bool) {
 	if s.jobs != nil {
 		spec := jobs.Spec{
 			Kind: kind, Target: target, Trigger: trigger, Class: jobs.ClassIndexerSearch, Timeout: timeout,
@@ -125,14 +128,16 @@ func (s *Service) background(kind, target, trigger, title, noun string, movieID 
 		}
 		var err error
 		if movieID > 0 && s.coord != nil {
-			_, err = s.coord.EnqueueMovieSearch(context.Background(), s.jobs, movieID, spec)
+			var q automation.MovieQueued
+			q, err = s.coord.EnqueueMovieSearch(context.Background(), s.jobs, movieID, spec)
+			joined = q.Existing
 		} else {
-			_, _, err = s.jobs.Submit(context.Background(), spec)
+			_, joined, err = s.jobs.Submit(context.Background(), spec)
 		}
 		if err != nil {
 			s.log.Warn("request: couldn't start the search", "title", title, "err", err)
 		}
-		return
+		return joined
 	}
 	name := kind + " " + target
 	run := func(parent context.Context) {
@@ -144,9 +149,10 @@ func (s *Service) background(kind, target, trigger, title, noun string, movieID 
 	}
 	if s.runner != nil {
 		s.runner.Go("request: "+name, run)
-		return
+		return false
 	}
 	safego.Go(s.log, "request: "+name, func() { run(context.Background()) })
+	return false
 }
 
 // PushSender delivers a Web Push notification to every device a user registered.
@@ -821,9 +827,10 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		}
 		if addErr == nil && m.ID > 0 && !o.DeferSearch {
 			mid := m.ID
-			s.background("movie.search", fmt.Sprintf("movie:%d", mid), trigger, req.Title, "movie", mid, 3*time.Minute, s.approvalSearch(grab, "movie", mid, func(c context.Context) (automation.SearchOutcome, error) {
+			joined := s.background("movie.search", fmt.Sprintf("movie:%d", mid), trigger, req.Title, "movie", mid, 3*time.Minute, s.approvalSearch(grab, "movie", mid, func(c context.Context) (automation.SearchOutcome, error) {
 				return s.coord.SearchMovie(c, mid)
 			}))
+			grab.noteJoined(joined)
 		}
 	case "series":
 		// A whole-show request starts from the configured monitoring preset (Settings →
@@ -855,9 +862,10 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		}
 		if addErr == nil && sr.ID > 0 && !o.DeferSearch {
 			sid := sr.ID
-			s.background("series.search", fmt.Sprintf("series:%d", sid), trigger, req.Title, "show", 0, 5*time.Minute, s.approvalSearch(grab, "series", sid, func(c context.Context) (automation.SearchOutcome, error) {
+			joined := s.background("series.search", fmt.Sprintf("series:%d", sid), trigger, req.Title, "show", 0, 5*time.Minute, s.approvalSearch(grab, "series", sid, func(c context.Context) (automation.SearchOutcome, error) {
 				return s.coord.SearchSeriesNow(c, sid)
 			}))
+			grab.noteJoined(joined)
 		}
 	case "book":
 		// An approver's explicit profile is their call on the format too.
@@ -887,9 +895,10 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 			// A new row always wants a search (an import leaves it to the sweeps).
 			if s.searchBook != nil && !o.DeferSearch {
 				bid := b.ID
-				s.background("book.search", fmt.Sprintf("book:%d", bid), trigger, req.Title, "book", 0, 5*time.Minute, s.approvalSearch(grab, "book", bid, func(c context.Context) (automation.SearchOutcome, error) {
+				joined := s.background("book.search", fmt.Sprintf("book:%d", bid), trigger, req.Title, "book", 0, 5*time.Minute, s.approvalSearch(grab, "book", bid, func(c context.Context) (automation.SearchOutcome, error) {
 					return s.searchBook(c, bid)
 				}))
+				grab.noteJoined(joined)
 			}
 		case b.ID > 0:
 			// Already in the library: it now wants every edition the request asked for
@@ -965,7 +974,11 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	} else {
 		s.kickAttention() // publishUpdated kicks otherwise
 	}
-	if grab != nil && !grab.used {
+	switch {
+	case grab != nil && grab.joined:
+		// A search of the title was already queued or running: that job runs, not the grab.
+		grabMode = &ApproveGrab{Mode: "search", Reason: "already queued"}
+	case grab != nil && !grab.used:
 		// Nothing was searched for after all (a title already here, a book edition being
 		// widened): the answer mustn't claim a grab.
 		grabMode = &ApproveGrab{Mode: "search", Reason: "none"}

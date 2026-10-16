@@ -79,6 +79,11 @@ type Preview struct {
 	// not checked").
 	Season      int    `json:"season,omitempty"`
 	SeasonsNote string `json:"seasons_note,omitempty"`
+	// InLibrary: the title is in the library already, so it was ranked — and a search after
+	// approving it ranks — under its own profile, whatever the approval picks.
+	InLibrary bool `json:"in_library,omitempty"`
+	// Note is a caveat about this preview ("Preview may miss anime not yet in the library").
+	Note string `json:"note,omitempty"`
 	// Tokens stand for Releases' download links (releasetokens.go), for GrabPreviewed.
 	// Never serialised.
 	Tokens []string `json:"-"`
@@ -135,6 +140,9 @@ func (c *Coordinator) PreviewTitle(ctx context.Context, in PreviewInput) (Previe
 	// Background work, whatever the caller's context says: a preview must never wake an
 	// indexer the sweeps are leaving alone.
 	ctx = indexer.WithoutInteractive(ctx)
+	// Nor may a preview's failures pause an indexer for the real searches: they show on the
+	// indexer's row and in the preview, as a Test's do, and move no backoff.
+	ctx = indexer.WithoutBackoff(ctx)
 	switch in.MediaType {
 	case ReleaseKindMovie:
 		return c.previewMovie(ctx, in)
@@ -144,6 +152,66 @@ func (c *Coordinator) PreviewTitle(ctx context.Context, in PreviewInput) (Previe
 		return c.previewBook(ctx, in)
 	}
 	return Preview{}, fmt.Errorf("%w: %q", errPreviewUnsupported, in.MediaType)
+}
+
+// SearchProfile is the profile the search after approving in would rank under, resolved
+// (effectiveProfile): a title already in the library keeps its own — the movie's wanted
+// default track's, the show's, the book's — whatever the approval picks; any other is
+// added under in.Profile. Previews rank under it, and "Approve & grab this" is only good
+// while it still matches.
+func (c *Coordinator) SearchProfile(ctx context.Context, in PreviewInput) string {
+	ref, _ := c.titleProfile(ctx, in)
+	return c.effectiveProfile(ctx, ref, previewMedia(in.MediaType))
+}
+
+func previewMedia(kind string) string {
+	switch kind {
+	case ReleaseKindSeries:
+		return quality.MediaSeries
+	case ReleaseKindBook:
+		return quality.MediaBook
+	}
+	return quality.MediaMovie
+}
+
+// titleProfile is the profile ref a search of in would use before resolving, and whether
+// the title is in the library (so that profile is its own).
+func (c *Coordinator) titleProfile(ctx context.Context, in PreviewInput) (string, bool) {
+	switch in.MediaType {
+	case ReleaseKindMovie:
+		if c.movies == nil {
+			break
+		}
+		if m, err := c.movies.GetByTMDB(ctx, in.TMDBID); err == nil {
+			// The track a grab lands in: the default one when it's wanted, else the first
+			// wanted; with nothing wanted, the film's own profile.
+			ref := m.QualityProfile
+			if want := c.missingVersions(ctx, m.ID); len(want) > 0 {
+				ref = want[0].QualityProfile
+				for _, v := range want {
+					if v.IsDefault {
+						ref = v.QualityProfile
+					}
+				}
+			}
+			return ref, true
+		}
+	case ReleaseKindSeries:
+		if c.series == nil {
+			break
+		}
+		if s, err := c.series.GetByTMDB(ctx, in.TMDBID); err == nil {
+			return s.QualityProfile, true
+		}
+	case ReleaseKindBook:
+		if c.books == nil || in.BookID <= 0 {
+			break
+		}
+		if b, err := c.books.Get(ctx, in.BookID); err == nil {
+			return b.QualityProfile, true
+		}
+	}
+	return in.Profile, false
 }
 
 // previewSearchErr is the preview of a search that couldn't run: every indexer paused,
@@ -249,8 +317,15 @@ func (c *Coordinator) previewMovie(ctx context.Context, in PreviewInput) (Previe
 	default:
 		return Preview{}, err
 	}
-	profile := c.effectiveProfile(ctx, in.Profile, quality.MediaMovie)
-	p := Preview{Profile: profile, Releases: []PreviewRelease{}}
+	ref, inLib := c.titleProfile(ctx, in)
+	profile := c.effectiveProfile(ctx, ref, quality.MediaMovie)
+	p := Preview{Profile: profile, InLibrary: inLib, Releases: []PreviewRelease{}}
+	// A film wanting several tracks gets a search per track on approval; one previewed
+	// release can't stand for them all, so it's shown but not offered to grab.
+	several := m.ID > 0 && len(c.missingVersions(ctx, m.ID)) > 1
+	if several {
+		p.Note = "Several versions are wanted — approving searches for each"
+	}
 	ctx, notes := newSearchNotes(ctx)
 	keys := c.movieKeys(ctx, m)
 	result, err := c.searchMovie(ctx, m, keys)
@@ -282,7 +357,9 @@ func (c *Coordinator) previewMovie(ctx context.Context, in PreviewInput) (Previe
 		pr.Matched, pr.Avoided = w.Matched, w.AvoidedFormats
 		p.Releases = append(p.Releases, pr)
 		p.Why, p.ChosenOver = decision.Why, decision.ChosenOver
-		c.issuePreview(&p, []indexer.Release{rel}, ReleaseKindMovie, in.Key, nil)
+		if !several {
+			c.issuePreview(&p, []indexer.Release{rel}, ReleaseKindMovie, in.Key, nil)
+		}
 	}
 	finishPreview(&p, notes)
 	return p, nil
@@ -376,8 +453,14 @@ func (c *Coordinator) previewSeries(ctx context.Context, in PreviewInput) (Previ
 	wantSeasons := sortedSeasons(seasonsOf(setOf(wanted)))
 	first := wantSeasons[0]
 
-	profile := c.effectiveProfile(ctx, in.Profile, quality.MediaSeries)
-	p := Preview{Profile: profile, Season: first, Releases: []PreviewRelease{}}
+	// A show in the library keeps its own profile through approval; a draft carries in.Profile.
+	profile := c.effectiveProfile(ctx, s.QualityProfile, quality.MediaSeries)
+	p := Preview{Profile: profile, Season: first, InLibrary: s.ID > 0, Releases: []PreviewRelease{}}
+	if s.ID == 0 && s.IsAnime() {
+		// Absolute and per-cour numbering resolve through the show's library rows, which a
+		// draft hasn't got: single episodes may go unmatched until it's added.
+		p.Note = "Preview may miss anime not yet in the library"
+	}
 	ctx, notes := newSearchNotes(ctx)
 	title := indexerQuery(s.Title)
 	res, err := c.search(ctx, seriesQuery(s, title, 100))
@@ -629,7 +712,8 @@ func (c *Coordinator) previewBook(ctx context.Context, in PreviewInput) (Preview
 		all = append(all, b)
 	}
 	match := books.MatcherOver(all)
-	sp := c.bookProfile(ctx, in.Profile)
+	ref, inLib := c.titleProfile(ctx, in)
+	sp := c.bookProfile(ctx, ref)
 	wantEbook, wantAudio := books.WantedEditions(sp.FormatScores)
 	var kinds []string
 	if wantEbook && b.Ebook == nil {
@@ -642,7 +726,7 @@ func (c *Coordinator) previewBook(ctx context.Context, in PreviewInput) (Preview
 		held.Outcome, held.Reason = PreviewNotWanted, ReasonNothingWanted
 		return held, nil
 	}
-	p := Preview{Profile: c.effectiveProfile(ctx, in.Profile, quality.MediaBook), Releases: []PreviewRelease{}}
+	p := Preview{Profile: c.effectiveProfile(ctx, ref, quality.MediaBook), InLibrary: inLib, Releases: []PreviewRelease{}}
 	ctx, notes := newSearchNotes(ctx)
 	nets := c.networks(ctx)
 	allowed := c.bookLanguages(ctx)

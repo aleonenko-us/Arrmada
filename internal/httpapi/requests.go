@@ -410,6 +410,12 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req) // body is optional (profile override, season trim, folder)
 	}
+	if req.GrabPreview && req.PreviewCheckedAt <= 0 {
+		// Approve & grab names the preview the approver saw, so a newer one is never
+		// grabbed unseen.
+		a.writeError(w, http.StatusBadRequest, "preview_checked_at is required with grab_preview")
+		return
+	}
 	o := requests.ApproveOptions{Profile: req.QualityProfile, Seasons: req.Seasons, FolderID: req.FolderID,
 		GrabPreview: req.GrabPreview, PreviewAt: req.PreviewCheckedAt}
 	if u, ok := userFrom(r); ok {
@@ -478,7 +484,7 @@ func (a *api) handleRequestPreview(w http.ResponseWriter, r *http.Request) {
 	profile := body.QualityProfile
 	svc := a.deps.Requests
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{
-		Kind: "request.preview", Target: requests.PreviewJobTarget(id), Class: jobs.ClassOther, Timeout: requests.PreviewJobTimeout,
+		Kind: "request.preview", Target: requests.PreviewJobTarget(id), Class: jobs.ClassRequestPreview, Timeout: requests.PreviewJobTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			pv, err := svc.RefreshPreview(ctx, id, profile, p)
 			if err != nil {
