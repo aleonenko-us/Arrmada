@@ -62,9 +62,10 @@ func (q *QBittorrent) login(ctx context.Context, dc Client) (*http.Client, error
 	switch {
 	case resp.StatusCode == http.StatusForbidden:
 		return nil, fmt.Errorf("qbittorrent: refused (too many failed logins, or WebUI host/CSRF restriction)")
-	case strings.TrimSpace(string(body)) == "Fails.":
+	// 200 "Fails." from qBittorrent 4.x; 401 from 5.x.
+	case resp.StatusCode == http.StatusUnauthorized, strings.TrimSpace(string(body)) == "Fails.":
 		return nil, fmt.Errorf("qbittorrent: invalid username or password")
-	// 200 "Ok." on normal login; 204 No Content when auth is bypassed (IP whitelist).
+	// 200 "Ok." from 4.x, 204 No Content from 5.x (and whenever the whitelist lets us in).
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return client, nil
 	default:

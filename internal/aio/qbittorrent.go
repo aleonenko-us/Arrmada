@@ -1,7 +1,9 @@
 // Package aio is the Unraid all-in-one image's side of the bundled qBittorrent and
 // FlareSolverr: the small supervisor that runs them next to Arrmada in one container
 // (cmd/arrmada-aio), and the qBittorrent login it sets up on first start. The plain image
-// and the Compose install never run any of it; there each companion is its own container.
+// and the Compose install never run the supervisor; there each companion is its own
+// container. The Compose install does keep its qBittorrent's login the same way (Login,
+// NewLogin, SaveLogin, ReadLogin), in Arrmada's data folder.
 package aio
 
 import (
@@ -57,6 +59,24 @@ func ReadLogin(path string) (Login, error) {
 		return Login{}, errors.New("qbittorrent login: incomplete")
 	}
 	return l, nil
+}
+
+// NewLogin is a login for username with a newly generated password.
+func NewLogin(username string) (Login, error) {
+	pass, err := randomPassword()
+	if err != nil {
+		return Login{}, err
+	}
+	return Login{Username: username, Password: pass}, nil
+}
+
+// SaveLogin writes a login file whole, readable only by the user Arrmada runs as.
+func SaveLogin(path string, l Login) error {
+	raw, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+	return writeFile(path, raw, 0o600, -1, -1)
 }
 
 // SeedOptions is what the first qBittorrent config is written from.

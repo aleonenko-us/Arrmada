@@ -269,3 +269,27 @@ func TestReadLoginRejectsIncomplete(t *testing.T) {
 		t.Error("a missing file was accepted")
 	}
 }
+
+// The Compose install's login: made, saved for the owner only, read back the same.
+func TestNewLoginSaveAndRead(t *testing.T) {
+	l, err := NewLogin("admin")
+	if err != nil || l.Username != "admin" || len(l.Password) != 24 {
+		t.Fatalf("NewLogin = %+v, %v", l, err)
+	}
+	p := filepath.Join(t.TempDir(), "qbittorrent-login.json")
+	if err := SaveLogin(p, l); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadLogin(p)
+	if err != nil || got != l {
+		t.Fatalf("read back %+v, %v", got, err)
+	}
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("mode %v, %v", fi.Mode().Perm(), err)
+		}
+	}
+	if _, err := os.Stat(p + ".tmp"); !os.IsNotExist(err) {
+		t.Error("the temporary file was left behind")
+	}
+}
