@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -326,6 +327,8 @@ type seriesIndex struct {
 	byTMDB map[int]int64
 	byTVDB map[int]int64
 	owned  map[string]bool
+	// tvdbTMDB is TMDB's id for the shows Sonarr names only by TVDB id (lookupTVDB).
+	tvdbTMDB map[int]int
 }
 
 func (imp *Importer) seriesIndex(ctx context.Context) (seriesIndex, error) {
@@ -354,7 +357,7 @@ func (imp *Importer) seriesIndex(ctx context.Context) (seriesIndex, error) {
 
 // showMatch finds a Sonarr show in Arrmada (existing id > 0) or the TMDB id to add it by
 // (0: no match, with why).
-func (imp *Importer) showMatch(ctx context.Context, s Series, idx seriesIndex) (existing int64, tmdb int, why string) {
+func (imp *Importer) showMatch(s Series, idx seriesIndex) (existing int64, tmdb int, why string) {
 	if s.TMDBID > 0 {
 		if id, ok := idx.byTMDB[s.TMDBID]; ok {
 			return id, s.TMDBID, ""
@@ -374,8 +377,8 @@ func (imp *Importer) showMatch(ctx context.Context, s Series, idx seriesIndex) (
 	if imp.TMDBForTVDB == nil {
 		return 0, 0, "Sonarr has no TMDB id for it"
 	}
-	id, err := imp.TMDBForTVDB(ctx, s.TVDBID)
-	if err != nil || id <= 0 {
+	id := idx.tvdbTMDB[s.TVDBID]
+	if id <= 0 {
 		return 0, 0, fmt.Sprintf("TMDB has no show for TVDB id %d", s.TVDBID)
 	}
 	if ex, ok := idx.byTMDB[id]; ok {
@@ -384,11 +387,51 @@ func (imp *Importer) showMatch(ctx context.Context, s Series, idx seriesIndex) (
 	return 0, id, ""
 }
 
+// lookupTVDB finds the TMDB ids of the shows Sonarr names only by TVDB id (Sonarr 3 has no
+// TMDB ids at all), a few lookups at a time: one after another, a big Sonarr 3 library
+// would outlast the preview.
+func (imp *Importer) lookupTVDB(ctx context.Context, shows []Series, idx *seriesIndex) {
+	idx.tvdbTMDB = map[int]int{}
+	if imp.TMDBForTVDB == nil {
+		return
+	}
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, 6)
+	)
+	for _, s := range shows {
+		if s.TMDBID > 0 || s.TVDBID <= 0 || idx.byTVDB[s.TVDBID] > 0 {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		tvdb := s.TVDBID
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			_ = safego.Call(imp.log(), "arr import: TVDB lookup", func() error {
+				if id, err := imp.TMDBForTVDB(ctx, tvdb); err == nil && id > 0 {
+					mu.Lock()
+					idx.tvdbTMDB[tvdb] = id
+					mu.Unlock()
+				}
+				return nil
+			})
+		}()
+	}
+	wg.Wait()
+}
+
 func (imp *Importer) previewSeries(ctx context.Context, snap *Snapshot, opts Options, pv *Preview, uses map[int]int) error {
 	idx, err := imp.seriesIndex(ctx)
 	if err != nil {
 		return err
 	}
+	imp.lookupTVDB(ctx, snap.Series, &idx)
 	seen := map[int]bool{}
 	for _, s := range snap.Series {
 		if err := ctx.Err(); err != nil {
@@ -397,7 +440,7 @@ func (imp *Importer) previewSeries(ctx context.Context, snap *Snapshot, opts Opt
 		c := &pv.Counts
 		c.Titles++
 		uses[s.ProfileID]++
-		existing, tmdb, why := imp.showMatch(ctx, s, idx)
+		existing, tmdb, why := imp.showMatch(s, idx)
 		switch {
 		case existing > 0:
 			c.Existing++
@@ -624,6 +667,7 @@ func (imp *Importer) runSeries(ctx context.Context, c *Client, snap *Snapshot, o
 	if err != nil {
 		return err
 	}
+	imp.lookupTVDB(ctx, snap.Series, &idx)
 	source := snap.Status.Name(snap.App)
 	total := len(snap.Series)
 	for i, s := range snap.Series {
@@ -760,7 +804,7 @@ func monitorNew(s Series) bool {
 
 // oneSeries brings one Sonarr show over. An error is the show failing.
 func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Options, source string, idx *seriesIndex, res *Result) error {
-	existing, tmdb, why := imp.showMatch(ctx, s, *idx)
+	existing, tmdb, why := imp.showMatch(s, *idx)
 	if existing == 0 && tmdb <= 0 {
 		res.Skipped++
 		res.note(s.Title, s.Year, "skipped", why)
