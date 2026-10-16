@@ -308,6 +308,11 @@ func (s *Service) checkQbitLoginBorrowed(ctx context.Context, api *qbitAuthAPI, 
 // adoptBundledLogin gives the bundled client the login Arrmada made, and records it as the
 // one last given (KeyBundledLogin), so the next start's EnsureBundledLogin leaves it be.
 func (s *Service) adoptBundledLogin(ctx context.Context, c Client, user, pass string) error {
+	// Read afresh: the owner may have edited the card (its name, priority…) meanwhile.
+	c, err := s.repo.Get(ctx, c.ID)
+	if err != nil {
+		return err
+	}
 	if c.Username != user || c.Password != pass {
 		c.Username, c.Password = user, pass
 		if _, err := s.Update(ctx, c); err != nil {
