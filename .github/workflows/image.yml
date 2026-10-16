@@ -36,6 +36,9 @@ jobs:
             # The default cache scope, which amd64 has always used (release.yml reads it).
             cache-from: type=gha
             cache-to: type=gha,mode=max
+          # arm64 writes its cache from main only (the build step leaves cache-to empty on
+          # a pull request), so PR builds don't fill GitHub's cache with a second
+          # platform's layers; they still read main's.
           - arch: arm64
             runner: ubuntu-24.04-arm
             cache-from: type=gha,scope=arm64
@@ -68,11 +71,11 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          # No platforms: each runner builds its own, natively, and amd64's build inputs
-          # stay exactly what they were (so its cache keeps hitting).
+          # No platforms: each runner builds its own, natively, and amd64 keeps its
+          # default cache scope.
           push: false
           cache-from: ${{ matrix.cache-from }}
-          cache-to: ${{ matrix.cache-to }}
+          cache-to: ${{ (matrix.arch != 'arm64' || github.event_name != 'pull_request') && matrix.cache-to || '' }}
           build-args: |
             VERSION=${{ github.head_ref || github.ref_name }}-${{ github.sha }}
             COMMIT=${{ github.sha }}

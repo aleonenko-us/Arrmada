@@ -28,6 +28,10 @@ services:
       args:
         VERSION: ${ARRMADA_VERSION:-dev}
         COMMIT: ${ARRMADA_COMMIT:-unknown}
+        # A build here runs here, so the Intel oneAPI subtitle build may use every
+        # instruction this CPU has (published images are built for any x86-64 CPU).
+        # Nothing reads it on ARM. Set ARRMADA_WHISPER_SYCL_NATIVE=0 in .env to turn it off.
+        WHISPER_SYCL_NATIVE: ${ARRMADA_WHISPER_SYCL_NATIVE:-1}
     container_name: Arrmada-app
     # x265 binds its worker thread pools to NUMA nodes with set_mempolicy(2), which
     # Docker's default seccomp profile blocks — the encode then logs "set_mempolicy:

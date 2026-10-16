@@ -3,8 +3,10 @@
 ## What you need
 
 - A 64-bit Linux server with **Docker** and **Docker Compose v2**: Intel or AMD (x86-64), or
-  64-bit ARM (arm64: a Raspberry Pi 4 or 5, an ARM NAS, Apple Silicon). See [ARM](#arm) for
-  what differs there.
+  64-bit ARM (arm64: a Raspberry Pi 4 or 5, an ARM NAS). See [ARM](#arm) for what differs
+  there. The image also runs on a Mac with Apple Silicon through Docker Desktop (with the
+  compose file, see [Docker Compose without the installer](#docker-compose-without-the-installer));
+  the one-line installer is for Linux.
   - **Unraid:** Docker is built in (Settings → Docker). Install the **Docker Compose Manager**
     plugin from the Apps tab for Compose.
   - **Other Linux:** [Docker Engine](https://docs.docker.com/engine/install/) and its

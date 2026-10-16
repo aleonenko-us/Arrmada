@@ -111,7 +111,7 @@ jobs:
         with:
           context: .
           # No platforms: each runner builds its own, natively (the merge job checks both
-          # arrived), and amd64's build inputs stay what they were, so its cache hits.
+          # arrived), each reading the cache image.yml wrote for it on main.
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ steps.names.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: ${{ matrix.cache }}
@@ -129,7 +129,8 @@ jobs:
           name: digests-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
-          retention-days: 1
+          # Kept a week, so a merge job that failed can still be re-run days later.
+          retention-days: 7
 
   merge:
     name: Tag the release image (amd64 + arm64)

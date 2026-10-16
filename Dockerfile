@@ -19,7 +19,7 @@
 # Vulkan whisper. arm64 gets a CPU-only whisper instead; the runtime-amd64 and
 # runtime-arm64 stages near the end hold everything that differs, and the final stage
 # picks one by TARGETARCH (which BuildKit sets), so an arm64 build never touches the
-# amd64-only stages and the amd64 build is the same as it was.
+# amd64-only stages. (The amd64 whisper stages changed too, for CPU dispatch; see below.)
 
 # --- Stage 1: build the web UI ---
 FROM --platform=$BUILDPLATFORM node:24-alpine AS web
@@ -180,13 +180,21 @@ FROM intel/deep-learning-essentials:2025.3.3-0-devel-ubuntu24.04 AS whisper-sycl
 ARG WHISPER_VERSION=v1.9.3
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git cmake make ca-certificates && rm -rf /var/lib/apt/lists/*
+# WHISPER_SYCL_NATIVE=1 builds that CPU code for the build machine instead: right for an
+# image built and run on the same server (docker-compose.yml passes it for builds there),
+# never for one published to other machines. CI and releases leave it at 0.
+ARG WHISPER_SYCL_NATIVE=0
 RUN git clone --depth 1 --branch ${WHISPER_VERSION} https://github.com/ggerganov/whisper.cpp /src/whisper && \
     cd /src/whisper && \
     (. /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1 || true) && \
+    if [ "${WHISPER_SYCL_NATIVE}" = 1 ]; then \
+        CPU_FLAGS="-DGGML_NATIVE=ON"; \
+    else \
+        CPU_FLAGS="-DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF"; \
+    fi && \
+    echo "SYCL whisper CPU flags: ${CPU_FLAGS}" && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-          -DGGML_SYCL=ON -DGGML_SYCL_F16=ON \
-          -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF \
-          -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF \
+          -DGGML_SYCL=ON -DGGML_SYCL_F16=ON ${CPU_FLAGS} \
           -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 ARG ARRMADA_BUILD_JOBS

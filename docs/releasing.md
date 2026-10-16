@@ -1,7 +1,9 @@
 # Releasing (maintainers)
 
 A release is a version tag. Arrmada is pre-1.0: versions are `v0.x` until the owner has
-tested the finished roadmap. From an up-to-date `main`:
+tested the finished roadmap. First wait for the Image workflow (`image.yml`) on `main` to go
+green on both platforms (Docker build and Docker build (arm64)): that's what proves the
+commit builds, and it warms the caches the release reads. Then, from an up-to-date `main`:
 
 ```sh
 git tag -a v0.18.0 -m "Arrmada 0.18.0"
@@ -14,7 +16,9 @@ runner of its own platform, the arm64 one on GitHub's free arm64 runner), pushes
 `ghcr.io/tristenlammi/arrmada` by digest, joins them into one multi-platform image tagged
 `0.18.0`, `0.18`, `sha-<commit>` and `stable`, checks both platforms are behind the tag, and
 then creates the GitHub release with generated notes. If either platform fails to build,
-nothing is tagged and no release is written; re-run the workflow on the tag. A tag with a hyphen (`v0.18.0-rc.1`) is published as a pre-release: it gets
+nothing is tagged and no release is written: open the failed run and use **Re-run all
+jobs**, so both platforms are built again from the same tag. A tag with a hyphen
+(`v0.18.0-rc.1`) is published as a pre-release: it gets
 its own version tag but never `stable`, and the in-app update check doesn't offer it. Pushes
 to `main` and pull requests only build the image as a check (`image.yml`, both platforms);
 they never publish one.
