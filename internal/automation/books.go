@@ -1153,7 +1153,7 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 	if len(files) == 0 {
 		return false
 	}
-	bi, err := c.imp.ImportBookEdition(b.Author, b.Title, files)
+	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, b.Title, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
 		return false

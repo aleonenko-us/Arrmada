@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
 // A review import (Import anyway, Choose different…, Map files…) can copy tens of
@@ -32,21 +34,23 @@ func importProgressFrom(ctx context.Context) ImportProgress {
 	return fn
 }
 
-// watchReviewCopies reports the copies out of r's download to ctx's ImportProgress, if
-// it has one, until stop is called. The total is the download's size: what's in it that
-// doesn't import (a sample, an .nfo) never gets copied, so the bar can stop short of full.
-func watchReviewCopies(ctx context.Context, r Review) (stop func()) {
+// withCopyAccounting is ctx with a library.CopyReport that adds up r's import copies and
+// hands the running total to ctx's ImportProgress, if it has one. Only this import's own
+// copies count (the importer carries the report, nothing matches by folder). The total is
+// the download's size: what's in it that doesn't import (a sample, an .nfo) never gets
+// copied, so the bar can stop short of full.
+func withCopyAccounting(ctx context.Context, r Review) context.Context {
 	fn := importProgressFrom(ctx)
-	if fn == nil || r.ContentPath == "" {
-		return func() {}
+	if fn == nil {
+		return ctx
 	}
 	total := r.SizeBytes
-	if total <= 0 {
+	if total <= 0 && r.ContentPath != "" {
 		total = treeSize(r.ContentPath)
 	}
 	var mu sync.Mutex
 	files := map[string]int64{}
-	report := func(src string, done, _ int64) {
+	return library.WithCopyReport(ctx, func(src string, done, _ int64) {
 		mu.Lock()
 		files[src] = done
 		var copied int64
@@ -55,12 +59,7 @@ func watchReviewCopies(ctx context.Context, r Review) (stop func()) {
 		}
 		mu.Unlock()
 		fn(copied, max(total, copied))
-	}
-	// A lone archive is unpacked next to itself (library.prepareContent), and its
-	// contents are copied from there.
-	stopDir := library.WatchCopies(r.ContentPath, report)
-	stopScratch := library.WatchCopies(r.ContentPath+".extracted", report)
-	return func() { stopDir(); stopScratch() }
+	})
 }
 
 // treeSize is the size of every regular file at or under path.
@@ -178,6 +177,14 @@ func (c *Coordinator) itemTitle(ctx context.Context, kind string, id int64) stri
 // ("review", "review (mapped by hand)", "Needs you"), as the success line does. A review
 // stays open.
 func (c *Coordinator) importFailed(ctx context.Context, r Review, dest int64, from string, err error) {
+	// Stopped (a shutdown, a cancel) isn't the import failing.
+	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+		return
+	}
+	// The film's own import already wrote why it refused.
+	if errors.Is(err, movies.ErrPathOwnedByOtherTrack) {
+		return
+	}
 	// The job may have been stopped; the line is still worth writing.
 	ctx = context.WithoutCancel(ctx)
 	c.reviewEvent(ctx, r.MediaType, dest, "failed", fmt.Sprintf("Couldn't import from %s: %v — %s", from, err, r.Name))

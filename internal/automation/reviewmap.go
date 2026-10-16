@@ -168,9 +168,13 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 	if _, err := c.pendingReview(ctx, r.ID); err != nil {
 		return 0, err
 	}
+	// The job may have waited its turn: the download can have gone meanwhile. That's a
+	// refusal, not a failed import — nothing was tried.
+	if err := checkDownloadThere(r); err != nil {
+		return 0, err
+	}
 	// A copy across drives reports its bytes to ctx's ImportProgress.
-	stop := watchReviewCopies(ctx, r)
-	defer stop()
+	ctx = withCopyAccounting(ctx, r)
 	folder := c.series.ExistingFolderName(ctx, s.ID)
 	releaseName := filepath.Base(r.ContentPath)
 	release := parser.Parse(releaseName)

@@ -1,7 +1,9 @@
 package automation
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
 // sparseVideo writes a sparse video file of size bytes at path.
@@ -46,8 +49,8 @@ func TestReviewImportReportsCopyProgress(t *testing.T) {
 	if err := c.ImportReview(pctx, id, 0, ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(seen) < 3 {
-		t.Fatalf("progress reports = %v, want several", seen)
+	if len(seen) < 2 || seen[0][0] != 0 {
+		t.Fatalf("progress reports = %v, want a start and an end", seen)
 	}
 	last := seen[len(seen)-1]
 	if last[0] != size || last[1] != size {
@@ -167,5 +170,51 @@ func TestCheckReviewImportRefusals(t *testing.T) {
 	_ = c.db.QueryRow(`SELECT COUNT(*) FROM movie_events WHERE event = 'failed'`).Scan(&failed)
 	if failed != 0 {
 		t.Errorf("refusals wrote %d failed history line(s)", failed)
+	}
+}
+
+// A failed line in History is for an import that failed: not for one stopped (a cancel,
+// a shutdown), and not a second line for a refusal the film's own import already wrote.
+func TestImportFailedHistoryLines(t *testing.T) {
+	c, _, ctx := reviewTestCoord(t)
+	mustExec(t, c, `INSERT INTO movies (id, tmdb_id, title, year, monitored) VALUES (5, 1, 'Arrival', 2016, 1)`)
+	r := Review{Name: "Arrival.2016", MediaType: "movie"}
+	count := func() int {
+		var n int
+		_ = c.db.QueryRow(`SELECT COUNT(*) FROM movie_events WHERE movie_id = 5 AND event = 'failed'`).Scan(&n)
+		return n
+	}
+	stopped, cancel := context.WithCancel(ctx)
+	cancel()
+	c.importFailed(stopped, r, 5, "review", stopped.Err())
+	c.importFailed(ctx, r, 5, "review", fmt.Errorf("copying: %w", context.Canceled))
+	c.importFailed(ctx, r, 5, "review", fmt.Errorf("%w (4K)", movies.ErrPathOwnedByOtherTrack))
+	if n := count(); n != 0 {
+		t.Fatalf("%d failed line(s) for stops and a refusal already explained", n)
+	}
+	c.importFailed(ctx, r, 5, "review", errors.New("no space left on device"))
+	if n := count(); n != 1 {
+		t.Fatalf("a real failure wrote %d line(s), want 1", n)
+	}
+}
+
+// A mapping job that finds its download gone when it starts refuses, the way the checks
+// would have — no failed line, the review still open.
+func TestApplyReviewMapRefusesAGoneDownload(t *testing.T) {
+	h, rid, dir, _ := mapHarness(t)
+	plan, err := h.c.PlanReviewMap(h.ctx, rid, 0, []FileMapping{{RelPath: "Pilot.mkv", Season: 1, Episodes: []int{1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.c.ApplyReviewMap(h.ctx, plan); !errors.Is(err, ErrDownloadGone) {
+		t.Fatalf("apply after the download went: %v, want ErrDownloadGone", err)
+	}
+	var failed int
+	_ = h.c.db.QueryRow(`SELECT COUNT(*) FROM series_events WHERE event = 'failed'`).Scan(&failed)
+	if failed != 0 {
+		t.Errorf("a refusal wrote %d failed line(s)", failed)
 	}
 }

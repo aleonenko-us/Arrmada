@@ -1,100 +1,72 @@
 package library
 
 import (
+	"context"
 	"io"
-	"path/filepath"
-	"strings"
-	"sync"
+	"os"
 )
 
-// Copy progress for imports that run as jobs. The importer's copy has no context to carry
-// a reporter (it sits under every kind's import), so whoever wants to hear about it watches
-// a source folder instead: every import copy out of that folder reports its bytes. A
-// download being imported by hand is never imported by the sweep at the same time (a held
-// download is skipped by it), so what a watch hears is that import's own copying.
+// Copy progress for imports that run as jobs. A person's import from Needs you can copy
+// tens of gigabytes onto another drive; the job that runs it puts a CopyReport in its
+// context (WithCopyReport), and the import takes an importer that carries it
+// (Importer.Using). Only that import's own copies report: nothing is matched by folder, so
+// an unrelated copy out of the same downloads folder never shows up in its progress.
 // A hardlink copies nothing and reports nothing.
 
 // CopyReport is told how far one file's copy has got: its source path, and the bytes
 // written so far of its size.
 type CopyReport func(src string, done, size int64)
 
-type copyWatch struct {
-	dir string
-	fn  CopyReport
+type copyReportKey struct{}
+
+// WithCopyReport makes the imports run under ctx (through Importer.Using) report their
+// copies to fn. An inner call replaces an outer one.
+func WithCopyReport(ctx context.Context, fn CopyReport) context.Context {
+	return context.WithValue(ctx, copyReportKey{}, fn)
 }
 
-var (
-	copyWatchMu sync.Mutex
-	copyWatches = map[int]copyWatch{}
-	copyWatchID int
-)
-
-// copyReportEvery is how many bytes pass between reports of one file's copy.
-const copyReportEvery = 16 << 20
-
-// WatchCopies reports every import copy out of dir (dir itself, or anything under it)
-// to fn until stop is called. fn runs on the copying goroutine and must be quick.
-func WatchCopies(dir string, fn CopyReport) (stop func()) {
-	if dir == "" || fn == nil {
-		return func() {}
+// Using is the importer for an import run under ctx: itself, or — when ctx carries a
+// CopyReport — a copy that reports its copies there. Cheap: the importer is a few fields.
+func (im *Importer) Using(ctx context.Context) *Importer {
+	fn, _ := ctx.Value(copyReportKey{}).(CopyReport)
+	if fn == nil || im == nil {
+		return im
 	}
-	copyWatchMu.Lock()
-	copyWatchID++
-	id := copyWatchID
-	copyWatches[id] = copyWatch{dir: filepath.Clean(dir), fn: fn}
-	copyWatchMu.Unlock()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			copyWatchMu.Lock()
-			delete(copyWatches, id)
-			copyWatchMu.Unlock()
-		})
-	}
+	cp := *im
+	cp.copyReport = fn
+	return &cp
 }
 
-// copyReporter is the report for a copy of src, or nil when nobody is watching.
-func copyReporter(src string) CopyReport {
-	copyWatchMu.Lock()
-	defer copyWatchMu.Unlock()
-	if len(copyWatches) == 0 {
-		return nil
+// copyReportEvery is how many bytes a reported copy moves between reports.
+const copyReportEvery = 64 << 20
+
+// copyTo is io.Copy, swappable so a test can see what the copy is handed: the kernel's
+// fast paths (copy_file_range, which reflinks on btrfs/XFS and copies server-side on
+// some network shares) only apply when the writer is an *os.File and the reader is an
+// *os.File, or an *io.LimitedReader over one.
+var copyTo = io.Copy
+
+// copyContents copies in to out. Without a report it is one io.Copy. With one it copies
+// in chunks — each still a LimitedReader over the file, so the fast paths stay — and
+// reports after every chunk.
+func copyContents(out, in *os.File, src string, size int64, report CopyReport) error {
+	if report == nil {
+		_, err := copyTo(out, in)
+		return err
 	}
-	src = filepath.Clean(src)
-	for _, w := range copyWatches {
-		if src == w.dir || strings.HasPrefix(src, w.dir+string(filepath.Separator)) {
-			return w.fn
+	report(src, 0, size)
+	var done int64
+	for {
+		n, err := copyTo(out, &io.LimitedReader{R: in, N: copyReportEvery})
+		done += n
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			report(src, done, size)
+		}
+		if n < copyReportEvery { // the end of the file
+			return nil
 		}
 	}
-	return nil
-}
-
-// countingReader reports what passes through it to a CopyReport, at most every
-// copyReportEvery bytes, and once more at the end of the file.
-type countingReader struct {
-	r          io.Reader
-	src        string
-	size, done int64
-	last       int64
-	report     CopyReport
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.done += int64(n)
-	if c.done-c.last >= copyReportEvery || (err == io.EOF && c.done != c.last) {
-		c.last = c.done
-		c.report(c.src, c.done, c.size)
-	}
-	return n, err
-}
-
-// watchedReader is r, reporting to whoever watches src's folder.
-func watchedReader(r io.Reader, src string, size int64) io.Reader {
-	rep := copyReporter(src)
-	if rep == nil {
-		return r
-	}
-	rep(src, 0, size)
-	return &countingReader{r: r, src: src, size: size, report: rep}
 }

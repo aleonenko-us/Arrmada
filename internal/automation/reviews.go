@@ -693,10 +693,7 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 		return err
 	}
 	r, dest := t.Review, t.Dest
-	stop := watchReviewCopies(ctx, r)
-	err = c.importContentInto(ctx, r, dest, "review")
-	stop()
-	if err != nil {
+	if err := c.importContentInto(withCopyAccounting(ctx, r), r, dest, "review"); err != nil {
 		c.importFailed(ctx, r, dest, "review", err)
 		return err
 	}

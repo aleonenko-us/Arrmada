@@ -54,10 +54,7 @@ func (c *Coordinator) ImportUnmanaged(ctx context.Context, it download.Item, con
 		return err
 	}
 	r := unmanagedReview(it, contentPath, kind)
-	stop := watchReviewCopies(ctx, r)
-	err := c.importContentInto(ctx, r, targetID, "Needs you")
-	stop()
-	if err != nil {
+	if err := c.importContentInto(withCopyAccounting(ctx, r), r, targetID, "Needs you"); err != nil {
 		c.importFailed(ctx, r, targetID, "Needs you", err)
 		return err
 	}
