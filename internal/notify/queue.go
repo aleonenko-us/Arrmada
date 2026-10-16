@@ -3,7 +3,9 @@ package notify
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,6 +72,8 @@ type target struct {
 	id   int64
 	kind string
 	opts Options
+	// webhook: an n8n / Webhook connection (IsWebhook), sent JSON rather than text.
+	webhook bool
 }
 
 // dispatch queues m for every enabled connection subscribed to key that also wants it:
@@ -85,11 +89,24 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 		m.Attach = ""
 	}
 	vars := templateVars(key, data, m, s.absoluteLink(ctx, m.Link))
+	// A webhook connection's JSON is the same for every one of them; it's built the first
+	// time one is a target.
+	var payload []byte
+	webhookPayload := func() ([]byte, error) {
+		if payload == nil {
+			b, err := buildWebhookPayload(webhookInput{key: key, data: data, msg: m, base: s.publicURL(ctx), at: now})
+			if err != nil {
+				return nil, err
+			}
+			payload = b
+		}
+		return payload, nil
+	}
 	queued := 0
 	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		queued = 0
 		rows, err := tx.QueryContext(ctx,
-			`SELECT n.id, n.kind, n.options FROM notifications n
+			`SELECT n.id, n.kind, n.options, n.url, n.config FROM notifications n
 			 JOIN notification_subscriptions sub ON sub.connection_id = n.id AND sub.event_key = ?
 			 WHERE n.enabled != 0 ORDER BY n.id`, key)
 		if err != nil {
@@ -98,14 +115,19 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 		var targets []target
 		for rows.Next() {
 			var (
-				t    target
-				opts string
+				t                 target
+				opts, url, config string
 			)
-			if err := rows.Scan(&t.id, &t.kind, &opts); err != nil {
+			if err := rows.Scan(&t.id, &t.kind, &opts, &url, &config); err != nil {
 				rows.Close()
 				return err
 			}
 			t.opts = ParseOptions(opts)
+			t.webhook = isWebhookConfig(t.kind, url, json.RawMessage(config))
+			if t.kind == KindN8N && !t.webhook {
+				// An Apprise row that only says "n8n": its text is written as it always was.
+				t.kind = ""
+			}
 			targets = append(targets, t)
 		}
 		rows.Close()
@@ -117,10 +139,18 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 				continue
 			}
 			body := bodyFor(t.kind, t.opts, key, vars, m.Body)
+			hook := ""
+			if t.webhook {
+				b, err := webhookPayload()
+				if err != nil {
+					return err
+				}
+				hook = string(b)
+			}
 			res, err := tx.ExecContext(ctx,
-				`INSERT OR IGNORE INTO notification_deliveries (connection_id, event_key, title, body, link, attach, dedupe_key, created_at, next_attempt_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-				t.id, key, neutralize(m.Title), body, m.Link, m.Attach, dedupe, now.Unix())
+				`INSERT OR IGNORE INTO notification_deliveries (connection_id, event_key, title, body, link, attach, dedupe_key, created_at, next_attempt_at, payload)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+				t.id, key, neutralize(m.Title), body, m.Link, m.Attach, dedupe, now.Unix(), hook)
 			if err != nil {
 				return err
 			}
@@ -186,6 +216,8 @@ type delivery struct {
 	event      string
 	msg        Message
 	attempts   int
+	payload    string // a webhook connection's JSON ("" for every other kind)
+	createdAt  int64
 }
 
 // startDue claims due rows and starts their sends, within the concurrency limit and
@@ -193,7 +225,7 @@ type delivery struct {
 // own alerts). Rows it can't start now stay queued for the next pass.
 func (s *Service) startDue(ctx context.Context, w *worker) error {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, connection_id, event_key, title, body, link, attach, attempts FROM notification_deliveries
+		`SELECT id, connection_id, event_key, title, body, link, attach, attempts, payload, created_at FROM notification_deliveries
 		 WHERE status = ? AND next_attempt_at <= ? ORDER BY next_attempt_at, id LIMIT ?`,
 		StatusQueued, s.now().Unix(), queueBatch)
 	if err != nil {
@@ -202,7 +234,7 @@ func (s *Service) startDue(ctx context.Context, w *worker) error {
 	var due []delivery
 	for rows.Next() {
 		var d delivery
-		if err := rows.Scan(&d.id, &d.connID, &d.event, &d.msg.Title, &d.msg.Body, &d.msg.Link, &d.msg.Attach, &d.attempts); err != nil {
+		if err := rows.Scan(&d.id, &d.connID, &d.event, &d.msg.Title, &d.msg.Body, &d.msg.Link, &d.msg.Attach, &d.attempts, &d.payload, &d.createdAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -260,7 +292,9 @@ func (s *Service) sendOne(ctx context.Context, d delivery) {
 	}
 	if err == nil {
 		sctx, cancel := context.WithTimeout(ctx, sendTimeout)
-		err = s.deliver(sctx, c, d.msg)
+		err = s.deliver(sctx, c, d.msg, webhookSend{
+			payload: []byte(d.payload), event: d.event, id: strconv.FormatInt(d.id, 10), at: time.Unix(d.createdAt, 0),
+		})
 		cancel()
 	}
 	if err != nil && ctx.Err() != nil {

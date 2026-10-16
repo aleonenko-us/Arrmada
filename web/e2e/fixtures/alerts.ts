@@ -16,6 +16,12 @@ export const connections: { notifications: NotificationConn[] } = {
       id: 2, name: "This device", kind: "webpush", enabled: true, events: ["movie.imported"], config: { user_id: 1 },
       url_hint: "", url_set: false, last_status: "sent", last_sent_at: sec(NOW) - 120,
     },
+    {
+      // An n8n webhook: its URL, header value and signing secret are only ever "<name>_set".
+      id: 4, name: "Home n8n", kind: "n8n", preset: "n8n", enabled: true, events: ["episodes.imported", "movie.imported"],
+      url_hint: "http://192.168.1.10:5678/••••", url_set: true, last_status: "sent", last_sent_at: sec(NOW) - 600,
+      fields: { auth: "header", header_name: "X-Arrmada-Key", header_value: "", header_value_set: true, signing_secret: "", signing_secret_set: true, url: "", url_set: true },
+    },
   ],
 };
 
@@ -53,6 +59,18 @@ export const presets: { presets: AlertPreset[] } = {
   presets: [
     { kind: "discord", label: "Discord", hint: "Discord: Server Settings → Integrations → Webhooks → Copy URL.", fields: [{ name: "webhook_url", label: "Webhook URL", secret: true, required: true }] },
     { kind: "telegram", label: "Telegram", hint: "Telegram: @BotFather.", fields: [{ name: "bot_token", label: "Bot token", secret: true, required: true }, { name: "chat_id", label: "Chat id", required: true }] },
+    {
+      kind: "n8n", label: "n8n / Webhook", hint: "n8n: add a Webhook node with HTTP Method POST and copy its Production URL.",
+      fields: [
+        { name: "url", label: "Webhook URL", secret: true, required: true },
+        { name: "auth", label: "Authentication", options: ["none", "header", "basic"], option_labels: ["None", "Header Auth", "Basic Auth"] },
+        { name: "header_name", label: "Header name", show_when: "auth=header" },
+        { name: "header_value", label: "Header value", secret: true, show_when: "auth=header" },
+        { name: "username", label: "Username", show_when: "auth=basic" },
+        { name: "password", label: "Password", secret: true, show_when: "auth=basic" },
+        { name: "signing_secret", label: "Signing secret", secret: true, required: true, generate: true },
+      ],
+    },
     { kind: "custom", label: "Custom (Apprise URL)", hint: "Any Apprise link.", fields: [{ name: "url", label: "Apprise URL", secret: true, required: true }] },
     { kind: "webpush", label: "This device", hint: "Web Push to this browser.", fields: [] },
   ],

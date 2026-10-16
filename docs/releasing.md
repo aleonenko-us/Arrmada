@@ -49,3 +49,9 @@ shows how many commits behind `main` it is instead, and a stable install still r
 build of `main` says whether the latest release includes it yet). It reads GitHub's public list of releases every
 12 hours and sends nothing about the server; switching it off on the same card stops every
 request.
+
+## Unraid Community Apps
+
+Unraid users on the template follow `:stable`, so a release reaches them with nothing else to
+do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in
+Community Apps, and looking after it, is in [Listing Arrmada in Community Apps](unraid-submission.md).

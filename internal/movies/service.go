@@ -693,7 +693,7 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 	// The file decides the folder: a film found in the Kids folder belongs to it.
 	s.assignOwner(ctx, m.ID, video)
 	s.log.Info("library scan: attached file to film in library", "title", m.Title, "path", video)
-	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title})
+	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title, "year": m.Year, "tmdb_id": m.TMDBID})
 	return nil
 }
 
@@ -966,7 +966,7 @@ func (s *Service) MarkImportedTo(ctx context.Context, id, versionID int64, path,
 		ev["old_path"] = target.FilePath
 	}
 	if getErr == nil {
-		ev["title"] = m.Title
+		ev["title"], ev["year"], ev["tmdb_id"] = m.Title, m.Year, m.TMDBID
 	}
 	s.publish("movie.downloaded", ev)
 

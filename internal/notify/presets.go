@@ -41,6 +41,13 @@ type FieldDef struct {
 	Secret      bool     `json:"secret,omitempty"`
 	Required    bool     `json:"required,omitempty"`
 	Options     []string `json:"options,omitempty"` // a choice: the first is the default
+	// OptionLabels are the words shown for Options, in the same order ("" = the value).
+	OptionLabels []string `json:"option_labels,omitempty"`
+	// ShowWhen shows the field only while another one has a value: "auth=header".
+	ShowWhen string `json:"show_when,omitempty"`
+	// Generate: the page makes a random value for it (a signing secret), which the person
+	// copies before saving — after that it's a secret like any other.
+	Generate bool `json:"generate,omitempty"`
 }
 
 // PresetDef is one tile under "Where should alerts go?".
@@ -100,6 +107,23 @@ var Presets = []PresetDef{
 		},
 	},
 	{
+		// Not an Apprise link: Arrmada POSTs its own JSON (webhook.go).
+		Kind: KindN8N, Label: "n8n / Webhook",
+		Hint: "n8n: add a Webhook node with HTTP Method POST, copy its Production URL and activate the workflow. Each alert arrives as JSON with the event's details — see the n8n guide in Arrmada's docs. Any other URL that takes a JSON POST works too.",
+		Fields: []FieldDef{
+			{Name: "url", Label: "Webhook URL", Placeholder: "http://192.168.1.10:5678/webhook/arrmada", Secret: true, Required: true,
+				Hint: "The Production URL. An address on your own network is fine."},
+			{Name: "auth", Label: "Authentication", Options: []string{webhookAuthNone, webhookAuthHeader, webhookAuthBasic},
+				OptionLabels: []string{"None", "Header Auth", "Basic Auth"}, Hint: "The same as the Webhook node's Authentication."},
+			{Name: "header_name", Label: "Header name", Placeholder: "X-Arrmada-Key", ShowWhen: "auth=" + webhookAuthHeader},
+			{Name: "header_value", Label: "Header value", Secret: true, ShowWhen: "auth=" + webhookAuthHeader},
+			{Name: "username", Label: "Username", ShowWhen: "auth=" + webhookAuthBasic},
+			{Name: "password", Label: "Password", Secret: true, ShowWhen: "auth=" + webhookAuthBasic},
+			{Name: "signing_secret", Label: "Signing secret", Secret: true, Required: true, Generate: true,
+				Hint: "Every alert is signed with it (X-Arrmada-Signature), so the workflow can check it came from Arrmada. Copy it before saving: it's never shown again — make a new one to change it."},
+		},
+	},
+	{
 		Kind: PresetCustom, Label: "Custom (Apprise URL)",
 		Hint: "Any of Apprise's 80+ services as one link, e.g. gotify://, matrix://, slack://.",
 		Fields: []FieldDef{
@@ -154,6 +178,14 @@ func BuildURL(kind string, f map[string]string) (string, error) {
 		if fd.Required && get(fd.Name) == "" {
 			return "", fmt.Errorf("%s is required", fd.Label)
 		}
+	}
+	if kind == KindN8N {
+		// A webhook's "URL" is the plain http(s) address it POSTs to, not an Apprise link.
+		cfg, err := webhookConfigOf(f)
+		if err != nil {
+			return "", err
+		}
+		return cfg.url, nil
 	}
 
 	var out string
@@ -343,6 +375,9 @@ func PresetFields(c Connection) map[string]string {
 // defines, so nothing else a client sends is stored.
 func PresetConfigFor(kind string, f map[string]string) json.RawMessage {
 	p, _ := PresetFor(kind)
+	if kind == KindN8N {
+		f = webhookFieldsFor(f)
+	}
 	keep := map[string]string{}
 	for _, fd := range p.Fields {
 		if v, ok := f[fd.Name]; ok && v != "" {
@@ -394,6 +429,24 @@ func MaskedFields(kind string, f map[string]string) map[string]any {
 			continue
 		}
 		out[n] = v
+	}
+	return out
+}
+
+// SecretValues are every secret a connection's preset fields hold (a webhook's URL, auth
+// and signing secret, a bot token, a password), for the support bundle to blank wherever
+// they appear. nil for a connection with none.
+func SecretValues(kind, config string) []string {
+	f := PresetFields(Connection{Kind: kind, Config: json.RawMessage(config)})
+	if f == nil {
+		return nil
+	}
+	p, _ := PresetFor(kind)
+	var out []string
+	for _, fd := range p.Fields {
+		if v := f[fd.Name]; fd.Secret && v != "" {
+			out = append(out, v)
+		}
 	}
 	return out
 }

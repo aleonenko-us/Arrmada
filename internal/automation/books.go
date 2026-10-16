@@ -1168,7 +1168,9 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 	c.books.AddEvent(ctx, b.ID, "imported", bookImportDetail(kind, bi.Format, bi.FileCount, downloadName, c.grabForce(ctx, infoHash).On))
 	c.markBookGrabImported(ctx, b.ID, infoHash, downloadName) // flip THIS grab (not siblings) for seed cleanup
 	c.bookImported(ctx, b.ID, kind)
-	c.bus.Publish("book.imported", map[string]any{"title": b.Title, "id": b.ID, "edition": kind})
+	c.bus.Publish("book.imported", map[string]any{
+		"title": b.Title, "id": b.ID, "edition": kind, "author": b.Author, "year": b.Year, "format": bi.Format, "size_bytes": bi.SizeBytes,
+	})
 	return true
 }
 

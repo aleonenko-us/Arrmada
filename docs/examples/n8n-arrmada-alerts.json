@@ -1,0 +1,317 @@
+{
+  "name": "Arrmada alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Arrmada alerts\n1. Open **Arrmada alert** and copy its **Production URL**.\n2. In Arrmada: Settings → Alerts → Add alert → **n8n / Webhook**. Paste the URL, copy the signing secret, tick the events, then Add.\n3. Open **Sign it the same way**, create a Crypto credential and paste the signing secret as its **Hmac Secret**.\n4. Publish (activate) this workflow, then press **Send test** in Arrmada.\n\nEach branch gets the alert as JSON: `event`, `title`, `message`, `url`, `data`. Replace the placeholder steps with Discord, Google Sheets, a script — anything.",
+        "height": 360,
+        "width": 440
+      },
+      "id": "e772215e-67b0-455f-8fba-978a93447e12",
+      "name": "How to use",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-560, -260]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "arrmada",
+        "options": {}
+      },
+      "id": "e0aee1fc-cdf1-43bd-95b4-14867e8509a8",
+      "name": "Arrmada alert",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-80, 60],
+      "webhookId": "938c252c-1eec-4e9d-8e1e-e38a8627fd34"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.headers['x-arrmada-timestamp'] }}.{{ JSON.stringify($json.body) }}",
+        "dataPropertyName": "expected_signature",
+        "encoding": "hex"
+      },
+      "id": "5660e330-6f9c-48f2-bf7c-b0591572dba6",
+      "name": "Sign it the same way",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [140, 60]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "04aa1ecb-c6d9-47d7-aaae-3d5152318afa",
+              "leftValue": "={{ $json.headers['x-arrmada-signature'] }}",
+              "rightValue": "=sha256={{ $json.expected_signature }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "2a884a2a-8e99-4d42-b337-447c5d78a1ae",
+              "leftValue": "={{ Math.abs($now.toSeconds() - Number($json.headers['x-arrmada-timestamp'])) }}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6da59835-c473-44ef-a701-a6e7abd54774",
+      "name": "From Arrmada, and recent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [360, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass on just the alert itself (the request's headers aren't needed past here).\nreturn $input.all().map((item) => ({ json: item.json.body }));\n"
+      },
+      "id": "7b01fe98-419c-48ff-b2bf-dd859f06c173",
+      "name": "The alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, -40]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Not from Arrmada: the signature doesn't match the Hmac Secret, or the alert is more than 5 minutes old."
+      },
+      "id": "6ec23322-39a4-4df5-82d3-b7d1492ebd03",
+      "name": "Reject",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [580, 180]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.group }}",
+                    "rightValue": "needs_you",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "3300b14b-6f47-413e-86d2-7d462beccc91"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Needs you"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.group }}",
+                    "rightValue": "requests",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "86cf2073-8d37-4f4b-b3e5-10a4582d793c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Requests"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": ".imported",
+                    "operator": {
+                      "type": "string",
+                      "operation": "endsWith"
+                    },
+                    "id": "4cca444a-9f48-4939-b788-0be2e08a7285"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imported"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Everything else"
+        }
+      },
+      "id": "9e64c16c-e8ed-439e-b6f1-91145230f680",
+      "name": "Route by event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [800, -40]
+    },
+    {
+      "parameters": {},
+      "id": "7d0d4629-9b30-472d-9688-69f18e83d22f",
+      "name": "Needs you: page someone",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1060, -240]
+    },
+    {
+      "parameters": {},
+      "id": "d6005261-c326-4621-b81c-3200df752fb7",
+      "name": "Requests: post to a channel",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1060, -100]
+    },
+    {
+      "parameters": {},
+      "id": "a79ec2c6-bce3-4835-a2aa-cc205cd9431f",
+      "name": "Imported: log to a sheet",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1060, 40]
+    },
+    {
+      "parameters": {},
+      "id": "29b96b8c-fdb5-4ead-b46f-454890b4c305",
+      "name": "Everything else",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1060, 180]
+    }
+  ],
+  "connections": {
+    "Arrmada alert": {
+      "main": [
+        [
+          {
+            "node": "Sign it the same way",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign it the same way": {
+      "main": [
+        [
+          {
+            "node": "From Arrmada, and recent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Arrmada, and recent?": {
+      "main": [
+        [
+          {
+            "node": "The alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The alert": {
+      "main": [
+        [
+          {
+            "node": "Route by event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by event": {
+      "main": [
+        [
+          {
+            "node": "Needs you: page someone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Requests: post to a channel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Imported: log to a sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Everything else",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

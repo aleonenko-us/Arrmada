@@ -1,0 +1,12 @@
+-- 0323_notification_webhook_payload: the JSON an n8n / webhook alert connection is sent.
+--
+-- Apprise connections get a title and a body, which the queue already keeps. A webhook
+-- connection gets a structured, versioned JSON document instead (notify/webhook.go): the
+-- event, its severity and time, a deep link, and the event's own fields under "data".
+-- It's built when the alert is queued, so a retry sends exactly the same bytes and the
+-- "occurred_at" in it is when the thing happened, not when the send finally went through.
+--
+-- No secrets are stored here: the webhook's URL, auth and signing secret stay on the
+-- connection and are read at send time; the signature is made per attempt. '' for rows
+-- of every other kind of connection.
+ALTER TABLE notification_deliveries ADD COLUMN payload TEXT NOT NULL DEFAULT '';

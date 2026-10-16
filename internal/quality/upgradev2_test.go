@@ -25,9 +25,9 @@ func TestV2TriggerAllowsMatrix(t *testing.T) {
 		TriggerAny:        any,
 		"":                any,
 		"nonsense":        any, // read as any
-		TriggerSource:     {true, true, true, true, false, false, false, false, false, false, false, false, false},
-		TriggerFormat:     {true, true, true, false, false, false, false, false, false, false, false, false, false},
-		TriggerResolution: {true, false, false, false, false, false, false, false, false, false, false, false, false},
+		TriggerSource:     {true, true, true, true, false, true, false, false, false, false, false, false, false},
+		TriggerFormat:     {true, true, true, false, false, true, false, false, false, false, false, false, false},
+		TriggerResolution: {true, false, false, false, false, true, false, false, false, false, false, false, false},
 	}
 	for trig, row := range want {
 		for i, k := range keys {
@@ -127,6 +127,31 @@ func TestV2TriggerMatrixDecidesUpgrades(t *testing.T) {
 		}
 		if !s.IsQualityUpgrade(ctx, ref, proper, 8, cf(cur, 8, 120)) {
 			t.Errorf("%s ← same-group PROPER refused at the import gate", trig)
+		}
+	}
+}
+
+// A file from a release the profile avoids (YTS, a default low-quality group) is replaced
+// by a clean copy that gives nothing up, whatever "Replace for" says — under both rankings,
+// on the sweep and at the import gate. A clean copy at a lower resolution still isn't one.
+func TestLeavingAnAvoidedFileCountsUnderEveryTrigger(t *testing.T) {
+	s, ctx := testService(t)
+	cur := cf("Film.2021.1080p.WEB-DL.x264-YTS", 2, 120)
+	clean := "Film.2021.1080p.WEB-DL.x264-GRP"
+	lower := "Film.2021.720p.WEB-DL.x264-GRP"
+	for _, mode := range []string{RankingV2, RankingV1} {
+		setRanking(t, s, mode)
+		for _, trig := range []string{TriggerAny, TriggerSource, TriggerFormat, TriggerResolution} {
+			ref := upgradeProfile(t, s, StoredProfile{Name: "avoid " + mode + " " + trig, UpgradeTrigger: trig})
+			if _, key, ok := s.UpgradePick(ctx, ref, cur, []Candidate{NewCandidate(clean, 8, 100).WithRuntime(120)}); !ok || key != KeyAvoid {
+				t.Errorf("%s/%s: YTS ← clean copy: ok=%v key=%q, want an avoid upgrade", mode, trig, ok, key)
+			}
+			if !s.IsQualityUpgrade(ctx, ref, clean, 8, cur) {
+				t.Errorf("%s/%s: YTS ← clean copy refused at the import gate", mode, trig)
+			}
+			if _, _, ok := s.UpgradePick(ctx, ref, cur, []Candidate{NewCandidate(lower, 4, 100).WithRuntime(120)}); ok {
+				t.Errorf("%s/%s: YTS 1080p ← clean 720p was taken", mode, trig)
+			}
 		}
 	}
 }

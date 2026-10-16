@@ -89,9 +89,10 @@ var Catalog = []Key{
 	},
 	{
 		// A URL rather than a key, but it shares the saved-first, env-fallback handling.
-		ID: "flaresolverr", Label: "FlareSolverr URL", Purpose: "Gets TorrentLeech, 1337x and TheXEM past Cloudflare. Bundled by default.",
+		ID: "flaresolverr", Label: "FlareSolverr URL", Purpose: "Gets TorrentLeech, 1337x and TheXEM past Cloudflare. The Compose install bundles one.",
 		HelpURL: "https://github.com/FlareSolverr/FlareSolverr", EnvVar: "ARRMADA_FLARESOLVERR_URL", Secret: false, Testable: true,
-		Steps: "The bundled container answers at http://arrmada-flaresolverr:8191. Point this at your own FlareSolverr only if you run one elsewhere.",
+		// Unraid's Community Apps template runs Arrmada alone, with no bundled FlareSolverr.
+		Steps: "With the Compose install, the bundled container answers at http://arrmada-flaresolverr:8191. Otherwise (Unraid's Community Apps template, say), point this at your own FlareSolverr, for example http://192.168.1.10:8191.",
 	},
 	// Outgoing email (Settings → Alerts → Outgoing email). The server, the login and the
 	// password are entered on that card only: no install-time env var, and none of the

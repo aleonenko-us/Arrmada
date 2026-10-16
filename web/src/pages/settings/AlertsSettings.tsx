@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Section, input, inputStyle } from "../../components/settings/ui";
 import { LINKS } from "../../lib/links";
-import { api, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type NotificationConn, type NotificationInput } from "../../lib/api";
+import { api, ApiError, type AlertCatalog, type AlertEvent, type AlertOptions, type AlertPreset, type AlertPresetField, type NotificationConn, type NotificationInput } from "../../lib/api";
 import { alertsApi } from "../../lib/alertsApi";
 import { insightsApi } from "../../lib/insightsApi";
 import { ServerBadge } from "../../components/brand";
@@ -77,7 +77,10 @@ export function AlertsSettings() {
         {!admin && <p className="text-sm text-ink-faint">Only an admin can add or change alert connections.</p>}
         {failed && !(conns && shown) ? (
           <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load alert connections — {failed.message}</p>
-        ) : !conns || !shown ? (
+        ) : !conns || !shown || !presets ? (
+          // The forms too: a card takes its starting values from its preset once, when it
+          // mounts, so one drawn before the presets arrive would start blank (an n8n card
+          // would show "None" for its header auth, and saving would drop it).
           <p className="text-sm text-ink-dim">Loading…</p>
         ) : (
           <>
@@ -157,7 +160,10 @@ function PresetChooser({ presets, push, pushBusy, onPick, onCancel }: { presets?
               className="flex min-w-0 flex-col gap-0.5 rounded-lg p-3 text-left"
               style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
             >
-              <span className="text-base font-semibold">{p.kind === "webpush" && pushBusy ? "Turning on…" : p.label}</span>
+              <span className="flex items-center gap-1.5 text-base font-semibold">
+                {p.kind === N8N && <WorkflowIcon />}
+                {p.kind === "webpush" && pushBusy ? "Turning on…" : p.label}
+              </span>
               <span className="text-xs text-ink-faint">{p.hint}</span>
             </button>
           ))}
@@ -168,14 +174,49 @@ function PresetChooser({ presets, push, pushBusy, onPick, onCancel }: { presets?
 }
 
 // initialValues is a preset form's starting values: what's saved, with every secret blank
-// (the server never sends one back; blank means "keep the saved one").
+// (the server never sends one back; blank means "keep the saved one"). A new card's
+// generated field (an n8n connection's signing secret) starts with a fresh value.
 function initialValues(p: AlertPreset | undefined, conn: NotificationConn): Record<string, string> {
   const out: Record<string, string> = {};
   for (const f of p?.fields ?? []) {
     const v = conn.fields?.[f.name];
     out[f.name] = !f.secret && typeof v === "string" ? v : "";
+    if (f.generate && conn.id === undefined) out[f.name] = makeSecret();
   }
   return out;
+}
+
+// makeSecret is a new signing secret: 32 random bytes as base64url, the shape the server
+// takes. It's made here so the person can copy it before saving; the server never shows it.
+function makeSecret(): string {
+  const b = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// shownField reports whether a field's show_when ("auth=header") holds for the form's values;
+// a choice left unset counts as its first option, as the select shows it.
+function shownField(p: AlertPreset, f: AlertPresetField, values: Record<string, string>): boolean {
+  if (!f.show_when) return true;
+  const [name, want] = f.show_when.split("=");
+  const other = p.fields.find((x) => x.name === name);
+  return (values[name] || other?.options?.[0] || "") === want;
+}
+
+// The n8n / Webhook connection: its own JSON with a signature, not an Apprise link.
+const N8N = "n8n";
+const N8N_GUIDE = "https://github.com/tristenlammi/Arrmada/blob/main/docs/n8n.md";
+
+// WorkflowIcon is the n8n / Webhook tile's mark: three linked nodes, a workflow in a glyph
+// (drawn here, not n8n's logo).
+function WorkflowIcon() {
+  return (
+    <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
+      <rect x="2.5" y="9" width="5" height="6" rx="1.5" />
+      <rect x="16.5" y="3.5" width="5" height="6" rx="1.5" />
+      <rect x="16.5" y="14.5" width="5" height="6" rx="1.5" />
+      <path d="M7.5 12h3.5M11 12c2 0 2-5.5 5.5-5.5M11 12c2 0 2 5.5 5.5 5.5" />
+    </svg>
+  );
 }
 
 function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }: { conn: NotificationConn; preset?: AlertPreset; catalog: AlertCatalog; isNew?: boolean; readOnly?: boolean; onChange: () => void; onCancel?: () => void }) {
@@ -189,6 +230,19 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
   // "•••• saved" again.
   const [saves, setSaves] = useState(0);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  // The preset, not the kind: a row labelled "n8n" over an Apprise link (from before the n8n
+  // kind existed) is edited and tested as the Apprise connection it is.
+  const isN8N = preset?.kind === N8N;
+  // A refusal about one field (the server's "field"), shown beside it until it's edited.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const showFieldError = (field: unknown, msg: string): boolean => {
+    if (typeof field !== "string" || !field) return false;
+    setFieldErrors({ [field]: msg });
+    return true;
+  };
+  // Which event "Send test" sends a sample of ("" = a plain test). An n8n connection starts
+  // on its first ticked event, so "Listen for test event" gets a payload with real fields.
+  const [testEvent, setTestEvent] = useState(() => (isN8N ? catalog.events.find((e) => conn.events.includes(e.key))?.key ?? "" : ""));
   const toast = useToast();
   const confirm = useConfirm();
   const set = (patch: Partial<NotificationConn>) => setC((p) => ({ ...p, ...patch }));
@@ -207,7 +261,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
   const missing = (): string | null => {
     if (!c.name.trim()) return "A name is needed";
     if (!fieldMode) return isNew && !url.trim() ? "A link is needed" : null;
-    const f = preset?.fields.find((f) => f.required && !values[f.name]?.trim() && !(f.secret && savedSecret(f.name)));
+    const f = preset?.fields.find((f) => f.required && shownField(preset, f, values) && !values[f.name]?.trim() && !(f.secret && savedSecret(f.name)));
     return f ? `${f.label} is needed` : null;
   };
 
@@ -228,7 +282,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       }
       toast("Saved", { tone: "good" });
       onChange();
-    } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
+    } catch (e) {
+      if (!(e instanceof ApiError && showFieldError(e.body?.field, e.message))) toast((e as Error).message, { tone: "error" });
+    } finally { setBusy(null); }
   };
   // What's typed is tried as typed (before saving), with saved secrets filled in on the
   // server; an untouched saved card is tested through what's stored, and logged.
@@ -240,7 +296,9 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
     }
     setBusy("test");
     try {
-      const r = saved ? await alertsApi.testSavedNotification(c.id!) : await alertsApi.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}) });
+      const event = testEvent || undefined;
+      const r = saved ? await alertsApi.testSavedNotification(c.id!, event) : await alertsApi.testNotification({ ...body(), ...(c.id ? { id: c.id } : {}), ...(event ? { event } : {}) });
+      if (!r.ok && showFieldError(r.field, r.error || "")) return;
       toast(r.ok ? "Test sent" : `Test failed — ${r.error || "no reason given"}`, { tone: r.ok ? "good" : "error" });
       if (saved) onChange(); // the test is in the card's log and status now
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); }
@@ -259,7 +317,11 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       <div className="flex flex-wrap items-center gap-2">
         {!isNew && <StatusDot conn={conn} />}
         <input aria-label="Connection name" value={c.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} placeholder="Name (e.g. My Discord)" className="min-w-[160px] flex-1 rounded-lg px-2.5 py-1.5 text-base" style={inputStyle} />
-        {preset && <span className="rounded px-1.5 py-0.5 text-xs text-ink-dim" style={{ background: "var(--panel)" }}>{preset.label}</span>}
+        {preset && (
+          <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-ink-dim" style={{ background: "var(--panel)" }}>
+            {isN8N && <WorkflowIcon />}{preset.label}
+          </span>
+        )}
         <label className="flex cursor-pointer items-center gap-1.5 text-sm">
           <input type="checkbox" checked={c.enabled} disabled={readOnly} onChange={(e) => set({ enabled: e.target.checked })} /> Enabled
         </label>
@@ -273,7 +335,16 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
           values={values}
           readOnly={readOnly}
           savedSecret={savedSecret}
-          onChange={(name, v) => setValues((p) => ({ ...p, [name]: v }))}
+          errors={fieldErrors}
+          onChange={(name, v) => {
+            setValues((p) => ({ ...p, [name]: v }));
+            setFieldErrors((p) => {
+              if (!(name in p)) return p;
+              const rest = { ...p };
+              delete rest[name];
+              return rest;
+            });
+          }}
         />
       ) : readOnly ? (
         <div className={`mt-2 ${input}`} style={inputStyle}>{conn.url_hint || "—"}</div>
@@ -292,18 +363,32 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
       {c.events.some((e) => STREAM_EVENTS.has(e)) && (
         <StreamFilters value={c.options ?? {}} readOnly={readOnly} onChange={(options) => set({ options })} />
       )}
-      <MessageTemplates
-        catalog={catalog}
-        events={c.events}
-        value={c.options?.templates ?? {}}
-        readOnly={readOnly}
-        onChange={(templates) => set({ options: { ...(c.options ?? {}), templates: Object.keys(templates).length ? templates : undefined } })}
-      />
+      {isN8N ? (
+        // A webhook gets the event's own fields as JSON, so there's no wording to customise.
+        <p className="mt-3 text-xs text-ink-faint">
+          Each alert arrives as signed JSON: the event, its message, a link back here and the event’s own details under <code>data</code>.{" "}
+          <a href={N8N_GUIDE} target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)" }}>Setting up n8n, checking the signature, and every event’s fields</a>.
+        </p>
+      ) : (
+        <MessageTemplates
+          catalog={catalog}
+          events={c.events}
+          value={c.options?.templates ?? {}}
+          readOnly={readOnly}
+          onChange={(templates) => set({ options: { ...(c.options ?? {}), templates: Object.keys(templates).length ? templates : undefined } })}
+        />
+      )}
       {!isNew && c.id ? <DeliveryLog id={c.id} catalog={catalog} /> : null}
       {!readOnly && (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="primary" size="sm" onClick={save} busy={busy === "save"} busyLabel="Saving…" disabled={busy !== null}>{isNew ? "Add" : "Save"}</Button>
-          <Button size="sm" onClick={test} busy={busy === "test"} busyLabel="Testing…" disabled={busy !== null}>Test</Button>
+          {isN8N && (
+            <select aria-label="Event to send as a test" value={testEvent} onChange={(e) => setTestEvent(e.target.value)} className="max-w-[220px] rounded-lg px-2 py-1 text-sm" style={inputStyle}>
+              <option value="">Plain test</option>
+              {catalog.events.filter((e) => c.events.includes(e.key)).map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
+            </select>
+          )}
+          <Button size="sm" onClick={test} busy={busy === "test"} busyLabel={isN8N ? "Sending…" : "Testing…"} disabled={busy !== null}>{isN8N ? "Send test" : "Test"}</Button>
           <span className="flex-1" />
           {isNew ? <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button> : <Button variant="ghost" size="sm" onClick={del} style={{ color: "var(--reject-text)" }}>Delete</Button>}
         </div>
@@ -313,19 +398,63 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
 }
 
 // PresetForm is a preset's fields with its one-line hint. A saved secret shows as
-// "•••• saved" with Replace; until it's replaced, the server keeps the saved one.
-function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
+// "•••• saved" with Replace; until it's replaced, the server keeps the saved one. errors are
+// the server's refusals about one field (a saved webhook secret it won't send to a new
+// server), shown beside that field — with its input open, so it can be typed again.
+function PresetForm({ preset, values, readOnly, savedSecret, errors, onChange }: {
   preset: AlertPreset; values: Record<string, string>; readOnly?: boolean;
-  savedSecret: (name: string) => boolean; onChange: (name: string, value: string) => void;
+  savedSecret: (name: string) => boolean; errors?: Record<string, string>; onChange: (name: string, value: string) => void;
 }) {
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
+  const toast = useToast();
+  const copy = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); toast("Signing secret copied", { tone: "good" }); }
+    catch { toast("Couldn’t copy — select the secret and copy it yourself", { tone: "error" }); }
+  };
   return (
     <div className="mt-2">
       <p className="mb-2 text-xs text-ink-faint">{preset.hint}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {preset.fields.map((f) => {
-          const kept = f.secret && savedSecret(f.name) && !replacing[f.name];
+        {preset.fields.filter((f) => shownField(preset, f, values)).map((f) => {
+          const fieldError = errors?.[f.name];
+          const errorId = `alert-field-error-${preset.kind}-${f.name}`;
+          const kept = f.secret && savedSecret(f.name) && !replacing[f.name] && !fieldError;
           const label = `${f.label}${f.required ? "" : " (optional)"}`;
+          if (f.generate) {
+            // A secret the page makes: shown until saved so it can be copied into n8n, then
+            // write-only like any other. "Make a new one" replaces it on the next save.
+            const fresh = () => { onChange(f.name, makeSecret()); setReplacing((r) => ({ ...r, [f.name]: true })); };
+            return (
+              <div key={f.name} className="flex min-w-0 flex-col gap-1 sm:col-span-2">
+                <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{f.label}</span>
+                {kept || !values[f.name] ? (
+                  <span className="flex flex-wrap items-center gap-2 text-sm text-ink-dim">
+                    <span>{kept ? "•••• saved" : "Not set"}</span>
+                    {!readOnly && (
+                      <button type="button" className="text-xs font-semibold" style={{ color: "var(--accent-text)" }} onClick={fresh}>
+                        Make a new one
+                      </button>
+                    )}
+                  </span>
+                ) : (
+                  <>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <input aria-label={f.label} readOnly value={values[f.name]} onFocus={(e) => e.target.select()} className={`min-w-0 flex-1 font-mono ${input}`} style={inputStyle} />
+                      <Button size="sm" onClick={() => void copy(values[f.name])}>Copy</Button>
+                      {!readOnly && <Button size="sm" variant="ghost" onClick={fresh}>Make a new one</Button>}
+                      {savedSecret(f.name) && !readOnly && (
+                        <button type="button" className="flex-none text-xs" style={{ color: "var(--accent-text)" }} onClick={() => { onChange(f.name, ""); setReplacing((r) => ({ ...r, [f.name]: false })); }}>
+                          Keep saved
+                        </button>
+                      )}
+                    </span>
+                    <span className="text-xs" style={{ color: "var(--avoid-text)" }}>Copy it into n8n now: once saved it’s never shown again.</span>
+                  </>
+                )}
+                {f.hint && <span className="text-xs text-ink-faint">{f.hint}</span>}
+              </div>
+            );
+          }
           return (
             <label key={f.name} className="flex min-w-0 flex-col gap-1">
               <span className="font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">{label}</span>
@@ -340,7 +469,7 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                 </span>
               ) : f.options ? (
                 <select aria-label={f.label} value={values[f.name] || f.options[0]} disabled={readOnly} onChange={(e) => onChange(f.name, e.target.value)} className={input} style={inputStyle}>
-                  {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                  {f.options.map((o, i) => <option key={o} value={o}>{f.option_labels?.[i] || o}</option>)}
                 </select>
               ) : (
                 <span className="flex items-center gap-2">
@@ -351,6 +480,8 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                     disabled={readOnly}
                     onChange={(e) => onChange(f.name, e.target.value)}
                     placeholder={f.placeholder}
+                    aria-invalid={fieldError ? true : undefined}
+                    aria-describedby={fieldError ? errorId : undefined}
                     autoComplete={f.secret ? "new-password" : "off"}
                     className={`min-w-0 flex-1 ${input}`}
                     style={inputStyle}
@@ -362,6 +493,7 @@ function PresetForm({ preset, values, readOnly, savedSecret, onChange }: {
                   )}
                 </span>
               )}
+              {fieldError && <span id={errorId} role="alert" className="text-xs" style={{ color: "var(--reject-text)" }}>{fieldError}</span>}
               {f.hint && <span className="text-xs text-ink-faint">{f.hint}</span>}
             </label>
           );

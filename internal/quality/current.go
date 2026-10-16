@@ -118,7 +118,7 @@ func (b upgradeBar) noWorse(cand Evaluation) bool {
 func (b upgradeBar) qualityGain(trigger string, cand Evaluation) bool {
 	// Leaving a low-quality group's encode for a clean release that scores no worse is a
 	// gain of its own: such files carried a hidden −180 that any clean release beat, and
-	// only TriggerAny counted it, as it still does. The Unwanted items that are new (an
+	// every trigger counts it (triggerAllows). The Unwanted items that are new (an
 	// upscale, Dolby Vision without a fallback) don't reach back into the library like this:
 	// they rank what is grabbed from now on, and never start a wave of re-downloads.
 	if b.ev.lowGroup && !cand.Avoided && cand.Total >= b.total && triggerAllows(trigger, KeyAvoid) {

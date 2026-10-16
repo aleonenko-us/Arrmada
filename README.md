@@ -65,6 +65,12 @@ upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
 
 Using Portainer? The same file works as a stack: [Using Portainer →](docs/install.md#using-portainer)
 
+### On Unraid, from the Docker page
+
+Already running qBittorrent or SABnzbd on Unraid? Arrmada's template runs just the app, managed
+and updated from Unraid's Docker tab like your other containers, with your media share at
+`/storage`. [Arrmada on Unraid →](docs/unraid.md)
+
 ## Update
 
 Run the same line again:
@@ -118,11 +124,13 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | | |
 |---|---|
 | [Install](docs/install.md) | The one-liner, its options, Unraid, the git checkout way |
+| [Unraid](docs/unraid.md) | The Unraid template: share layout, your own download client, GPU, updates |
 | [Updating](docs/updating.md) | Updates, rollbacks, published images |
 | [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, GPU, recycle bin, reverse proxies |
 | [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Features](docs/features.md) | Everything Arrmada does |
+| [Alerts to n8n](docs/n8n.md) | Sending alerts to n8n or any webhook as signed JSON, and every event's fields |
 | [Development](docs/development.md) | Building and testing it yourself |
 | [Releasing](docs/releasing.md) | For maintainers |
 

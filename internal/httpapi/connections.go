@@ -512,12 +512,12 @@ func (a *api) jellyfinItem(ctx context.Context) connectionItem {
 	return it
 }
 
-// notificationsItem sums up the Apprise alert connections: how many, and how many failed
-// their last delivery. Their URLs hold tokens, so not even a name goes out here.
+// notificationsItem sums up the alert connections (Apprise and n8n webhooks): how many, and
+// how many failed their last delivery. Their URLs hold tokens, so not even a name goes out here.
 func (a *api) notificationsItem(ctx context.Context) connectionItem {
 	it := connectionItem{
 		Kind: connKindNotifications, Ref: singletonRef, Card: "notifications", Name: "Alerts",
-		Subtitle: "Apprise: Discord, Telegram, ntfy, email and more", FixPath: "/settings/alerts", State: connstatus.PhaseUnknown,
+		Subtitle: "Discord, Telegram, ntfy, email, n8n and more", FixPath: "/settings/alerts", State: connstatus.PhaseUnknown,
 	}
 	list, err := a.deps.Notify.List(ctx)
 	if err != nil {

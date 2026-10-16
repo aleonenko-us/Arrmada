@@ -22,6 +22,8 @@ var hostShownSchemes = map[string]bool{
 	"ntfy": true, "ntfys": true,
 	"matrix": true, "matrixs": true,
 	"mailto": true, "mailtos": true,
+	// An n8n / Webhook connection's plain address: the server is the admin's n8n.
+	"http": true, "https": true,
 }
 
 // URLHint is a recognisable but harmless stand-in for a saved Apprise URL:

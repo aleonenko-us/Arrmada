@@ -69,10 +69,19 @@ export function versionBadge(version: string, commit: string, update?: UpdateSta
 // its channel says (the latest release, or main compiled there).
 export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";
 
+// The words for a container Unraid's own Docker manager runs (Community Apps or the
+// template): Unraid pulls the new image itself, and the install line would set up a second,
+// Compose install beside it.
+export const UNRAID_UPDATE = "Unraid runs this container: to update, open Unraid's Docker page, click Check for Updates, then apply the update on Arrmada. Arrmada copies its database to its backups folder before it upgrades it.";
+
 // updateHint is how this server gets the update on offer, for the channel it follows (the
-// words, and the command or line to use), or null when there's nothing to do.
-export function updateHint(u: UpdateStatus): { text: string; command: string } | null {
+// words, and the command or line to use, if any), or null when there's nothing to do.
+export function updateHint(u: UpdateStatus): { text: string; command?: string } | null {
   if (!u.enabled) return null;
+  if (u.host === "unraid") {
+    const offered = u.available || (u.channel === "main" && (u.behind ?? 0) > 0);
+    return offered ? { text: UNRAID_UPDATE } : null;
+  }
   if (u.channel === "release" && u.available) {
     return {
       text: "To update, run the install line again on the server; it backs up the database first. Installed with just the compose file: docker compose pull && docker compose up -d.",

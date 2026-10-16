@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "./api";
-import { INSTALL_LINE, noteBlocks, updateHeadline, updateHint, versionBadge } from "./updateStatus";
+import { INSTALL_LINE, noteBlocks, UNRAID_UPDATE, updateHeadline, updateHint, versionBadge } from "./updateStatus";
 
 const base: UpdateStatus = {
   enabled: true, current: "v1.2.0", channel: "release", checked_at: "2026-10-13T09:00:00Z",
@@ -51,6 +51,15 @@ describe("updateHint", () => {
     expect(updateHint({ ...base, channel: "main", available: false, behind: 4 })).toEqual({ text: expect.stringMatching(/pulls the newest code/), command: INSTALL_LINE });
     expect(updateHint({ ...base, channel: "main", available: false, behind: 0 })).toBeNull();
     expect(updateHint({ ...base, enabled: false })).toBeNull();
+  });
+
+  it("points a container Unraid runs at Unraid's Docker page, never the install line", () => {
+    const unraid: UpdateStatus = { ...base, host: "unraid" };
+    expect(updateHint(unraid)).toEqual({ text: UNRAID_UPDATE });
+    expect(updateHint({ ...unraid, available: false })).toBeNull();
+    expect(updateHint({ ...unraid, channel: "main", available: false, behind: 2 })).toEqual({ text: UNRAID_UPDATE });
+    expect(updateHint({ ...unraid, channel: "build", available: false, ahead: 3 })).toBeNull();
+    expect(updateHint({ ...unraid, enabled: false })).toBeNull();
   });
 });
 

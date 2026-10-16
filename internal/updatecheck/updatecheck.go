@@ -68,6 +68,21 @@ const (
 	InstallMain   = "main"
 )
 
+// HostUnraid is Status.Host for a container Unraid's own Docker manager runs (installed
+// from Community Apps or the template). Unraid updates it from its Docker page, so the
+// install line, which sets up a Compose install beside it, is the wrong advice there.
+const HostUnraid = "unraid"
+
+// HostFromEnv says how this container is managed, from its environment: Unraid's Docker
+// manager gives every container it creates HOST_OS=Unraid. A Compose install on Unraid
+// doesn't get it, and is rightly updated the Compose way. "" = anything else.
+func HostFromEnv(getenv func(string) string) string {
+	if strings.EqualFold(strings.TrimSpace(getenv("HOST_OS")), "unraid") {
+		return HostUnraid
+	}
+	return ""
+}
+
 // Release is the newest published (non-draft, non-pre-release) release.
 type Release struct {
 	Tag  string `json:"tag"`
@@ -103,6 +118,9 @@ type Status struct {
 	Ahead *int `json:"ahead"`
 	// Problem says why the last attempt couldn't check, in plain words; "" = it could.
 	Problem string `json:"problem,omitempty"`
+	// Host is HostUnraid when Unraid's Docker manager runs this container, which updates
+	// it from its Docker page; "" = updated with the install line or Compose.
+	Host string `json:"host,omitempty"`
 }
 
 // Options configures a Checker. Only Version, Commit and Enabled are needed in
@@ -116,6 +134,9 @@ type Options struct {
 	// Install is the install's channel (ARRMADA_CHANNEL): InstallStable, InstallMain or
 	// "" when it isn't known, which compares a build of a commit with main as before.
 	Install string
+	// Host is how the container is managed (HostFromEnv). It only changes the advice on
+	// how to update, never what's compared.
+	Host string
 	// Enabled reads the setting on each use. nil = always on.
 	Enabled func(ctx context.Context) bool
 	Log     *slog.Logger
@@ -168,12 +189,13 @@ func (c *Checker) Status(ctx context.Context) Status {
 		return Status{}
 	}
 	if !c.Enabled(ctx) {
-		return Status{Enabled: false, Current: c.o.Version, Channel: channelOf(c.o.Version, c.o.Commit, c.o.Install)}
+		return Status{Enabled: false, Current: c.o.Version, Channel: channelOf(c.o.Version, c.o.Commit, c.o.Install), Host: c.o.Host}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	st := c.last
 	st.Enabled = true
+	st.Host = c.o.Host
 	return st
 }
 

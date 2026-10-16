@@ -436,6 +436,43 @@ func TestUpdateCheckMainInstall(t *testing.T) {
 	}
 }
 
+// A container Unraid's Docker manager made (HOST_OS=Unraid) says so, on or off, so the
+// card can point at Unraid's Docker page rather than the install line. Nothing else
+// about the check changes.
+func TestUpdateCheckUnraidHost(t *testing.T) {
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "HOST_OS" {
+				return v
+			}
+			return ""
+		}
+	}
+	for v, want := range map[string]string{"Unraid": HostUnraid, " unraid ": HostUnraid, "": "", "Linux": ""} {
+		if got := HostFromEnv(env(v)); got != want {
+			t.Errorf("HOST_OS=%q: host %q, want %q", v, got, want)
+		}
+	}
+
+	gh := &fakeGitHub{latest: release("v1.3.0", "notes")}
+	srv := gh.server(t)
+	var on atomic.Bool
+	on.Store(true)
+	c := New(Options{Client: srv.Client(), BaseURL: srv.URL, Version: "v1.2.0", Commit: "abc1234", Host: HostUnraid,
+		Enabled: func(context.Context) bool { return on.Load() }})
+	_ = c.Run(context.Background())
+	if st := c.Status(context.Background()); st.Host != HostUnraid || !st.Available || st.Channel != ChannelRelease {
+		t.Fatalf("status = %+v, want an Unraid host with v1.3.0 on offer", st)
+	}
+	on.Store(false)
+	if st := c.Status(context.Background()); st.Host != HostUnraid {
+		t.Errorf("check off: host %q", st.Host)
+	}
+	if st := newChecker(srv, "v1.2.0", "abc1234", nil).Status(context.Background()); st.Host != "" {
+		t.Errorf("no host given: host %q", st.Host)
+	}
+}
+
 func TestReadCompareNeedsBothCounts(t *testing.T) {
 	if _, err := readCompare(strings.NewReader(`{"ahead_by":1}`)); err == nil {
 		t.Error("an answer without behind_by read as a comparison")

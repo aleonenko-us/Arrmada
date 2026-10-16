@@ -272,11 +272,11 @@ func TestTestRecordsDelivery(t *testing.T) {
 	s, rec, _ := newTestService(t)
 	ctx := context.Background()
 	c := mustCreate(t, s, Connection{Name: "a", URL: "ntfy://a", Enabled: true})
-	if err := s.Test(ctx, c); err != nil {
+	if err := s.Test(ctx, c, ""); err != nil {
 		t.Fatal(err)
 	}
 	rec.fail["ntfy://a"] = true
-	if err := s.Test(ctx, c); err == nil {
+	if err := s.Test(ctx, c, ""); err == nil {
 		t.Fatal("want the failure back")
 	}
 	log, err := s.Deliveries(ctx, c.ID, 10)
@@ -284,7 +284,7 @@ func TestTestRecordsDelivery(t *testing.T) {
 		t.Fatalf("log = %+v, %v", log, err)
 	}
 	// An unsaved connection's Test has nowhere to be recorded.
-	if err := s.Test(ctx, Connection{URL: "ntfy://b"}); err != nil {
+	if err := s.Test(ctx, Connection{URL: "ntfy://b"}, ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -350,7 +350,7 @@ func TestPruneDeliveries(t *testing.T) {
 	useClock(s, clk)
 	ctx := context.Background()
 	c := mustCreate(t, s, Connection{Name: "a", URL: "ntfy://a", Events: sub("release.grabbed"), Enabled: true})
-	if err := s.Test(ctx, c); err != nil {
+	if err := s.Test(ctx, c, ""); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(31 * 24 * time.Hour)

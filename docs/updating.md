@@ -1,5 +1,8 @@
 # Updating Arrmada
 
+Installed from Unraid's Community Apps template? Update from Unraid's Docker tab instead;
+nothing on this page applies ([Arrmada on Unraid → Updating](unraid.md#updating)).
+
 ## The one line
 
 Run the install line again on the server:

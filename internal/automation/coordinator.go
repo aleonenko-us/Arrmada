@@ -383,8 +383,24 @@ func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, titl
 		return "", err
 	}
 	c.clearRemovedImport(ctx, hash)
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName, "network": string(download.TransportTorrent)})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": indexerName, "network": string(download.TransportTorrent), "media_type": c.grabMediaType(category)})
 	return hash, nil
+}
+
+// grabMediaType is what a grab is, read from the download-client category it was filed
+// under, for the "Grabbed" alert's webhook data ("" when the category says nothing).
+func (c *Coordinator) grabMediaType(category string) string {
+	switch category {
+	case download.CategoryTV:
+		return "series"
+	case download.CategoryBooks:
+		return "book"
+	case download.CategoryMusic:
+		return "music"
+	case c.movieCategory():
+		return "movie"
+	}
+	return ""
 }
 
 // indexerTransport is the transport of the named indexer's releases: usenet for a Newznab
@@ -444,7 +460,7 @@ func (c *Coordinator) addNZB(ctx context.Context, file []byte, filename, title, 
 		return "", err
 	}
 	c.clearRemovedImport(ctx, added.Key)
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source, "network": string(download.TransportUsenet)})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": source, "network": string(download.TransportUsenet), "media_type": c.grabMediaType(category)})
 	return added.Key, nil
 }
 
@@ -499,7 +515,7 @@ func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename,
 		return "", "", err
 	}
 	hash, _ := download.InfoHashFromFile(file) // "" falls back to name matching
-	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual", "network": string(download.TransportTorrent)})
+	c.bus.Publish("release.grabbed", map[string]any{"title": title, "indexer": "manual", "network": string(download.TransportTorrent), "media_type": c.grabMediaType(category)})
 	c.clearRemovedImport(ctx, hash)
 	return hash, download.TransportTorrent, nil
 }
