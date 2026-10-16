@@ -659,23 +659,22 @@ func (c *Coordinator) ImportTargets(ctx context.Context, kind, q string, limit i
 // review's own kind: ids are per table, so a movie id applied to a book review files the
 // download under an unrelated book. Empty means "same kind as the review", which keeps
 // a page loaded before this check existed working.
+//
+// It checks everything CheckReviewImport does first (the job that runs it was queued, and
+// the review may have been settled meanwhile). A copy across drives reports its bytes to
+// ctx's ImportProgress (WithImportProgress). A failure past the checks is written to the
+// item's history; the review stays open.
 func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targetKind string) error {
-	r, err := c.pendingReview(ctx, id)
+	t, err := c.CheckReviewImport(ctx, id, targetID, targetKind)
 	if err != nil {
 		return err
 	}
-	if targetKind != "" && targetKind != r.MediaType {
-		return fmt.Errorf("%w: this download is a %s, not a %s", ErrWrongTargetKind,
-			kindLabel(r.MediaType), kindLabel(targetKind))
-	}
-	dest := r.ExpectedID
-	if targetID > 0 {
-		dest = targetID
-	}
-	if dest <= 0 {
-		return needsTargetError{kindLabel(r.MediaType)}
-	}
-	if err := c.importContentInto(ctx, r, dest, "review"); err != nil {
+	r, dest := t.Review, t.Dest
+	stop := watchReviewCopies(ctx, r)
+	err = c.importContentInto(ctx, r, dest, "review")
+	stop()
+	if err != nil {
+		c.reviewImportFailed(ctx, r, dest, "", err)
 		return err
 	}
 	// No history line here: every kind's import already writes its own "imported" entry.
