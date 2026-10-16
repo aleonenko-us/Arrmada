@@ -35,21 +35,27 @@ const maxNZBBytes = 64 << 20
 // Grab (or the log line a sweep writes).
 var (
 	errNZBTooLarge = errors.New("the indexer sent something larger than 64 MB instead of an NZB")
-	errNotNZB      = errors.New("the indexer didn't send an NZB file (it may have sent a web page — check the indexer in Settings → Connections)")
+	errNotNZB      = errors.New("the indexer didn't send an NZB file — check the indexer in Settings → Connections")
 )
 
 // fetchNZBPayload downloads a Newznab release's NZB and returns its bytes. Every failure is
 // a plain sentence with no link or key in it: the indexer's own <error> answer (bad key,
-// download limit reached, item gone), an HTTP status, a file too large, or a body that
-// isn't an NZB.
+// download limit reached, item gone), an HTTP status, a block (BlockedError: a web page or
+// a Cloudflare challenge instead of the NZB), a file too large, or a body that isn't an NZB.
 func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (FetchResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchNZBTimeout)
 	defer cancel()
+	// last is the address asked most recently: through Prowlarr, the indexer's own link it
+	// redirects to. It is what a block is about, so it is what a usenet client would fetch.
+	last := downloadURL
 	client := &http.Client{
 		Transport: httpua.Transport(nil),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
+			}
+			if !strings.HasPrefix(req.URL.Path, "/cdn-cgi/") {
+				last = req.URL.String()
 			}
 			return nil
 		},
@@ -60,18 +66,28 @@ func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (Fetc
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))}
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL, last))}
 	}
 	defer resp.Body.Close()
 
 	body, err := readNZB(resp.Body)
 	if err != nil && !errors.Is(err, errNZBTooLarge) {
-		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL))}
+		return FetchResult{}, &nzbIndexerError{err: fmt.Errorf("couldn't download the NZB from %s: %s", idx.Name, scrubNZBError(err, idx, downloadURL, last))}
 	}
 	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	// The indexer's own <error> answer says why, whatever status it came with.
 	if root, attrs, _, ok := xmlRoot(body); ok && root == "error" {
 		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, torznabErrorFrom(attrs), downloadURL, retryAfter)
+	}
+	// An NZB is an NZB, whatever Content-Type it was served with.
+	if resp.StatusCode == http.StatusOK && err == nil && looksLikeNZBFile(body) {
+		return FetchResult{File: body, Filename: nzbFilename(resp.Header.Get("Content-Disposition"), resp.Request)}, nil
+	}
+	if blocked, page, gate := blockedAnswer(resp.StatusCode, resp.Header, body); blocked {
+		return FetchResult{}, &BlockedError{
+			Indexer: idx.Name, Status: resp.StatusCode, Page: page, AppGate: gate, What: "an NZB",
+			link: handoffLink(idx, last), key: idx.APIKey, original: downloadURL,
+		}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return FetchResult{}, newznabFetchError(idx, resp.StatusCode, nil, downloadURL, retryAfter)
@@ -130,7 +146,10 @@ func newznabFetchError(idx Indexer, status int, ne *TorznabError, downloadURL st
 	switch {
 	case status == http.StatusTooManyRequests || code == 429 || code == 500 || code == 501:
 		return &nzbIndexerError{err: fmt.Errorf("%s says its API or download limit is reached — try again once it resets", idx.Name), retryAfter: retryAfter}
-	case status == http.StatusUnauthorized || status == http.StatusForbidden || (code >= 100 && code <= 102):
+	// Only the indexer's own auth codes, or a bare 401, are about the key. A 403 is as
+	// often a proxy turning Arrmada away (blockedAnswer), and saying "key" there sent
+	// people chasing a key that was fine.
+	case (code >= 100 && code <= 102) || (status == http.StatusUnauthorized && ne == nil):
 		msg := fmt.Sprintf("%s refused the API key", idx.Name)
 		if detail != "" {
 			msg += " (" + detail + ")"
@@ -160,25 +179,35 @@ func (e *nzbIndexerError) Error() string { return e.err.Error() }
 func (e *nzbIndexerError) Unwrap() error { return e.err }
 
 // scrubNZBError is a transport error without the link or key in it. Go's url.Error quotes
-// the whole request URL, so the link is cut out first, then any key that's left.
-func scrubNZBError(err error, idx Indexer, downloadURL string) string {
+// the whole request URL, so the link is cut out first, then any key that's left. links are
+// the NZB link and wherever it redirected to (which carries the indexer's own key).
+func scrubNZBError(err error, idx Indexer, links ...string) string {
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = ue.Err // "Get \"<link>\": <cause>" → just the cause
 	}
-	return redactNZB(err.Error(), idx, downloadURL)
+	return redactNZB(err.Error(), idx, links...)
 }
 
-// redactNZB removes the NZB link, the indexer's API key and every value of the link's
-// query (where Newznab puts the key, as apikey= or r=) from msg.
-func redactNZB(msg string, idx Indexer, downloadURL string) string {
-	if downloadURL != "" {
-		msg = strings.ReplaceAll(msg, downloadURL, "the NZB link")
-	}
+// redactNZB removes the NZB links, the indexer's API key and every value of the links'
+// queries (where Newznab puts the key, as apikey= or r=) from msg.
+func redactNZB(msg string, idx Indexer, links ...string) string {
 	secrets := []string{idx.APIKey}
-	if u, err := url.Parse(downloadURL); err == nil {
-		for _, vs := range u.Query() {
-			secrets = append(secrets, vs...)
+	for _, link := range links {
+		if link == "" {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, link, "the NZB link")
+		if u, err := url.Parse(link); err == nil {
+			for _, vs := range u.Query() {
+				secrets = append(secrets, vs...)
+			}
+			// A key can sit in the path too (/getnzb/<key>/<id>); long segments go as well.
+			for _, seg := range strings.Split(u.Path, "/") {
+				if len(seg) >= 24 && !strings.ContainsAny(seg, ".") {
+					secrets = append(secrets, seg)
+				}
+			}
 		}
 	}
 	for _, sec := range secrets {

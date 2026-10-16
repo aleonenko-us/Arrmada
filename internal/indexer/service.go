@@ -299,11 +299,13 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 		return f.Fetch(ctx, *found, downloadURL)
 	}
 	// Usenet (newznab): the NZB is downloaded here and handed over as a file, so the API key
-	// in its link never reaches the usenet client (nzb.go). There's no fallback to the
-	// link: a failure fails the grab.
+	// in its link never reaches the usenet client (nzb.go). The one exception is an indexer
+	// that blocks Arrmada's download (BlockedError): its ClientLink is what the grab may
+	// hand the usenet client to fetch itself — the grab decides, nothing here does.
 	if found.Transport() == TransportUsenet {
 		// A failure that's the indexer's (limit, key, down) counts against it like a failed
-		// search, so sweeps back off; one about this release (gone, not an NZB) doesn't.
+		// search, so sweeps back off; one about this release (gone, not an NZB) doesn't, and
+		// neither does a block: searching it may work fine (through Prowlarr it does).
 		// A delivered NZB is the indexer answering.
 		start := time.Now()
 		res, err := fetchNZBPayload(ctx, *found, downloadURL)

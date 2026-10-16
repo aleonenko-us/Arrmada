@@ -244,7 +244,7 @@ func (c *TorznabSearcher) searchPages(ctx context.Context, idx Indexer, q Search
 		if err != nil {
 			return nil, err
 		}
-		body, err := c.get(ctx, endpoint)
+		body, err := c.get(ctx, idx, endpoint)
 		if err != nil {
 			// A failure on a later page must not discard the pages already fetched —
 			// returning nil here silently threw away every release from pages 0..N-1.
@@ -255,6 +255,10 @@ func (c *TorznabSearcher) searchPages(ctx context.Context, idx Indexer, q Search
 						"indexer", idx.Name, "page", page, "have", len(all), "err", err)
 				}
 				return all, nil
+			}
+			var be *BlockedError
+			if errors.As(err, &be) {
+				return nil, err // it already names the indexer
 			}
 			return nil, fmt.Errorf("indexer %q: %w", idx.Name, err)
 		}
@@ -331,7 +335,7 @@ func (c *TorznabSearcher) TestCaps(ctx context.Context, idx Indexer) (Caps, erro
 	if err != nil {
 		return Caps{}, err
 	}
-	body, err := c.get(ctx, endpoint)
+	body, err := c.get(ctx, idx, endpoint)
 	if err != nil {
 		return Caps{}, err
 	}
@@ -339,7 +343,12 @@ func (c *TorznabSearcher) TestCaps(ctx context.Context, idx Indexer) (Caps, erro
 	return caps, scrub(endpoint, err)
 }
 
-func (c *TorznabSearcher) get(ctx context.Context, endpoint string) ([]byte, error) {
+// get asks the indexer one API question. A non-200 answer is an HTTPStatusError, unless it
+// is a block — a Cloudflare challenge, a 403 or a web page where results should be — which
+// is a BlockedError, so nobody is told the key was refused when it never got that far.
+// A 200 web page without Cloudflare's markers is left to the parser: that is most often a
+// wrong address (Prowlarr's own page), and errWebPage says how to fix it.
+func (c *TorznabSearcher) get(ctx context.Context, idx Indexer, endpoint string) ([]byte, error) {
 	if err := c.queue.wait(ctx, endpoint); err != nil {
 		return nil, err
 	}
@@ -359,10 +368,18 @@ func (c *TorznabSearcher) get(ctx context.Context, endpoint string) ([]byte, err
 	if err != nil {
 		return nil, sanitizeErr(endpoint, err)
 	}
+	root, attrs, _, isXML := xmlRoot(body)
+	isError := isXML && root == "error"
+	if !isError {
+		if blocked, page, gate := blockedAnswer(resp.StatusCode, resp.Header, body); blocked &&
+			(resp.StatusCode != http.StatusOK || gate) {
+			return nil, &BlockedError{Indexer: idx.Name, Status: resp.StatusCode, Page: page, AppGate: gate, What: "results"}
+		}
+	}
 	if resp.StatusCode != http.StatusOK {
 		he := &HTTPStatusError{Code: resp.StatusCode, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 		// Some indexers send their <error> document with a 4xx: its description says why.
-		if root, attrs, _, ok := xmlRoot(body); ok && root == "error" {
+		if isError {
 			he.Detail = redactIn(endpoint, torznabErrorFrom(attrs).Error())
 		}
 		return nil, he
