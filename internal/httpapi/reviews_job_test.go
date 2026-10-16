@@ -87,9 +87,21 @@ func TestImportReviewIsAJob(t *testing.T) {
 	for _, body := range []string{"", fmt.Sprintf(`{"target_id": %d, "target_kind": "movie"}`, mid)} {
 		rec = s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/import", rid), mgr, body)
 		again := decodeAccepted(t, rec.Body.String())
-		if rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing {
+		if rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing || again.Title != "Arrival" {
 			t.Fatalf("second import (%q): HTTP %d %+v, want the same job", body, rec.Code, again)
 		}
+	}
+	// Choose different… into another film while this one runs isn't the same import: it
+	// is refused, naming the running job and what it's importing into, never joined.
+	res, err := s.st.DB().Exec(`INSERT INTO movies (tmdb_id, title, year, monitored) VALUES (2, 'Contact', 1997, 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := res.LastInsertId()
+	rec = s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/import", rid), mgr, fmt.Sprintf(`{"target_id": %d, "target_kind": "movie"}`, other))
+	if busy := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusConflict || busy.JobID != first.JobID || busy.Title != "Arrival" ||
+		!strings.Contains(rec.Body.String(), "already being imported into Arrival") {
+		t.Fatalf("a different import mid-import: HTTP %d %s", rec.Code, rec.Body)
 	}
 	if n := len(fj.specs()); n != 1 {
 		t.Fatalf("%d jobs submitted, want 1", n)
@@ -320,7 +332,7 @@ func TestMapReviewIsAJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	sid, _ := res.LastInsertId()
-	if _, err := s.st.DB().Exec(`INSERT INTO episodes (series_id, season_number, episode_number, monitored) VALUES (?, 1, 1, 1)`, sid); err != nil {
+	if _, err := s.st.DB().Exec(`INSERT INTO episodes (series_id, season_number, episode_number, monitored) VALUES (?, 1, 1, 1), (?, 1, 2, 1)`, sid, sid); err != nil {
 		t.Fatal(err)
 	}
 	pack := filepath.Join(downloads, "The.Bear.S01")
@@ -341,11 +353,40 @@ func TestMapReviewIsAJob(t *testing.T) {
 	if first.JobID == 0 || first.Existing || first.Title != "The Bear" {
 		t.Fatalf("map answer = %+v", first)
 	}
+	// The same mapping again joins it…
+	rec = s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/map", rid), mgr, body)
+	if again := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing || again.Title != "The Bear" {
+		t.Fatalf("the same mapping again: HTTP %d %+v", rec.Code, again)
+	}
+	// …but Import anyway, or another mapping, is a different import: refused, not joined.
 	rec = s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/import", rid), mgr, "")
-	if again := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing {
-		t.Fatalf("import during the mapping: HTTP %d %+v", rec.Code, again)
+	if busy := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusConflict || busy.JobID != first.JobID || busy.Title != "The Bear" {
+		t.Fatalf("import during the mapping: HTTP %d %s", rec.Code, rec.Body)
+	}
+	rec = s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/map", rid), mgr, `{"files":[{"rel_path":"bear-one.mkv","season":1,"episodes":[2]}]}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("another mapping during the mapping: HTTP %d %s", rec.Code, rec.Body)
 	}
 	if specs := fj.specs(); len(specs) != 1 || specs[0].Kind != reviewImportKind {
 		t.Fatalf("specs = %+v", specs)
+	}
+}
+
+// "Importing" is what the runner holds, not what a jobs row says: a row left at
+// running by a lost write (the import itself long over) mustn't keep the review's
+// actions refused or its card spinning.
+func TestStuckJobRowDoesNotBlockTheReview(t *testing.T) {
+	s, _, mgr := reviewJobServer(t)
+	mid := addArrival(t, s)
+	rid := addReviewRow(t, s, "aa", "movie", mid, "mismatch", t.TempDir())
+	if _, err := s.st.DB().Exec(`INSERT INTO jobs (kind, target, trigger, status, created_at, started_at) VALUES (?, ?, 'user:1', 'running', 1, 1)`,
+		reviewImportKind, fmt.Sprintf("review:%d", rid)); err != nil {
+		t.Fatal(err)
+	}
+	if rec := s.doJSON("GET", "/api/v1/reviews", mgr, ""); strings.Contains(rec.Body.String(), "import_job") {
+		t.Errorf("a stuck row shows as importing: %s", rec.Body)
+	}
+	if rec := s.doJSON("POST", fmt.Sprintf("/api/v1/reviews/%d/dismiss", rid), mgr, ""); rec.Code != http.StatusOK {
+		t.Errorf("dismiss beside a stuck row: HTTP %d %s", rec.Code, rec.Body)
 	}
 }

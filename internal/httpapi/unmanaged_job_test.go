@@ -59,8 +59,16 @@ func TestImportUnmanagedIsAJob(t *testing.T) {
 		t.Fatalf("import = %d %s", rec.Code, rec.Body.String())
 	}
 	rec = e.post(t, e.a.handleImportUnmanaged, "/", strangerA, `{"kind":"movie","target_id":1}`)
-	if again := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing {
+	if again := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusAccepted || again.JobID != first.JobID || !again.Existing || again.Title != "Some Film" {
 		t.Fatalf("second click = %d %+v, want the same job", rec.Code, again)
+	}
+	// Into another film while it runs: refused, naming what it's importing into.
+	if _, err := e.st.DB().Exec(`INSERT INTO movies (id, tmdb_id, title, year, monitored, min_availability) VALUES (2, 2, 'Other Film', 2002, 1, 'announced')`); err != nil {
+		t.Fatal(err)
+	}
+	rec = e.post(t, e.a.handleImportUnmanaged, "/", strangerA, `{"kind":"movie","target_id":2}`)
+	if busy := decodeAccepted(t, rec.Body.String()); rec.Code != http.StatusConflict || busy.JobID != first.JobID || busy.Title != "Some Film" {
+		t.Fatalf("a different import mid-import = %d %s, want 409", rec.Code, rec.Body.String())
 	}
 	if specs := fj.specs(); len(specs) != 1 || specs[0].Kind != downloadImportKind || specs[0].Target != "torrent:"+strangerA || specs[0].Class != jobs.ClassImport {
 		t.Fatalf("specs = %+v", specs)

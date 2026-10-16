@@ -2,11 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/jobs"
@@ -43,14 +42,13 @@ func (a *api) handleListReviews(w http.ResponseWriter, r *http.Request) {
 	// Each review carries its import job, so a page opened (or reloaded) mid-import shows
 	// it importing, and one whose last import failed shows why. A job that ended any other
 	// way (stopped, or succeeded just as the list was read) says nothing about the review.
-	importJobs := a.reviewImportJobs(r.Context())
+	active, _ := a.activeHandImports(r.Context())
+	last := a.reviewImportJobs(r.Context())
 	out := make([]reviewRow, 0, len(list))
 	for _, rv := range list {
-		row := reviewRow{Review: rv}
-		if j, ok := importJobs[rv.ID]; ok && (!jobs.Terminal(j.Status) || reviewJobFailed(j.Status)) {
-			row.ImportJob = &j
-		}
-		out = append(out, row)
+		run, running := active[rv.ID]
+		prev, hasPrev := last[rv.ID]
+		out = append(out, reviewRow{Review: rv, ImportJob: shownImportJob(run, running, prev, hasPrev)})
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"reviews": out})
 }
@@ -62,14 +60,6 @@ type reviewRow struct {
 	ImportJob *jobs.Job `json:"import_job,omitempty"`
 }
 
-// reviewJobFailed reports whether a finished job ended badly enough to show on its card.
-func reviewJobFailed(status string) bool {
-	switch status {
-	case jobs.StatusFailed, jobs.StatusPanicked, jobs.StatusInterrupted:
-		return true
-	}
-	return false
-}
 
 // handleRejectReview removes the held download (+files), blocklists the release,
 // and resolves the review. {"find_another": true} then searches the title it was grabbed
@@ -221,20 +211,20 @@ func (a *api) handleMapReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title := plan.Title()
-	jobID, existing, ok := a.submitOr503(w, r, a.reviewImportSpec(id, rv.Hash, func(ctx context.Context, p *jobs.Progress) (any, error) {
-		n, err := a.deps.Automation.ApplyReviewMap(withImportProgress(ctx, p), plan)
-		if err != nil {
-			return nil, err // the import's own reason, which the card shows
-		}
-		res := importedInto(p, title)
-		p.SetMessage("Imported " + countOf(n, "episode") + " into " + title + ".")
-		res["placed"] = n
-		return res, nil
-	}))
-	if !ok {
-		return
-	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "importing", "background": true, "title": title})
+	// The same mapping again joins the running import; a different one is refused.
+	key, _ := json.Marshal(req)
+	a.startHandImport(w, r, handImportRequest{Kind: reviewImportKind, Target: jobTarget("review", id), Hash: rv.Hash,
+		Key: "map:" + string(key), Title: title,
+		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			n, err := a.deps.Automation.ApplyReviewMap(withImportProgress(ctx, p), plan)
+			if err != nil {
+				return nil, err // the import's own reason, which the card shows
+			}
+			res := importedInto(p, title)
+			p.SetMessage("Imported " + countOf(n, "episode") + " into " + title + ".")
+			res["placed"] = n
+			return res, nil
+		}}, map[string]any{"background": true})
 }
 
 // maxBulkReviews bounds one bulk action: each Reject is a call to the download client.
@@ -265,9 +255,9 @@ func (a *api) handleBulkReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	done, failed := 0, []bulkFailure{}
-	importing := a.reviewImportJobs(r.Context())
+	importing, _ := a.activeHandImports(r.Context())
 	for _, id := range req.IDs {
-		if j, ok := importing[id]; ok && !jobs.Terminal(j.Status) {
+		if _, ok := importing[id]; ok {
 			failed = append(failed, bulkFailure{ID: id, Error: errReviewImporting.Error()})
 			continue
 		}
@@ -331,165 +321,15 @@ func (a *api) handleImportReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetID, targetKind := req.TargetID, req.TargetKind
-	jobID, existing, ok := a.submitOr503(w, r, a.reviewImportSpec(id, t.Review.Hash, func(ctx context.Context, p *jobs.Progress) (any, error) {
-		if err := a.deps.Automation.ImportReview(withImportProgress(ctx, p), id, targetID, targetKind); err != nil {
-			return nil, err // the import's own reason, which the card shows
-		}
-		return importedInto(p, t.Title), nil
-	}))
-	if !ok {
-		return
-	}
-	a.accepted(w, jobID, existing, map[string]any{"status": "importing", "title": t.Title})
-}
-
-// reviewImportKind is the one job kind for every import out of a review — Import anyway,
-// Choose different…, Map files… — so the runner's single-flight keeps a review to one
-// import at a time: a second click, or the same review in another tab, joins the import
-// already running instead of starting another over the same files.
-const reviewImportKind = "review.import"
-
-// reviewImportSpec is the job that imports review id. A copy onto another drive runs at
-// disk speed — a season pack or a remux can take an hour — so it gets a generous budget,
-// and it waits in the import lane rather than competing with other imports for the disk.
-// The queue is told when it starts and ends, so the download's card there reads Importing
-// at once and leaves Finishing when it's done.
-func (a *api) reviewImportSpec(id int64, hash string, fn func(context.Context, *jobs.Progress) (any, error)) jobs.Spec {
-	return a.handImportSpec(reviewImportKind, jobTarget("review", id), hash, fn)
-}
-
-// handImportSpec is an import a person asked for from Needs you (a review's, or a
-// download Arrmada didn't grab), run as a job of kind for target.
-func (a *api) handImportSpec(kind, target, hash string, fn func(context.Context, *jobs.Progress) (any, error)) jobs.Spec {
-	return jobs.Spec{Kind: kind, Target: target, Class: jobs.ClassImport, Timeout: 12 * time.Hour,
+	// Import anyway and Choose different… into the same item are the same import.
+	a.startHandImport(w, r, handImportRequest{Kind: reviewImportKind, Target: jobTarget("review", id), Hash: t.Review.Hash,
+		Key: "import:" + t.Review.MediaType + ":" + strconv.FormatInt(t.Dest, 10), Title: t.Title,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			p.Set(0, "Importing…")
-			if hash != "" {
-				a.queueChanged(hash)
-				defer a.queueChanged(hash)
+			if err := a.deps.Automation.ImportReview(withImportProgress(ctx, p), id, targetID, targetKind); err != nil {
+				return nil, err // the import's own reason, which the card shows
 			}
-			return fn(ctx, p)
-		}}
-}
-
-// withImportProgress makes a review import report its copying as the job's progress:
-// "Copying… 12.3 of 48.0 GB". A hardlinked import is instant and stays at "Importing…".
-func withImportProgress(ctx context.Context, p *jobs.Progress) context.Context {
-	return automation.WithImportProgress(ctx, func(copied, total int64) {
-		p.Set(copyProgress(copied, total))
-	})
-}
-
-// copyProgress is a review import's copy as a job's progress and message.
-func copyProgress(copied, total int64) (float64, string) {
-	pct := 0.0
-	if total > 0 {
-		// Short of full: placing and checking the files comes after the last byte.
-		pct = float64(copied) / float64(total) * 0.95
-	}
-	return pct, "Copying… " + sizeGB(copied, false) + " of " + sizeGB(total, true)
-}
-
-// sizeGB is a byte count in gigabytes, one decimal: "12.3", or "48.0 GB" with the unit.
-func sizeGB(n int64, unit bool) string {
-	s := strconv.FormatFloat(float64(n)/(1<<30), 'f', 1, 64)
-	if unit {
-		s += " GB"
-	}
-	return s
-}
-
-// importedInto is a finished review import's message and result.
-func importedInto(p *jobs.Progress, title string) map[string]any {
-	msg := "Imported."
-	if title != "" {
-		msg = "Imported into " + title + "."
-	}
-	p.SetMessage(msg)
-	return map[string]any{"imported": true, "title": title}
-}
-
-// reviewImportJobs is the newest import job of each review that has one, by review id:
-// the running one where an import is under way, otherwise how the last one ended.
-func (a *api) reviewImportJobs(ctx context.Context) map[int64]jobs.Job {
-	out := map[int64]jobs.Job{}
-	if a.deps.Jobs == nil {
-		return out
-	}
-	list, err := a.deps.Jobs.List(ctx, jobs.Filter{Kind: reviewImportKind, Limit: 500})
-	if err != nil {
-		return out
-	}
-	for _, j := range list { // newest first
-		if n, ok := reviewOfJob(j); ok {
-			if _, seen := out[n]; !seen {
-				out[n] = j
-			}
-		}
-	}
-	return out
-}
-
-// activeHandImports is the hand imports running or queued right now: review imports by
-// review id, Import into… of downloads Arrmada didn't grab by lowercased hash. The queue
-// feed asks on every refresh, so it reads the runner's memory where it can rather than
-// the jobs table.
-func (a *api) activeHandImports(ctx context.Context) (byReview map[int64]jobs.Job, byHash map[string]jobs.Job) {
-	act, ok := a.deps.Jobs.(interface{ Active() []jobs.Job })
-	if !ok {
-		byReview, byHash = a.reviewImportJobs(ctx), a.downloadImportJobs(ctx)
-		for id, j := range byReview {
-			if jobs.Terminal(j.Status) {
-				delete(byReview, id)
-			}
-		}
-		for h, j := range byHash {
-			if jobs.Terminal(j.Status) {
-				delete(byHash, h)
-			}
-		}
-		return byReview, byHash
-	}
-	byReview, byHash = map[int64]jobs.Job{}, map[string]jobs.Job{}
-	for _, j := range act.Active() {
-		if n, ok := reviewOfJob(j); ok {
-			byReview[n] = j
-		} else if h, ok := strings.CutPrefix(j.Target, "torrent:"); ok && j.Kind == downloadImportKind {
-			byHash[h] = j
-		}
-	}
-	return byReview, byHash
-}
-
-// reviewOfJob is the review a review import job is for.
-func reviewOfJob(j jobs.Job) (int64, bool) {
-	if j.Kind != reviewImportKind {
-		return 0, false
-	}
-	s, ok := strings.CutPrefix(j.Target, "review:")
-	if !ok {
-		return 0, false
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	return n, err == nil && n > 0
-}
-
-// reviewImporting is the import job running (or queued) for review id, if any.
-func (a *api) reviewImporting(ctx context.Context, id int64) (jobs.Job, bool) {
-	if a.deps.Jobs == nil {
-		return jobs.Job{}, false
-	}
-	target := jobTarget("review", id)
-	list, err := a.deps.Jobs.List(ctx, jobs.Filter{Kind: reviewImportKind, Target: target, Limit: 1})
-	if err != nil {
-		return jobs.Job{}, false
-	}
-	for _, j := range list { // newest first: single-flight means only the newest can be running
-		if j.Target == target {
-			return j, !jobs.Terminal(j.Status)
-		}
-	}
-	return jobs.Job{}, false
+			return importedInto(p, t.Title), nil
+		}}, nil)
 }
 
 // errReviewImporting refuses to reject, dismiss or retry a review while its download is
@@ -499,7 +339,8 @@ var errReviewImporting = errors.New("this download is being imported — wait fo
 // refuseWhileImporting answers 409 when review id has an import running, naming the job
 // so the page can follow it. It reports whether it answered.
 func (a *api) refuseWhileImporting(w http.ResponseWriter, r *http.Request, id int64) bool {
-	j, busy := a.reviewImporting(r.Context(), id)
+	active, _ := a.activeHandImports(r.Context())
+	j, busy := active[id]
 	if !busy {
 		return false
 	}

@@ -190,6 +190,8 @@ type api struct {
 	wanted wantedCache
 	// kindle counts each person's Send to Kindle emails today (kindle.go).
 	kindle kindleQuota
+	// handImports remembers what each running Needs-you import was asked to do (handimport.go).
+	handImports handImports
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
