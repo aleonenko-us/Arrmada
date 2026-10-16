@@ -418,7 +418,7 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, movieID int64) {
 }
 
 // SetSearchPaced marks (or unmarks) a movie as added in bulk: the missing sweep searches
-// only a few marked movies per run (migration 0323).
+// only a few marked movies per run (migration 0324).
 func (r *Repo) SetSearchPaced(ctx context.Context, movieID int64, on bool) error {
 	_, err := r.q().ExecContext(ctx, `UPDATE movies SET search_paced = ? WHERE id = ?`, boolToInt(on), movieID)
 	return err

@@ -1,6 +1,6 @@
 # Import a library from Radarr and Sonarr
 
-Status: built on `feat/arr-import` (2026-10-16), from `main` @ 586c05a0 (highest migration 0322; this work uses `0323_arrimport_paced_search`).
+Status: built on `feat/arr-import` (2026-10-16), from `main` @ 586c05a0 (highest migration 0322; this work uses `0324_arrimport_paced_search` — 0323 went to the webhook lane).
 
 People moving from the *arr stack want their library over in one go. Until now Settings → Import & migrate only read Radarr's/Sonarr's root folders ([FOLDERS](FOLDERS.md)); the library scan then adopted whatever files it found, unmonitored, with no profile, and nothing Radarr or Sonarr only *wanted*.
 
@@ -14,13 +14,13 @@ People moving from the *arr stack want their library over in one go. Until now S
 - **Films.** `movies.AddImported`: added with the mapped profile, monitored state and minimum availability, its file recorded where it is with the library scan's quiet adoption (no outbox row, no per-film alert — Convert's and Subtitles' own sweeps index adopted files). A film already in Arrmada is left alone, except that one still without a file gets Radarr's (`movies.AttachImported`, the scan's attach).
 - **Shows.** `series.AddWith` with Sonarr's monitored seasons (`Seasons`), "monitor new seasons" (Sonarr 4's `monitorNewItems`, else the latest season's flag) and the monitored gate; then each episode's monitored flag where Arrmada has the same episode, anime type when Sonarr says anime, and each episode file recorded on the episodes its name resolves to (`ResolveEpisodes`, so multi-episode and absolute-numbered files work), falling back to the episodes Sonarr filed it under. An existing show only gets files for episodes that have none.
 - **Missing files.** A title whose files can't be found is skipped by default (so a wrong mapping never becomes re-downloading a library); "also bring over titles whose files can't be found" adds them without.
-- **No download flood.** Nothing is searched on import. Wanted titles (monitored, no file) carry `search_paced = 1` (migration 0323); each missing sweep searches at most `automation.PacedSearchesPerSweep` (10) marked titles, clearing the mark on each one it searched — at most 120 imported films an hour (movie sweep every 5 minutes) and 40 shows (every 15). Unmarked titles are searched as before. Upgrades already have their per-sweep budget; RSS only sees new uploads.
+- **No download flood.** Nothing is searched on import. Wanted titles (monitored, no file) carry `search_paced = 1` (migration 0324); each missing sweep searches at most `automation.PacedSearchesPerSweep` (10) marked titles, clearing the mark on each one it searched — at most 120 imported films an hour (movie sweep every 5 minutes) and 40 shows (every 15). Unmarked titles are searched as before. Upgrades already have their per-sweep budget; RSS only sees new uploads.
 - **Errors.** Each title runs on its own (`safego.Call`): an error or a panic is that title's failure, noted, and the rest carry on. A cancel or the 6-hour timeout stops between titles and the result says how far it got.
 - **UI.** The "Folders from Radarr or Sonarr" card became "Import from Radarr / Sonarr" (`#arr-import`, old `#arr-folders` redirects), first on Import & migrate: connect → summary → 1 Folders → 2 Where the files are (maps, Check again, not-found list, import-missing switch) → 3 Quality profiles → Import (follows the job) → summary with skipped/failed titles named → Import another. Calls in the lazy `importApi` module; requester first load unchanged.
 
 ## Tasks
 
-- [x] Migration `0323_arrimport_paced_search` (movies/series `search_paced`) and paced missing sweeps (tests: 25 imported films → 10 per sweep; shows likewise).
+- [x] Migration `0324_arrimport_paced_search` (movies/series `search_paced`) and paced missing sweeps (tests: 25 imported films → 10 per sweep; shows likewise).
 - [x] `arrimport` client: status, profiles (highest allowed resolution through groups), movies with files (`/moviefile` fallback), series, episodes, episode files; redacted address in errors.
 - [x] Path maps, profile suggestions, preview counts.
 - [x] Import engine: films and shows, existing-title file attach, idempotency, per-title error isolation, TVDB → TMDB.

@@ -883,7 +883,7 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, seriesID int64) {
 }
 
 // SetSearchPaced marks (or unmarks) a show as added in bulk: the missing sweep searches
-// only a few marked shows per run (migration 0323).
+// only a few marked shows per run (migration 0324).
 func (r *Repo) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
 	v := 0
 	if on {

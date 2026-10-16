@@ -1,4 +1,4 @@
--- 0323_arrimport_paced_search: titles brought over from Radarr or Sonarr wait their turn.
+-- 0324_arrimport_paced_search: titles brought over from Radarr or Sonarr wait their turn.
 --
 -- A Radarr/Sonarr import can add hundreds of monitored titles without a file at once. The
 -- missing sweeps search every such title each run, so without this the next sweep would

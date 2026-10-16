@@ -5,7 +5,7 @@ import (
 	"log/slog"
 )
 
-// Titles added in bulk — a Radarr or Sonarr import — carry a "paced" mark (migration 0323).
+// Titles added in bulk — a Radarr or Sonarr import — carry a "paced" mark (migration 0324).
 // The missing sweeps search every monitored title without a file on each run, so an import
 // of five hundred wanted films would otherwise be five hundred searches, and as many grabs,
 // on the next run. Each sweep searches at most PacedSearchesPerSweep marked titles and
