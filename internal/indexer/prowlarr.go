@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -98,7 +99,7 @@ func prowlarrDo(ctx context.Context, base, key, method, path string, body any) (
 	}
 	req.Header.Set("X-Api-Key", key)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	resp, err := httpua.Client(20 * time.Second).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("prowlarr: connect failed: %w", err)
 	}

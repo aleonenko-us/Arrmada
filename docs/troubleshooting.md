@@ -63,7 +63,8 @@ Set `TZ` in `.env` to your Region/City timezone and run `sh update.sh`.
 
 **The update check says a new release is out.**
 Run the install line again (or `sh update.sh`). Settings → Status has the release notes; the
-check reads GitHub's public list of releases every 12 hours, sends nothing about your server,
+check reads GitHub's public list of releases every 12 hours, sends nothing about your server
+but Arrmada's version,
 and can be switched off on the same card.
 
 **Something else?**

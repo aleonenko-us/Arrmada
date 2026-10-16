@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/pathguard"
 )
 
@@ -42,8 +43,8 @@ type SABnzbd struct {
 // (SetFolders): until it has them, removing a finished job leaves its folder in place.
 func NewSABnzbd() *SABnzbd {
 	return &SABnzbd{
-		http: &http.Client{Timeout: 30 * time.Second},
-		add:  &http.Client{Timeout: 3 * time.Minute},
+		http: httpua.Client(30 * time.Second),
+		add:  httpua.Client(3 * time.Minute),
 	}
 }
 

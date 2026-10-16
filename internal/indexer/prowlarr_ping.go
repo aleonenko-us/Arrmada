@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // prowlarrPingTimeout bounds the reachability check: the setup wizard waits on it.
@@ -29,7 +31,7 @@ func ProwlarrReachable(ctx context.Context, base string) bool {
 		return false
 	}
 	// No redirects: a /ping that sends us elsewhere isn't Prowlarr answering.
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: httpua.Transport(nil), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

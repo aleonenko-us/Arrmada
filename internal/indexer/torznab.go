@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // Torznab and Newznab share the same RSS-derived XML shape; the only difference
@@ -147,7 +149,7 @@ type TorznabSearcher struct {
 
 // NewTorznabSearcher returns a searcher with a sane request timeout.
 func NewTorznabSearcher() *TorznabSearcher {
-	c := &TorznabSearcher{http: &http.Client{Timeout: 30 * time.Second}}
+	c := &TorznabSearcher{http: httpua.Client(30 * time.Second)}
 	c.queue = newHostThrottle(func() *slog.Logger { return c.log })
 	return c
 }

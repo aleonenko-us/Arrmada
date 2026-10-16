@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
@@ -55,7 +56,7 @@ func NewTMDB(apiKey string) *TMDB { return NewTMDBFunc(func() string { return ap
 func NewTMDBFunc(key func() string) *TMDB {
 	return &TMDB{
 		key:       key,
-		http:      &http.Client{Timeout: 20 * time.Second},
+		http:      httpua.Client(20 * time.Second),
 		base:      tmdbBaseURL,
 		discCache: map[string]discoverCacheEntry{},
 	}

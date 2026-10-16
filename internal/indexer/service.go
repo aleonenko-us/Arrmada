@@ -19,6 +19,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
@@ -344,6 +345,7 @@ func fetchTorrentPayload(ctx context.Context, downloadURL string) (FetchResult, 
 
 	var magnet string
 	client := &http.Client{
+		Transport: httpua.Transport(nil),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Torznab grab endpoints commonly 302 to a magnet URI; the transport
 			// can't follow that scheme, so capture it and stop.

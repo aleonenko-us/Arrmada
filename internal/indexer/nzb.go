@@ -13,6 +13,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // A usenet release is grabbed by downloading its NZB here, on the server, and handing the
@@ -44,6 +46,7 @@ func fetchNZBPayload(ctx context.Context, idx Indexer, downloadURL string) (Fetc
 	ctx, cancel := context.WithTimeout(ctx, fetchNZBTimeout)
 	defer cancel()
 	client := &http.Client{
+		Transport: httpua.Transport(nil),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
