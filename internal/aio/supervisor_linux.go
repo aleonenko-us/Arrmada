@@ -178,19 +178,26 @@ func (s *Supervisor) runOnce(svc Service) (code int, err error) {
 
 var errStopping = errors.New("stopping")
 
-// stopAll asks every running service's process group to stop (SIGTERM, which qBittorrent
-// answers by saving its torrents' state), waits up to Grace, then kills what's left.
+// stopAll asks every running service to stop (SIGTERM, which qBittorrent answers by
+// saving its torrents' state), waits up to Grace, then kills what's left. A companion's
+// whole process group gets the signal (FlareSolverr's browser and display with it);
+// Arrmada alone does, as Docker would signal it in the plain image, so it winds its own
+// work (an encode, say) down itself rather than having it killed from under it.
 func (s *Supervisor) stopAll() {
 	s.mu.Lock()
 	s.stopped = true
-	pgids := make([]int, 0, len(s.running))
+	targets := make([]int, 0, len(s.running))
 	for name, cmd := range s.running {
-		pgids = append(pgids, cmd.Process.Pid)
+		if s.isMain(name) {
+			targets = append(targets, cmd.Process.Pid)
+		} else {
+			targets = append(targets, -cmd.Process.Pid)
+		}
 		s.logf("stopping %s", name)
 	}
 	s.mu.Unlock()
-	for _, pg := range pgids {
-		_ = syscall.Kill(-pg, syscall.SIGTERM)
+	for _, t := range targets {
+		_ = syscall.Kill(t, syscall.SIGTERM)
 	}
 	deadline := time.Now().Add(s.Grace)
 	for time.Now().Before(deadline) {
@@ -208,6 +215,15 @@ func (s *Supervisor) stopAll() {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	s.mu.Unlock()
+}
+
+func (s *Supervisor) isMain(name string) bool {
+	for _, svc := range s.Services {
+		if svc.Name == name {
+			return svc.Main
+		}
+	}
+	return false
 }
 
 func (s *Supervisor) logf(format string, args ...any) {

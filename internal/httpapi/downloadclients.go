@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/aio"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
@@ -325,7 +326,19 @@ func (a *api) handleRestoreBundledClient(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, "this install has no bundled qBittorrent")
 		return
 	}
-	if err := a.deps.Downloads.RestoreBundled(r.Context(), url); err != nil {
+	var err error
+	if path := a.deps.Config.QbittorrentLogin; path != "" {
+		// The all-in-one image's qBittorrent comes back with the login Arrmada made for it.
+		login, lerr := aio.ReadLogin(path)
+		if lerr != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not read the built-in qBittorrent's login")
+			return
+		}
+		err = a.deps.Downloads.RestoreBundledLogin(r.Context(), url, login.Username, login.Password)
+	} else {
+		err = a.deps.Downloads.RestoreBundled(r.Context(), url)
+	}
+	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not restore the bundled qBittorrent")
 		return
 	}

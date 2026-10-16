@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,11 +36,23 @@ func TestBundledQbitLogin(t *testing.T) {
 		d.Downloads = dl
 	})
 	dl.SetFlags(s.deps.Settings)
-	if err := dl.EnsureBundled(context.Background(), aio.LocalURL); err != nil {
+	if err := dl.EnsureBundledLogin(context.Background(), aio.LocalURL, login.Username, login.Password); err != nil {
 		t.Fatal(err)
 	}
 	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
 	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+
+	// Removed and restored from the page, it comes back signing in with the login.
+	c, _, _ := dl.BundledClient(context.Background(), download.KindQbittorrent)
+	if rec := s.do("DELETE", "/api/v1/downloadclients/"+strconv.FormatInt(c.ID, 10), mgr); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: HTTP %d", rec.Code)
+	}
+	if rec := s.do("POST", "/api/v1/downloadclients/restore-bundled", mgr); rec.Code != http.StatusOK {
+		t.Fatalf("restore: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if c, ok, _ := dl.BundledClient(context.Background(), download.KindQbittorrent); !ok || c.Username != login.Username || c.Password != login.Password {
+		t.Fatalf("restored without its login: %+v", c)
+	}
 
 	rec := s.do("GET", "/api/v1/downloadclients", mgr)
 	if strings.Contains(rec.Body.String(), login.Password) {

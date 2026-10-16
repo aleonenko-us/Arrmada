@@ -2,7 +2,9 @@ package download
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -196,8 +198,8 @@ func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, e
 			if err := s.repo.MarkBundled(ctx, c.ID); err != nil {
 				return false, err
 			}
-			if want.Password != "" && c.Password != want.Password {
-				c.Password = want.Password
+			if want.Password != "" && (c.Password != want.Password || c.Username != want.Username) {
+				c.Username, c.Password = want.Username, want.Password
 				_, err = s.Update(ctx, c)
 			}
 			return false, err
@@ -210,6 +212,7 @@ func (s *Service) ensureBundled(ctx context.Context, want Client) (added bool, e
 		Name:     name,
 		Kind:     kind,
 		URL:      url,
+		Username: want.Username,
 		Password: want.Password,
 		Enabled:  true,
 		Bundled:  true,
@@ -281,6 +284,62 @@ func (s *Service) RestoreBundledOf(ctx context.Context, kind Kind, url string) e
 		}
 	}
 	return s.EnsureBundledOf(ctx, kind, url)
+}
+
+// KeyBundledLogin is a hash of the bundled qBittorrent login last given to its client
+// (EnsureBundledLogin), so a login the owner typed on the card isn't overwritten at every
+// start, while a new one (a fresh qBittorrent config) still reaches the client.
+const KeyBundledLogin = "download_bundled_login"
+
+// EnsureBundledLogin is EnsureBundled for the Unraid all-in-one image's qBittorrent, which
+// takes a login (Arrmada made it on first start, internal/aio): the client is registered
+// with it, and an existing bundled client still pointing at url is given it whenever it's
+// a different login from the one it was last given. A client the owner pointed elsewhere
+// keeps its own.
+func (s *Service) EnsureBundledLogin(ctx context.Context, url, username, password string) error {
+	h := sha256.Sum256([]byte(username + "\x00" + password))
+	mark := hex.EncodeToString(h[:])
+	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if _, err := s.ensureBundled(ctx, Client{Kind: KindQbittorrent, URL: url, Username: username, Password: password}); err != nil {
+			return err
+		}
+		if _, ok, err := s.repo.BundledOf(ctx, KindQbittorrent); err != nil || !ok {
+			return err // removed by the owner: nothing was registered
+		}
+		return s.setFlag(ctx, KeyBundledLogin, mark)
+	}
+	if c.URL != url || (s.flags != nil && s.flags.Get(ctx, KeyBundledLogin, "") == mark) {
+		return nil
+	}
+	if c.Username != username || c.Password != password {
+		c.Username, c.Password = username, password
+		if _, err := s.Update(ctx, c); err != nil {
+			return err
+		}
+		s.log.Info("bundled qBittorrent has a new login; its client uses it now", "name", c.Name)
+	}
+	return s.setFlag(ctx, KeyBundledLogin, mark)
+}
+
+// RestoreBundledLogin is RestoreBundled for the all-in-one image's qBittorrent.
+func (s *Service) RestoreBundledLogin(ctx context.Context, url, username, password string) error {
+	if s.flags != nil {
+		if err := s.flags.Set(ctx, bundledRemovedKey(KindQbittorrent), ""); err != nil {
+			return err
+		}
+	}
+	return s.EnsureBundledLogin(ctx, url, username, password)
+}
+
+func (s *Service) setFlag(ctx context.Context, key, value string) error {
+	if s.flags == nil {
+		return nil
+	}
+	return s.flags.Set(ctx, key, value)
 }
 
 // KeyBundledSwitchedOff says the all-in-one image's built-in qBittorrent was switched off

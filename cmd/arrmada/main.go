@@ -435,7 +435,7 @@ func main() {
 		}
 	}
 	if cfg.QbittorrentURL != "" {
-		if err := downloads.EnsureBundled(context.Background(), cfg.QbittorrentURL); err != nil {
+		if err := ensureBundledQbit(context.Background(), downloads, cfg); err != nil {
 			log.Warn("could not register bundled qBittorrent", "err", err)
 		}
 		// Pin the incoming port to match the Docker-published one. qBittorrent may

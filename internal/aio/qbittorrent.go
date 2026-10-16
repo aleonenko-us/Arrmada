@@ -18,9 +18,11 @@ import (
 )
 
 // The bundled qBittorrent inside the all-in-one image. Its web UI listens on WebUIPort
-// inside the container; Arrmada talks to it on the loopback address, where qBittorrent
-// lets it in without a login (WebUI\LocalHostAuth=false), the way the Compose bundle is
-// let in by its private-network whitelist. Everyone else needs the login below.
+// inside the container, and Arrmada talks to it on the loopback address with the login
+// below, like everyone else. There is deliberately no login-free way in, not even from
+// the loopback address (WebUI\LocalHostAuth stays on): FlareSolverr's Chromium runs in
+// the same container and opens tracker pages, and a hostile one could reach 127.0.0.1
+// through DNS rebinding.
 const (
 	WebUIPort  = 8080
 	LocalURL   = "http://127.0.0.1:8080"
@@ -29,9 +31,10 @@ const (
 	confSubdir = "qBittorrent/config" // under the profile folder (--profile)
 )
 
-// Login is the qBittorrent web UI login Arrmada made on first start. It's stored next to
-// qBittorrent's own config, readable only by the user both run as, and shown to admins in
-// Settings → Connections; it never goes in the template, the environment or a log.
+// Login is the qBittorrent web UI login Arrmada made on first start, which Arrmada signs
+// in with too. It's stored next to qBittorrent's own config, readable only by the user
+// both run as, and shown to admins in Settings → Connections; it never goes in the
+// template, the environment or a log.
 type Login struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -102,9 +105,10 @@ func SeedQbittorrent(o SeedOptions) (seeded bool, err error) {
 
 // qbittorrentConf is the seeded config. Like the Compose seed: downloads on the shared
 // share, TCP only (uTP is costly through Docker's network stack), the legal notice
-// accepted. Unlike it, nobody on the network gets in without the password: the web UI
-// port may be published to the LAN here, so only the loopback address (Arrmada, in the
-// same container) skips the login. CSRF and clickjacking protection stay on.
+// accepted. Unlike it, nobody gets in without the password, Arrmada included (see
+// above); there's no subnet whitelist. CSRF and clickjacking protection stay on. Host
+// header validation is off, as in the Compose seed: it refuses any port but the one
+// qBittorrent listens on, and the template publishes 8080 on another host port.
 func qbittorrentConf(o SeedOptions, hash string) string {
 	dl := strings.TrimRight(o.Downloads, "/")
 	var b strings.Builder
@@ -123,10 +127,11 @@ func qbittorrentConf(o SeedOptions, hash string) string {
 	b.WriteString("WebUI\\Address=*\n")
 	fmt.Fprintf(&b, "WebUI\\Username=%s\n", WebUIUser)
 	fmt.Fprintf(&b, "WebUI\\Password_PBKDF2=\"@ByteArray(%s)\"\n", hash)
-	b.WriteString("WebUI\\LocalHostAuth=false\n")
+	b.WriteString("WebUI\\LocalHostAuth=true\n")
 	b.WriteString("WebUI\\AuthSubnetWhitelistEnabled=false\n")
 	b.WriteString("WebUI\\CSRFProtection=true\n")
 	b.WriteString("WebUI\\ClickjackingProtection=true\n")
+	b.WriteString("WebUI\\HostHeaderValidation=false\n")
 	return b.String()
 }
 

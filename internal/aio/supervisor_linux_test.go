@@ -110,6 +110,30 @@ func TestStopSignal(t *testing.T) {
 	}
 }
 
+// Arrmada alone gets the stop signal, as from Docker in the plain image: what it started
+// (an encode) is its own to wind down, not signalled from outside.
+func TestStopSignalsArrmadaNotItsChildren(t *testing.T) {
+	dir := t.TempDir()
+	childTerm := filepath.Join(dir, "child-got-term")
+	ready := filepath.Join(dir, "ready")
+	s := &Supervisor{Out: &syncBuffer{}, Grace: 5 * time.Second, Services: []Service{
+		sh("arrmada", "(trap 'touch "+childTerm+"; exit 0' TERM; while :; do sleep 0.05; done) & c=$!; "+
+			"trap 'kill -9 $c; exit 0' TERM; touch "+ready+"; while :; do sleep 0.05; done", true),
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan int, 1)
+	go func() { done <- s.Run(ctx) }()
+	waitFor(t, "Arrmada to start", func() bool { _, err := os.Stat(ready); return err == nil })
+	cancel()
+	if code := <-done; code != 0 {
+		t.Errorf("exit code %d", code)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(childTerm); err == nil {
+		t.Error("Arrmada's child was sent SIGTERM by the supervisor")
+	}
+}
+
 // A service that ignores SIGTERM is killed once the grace period is over, together with
 // what it started (its process group).
 func TestStopKillsAfterGrace(t *testing.T) {

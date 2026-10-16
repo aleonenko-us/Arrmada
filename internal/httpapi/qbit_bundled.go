@@ -8,11 +8,10 @@ import (
 	"github.com/tristenlammi/arrmada/internal/aio"
 )
 
-// The Unraid all-in-one image's built-in qBittorrent. Arrmada reaches it inside the
-// container without a login; people reach its own web page on a published port, with a
-// login generated on first start (internal/aio). Its card links that page and lets an
-// admin look the login up. The Compose bundle has no such login, so none of this shows
-// there.
+// The Unraid all-in-one image's built-in qBittorrent. Arrmada and people alike sign in
+// with a login generated on first start (internal/aio); people reach its own web page on
+// a published port. Its card links that page and lets an admin look the login up. The
+// Compose bundle has no such login, so none of this shows there.
 
 // qbitUIPort is the host port the built-in qBittorrent's web page is published on, from
 // the template (ARRMADA_QBIT_WEBUI_HOST_PORT), for the card's link.
