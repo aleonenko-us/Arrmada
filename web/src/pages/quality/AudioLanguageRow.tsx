@@ -58,8 +58,9 @@ export function AudioLanguageRow({ value, onChange, picker }: {
       </div>
       <div className="mb-1.5 text-xs leading-[1.5] text-ink-faint">
         Languages are read from a release's name: one that names none is taken to be the original language, and MULTi or
-        DL means the original plus the ones it names. Files in your library are judged by their actual audio tracks. Each
-        Must is needed; Avoid only counts against a release whose every language is avoided.
+        DL means the original plus the ones it names. Files in your library are judged by their actual audio tracks, and a
+        file whose audio hasn't been read yet is left alone. Each Must is needed; Avoid only counts against a release whose
+        every language is avoided.
       </div>
       <div className="flex flex-col gap-1.5">
         {keys.map((k) => (
