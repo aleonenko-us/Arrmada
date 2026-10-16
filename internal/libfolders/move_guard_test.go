@@ -42,7 +42,7 @@ func TestMoveRefusesWhenTheOriginalChangesMidCopy(t *testing.T) {
 	readFile(t, filepath.Join(src, "Heat (1995).mkv"))
 	readFile(t, filepath.Join(src, "Heat (1995).de.srt"))
 	gone(t, filepath.Join(kids.Path, "Heat (1995)"))
-	gone(t, filepath.Join(kids.Path, "Heat (1995)"+movingSuffix))
+	gone(t, stagingPath(kids.Path, "Heat (1995)"))
 	if got := queryString(t, f, `SELECT movie_file_path FROM movies WHERE id = 1`); got != filepath.Join(src, "Heat (1995).mkv") {
 		t.Errorf("movie path = %q", got)
 	}

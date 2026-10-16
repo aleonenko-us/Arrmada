@@ -111,6 +111,8 @@ func (a *api) writeFolderErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &use):
 		a.writeError(w, http.StatusConflict, use.Error())
+	case errors.Is(err, libfolders.ErrMoving):
+		a.writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, libfolders.ErrNotFound):
 		a.writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, libfolders.ErrBadMedia), errors.Is(err, libfolders.ErrBadRule),
@@ -288,7 +290,7 @@ func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string)
 	to := dest.ID
 	mover := a.deps.FolderMover
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{
-		Kind: "library.move", Target: jobTarget(media, id), Class: jobs.ClassImport,
+		Kind: "library.move", Target: jobTarget(media, id), Class: jobs.ClassLibraryMove,
 		// A copy onto another drive runs at disk speed: a 4K remux or a long show can take
 		// hours, and stopping half-way leaves the originals in place anyway.
 		Timeout: 12 * time.Hour,
@@ -298,7 +300,7 @@ func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string)
 				return res, err
 			}
 			if p != nil {
-				p.SetMessage(title + " moved to " + res.Folder)
+				p.SetMessage(strings.TrimSpace(title + " moved to " + res.Folder + ". " + res.Warning))
 			}
 			a.publishMoved(media, id)
 			return res, nil

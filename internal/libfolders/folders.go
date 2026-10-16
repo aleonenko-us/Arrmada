@@ -86,6 +86,61 @@ type Service struct {
 	mu     sync.RWMutex
 	loaded bool
 	extras []Folder // ordered by media, position, id
+
+	// moveMu guards moving: the folders a move is putting files into right now (by id),
+	// so removing one waits for no move and no move starts into one being removed.
+	moveMu sync.Mutex
+	moving map[int64]int
+}
+
+// ErrMoving is a folder a title is being moved into right now.
+var ErrMoving = errors.New("a title is being moved into this folder right now — try again once that finishes")
+
+// beginMove marks folder id as a move's destination until the returned func is called. It
+// fails when the folder is gone (removed in the meantime): the database, not the cache,
+// decides, under the same lock Remove holds, so the two can't cross.
+func (s *Service) beginMove(ctx context.Context, media string, id int64) (func(), error) {
+	s.moveMu.Lock()
+	defer s.moveMu.Unlock()
+	ok, err := folderExists(ctx, s.db, media, id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if s.moving == nil {
+		s.moving = map[int64]int{}
+	}
+	s.moving[id]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.moveMu.Lock()
+			if s.moving[id]--; s.moving[id] <= 0 {
+				delete(s.moving, id)
+			}
+			s.moveMu.Unlock()
+		})
+	}, nil
+}
+
+// querier is a *sql.DB or a *sql.Tx.
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// folderExists reports whether folder id of library media is still there (0, the
+// default folder, always is).
+func folderExists(ctx context.Context, q querier, media string, id int64) (bool, error) {
+	if id == DefaultID {
+		return true, nil
+	}
+	var n int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_folders WHERE id = ? AND media = ?`, id, media).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // New builds the service. roots resolves the default folders (and downloads, for the
@@ -549,6 +604,12 @@ func (s *Service) Remove(ctx context.Context, id int64) error {
 	f, ok := s.byID(ctx, id)
 	if !ok {
 		return ErrNotFound
+	}
+	// No move may be putting files into it, and none may start until this is done.
+	s.moveMu.Lock()
+	defer s.moveMu.Unlock()
+	if s.moving[id] > 0 {
+		return ErrMoving
 	}
 	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		u, err := usageTx(ctx, tx, f)

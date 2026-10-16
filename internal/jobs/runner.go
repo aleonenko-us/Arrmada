@@ -62,6 +62,9 @@ const (
 	ClassExternalImport = "external-import"
 	ClassTask           = "task"
 	ClassOther          = "other"
+	// ClassLibraryMove is a title moving to another library folder: a copy onto another
+	// drive can run for hours, so it has its own lane rather than holding up imports.
+	ClassLibraryMove = "library-move"
 )
 
 var defaultLimits = map[string]int{
@@ -71,6 +74,7 @@ var defaultLimits = map[string]int{
 	ClassExternalImport: 1,
 	ClassTask:           4,
 	ClassOther:          2,
+	ClassLibraryMove:    1,
 }
 
 // Errors.

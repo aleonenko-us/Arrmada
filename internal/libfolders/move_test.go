@@ -187,7 +187,7 @@ func TestMoveCopiesAcrossFilesystems(t *testing.T) {
 			t.Errorf("%s holds %q", name, got)
 		}
 	}
-	gone(t, dst+movingSuffix)
+	gone(t, stagingPath(kids.Path, "Heat (1995)"))
 	gone(t, src) // the originals went, and the emptied folder with them
 	// ... to the recycle bin, not into thin air.
 	if got := readFile(t, filepath.Join(bin, "Heat (1995)", "Heat (1995).mkv")); got != "the film" {
@@ -221,7 +221,7 @@ func TestMoveCopyFailureLeavesTheOriginals(t *testing.T) {
 	}
 	readFile(t, filepath.Join(src, "Heat (1995).mkv"))
 	gone(t, filepath.Join(kids.Path, "Heat (1995)"))
-	gone(t, filepath.Join(kids.Path, "Heat (1995)"+movingSuffix))
+	gone(t, stagingPath(kids.Path, "Heat (1995)"))
 	if got := queryString(t, f, `SELECT movie_file_path FROM movies WHERE id = 1`); got != filepath.Join(src, "Heat (1995).mkv") {
 		t.Errorf("movie path = %q", got)
 	}

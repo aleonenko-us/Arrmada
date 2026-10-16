@@ -11,16 +11,77 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
+	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
-// movingSuffix marks a folder still being copied onto another drive. It's hidden from
-// nothing on purpose: a half-copied folder must never look like a finished one, and the
-// name makes plain what it is if a crash leaves one behind.
-const movingSuffix = ".arrmada-moving"
+// stagingPrefix names a title folder still being copied onto another drive:
+// "<library folder>/.arrmada-moving-<its path inside the library>". The dot keeps it out of
+// Plex, Jellyfin and Arrmada's own scans (library.SkipScanDir), and it sits directly in the
+// destination library folder so a leftover from a crash is found — and discarded — by the
+// next move into that folder. It's Arrmada's own duplicate of files whose originals are
+// untouched, so it is deleted outright rather than sent to the recycle bin: binning it
+// would keep the space and add another copy on every retry. discardStaging only ever
+// deletes a path shaped exactly like this.
+const stagingPrefix = ".arrmada-moving-"
+
+// stagingPath is where the copy of the folder at rel (inside the library) is staged.
+func stagingPath(destRoot, rel string) string {
+	return filepath.Join(destRoot, stagingPrefix+strings.ReplaceAll(filepath.ToSlash(rel), "/", "__"))
+}
+
+// isStaging reports whether path is a staging folder directly in destRoot.
+func isStaging(destRoot, path string) bool {
+	path = filepath.Clean(path)
+	return strings.TrimSpace(destRoot) != "" &&
+		filepath.Dir(path) == filepath.Clean(destRoot) &&
+		strings.HasPrefix(filepath.Base(path), stagingPrefix) &&
+		len(filepath.Base(path)) > len(stagingPrefix)
+}
+
+// ErrNotStaging is a delete aimed at something that isn't a move's staging copy.
+var ErrNotStaging = errors.New("not a move's staging copy")
+
+// discardStaging deletes a staging copy for good — the one exception to "deletes go
+// through the recycle bin", allowed only for a path isStaging accepts.
+func discardStaging(destRoot, path string) error {
+	if !isStaging(destRoot, path) {
+		return fmt.Errorf("%w: %s", ErrNotStaging, path)
+	}
+	return os.RemoveAll(path)
+}
+
+// discardLeftovers removes staging copies a crashed or killed move left in destRoot.
+// Moves run one at a time (Mover.mu), so none of them belongs to a move in progress.
+func (m *Mover) discardLeftovers(destRoot string) {
+	entries, err := os.ReadDir(destRoot)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		p := filepath.Join(destRoot, e.Name())
+		if e.IsDir() && isStaging(destRoot, p) {
+			if err := discardStaging(destRoot, p); err != nil && m.Log != nil {
+				m.Log.Warn("library folders: couldn't remove a copy an earlier move left behind", "path", p, "err", err)
+			} else if m.Log != nil {
+				m.Log.Info("library folders: removed a copy an earlier move left behind", "path", p)
+			}
+		}
+	}
+}
+
+// freeMargin is the room a copy must leave on the destination drive beyond its own size.
+func freeMargin(size int64) int64 {
+	m := size / 100 // 1%
+	if m < 256<<20 {
+		m = 256 << 20
+	}
+	return m
+}
 
 // Mover moves a title's files to another folder of its library, as a background job.
 //
@@ -48,8 +109,12 @@ type Mover struct {
 	ShowFolder func(episodePath string) string
 	Log        *slog.Logger
 
+	// mu runs moves one at a time, so a leftover staging copy is never a live one.
+	mu sync.Mutex
 	// rename is os.Rename; tests make it fail with EXDEV to take the copy path.
 	rename func(oldpath, newpath string) error
+	// free is the free space on the drive holding a folder (diskspace.Of); tests fake it.
+	free func(path string) (uint64, bool)
 }
 
 // MoveResult is what a move did, stored as the job's result.
@@ -58,7 +123,9 @@ type MoveResult struct {
 	Method  string     `json:"method"` // "rename", "copy", "none" (no files) or "mixed"
 	Moved   []MovedDir `json:"moved"`  // each title folder that moved
 	Paths   int64      `json:"paths"`  // stored paths repointed
-	Warning string     `json:"warning,omitempty"`
+	// Warning names files that turned up in an original folder after it was copied: they
+	// weren't moved and were left where they were.
+	Warning string `json:"warning,omitempty"`
 }
 
 // MovedDir is one title folder that moved.
@@ -127,6 +194,15 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 	if fi, err := os.Stat(dest.Path); err != nil || !fi.IsDir() {
 		return res, fmt.Errorf("%w: %s isn't there (is it mounted?)", ErrBadPath, dest.Path)
 	}
+	// One move at a time; and the destination can't be removed while files go into it.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	done, err := m.Folders.beginMove(ctx, media, to)
+	if err != nil {
+		return res, err
+	}
+	defer done()
+	m.discardLeftovers(dest.Path)
 
 	report(0.02, "Checking "+t.name+"'s files")
 	plans, err := m.plan(ctx, t, dest)
@@ -145,8 +221,11 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 		base := 0.05 + 0.9*float64(i)/float64(len(plans))
 		span := 0.9 / float64(len(plans))
 		report(base, "Moving "+filepath.Base(pl.from))
-		md, n, err := m.moveDir(ctx, pl, func(f float64, msg string) { report(base+span*f, msg) })
+		md, n, late, err := m.moveDir(ctx, t.media, to, pl, func(f float64, msg string) { report(base+span*f, msg) })
 		res.Paths += n
+		if late > 0 {
+			res.Warning = strings.TrimSpace(res.Warning + fmt.Sprintf(" %d file(s) turned up in %s after it was copied and were left there.", late, pl.from))
+		}
 		if err != nil {
 			if len(res.Moved) > 0 {
 				return res, fmt.Errorf("moved %d of %d folders, then: %w — run Move again to finish", len(res.Moved), len(plans), err)
@@ -162,7 +241,8 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 			m.Scan(kind, pl.to)
 		}
 	}
-	// Every folder is where it belongs: now the title itself.
+	// Every folder is where it belongs: now the title itself. (The destination can't have
+	// been removed — beginMove holds it — but assign checks again inside its transaction.)
 	if err := m.assign(ctx, t, to, dest.Label); err != nil {
 		return res, err
 	}
@@ -252,6 +332,8 @@ func (m *Mover) convertOpen(ctx context.Context, t title) (string, error) {
 // movePlan is one title folder and where it goes.
 type movePlan struct {
 	from, to string
+	root     string // the destination library folder
+	staging  string // where a copy onto another drive is built (stagingPath)
 	files    int
 }
 
@@ -290,6 +372,7 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 		}
 	}
 	var out []movePlan
+	taken := map[string]string{} // destination → the folder going there
 	for _, dir := range tops {
 		if strictlyUnder(dir, dest.Path) || samePath(dir, dest.Path) {
 			continue // already in the destination folder
@@ -316,10 +399,13 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
-		if _, err := os.Lstat(to + movingSuffix); err == nil {
-			return nil, fmt.Errorf("%w: a copy left by an earlier move is in the way (%s) — remove it, then try again", ErrBadPath, to+movingSuffix)
+		// Two of the title's folders (in two library folders) can have the same place in
+		// the destination: the second would land on the first.
+		if prev, dup := taken[filepath.Clean(to)]; dup {
+			return nil, fmt.Errorf("%w: %s and %s would both become %s — tidy one of them first", ErrBadPath, prev, dir, to)
 		}
-		out = append(out, movePlan{from: dir, to: to, files: dirs[dir]})
+		taken[filepath.Clean(to)] = dir
+		out = append(out, movePlan{from: dir, to: to, root: dest.Path, staging: stagingPath(dest.Path, rel), files: dirs[dir]})
 	}
 	return out, nil
 }
@@ -355,11 +441,12 @@ func (m *Mover) sharedWith(ctx context.Context, t title, dir string) (string, er
 }
 
 // moveDir moves one title folder and repoints the database at it. It returns how many
-// stored paths changed.
-func (m *Mover) moveDir(ctx context.Context, pl movePlan, report func(float64, string)) (MovedDir, int64, error) {
+// stored paths changed, and how many files turned up in the original after it was copied
+// (they're left where they are).
+func (m *Mover) moveDir(ctx context.Context, media string, destID int64, pl movePlan, report func(float64, string)) (MovedDir, int64, int, error) {
 	md := MovedDir{From: pl.from, To: pl.to, Files: pl.files}
 	if err := os.MkdirAll(filepath.Dir(pl.to), 0o775); err != nil {
-		return md, 0, fmt.Errorf("couldn't make %s: %w", filepath.Dir(pl.to), err)
+		return md, 0, 0, fmt.Errorf("couldn't make %s: %w", filepath.Dir(pl.to), err)
 	}
 	rename := m.rename
 	if rename == nil {
@@ -368,55 +455,95 @@ func (m *Mover) moveDir(ctx context.Context, pl movePlan, report func(float64, s
 	err := rename(pl.from, pl.to)
 	if err == nil {
 		md.Method = "rename"
-		n, derr := m.repoint(ctx, pl.from, pl.to)
+		n, derr := m.repoint(ctx, media, destID, pl.from, pl.to)
 		if derr != nil {
 			// Put the folder back so the database (unchanged) is right again.
 			if berr := rename(pl.to, pl.from); berr != nil {
-				return md, 0, fmt.Errorf("the folder moved to %s but the database couldn't follow (%v), and moving it back failed too (%v) — move it back by hand", pl.to, derr, berr)
+				return md, 0, 0, fmt.Errorf("the folder moved to %s but the database couldn't follow (%v), and moving it back failed too (%v) — move it back by hand", pl.to, derr, berr)
 			}
-			return md, 0, fmt.Errorf("the database couldn't follow the move, so the folder was put back: %w", derr)
+			return md, 0, 0, fmt.Errorf("the database couldn't follow the move, so the folder was put back: %w", derr)
 		}
-		return md, n, nil
+		return md, n, 0, nil
 	}
 	if !errors.Is(err, syscall.EXDEV) {
-		return md, 0, fmt.Errorf("couldn't move %s: %w", pl.from, err)
+		return md, 0, 0, fmt.Errorf("couldn't move %s: %w", pl.from, err)
 	}
 
-	// Another drive: copy, verify, swap in, repoint, then retire the originals.
+	// Another drive: room check, copy into the staging folder, verify, swap in, repoint,
+	// then retire the originals that were copied.
 	md.Method = "copy"
-	tmp := pl.to + movingSuffix
-	if err := m.copyTree(ctx, pl.from, tmp, report); err != nil {
-		m.retireTree(tmp)
-		return md, 0, err
+	src := manifest(pl.from)
+	var size int64
+	for _, n := range src {
+		size += n
 	}
+	free := m.free
+	if free == nil {
+		free = diskFree
+	}
+	if avail, ok := free(pl.root); ok && int64(avail) < size+freeMargin(size) {
+		return md, 0, 0, fmt.Errorf("%w: %s needs %s free on the destination drive and it has %s — nothing was moved",
+			ErrNoRoom, filepath.Base(pl.from), gib(size+freeMargin(size)), gib(int64(avail)))
+	}
+	discard := func() {
+		if derr := discardStaging(pl.root, pl.staging); derr != nil && m.Log != nil {
+			m.Log.Warn("library folders: couldn't remove a move's staging copy", "path", pl.staging, "err", derr)
+		}
+	}
+	if err := m.copyTree(ctx, pl.from, pl.staging, report); err != nil {
+		discard()
+		return md, 0, 0, err
+	}
+	copied := manifest(pl.staging)
 	// Nothing may have changed in the original while it was copied (an import that slipped
 	// in, a subtitle written): the originals are about to go, so the copy must be all of them.
-	if !sameTree(manifest(pl.from), manifest(tmp)) {
-		m.retireTree(tmp)
-		return md, 0, fmt.Errorf("%w: files in %s changed while they were being copied — nothing was moved; try again", ErrBusy, filepath.Base(pl.from))
+	if !sameTree(manifest(pl.from), copied) {
+		discard()
+		return md, 0, 0, fmt.Errorf("%w: files in %s changed while they were being copied — nothing was moved; try again", ErrBusy, filepath.Base(pl.from))
 	}
-	if err := rename(tmp, pl.to); err != nil {
-		m.retireTree(tmp)
-		return md, 0, fmt.Errorf("couldn't put the copy in place: %w", err)
+	if err := rename(pl.staging, pl.to); err != nil {
+		discard()
+		return md, 0, 0, fmt.Errorf("couldn't put the copy in place: %w", err)
 	}
-	n, derr := m.repoint(ctx, pl.from, pl.to)
+	n, derr := m.repoint(ctx, media, destID, pl.from, pl.to)
 	if derr != nil {
-		// The originals are untouched and the database still points at them: take the
-		// copy back out through the bin.
-		m.retireTree(pl.to)
-		return md, 0, fmt.Errorf("the database couldn't follow the copy, so the copy was taken back out: %w", derr)
+		// The originals are untouched and the database still points at them: the copy goes
+		// back to its staging name and is deleted.
+		if rerr := rename(pl.to, pl.staging); rerr == nil {
+			discard()
+		} else if m.Log != nil {
+			m.Log.Warn("library folders: a copy whose move failed is still in place", "path", pl.to, "err", rerr)
+		}
+		return md, 0, 0, fmt.Errorf("the database couldn't follow the copy, so the copy was taken back out: %w", derr)
 	}
 	report(0.95, "Retiring the originals to the recycle bin")
-	if left := m.retireTree(pl.from); left > 0 {
-		return md, n, fmt.Errorf("the copy is in place and in use, but %d original file(s) couldn't go to the recycle bin and are still in %s", left, pl.from)
+	left, late := m.retireCopied(pl.from, copied)
+	if left > 0 {
+		return md, n, late, fmt.Errorf("the copy is in place and in use, but %d original file(s) couldn't go to the recycle bin and are still in %s", left, pl.from)
 	}
-	return md, n, nil
+	return md, n, late, nil
 }
 
-// repoint rewrites every stored path under from to to, in one transaction.
-func (m *Mover) repoint(ctx context.Context, from, to string) (int64, error) {
+// ErrNoRoom is a copy the destination drive hasn't the space for.
+var ErrNoRoom = errors.New("not enough free space")
+
+func diskFree(path string) (uint64, bool) {
+	u, ok := diskspace.Of(path)
+	return u.FreeBytes, ok
+}
+
+func gib(n int64) string { return fmt.Sprintf("%.1f GB", float64(n)/(1<<30)) }
+
+// repoint rewrites every stored path under from to to, in one transaction — and only
+// while the destination folder still exists, checked inside it.
+func (m *Mover) repoint(ctx context.Context, media string, destID int64, from, to string) (int64, error) {
 	var n int64
 	err := store.WithTx(ctx, m.DB, func(tx *sql.Tx) error {
+		if ok, err := folderExists(ctx, tx, media, destID); err != nil {
+			return err
+		} else if !ok {
+			return fmt.Errorf("%w: the destination folder was removed", ErrNotFound)
+		}
 		c, err := RewritePrefix(ctx, tx, from, to)
 		if err != nil {
 			return err
@@ -512,23 +639,27 @@ func sameTree(a, b map[string]int64) bool {
 	return true
 }
 
-// retireTree sends every file under dir to the recycle bin (deepest first, the same as a
-// delete) and then removes the folders it emptied. It returns how many files couldn't
-// go; those are left exactly where they were. A dir that isn't there is nothing to do.
-func (m *Mover) retireTree(dir string) int {
+// retireCopied sends the originals that were copied to the recycle bin and removes the
+// folders that leaves empty. The folder is looked at again first: only a file that's in
+// the copy, at the size it was copied, goes; one that turned up (or changed) since is left
+// exactly where it is and counted as late. left counts files the bin couldn't take.
+func (m *Mover) retireCopied(dir string, copied map[string]int64) (left, late int) {
 	var files, dirs []string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			dirs = append(dirs, p)
+	now := manifest(dir)
+	for rel, size := range now {
+		if want, ok := copied[rel]; ok && want == size {
+			files = append(files, filepath.Join(dir, rel))
 		} else {
-			files = append(files, p)
+			late++
+		}
+	}
+	sort.Strings(files)
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			dirs = append(dirs, p)
 		}
 		return nil
 	})
-	left := 0
 	for _, f := range files {
 		if _, err := library.RemoveToBin(m.Bin, f); err != nil {
 			left++
@@ -541,12 +672,17 @@ func (m *Mover) retireTree(dir string) int {
 	for _, d := range dirs {
 		_ = os.Remove(d) // only empty folders go
 	}
-	return left
+	return left, late
 }
 
-// assign records the title's new folder and a timeline event.
+// assign records the title's new folder and a timeline event, while that folder exists.
 func (m *Mover) assign(ctx context.Context, t title, to int64, label string) error {
 	return store.WithTx(ctx, m.DB, func(tx *sql.Tx) error {
+		if ok, err := folderExists(ctx, tx, t.media, to); err != nil {
+			return err
+		} else if !ok {
+			return fmt.Errorf("%w: the destination folder was removed", ErrNotFound)
+		}
 		detail := "Moved to the " + label + " folder"
 		if t.media == MediaSeries {
 			if _, err := tx.ExecContext(ctx, `UPDATE series SET library_folder_id = ? WHERE id = ?`, to, t.id); err != nil {
