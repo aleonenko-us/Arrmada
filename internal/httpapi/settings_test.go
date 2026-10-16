@@ -343,6 +343,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"request_quota_seasons":             `2`,
 		"request_quota_books":               `4`,
 		"books_languages":                   `["en","es"]`,
+		"match_title_languages":             `["de"]`,
 		"quality_ranking":                   `"v2"`,
 		"download_network_preference":       `"usenet"`,
 		"app_public_url":                    `"https://arrmada.example.com"`,
