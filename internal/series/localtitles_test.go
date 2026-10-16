@@ -119,9 +119,35 @@ func TestSeriesKnownAs(t *testing.T) {
 			t.Errorf("KnownAs(%q) = %v, %v; want %v", release, got, err, want)
 		}
 	}
+	// A two-letter name never stands for a show, not even under a country tag ("Up.US"
+	// is "up" once the tag is off), and the show's own title is FitRelease's to judge.
+	src.titles[5] = &metadata.Titles{Title: "Upside Down", Alternatives: []metadata.AltTitle{{Title: "Up", Country: "US"}, {Title: "Upside Down", Country: "US"}}}
+	upside := Series{ID: 5, TMDBID: 5, Title: "Upside Down", Year: 2017, Extra: &SeriesExtra{OriginCountry: []string{"US"}}}
+	for _, release := range []string{"Up.US.S01E01.1080p-GRP", "Up.S01E01.1080p-GRP", "Upside.Down.2005.S01E01.1080p-GRP"} {
+		if ok, err := s.KnownAs(ctx, upside, parser.Parse(release)); ok || err != nil {
+			t.Errorf("KnownAs(%q) = %v, %v; want false", release, ok, err)
+		}
+	}
+
 	src.err = errors.New("tmdb: HTTP 503")
 	if ok, err := s.KnownAs(ctx, heist, parser.Parse("Haus.des.Geldes.S01E01.German-GRP")); ok || err == nil {
 		t.Errorf("TMDB down: %v, %v", ok, err)
+	}
+}
+
+// NamesAShow: a show's own title or alias names a release whatever its year or country;
+// a translated title doesn't.
+func TestNamesAShow(t *testing.T) {
+	all := []Series{germanShow(1, "Haus", 2004), germanShow(2, "Money Heist", 2017, "Haus des Geldes")}
+	for release, want := range map[string]bool{
+		"Haus.2010.S01E01.1080p-GRP":            true,
+		"Haus.S01E01.1080p-GRP":                 true,
+		"Money.Heist.S01E01.1080p-GRP":          true,
+		"Haus.des.Geldes.S01E01.German.720p-GR": false,
+	} {
+		if got := NamesAShow(all, parser.Parse(release)); got != want {
+			t.Errorf("NamesAShow(%q) = %v, want %v", release, got, want)
+		}
 	}
 }
 

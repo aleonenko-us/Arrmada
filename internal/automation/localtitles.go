@@ -35,6 +35,14 @@ func (c *Coordinator) seriesKnownAs(ctx context.Context, hash string, show serie
 	return ok, err
 }
 
+// movieGrabbedByHash reports whether the download's info hash finds a grab for movie id —
+// the identity the movie importer (the title resolver and AttachMovieImport) places a file
+// by. grabbedMediaForHash also falls back to the release name, which those never do.
+func (c *Coordinator) movieGrabbedByHash(ctx context.Context, hash string, id int64) bool {
+	g, ok := c.MovieGrabForHash(ctx, hash)
+	return ok && g.MovieID == id
+}
+
 // seriesAmong reports whether the show with id is one of shows.
 func seriesAmong(shows []series.Series, id int64) bool {
 	for _, s := range shows {

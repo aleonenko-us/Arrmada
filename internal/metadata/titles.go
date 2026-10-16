@@ -290,7 +290,8 @@ func CoversLangs(have, want []string) bool {
 
 // LocalizedMatch identifies a scanned folder named in one of langs: TMDB is searched with
 // its results' titles in each language, and the folder matches only when exactly ONE
-// title is named so (title key equal, the years within one when both are known) across
+// title is named so (title key equal; when the folder has a year, the title's is known and
+// within one) across
 // all of them. Two films sharing a translated title, or a year-less folder that fits
 // several, stay unmatched for a manual pick rather than take a guess.
 func LocalizedMatch(ctx context.Context, src TitlesSource, media, title string, year int, langs []string) (int, bool) {
@@ -308,7 +309,9 @@ func LocalizedMatch(ctx context.Context, src TitlesSource, media, title string, 
 			if parser.TitleKey(h.Title) != want {
 				continue
 			}
-			if year != 0 && h.Year != 0 && absYear(h.Year-year) > 1 {
+			// A folder with a year only takes a title whose year is known and fits: a hit
+			// with no release date can't confirm it.
+			if year != 0 && (h.Year == 0 || absYear(h.Year-year) > 1) {
 				continue
 			}
 			ids[h.TMDBID] = true

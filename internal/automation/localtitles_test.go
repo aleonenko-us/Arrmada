@@ -113,6 +113,17 @@ func TestHoldMovieImportAcceptsLocalizedTitle(t *testing.T) {
 		}
 	})
 
+	t.Run("a grab known only by its name is held", func(t *testing.T) {
+		// The importer places a movie download by its info hash; a grab recorded without
+		// one would pass the gate and then be imported by its scene name, matching nothing.
+		h, wild := setup(t, wildNames())
+		addGrab(t, h.c, "movie", wild.ID, wildRelease, "")
+		reason, hold := h.c.HoldMovieImport(h.ctx, hashFor(wildRelease), wildRelease, t.TempDir())
+		if !hold || !strings.Contains(reason, "Grabbed for") {
+			t.Errorf("hashless grab: hold=%v %q, want the mismatch review as before", hold, reason)
+		}
+	})
+
 	t.Run("the year guard", func(t *testing.T) {
 		h, wild := setup(t, wildNames())
 		const remake = "Der.grosse.Trip.Wild.2009.German.DL.1080p.BluRay.x264-GRP"
@@ -133,6 +144,31 @@ func TestHoldMovieImportAcceptsLocalizedTitle(t *testing.T) {
 			t.Errorf("review %+v, want a mismatch", r)
 		}
 	})
+}
+
+// A year-less release two library films share stays held, as before the localized check:
+// Match refuses to choose, and the other-names check must not choose for it — not even for
+// the film the grab was made for.
+func TestHoldMovieImportYearlessSharedTitleStaysHeld(t *testing.T) {
+	h := newStallHarness(t)
+	src := &fakeTMDBTitles{titles: map[int]*metadata.Titles{11224: {Title: "Cinderella", Year: 1950}}}
+	h.c.movies.SetTitlesSource(src)
+	repo := movies.NewRepo(h.c.db)
+	old, err := repo.Create(h.ctx, movies.Movie{TMDBID: 11224, Title: "Cinderella", Year: 1950, Monitored: true, Extra: &movies.MovieExtra{TitlesRead: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Create(h.ctx, movies.Movie{TMDBID: 150689, Title: "Cinderella", Year: 2015, Monitored: true, Extra: &movies.MovieExtra{TitlesRead: true}}); err != nil {
+		t.Fatal(err)
+	}
+	const rel = "Cinderella.1080p.BluRay.x264-GRP"
+	addGrab(t, h.c, "movie", old.ID, rel, hashFor(rel))
+	if _, hold := h.c.HoldMovieImport(h.ctx, hashFor(rel), rel, t.TempDir()); !hold {
+		t.Error("a year-less release two library films share was let through")
+	}
+	if src.calls.Load() != 0 {
+		t.Errorf("%d TMDB reads for a name the library already decides", src.calls.Load())
+	}
 }
 
 // The episode import gate: a release grabbed for a show under the show's name in another
@@ -199,6 +235,18 @@ func TestSeriesImportAcceptsLocalizedTitle(t *testing.T) {
 		}
 		if !episodeHasFile(t, h, 1, 2) || pendingReviews(t, h) != 1 {
 			t.Errorf("the grabbed download didn't import into the show it was grabbed for (%d reviews)", pendingReviews(t, h))
+		}
+	})
+
+	t.Run("another library show's own title is held", func(t *testing.T) {
+		// "Die Sendung" is also a library show's own title (another year): that name is
+		// that show's business, so the grabbed show's German title doesn't take it.
+		h := setup(t, showNames())
+		mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (98, 'Die Sendung', 1990, 1)`)
+		hash := grab(t, h, "Die.Sendung.2017.S01E01.German.1080p.WEB-DL.x264-GRP")
+		h.c.ImportSeriesDownloads(h.ctx)
+		if r := reviewFor(t, h.c, hash); r.ReasonCode != ReasonMismatch {
+			t.Errorf("review %+v, want a mismatch", r)
 		}
 	})
 

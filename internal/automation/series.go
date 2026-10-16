@@ -1127,12 +1127,15 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 		if !matchOK {
 			s, matchOK, ambiguous = matchRelease(parsed)
 		}
-		if expected != nil && !matchOK && (len(ambiguous) == 0 || seriesAmong(ambiguous, expected.ID)) {
-			// No library show goes by this name (or only translated titles several shows
-			// share, the grabbed one among them). A download named in another language is
-			// still the show it was grabbed for when the name is one of that show's in any
-			// language. Only the grab's own show is checked, so this can't pick another;
-			// when the names can't be read it's held for review as before.
+		if expected != nil && !matchOK && (len(ambiguous) == 0 || seriesAmong(ambiguous, expected.ID)) &&
+			!series.NamesAShow(all, parsed) {
+			// No library show goes by this name, in any year or country (or only translated
+			// titles several shows share, the grabbed one among them). A download named in
+			// another language is still the show it was grabbed for when the name is one of
+			// that show's in any language. Only the grab's own show is checked, so this can't
+			// pick another; when the names can't be read it's held for review as before.
+			// The series importer places files into the show decided here, not by a hash
+			// lookup, so a grab found by its release name is placed where it was grabbed for.
 			ok, err := c.seriesKnownAs(ctx, it.Hash, *expected, parsed)
 			switch {
 			case ok:

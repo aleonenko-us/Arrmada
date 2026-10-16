@@ -49,15 +49,55 @@ func (s *Service) localLangs() []string {
 }
 
 // releaseKeys are the keys FitRelease compares: the release title's, and when it ends in a
-// country tag, the title's without it and the tag.
+// country tag, the title's without it and the tag. A base shorter than minLocalKeyLen is
+// dropped: "Up.US" must not stand for a show some country calls "Up".
 func releaseKeys(p parser.Release) (key, baseKey, cc string) {
 	key = parser.TitleKey(p.Title)
 	var base string
 	base, cc = parser.SplitCountry(p.Title)
 	if cc != "" {
-		baseKey = parser.TitleKey(base)
+		if baseKey = parser.TitleKey(base); len(baseKey) < minLocalKeyLen {
+			baseKey = ""
+		}
 	}
 	return key, baseKey, cc
+}
+
+// otherNames is names minus the ones too short to stand for a show and the ones in skip
+// (keyed by parser.TitleKey).
+func otherNames(names []string, skip map[string]bool) []string {
+	var out []string
+	for _, n := range names {
+		if k := parser.TitleKey(n); len(k) >= minLocalKeyLen && !skip[k] {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// ownKeys are the keys of the names FitRelease already judges a release by: the show's own
+// titles and every alias. KnownAs leaves those to it.
+func (s Series) ownKeys() map[string]bool {
+	keys := map[string]bool{}
+	for _, t := range s.ownTitles() {
+		keys[parser.TitleKey(t)] = true
+	}
+	for _, a := range s.Aliases {
+		keys[a.Key()] = true
+	}
+	return keys
+}
+
+// NamesAShow reports whether a parsed release's title is some library show's own title or
+// alias (FitRelease's Title), whatever its year or country. Such a name is that show's
+// business: a download by it is never confirmed by another show's other names (KnownAs).
+func NamesAShow(all []Series, p parser.Release) bool {
+	for _, sr := range all {
+		if FitRelease(p, sr).Title {
+			return true
+		}
+	}
+	return false
 }
 
 // KnownAs reports whether a parsed download is sr under one of its names in any language
@@ -65,13 +105,17 @@ func releaseKeys(p parser.Release) (key, baseKey, cc string) {
 // same year and country checks as its own title (fitTitles). err is set when the names
 // couldn't be read (no TMDB key, an outage); ok is then false and the caller does what it
 // did before this check existed.
+//
+// The show's own titles and aliases are left to FitRelease, and names shorter than three
+// letters never count.
 func (s *Service) KnownAs(ctx context.Context, sr Series, p parser.Release) (bool, error) {
 	key, baseKey, cc := releaseKeys(p)
 	if len(key) < minLocalKeyLen {
 		return false, nil
 	}
+	skip := sr.ownKeys()
 	fits := func(names []string) bool {
-		f, ok := sr.fitTitles(p, key, baseKey, cc, names)
+		f, ok := sr.fitTitles(p, key, baseKey, cc, otherNames(names, skip))
 		return ok && f.OK
 	}
 	if sr.Extra != nil && fits(titlesOf(sr.Extra.LocalTitles, nil)) {
@@ -118,7 +162,7 @@ func matchLocal(all []Series, p parser.Release, langs []string) (Series, bool, [
 		if sr.Extra == nil || len(sr.Extra.LocalTitles) == 0 {
 			continue
 		}
-		if f, ok := sr.fitTitles(p, key, baseKey, cc, titlesOf(sr.Extra.LocalTitles, langs)); ok && f.OK {
+		if f, ok := sr.fitTitles(p, key, baseKey, cc, otherNames(titlesOf(sr.Extra.LocalTitles, langs), nil)); ok && f.OK {
 			cands = append(cands, sr)
 		}
 	}

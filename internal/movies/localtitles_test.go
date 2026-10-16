@@ -85,6 +85,8 @@ func TestKnownAs(t *testing.T) {
 		{"Der grosse Trip Wild", 2010, false},
 		{"Das Boot", 2014, false}, // another film's name
 		{"Wi", 2014, false},       // too short to stand for a film
+		{"Wild", 2014, false},     // its own title is Match's to decide, not this check's
+		{"Wild", 0, false},
 	}
 	for _, c := range cases {
 		got, err := s.KnownAs(ctx, wild, c.title, c.year)
@@ -173,7 +175,7 @@ func TestMatchTranslatedTitles(t *testing.T) {
 	langs = []string{"de"}
 	check("German", []tc{
 		{"Der Pate", 1972, godfather.ID},
-		{"Der.Pate", 0, godfather.ID},
+		{"Der.Pate", 0, 0},             // a translation never matches a year-less name library-wide
 		{"Der Pate", 1990, 0},          // the year guard
 		{"Heat", 2010, 0},              // Heat (1995)'s own title: never Hitze's German one
 		{"Life Again", 2017, leben.ID}, // another film's alternative title stays that film's
@@ -181,6 +183,14 @@ func TestMatchTranslatedTitles(t *testing.T) {
 		{"Das Boot", 1981, boatA.ID},   // the year picks one
 		{"The Godfather", 1972, godfather.ID},
 	})
+
+	// The import gate's question: does a library film's own or alternative title name it,
+	// whatever the year? Translations don't count.
+	for title, want := range map[string]bool{"Heat": true, "Heat 2": false, "Life Again": true, "Der Pate": false, "the godfather": true} {
+		if got := s.NamedInLibrary(ctx, title); got != want {
+			t.Errorf("NamedInLibrary(%q) = %v, want %v", title, got, want)
+		}
+	}
 }
 
 // The backfill reads translated titles at its pace, only for films not yet read for every

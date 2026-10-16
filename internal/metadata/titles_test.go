@@ -111,7 +111,8 @@ func (f fakeLocalized) SearchLocalized(_ context.Context, _, _, lang string) ([]
 func TestLocalizedMatch(t *testing.T) {
 	ctx := context.Background()
 	src := fakeLocalized{byLang: map[string][]LocalizedHit{
-		"de": {{TMDBID: 238, Title: "Der Pate", Year: 1972}, {TMDBID: 5, Title: "Das Boot", Year: 1981}, {TMDBID: 6, Title: "Das Boot", Year: 1985}},
+		"de": {{TMDBID: 238, Title: "Der Pate", Year: 1972}, {TMDBID: 5, Title: "Das Boot", Year: 1981}, {TMDBID: 6, Title: "Das Boot", Year: 1985},
+			{TMDBID: 7, Title: "Ohne Datum"}},
 		"fr": {{TMDBID: 238, Title: "Le Parrain", Year: 1972}},
 	}}
 	langs := []string{"de", "fr"}
@@ -126,6 +127,8 @@ func TestLocalizedMatch(t *testing.T) {
 		{"Das Boot", 0, 0},    // two films: no guess
 		{"Das Boot", 1981, 5}, // the year picks one
 		{"Le Parrain", 1972, 238},
+		{"Ohne Datum", 2001, 0}, // a hit with no year can't confirm a folder's year
+		{"Ohne Datum", 0, 7},
 		{"The Godfather", 1972, 0},
 		{"Up", 0, 0}, // too short to stand for a title
 	}

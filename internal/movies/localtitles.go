@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/metadata"
@@ -48,12 +49,16 @@ func (s *Service) localLangs() []string {
 // every translation — with the year, when both are known, within one. err is set when the
 // names couldn't be read (no TMDB key, an outage); ok is then false and the caller does
 // what it did before this check existed.
+//
+// A name that is m's own title, original title or a kept alternative (TitleKeys) is never
+// confirmed here: Match is the authority on those, with its rules for same-titled films
+// and year-less releases, and this check must not overrule what it decided.
 func (s *Service) KnownAs(ctx context.Context, m Movie, title string, year int) (bool, error) {
 	if year != 0 && m.Year != 0 && abs(m.Year-year) > 1 {
 		return false, nil // a same-titled film from another year: the remake guard
 	}
 	key := normalizeTitle(title)
-	if len(key) < minAltKeyLen {
+	if len(key) < minAltKeyLen || slices.Contains(TitleKeys(m, nil), key) {
 		return false, nil
 	}
 	if m.Extra != nil {
@@ -76,6 +81,21 @@ func (s *Service) KnownAs(ctx context.Context, m Movie, title string, year int) 
 		}
 	}
 	return false, nil
+}
+
+// NamedInLibrary reports whether some library film's own title, original title or kept
+// alternative title keys the same as title, whatever the year. When one does, Match has
+// the say — a film called so, or a name several films share with no year to pick between
+// them — and a download by that name is never confirmed by another film's other names
+// (KnownAs). When the library can't be read it answers true, so the caller holds.
+func (s *Service) NamedInLibrary(ctx context.Context, title string) bool {
+	all, err := s.repo.List(ctx)
+	if err != nil {
+		return true
+	}
+	own, alt := indexTitleKeys(all)
+	k := normalizeTitle(title)
+	return len(own[k]) > 0 || len(alt[k]) > 0
 }
 
 // readLocalTitles reads m's translated titles in langs, or reports why it couldn't.
@@ -152,10 +172,15 @@ func indexLocalKeys(all []Movie, own, alt map[string][]Movie, langs []string) ma
 	return local
 }
 
-// pickLocal is pick for translated titles, stricter: the film must be the ONLY one named
-// so whose year fits, with or without a year on the release. Two films sharing a
-// translated title ("Der Pate" for The Godfather and a namesake) match neither.
+// pickLocal is pick for translated titles, stricter: the release must carry a year, and the
+// film must be the ONLY one named so whose year fits. Two films sharing a translated title
+// ("Der Pate" for The Godfather and a namesake) match neither, and a year-less name is
+// never matched library-wide by a translation — the library may hold only one of the
+// films a translation names.
 func (s *Service) pickLocal(candidates []Movie, title string, year int) (Movie, bool) {
+	if year == 0 {
+		return Movie{}, false
+	}
 	var fit []Movie
 	for _, m := range candidates {
 		if year == 0 || m.Year == 0 || abs(m.Year-year) <= 1 {
