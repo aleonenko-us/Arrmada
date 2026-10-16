@@ -39,6 +39,7 @@ type whisperGen struct {
 	flashAttn   bool   // --flash-attn available (a real speedup on GPU backends)
 	noContext   bool   // --no-context available
 	carryPrompt bool   // --carry-initial-prompt available (prompt reaches every window, not just the first)
+	cpuOnly     bool   // the build has no GPU backend at all (see CPUOnly)
 	dlMu        sync.Mutex
 	dl          map[string]bool // model filenames currently downloading
 
@@ -91,6 +92,13 @@ func (w *whisperGen) SyclNote() string {
 	w.backendMu.Lock()
 	defer w.backendMu.Unlock()
 	return w.syclWhy
+}
+
+// CPUOnly reports a whisper build with no GPU backend at all: the arm64 image, which sets
+// ARRMADA_WHISPER_CPU_ONLY=1. Running on the CPU is then expected rather than a sign of a
+// GPU that isn't reaching the container; it only changes what Settings says.
+func (w *whisperGen) CPUOnly() bool {
+	return w != nil && w.cpuOnly
 }
 
 // Device is the GPU whisper reported, with its capability flags — "matrix cores:
@@ -220,7 +228,8 @@ func detectWhisper(modelsDir string) *whisperGen {
 		// Only the oneAPI build: it's the one and only build, with nothing to fall back to.
 		bin, sycl = sycl, ""
 	}
-	w := &whisperGen{bin: bin, sycl: sycl, modelsDir: modelsDir, dl: map[string]bool{}}
+	w := &whisperGen{bin: bin, sycl: sycl, modelsDir: modelsDir, dl: map[string]bool{},
+		cpuOnly: os.Getenv("ARRMADA_WHISPER_CPU_ONLY") == "1"}
 	if bin != "" {
 		// Flags differ between whisper.cpp versions; an unknown one makes whisper-cli print
 		// usage and do nothing. Probe the help text once and pass only what it knows. Both

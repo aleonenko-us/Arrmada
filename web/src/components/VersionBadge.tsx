@@ -7,7 +7,7 @@ import { versionBadge } from "../lib/updateStatus";
 
 // The build changes only with a restart, and the check runs every 12 hours: one answer
 // per page load is plenty. The Dashboard and System → Status share the admin one and
-// refresh it themselves; Check now writes straight into it, so the dot follows at once.
+// refresh it themselves; Check now writes straight into it, so the Update pill follows at once.
 const STALE_MS = 10 * 60_000;
 // The Updates card on System → Status (its id is a deep-link target). Built from LINKS.status
 // rather than a new LINKS entry, which every requester's first load would carry.
@@ -15,8 +15,8 @@ const UPDATES = `${LINKS.status}#updates`;
 
 // VersionBadge is the quiet build line under the account row at the foot of the staff
 // sidebar. Admins read it from System → Status's own answer (the update check rides along
-// there) and it links to the Updates card, with a dot when the check found something
-// newer; managers can't open that page, so theirs is the build from the public /status,
+// there) and it links to the Updates card, with a small "Update" pill when the check found
+// something newer; managers can't open that page, so theirs is the build from the public /status,
 // as plain text. The row keeps its height while loading so nothing around it moves.
 // onNavigate: following the link closes the sidebar when it is a drawer.
 export function VersionBadge({ onNavigate }: { onNavigate?: () => void }) {
@@ -32,7 +32,7 @@ export function VersionBadge({ onNavigate }: { onNavigate?: () => void }) {
       {badge && (admin ? (
         <Link to={UPDATES} onClick={onNavigate} title={badge.title} aria-label={badge.title} className={`${face} hover:text-ink-dim`}>
           <span className="truncate">{badge.label}</span>
-          {badge.update && <span data-testid="update-dot" aria-hidden className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--accent)" }} />}
+          {badge.update && <span data-testid="update-pill" aria-hidden className="flex-none rounded-full px-1.5 font-sans text-xs font-semibold leading-4" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>Update</span>}
         </Link>
       ) : (
         <span title={badge.title} className={face}><span className="sr-only">Arrmada </span><span className="truncate">{badge.label}</span></span>

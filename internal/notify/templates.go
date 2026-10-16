@@ -144,6 +144,11 @@ func (s *Service) absoluteLink(ctx context.Context, rel string) string {
 // text carries no link. An override that renders to nothing falls back to the catalog's
 // wording rather than sending an empty message.
 func bodyFor(kind string, opts Options, key string, vars map[string]string, fallback string) string {
+	if kind == KindN8N {
+		// A webhook gets structured JSON; the row's body is only what its delivery log
+		// shows, so it's the catalog's own words, with no template or link.
+		return neutralize(fallback)
+	}
 	tmpl := DefaultTemplate
 	if t := opts.Templates[key]; strings.TrimSpace(t) != "" {
 		tmpl = t

@@ -13,7 +13,9 @@ import (
 // Alerts page shows for it and how its message is written.
 //
 // Declaring an event: add an EventDef to builtinEvents below (or call Register from an
-// init func, before Service.Run starts). Only declare events that something produces.
+// init func, before Service.Run starts), and the fields an n8n / Webhook connection gets
+// for it to webhook_events.go (a test fails without them). Only declare events that
+// something produces.
 //
 // Producing one, two ways:
 //   - Topic set: publish that topic on the event bus with a map payload; Run formats it

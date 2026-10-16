@@ -248,7 +248,10 @@ func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v bo
 	c.books.AddEvent(ctx, b.ID, "imported", detail)
 	c.markBookGrabImported(ctx, b.ID, infoHash, downloadName)
 	c.bookImported(ctx, b.ID, books.KindAudiobook)
-	c.bus.Publish("book.imported", map[string]any{"title": b.Title, "id": b.ID, "edition": books.KindAudiobook, "version": v.Label})
+	c.bus.Publish("book.imported", map[string]any{
+		"title": b.Title, "id": b.ID, "edition": books.KindAudiobook, "version": v.Label,
+		"author": b.Author, "year": b.Year, "format": bi.Format, "size_bytes": bi.SizeBytes,
+	})
 	return true
 }
 

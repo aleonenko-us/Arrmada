@@ -1569,6 +1569,7 @@ Items can be pulled earlier whenever a phase finishes early.
 | [COPY](docs/roadmap/COPY.md) | Truthful copy & polish sweep | 15 | 0 | Phase 16, Phase 2, Phase 3, Phase 5 |
 | [FOLDERS](docs/roadmap/FOLDERS.md) | More than one library folder for Movies and TV (user request, issue #3) | 15 | 0 | after the roadmap |
 | [LANG](docs/roadmap/LANG.md) | Audio-language badges on files and language rules in quality profiles (user request, issue #12) | 14 | 0 | after the roadmap |
+| [ARRIMPORT](docs/roadmap/ARRIMPORT.md) | Import a library from Radarr and Sonarr (titles, profiles, monitoring, files) | 9 | 0 | after the roadmap |
 
 ## Program risks
 

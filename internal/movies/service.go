@@ -404,6 +404,17 @@ func (s *Service) RecordSearchMiss(ctx context.Context, id int64) { s.repo.Recor
 // ResetSearchMisses clears the search backoff (a grab succeeded).
 func (s *Service) ResetSearchMisses(ctx context.Context, id int64) { s.repo.ResetSearchMisses(ctx, id) }
 
+// SetSearchPaced marks a film as added in bulk (a Radarr import), so the missing sweep
+// takes it in its turn rather than searching every imported film at once; off clears it.
+func (s *Service) SetSearchPaced(ctx context.Context, id int64, on bool) error {
+	return s.repo.SetSearchPaced(ctx, id, on)
+}
+
+// PacedSearchIDs is every film still waiting its turn after a bulk add.
+func (s *Service) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	return s.repo.PacedSearchIDs(ctx)
+}
+
 // Add pulls full metadata for a TMDB id and adds the movie to the library (available
 // once released). AddWith takes the availability too.
 func (s *Service) Add(ctx context.Context, tmdbID int, qualityProfile string, monitored bool) (Movie, error) {
@@ -693,7 +704,7 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 	// The file decides the folder: a film found in the Kids folder belongs to it.
 	s.assignOwner(ctx, m.ID, video)
 	s.log.Info("library scan: attached file to film in library", "title", m.Title, "path", video)
-	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title})
+	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title, "year": m.Year, "tmdb_id": m.TMDBID})
 	return nil
 }
 
@@ -966,7 +977,7 @@ func (s *Service) MarkImportedTo(ctx context.Context, id, versionID int64, path,
 		ev["old_path"] = target.FilePath
 	}
 	if getErr == nil {
-		ev["title"] = m.Title
+		ev["title"], ev["year"], ev["tmdb_id"] = m.Title, m.Year, m.TMDBID
 	}
 	s.publish("movie.downloaded", ev)
 

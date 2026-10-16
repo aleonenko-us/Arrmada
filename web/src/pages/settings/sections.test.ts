@@ -62,6 +62,8 @@ describe("settingsRedirect", () => {
     expect(settingsRedirect("/settings/plex", "", "#plex-connection", admin)).toBe("/settings/connections#plex");
     expect(settingsRedirect("/settings/plex", "", "#plex-connection", manager)).toBe("/settings/connections#plex");
     expect(settingsRedirect("/settings/plex", "?x=1&tab=system", "#plex-connection", admin)).toBe("/settings/connections?x=1#plex");
+    // ARRIMPORT: the Radarr/Sonarr folders card became the library import.
+    expect(settingsRedirect("/settings/import", "", "#arr-folders", admin)).toBe("/settings/import#arr-import");
     // Its new home stays put.
     expect(settingsRedirect("/settings/connections", "", "#plex", manager)).toBeNull();
   });
@@ -111,6 +113,8 @@ describe("searchSettings", () => {
 
   it("finds the recycle bin, Plex sign-in and the naming cards", () => {
     expect(labels("recycle")).toEqual(["Recycle bin"]);
+    expect(labels("n8n")).toEqual(["Alerts"]);
+    expect(labels("webhook")).toContain("Alerts");
     expect(labels("plex")).toContain("Plex sign-in");
     expect(labels("plex path mapping")).toEqual(["Plex library updates"]);
     expect(labels("jellyfin path mapping")).toEqual(["Jellyfin library updates"]);

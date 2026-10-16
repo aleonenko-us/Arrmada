@@ -249,6 +249,14 @@ func TestUsenetIdleClock(t *testing.T) {
 	if idle := c.UsenetIdle(); len(idle) != 0 {
 		t.Errorf("idle with nothing waiting = %+v", idle)
 	}
+	// SABnzbd fetching a handed-over NZB link (and retrying it for up to an hour) is the
+	// indexer, not the news server.
+	c.noteUsenetQueue([]download.Item{job("sab-e", 0, "Grabbing", 0)})
+	h.later(time.Hour)
+	c.noteUsenetQueue([]download.Item{job("sab-e", 0, "Grabbing", 0)})
+	if idle := c.UsenetIdle(); len(idle) != 0 {
+		t.Errorf("idle while SABnzbd fetches an NZB = %+v", idle)
+	}
 }
 
 // A job that left SABnzbd's history before it was imported (archived by hand) is a vanished

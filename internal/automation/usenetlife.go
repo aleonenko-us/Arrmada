@@ -103,6 +103,9 @@ func (c *Coordinator) reportUsenetFailure(g grab, item download.Item, f UsenetFa
 		return
 	}
 	switch {
+	case f.Environment() && f.Fetch:
+		c.log.Warn("automation: SABnzbd couldn't fetch a release's NZB from the indexer — left for a person to fix, nothing blocklisted",
+			"release", g.Title, "reason", f.Reason, "sabnzbd_says", item.FailMessage)
 	case f.Environment():
 		c.log.Warn("automation: SABnzbd couldn't save a download — left for a person to fix, nothing blocklisted",
 			"release", g.Title, "reason", f.Reason, "sabnzbd_says", item.FailMessage)
@@ -181,13 +184,15 @@ func (c *Coordinator) forgetUsenetFailure(g grab) {
 // noteUsenetQueue updates each usenet client's idle clock from a queue read: running while
 // it has jobs waiting to download and none of them moved, stopped as soon as one does (or
 // none is waiting). A job held back on purpose — paused, or waiting out SABnzbd's
-// propagation delay — isn't waiting to download. Called with every reconcile's snapshot.
+// propagation delay — isn't waiting to download, nor is one whose NZB SABnzbd is still
+// fetching (a link handed over when the indexer blocked Arrmada: that's the indexer, not the
+// news server). Called with every reconcile's snapshot.
 func (c *Coordinator) noteUsenetQueue(items []download.Item) {
 	now := c.clock()
 	waiting := map[int64]map[string]int64{}
 	moving := map[int64]bool{}
 	for _, it := range items {
-		if it.Transport != download.TransportUsenet || it.RawState == "Propagating" {
+		if it.Transport != download.TransportUsenet || it.RawState == "Propagating" || it.RawState == "Grabbing" {
 			continue
 		}
 		switch it.Phase() {

@@ -83,7 +83,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Subtitles", keywords: "subtitles srt languages kept auto ensure whisper ai model transcription opensubtitles minimum match score", section: "subtitles", anchor: "subtitles" },
   { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores dolby vision dv hdr daily library scan time", section: "convert", anchor: "convert" },
   { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
-  { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message", section: "alerts", anchor: "alerts" },
+  { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message n8n webhook webhooks json automation automations workflow signing secret signature hmac", section: "alerts", anchor: "alerts" },
   { label: "Outgoing email", keywords: "email mail smtp send outgoing server gmail app password from address kindle test", section: "alerts", anchor: "outgoing-email", adminOnly: true },
   { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },
   { label: "Plex server", keywords: "plex server connected status connection change", section: "media-servers", anchor: "plex-server" },
@@ -100,7 +100,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
-  { label: "Folders from Radarr or Sonarr", keywords: "radarr sonarr root folders migrate import kids anime extra library folders", section: "import", anchor: "arr-folders" },
+  { label: "Import from Radarr / Sonarr", keywords: "radarr sonarr arr library movies series shows root folders quality profiles path mapping migrate import kids anime extra library folders", section: "import", anchor: "arr-import" },
   { label: "Import from Audiobookshelf", keywords: "audiobookshelf abs absdatabase listening places progress bookmarks migrate import audiobooks", section: "import", anchor: "audiobookshelf-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
@@ -134,6 +134,8 @@ const ANCHOR_SECTION: Record<string, SectionId> = Object.fromEntries(SEARCH_INDE
 // The Plex connection editor left the old Plex section for the Plex card on Connections (CFG-16).
 const RENAMED_ANCHOR: Record<string, { section: SectionId; anchor: string }> = {
   "plex-connection": { section: "connections", anchor: "plex" },
+  // The Radarr/Sonarr folders card grew into the whole library import (ARRIMPORT).
+  "arr-folders": { section: "import", anchor: "arr-import" },
 };
 // Sections that were split or renamed: an old address with no card anchor lands here.
 // "Subtitles & Convert" (/settings/tools) became Subtitles and Convert; its #subtitles and

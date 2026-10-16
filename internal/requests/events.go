@@ -42,7 +42,7 @@ func (s *Service) publishAutoApproved(req Request) {
 	}
 	s.bus.Publish("request.auto_approved", map[string]any{
 		"id": req.ID, "title": req.Title, "year": req.Year, "media_type": req.MediaType,
-		"requested_by": req.RequestedByName,
+		"requested_by": req.RequestedByName, "tmdb_id": req.TMDBID,
 	})
 }
 

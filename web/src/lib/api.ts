@@ -737,10 +737,20 @@ export type NotificationInput = Pick<NotificationConn, "name" | "kind" | "events
   id?: number;
   /** Left out keeps the saved choices. */
   options?: AlertOptions;
+  /** On a Test: the catalog event whose realistic sample is sent ("" or absent = a plain test). */
+  event?: string;
 };
 
 /** One input on an alert preset's form. options = a choice, the first being the default. */
-export interface AlertPresetField { name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[] }
+export interface AlertPresetField {
+  name: string; label: string; hint?: string; placeholder?: string; secret?: boolean; required?: boolean; options?: string[];
+  /** The words shown for options, in the same order. */
+  option_labels?: string[];
+  /** Shown only while another field has a value: "auth=header". */
+  show_when?: string;
+  /** The page makes a random value (a signing secret) to copy before saving. */
+  generate?: boolean;
+}
 /** A "Where should alerts go?" tile. */
 export interface AlertPreset { kind: string; label: string; hint: string; fields: AlertPresetField[] }
 
@@ -2353,6 +2363,7 @@ export interface SubtitleSettings {
   ai_ready: boolean;
   ai_backend: string; // "sycl" | "vulkan" | "cpu" | "" until the first run
   ai_note: string; // why the Intel oneAPI build was set aside, when it was ("" otherwise)
+  ai_cpu_only?: boolean; // the bundled whisper has no GPU backend (the ARM image)
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;

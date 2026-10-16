@@ -56,7 +56,8 @@ test.describe("admin", () => {
     await expect(page.getByText("Where should alerts go?")).toBeVisible();
     await page.getByRole("button", { name: /^Discord/ }).click();
     await expect(page.getByText("Discord: Server Settings → Integrations → Webhooks → Copy URL.")).toBeVisible();
-    const webhook = page.getByLabel("Webhook URL");
+    // A textbox: the saved n8n card's Webhook URL is kept ("•••• saved", a Replace button).
+    const webhook = page.getByRole("textbox", { name: "Webhook URL" });
     await expect(webhook).toHaveAttribute("type", "password");
     await webhook.fill("https://discord.com/api/webhooks/1/test-token");
     await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -64,6 +65,72 @@ test.describe("admin", () => {
     const sent = api.callsTo("POST", "/api/v1/notifications").find((c) => c.path === "/api/v1/notifications")!.body as Record<string, unknown>;
     expect(sent).toMatchObject({ kind: "discord", name: "Discord", fields: { webhook_url: "https://discord.com/api/webhooks/1/test-token" } });
     expect(sent).not.toHaveProperty("url");
+  });
+
+  // n8n / Webhook: the page makes the signing secret and shows it until it's saved; the
+  // auth fields follow the chosen authentication; Add sends them all as fields.
+  test("Add alert → n8n / Webhook makes a signing secret and sends the fields", async ({ page, api }) => {
+    await page.goto("/settings/alerts");
+    await page.getByRole("button", { name: "+ Add alert" }).click();
+    await page.getByRole("button", { name: /^n8n \/ Webhook/ }).click();
+    // The new card (the only one with Add); the saved n8n card has the same fields.
+    const card = page.locator("div.rounded-xl", { has: page.getByRole("button", { name: "Add", exact: true }) }).last();
+    const secret = card.getByLabel("Signing secret");
+    await expect(secret).toHaveValue(/^[A-Za-z0-9_-]{43}$/);
+    const first = await secret.inputValue();
+    await expect(card.getByText("Copy it into n8n now: once saved it’s never shown again.")).toBeVisible();
+    await card.getByRole("button", { name: "Make a new one" }).click();
+    await expect(secret).not.toHaveValue(first);
+
+    await expect(card.getByLabel("Header name")).toHaveCount(0);
+    await card.getByLabel("Authentication").selectOption("header");
+    await card.getByLabel("Header name").fill("X-Arrmada-Key");
+    await card.getByLabel("Header value").fill("a-long-random-value");
+    await card.getByLabel("Webhook URL").fill("http://192.168.1.10:5678/webhook/arrmada");
+    // No wording to customise: a webhook gets JSON.
+    await expect(card.getByRole("button", { name: /Customise message/ })).toHaveCount(0);
+    await card.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/notifications").filter((c) => c.path === "/api/v1/notifications").length).toBe(1);
+    const sent = api.callsTo("POST", "/api/v1/notifications").find((c) => c.path === "/api/v1/notifications")!.body as { kind: string; fields: Record<string, string> };
+    expect(sent.kind).toBe("n8n");
+    expect(sent.fields).toMatchObject({ url: "http://192.168.1.10:5678/webhook/arrmada", auth: "header", header_name: "X-Arrmada-Key", header_value: "a-long-random-value" });
+    expect(sent.fields.signing_secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(sent.fields.signing_secret).not.toBe(first);
+  });
+
+  test("a saved n8n connection keeps its secrets hidden and sends an event's sample as its test", async ({ page, api }) => {
+    await page.goto("/settings/alerts");
+    const card = page.locator("div.rounded-xl", { has: page.locator('input[value="Home n8n"]') }).last();
+    await expect(card.getByText("n8n / Webhook")).toBeVisible();
+    // URL, header value and signing secret: saved, never shown.
+    await expect(card.getByText("•••• saved")).toHaveCount(3);
+    await expect(card.getByLabel("Header name")).toHaveValue("X-Arrmada-Key");
+    await expect(card.getByLabel("Event to send as a test")).toHaveValue("movie.imported");
+    await card.getByLabel("Event to send as a test").selectOption("episodes.imported");
+    await card.getByRole("button", { name: "Send test" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/notifications/4/test").length).toBe(1);
+    expect(api.callsTo("POST", "/api/v1/notifications/4/test")[0].body).toEqual({ event: "episodes.imported" });
+  });
+
+  // Moving a saved webhook to another server: the server won't send the saved header value
+  // there and says which field it needs; the page shows that beside the field, opened.
+  test("a refusal about one field shows beside that field", async ({ page }) => {
+    const msg = "Header value: the webhook URL now points at another server — the saved one isn't sent to a different server than it was saved for, so enter it again";
+    await page.route("**/api/v1/notifications/4", (route) =>
+      route.request().method() === "PUT"
+        ? route.fulfill({ status: 400, json: { status: "error", message: msg, field: "header_value" } })
+        : route.fallback());
+    await page.goto("/settings/alerts");
+    const card = page.locator("div.rounded-xl", { has: page.locator('input[value="Home n8n"]') }).last();
+    await card.getByRole("button", { name: /Webhook URL/ }).click(); // Replace
+    await card.getByRole("textbox", { name: "Webhook URL" }).fill("http://192.168.1.99:5678/webhook/arrmada");
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    const value = card.getByRole("textbox", { name: "Header value" });
+    await expect(value).toBeVisible();
+    await expect(value).toHaveAttribute("aria-invalid", "true");
+    await expect(card.getByRole("alert")).toHaveText(msg);
+    await value.fill("typed-again");
+    await expect(card.getByRole("alert")).toHaveCount(0);
   });
 });
 

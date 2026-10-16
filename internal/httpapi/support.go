@@ -26,6 +26,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/applog"
 	"github.com/tristenlammi/arrmada/internal/audioserver"
 	"github.com/tristenlammi/arrmada/internal/buildinfo"
+	"github.com/tristenlammi/arrmada/internal/notify"
 )
 
 // The support bundle is what an owner attaches to a bug report, so it's written as if it
@@ -254,6 +255,13 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 		{`SELECT api_key, password FROM indexers`, func(v []string) { addSecret(v[0]); addSecret(v[1]) }},
 		{`SELECT password FROM download_clients`, func(v []string) { addSecret(v[0]) }},
 		{`SELECT url FROM notifications`, func(v []string) { addSecret(v[0]) }},
+		// A preset's secret fields too: an n8n webhook's auth and signing secret are in
+		// no URL at all.
+		{`SELECT kind, config FROM notifications`, func(v []string) {
+			for _, s := range notify.SecretValues(v[0], v[1]) {
+				addSecret(s)
+			}
+		}},
 		// Calendar feed links: only their hashes are stored (the token itself never is, and
 		// a "token=" in any line is blanked by shape), but the hash is withheld too.
 		{`SELECT token_hash FROM calendar_feeds`, func(v []string) { addSecret(v[0]) }},

@@ -4,6 +4,10 @@ name: Image
 # publishing it. A broken apt repository, whisper.cpp tag or oneAPI base image then
 # fails here, on the PR, instead of half-way through an update on the server.
 # Publishing is release.yml's job, and only for a pushed v* tag.
+#
+# Both platforms a release publishes are built: amd64 on the usual runner and arm64
+# natively on GitHub's arm64 runner (no emulation), so an ARM-only break shows up on the
+# PR too, and a release finds both caches warm.
 on:
   push:
     branches: [main]
@@ -20,15 +24,35 @@ permissions:
 
 jobs:
   build:
-    name: Docker build
-    runs-on: ubuntu-24.04
-    # A cold build compiles whisper.cpp twice (Vulkan, and SYCL with Intel's compiler).
+    # amd64 keeps the check name it always had, in case a branch rule requires it.
+    name: ${{ matrix.arch == 'amd64' && 'Docker build' || 'Docker build (arm64)' }}
+    strategy:
+      # An arm64 failure shouldn't hide whether amd64 builds, or the other way round.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            # The default cache scope, which amd64 has always used (release.yml reads it).
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+          # arm64 writes its cache from main only (the build step leaves cache-to empty on
+          # a pull request), so PR builds don't fill GitHub's cache with a second
+          # platform's layers; they still read main's.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            cache-from: type=gha,scope=arm64
+            cache-to: type=gha,mode=max,scope=arm64
+    runs-on: ${{ matrix.runner }}
+    # A cold amd64 build compiles whisper.cpp twice (Vulkan, and SYCL with Intel's
+    # compiler); arm64 compiles one CPU-only build.
     timeout-minutes: 180
     steps:
       # The oneAPI build stage pulls a very large Intel base image; the runner's ~14 GB of
       # free disk isn't enough for it plus the rest. This clears the preinstalled SDKs
-      # the build doesn't use.
+      # the build doesn't use. The arm64 build has no oneAPI stage.
       - name: Free disk space
+        if: matrix.arch == 'amd64'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
@@ -47,9 +71,11 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          # No platforms: each runner builds its own, natively, and amd64 keeps its
+          # default cache scope.
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ matrix.cache-from }}
+          cache-to: ${{ (matrix.arch != 'arm64' || github.event_name != 'pull_request') && matrix.cache-to || '' }}
           build-args: |
             VERSION=${{ github.head_ref || github.ref_name }}-${{ github.sha }}
             COMMIT=${{ github.sha }}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
@@ -55,7 +56,7 @@ func NewTMDB(apiKey string) *TMDB { return NewTMDBFunc(func() string { return ap
 func NewTMDBFunc(key func() string) *TMDB {
 	return &TMDB{
 		key:       key,
-		http:      &http.Client{Timeout: 20 * time.Second},
+		http:      httpua.Client(20 * time.Second),
 		base:      tmdbBaseURL,
 		discCache: map[string]discoverCacheEntry{},
 	}
@@ -241,6 +242,36 @@ func (t *TMDB) SearchSeries(ctx context.Context, query string) ([]SeriesResult, 
 		out = append(out, s.toResult())
 	}
 	return out, nil
+}
+
+// SeriesByTVDB finds the TMDB id of the show TVDB knows as tvdbID (TMDB's /find), for
+// bringing over a Sonarr library — Sonarr names shows by TVDB id. ErrNotFound when TMDB
+// has no show for it. Adult entries are never answered.
+func (t *TMDB) SeriesByTVDB(ctx context.Context, tvdbID int) (int, error) {
+	if tvdbID <= 0 {
+		return 0, ErrNotFound
+	}
+	q := url.Values{}
+	q.Set("external_source", "tvdb_id")
+	body, err := t.get(ctx, "/find/"+strconv.Itoa(tvdbID), q)
+	if err != nil {
+		return 0, err
+	}
+	var payload struct {
+		TVResults []struct {
+			ID    int  `json:"id"`
+			Adult bool `json:"adult"`
+		} `json:"tv_results"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return 0, fmt.Errorf("tmdb: parse find: %w", err)
+	}
+	for _, r := range payload.TVResults {
+		if r.ID > 0 && !r.Adult {
+			return r.ID, nil
+		}
+	}
+	return 0, ErrNotFound
 }
 
 // GetSeries fetches full details for a TV series: metadata plus every season and

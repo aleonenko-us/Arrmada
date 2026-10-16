@@ -9,6 +9,7 @@ wired up.
 - **Movies** — search, grab, import, rename and upgrade. Keep several versions of a movie (say 4K and 1080p).
 - **TV** — episodes and season packs, anime numbering (TheXEM and TheTVDB), and airing shows kept up to date.
 - **More than one folder** — Movies and TV can each have extra folders (Kids, Animation, Anime…), with rules that file new titles into them and a Move to folder that moves a title's files.
+- **Import from Radarr and Sonarr** — bring a whole library over in one go: every title with its quality profile (matched to yours), what's monitored, its folder and the files already on disk, which are recorded where they are rather than downloaded again. Preview first, map paths if the apps see your share somewhere else, and import each instance in turn; running it again adds only what's new. Wanted titles are searched a few at a time, never all at once.
 - **Books** — ebooks and audiobooks with Hardcover or Open Library metadata, series tracking, several audiobook versions per book (standard and full cast), and multi-file audiobooks merged into one M4B.
 - **Audiobook server** — listening apps built for Audiobookshelf (Lissen) connect to Arrmada directly. Places sync reliably across devices and restarts, a glitch can't reset anyone to the start, and earlier places can be put back. Everyone gets their own audiobook password, per-device sign-out and a page showing where they're up to and how much they've listened. The admin sees how much and when people listen, never what. Imports everyone's places from Audiobookshelf. E-reader apps can browse the books over OPDS.
 - **Music** (preview, off by default) — artists, albums and whole-discography grabs. Switch it on in Settings → System → Modules.
@@ -25,7 +26,7 @@ wired up.
 - **Users** — admin, manager, requester and read-only roles, with optional Plex or Jellyfin sign-in. Requesters get Discover, Requests, Calendar, Books and Audiobooks; from outside your network, everything but Calendar.
 - **Books shelf** — requesters can download any ebook in the library, or send it to their Kindle.
 - **Calendar** — what's coming up.
-- **Notifications** — Apprise alerts for admins; an in-app inbox and web push for requesters.
+- **Notifications** — Apprise alerts for admins, or signed JSON to [n8n or any webhook](n8n.md) for your own automations; an in-app inbox and web push for requesters.
 - **Problem reports** — anyone can report a problem with a title, and many have a one-click fix.
 
 ## Media tools

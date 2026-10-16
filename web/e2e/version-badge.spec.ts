@@ -4,7 +4,7 @@ import { systemStatus } from "./fixtures/system";
 import type { SystemStatus, UpdateStatus } from "../src/lib/api";
 
 // The version badge at the foot of the staff sidebar: the release tag, or main and the
-// short commit; a dot when the update check found something newer for this install's
+// short commit; an "Update" pill when the update check found something newer for this install's
 // channel; a link to System → Status's Updates card. Runs at desktop width (the sidebar is
 // always open) and phone width (it's the drawer behind the menu button).
 
@@ -38,7 +38,7 @@ const badge = (page: Page) => page.getByTestId("version-badge");
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
-  test("a release that's up to date shows its tag, no dot", async ({ page }) => {
+  test("a release that's up to date shows its tag, no Update pill", async ({ page }) => {
     await serveStatus(page, releaseBuild({}));
     await page.goto("/movies");
     await openNav(page);
@@ -46,17 +46,17 @@ test.describe("admin", () => {
     await expect(link).toBeVisible();
     await expect(link).toHaveText("v0.2.0");
     await expect(link).toHaveAttribute("href", "/settings/status#updates");
-    await expect(badge(page).getByTestId("update-dot")).toHaveCount(0);
+    await expect(badge(page).getByTestId("update-pill")).toHaveCount(0);
   });
 
-  test("a release with a newer one out has the dot and names it", async ({ page }) => {
+  test("a release with a newer one out has the Update pill and names it", async ({ page }) => {
     await serveStatus(page, releaseBuild({ available: true, latest: v021 }));
     await page.goto("/movies");
     await openNav(page);
     const link = badge(page).getByRole("link", { name: "Arrmada v0.2.0 — update available (v0.2.1)" });
     await expect(link).toBeVisible();
-    await expect(link).toHaveText("v0.2.0");
-    await expect(link.getByTestId("update-dot")).toBeVisible();
+    await expect(link).toHaveText("v0.2.0Update");
+    await expect(link.getByTestId("update-pill")).toBeVisible();
   });
 
   test("a build of main shows the short commit, and clicking it opens the Updates card", async ({ page }) => {
@@ -64,8 +64,8 @@ test.describe("admin", () => {
     await page.goto("/movies");
     await openNav(page);
     const link = badge(page).getByRole("link", { name: "Arrmada main · abc1234 — update available (3 commits behind main)" });
-    await expect(link).toHaveText("main · abc1234");
-    await expect(link.getByTestId("update-dot")).toBeVisible();
+    await expect(link).toHaveText("main · abc1234Update");
+    await expect(link.getByTestId("update-pill")).toBeVisible();
     await link.click();
     await expect(page).toHaveURL(/\/settings\/status#updates$/);
     await expect(page.locator("#updates").getByText("3 commits behind main.")).toBeVisible();

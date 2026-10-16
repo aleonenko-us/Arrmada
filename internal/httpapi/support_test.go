@@ -18,6 +18,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/applog"
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/config"
+	"github.com/tristenlammi/arrmada/internal/notify"
 )
 
 // logFixture is a route server whose Logs ring is persisted to a temp folder, with a
@@ -185,6 +186,9 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 		webhookTok  = "WebhookTokenAbcdefXyz"
 		appriseURL  = "pover://userkeyMarigold@apptokenSecret99"
 		envPlex     = "EnvPlexToken-0099x"
+		n8nPath     = "arrmada-path-Qx81"
+		n8nHeader   = "N8nHeaderValue-7781"
+		n8nSecret   = "N8nSigningSecret0123456789abcdefghijklm"
 
 		title1  = "Zephyrine Quillfeather Chronicles"
 		title2  = "Brindlemoor: Saltwater Hymns"
@@ -230,6 +234,12 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	exec(`INSERT INTO indexers (name, kind, url, api_key, username, password) VALUES ('T', 'torznab', 'http://t.example', ?, 'u', ?)`, indexerKey, trackerPass)
 	exec(`INSERT INTO download_clients (name, kind, url, username, password) VALUES ('q', 'qbittorrent', 'http://qbit:8080', 'admin', ?)`, qbitPass)
 	exec(`INSERT INTO notifications (name, kind, url) VALUES ('d', 'discord', ?)`, "discord://1234567/"+webhookTok)
+	// An n8n webhook: its auth value and signing secret are in no URL, only its fields.
+	n8nCfg := notify.PresetConfigFor(notify.KindN8N, map[string]string{
+		"url": "http://192.168.1.10:5678/webhook/" + n8nPath, "auth": "header", "header_name": "X-Key",
+		"header_value": n8nHeader, "signing_secret": n8nSecret,
+	})
+	exec(`INSERT INTO notifications (name, kind, url, config) VALUES ('n', 'n8n', ?, ?)`, "http://192.168.1.10:5678/webhook/"+n8nPath, string(n8nCfg))
 	u, _ := f.user(t, person, auth.RoleRequester)
 	exec(`UPDATE users SET plex_username = ?, kindle_email = ?, apprise_url = ? WHERE id = ?`, plexNm, kindle, appriseURL, u.ID)
 	exec(`INSERT INTO books (ol_key, title, author, series_name) VALUES ('OL1W', ?, ?, ?)`, title1, author, series)
@@ -251,6 +261,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 	f.log.Info("audiobook server: signed in", "user", person, "client", "Lissen")
 	f.log.Error("insights: plex said no", "detail", "token "+envPlex+" refused, tmdb "+tmdbKey+", smtp "+smtpUser+"/"+smtpPass+", subs "+osPass+", tracker "+trackerPass)
 	f.log.Info("apprise: posting to " + appriseURL)
+	f.log.Warn("notify: webhook said no", "detail", "header "+n8nHeader+" secret "+n8nSecret+" path /webhook/"+n8nPath)
 	f.log.Info("mail: bounce from someone@example.org")
 	f.log.Info("listen: bookmark added", "bookmark", mark, "item", titleID)
 	// A calendar feed link: only its hash is stored, and a careless line quoting the link
@@ -296,6 +307,7 @@ func TestSupportBundleRedactsSecretsAndBooks(t *testing.T) {
 		person, plexNm, kindle, "owner-admin",
 		"/api/items/b12", "b12", "/books/42", "q=zephyrine",
 		feedTok, feedHash,
+		n8nPath, n8nHeader, n8nSecret,
 	}
 	for _, s := range forbidden {
 		if strings.Contains(lower, strings.ToLower(s)) {

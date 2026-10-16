@@ -11,7 +11,8 @@
 # Works as a Portainer stack too (Stacks → Add stack → Web editor, paste this file):
 # every folder here is an absolute path, since a stack has no folder of its own.
 #
-# 64-bit Intel/AMD (x86-64) servers only. Kept in step with the repository's
+# 64-bit Intel/AMD (x86-64) and 64-bit ARM (arm64) servers; every image here has both.
+# Kept in step with the repository's
 # docker-compose.yml (internal/archtest/compose_test.go checks the two agree).
 
 x-you: &you
@@ -53,7 +54,7 @@ services:
       - arrmada-media:/media
       # The optional SABnzbd's settings (below), read-only: Arrmada reads its API key here.
       - arrmada-sab-config:/bundled/sabnzbd:ro
-    # To use an Intel/AMD GPU for Convert, uncomment:
+    # To use an Intel/AMD GPU for Convert, uncomment (x86-64 only; ARM uses the CPU):
     # devices: [/dev/dri:/dev/dri]
     depends_on:
       arrmada-media-init: { condition: service_completed_successfully }

@@ -107,6 +107,15 @@ func plural(n int) string {
 	return "s"
 }
 
+// episodeLabels writes placed episodes as "S01E02", in order, for the import alert.
+func episodeLabels(eps []series.EpisodeRef) []string {
+	out := make([]string, 0, len(eps))
+	for _, e := range eps {
+		out = append(out, fmt.Sprintf("S%02dE%02d", e.Season, e.Episode))
+	}
+	return out
+}
+
 // showEnded reports whether a series has finished airing (TMDB status "Ended" or
 // "Canceled"). Anything else — including an unknown/empty status — is treated as
 // still running, so whole-show/multi-season packs are only grabbed when we're sure
@@ -156,6 +165,13 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 		return
 	}
 	held := &inFlightView{untracked: untracked}
+	// Shows added in bulk (a Sonarr import) are searched a few per run, not all at once.
+	marked, err := c.series.PacedSearchIDs(ctx)
+	if err != nil {
+		c.log.Warn("series: search sweep skipped — can't read which imported shows wait their turn", "err", err)
+		return
+	}
+	pace := newPacer(marked, func(ctx context.Context, id int64) error { return c.series.SetSearchPaced(ctx, id, false) }, c.log, "series")
 	var outage outageTally
 	defer outage.report(c.log, "series search sweep")
 	for _, s := range all {
@@ -177,6 +193,9 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 				continue
 			}
 		}
+		if pace.hold(s.ID) {
+			continue // imported in bulk: its turn comes in a later run
+		}
 		out, err := c.searchSeriesOnceScoped(ctx, s.ID, held)
 		n := out.Grabbed
 		if errors.Is(err, ErrAlreadySearching) {
@@ -189,6 +208,7 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 			}
 			continue
 		}
+		pace.searched(ctx, s.ID)
 		if err != nil {
 			c.log.Warn("series: search failed", "series", s.Title, "err", err)
 		}
@@ -1224,7 +1244,10 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 				c.log.Info("series: imported episodes", "series", s.Title, "count", imported, "release", it.Name)
 				c.series.AddEvent(ctx, s.ID, "imported", fmt.Sprintf("Imported %d episode%s from %s", imported, plural(imported), it.Name))
 				c.seriesImported(ctx, s.ID, placed)
-				c.bus.Publish("series.imported", map[string]any{"title": s.Title, "id": s.ID, "count": imported})
+				c.bus.Publish("series.imported", map[string]any{
+					"title": s.Title, "id": s.ID, "count": imported, "year": s.Year, "tmdb_id": s.TMDBID,
+					"episodes": episodeLabels(placed), "release": it.Name, "size_bytes": it.SizeBytes,
+				})
 			} else if c.series.SeasonHasMissing(ctx, s.ID, parsed.Season) {
 				// Re-processed but placed nothing new while the season is still incomplete.
 				// Either way we stop re-grabbing it, but WHY matters, and the two cases are
@@ -1355,6 +1378,7 @@ func (c *Coordinator) recordSeriesGrab(ctx context.Context, seriesID int64, titl
 		return
 	}
 	c.noteHashless("series", title, infoHash)
+	c.noteHandoff(ctx, "series", seriesID, title, infoHash)
 	// What the release covers, worked out now while the show (its aliases, its anime
 	// numbering) is at hand: the in-flight checks hold back by it.
 	s := series.Series{ID: seriesID}
