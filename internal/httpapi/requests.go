@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -12,7 +14,9 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
 	"github.com/tristenlammi/arrmada/internal/auth"
+	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/series"
@@ -97,6 +101,10 @@ func (a *api) handleListRequests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queueKnown := a.trackRequests(r, list)
+	if staff {
+		// What approving each waiting one would grab — never for anyone else.
+		a.deps.Requests.AttachPreviews(r.Context(), list)
+	}
 	shapeRequests(list, staff)
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"requests":     list,
@@ -136,6 +144,9 @@ func (a *api) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	list := []requests.Request{req}
 	queueKnown := a.trackRequests(r, list)
+	if staff {
+		a.deps.Requests.AttachPreviews(r.Context(), list)
+	}
 	shapeRequests(list, staff)
 	a.writeJSON(w, http.StatusOK, map[string]any{"request": list[0], "client_health": queueHealth{OK: queueKnown}})
 }
@@ -235,13 +246,15 @@ func (a *api) trackRequests(r *http.Request, list []requests.Request) bool {
 
 // shapeRequests readies requests for the viewer. Staff get the library item each became
 // (for "Open in library"). A requester never sees another person: on a request they only
-// follow, the owner's id, name and note are cleared.
+// follow, the owner's id, name and note are cleared. Nor do they see what Arrmada would
+// grab for it: the release preview is staff's alone.
 func shapeRequests(list []requests.Request, staff bool) {
 	for i := range list {
 		if staff {
 			list[i].LibraryID = list[i].InLibrary()
 			continue
 		}
+		list[i].Preview, list[i].Grab = nil, nil
 		list[i].LibraryID = 0
 		// Who decided is for staff; the requester reads the decision and its reason.
 		list[i].DecidedBy, list[i].DecidedByName = 0, ""
@@ -389,11 +402,16 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		// FolderID is the library folder chosen for the title (staff only — this route
 		// is); absent lets the folder rules pick.
 		FolderID *int64 `json:"folder_id"`
+		// GrabPreview is "Approve & grab this": grab the release the preview found (see
+		// requests.ApproveOptions). PreviewCheckedAt is the preview the approver saw.
+		GrabPreview      bool  `json:"grab_preview"`
+		PreviewCheckedAt int64 `json:"preview_checked_at"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req) // body is optional (profile override, season trim, folder)
 	}
-	o := requests.ApproveOptions{Profile: req.QualityProfile, Seasons: req.Seasons, FolderID: req.FolderID}
+	o := requests.ApproveOptions{Profile: req.QualityProfile, Seasons: req.Seasons, FolderID: req.FolderID,
+		GrabPreview: req.GrabPreview, PreviewAt: req.PreviewCheckedAt}
 	if u, ok := userFrom(r); ok {
 		o.DecidedBy, o.DecidedByName = u.ID, u.Username
 	}
@@ -410,6 +428,10 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if errors.Is(err, requests.ErrPreviewChanged) {
+		a.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	if errors.Is(err, movies.ErrUnknownFolder) || errors.Is(err, series.ErrUnknownFolder) {
 		a.writeError(w, http.StatusBadRequest, "that library folder doesn't exist — reload and pick again")
 		return
@@ -419,6 +441,77 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeJSON(w, http.StatusOK, updated)
+}
+
+// handleRequestPreview checks again what approving a pending request would grab, as a job
+// the sheet follows ("Checking indexers…"): the preview was missing or old, or staff
+// picked another quality profile. Paced with every other preview (requests/preview.go).
+//
+//	POST /api/v1/requests/{id}/preview {quality_profile?}  → 202 {job_id, existing}
+func (a *api) handleRequestPreview(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		QualityProfile string `json:"quality_profile"`
+	}
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			a.writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+	}
+	req, err := a.deps.Requests.Get(r.Context(), id)
+	if errors.Is(err, requests.ErrNotFound) {
+		a.writeError(w, http.StatusNotFound, "request not found")
+		return
+	}
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not load request")
+		return
+	}
+	if req.Status != requests.StatusPending {
+		a.writeError(w, http.StatusConflict, "only a request waiting for approval has a release preview")
+		return
+	}
+	profile := body.QualityProfile
+	svc := a.deps.Requests
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{
+		Kind: "request.preview", Target: requests.PreviewJobTarget(id), Class: jobs.ClassOther, Timeout: requests.PreviewJobTimeout,
+		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			pv, err := svc.RefreshPreview(ctx, id, profile, p)
+			if err != nil {
+				return nil, err
+			}
+			if pv.Result != nil {
+				p.SetMessage(previewMessage(*pv.Result))
+			}
+			return map[string]any{"state": pv.State, "checked_at": pv.CheckedAt}, nil
+		},
+	})
+	if !ok {
+		return
+	}
+	a.accepted(w, jobID, existing, nil)
+}
+
+// previewMessage is a finished preview in one line, for the job's message.
+func previewMessage(p automation.Preview) string {
+	switch p.Outcome {
+	case automation.PreviewFound:
+		if len(p.Releases) == 1 {
+			return "Would grab " + p.Releases[0].Title
+		}
+		return fmt.Sprintf("Would grab %d releases", len(p.Releases))
+	case automation.PreviewUnavailable:
+		return "Indexers unavailable"
+	case automation.PreviewBusy:
+		return "Being searched right now — checked again shortly"
+	case automation.PreviewNotWanted:
+		return "Nothing to look for"
+	}
+	return "Nothing found yet"
 }
 
 func (a *api) handleDeclineRequest(w http.ResponseWriter, r *http.Request) {

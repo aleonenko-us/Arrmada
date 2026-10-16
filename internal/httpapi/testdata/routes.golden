@@ -436,6 +436,7 @@ POST /api/v1/requests/bulk staff ext
 POST /api/v1/requests/import/overseerr admin ext
 POST /api/v1/requests/{id}/approve staff ext
 POST /api/v1/requests/{id}/decline staff ext
+POST /api/v1/requests/{id}/preview staff ext
 POST /api/v1/reviews/bulk staff -
 POST /api/v1/reviews/{id}/dismiss staff -
 POST /api/v1/reviews/{id}/import staff -

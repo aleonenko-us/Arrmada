@@ -68,6 +68,12 @@ type Service struct {
 	homeServer func(ctx context.Context, userID int64) mediaserver.Kind
 	// importFailures is the importers' retry records (SetImportFailures); nil = none.
 	importFailures func() []library.FailureInfo
+	// previewer looks up the release a pending request would get (preview.go); nil = no
+	// previews. previewMu guards the per-minute budget and the checks running now.
+	previewer      previewer
+	previewMu      sync.Mutex
+	previewWindow  []time.Time
+	previewRunning map[int64]chan struct{}
 }
 
 func (s *Service) clock() time.Time {
@@ -170,6 +176,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, bk *books.Se
 	if coord != nil {
 		s.coord = coord
 		s.searchBook = coord.SearchBookNow
+		s.previewer = coord
 	}
 	return s
 }
@@ -459,6 +466,10 @@ func (s *Service) announceCreated(ctx context.Context, req Request, opts CreateO
 	}
 	s.publishUpdated(req, StatusPending, s.parties(ctx, req))
 	s.alertStaff(ctx, req)
+	// Whoever decides it will want to know what approving it would grab (preview.go). An
+	// import's pending rows (Silent, above) aren't queued: hundreds at once would hold the
+	// queue for hours; opening one checks it then.
+	s.queuePreviewFor(ctx, req)
 }
 
 // attachAndPublish is attachToExisting that tells open pages about it: the request is
@@ -673,6 +684,13 @@ type ApproveOptions struct {
 	// default); nil lets the folder rules pick. Requesters never choose one. Ignored for a
 	// title already in the library: it already has a folder.
 	FolderID *int64
+	// GrabPreview ("Approve & grab this") grabs the release(s) the request's preview found
+	// instead of searching again, while they can still be had under this approval's
+	// profile (planPreviewGrab); otherwise the ordinary search runs. PreviewAt is the
+	// checked_at of the preview the approver saw: a preview checked again since is
+	// ErrPreviewChanged, not a grab of something nobody looked at.
+	GrabPreview bool
+	PreviewAt   int64
 }
 
 // movieAdderWith is the movies module's add with options (a folder), which the narrowed
@@ -756,6 +774,17 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	if profile == "" {
 		profile = s.quality.DefaultProfile(ctx, req.MediaType)
 	}
+	// "Approve & grab this": decided before anything is added, so a preview checked again
+	// since the approver looked refuses the whole approval rather than half of it.
+	var grab *previewGrab
+	var grabMode *ApproveGrab
+	if o.GrabPreview && !o.DeferSearch && req.Status == StatusPending {
+		g, mode, err := s.planPreviewGrab(ctx, req, profile, o.PreviewAt)
+		if err != nil {
+			return Request{}, err
+		}
+		grab, grabMode = g, &mode
+	}
 
 	trigger := fmt.Sprintf("request:%d", id)
 	switch req.MediaType {
@@ -792,9 +821,9 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		}
 		if addErr == nil && m.ID > 0 && !o.DeferSearch {
 			mid := m.ID
-			s.background("movie.search", fmt.Sprintf("movie:%d", mid), trigger, req.Title, "movie", mid, 3*time.Minute, func(c context.Context) (automation.SearchOutcome, error) {
+			s.background("movie.search", fmt.Sprintf("movie:%d", mid), trigger, req.Title, "movie", mid, 3*time.Minute, s.approvalSearch(grab, "movie", mid, func(c context.Context) (automation.SearchOutcome, error) {
 				return s.coord.SearchMovie(c, mid)
-			})
+			}))
 		}
 	case "series":
 		// A whole-show request starts from the configured monitoring preset (Settings →
@@ -826,9 +855,9 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		}
 		if addErr == nil && sr.ID > 0 && !o.DeferSearch {
 			sid := sr.ID
-			s.background("series.search", fmt.Sprintf("series:%d", sid), trigger, req.Title, "show", 0, 5*time.Minute, func(c context.Context) (automation.SearchOutcome, error) {
+			s.background("series.search", fmt.Sprintf("series:%d", sid), trigger, req.Title, "show", 0, 5*time.Minute, s.approvalSearch(grab, "series", sid, func(c context.Context) (automation.SearchOutcome, error) {
 				return s.coord.SearchSeriesNow(c, sid)
-			})
+			}))
 		}
 	case "book":
 		// An approver's explicit profile is their call on the format too.
@@ -858,9 +887,9 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 			// A new row always wants a search (an import leaves it to the sweeps).
 			if s.searchBook != nil && !o.DeferSearch {
 				bid := b.ID
-				s.background("book.search", fmt.Sprintf("book:%d", bid), trigger, req.Title, "book", 0, 5*time.Minute, func(c context.Context) (automation.SearchOutcome, error) {
+				s.background("book.search", fmt.Sprintf("book:%d", bid), trigger, req.Title, "book", 0, 5*time.Minute, s.approvalSearch(grab, "book", bid, func(c context.Context) (automation.SearchOutcome, error) {
 					return s.searchBook(c, bid)
-				})
+				}))
 			}
 		case b.ID > 0:
 			// Already in the library: it now wants every edition the request asked for
@@ -920,6 +949,7 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		}
 		return Request{}, err
 	}
+	s.repo.deletePreview(ctx, id) // decided: nothing left for it to inform
 	s.log.Info("request approved", "media", req.MediaType, "title", req.Title, "profile", profile, "auto", o.Auto)
 	if !o.Silent {
 		// Nobody hears about their own decision, and a requester whose own auto-approve did
@@ -935,7 +965,14 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	} else {
 		s.kickAttention() // publishUpdated kicks otherwise
 	}
-	return s.repo.Get(ctx, id)
+	if grab != nil && !grab.used {
+		// Nothing was searched for after all (a title already here, a book edition being
+		// widened): the answer mustn't claim a grab.
+		grabMode = &ApproveGrab{Mode: "search", Reason: "none"}
+	}
+	out, err := s.repo.Get(ctx, id)
+	out.Grab = grabMode
+	return out, err
 }
 
 // BackfillBookIDs links book requests made before requests remembered their library row.
@@ -1046,6 +1083,7 @@ func (s *Service) Decline(ctx context.Context, id int64, o DeclineOptions) error
 		return err
 	}
 	req.Status, req.DecidedBy, req.DecidedByName, req.DecidedAt, req.DeclineReason = StatusDeclined, d.By, d.ByName, d.At, d.Reason
+	s.repo.deletePreview(ctx, id)
 	s.log.Info("request declined", "media", req.MediaType, "title", req.Title, "by", d.ByName)
 	// A declined ask doesn't count against anyone's limit.
 	if err := s.repo.refundQuota(ctx, id); err != nil {

@@ -890,6 +890,12 @@ func main() {
 	sched.Register("request-ready-sweep", 10*time.Minute, false, func(ctx context.Context) error {
 		return requestsSvc.SweepReadyRequests(ctx)
 	}, scheduler.Label("Tell requesters their request is ready"), scheduler.Description("Catches requests that became available without an import, and lets the requester know."))
+	// Release previews for requests waiting for approval: a dry-run search of a few queued
+	// requests a minute, so whoever approves one sees what it would grab. Paced inside
+	// (requests/preview.go) so a burst of requests can't flood the indexers.
+	sched.Register("request-previews", time.Minute, false, requestsSvc.RunPreviewQueue,
+		scheduler.Label("Preview what pending requests would grab"),
+		scheduler.Description("Looks up the release each request waiting for approval would download, a few a minute, without grabbing anything."))
 
 	// Subtitles module (Bazarr replacement): grabs external SRT sidecars over the
 	// Movies/Series catalogs via OpenSubtitles.
