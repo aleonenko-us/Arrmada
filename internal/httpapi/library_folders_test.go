@@ -169,3 +169,54 @@ func TestLibraryFoldersAPIUnwired(t *testing.T) {
 		t.Errorf("list = %+v", got)
 	}
 }
+
+// Import & migrate reads a Radarr's root folders and pairs them with Arrmada's: here the
+// main Movies folder by its name, and Kids as one Arrmada doesn't have yet.
+func TestArrRootsAPI(t *testing.T) {
+	a, _, base := foldersAPI(t)
+	radarr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "k" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/v3/rootfolder":
+			_, _ = w.Write([]byte(`[{"path":"/data/movies"},{"path":"/data/kids"}]`))
+		case "/api/v3/movie":
+			_, _ = w.Write([]byte(`[{"rootFolderPath":"/data/movies"},{"rootFolderPath":"/data/kids"},{"rootFolderPath":"/data/kids"}]`))
+		}
+	}))
+	defer radarr.Close()
+	w := folderCall(t, a.handleArrRoots, http.MethodPost, `{"app":"radarr","url":`+jsonString(radarr.URL)+`,"api_key":"k"}`, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("roots = %d %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Media string `json:"media"`
+		Roots []struct {
+			Path      string `json:"path"`
+			Titles    int    `json:"titles"`
+			FolderID  *int64 `json:"folder_id"`
+			MatchedBy string `json:"matched_by"`
+		} `json:"roots"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Media != "movie" || len(got.Roots) != 2 {
+		t.Fatalf("answer = %+v", got)
+	}
+	kids, movies := got.Roots[0], got.Roots[1]
+	if kids.Titles != 2 || kids.FolderID != nil {
+		t.Errorf("kids = %+v, want 2 titles and no Arrmada folder yet", kids)
+	}
+	if movies.FolderID == nil || *movies.FolderID != 0 || movies.MatchedBy != "name" {
+		t.Errorf("movies = %+v, want the main folder (%s) by name", movies, filepath.Join(base, "movies"))
+	}
+	if w := folderCall(t, a.handleArrRoots, http.MethodPost, `{"app":"radarr","url":`+jsonString(radarr.URL)+`,"api_key":"nope"}`, ""); w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "API key") {
+		t.Errorf("a bad key = %d %s", w.Code, w.Body.String())
+	}
+	if w := folderCall(t, a.handleArrRoots, http.MethodPost, `{"app":"lidarr","url":"http://x","api_key":"k"}`, ""); w.Code != http.StatusBadRequest {
+		t.Errorf("lidarr = %d", w.Code)
+	}
+}

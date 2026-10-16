@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/arrimport"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
@@ -308,6 +311,45 @@ func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string)
 		return
 	}
 	a.accepted(w, jobID, false, map[string]any{"status": "moving", "folder": dest.Label})
+}
+
+// handleArrRoots reads a Radarr's or Sonarr's root folders and pairs each with the
+// Arrmada folder it already is (or where it looks to be here), for Settings → Import &
+// migrate: POST /api/v1/import/arr/roots {app, url, api_key}. It only reads; the key isn't
+// kept. Adding the folders and scanning them are the page's next steps, through the
+// ordinary folder and scan routes.
+func (a *api) handleArrRoots(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		App    string `json:"app"`
+		URL    string `json:"url"`
+		APIKey string `json:"api_key"`
+	}
+	if !a.decodeJSON(w, r, &in) {
+		return
+	}
+	c, err := arrimport.New(in.App, in.URL, in.APIKey)
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	roots, err := c.Roots(ctx)
+	if err != nil {
+		a.writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	media := c.Media()
+	var folders []arrimport.Folder
+	for _, f := range a.foldersOf(ctx, media).Folders {
+		folders = append(folders, arrimport.Folder{ID: f.ID, Path: f.Path})
+	}
+	dataDir := a.deps.Config.DataDir
+	exists := func(p string) bool {
+		fi, err := os.Stat(p)
+		return err == nil && fi.IsDir() && !libroots.InDataDir(p, dataDir)
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"media": media, "app": strings.ToLower(in.App), "roots": arrimport.Map(roots, folders, exists)})
 }
 
 // publishMoved tells open film pages the film changed (its paths and folder did). The

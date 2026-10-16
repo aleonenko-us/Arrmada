@@ -346,6 +346,7 @@ POST /api/v1/downloadclients/{id}/categories staff -
 POST /api/v1/downloadclients/{id}/test staff -
 POST /api/v1/grab staff -
 POST /api/v1/grab/preview staff -
+POST /api/v1/import/arr/roots admin -
 POST /api/v1/imports/{hash}/retry staff -
 POST /api/v1/indexers staff -
 POST /api/v1/indexers/prowlarr/sync staff -

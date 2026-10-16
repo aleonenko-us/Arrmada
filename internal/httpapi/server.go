@@ -257,6 +257,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/system/library/folders/order", a.requireRole(auth.RoleAdmin, a.handleOrderLibraryFolders))
 	mux.HandleFunc("PUT /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateLibraryFolder))
 	mux.HandleFunc("DELETE /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleRemoveLibraryFolder))
+	// Import & migrate: a Radarr's or Sonarr's root folders, matched to Arrmada's (reads only).
+	mux.HandleFunc("POST /api/v1/import/arr/roots", a.requireRole(auth.RoleAdmin, a.handleArrRoots))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).
