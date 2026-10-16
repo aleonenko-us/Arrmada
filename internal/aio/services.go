@@ -12,6 +12,10 @@ type Service struct {
 	// UID/GID to run as; nil runs as the supervisor's user (root), for a service that
 	// drops privileges itself (Arrmada, through the image's entrypoint).
 	UID, GID *int
+	// OwnUser says UID is this service's alone, so when it stops every process of that
+	// user goes with it. FlareSolverr needs it: Selenium starts chromedriver, and that
+	// Chromium, in sessions of their own, outside its process group.
+	OwnUser bool
 	// Main is Arrmada. Its output goes to the container log untouched, exactly as in the
 	// plain image, and when it exits the container exits with its code: Docker's restart
 	// policy then brings everything back, as it would the plain image. The others are
@@ -85,7 +89,7 @@ func Plan(o Options, environ []string, getenv func(string) string) []Service {
 				"HEADLESS=true",
 				"PYTHONDONTWRITEBYTECODE=1",
 			),
-			UID: &fuid, GID: &fgid,
+			UID: &fuid, GID: &fgid, OwnUser: true,
 		})
 	}
 	return svcs

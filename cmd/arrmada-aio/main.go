@@ -52,6 +52,14 @@ func main() {
 // qBittorrent profile is never removed, so switching it off keeps its torrents for when
 // it's switched back on.
 func prepare(o aio.Options) error {
+	if o.FlareSolverr {
+		// FlareSolverr's user is neither the owner nor in the group of appdata: closing
+		// "others" out of /data keeps the database and qBittorrent's login away from it.
+		// First, so the folder is already PUID's when qBittorrent starts in it.
+		if err := aio.CloseToOthers(o.DataDir, o.UID, o.GID); err != nil {
+			return fmt.Errorf("closing %s to FlareSolverr: %w", o.DataDir, err)
+		}
+	}
 	if o.Qbittorrent {
 		profile := o.QbittorrentProfile()
 		if err := os.MkdirAll(profile, 0o750); err != nil {
@@ -75,11 +83,6 @@ func prepare(o aio.Options) error {
 		}
 		if err := aio.ChownTree(aio.FlareSolverrHome, aio.FlareSolverrUID, aio.FlareSolverrGID); err != nil {
 			return err
-		}
-		// FlareSolverr's user is neither the owner nor in the group of appdata: closing
-		// "others" out of /data keeps the database and qBittorrent's login away from it.
-		if err := aio.CloseToOthers(o.DataDir); err != nil {
-			return fmt.Errorf("closing %s to FlareSolverr: %w", o.DataDir, err)
 		}
 	}
 	return nil

@@ -193,9 +193,14 @@ func chown(path string, uid, gid int) error {
 
 // CloseToOthers takes "others" off a folder's permissions (creating it if need be), so
 // only its owner and group get in: what's inside stays out of reach of a user that is
-// neither, however its files' own modes read.
-func CloseToOthers(dir string) error {
+// neither, however its files' own modes read. The folder itself (not what's in it) is
+// handed to uid:gid first, as the entrypoint would: a fresh appdata volume is root's, and
+// closed while still root's, the companions running as uid:gid couldn't get in either.
+func CloseToOthers(dir string, uid, gid int) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	if err := chown(dir, uid, gid); err != nil {
 		return err
 	}
 	fi, err := os.Stat(dir)

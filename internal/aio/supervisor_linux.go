@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -170,8 +172,12 @@ func (s *Supervisor) runOnce(svc Service) (code int, err error) {
 	if !svc.Main {
 		// What the companion started dies with it: a FlareSolverr that crashed leaves
 		// its Xvfb and Chromium behind, and every restart would add another set. Its
-		// process group is its own (Setpgid above), so nothing else is in it.
+		// process group is its own (Setpgid above), so nothing else is in it; a service
+		// with a user of its own also loses what escaped the group (Chromium does).
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if svc.OwnUser && svc.UID != nil {
+			killUser(*svc.UID)
+		}
 	}
 	if pw != nil {
 		pw.flush()
@@ -221,6 +227,43 @@ func (s *Supervisor) stopAll() {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	s.mu.Unlock()
+}
+
+// killUser SIGKILLs every process whose real user is uid, a few passes over /proc so one
+// started meanwhile goes too. Only for a uid nothing else in the container uses, and
+// never root's.
+func killUser(uid int) {
+	if uid == 0 {
+		return
+	}
+	want := strconv.Itoa(uid)
+	for pass := 0; pass < 3; pass++ {
+		dirs, _ := os.ReadDir("/proc")
+		found := false
+		for _, d := range dirs {
+			pid, err := strconv.Atoi(d.Name())
+			if err != nil || pid == os.Getpid() {
+				continue
+			}
+			raw, err := os.ReadFile("/proc/" + d.Name() + "/status")
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(string(raw), "\n") {
+				if f := strings.Fields(line); len(f) > 1 && f[0] == "Uid:" {
+					if f[1] == want {
+						_ = syscall.Kill(pid, syscall.SIGKILL)
+						found = true
+					}
+					break
+				}
+			}
+		}
+		if !found {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func (s *Supervisor) isMain(name string) bool {

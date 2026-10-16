@@ -127,6 +127,9 @@ func TestPlan(t *testing.T) {
 		f.Dir != FlareSolverrHome || !strings.Contains(strings.Join(f.Env, " "), "HOME="+FlareSolverrHome) {
 		t.Errorf("flaresolverr = %+v", f)
 	}
+	if !svcs[2].OwnUser || svcs[1].OwnUser {
+		t.Error("only FlareSolverr has a user of its own (qBittorrent shares PUID with Arrmada)")
+	}
 	if FlareSolverrUID == 99 || FlareSolverrUID == 1000 || FlareSolverrUID == 0 {
 		t.Errorf("FlareSolverr's user %d is one a PUID commonly is", FlareSolverrUID)
 	}
@@ -220,7 +223,7 @@ func TestCloseToOthers(t *testing.T) {
 	if err := os.Chmod(dir, 0o775|os.ModeSetgid); err != nil {
 		t.Fatal(err)
 	}
-	if err := CloseToOthers(dir); err != nil {
+	if err := CloseToOthers(dir, os.Getuid(), os.Getgid()); err != nil {
 		t.Fatal(err)
 	}
 	fi, _ := os.Stat(dir)
@@ -229,11 +232,22 @@ func TestCloseToOthers(t *testing.T) {
 	}
 	// A missing folder is made closed.
 	fresh := filepath.Join(t.TempDir(), "new")
-	if err := CloseToOthers(fresh); err != nil {
+	if err := CloseToOthers(fresh, os.Getuid(), os.Getgid()); err != nil {
 		t.Fatal(err)
 	}
 	if fi, _ := os.Stat(fresh); fi.Mode().Perm()&0o007 != 0 {
 		t.Errorf("new folder mode %v", fi.Mode())
+	}
+	// As root (the supervisor), the folder itself is handed to PUID:PGID before it's
+	// closed, so the companions running as them can still get in.
+	if os.Geteuid() == 0 {
+		owned := filepath.Join(t.TempDir(), "owned")
+		if err := CloseToOthers(owned, 99, 100); err != nil {
+			t.Fatal(err)
+		}
+		if st, ok := statOwner(owned); !ok || st != [2]int{99, 100} {
+			t.Errorf("owner %v, want 99:100", st)
+		}
 	}
 }
 

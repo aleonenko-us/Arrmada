@@ -9,9 +9,23 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
+
+// statOwner is a file's uid:gid.
+func statOwner(path string) ([2]int, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return [2]int{}, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return [2]int{}, false
+	}
+	return [2]int{int(st.Uid), int(st.Gid)}, true
+}
 
 // syncBuffer is a container log the test can read while the supervisor writes it.
 type syncBuffer struct {
@@ -217,6 +231,47 @@ func TestCompanionLeftoversKilledBeforeRestart(t *testing.T) {
 	raw, _ := os.ReadFile(pids)
 	first := strings.Fields(string(raw))[0]
 	waitFor(t, "the first run's leftover to die", func() bool {
+		st, err := os.ReadFile("/proc/" + first + "/stat")
+		return err != nil || strings.Contains(string(st), ") Z ")
+	})
+	cancel()
+	<-done
+}
+
+// A companion with a user of its own loses everything of that user when it exits, even
+// what left its process group (Selenium starts Chromium in a session of its own).
+func TestOwnUserLeftoversKilled(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root to run a service as another user")
+	}
+	const uid = 4242
+	// Straight under /tmp: t.TempDir's parents are closed to other users.
+	dir, err := os.MkdirTemp("", "aio-ownuser-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	pids := filepath.Join(dir, "pids")
+	u, g := uid, uid
+	svc := sh("flaresolverr", "setsid sh -c 'exec >/dev/null 2>&1; while :; do sleep 0.05; done' & echo $! >> "+pids+"; sleep 0.2; exit 1", false)
+	svc.UID, svc.GID, svc.OwnUser = &u, &g, true
+	s := &Supervisor{Out: &syncBuffer{}, Grace: time.Second, MinBackoff: 300 * time.Millisecond, MaxBackoff: 300 * time.Millisecond, Services: []Service{
+		sh("arrmada", "trap 'exit 0' TERM; while :; do sleep 0.05; done", true),
+		svc,
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan int, 1)
+	go func() { done <- s.Run(ctx) }()
+	waitFor(t, "a restart", func() bool {
+		raw, _ := os.ReadFile(pids)
+		return len(strings.Fields(string(raw))) >= 2
+	})
+	raw, _ := os.ReadFile(pids)
+	first := strings.Fields(string(raw))[0]
+	waitFor(t, "the escaped leftover to die", func() bool {
 		st, err := os.ReadFile("/proc/" + first + "/stat")
 		return err != nil || strings.Contains(string(st), ") Z ")
 	})
