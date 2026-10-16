@@ -129,7 +129,8 @@ jobs:
           target: aio
           push: false
           cache-from: ${{ matrix.cache-from }}
-          cache-to: ${{ matrix.cache-to }}
+          # arm64 writes from main only, like the plain build above.
+          cache-to: ${{ (matrix.arch != 'arm64' || github.event_name != 'pull_request') && matrix.cache-to || '' }}
           build-args: |
             VERSION=${{ github.head_ref || github.ref_name }}-${{ github.sha }}
             COMMIT=${{ github.sha }}

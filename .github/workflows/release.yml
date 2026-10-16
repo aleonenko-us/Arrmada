@@ -328,7 +328,8 @@ jobs:
           name: aio-digests-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
-          retention-days: 1
+          # A week, like the plain digests, so a failed merge can be re-run days later.
+          retention-days: 7
 
   aio-merge:
     name: Tag the all-in-one image (amd64 + arm64)
