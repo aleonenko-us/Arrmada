@@ -308,9 +308,15 @@ func TestSecureBundledQbitNewInstall(t *testing.T) {
 		t.Fatalf("precondition: the seeded whitelist lets anyone in (got %d)", code)
 	}
 	k := &memKeeper{}
+	// Giving the client its login is Arrmada's change, not the owner's edit: it leaves
+	// notes kept for the owner's edits (the all-in-one switch's) alone.
+	_ = flags.Set(context.Background(), KeyBundledSwitchedOff, "1")
 	out, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, k)
 	if err != nil || out != SecureNewPassword {
 		t.Fatalf("SecureBundledQbit = %v, %v", out, err)
+	}
+	if flags.Get(context.Background(), KeyBundledSwitchedOff, "") != "1" {
+		t.Error("giving the client its login counted as the owner's edit")
 	}
 	assertSecured(t, svc, f, k.pass)
 	if k.user != "admin" || bundledRow(t, svc).Username != "admin" {

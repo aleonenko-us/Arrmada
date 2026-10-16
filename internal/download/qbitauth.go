@@ -315,7 +315,8 @@ func (s *Service) adoptBundledLogin(ctx context.Context, c Client, user, pass st
 	}
 	if c.Username != user || c.Password != pass {
 		c.Username, c.Password = user, pass
-		if _, err := s.Update(ctx, c); err != nil {
+		// Arrmada's own change, not the owner's edit (update, not Update).
+		if _, err := s.update(ctx, c); err != nil {
 			return err
 		}
 	}
