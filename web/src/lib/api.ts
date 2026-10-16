@@ -2936,15 +2936,16 @@ export const api = {
   // Clears an "import keeps failing" review so the import sweep tries the download again.
   retryReview: (id: number) => req<{ status: string }>(`/api/v1/reviews/${id}/retry`, { method: "POST" }),
   reviewFiles: (id: number) => req<{ files: ReviewFile[]; truncated: boolean }>(`/api/v1/reviews/${id}/files`),
-  // Imports a held show download by mapping its files to episodes by hand. A big pack
-  // imports as a job (job_id set); a small one answers with how many episodes landed.
+  // Imports a held show download by mapping its files to episodes by hand, as a job
+  // (202 with job_id; the same job when the review is already importing).
   mapReview: (id: number, seriesId: number, files: { rel_path: string; season: number; episodes: number[] }[]) =>
-    req<{ status: string; placed?: number; background?: boolean } & JobRef>(`/api/v1/reviews/${id}/map`, { method: "POST", body: JSON.stringify({ series_id: seriesId, files }) }),
+    req<ReviewImportStarted>(`/api/v1/reviews/${id}/map`, { method: "POST", body: JSON.stringify({ series_id: seriesId, files }) }),
   bulkReviews: (ids: number[], action: "dismiss" | "reject") =>
     req<{ done: number; failed: { id: number; error: string }[] }>("/api/v1/reviews/bulk", { method: "POST", body: JSON.stringify({ ids, action }) }),
-  // targetKind names what targetId is; the server refuses one that isn't the review's own kind.
+  // targetKind names what targetId is; the server refuses one that isn't the review's own
+  // kind. What it can refuse it refuses at once; the import itself is a job (202).
   importReview: (id: number, targetId?: number, targetKind?: ReviewKind) =>
-    req<{ status: string }>(`/api/v1/reviews/${id}/import`, { method: "POST", body: JSON.stringify({ target_id: targetId ?? 0, target_kind: targetKind ?? "" }) }),
+    req<ReviewImportStarted>(`/api/v1/reviews/${id}/import`, { method: "POST", body: JSON.stringify({ target_id: targetId ?? 0, target_kind: targetKind ?? "" }) }),
   // truncated: more items matched than the server lists — the picker asks for a filter.
   reviewTargets: (id: number, q: string) =>
     req<{ targets: ReviewTarget[]; truncated?: boolean }>(`/api/v1/reviews/${id}/targets?q=${encodeURIComponent(q)}`),
@@ -3850,6 +3851,15 @@ export interface ImportReview {
   size_bytes: number;
   indexer: string;
   created_at: string;
+  // Its import job: running or queued (someone chose to import it), or the last one,
+  // when that failed. Absent otherwise.
+  import_job?: Job;
+}
+
+// A review import that started (or was already running: existing).
+export interface ReviewImportStarted extends JobRef {
+  status: string;
+  title?: string; // the library item it goes into
 }
 
 // Why a download is held: content that doesn't match, tied to nothing, unreadable episode

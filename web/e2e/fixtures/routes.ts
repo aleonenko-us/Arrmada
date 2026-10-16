@@ -139,6 +139,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
+    { method: "POST", path: /^\/api\/v1\/reviews\/(\d+)\/(import|map)$/, status: 202, body: media.reviewImportStarted },
+    get(`/api/v1/jobs/${media.reviewImportJob.id}`, media.reviewImportJob),
     // Activity → Needs you's actions.
     { method: "POST", path: /^\/api\/v1\/imports\/([0-9a-f]+)\/retry$/, body: { status: "retrying" } },
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-f]+)\/failover$/, status: 202, body: { status: "searching", job_id: sys.failOverJob.id, existing: false } },

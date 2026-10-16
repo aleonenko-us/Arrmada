@@ -367,6 +367,14 @@ export const reviews: { reviews: ImportReview[] } = {
     },
   ],
 };
+// Import anyway / Choose different… / Map files… start a review.import job (202); this is
+// how that job ends by default. Specs swap the job's answer for a running or failed one.
+export const reviewImportJob: Job = {
+  id: 912, kind: "review.import", target: "review:1", trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Imported into Fixture Movie.", error: "",
+  created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
+};
+export const reviewImportStarted = { status: "importing", job_id: reviewImportJob.id, existing: false, title: "Fixture Movie" };
 export const blocklist: { items: BlocklistRow[]; total: number } = {
   items: [
     { id: 2, type: "global", item_id: 0, item_title: "", title: "Totally.Legit.2024.1080p.exe", reason: "rejected in review", created_at: "2026-10-01 12:00:00" },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type ImportReview, type ReviewFile, type ReviewTarget } from "../../lib/api";
+import { api, type ImportReview, type ReviewFile, type ReviewImportStarted, type ReviewTarget } from "../../lib/api";
 import { formatBytes } from "../../lib/format";
 import { Button, Modal } from "../../ui";
 import { guessLabel, parseEpisodes, prefill } from "./episodes";
@@ -9,10 +9,10 @@ interface Row { file: ReviewFile; season: string; episodes: string }
 // MapFilesModal imports a held show download whose episode numbering couldn't be read, by
 // saying which episode each file is. Rows start from what each filename says; blank rows
 // are skipped. The quality check doesn't apply — these are files you chose.
-export function MapFilesModal({ review, onClose, onDone }: {
+export function MapFilesModal({ review, onClose, onStarted }: {
   review: ImportReview;
   onClose: () => void;
-  onDone: (msg: string) => void;
+  onStarted: (res: ReviewImportStarted) => void;
 }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -56,10 +56,9 @@ export function MapFilesModal({ review, onClose, onDone }: {
     if (!target || mappings.length === 0 || invalid > 0) return;
     setBusy(true); setError(null);
     try {
-      const res = await api.mapReview(review.id, target.id, mappings);
-      onDone(res.job_id
-        ? `Importing ${mappings.length} files into ${target.title} in the background — the review clears when it's done.`
-        : `Imported ${res.placed ?? 0} episode${res.placed === 1 ? "" : "s"} into ${target.title}.`);
+      // The mapping is checked here (a bad one stays in the dialog with its reason); the
+      // import runs as a job the review's card follows.
+      onStarted(await api.mapReview(review.id, target.id, mappings));
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
