@@ -76,8 +76,13 @@ func improvementKey(cand, cur Evaluation) RankKey {
 
 // triggerAllows reports whether a gain of kind k is worth replacing a file for under a
 // profile's trigger. TriggerAny takes every gain, keyed or not, exactly as upgrades
-// behaved before triggers existed.
+// behaved before triggers existed. Leaving a file the profile avoids (KeyAvoid: a
+// low-quality group's encode) counts under every trigger: the profile already said it
+// doesn't want that file, so a clean copy that gives nothing up is always worth having.
 func triggerAllows(trigger string, k RankKey) bool {
+	if k == KeyAvoid {
+		return true
+	}
 	switch NormalizeTrigger(trigger) {
 	case TriggerSource:
 		return k == KeyResolution || k == KeyPreferences || k == KeyCustom || k == KeySource

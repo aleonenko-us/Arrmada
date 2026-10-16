@@ -45,14 +45,14 @@ func TestImprovementKey(t *testing.T) {
 }
 
 func TestTriggerAllowsMatrix(t *testing.T) {
-	keys := []RankKey{KeyResolution, KeyPreferences, KeyCustom, KeySource, KeyProper, ""}
+	keys := []RankKey{KeyResolution, KeyPreferences, KeyCustom, KeySource, KeyProper, KeyAvoid, ""}
 	want := map[string][]bool{
-		TriggerAny:        {true, true, true, true, true, true},
-		"":                {true, true, true, true, true, true},
-		TriggerSource:     {true, true, true, true, false, false},
-		TriggerFormat:     {true, true, true, false, false, false},
-		TriggerResolution: {true, false, false, false, false, false},
-		"nonsense":        {true, true, true, true, true, true}, // read as any
+		TriggerAny:        {true, true, true, true, true, true, true},
+		"":                {true, true, true, true, true, true, true},
+		TriggerSource:     {true, true, true, true, false, true, false},
+		TriggerFormat:     {true, true, true, false, false, true, false},
+		TriggerResolution: {true, false, false, false, false, true, false},
+		"nonsense":        {true, true, true, true, true, true, true}, // read as any
 	}
 	for trig, row := range want {
 		for i, k := range keys {
