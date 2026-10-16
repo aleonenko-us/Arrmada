@@ -1,7 +1,8 @@
-// Package arrimport reads a Radarr or Sonarr's root folders, so someone moving to Arrmada
-// with several of them (Movies and Kids movies, TV and Anime) can set up the same folders
-// here. It only reads: nothing in Radarr or Sonarr changes, and the API key is used for
-// this one call and never stored.
+// Package arrimport brings a Radarr or Sonarr library over to Arrmada: its root folders
+// (so someone with several — Movies and Kids movies, TV and Anime — gets the same folders
+// here), then its titles with their profiles, monitoring and the files already on disk.
+// It only reads: nothing in Radarr or Sonarr changes, and the API key is used for the
+// request it came with and never stored.
 package arrimport
 
 import (
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"sort"
 	"strings"
@@ -36,7 +38,10 @@ var ErrBadKey = errors.New("the API key was refused — copy it from Settings �
 // Client reads one Radarr or Sonarr over its v3 API.
 type Client struct {
 	app, base, key string
-	http           *http.Client
+	// shown is base for messages: a password in the address (http://user:pass@host) is
+	// never repeated back.
+	shown string
+	http  *http.Client
 }
 
 // New builds a client for app (Radarr or Sonarr) at baseURL (http://host:7878).
@@ -52,7 +57,11 @@ func New(app, baseURL, key string) (*Client, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("the API key is required")
 	}
-	return &Client{app: app, base: base, key: strings.TrimSpace(key), http: &http.Client{
+	shown := base
+	if u, err := url.Parse(base); err == nil {
+		shown = u.Redacted()
+	}
+	return &Client{app: app, base: base, key: strings.TrimSpace(key), shown: shown, http: &http.Client{
 		Timeout: 60 * time.Second,
 		// Never follow a redirect: it would carry the X-Api-Key header to wherever it points.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -76,18 +85,18 @@ func (c *Client) get(ctx context.Context, p string, out any) error {
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("couldn't reach %s: %w", c.base, err)
+		return fmt.Errorf("couldn't reach %s: %w", c.shown, err)
 	}
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return ErrBadKey
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		return fmt.Errorf("%s answered with a redirect, which Arrmada doesn't follow (it would send the API key along) — use the app's own address", c.base)
+		return fmt.Errorf("%s answered with a redirect, which Arrmada doesn't follow (it would send the API key along) — use the app's own address", c.shown)
 	case resp.StatusCode == http.StatusNotFound:
-		return fmt.Errorf("%s answered 404 — check the address is the app's own (for example http://host:7878), with its URL base if it has one", c.base)
+		return fmt.Errorf("%s answered 404 — check the address is the app's own (for example http://host:7878), with its URL base if it has one", c.shown)
 	case resp.StatusCode >= 300:
-		return fmt.Errorf("%s answered HTTP %d", c.base, resp.StatusCode)
+		return fmt.Errorf("%s answered HTTP %d", c.shown, resp.StatusCode)
 	}
 	// A big library's title list is large but bounded; the decoder reads only the fields
 	// below.
@@ -96,11 +105,8 @@ func (c *Client) get(ctx context.Context, p string, out any) error {
 
 // Roots lists the app's root folders, each with how many titles it holds, in path order.
 func (c *Client) Roots(ctx context.Context) ([]Root, error) {
-	var folders []struct {
-		Path      string `json:"path"`
-		FreeSpace int64  `json:"freeSpace"`
-	}
-	if err := c.get(ctx, "/api/v3/rootfolder", &folders); err != nil {
+	folders, err := c.rootFolders(ctx)
+	if err != nil {
 		return nil, err
 	}
 	list := "/api/v3/movie"
@@ -114,6 +120,16 @@ func (c *Client) Roots(ctx context.Context) ([]Root, error) {
 	if err := c.get(ctx, list, &titles); err != nil {
 		return nil, err
 	}
+	roots := make([]string, 0, len(titles))
+	for _, t := range titles {
+		roots = append(roots, rootOf(t.RootFolderPath, t.Path))
+	}
+	return countRoots(folders, roots), nil
+}
+
+// countRoots is the root folders, each with how many of titleRoots (each title's root
+// folder) are in it, in path order.
+func countRoots(folders []rootFolder, titleRoots []string) []Root {
 	byRoot := map[string]*Root{}
 	var out []*Root
 	for _, f := range folders {
@@ -124,12 +140,8 @@ func (c *Client) Roots(ctx context.Context) ([]Root, error) {
 		byRoot[r.Path] = r
 		out = append(out, r)
 	}
-	for _, t := range titles {
-		root := cleanArr(t.RootFolderPath)
-		if root == "" {
-			// Older Radarr leaves rootFolderPath empty: the title's own folder's parent is it.
-			root = cleanArr(parentOf(t.Path))
-		}
+	for _, root := range titleRoots {
+		// Older Radarr leaves rootFolderPath empty: rootOf took the title folder's parent.
 		if r, ok := byRoot[root]; ok {
 			r.Titles++
 		}
@@ -139,7 +151,7 @@ func (c *Client) Roots(ctx context.Context) ([]Root, error) {
 		res = append(res, *r)
 	}
 	sort.Slice(res, func(i, j int) bool { return res[i].Path < res[j].Path })
-	return res, nil
+	return res
 }
 
 // cleanArr tidies a path as Radarr/Sonarr report it (often with a trailing slash; a

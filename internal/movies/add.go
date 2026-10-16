@@ -2,8 +2,12 @@ package movies
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
 
@@ -53,6 +57,75 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie,
 	s.log.Info("movie added", "title", created.Title, "year", created.Year)
 	_ = s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
 	return created, nil
+}
+
+// ErrOutsideLibrary is a file to adopt that isn't inside any of the Movies folders: a film
+// is only ever given a file Arrmada manages (renames, the recycle bin, moves).
+var ErrOutsideLibrary = errors.New("the file isn't inside one of the Movies folders")
+
+// InLibrary reports whether path lies inside one of the Movies folders.
+func (s *Service) InLibrary(ctx context.Context, path string) bool {
+	if s.folders != nil {
+		_, ok := s.folders.Owner(ctx, libfolders.MediaMovie, path)
+		return ok
+	}
+	root := s.libRoot()
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// AddImported adds a film brought over from another app (a Radarr import, named by source)
+// as o says and, when file isn't "", with the file it already has: a path inside one of the
+// Movies folders, recorded where it is — nothing is moved, renamed or downloaded. It's the
+// library scan's quiet adoption: no outbox row and no alert per film, so bringing over a
+// whole library doesn't queue Convert and Subtitles work or notices for every file. The
+// film belongs to the folder its file is in. ErrExists when it's already in the library.
+//
+// If the file can't be recorded after the film was added, the film is left unmonitored
+// (so the sweeps don't download a film the person already has) and the error says so.
+func (s *Service) AddImported(ctx context.Context, tmdbID int, o AddOptions, file, source string) (Movie, error) {
+	if file != "" {
+		if !s.InLibrary(ctx, file) {
+			return Movie{}, ErrOutsideLibrary
+		}
+		id := s.ownerID(ctx, file)
+		o.FolderID = &id
+	}
+	m, err := s.AddWith(ctx, tmdbID, o)
+	if err != nil || file == "" {
+		return m, err
+	}
+	if err := s.setDefaultFile(ctx, m.ID, file); err != nil {
+		if m.Monitored {
+			if uerr := s.repo.SetMonitored(ctx, m.ID, false); uerr == nil {
+				m.Monitored = false
+			}
+		}
+		return m, fmt.Errorf("added, but its file couldn't be recorded (left unmonitored): %w", err)
+	}
+	_ = s.repo.AddEvent(ctx, m.ID, "imported", "Brought over from "+source+": "+filepath.Base(file))
+	// For the UI only, like the library scan's adoption.
+	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": file, "source": "scan"})
+	m.HasFile, m.MovieFilePath = true, file
+	return m, nil
+}
+
+// AttachImported gives a film already in the library, without a file, the file another app
+// (source) had for it — the scan's attach: recorded where it is, and announced like an
+// import because the film was wanted. Refused when the film has a file by now, or the file
+// isn't inside a Movies folder.
+func (s *Service) AttachImported(ctx context.Context, id int64, file, source string) error {
+	if !s.InLibrary(ctx, file) {
+		return ErrOutsideLibrary
+	}
+	m, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.attachExisting(ctx, m, file, "Brought over from "+source+": ")
 }
 
 // LibraryIDs maps every TMDB id in the library to its movie id, in one query: search
