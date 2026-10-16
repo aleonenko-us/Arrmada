@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DeletePreview, DownloadClientList, FitCounts,
-  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieFile, MovieVersion, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import type { JellyfinConfig, JellyfinSave, JellyfinTestResult } from "../../src/lib/jellyfinApi";
@@ -79,11 +79,22 @@ export const movies: { movies: MovieSummary[]; metadata_available: boolean; clie
 export function movieDetail(id: number): Movie | null {
   const m = movies.movies.find((x) => x.id === id);
   if (!m) return null;
+  // The Cartographer's file is analysed: its audio badges (issue #12) — English and German,
+  // the German one heard by the AI on an untagged track — fit its profile's language rules.
+  const file: MovieFile | undefined = m.id === 1 ? {
+    path: "/media/movies/The Cartographer (2023)/The Cartographer (2023) - 1080p WEB-DL.mkv",
+    filename: "The Cartographer (2023) - 1080p WEB-DL.mkv", size_bytes: 9_000_000_000, quality: "1080p WEB-DL",
+    codec: "x264", audio: ["DTS 5.1"], probed: true, missing: false,
+  } : undefined;
+  const audio: Pick<MovieVersion, "audio_langs" | "audio_lang_fit"> = m.id === 1 ? {
+    audio_langs: [{ code: "en", name: "English" }, { code: "de", name: "German", detected: true }],
+    audio_lang_fit: { status: "good", note: "Has German audio, as this profile asks" },
+  } : {};
   return {
     id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
     quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
-    overview: "A fixture film.", download: m.download,
-    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
+    overview: "A fixture film.", download: m.download, file, movie_file_path: file?.path,
+    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file, file, file_path: file?.path, ...audio }],
     acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
   };
 }

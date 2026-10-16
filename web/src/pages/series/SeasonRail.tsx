@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SeasonAudioSummary } from "../../components/AudioLangChips";
 import { FileDetailsModal } from "../../components/FileDetailsModal";
 import { refreshSearches, useSearchAttempts } from "../../components/LastSearch";
 import { ReleaseSearchModal } from "../../components/ReleaseSearchModal";
@@ -148,6 +149,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
           {c.total === 0 ? "Not yet released" : c.airedCount === 0 ? "Upcoming" : `${c.have}/${c.counted}`}
           {c.notMonitored > 0 && <span title="Aired episodes without a file that aren't monitored — not counted as missing"> · {c.notMonitored} not monitored</span>}
         </span>
+        <SeasonAudioSummary episodes={eps} />
         {held > 0 && (
           <span className="flex items-center gap-2">
             <StatusChip tone="accent" title={`${held} episode${held === 1 ? "" : "s"} kept as they were when the profile changed`}>Upgrades paused</StatusChip>

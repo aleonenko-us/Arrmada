@@ -24,8 +24,13 @@ const theatrical = file("Blade Runner (1982) - 2160p BluRay.mkv", "2160p BluRay"
 const dcFile = file("Blade Runner (1982) {edition-Director's Cut} - 2160p BluRay.mkv", "2160p BluRay", 42e9);
 
 const versions: MovieVersion[] = [
-  { id: 0, is_default: true, label: "Default", quality_profile: "uhd-2160p", monitored: true, has_file: true, file_path: theatrical.path, file: theatrical },
-  { id: 5, is_default: false, label: "Director's Cut", quality_profile: "uhd-2160p", edition: "Director's Cut", monitored: true, has_file: true, file_path: dcFile.path, file: dcFile },
+  { id: 0, is_default: true, label: "Default", quality_profile: "uhd-2160p", monitored: true, has_file: true, file_path: theatrical.path, file: theatrical,
+    // Issue #12: each file's audio languages, judged against a profile that requires German.
+    audio_langs: [{ code: "en", name: "English" }, { code: "de", name: "German" }, { code: "fr", name: "French" }],
+    audio_lang_fit: { status: "good", note: "Has German audio, as this profile asks" } },
+  { id: 5, is_default: false, label: "Director's Cut", quality_profile: "uhd-2160p", edition: "Director's Cut", monitored: true, has_file: true, file_path: dcFile.path, file: dcFile,
+    audio_langs: [{ code: "en", name: "English" }, { code: "" }],
+    audio_lang_fit: { status: "bad", note: "No German audio, which this profile requires" } },
 ];
 
 const movie: Movie = {
@@ -37,7 +42,8 @@ const releases: ReleaseList = {
   profile: "uhd-2160p",
   searched: 1,
   releases: [
-    { title: "Blade.Runner.1982.Directors.Cut.2160p.UHD.BluRay-GRP", indexer: "Fake", token: "tok-dc", size_gb: 50, seeders: 20, peers: 3, summary: "4K · BluRay · Director's Cut", eligible: true, recommended: true },
+    { title: "Blade.Runner.1982.Directors.Cut.German.DL.2160p.UHD.BluRay-GRP", indexer: "Fake", token: "tok-dc", size_gb: 50, seeders: 20, peers: 3, summary: "4K · BluRay · Director's Cut", eligible: true, recommended: true, audio_langs: ["en", "de"] },
+    { title: "Blade.Runner.1982.Directors.Cut.2160p.UHD.BluRay-ENG", indexer: "Fake", token: "tok-en", size_gb: 49, seeders: 25, peers: 3, summary: "4K · BluRay · Director's Cut", eligible: false, recommended: false, reject_reason: "Missing German audio — your profile requires it", audio_langs: ["en"], audio_langs_note: "not tagged — read as the original language" },
     { title: "Blade.Runner.1982.2160p.UHD.BluRay-GRP", indexer: "Fake", token: "tok-th", size_gb: 48, seeders: 30, peers: 3, summary: "4K · BluRay", eligible: false, recommended: false, reject_reason: "Not the Director's Cut edition this version wants" },
   ],
 };
@@ -97,9 +103,24 @@ test.describe("manager", () => {
     await expect(cards.first().getByRole("button", { name: /✓ en · OpenSubtitles/ })).toBeVisible();
     await expect(dc.getByRole("button", { name: "Find subtitles" })).toHaveCount(0);
 
+    // Each file's audio languages beside its media chips, the fit in a mark and words.
+    const defLangs = cards.first().getByTestId("audio-langs");
+    await expect(defLangs).toHaveAttribute("aria-label", "Audio: English, German, French. Languages fit: Has German audio, as this profile asks");
+    await expect(defLangs).toContainText("✓");
+    const dcLangs = dc.getByTestId("audio-langs");
+    await expect(dcLangs).toHaveAttribute("data-fit", "bad");
+    await expect(dcLangs).toHaveAttribute("aria-label", /an unidentified track\. Doesn't fit the language rules: No German audio/);
+    await expect(dcLangs).toContainText("?");
+    if (process.env.LANG_SHOTS) await cards.first().screenshot({ path: `${process.env.LANG_SHOTS}/movie-versions.png` });
+
     // Search from the DC version ranks for it and grabs into it.
     await dc.getByRole("button", { name: "Search", exact: true }).click();
     await expect(page.getByText("Not the Director's Cut edition this version wants")).toBeVisible();
+    // Release rows say what the name carries, and a language Must says what's missing.
+    await expect(page.getByText("Missing German audio — your profile requires it")).toBeVisible();
+    await expect(page.getByTestId("release-langs").first()).toHaveText("audio EN·DE");
+    await expect(page.getByTestId("release-langs").nth(1)).toHaveText("audio EN*");
+    if (process.env.LANG_SHOTS) await page.getByRole("dialog").screenshot({ path: `${process.env.LANG_SHOTS}/release-search.png` });
     await page.getByRole("button", { name: "Grab", exact: true }).first().click();
     await expect.poll(() => seen.filter((s) => s.path === "/api/v1/grab").length).toBe(1);
     expect(seen.find((s) => s.path.startsWith(`/api/v1/movies/${ID}/releases`))?.path).toBe(`/api/v1/movies/${ID}/releases?version=5`);
