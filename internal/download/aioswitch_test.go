@@ -74,6 +74,113 @@ func TestEnsureBundledLogin(t *testing.T) {
 	}
 }
 
+// Once the owner edits or deletes the bundled client, the switch's note is gone: a client
+// they switched off themselves is never switched back on by the container, and a stale
+// note (no row, or the row pointed elsewhere) is dropped rather than kept for later.
+func TestSyncBundledSwitchNoteDoesntOutliveTheOwnersChoice(t *testing.T) {
+	svc, flags := newTestService(t)
+	ctx := context.Background()
+	const url = "http://127.0.0.1:8080"
+	bundled := func() Client {
+		t.Helper()
+		c, ok, err := svc.BundledClient(ctx, KindQbittorrent)
+		if err != nil || !ok {
+			t.Fatalf("bundled client: %v, %v", ok, err)
+		}
+		return c
+	}
+	if err := svc.EnsureBundledLogin(ctx, url, "admin", "pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Switched off by the container, then edited by the owner (still off): on again in
+	// the container, it stays off.
+	if err := svc.SyncBundledSwitch(ctx, url, false); err != nil {
+		t.Fatal(err)
+	}
+	c := bundled()
+	c.Name = "my qB"
+	if _, err := svc.Update(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if flags.Get(ctx, KeyBundledSwitchedOff, "") != "" {
+		t.Error("the owner's edit left the switch's note")
+	}
+	if err := svc.SyncBundledSwitch(ctx, url, true); err != nil || bundled().Enabled {
+		t.Errorf("the owner's off was undone (err %v)", err)
+	}
+
+	// Switched off by the container, then deleted by the owner: the note goes with it,
+	// and a restored client starts switched on without help from it.
+	c = bundled()
+	c.Enabled = true
+	if _, err := svc.Update(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SyncBundledSwitch(ctx, url, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(ctx, bundled().ID); err != nil {
+		t.Fatal(err)
+	}
+	if flags.Get(ctx, KeyBundledSwitchedOff, "") != "" {
+		t.Error("deleting the client left the switch's note")
+	}
+
+	// A note with nothing behind it (written by an older start, say) is dropped when the
+	// switch is on.
+	_ = flags.Set(ctx, KeyBundledSwitchedOff, "1")
+	if err := svc.SyncBundledSwitch(ctx, url, true); err != nil {
+		t.Fatal(err)
+	}
+	if flags.Get(ctx, KeyBundledSwitchedOff, "") != "" {
+		t.Error("a stale note survived")
+	}
+}
+
+// The all-in-one image's qBittorrent answers at 127.0.0.1:8080, which with host
+// networking can also be the owner's own qBittorrent. A row of theirs there with another
+// login is never taken over: the bundled one is added beside it.
+func TestEnsureBundledLoginLeavesTheOwnersClientAlone(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	const url = "http://127.0.0.1:8080"
+	mine, err := svc.Create(ctx, Client{Name: "my qBittorrent", Kind: KindQbittorrent, URL: url, Username: "me", Password: "secret", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureBundledLogin(ctx, url, "admin", "generated"); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := svc.List(ctx)
+	if len(all) != 2 {
+		t.Fatalf("clients = %+v", all)
+	}
+	for _, c := range all {
+		switch c.ID {
+		case mine.ID:
+			if c.Bundled || c.Username != "me" || c.Password != "secret" || c.Name != "my qBittorrent" {
+				t.Errorf("the owner's client was changed: %+v", c)
+			}
+		default:
+			if !c.Bundled || c.Username != "admin" || c.Password != "generated" {
+				t.Errorf("bundled client = %+v", c)
+			}
+		}
+	}
+
+	// A row that already has the login (an install whose row predates the flag) is still
+	// adopted rather than doubled.
+	svc2, _ := newTestService(t)
+	old, _ := svc2.Create(ctx, Client{Name: "qBittorrent (bundled)", Kind: KindQbittorrent, URL: url, Username: "admin", Password: "generated", Enabled: true})
+	if err := svc2.EnsureBundledLogin(ctx, url, "admin", "generated"); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := svc2.List(ctx); len(all) != 1 || !all[0].Bundled || all[0].ID != old.ID {
+		t.Errorf("same-login row not adopted: %+v", all)
+	}
+}
+
 // The all-in-one image's switch for its built-in qBittorrent: off switches the bundled
 // client off (kept, with its torrents), on switches it back on — but only a client the
 // switch turned off, never one the owner turned off in Arrmada or pointed elsewhere.
