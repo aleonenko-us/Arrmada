@@ -60,7 +60,6 @@ type reviewRow struct {
 	ImportJob *jobs.Job `json:"import_job,omitempty"`
 }
 
-
 // handleRejectReview removes the held download (+files), blocklists the release,
 // and resolves the review. {"find_another": true} then searches the title it was grabbed
 // for again, as a job — the blocklisted release can't be picked.
