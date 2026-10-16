@@ -103,9 +103,18 @@ gets in the way, Arrmada leaves qBittorrent as it was, says why in the log, and 
 at its next start.
 
 `./update.sh --rollback` afterwards is fine: the older version signs in with the login on
-the card. With `--with-db`, though, the older database doesn't have it: enter it on the card
-by hand (it's in `qbittorrent-login.json` in the data folder), or see
-[Troubleshooting](troubleshooting.md#qbittorrent-login).
+the card. Going back *with the database* is different, because the older database doesn't
+have that login: `./update.sh --rollback --with-db`, or saying yes when an update that
+didn't start offers to put the database back. Then `update.sh` switches qBittorrent's
+login-free access from the Docker network back on, so the older version can reach it, and
+says so; your next update gives it its password again. If it can't, it prints what to do:
+enter the login on the card by hand, which you can read with
+
+```sh
+docker exec Arrmada-app cat /data/qbittorrent-login.json
+```
+
+or follow [Troubleshooting](troubleshooting.md#qbittorrent-login).
 
 ## What an update does
 

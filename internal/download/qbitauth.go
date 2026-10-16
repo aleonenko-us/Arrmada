@@ -142,6 +142,17 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 		}
 	}
 
+	// Reverse-proxy trust of exactly the seed's subnets is the check's, left behind when the
+	// progress record that would have put it back was lost (a database rolled back
+	// mid-check): nobody sets that up on purpose. Switch it off.
+	if st.Phase != qbitAuthSecured && p.ProxyEnabled && sameSubnets(p.ProxyList, seedWhitelist) {
+		if err := sess.setPrefs(ctx, proxyPrefs(false, "")); err != nil {
+			return SecureSkipped, err
+		}
+		p.ProxyEnabled, p.ProxyList = false, ""
+		s.log.Info("bundled qBittorrent: switched off reverse-proxy trust an earlier password check left behind", "name", c.Name)
+	}
+
 	switch {
 	case st.Phase == qbitAuthSwitching && !p.WhitelistEnabled:
 		// Cut short after the whitelist went off. The client's login was checked before
@@ -155,13 +166,23 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 		s.log.Info("bundled qBittorrent: finished switching it to its password", "name", c.Name)
 		return SecureNewPassword, nil
 	case !p.WhitelistEnabled:
-		// Already asks for a password (the owner set that up, or this ran before).
+		// Already asks for a password (the owner set that up, or this ran before). The
+		// first time, CSRF protection and the localhost login are switched on too: the
+		// seed had them off, and someone who only removed the whitelist left them so.
 		if st.Phase != qbitAuthSecured {
+			if err := sess.setPrefs(ctx, map[string]any{"bypass_local_auth": false, "web_ui_csrf_protection_enabled": true}); err != nil {
+				return SecureSkipped, err
+			}
 			return SecureAlready, s.saveQbitAuthState(ctx, qbitAuthState{Phase: qbitAuthSecured})
 		}
 		return SecureAlready, nil
-	case st.Phase == qbitAuthSecured && !sameSubnets(p.Whitelist, seedWhitelist):
-		// Done before; this whitelist is one the owner set up since. Theirs to keep.
+	case !sameSubnets(p.Whitelist, seedWhitelist):
+		// A whitelist the owner set up (changed from the seed's, or turned on again with
+		// subnets of their own): theirs to keep. Only the seed's is Arrmada's to replace.
+		if st.Phase != qbitAuthSecured {
+			s.log.Info("bundled qBittorrent: its subnet whitelist isn't the one it was installed with, so it's left as you set it", "name", c.Name)
+			return SecureOwnWhitelist, s.saveQbitAuthState(ctx, qbitAuthState{Phase: qbitAuthSecured})
+		}
 		return SecureOwnWhitelist, nil
 	}
 
@@ -298,7 +319,16 @@ func (s *Service) checkQbitLoginBorrowed(ctx context.Context, api *qbitAuthAPI, 
 	if res == loginAccepted {
 		return nil, false, errors.New("couldn't check the qBittorrent login: qBittorrent let a wrong one in, so the whitelist stays on")
 	}
-	vs, res, err := api.login(ctx, user, pass, outside)
+	// The login itself from another outside address: the wrong one above counts as a failed
+	// attempt against its address, and a bad run of luck must never add up to a ban there.
+	real, err := outsideAddress(p.Whitelist)
+	for i := 0; err == nil && real == outside && i < 8; i++ {
+		real, err = outsideAddress(p.Whitelist)
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	vs, res, err := api.login(ctx, user, pass, real)
 	if err != nil {
 		return nil, false, err
 	}

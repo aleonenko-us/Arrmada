@@ -41,6 +41,11 @@ type fakeQbit struct {
 	fail func(prefs map[string]any) bool
 	// ignorePassword drops web_ui_password from setPreferences, as if it never took.
 	ignorePassword bool
+	// noProxySupport: X-Forwarded-For is never believed (a qBittorrent without
+	// reverse-proxy support), so the check can't tell a real login from the whitelist.
+	noProxySupport bool
+	// loginsFrom lists, per username, the addresses each sign-in was judged to come from.
+	loginsFrom map[string][]string
 	// csrfRefused counts requests CSRF protection turned away.
 	csrfRefused int
 	torrents    []string
@@ -74,7 +79,7 @@ func inSubnets(ip, list string) bool {
 }
 
 func (f *fakeQbit) client(r *http.Request) string {
-	if f.proxyOn && inSubnets(f.peer, f.proxyList) {
+	if f.proxyOn && !f.noProxySupport && inSubnets(f.peer, f.proxyList) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			return strings.TrimSpace(strings.Split(xff, ",")[0])
 		}
@@ -114,6 +119,11 @@ func (f *fakeQbit) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/v2/auth/login" {
 		_ = r.ParseForm()
+		if f.loginsFrom == nil {
+			f.loginsFrom = map[string][]string{}
+		}
+		u := r.PostForm.Get("username")
+		f.loginsFrom[u] = append(f.loginsFrom[u], client)
 		switch {
 		case f.failedLogins[client] >= 5:
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -450,8 +460,9 @@ func TestSecureBundledQbitFailureAtEachStep(t *testing.T) {
 	t.Run("the check can't be trusted", func(t *testing.T) {
 		svc, _ := newTestService(t)
 		f := newFakeQbit(t)
-		// A whitelist that covers everything: the wrong login gets in too.
-		f.set(func(f *fakeQbit) { f.whitelist = "0.0.0.0/0" })
+		// No reverse-proxy support: the check's sign-ins still come from Arrmada's
+		// whitelisted address, so the wrong login gets in too.
+		f.set(func(f *fakeQbit) { f.noProxySupport = true })
 		registerBundled(t, svc, f.srv.URL, "", "")
 		if _, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, &memKeeper{}); err == nil {
 			t.Fatal("no error")
@@ -629,6 +640,92 @@ func TestSecureBundledQbitLogsNoPassword(t *testing.T) {
 			t.Errorf("a password reached the log: %s", buf.String())
 		}
 	}
+}
+
+// The first run finds a whitelist the owner set up (not the seed's): it's theirs, nothing
+// changes, and it's recorded as done so a later start leaves it alone too.
+func TestSecureBundledQbitOwnersWhitelistFirstRun(t *testing.T) {
+	ctx := context.Background()
+	svc, flags := newTestService(t)
+	f := newFakeQbit(t)
+	f.set(func(f *fakeQbit) { f.whitelist = "172.16.0.0/12\n192.168.1.0/24" })
+	registerBundled(t, svc, f.srv.URL, "", "")
+	k := &memKeeper{}
+	out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k)
+	if err != nil || out != SecureOwnWhitelist {
+		t.Fatalf("= %v, %v", out, err)
+	}
+	if s := f.snapshot(); !s.whitelistOn || s.pass != "" || s.csrf || k.made != 0 {
+		t.Errorf("the owner's setup was changed: %+v (made %d)", s, k.made)
+	}
+	if !strings.Contains(flags.Get(ctx, KeyBundledQbitAuth, ""), qbitAuthSecured) {
+		t.Error("not recorded as done")
+	}
+	if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k); err != nil || out != SecureOwnWhitelist {
+		t.Errorf("next start = %v, %v", out, err)
+	}
+}
+
+// The wrong login and the real one are judged from different outside addresses, neither
+// of them Arrmada's.
+func TestSecureBundledQbitCheckAddresses(t *testing.T) {
+	svc, _ := newTestService(t)
+	f := newFakeQbit(t)
+	registerBundled(t, svc, f.srv.URL, "", "")
+	if _, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, &memKeeper{}); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	canary, real := f.loginsFrom["arrmada-check"], f.loginsFrom["admin"]
+	if len(canary) != 1 {
+		t.Fatalf("wrong-login checks from %v", canary)
+	}
+	var outside []string
+	for _, ip := range real {
+		if ip != f.peer {
+			outside = append(outside, ip)
+		}
+	}
+	if len(outside) != 1 || outside[0] == canary[0] || canary[0] == f.peer {
+		t.Errorf("the check's addresses: wrong login %v, real login %v (Arrmada %s)", canary, real, f.peer)
+	}
+}
+
+// The owner already switched the whitelist off but left the seed's CSRF and localhost
+// settings: the first run switches those on and touches nothing else.
+func TestSecureBundledQbitWhitelistAlreadyOff(t *testing.T) {
+	svc, _ := newTestService(t)
+	f := newFakeQbit(t)
+	f.set(func(f *fakeQbit) { f.whitelistOn, f.pass = false, "owners-pw-xxxxxxxx" })
+	registerBundled(t, svc, f.srv.URL, "admin", "owners-pw-xxxxxxxx")
+	k := &memKeeper{}
+	out, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, k)
+	if err != nil || out != SecureAlready {
+		t.Fatalf("= %v, %v", out, err)
+	}
+	if s := f.snapshot(); !s.csrf || s.localBypass || s.whitelistOn || s.pass != "owners-pw-xxxxxxxx" || k.made != 0 {
+		t.Errorf("after: %+v (made %d)", s, k.made)
+	}
+	// Done: an owner who turns CSRF off again afterwards keeps it off.
+	f.set(func(f *fakeQbit) { f.csrf = false })
+	if _, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, k); err != nil || f.snapshot().csrf {
+		t.Errorf("a later start changed the owner's choice (err %v)", err)
+	}
+}
+
+// Reverse-proxy trust of exactly the seed subnets, left by a check whose progress record
+// was lost (a database rolled back), is switched off on the first run.
+func TestSecureBundledQbitLeftoverProxyTrust(t *testing.T) {
+	svc, _ := newTestService(t)
+	f := newFakeQbit(t)
+	f.set(func(f *fakeQbit) { f.proxyOn, f.proxyList = true, "10.0.0.0/8;172.16.0.0/12;192.168.0.0/16" })
+	registerBundled(t, svc, f.srv.URL, "", "")
+	k := &memKeeper{}
+	if out, err := svc.SecureBundledQbit(context.Background(), f.srv.URL, k); err != nil || out != SecureNewPassword {
+		t.Fatalf("= %v, %v", out, err)
+	}
+	assertSecured(t, svc, f, k.pass) // checks the proxy trust is off and the list empty
 }
 
 func TestOutsideAddress(t *testing.T) {

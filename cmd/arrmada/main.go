@@ -447,6 +447,7 @@ func main() {
 				secureBundledQbit(ctx, log, downloads, cfg)
 			})
 		} else {
+			noteUnsecuredBundle(context.Background(), log, downloads, cfg)
 			close(secured)
 		}
 		afterSecured := func(ctx context.Context) bool {

@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/aio"
 	"github.com/tristenlammi/arrmada/internal/config"
@@ -22,6 +24,9 @@ func TestIsComposeBundleQbit(t *testing.T) {
 	}{
 		{config.Config{QbittorrentURL: "http://arrmada-qbittorrent:8080"}, true},
 		{config.Config{QbittorrentURL: "http://arrmada-qbittorrent:8080/"}, true},
+		// Its container name, as someone may have typed it, in any case.
+		{config.Config{QbittorrentURL: "http://Arrmada-qbittorrent:8080"}, true},
+		{config.Config{QbittorrentURL: "http://ARRMADA-QBITTORRENT:8080"}, true},
 		// The owner's own, someone else's stack, no bundle at all, and the all-in-one image's.
 		{config.Config{QbittorrentURL: "http://192.168.1.20:8080"}, false},
 		{config.Config{QbittorrentURL: "http://qbittorrent:8080"}, false},
@@ -31,6 +36,63 @@ func TestIsComposeBundleQbit(t *testing.T) {
 		if got := isComposeBundleQbit(tc.cfg); got != tc.want {
 			t.Errorf("isComposeBundleQbit(%q) = %v, want %v", tc.cfg.QbittorrentURL, got, tc.want)
 		}
+	}
+}
+
+// The lock keeps a second process out while it's held, is free again once released, and a
+// stale one (a crash) is taken over.
+func TestLockFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "qbittorrent-login.lock")
+	release, ok, err := lockFile(p, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("first: %v %v", ok, err)
+	}
+	if _, ok, err := lockFile(p, time.Minute); err != nil || ok {
+		t.Fatalf("second while held: ok %v, err %v", ok, err)
+	}
+	release()
+	release, ok, err = lockFile(p, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("after release: %v %v", ok, err)
+	}
+	// Left behind by a crash an hour ago: taken over.
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	release2, ok, err := lockFile(p, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("stale lock not taken over: %v %v", ok, err)
+	}
+	release() // the old holder's release after a takeover leaves the new holder's lock
+	if _, ok, _ := lockFile(p, time.Minute); ok {
+		t.Fatal("the old holder's release removed the new holder's lock")
+	}
+	release2()
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Error("the lock is still there after its holder released it")
+	}
+}
+
+// Two processes at once: the second leaves the switch to the first and changes nothing.
+func TestSecureBundledQbitLocked(t *testing.T) {
+	dir := t.TempDir()
+	release, ok, err := lockFile(filepath.Join(dir, "qbittorrent-login.lock"), time.Minute)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	defer release()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	var buf strings.Builder
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	downloads := download.NewService(st.DB(), log)
+	secureBundledQbit(context.Background(), log, downloads, config.Config{DataDir: dir, QbittorrentURL: "http://arrmada-qbittorrent:8080", QbittorrentLogin: filepath.Join(dir, "qbittorrent-login.json")})
+	if !strings.Contains(buf.String(), "another Arrmada process") {
+		t.Errorf("log: %s", buf.String())
 	}
 }
 

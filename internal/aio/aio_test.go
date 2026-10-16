@@ -277,6 +277,10 @@ func TestNewLoginSaveAndRead(t *testing.T) {
 		t.Fatalf("NewLogin = %+v, %v", l, err)
 	}
 	p := filepath.Join(t.TempDir(), "qbittorrent-login.json")
+	// A temporary file left by a crash, readable by everyone: not reused as it is.
+	if err := os.WriteFile(p+".tmp", []byte("half a login"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := SaveLogin(p, l); err != nil {
 		t.Fatal(err)
 	}

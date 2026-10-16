@@ -62,7 +62,7 @@ let Arrmada set a new one: in Arrmada's folder run
 ```sh
 docker compose stop arrmada-qbittorrent
 docker compose run --rm --no-deps arrmada-qbittorrent-init sh -c \
-  "sed -i 's/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/' /config/qBittorrent/qBittorrent.conf"
+  'f=/config/qBittorrent/qBittorrent.conf; o=$(stat -c %u:%g "$f") && sed -i "s/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/" "$f" && chown "$o" "$f"'
 docker compose start arrmada-qbittorrent
 docker compose restart arrmada-app
 ```

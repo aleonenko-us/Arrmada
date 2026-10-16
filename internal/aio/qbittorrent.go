@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -185,13 +186,16 @@ func randomPassword() (string, error) {
 }
 
 // writeFile writes a file whole (through a temporary name, so a crash never leaves half
-// of one) with the given mode and owner.
+// of one) with the given mode and owner, flushed to disk before the rename and with the
+// rename itself flushed after.
 func writeFile(path string, data []byte, mode os.FileMode, uid, gid int) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	os.Remove(tmp) // a leftover keeps its old mode through O_TRUNC
+	if err := writeSynced(tmp, data, mode); err != nil {
+		os.Remove(tmp)
 		return err
 	}
-	if err := os.Chmod(tmp, mode); err != nil { // WriteFile's mode is cut by the umask
+	if err := os.Chmod(tmp, mode); err != nil { // OpenFile's mode is cut by the umask
 		os.Remove(tmp)
 		return err
 	}
@@ -199,7 +203,48 @@ func writeFile(path string, data []byte, mode os.FileMode, uid, gid int) error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	// The directory too, before and after the rename: a power cut then can't leave the
+	// new name pointing at nothing, or lose a login qBittorrent has already been given.
+	dir := filepath.Dir(path)
+	if err := syncDir(dir); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(dir)
+}
+
+// writeSynced writes a file and flushes it to disk before returning.
+func writeSynced(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// syncDir flushes a directory's entries to disk. Windows (tests only) can't open a
+// directory for that, and has nothing to flush this way.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 // chown changes a file's owner when running as root (the container's supervisor), and

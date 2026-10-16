@@ -7,6 +7,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/aio"
 	"github.com/tristenlammi/arrmada/internal/config"
@@ -35,7 +39,8 @@ func ensureBundledQbit(ctx context.Context, downloads *download.Service, cfg con
 	return fmt.Errorf("the bundled qBittorrent's saved login: %w", err)
 }
 
-// composeBundleHost is the bundled qBittorrent's name on the Compose install's network.
+// composeBundleHost is the bundled qBittorrent's name on the Compose install's network: its
+// service name, or its container name (Arrmada-qbittorrent), which differs only in case.
 const composeBundleHost = "arrmada-qbittorrent"
 
 // isComposeBundleQbit says url is the Compose install's own qBittorrent container, the one
@@ -47,7 +52,66 @@ func isComposeBundleQbit(cfg config.Config) bool {
 		return false
 	}
 	u, err := url.Parse(cfg.QbittorrentURL)
-	return err == nil && u.Hostname() == composeBundleHost
+	return err == nil && strings.EqualFold(u.Hostname(), composeBundleHost)
+}
+
+// noteUnsecuredBundle says why a bundled qBittorrent outside the all-in-one image isn't
+// given a password: its address isn't the Compose install's own container.
+func noteUnsecuredBundle(ctx context.Context, log *slog.Logger, downloads *download.Service, cfg config.Config) {
+	if cfg.QbittorrentURL == "" || cfg.AIOQbittorrentURL != "" {
+		return
+	}
+	if _, ok, err := downloads.BundledClient(ctx, download.KindQbittorrent); err == nil && ok {
+		log.Info("the bundled qBittorrent's address isn't the Compose install's own container, so Arrmada leaves its login settings alone", "url", cfg.QbittorrentURL)
+	}
+}
+
+// secureLockStale is how old a lock file must be before it's taken for one a crashed
+// process left: well past the longest a run can take (a minute of retries, then a few
+// calls of at most 30 seconds each).
+const secureLockStale = 15 * time.Minute
+
+// lockFile takes an exclusive lock by creating path (O_EXCL), so two Arrmada processes on
+// one data folder never run the password switch at the same time. ok is false while
+// another holds it; a lock older than stale was left by a crash and is taken over.
+func lockFile(path string, stale time.Duration) (release func(), ok bool, err error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			mine := fmt.Sprintf("%d %d\n", os.Getpid(), time.Now().UnixNano())
+			_, werr := f.WriteString(mine)
+			if cerr := f.Close(); werr == nil {
+				werr = cerr
+			}
+			if werr != nil {
+				os.Remove(path)
+				return nil, false, werr
+			}
+			// Only ever removes its own: one taken over as stale is someone else's now.
+			return func() {
+				if b, err := os.ReadFile(path); err == nil && string(b) == mine {
+					os.Remove(path)
+				}
+			}, true, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, false, err
+		}
+		fi, serr := os.Stat(path)
+		if serr != nil {
+			if errors.Is(serr, fs.ErrNotExist) {
+				continue // released meanwhile
+			}
+			return nil, false, serr
+		}
+		if time.Since(fi.ModTime()) < stale {
+			return nil, false, nil
+		}
+		if rerr := os.Remove(path); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+			return nil, false, rerr
+		}
+	}
+	return nil, false, nil
 }
 
 // loginFile keeps the Compose bundle's qBittorrent login in the data folder (see
@@ -81,11 +145,21 @@ func (f loginFile) Make(username string) (string, error) {
 // while it starts. Whatever happens, qBittorrent stays reachable for Arrmada; a failure is
 // logged and tried again at the next start.
 func secureBundledQbit(ctx context.Context, log *slog.Logger, downloads *download.Service, cfg config.Config) {
+	release, ok, err := lockFile(filepath.Join(cfg.DataDir, "qbittorrent-login.lock"), secureLockStale)
+	switch {
+	case err != nil:
+		log.Warn("could not give the bundled qBittorrent a password: its lock file", "err", err)
+		return
+	case !ok:
+		log.Info("another Arrmada process is giving the bundled qBittorrent its password; leaving it to that one")
+		return
+	}
+	defer release()
 	var (
 		out  download.SecureOutcome
 		last error
 	)
-	err := retryBoot(ctx, func(ctx context.Context) error {
+	err = retryBoot(ctx, func(ctx context.Context) error {
 		out, last = downloads.SecureBundledQbit(ctx, cfg.QbittorrentURL, loginFile{cfg.QbittorrentLogin})
 		if last != nil && errors.Is(last, download.ErrQbitUnreachable) {
 			return last // still starting: try again shortly

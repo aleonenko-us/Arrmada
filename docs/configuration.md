@@ -37,6 +37,13 @@ You can change the password in qBittorrent (Tools → Options → WebUI). Then e
 on its card in Arrmada (**Edit**), or Arrmada can't get in; **Show its login** keeps showing
 the one Arrmada made.
 
+The "Bypass authentication for clients in whitelisted IP subnets" option is yours to use,
+with one exception: turned back on with the subnets it was installed with (`10.0.0.0/8`,
+`172.16.0.0/12`, `192.168.0.0/16`), Arrmada takes it for its old login-free access and
+switches it off again at its next start. Use your own subnets (just your LAN's, say) and
+it's left alone. An install that already had its own subnets there before this update is
+left alone too.
+
 ## `.env` settings
 
 | Setting | What it's for |
