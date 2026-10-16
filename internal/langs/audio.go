@@ -25,25 +25,37 @@ type AudioFit struct {
 	Note   string `json:"note"`
 }
 
+// audioFold folds the written forms of one spoken language together for audio: Bokmål
+// and Nynorsk are both Norwegian to a listener, and release names and track tags use
+// all three (nb/nob, nn/nno, no/nor) for the same dub.
+var audioFold = map[string]string{"nb": "no", "nn": "no"}
+
+// AudioBase is the base code an audio track or release language is compared and badged
+// by: ISO1, with Norwegian's written forms folded to "no". "" when the tag isn't known.
+func AudioBase(tag string) string {
+	c := ISO1(tag)
+	if f, ok := audioFold[c]; ok {
+		return f
+	}
+	return c
+}
+
 // NewAudioLang is the badge for a tagged (or detected) language: its base code and name.
 // An empty or unknown tag gives the unidentified badge (Code "").
 func NewAudioLang(tag string, detected bool) AudioLang {
-	l, ok := Lookup(tag)
-	if !ok {
+	code := AudioBase(tag)
+	if code == "" {
 		return AudioLang{}
 	}
-	base, _ := Lookup(l.ISO1)
-	return AudioLang{Code: l.ISO1, Name: base.Name, Detected: detected}
+	base, _ := Lookup(code)
+	return AudioLang{Code: code, Name: base.Name, Detected: detected}
 }
 
 // OrderAudio is the badges a file shows: one per language — a tagged track beats a
 // detected one of the same language — the title's original language first, then the rest
 // by code, and a single "not identified" badge last.
 func OrderAudio(list []AudioLang, orig string) []AudioLang {
-	o := ""
-	if l, ok := Lookup(orig); ok {
-		o = l.ISO1
-	}
+	o := AudioBase(orig)
 	byCode := map[string]int{}
 	var out []AudioLang
 	unknown := false

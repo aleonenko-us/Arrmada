@@ -19,6 +19,15 @@ func TestNewAudioLangNormalises(t *testing.T) {
 			t.Errorf("NewAudioLang(%q) = %+v, want code %q with a name", tag, got, want)
 		}
 	}
+	// Norwegian's written forms are one language to a listener.
+	for _, tag := range []string{"nb", "nob", "nn", "nno", "no", "nor", "Norwegian Bokmål"} {
+		if got := NewAudioLang(tag, false); got.Code != "no" || got.Name != "Norwegian" {
+			t.Errorf("NewAudioLang(%q) = %+v, want Norwegian (no)", tag, got)
+		}
+		if AudioBase(tag) != "no" {
+			t.Errorf("AudioBase(%q) = %q", tag, AudioBase(tag))
+		}
+	}
 	if got := NewAudioLang("ger", false); got.Name != "German" {
 		t.Errorf("name = %q, want German", got.Name)
 	}

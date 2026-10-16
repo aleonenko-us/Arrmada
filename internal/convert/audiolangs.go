@@ -41,9 +41,9 @@ func audioLangs(mi *MediaInfo, heard map[int]string) (codes []string, untagged b
 		if a.Commentary {
 			continue
 		}
-		code := langtab.ISO1(a.Lang)
+		code := langtab.AudioBase(a.Lang)
 		if code == "" {
-			code = langtab.ISO1(heard[a.AudIndex])
+			code = langtab.AudioBase(heard[a.AudIndex])
 		}
 		if code == "" {
 			untagged = true
@@ -59,7 +59,7 @@ func audioLangs(mi *MediaInfo, heard map[int]string) (codes []string, untagged b
 // untaggedAudio reports a (non-commentary) audio track with no language the table knows.
 func untaggedAudio(mi *MediaInfo) bool {
 	for _, a := range mi.Audio {
-		if !a.Commentary && langtab.ISO1(a.Lang) == "" {
+		if !a.Commentary && langtab.AudioBase(a.Lang) == "" {
 			return true
 		}
 	}
