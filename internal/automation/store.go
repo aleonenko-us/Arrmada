@@ -289,6 +289,7 @@ func (c *Coordinator) recordGrabReplacing(ctx context.Context, movieID, versionI
 		c.log.Warn("automation: record grab failed", "err", err)
 		return
 	}
+	c.noteHandoff(ctx, "movie", movieID, title, infoHash)
 	c.grabbed(ctx, "movie", movieID)
 }
 

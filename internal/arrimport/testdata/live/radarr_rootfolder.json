@@ -1,0 +1,16 @@
+[
+ {
+  "path": "/media/movies",
+  "accessible": true,
+  "freeSpace": 355802505216,
+  "unmappedFolders": [],
+  "id": 1
+ },
+ {
+  "path": "/media/kids-movies",
+  "accessible": true,
+  "freeSpace": 355802505216,
+  "unmappedFolders": [],
+  "id": 2
+ }
+]

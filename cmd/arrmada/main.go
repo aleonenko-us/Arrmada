@@ -1296,6 +1296,7 @@ func main() {
 	srv := httpapi.New(httpapi.Deps{
 		Folders:      libFolders,
 		FolderMover:  folderMover,
+		SeriesByTVDB: tmdb.SeriesByTVDB, // Sonarr imports: TVDB ids → TMDB
 		Config:       cfg,
 		Log:          modLog(log, "api"),
 		Store:        st,

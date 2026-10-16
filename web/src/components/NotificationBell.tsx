@@ -14,7 +14,7 @@ function BellWatchLinks({ links, onOpen }: { links: readonly WatchLink[]; onOpen
   const usable = links.filter((l) => safeWatchURL(l.url));
   if (usable.length === 0) return null;
   return (
-    <div className="-mt-1 mb-2.5 ml-[30px] flex flex-wrap gap-1.5">
+    <div className="-mt-0.5 flex flex-wrap gap-2 pb-3.5 pl-8 pr-3.5">
       {usable.map((l, i) => {
         const known = isMediaServer(l.server) ? l.server : null;
         return (

@@ -19,6 +19,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
@@ -298,14 +299,16 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 		return f.Fetch(ctx, *found, downloadURL)
 	}
 	// Usenet (newznab): the NZB is downloaded here and handed over as a file, so the API key
-	// in its link never reaches the usenet client (nzb.go). There's no fallback to the
-	// link: a failure fails the grab.
+	// in its link never reaches the usenet client (nzb.go). The one exception is an indexer
+	// that blocks Arrmada's download (BlockedError): its ClientLink is what the grab may
+	// hand the usenet client to fetch itself — the grab decides, nothing here does.
 	if found.Transport() == TransportUsenet {
 		// A failure that's the indexer's (limit, key, down) counts against it like a failed
-		// search, so sweeps back off; one about this release (gone, not an NZB) doesn't.
+		// search, so sweeps back off; one about this release (gone, not an NZB) doesn't, and
+		// neither does a block: searching it may work fine (through Prowlarr it does).
 		// A delivered NZB is the indexer answering.
 		start := time.Now()
-		res, err := fetchNZBPayload(ctx, *found, downloadURL)
+		res, err := fetchNZBPayload(ctx, *found, downloadURL, prowlarrHosts(indexers))
 		var ie *nzbIndexerError
 		if err == nil || errors.As(err, &ie) {
 			s.record(ctx, *found, err, time.Since(start), true)
@@ -326,6 +329,22 @@ func (s *Service) Fetch(ctx context.Context, indexerName, downloadURL string) (F
 	return res, nil
 }
 
+// prowlarrHosts is every address (host:port, lowercase) Prowlarr-synced rows reach
+// Prowlarr by: a link there is Prowlarr's own, carrying its API key, and is never handed to
+// a usenet client.
+func prowlarrHosts(indexers []Indexer) map[string]bool {
+	hosts := map[string]bool{}
+	for _, ix := range indexers {
+		if ix.ProwlarrID == 0 {
+			continue
+		}
+		if u, err := url.Parse(ix.URL); err == nil && u.Host != "" {
+			hosts[strings.ToLower(u.Host)] = true
+		}
+	}
+	return hosts
+}
+
 // fetchTorrentTimeout bounds the server-side resolution of a torrent URL. Grabs
 // are user-facing, so a hung tracker should fall back to URL passthrough quickly.
 const fetchTorrentTimeout = 30 * time.Second
@@ -344,6 +363,7 @@ func fetchTorrentPayload(ctx context.Context, downloadURL string) (FetchResult, 
 
 	var magnet string
 	client := &http.Client{
+		Transport: httpua.Transport(nil),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Torznab grab endpoints commonly 302 to a magnet URI; the transport
 			// can't follow that scheme, so capture it and stop.

@@ -8,6 +8,13 @@ name: Release
 # main and pull requests never do: image.yml builds those without pushing anything. A
 # manual run is only accepted when it's started on a v* tag, for re-publishing one.
 #
+# Two platforms under the same tags: linux/amd64 and linux/arm64 (Raspberry Pi 4/5 on a
+# 64-bit OS, ARM NAS boxes, Apple Silicon). Each is built natively on its own runner —
+# arm64 on GitHub's arm64 runner, not under emulation, which would take hours over the
+# whisper.cpp compile — and pushed by digest only, with no tag. Then one job joins the two
+# into a single multi-platform tag set, so `docker pull ...:stable` picks the right one
+# by itself, and nothing is tagged unless both platforms built.
+#
 # Nothing secret goes into the image. It's built from the repository alone, with the tag
 # and commit as its only build arguments; keys are entered in the app after install.
 on:
@@ -25,17 +32,32 @@ permissions:
 
 jobs:
   image:
-    name: Build and push the image
+    name: Build the image (${{ matrix.arch }})
     # A manual run started on a branch publishes nothing.
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
+    strategy:
+      # One platform failing stops the other: a release is both or neither.
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            # amd64 reads the cache image.yml writes on main under its default scope, as
+            # it always has; arm64 has a scope of its own.
+            cache: type=gha
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            cache: type=gha,scope=arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     permissions:
       contents: read
       packages: write
     steps:
-      # Same as image.yml: the oneAPI stage needs more disk than the runner has free.
+      # Same as image.yml: the oneAPI stage (amd64 only) needs more disk than the runner
+      # has free. The arm64 build doesn't pull Intel's image.
       - name: Free disk space
+        if: matrix.arch == 'amd64'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
@@ -54,11 +76,10 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           echo "image=ghcr.io/${owner}/arrmada" >> "$GITHUB_OUTPUT"
           echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      # Tags: 0.17.0, 0.17, sha-abc1234, and stable for a release that isn't a pre-release
-      # (v0.18.0-rc.1 gets its own version and sha tags only). No "latest": installs pick
-      # stable or a version on purpose. The semver tags name their value so a manual
-      # re-run on a tag gets them too.
-      - name: Image tags and labels
+      # Only the labels are used here (the tags are written once, by the merge job); the
+      # tag list is the merge job's, so org.opencontainers.image.version reads 0.17.0 as
+      # it always has.
+      - name: Image labels
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -82,24 +103,111 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       # VERSION is the tag (v0.17.0), so the Dashboard and the update check read it as a
       # release. The cache from main's image.yml runs is read, not written: a tag's own
-      # cache entries would only ever be used by that tag.
-      - name: Build and push
+      # cache entries would only ever be used by that tag. Pushed by digest: the image is
+      # in the registry but no tag points at it until the merge job below.
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # No platforms: each runner builds its own, natively (the merge job checks both
+          # arrived), each reading the cache image.yml wrote for it on main.
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          outputs: type=image,name=${{ steps.names.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: ${{ matrix.cache }}
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ steps.names.outputs.commit }}
+      - name: Keep the digest for the merge job
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          # Kept a week, so a merge job that failed can still be re-run days later.
+          retention-days: 7
+
+  merge:
+    name: Tag the release image (amd64 + arm64)
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Names
+        id: names
+        run: |
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/arrmada" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      # Tags: 0.17.0, 0.17, sha-abc1234, and stable for a release that isn't a pre-release
+      # (v0.18.0-rc.1 gets its own version and sha tags only). No "latest": installs pick
+      # stable or a version on purpose. The semver tags name their value so a manual
+      # re-run on a tag gets them too. Keep this list the same as the build job's.
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.names.outputs.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.ref_name }}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=stable,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GitHub's container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # One multi-platform index per tag, pointing at the two images built above. Docker
+      # on each machine pulls the one for its platform.
+      - name: Create the multi-platform tags
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ steps.names.outputs.image }}
+        run: |
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "Expected one digest per platform (2), found: ${digests[*]}" >&2
+            exit 1
+          fi
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for digest in "${digests[@]}"; do args+=("${IMAGE}@sha256:${digest}"); done
+          docker buildx imagetools create "${args[@]}"
+      # Fails the release (before the GitHub release is written) unless both platforms are
+      # really behind the version tag.
+      - name: Check both platforms are published
+        env:
+          IMAGE: ${{ steps.names.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          platforms="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest}}' \
+            | jq -r '[.manifests[].platform | select(.os == "linux") | .architecture] | sort | unique | join(",")')"
+          echo "Platforms: ${platforms}"
+          [ "${platforms}" = "amd64,arm64" ]
 
   notes:
     name: GitHub release
-    # After the image is pushed, so "Update available" never points at an image that
+    # After the image is tagged, so "Update available" never points at an image that
     # can't be pulled yet.
-    needs: image
+    needs: merge
     runs-on: ubuntu-24.04
     permissions:
       contents: write

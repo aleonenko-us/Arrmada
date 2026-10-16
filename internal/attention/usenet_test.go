@@ -47,3 +47,22 @@ func TestUsenetFailuresInNeedsYou(t *testing.T) {
 		t.Errorf("a job nobody grabbed = %+v", other)
 	}
 }
+
+// A handed-over link SABnzbd couldn't fetch either (the indexer turned it away too) is the
+// indexer's, not the release's: an error saying so, with what to check, never a blocklist.
+func TestUsenetFetchFailureInNeedsYou(t *testing.T) {
+	frame := Frame{OK: true, Whole: true, Queue: []download.Item{{
+		Hash: "sab-fetch", Name: "Film.Fetch - https://indexer.example/getnzb/x.nzb", State: "error", RawState: "Failed",
+		Transport: download.TransportUsenet, FailMessage: "URL Fetching failed; Unauthorized access",
+	}}, Acq: map[string]automation.Acquisition{"sab-fetch": {Title: "Film.Fetch", Status: "grabbed"}}}
+	s := New(staticFrame(frame), nil, quiet, Downloads())
+	if err := s.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	it, ok := byKey(s.Current().Items)[KindDownload+":sab-fetch"]
+	if !ok || it.Level != LevelError || !it.Grabbed ||
+		it.Title != "SABnzbd couldn't fetch the NZB for Film.Fetch: the indexer didn't let SABnzbd download the NZB either" ||
+		!strings.Contains(it.Detail, "Check that the indexer lets SABnzbd download") || !strings.Contains(it.Detail, "Unauthorized access") {
+		t.Errorf("fetch failure = %+v", it)
+	}
+}

@@ -76,7 +76,7 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
         </div>
       </div>
 
-      <LocalAI backend={settings.ai_backend} note={settings.ai_note} />
+      <LocalAI backend={settings.ai_backend} note={settings.ai_note} cpuOnly={settings.ai_cpu_only} />
 
       <OpenSubtitlesCard settings={settings} onChanged={() => void api.subtitleSettings().then(onSaved).catch(() => {})}>
         {/* Advanced: how close a download's release must be to the file when it wasn't
@@ -142,7 +142,7 @@ function OpenSubtitlesCard({ settings, onChanged, children }: { settings: Subtit
   );
 }
 
-function LocalAI({ backend, note }: { backend?: string; note?: string }) {
+function LocalAI({ backend, note, cpuOnly }: { backend?: string; note?: string; cpuOnly?: boolean }) {
   const toast = useToast();
   const [status, setStatus] = useState<WhisperStatus | null>(null);
   const load = useCallback(() => api.subtitleModels().then(setStatus).catch(() => setStatus(null)), []);
@@ -169,6 +169,8 @@ function LocalAI({ backend, note }: { backend?: string; note?: string }) {
             ? "Running on the GPU (Intel oneAPI)."
             : backend === "vulkan"
             ? "Running on the GPU (Vulkan)."
+            : backend === "cpu" && cpuOnly
+              ? "Running on the CPU: the ARM build has no GPU acceleration for AI subtitles, so each file takes a while: on a small board like a Raspberry Pi, possibly longer than the film itself."
             : backend === "cpu"
               ? "Running on the CPU. If this host has a GPU, check that /dev/dri is passed to the container and vulkaninfo inside it lists a device."
               : "Backend not known yet — it's reported after the first subtitle is generated."}

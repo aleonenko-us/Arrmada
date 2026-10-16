@@ -19,6 +19,10 @@ func TestBackendOfReadsWhisperOutput(t *testing.T) {
 		"sycl device found":            {"ggml_sycl_init: SYCL_USE_XMX: yes\nFound 1 SYCL devices:\n| 0| [level_zero:gpu:0]| Intel Arc A380 Graphics| 12.55| 128| 1024| 32| 6001M| 1.6.33276|\nwhisper_backend_init_gpu: using SYCL0 backend\n", "sycl"},
 		"gpu build, no device":         {"ggml_sycl_init: SYCL_USE_XMX: yes\nwhisper_backend_init_gpu: no GPU found\nwhisper_init_with_params_no_state: devices = 1", "cpu"},
 		"cpu only build":               {"whisper_init_from_file_with_params_no_state: loading model from 'ggml-large-v3-turbo.bin'\nsystem_info: n_threads = 16", "cpu"},
+		// The Vulkan build loads its backends at run time (one CPU backend per instruction
+		// set); the "loaded Vulkan backend" line comes whether or not there's a device.
+		"loadable backends, no device": {"ggml_vulkan: No devices found.\nload_backend: loaded Vulkan backend from /opt/whisper/libggml-vulkan.so\nload_backend: loaded CPU backend from /opt/whisper/libggml-cpu-haswell.so\nwhisper_backend_init_gpu: no GPU found\n", "cpu"},
+		"loadable backends, device":    {"ggml_vulkan: Found 1 Vulkan devices:\nggml_vulkan: 0 = Intel(R) Arc(tm) A380 Graphics (DG2) | uma: 0 | fp16: 1\nload_backend: loaded Vulkan backend from /opt/whisper/libggml-vulkan.so\nload_backend: loaded CPU backend from /opt/whisper/libggml-cpu-alderlake.so\nwhisper_backend_init_gpu: using Vulkan0 backend\n", "vulkan"},
 		"empty":                        {"", "cpu"},
 	} {
 		if got := backendOf([]byte(tc.out)); got != tc.want {
@@ -81,6 +85,23 @@ func TestSyclFallbackIsStickyAndNotedOnce(t *testing.T) {
 	}
 	if (&whisperGen{bin: "/usr/local/bin/whisper-cli"}).pickBin() != "/usr/local/bin/whisper-cli" {
 		t.Error("with no oneAPI build, the portable one runs")
+	}
+}
+
+// The arm64 image's whisper has no GPU backend and says so through the environment;
+// Settings then explains the CPU as expected instead of pointing at /dev/dri.
+func TestCPUOnlyBuildFromEnvironment(t *testing.T) {
+	t.Setenv("ARRMADA_WHISPER_CPU_ONLY", "1")
+	if !detectWhisper(t.TempDir()).CPUOnly() {
+		t.Error("ARRMADA_WHISPER_CPU_ONLY=1: CPUOnly = false, want true")
+	}
+	t.Setenv("ARRMADA_WHISPER_CPU_ONLY", "")
+	if detectWhisper(t.TempDir()).CPUOnly() {
+		t.Error("unset: CPUOnly = true, want false")
+	}
+	var none *whisperGen
+	if none.CPUOnly() {
+		t.Error("nil whisperGen: CPUOnly = true, want false")
 	}
 }
 
