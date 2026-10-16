@@ -235,6 +235,7 @@ export const settings: AppSettings = {
   upgrade_max_grabs_per_sweep: 10,
   app_public_url: "",
   books_languages: ["en"],
+  match_title_languages: [],
 };
 
 export const recycle: RecycleStats = {

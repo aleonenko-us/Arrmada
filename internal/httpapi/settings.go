@@ -112,6 +112,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"indexer_default_categories": a.deps.Settings.GetBool(ctx, indexer.KeyDefaultCategories, true),
 		// The languages automatic book grabs accept, canonical codes in order; [] = any.
 		"books_languages": a.bookLanguages(ctx),
+		// The extra languages whose translated titles scans and downloads Arrmada didn't
+		// grab may be named in (canonical codes); [] = English and original titles only.
+		"match_title_languages": settings.ParseTitleLanguages(a.deps.Settings.Get(ctx, settings.KeyTitleLanguages, "")),
 		// How releases are ranked: v2 (ordered keys, the default) or v1 (classic, the
 		// rollback). Whichever decides, the other runs in the shadow and the disagreements
 		// are recorded for review.
@@ -195,6 +198,7 @@ type settingsUpdate struct {
 	QuotaBooks                *int      `json:"request_quota_books"`
 	DefaultCategories         *bool     `json:"indexer_default_categories"`
 	BookLanguages             *[]string `json:"books_languages"`
+	TitleLanguages            *[]string `json:"match_title_languages"`
 	QualityRanking            *string   `json:"quality_ranking"`
 	NetworkPreference         *string   `json:"download_network_preference"`
 	PublicURL                 *string   `json:"app_public_url"`
@@ -366,6 +370,14 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var titleLangs string
+	if req.TitleLanguages != nil {
+		var msg string
+		if titleLangs, msg = parseBookLanguagesUpdate(*req.TitleLanguages); msg != "" {
+			a.writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+	}
 	// ISO 3166-1 alpha-2 ("AU"), or empty to go back to TMDB's global lists. Checked up
 	// here with the rest, so a bad region doesn't leave the keys before it saved.
 	var region string
@@ -486,6 +498,13 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BookLanguages != nil && !save(a.deps.Settings.Set(ctx, automation.KeyBookLanguages, bookLangs)) {
 		return
+	}
+	// The page sends every setting on each save: only a real change re-reads titles.
+	if req.TitleLanguages != nil && titleLangs != a.deps.Settings.Get(ctx, settings.KeyTitleLanguages, "") {
+		if !save(a.deps.Settings.Set(ctx, settings.KeyTitleLanguages, titleLangs)) {
+			return
+		}
+		a.titleLanguagesChanged()
 	}
 	if req.QualityRanking != nil && !save(a.deps.Settings.Set(ctx, quality.KeyRanking, strings.TrimSpace(*req.QualityRanking))) {
 		return

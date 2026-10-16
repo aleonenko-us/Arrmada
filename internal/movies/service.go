@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
@@ -79,6 +80,16 @@ type Service struct {
 	scanning sync.Mutex
 	// missing is the last missing-file sweep's outcome, for the health panel (missing.go).
 	missing missingState
+
+	// titles reads every name a film goes by (nil = only the stored titles count), and
+	// titleLangs is the "Also match titles in" setting as ISO 639-1 codes (nil = none).
+	// See localtitles.go.
+	titles     metadata.TitlesSource
+	titleLangs func() []string
+	// titlesPass runs one titles backfill at a time; titlesAgain asks the one running to
+	// go round once more (the languages changed while it ran).
+	titlesPass  sync.Mutex
+	titlesAgain atomic.Bool
 }
 
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently
@@ -591,11 +602,22 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 			rel = parser.Parse(filepath.Base(video))
 		}
 		results, err := s.meta.SearchMovie(ctx, rel.Title)
-		if err != nil || len(results) == 0 {
+		match, ok := metadata.MovieResult{}, false
+		if err == nil && len(results) > 0 {
+			match, ok = bestMatch(results, rel.Title, rel.Year)
+		}
+		if !ok && err == nil {
+			// A folder named in one of the owner's extra title languages ("Der Pate (1972)"):
+			// TMDB's search finds the film, but under its English title, which the folder's
+			// doesn't match. Asked again in those languages, one film must be named so.
+			if id, found := s.localizedScanMatch(ctx, rel.Title, rel.Year); found {
+				match, ok = metadata.MovieResult{TMDBID: id}, true
+			}
+		}
+		if !ok && (err != nil || len(results) == 0) {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
-		match, ok := bestMatch(results, rel.Title, rel.Year)
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year, Candidates: topMovies(results, 6)})
@@ -652,10 +674,12 @@ func (s *Service) importMovieFile(ctx context.Context, video string, tmdbID int,
 	if profile == "" {
 		profile = "n/a"
 	}
+	extra := extraFrom(details)
+	s.withLocalTitles(ctx, extra, nil, details.TMDBID, details.Title)
 	created, err := s.repo.Create(ctx, Movie{
 		TMDBID: details.TMDBID, IMDBID: details.IMDBID, Title: details.Title, Year: details.Year,
 		Overview: details.Overview, PosterURL: details.PosterURL, Runtime: details.Runtime, Status: details.Status,
-		Monitored: opts.Monitor, QualityProfile: profile, Extra: extraFrom(details),
+		Monitored: opts.Monitor, QualityProfile: profile, Extra: extra,
 		LibraryFolderID: s.ownerID(ctx, video),
 	})
 	if err != nil {
@@ -1664,7 +1688,9 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Movie, error) {
 		if d, derr := s.meta.GetMovie(ctx, m.TMDBID); derr == nil {
 			m.IMDBID, m.Title, m.Year = d.IMDBID, d.Title, d.Year
 			m.Overview, m.PosterURL, m.Runtime, m.Status = d.Overview, d.PosterURL, d.Runtime, d.Status
+			prev := m.Extra
 			m.Extra = extraFrom(d)
+			s.withLocalTitles(ctx, m.Extra, prev, m.TMDBID, d.Title)
 			if uerr := s.repo.UpdateMetadata(ctx, id, m); uerr != nil {
 				s.log.Warn("refresh: metadata update failed", "movie", m.Title, "err", uerr)
 			}
@@ -1842,6 +1868,7 @@ func (s *Service) MatchRelease(ctx context.Context, name string) (Movie, bool) {
 // against the snapshot's own titles).
 func (s *Service) Matcher(all []Movie) func(title string, year int) (Movie, bool) {
 	own, alt := indexTitleKeys(all)
+	local := indexLocalKeys(all, own, alt, s.localLangs())
 	return func(title string, year int) (Movie, bool) {
 		k := normalizeTitle(title)
 		for _, byKey := range []map[string][]Movie{own, alt} {
@@ -1851,7 +1878,7 @@ func (s *Service) Matcher(all []Movie) func(title string, year int) (Movie, bool
 				}
 			}
 		}
-		return Movie{}, false
+		return s.pickLocal(local[k], title, year)
 	}
 }
 
@@ -1881,6 +1908,10 @@ func indexTitleKeys(all []Movie) (own, alt map[string][]Movie) {
 // A release with no parseable year only matches when exactly ONE library movie
 // shares the title key: with two Cinderellas in the library, a "Cinderella.1080p"
 // release must stay unmatched rather than attach to whichever was added last.
+//
+// Last come the translated titles in the owner's extra title languages (Settings →
+// Library), only for a name no film goes by otherwise and only when exactly one film fits
+// (indexLocalKeys, pickLocal).
 func (s *Service) Match(ctx context.Context, title string, year int) (Movie, bool) {
 	all, err := s.repo.List(ctx)
 	if err != nil {
@@ -1892,6 +1923,9 @@ func (s *Service) Match(ctx context.Context, title string, year int) (Movie, boo
 		if m, ok, decided := s.pick(byKey[want], title, year); decided {
 			return m, ok
 		}
+	}
+	if langs := s.localLangs(); len(langs) > 0 {
+		return s.pickLocal(indexLocalKeys(all, own, alt, langs)[want], title, year)
 	}
 	return Movie{}, false
 }

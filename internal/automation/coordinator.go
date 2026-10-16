@@ -104,6 +104,10 @@ type Coordinator struct {
 	// episode listing couldn't be trusted, keyed by content path (see importSeriesInto).
 	// Also guarded by unmatchedMu, and pruned the same way.
 	metaRetry map[string]int
+	// knownNames remembers, by torrent hash, the show a series download was confirmed for
+	// under one of its names in another language (seriesKnownAs), so a seeding download
+	// isn't re-checked every sweep. Also guarded by unmatchedMu, and pruned the same way.
+	knownNames map[string]int64
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so
@@ -2739,6 +2743,11 @@ func (c *Coordinator) pruneUnmatched(active map[string]bool) {
 	for h := range c.unmatched {
 		if !active[h] {
 			delete(c.unmatched, h)
+		}
+	}
+	for h := range c.knownNames {
+		if !active[h] {
+			delete(c.knownNames, h)
 		}
 	}
 }

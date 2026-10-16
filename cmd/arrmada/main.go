@@ -427,6 +427,16 @@ func main() {
 	movieSvc.SetNaming(prefs)
 	movieSvc.SetPrefs(prefs)
 	movieSvc.SetOutbox(box) // an import's file record and its follow-up work land together
+	// Every name a title goes by (the import gate's check of a download grabbed for it), and
+	// the extra languages whose translated titles match library-wide (Settings → Library →
+	// "Also match titles in"; empty by default), read per use so a change needs no restart.
+	titleLangs := func() []string {
+		return settings.TitleLanguageBases(settingsSvc.Get(context.Background(), settings.KeyTitleLanguages, ""))
+	}
+	movieSvc.SetTitlesSource(tmdb)
+	movieSvc.SetTitleLanguages(titleLangs)
+	seriesSvc.SetTitlesSource(tmdb)
+	seriesSvc.SetTitleLanguages(titleLangs)
 	if cfg.QbittorrentURL != "" {
 		if err := downloads.EnsureBundled(context.Background(), cfg.QbittorrentURL); err != nil {
 			log.Warn("could not register bundled qBittorrent", "err", err)
@@ -855,12 +865,20 @@ func main() {
 	})
 	// Movies stored before original and alternative titles were kept read them from TMDB,
 	// one every two seconds, so searches and imports match them without a manual refresh.
+	// The same pass (and the series one after it) reads the translated titles of the extra
+	// title languages for titles not yet read for them; saving new languages runs it again.
 	grp.Go("movies: alt titles backfill", func(ctx context.Context) {
 		n, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
 		if err != nil && ctx.Err() == nil {
 			log.Warn("movies: alternative titles backfill failed", "filled", n, "err", err)
 		} else if n > 0 {
 			log.Info("movies: read alternative titles", "movies", n)
+		}
+		n, err = seriesSvc.BackfillLocalTitles(ctx, 2*time.Second)
+		if err != nil && ctx.Err() == nil {
+			log.Warn("series: translated titles backfill failed", "filled", n, "err", err)
+		} else if n > 0 {
+			log.Info("series: read translated titles", "series", n)
 		}
 	})
 	// Reported problems (Requests → Issues): a requester reports a problem with a title in

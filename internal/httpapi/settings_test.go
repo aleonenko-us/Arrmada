@@ -263,6 +263,30 @@ func TestSettingsBookLanguages(t *testing.T) {
 	}
 }
 
+// "Also match titles in" is empty by default (English and original titles only), saved as
+// canonical codes by a manager, and refuses anything that isn't a language.
+func TestSettingsTitleLanguages(t *testing.T) {
+	a := settingsAPI(t)
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["match_title_languages"], []any{}) {
+		t.Fatalf("default = %v, want []", got["match_title_languages"])
+	}
+	if w := putSettingsAs(t, a, auth.RoleManager, `{"match_title_languages":["German","fre","de"]}`); w.Code != http.StatusOK {
+		t.Fatalf("manager PUT: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["match_title_languages"], []any{"de", "fr"}) {
+		t.Errorf("saved = %v, want [de fr]", got["match_title_languages"])
+	}
+	if w := putSettings(t, a, `{"match_title_languages":["de","klingonish"]}`); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown language: HTTP %d, want 400", w.Code)
+	}
+	if w := putSettings(t, a, `{"match_title_languages":[]}`); w.Code != http.StatusOK {
+		t.Fatalf("empty list: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, got := getSettings(t, a); !reflect.DeepEqual(got["match_title_languages"], []any{}) {
+		t.Errorf("emptied = %v, want []", got["match_title_languages"])
+	}
+}
+
 func mustAtoi(t *testing.T, s string) int {
 	t.Helper()
 	n, err := strconv.Atoi(s)
@@ -319,6 +343,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"request_quota_seasons":             `2`,
 		"request_quota_books":               `4`,
 		"books_languages":                   `["en","es"]`,
+		"match_title_languages":             `["de"]`,
 		"quality_ranking":                   `"v2"`,
 		"download_network_preference":       `"usenet"`,
 		"app_public_url":                    `"https://arrmada.example.com"`,
