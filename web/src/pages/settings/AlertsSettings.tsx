@@ -77,7 +77,10 @@ export function AlertsSettings() {
         {!admin && <p className="text-sm text-ink-faint">Only an admin can add or change alert connections.</p>}
         {failed && !(conns && shown) ? (
           <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load alert connections — {failed.message}</p>
-        ) : !conns || !shown ? (
+        ) : !conns || !shown || !presets ? (
+          // The forms too: a card takes its starting values from its preset once, when it
+          // mounts, so one drawn before the presets arrive would start blank (an n8n card
+          // would show "None" for its header auth, and saving would drop it).
           <p className="text-sm text-ink-dim">Loading…</p>
         ) : (
           <>
