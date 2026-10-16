@@ -1,0 +1,1170 @@
+{
+  "v1/avoid-french": {
+    "winner": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+    "why": [
+      "Highest quality that matches your goal",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — fewer seeders",
+    "eligible": [
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 318,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 271,
+        "format": 0,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (German)"
+        ],
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 218,
+        "avoided": [
+          "only French audio"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 268
+      }
+    ]
+  },
+  "v1/german-must-avoid-italian": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 1080p BluRay — lower resolution",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.1080p.BluRay.x264-ENG",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v1/must-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 1080p BluRay — lower resolution",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.1080p.BluRay.x264-ENG",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v1/must-original-prefer-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "English audio — matched",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 558,
+        "matched": [
+          "English audio",
+          "German audio",
+          "HEVC"
+        ],
+        "format": 150,
+        "target": 150,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 508,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "German audio"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 321,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 148,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 98
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v1/original-plus-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "English audio — matched",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 558,
+        "matched": [
+          "English audio",
+          "German audio",
+          "HEVC"
+        ],
+        "format": 150,
+        "target": 150,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 508,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "German audio"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 321,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 148,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 98
+      }
+    ]
+  },
+  "v1/prefer-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 318,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 271,
+        "format": 0,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      }
+    ]
+  },
+  "v2/avoid-french": {
+    "winner": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+    "why": [
+      "Highest quality that matches your goal",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — fewer seeders",
+    "eligible": [
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 318,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 271,
+        "format": 0,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 218,
+        "avoided": [
+          "only French audio"
+        ],
+        "format": -50,
+        "target": -50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (German)"
+        ],
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "avoided": [
+          "Foreign-only audio (Italian)"
+        ],
+        "format": 0,
+        "quality": 258
+      }
+    ]
+  },
+  "v2/german-must-avoid-italian": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 1080p BluRay — lower resolution",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.1080p.BluRay.x264-ENG",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v2/must-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Highest bitrate available"
+    ],
+    "chosen_over": "Chosen over the 1080p BluRay — lower resolution",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.1080p.BluRay.x264-ENG",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v2/must-original-prefer-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "English audio — matched",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 558,
+        "matched": [
+          "English audio",
+          "German audio",
+          "HEVC"
+        ],
+        "format": 150,
+        "target": 150,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 508,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "German audio"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 321,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 148,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 98
+      }
+    ],
+    "rejected": [
+      {
+        "Name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "Code": "missing_language"
+      },
+      {
+        "Name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "Code": "missing_language"
+      }
+    ]
+  },
+  "v2/original-plus-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "English audio — matched",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 558,
+        "matched": [
+          "English audio",
+          "German audio",
+          "HEVC"
+        ],
+        "format": 150,
+        "target": 150,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 508,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "German audio"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 368,
+        "matched": [
+          "English audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 321,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 318,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 148,
+        "matched": [
+          "English audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 98
+      }
+    ]
+  },
+  "v2/prefer-german": {
+    "winner": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+    "why": [
+      "Highest quality that matches your goal",
+      "German audio — matched",
+      "HEVC — matched",
+      "Best fit for your profile"
+    ],
+    "chosen_over": "Chosen over the 2160p WEB-DL — no German audio, which you prefer",
+    "eligible": [
+      {
+        "name": "Film.2021.German.DL.2160p.WEB-DL.H.265-UHDDL",
+        "total": 508,
+        "matched": [
+          "German audio",
+          "HEVC"
+        ],
+        "format": 100,
+        "target": 100,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.2160p.WEB-DL.DDP5.1.H.265-UHD",
+        "total": 458,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 408
+      },
+      {
+        "name": "Film.2021.German.DL.1080p.BluRay.x264-DUAL",
+        "total": 318,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x265-FRM",
+        "total": 318,
+        "matched": [
+          "HEVC"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.GERMAN.1080p.WEB-DL.x264-DUB",
+        "total": 308,
+        "matched": [
+          "German audio"
+        ],
+        "format": 50,
+        "target": 50,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-REMUX",
+        "total": 271,
+        "format": 0,
+        "quality": 271
+      },
+      {
+        "name": "Film.2021.1080p.BluRay.x264-ENG",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.TRUEFRENCH.1080p.BluRay.x264-FRGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.MULTi.1080p.BluRay.x264-MULGRP",
+        "total": 268,
+        "format": 0,
+        "quality": 268
+      },
+      {
+        "name": "Film.2021.iTALiAN.1080p.WEB-DL.x264-ITA",
+        "total": 258,
+        "format": 0,
+        "quality": 258
+      },
+      {
+        "name": "Film.2021.720p.WEB-DL.x264-SMALL",
+        "total": 98,
+        "format": 0,
+        "quality": 98
+      }
+    ]
+  }
+}

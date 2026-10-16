@@ -112,6 +112,10 @@ func (b upgradeBar) v2Gain(trigger string, cand Evaluation) (RankKey, bool) {
 // without a fallback): those rank what is grabbed from now on and don't start a wave of
 // re-downloads on their own.
 func escapeKey(cur Evaluation, fits bool) RankKey {
+	// The target's Audio language row is a target row like codec and HDR.
+	if cur.langAvoided {
+		return KeyPreferences
+	}
 	for _, f := range cur.AvoidedFormats {
 		if isTargetFormat(f) {
 			return KeyPreferences
@@ -139,6 +143,7 @@ func (e *Engine) describe(p Profile, c Candidate) Evaluation {
 	q.AllowedResolutions, q.MinSource, q.MaxSource, q.RejectPreRelease = nil, "", "", false
 	q.BitrateCapMbps, q.Windows = 0, nil
 	q.MinSeeders, q.Rejected, q.Required, q.MinFormatScore = 0, nil, nil, math.MinInt
+	q.noLangGate = true // a missing Must language too; the ones it has still count
 	ev := e.Evaluate(q, c)
 	// Evaluate lists a required format the release has only while the profile requires
 	// it; put those back, so the preferences key counts the Musts the file does carry.

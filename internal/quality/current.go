@@ -38,6 +38,10 @@ type CurrentFile struct {
 	// bitrate upgrade over the smaller converted file, and got grabbed and converted again.
 	OrigRelease string
 	OrigSizeGB  float64
+	// OrigLanguage is the title's original language (TMDB), for the profile's Audio
+	// language rules ("Original language", and what an untagged track or name is read as).
+	// "" leaves rules about the original language unapplied.
+	OrigLanguage string
 }
 
 // upgradeBar is what a candidate has to beat to be an upgrade of the file.
@@ -302,8 +306,13 @@ func (c CurrentFile) bitrateMbps() float64 {
 
 // candidate is the file as an engine candidate. Seeders are irrelevant for a file on disk
 // and unknown, so it gets a large value rather than letting a seeder rule reject it.
+//
+// It carries the title's language for the language rules only (ruleLang, not OrigLanguage:
+// the Unwanted pack's foreign-only check has never judged files on disk), and the probed
+// facts, whose audio tracks the language rules read over the name.
 func (c CurrentFile) candidate() Candidate {
-	return Candidate{Name: c.Release, Release: c.release(), SizeGB: c.SizeGB, Seeders: 1_000_000}
+	return Candidate{Name: c.Release, Release: c.release(), SizeGB: c.SizeGB, Seeders: 1_000_000,
+		ruleLang: strings.TrimSpace(c.OrigLanguage), heard: c.Facts}
 }
 
 // known reports whether there is anything to judge the file by.
@@ -447,7 +456,9 @@ func judge(sp *StoredProfile, p Profile, e *Engine, cur CurrentFile) FileVerdict
 	v.Current = e.Evaluate(p, cur.candidate().WithRuntime(cur.RuntimeMin))
 	v.Eligible = v.Current.Eligible
 	if sp != nil {
-		v.TargetMet = sp.TargetMet(v.Facts)
+		// A preferred or required audio language the file lacks (or only avoided ones)
+		// means it isn't the target yet, whatever its picture and bitrate.
+		v.TargetMet = sp.TargetMet(v.Facts) && !v.Current.langShort
 		v.AtCeiling = v.TargetMet || atCeiling(*sp, p, cur)
 	}
 	return v

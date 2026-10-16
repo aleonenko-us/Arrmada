@@ -51,10 +51,12 @@ func (ev *Evaluation) fillRankKeys(p Profile) {
 	// rank; a resolution the profile doesn't allow never gets here, so the plain ladder
 	// orders both a listed and an any-resolution profile correctly.
 	ev.ResTier = resRank[r.Resolution]
-	ev.PrefCount = 0
+	// The preferred or required audio languages it has count like target formats.
+	ev.PrefCount = ev.langPrefs
 	for _, m := range ev.Matched {
 		// Matched holds the target formats the release has that the profile prefers or
-		// requires, next to custom formats and keywords — only the target ones count here.
+		// requires, next to custom formats, keywords and languages — only the target
+		// formats count here (the languages are langPrefs).
 		if isTargetFormat(m) {
 			ev.PrefCount++
 		}

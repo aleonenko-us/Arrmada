@@ -200,7 +200,10 @@ func (p Profile) unwantedHits(c Candidate) []unwantedHit {
 	if r.Upscaled {
 		out = append(out, unwantedHit{UnwantedUpscaled, "Upscaled from a lower resolution — this profile refuses upscales", "Upscaled"})
 	}
-	if lang, ok := foreignOnly(r, c.OrigLanguage, p.OwnerLanguages); ok {
+	// A profile that says which audio languages it wants (a Must or a Prefer in its Audio
+	// language row) has said what "foreign" means for itself: the item defers to that, or a
+	// German-preferring profile would see every German release avoided as foreign-only.
+	if lang, ok := foreignOnly(r, c.OrigLanguage, p.OwnerLanguages); ok && !positiveLangRules(p.languageRules(c)) {
 		name := langs.Name(lang)
 		out = append(out, unwantedHit{UnwantedForeign,
 			fmt.Sprintf("%s-only — this title's original language is %s", name, langs.Name(c.OrigLanguage)),
