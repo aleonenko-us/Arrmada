@@ -1568,6 +1568,7 @@ Items can be pulled earlier whenever a phase finishes early.
 | [BE](docs/roadmap/BE.md) | Backend architecture & quality | 13 | 0 | Phase 0, Phase 1, Phase 2, Phase 3, Phase 5 |
 | [COPY](docs/roadmap/COPY.md) | Truthful copy & polish sweep | 15 | 0 | Phase 16, Phase 2, Phase 3, Phase 5 |
 | [FOLDERS](docs/roadmap/FOLDERS.md) | More than one library folder for Movies and TV (user request, issue #3) | 15 | 0 | after the roadmap |
+| [LANG](docs/roadmap/LANG.md) | Audio-language badges on files and language rules in quality profiles (user request, issue #12) | 14 | 0 | after the roadmap |
 
 ## Program risks
 
