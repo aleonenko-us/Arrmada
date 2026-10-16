@@ -100,7 +100,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
-  { label: "Folders from Radarr or Sonarr", keywords: "radarr sonarr root folders migrate import kids anime extra library folders", section: "import", anchor: "arr-folders" },
+  { label: "Import from Radarr / Sonarr", keywords: "radarr sonarr arr library movies series shows root folders quality profiles path mapping migrate import kids anime extra library folders", section: "import", anchor: "arr-import" },
   { label: "Import from Audiobookshelf", keywords: "audiobookshelf abs absdatabase listening places progress bookmarks migrate import audiobooks", section: "import", anchor: "audiobookshelf-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
@@ -134,6 +134,8 @@ const ANCHOR_SECTION: Record<string, SectionId> = Object.fromEntries(SEARCH_INDE
 // The Plex connection editor left the old Plex section for the Plex card on Connections (CFG-16).
 const RENAMED_ANCHOR: Record<string, { section: SectionId; anchor: string }> = {
   "plex-connection": { section: "connections", anchor: "plex" },
+  // The Radarr/Sonarr folders card grew into the whole library import (ARRIMPORT).
+  "arr-folders": { section: "import", anchor: "arr-import" },
 };
 // Sections that were split or renamed: an old address with no card anchor lands here.
 // "Subtitles & Convert" (/settings/tools) became Subtitles and Convert; its #subtitles and
