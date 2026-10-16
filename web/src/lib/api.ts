@@ -2843,8 +2843,9 @@ export const api = {
   unmanagedDownloads: () => req<{ unmanaged: UnmanagedDownload[]; ignored: number }>("/api/v1/downloads/unmanaged"),
   unmanagedTargets: (hash: string, kind: ReviewKind, q: string) =>
     req<{ targets: ReviewTarget[]; truncated?: boolean }>(`/api/v1/queue/${hash}/targets?kind=${kind}&q=${encodeURIComponent(q)}`),
+  // What it can refuse it refuses at once; the import itself is a job (202).
   importUnmanaged: (hash: string, kind: ReviewKind, targetId: number) =>
-    req<{ status: string }>(`/api/v1/queue/${hash}/import`, { method: "POST", body: JSON.stringify({ kind, target_id: targetId }) }),
+    req<ReviewImportStarted>(`/api/v1/queue/${hash}/import`, { method: "POST", body: JSON.stringify({ kind, target_id: targetId }) }),
   ignoreDownload: (hash: string) =>
     req<{ status: string }>(`/api/v1/queue/${hash}/ignore`, { method: "POST" }),
   // External service credentials, settable in-app (settings-first, env-fallback). The
@@ -3825,6 +3826,8 @@ export interface UnmanagedDownload {
   kind: ReviewKind;
   /** The name parsed into a title, to start the picker's search with. */
   title?: string;
+  /** Its Import into… job while that runs, or the last one when it failed. */
+  import_job?: Job;
 }
 
 // One library item a held download could be imported into (same kind as the review).

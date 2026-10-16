@@ -150,7 +150,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Finished torrents Arrmada didn't grab (ACQ-31).
     get("/api/v1/downloads/unmanaged", sys.unmanaged),
     { method: "GET", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/targets$/, respond: ({ url }) => sys.unmanagedTargets(url) },
-    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, body: { status: "imported" } },
+    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, status: 202, body: sys.unmanagedImportStarted },
+    get(`/api/v1/jobs/${sys.unmanagedImportJob.id}`, sys.unmanagedImportJob),
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/ignore$/, body: { status: "ignored" } },
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),

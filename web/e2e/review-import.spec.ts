@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import { reviewImportJob, reviews } from "./fixtures/media";
+import { unmanagedImportJob } from "./fixtures/system";
 import type { Job } from "../src/lib/api";
 
 // #15: Import anyway (and Choose different…, Map files…) runs as a job. The card says it's
@@ -75,6 +76,26 @@ test.describe("manager", () => {
     await expect(card.getByTestId("review-importing")).toContainText("Importing…");
     await expect(card.getByRole("button", { name: "Map files…" })).toBeDisabled();
     expect(api.callsTo("POST", "/api/v1/reviews/2/map")[0].body).toEqual({ series_id: 1, files: [{ rel_path: "Fixture.Show.E01.mkv", season: 1, episodes: [1] }] });
+  });
+
+  test("Import into… for a download Arrmada didn't grab follows its job, and a failure stays on the card", async ({ page, api }) => {
+    let job: Job = { ...unmanagedImportJob, status: "running", progress: 0.25, message: "Copying… 2.1 of 8.4 GB", finished_at: null };
+    await page.route(`**/api/v1/jobs/${unmanagedImportJob.id}`, (route) => route.fulfill({ json: job }));
+    await page.goto("/activity/needs-you");
+    await page.getByRole("button", { name: /Not managed by Arrmada/ }).click();
+    const card = page.getByTestId("unmanaged-item").filter({ hasText: "Night.Train.1999" });
+    await card.getByRole("button", { name: "Import into…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Night Train \(1999\)/ }).click();
+
+    const importing = card.getByTestId("review-importing");
+    await expect(importing).toContainText("Copying… 2.1 of 8.4 GB");
+    await expect(importing.getByRole("progressbar", { name: "Import progress" })).toHaveAttribute("aria-valuenow", "25");
+    await expect(card.getByRole("button", { name: "Import into…" })).toBeDisabled();
+    expect(api.callsTo("POST", "/api/v1/queue/e2e0000000000000000000000000000000000006/import")[0].body).toEqual({ kind: "movie", target_id: 7 });
+
+    job = { ...unmanagedImportJob, status: "failed", message: "Importing…", error: "no video files found in the download" };
+    await expect(card.getByRole("alert")).toContainText("no video files found", { timeout: 15_000 });
+    await expect(card.getByRole("button", { name: "Import into…" })).toBeEnabled();
   });
 
   test("a page opened mid-import finds the running job", async ({ page, api }) => {

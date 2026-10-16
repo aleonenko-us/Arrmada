@@ -291,7 +291,7 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
 
 // A copy onto another drive can run for an hour or more; a card keeps following its import
 // for as long as the server would let it run.
-const IMPORT_FOLLOW_MS = 12 * 60 * 60 * 1000;
+export const IMPORT_FOLLOW_MS = 12 * 60 * 60 * 1000;
 
 function without<T>(rec: Record<number, T>, id: number): Record<number, T> {
   const next = { ...rec };
@@ -413,7 +413,7 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
 // ImportingLine is an importing card's status: a spinner (there's nothing to cancel — a
 // half-done copy is cleaned up by the import itself), what the job says it's doing, and
 // how far a copy has got.
-function ImportingLine({ job }: { job: Job | null }) {
+export function ImportingLine({ job }: { job: Job | null }) {
   const queued = job?.status === "queued";
   const pct = job && job.progress > 0 ? Math.round(job.progress * 100) : 0;
   const msg = queued ? "Waiting for another import to finish…" : job?.message || "Importing…";
