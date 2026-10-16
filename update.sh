@@ -400,6 +400,43 @@ manual_db_steps() {
   say "    3. ./update.sh --rollback" >&2
 }
 
+# Switches the bundled qBittorrent's subnet whitelist back on in its config: the same
+# command as docs/troubleshooting.md, keeping the file's owner (sed -i writes a new file).
+# shellcheck disable=SC2016 # expanded by the init container's shell, not this one
+QBIT_REOPEN='f=/config/qBittorrent/qBittorrent.conf; o=$(stat -c %u:%g "$f") && sed -i "s/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/" "$f" && chown "$o" "$f" && grep -q "^WebUI\\\\AuthSubnetWhitelistEnabled=true" "$f"'
+
+# reopen_bundled_qbit: a database put back with --with-db can be from before Arrmada gave
+# the bundled qBittorrent its password (qbittorrent-login.json in the data folder), so the
+# client in the restored database signs in without one, and qBittorrent would turn it
+# away. Its login-free access from the Docker network goes back on for the build being
+# started; an Arrmada with the password switch gives it its password again when it starts.
+# Nothing happens without that file (no password was ever given) or without the bundle.
+reopen_bundled_qbit() {
+  docker compose config --services 2>/dev/null | grep -qx arrmada-qbittorrent-init || return 0
+  _made=$(docker compose run --rm --no-deps -T --entrypoint sh arrmada-app \
+    -c 'if [ -f /data/qbittorrent-login.json ]; then echo yes; else echo no; fi' 2>/dev/null </dev/null | tr -d '\r' | tail -n 1)
+  [ "$_made" = no ] && return 0
+  if [ "$_made" = yes ] &&
+    docker compose stop arrmada-qbittorrent >/dev/null 2>&1 &&
+    docker compose run --rm --no-deps -T arrmada-qbittorrent-init sh -c "$QBIT_REOPEN" >/dev/null 2>&1 </dev/null &&
+    docker compose start arrmada-qbittorrent >/dev/null 2>&1; then
+    say "  qBittorrent: the database put back doesn't have the password Arrmada gave it, so its"
+    say "  login-free access from the Docker network is back on for this version. Your next update"
+    say "  gives it its password again."
+    return 0
+  fi
+  docker compose start arrmada-qbittorrent >/dev/null 2>&1 || true
+  say "! qBittorrent may turn the version you went back to away: the database put back doesn't" >&2
+  say "  have the password Arrmada gave it, and it couldn't be let in without one. Either enter" >&2
+  say "  the login on qBittorrent's card in Settings → Connections (Edit); it's in the data folder:" >&2
+  say "    docker exec Arrmada-app cat /data/qbittorrent-login.json" >&2
+  say "  or switch its login-free access back on:" >&2
+  say "    docker compose stop arrmada-qbittorrent" >&2
+  say "    docker compose run --rm --no-deps arrmada-qbittorrent-init sh -c '$QBIT_REOPEN'" >&2
+  say "    docker compose start arrmada-qbittorrent" >&2
+  say "    docker compose restart arrmada-app" >&2
+}
+
 # Puts the build that ran before the last update back: arrmada:previous becomes
 # arrmada:dev again, and the build being replaced is kept as arrmada:rolled-back so
 # going forward again is one update away. Nothing is pulled or rebuilt.
@@ -518,6 +555,7 @@ rollback() {
       wait_healthy || say "  ✗ It didn't come back. Full log: docker compose logs arrmada-app" >&2
       exit 1
     fi
+    reopen_bundled_qbit
   else
     docker image tag arrmada:previous arrmada:dev
   fi

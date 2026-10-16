@@ -1,7 +1,9 @@
 // Package aio is the Unraid all-in-one image's side of the bundled qBittorrent and
 // FlareSolverr: the small supervisor that runs them next to Arrmada in one container
 // (cmd/arrmada-aio), and the qBittorrent login it sets up on first start. The plain image
-// and the Compose install never run any of it; there each companion is its own container.
+// and the Compose install never run the supervisor; there each companion is its own
+// container. The Compose install does keep its qBittorrent's login the same way (Login,
+// NewLogin, SaveLogin, ReadLogin), in Arrmada's data folder.
 package aio
 
 import (
@@ -14,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -57,6 +60,24 @@ func ReadLogin(path string) (Login, error) {
 		return Login{}, errors.New("qbittorrent login: incomplete")
 	}
 	return l, nil
+}
+
+// NewLogin is a login for username with a newly generated password.
+func NewLogin(username string) (Login, error) {
+	pass, err := randomPassword()
+	if err != nil {
+		return Login{}, err
+	}
+	return Login{Username: username, Password: pass}, nil
+}
+
+// SaveLogin writes a login file whole, readable only by the user Arrmada runs as.
+func SaveLogin(path string, l Login) error {
+	raw, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+	return writeFile(path, raw, 0o600, -1, -1)
 }
 
 // SeedOptions is what the first qBittorrent config is written from.
@@ -165,13 +186,16 @@ func randomPassword() (string, error) {
 }
 
 // writeFile writes a file whole (through a temporary name, so a crash never leaves half
-// of one) with the given mode and owner.
+// of one) with the given mode and owner, flushed to disk before the rename and with the
+// rename itself flushed after.
 func writeFile(path string, data []byte, mode os.FileMode, uid, gid int) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	os.Remove(tmp) // a leftover keeps its old mode through O_TRUNC
+	if err := writeSynced(tmp, data, mode); err != nil {
+		os.Remove(tmp)
 		return err
 	}
-	if err := os.Chmod(tmp, mode); err != nil { // WriteFile's mode is cut by the umask
+	if err := os.Chmod(tmp, mode); err != nil { // OpenFile's mode is cut by the umask
 		os.Remove(tmp)
 		return err
 	}
@@ -179,7 +203,48 @@ func writeFile(path string, data []byte, mode os.FileMode, uid, gid int) error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	// The directory too, before and after the rename: a power cut then can't leave the
+	// new name pointing at nothing, or lose a login qBittorrent has already been given.
+	dir := filepath.Dir(path)
+	if err := syncDir(dir); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(dir)
+}
+
+// writeSynced writes a file and flushes it to disk before returning.
+func writeSynced(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// syncDir flushes a directory's entries to disk. Windows (tests only) can't open a
+// directory for that, and has nothing to flush this way.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 // chown changes a file's owner when running as root (the container's supervisor), and

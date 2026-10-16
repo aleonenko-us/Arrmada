@@ -158,8 +158,9 @@ func (s *Service) bundledRemoved(ctx context.Context, kind Kind) bool {
 }
 
 // EnsureBundled registers the packaged qBittorrent companion as a download client
-// (idempotent; run at startup). Auth is bypassed on the private Docker network, so no
-// credentials are needed.
+// (idempotent; run at startup) without a login: the Compose bundle's first config lets the
+// private Docker network in until SecureBundledQbit gives it a password, and from then on
+// EnsureBundledLogin registers it with that.
 //
 // It used to re-create a row whenever none had the bundled URL, so the bundled client
 // couldn't be removed and an edit of its URL spawned a duplicate. Now the row is found by

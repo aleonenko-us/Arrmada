@@ -636,10 +636,12 @@ export interface DownloadClient {
   priority: number;
   /** A packaged client (qBittorrent, or the optional SABnzbd). Deleted, it stays deleted until restored. */
   bundled?: boolean;
-  /** A bundled client's own web page's host port: the bundled SABnzbd's (where the Usenet provider is added), or the Unraid all-in-one image's qBittorrent's. */
+  /** A bundled client's own web page's host port: the bundled SABnzbd's (where the Usenet provider is added), or the bundled qBittorrent's. */
   ui_port?: string;
-  /** The all-in-one image's qBittorrent: Arrmada made its web UI login, and an admin can look it up. */
+  /** The bundled qBittorrent (all-in-one image or Compose): Arrmada made its web UI login, and an admin can look it up. */
   has_login?: boolean;
+  /** The all-in-one image's qBittorrent, running inside Arrmada's own container. */
+  built_in?: boolean;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
   /** Remote → local folder mappings for a client that sees its downloads under another path. */

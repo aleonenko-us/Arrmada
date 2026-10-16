@@ -448,10 +448,33 @@ func main() {
 		if err := ensureBundledQbit(context.Background(), downloads, cfg); err != nil {
 			log.Warn("could not register bundled qBittorrent", "err", err)
 		}
+		// The Compose bundle's qBittorrent was seeded to let the private Docker networks in
+		// without a password: give it one first, then tune it with that login.
+		secured := make(chan struct{})
+		if isComposeBundleQbit(cfg) {
+			grp.Go("qbittorrent: give it a password", func(ctx context.Context) {
+				defer close(secured)
+				secureBundledQbit(ctx, log, downloads, cfg)
+			})
+		} else {
+			noteUnsecuredBundle(context.Background(), log, downloads, cfg)
+			close(secured)
+		}
+		afterSecured := func(ctx context.Context) bool {
+			select {
+			case <-secured:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 		// Pin the incoming port to match the Docker-published one. qBittorrent may
 		// still be starting, so retry in the background rather than block boot.
 		if cfg.QbittorrentPort > 0 {
 			grp.Go("qbittorrent: set incoming port", func(ctx context.Context) {
+				if !afterSecured(ctx) {
+					return
+				}
 				tuneBundled(ctx, log, "incoming port", func(ctx context.Context) error {
 					return downloads.SetBundledPort(ctx, cfg.QbittorrentPort)
 				}, "port", cfg.QbittorrentPort)
@@ -462,6 +485,9 @@ func main() {
 		// shared volume. Retry in the background; qBittorrent may still be booting.
 		if dl := roots.Downloads(context.Background()); dl != "" {
 			grp.Go("qbittorrent: set save path", func(ctx context.Context) {
+				if !afterSecured(ctx) {
+					return
+				}
 				tuneBundled(ctx, log, "save path", func(ctx context.Context) error {
 					return downloads.SetBundledSavePath(ctx, dl)
 				}, "path", dl)
@@ -470,6 +496,9 @@ func main() {
 		// Size qBittorrent's total-active cap to the per-kind limits so nothing sits
 		// "Queued" behind its default cap of 5. Retry; the client may still be booting.
 		grp.Go("qbittorrent: reconcile queue limits", func(ctx context.Context) {
+			if !afterSecured(ctx) {
+				return
+			}
 			tuneBundled(ctx, log, "queue limits", downloads.EnsureBundledQueue)
 		})
 	}

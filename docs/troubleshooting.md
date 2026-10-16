@@ -48,6 +48,29 @@ Use the address the installer printed — it may not be 7878 if something else h
 `docker exec -it Arrmada-app arrmada reset-password you@example.com` — see
 [Backups → Locked out?](backups.md#locked-out).
 
+<a id="qbittorrent-login"></a>
+**qBittorrent's page asks for a username and password.**
+Arrmada gave it a password ([Configuration → qBittorrent's login](configuration.md#qbittorrents-login)).
+An admin finds it in Settings → Connections → the qBittorrent card → **Show its login**.
+
+**The qBittorrent card says "invalid username or password", or the log says qBittorrent asks
+for a password Arrmada doesn't have.**
+The password was changed in qBittorrent, or Arrmada's data folder was replaced without
+`qbittorrent-login.json`. If you know the password, enter it on the card (**Edit**). If not,
+let Arrmada set a new one: in Arrmada's folder run
+
+```sh
+docker compose stop arrmada-qbittorrent
+docker compose run --rm --no-deps arrmada-qbittorrent-init sh -c \
+  'f=/config/qBittorrent/qBittorrent.conf; o=$(stat -c %u:%g "$f") && sed -i "s/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/" "$f" && chown "$o" "$f"'
+docker compose start arrmada-qbittorrent
+docker compose restart arrmada-app
+```
+
+That switches the old login-free access from the Docker network back on for a moment; at
+its start Arrmada gives qBittorrent a password again (the saved one, or a new one) and
+switches it off. Torrents and settings are kept.
+
 **Downloads fill up `docker.img` on Unraid.**
 The install is using managed storage. Mount your share instead: run the install line again
 with `--media /mnt/user/data` (your share), then pick each library in Settings → Library.

@@ -83,6 +83,39 @@ to the published image without you choosing it. Add the line and deploy again. (
 looks for `ARRMADA_PORT`, which every version of the installer has written to `.env`. A `.env`
 written by hand without it gets the published image on such a deploy.)
 
+## qBittorrent now asks for a password
+
+Until October 2026 the bundled qBittorrent let anything on the private networks Docker uses
+in without a password, and on most home networks that included your own computers. That was
+how Arrmada connected to it, but it also let any container (FlareSolverr's browser, which
+opens tracker websites, among them) add torrents or change settings.
+
+The first time the new version starts, it gives qBittorrent a password of its own, checks it
+can sign in with it, and only then switches the login-free access off. It also turns on
+qBittorrent's CSRF protection. Torrents and settings are kept, and there's nothing to do. If
+you had already entered qBittorrent's real login on its card in Arrmada, that password is
+kept.
+
+What you'll notice: **qBittorrent's own page now asks for a login.** An admin finds it in
+Settings → Connections → the qBittorrent card → **Show its login**
+([Configuration → qBittorrent's login](configuration.md#qbittorrents-login)). If anything
+gets in the way, Arrmada leaves qBittorrent as it was, says why in the log, and tries again
+at its next start.
+
+`./update.sh --rollback` afterwards is fine: the older version signs in with the login on
+the card. Going back *with the database* is different, because the older database doesn't
+have that login: `./update.sh --rollback --with-db`, or saying yes when an update that
+didn't start offers to put the database back. Then `update.sh` switches qBittorrent's
+login-free access from the Docker network back on, so the older version can reach it, and
+says so; your next update gives it its password again. If it can't, it prints what to do:
+enter the login on the card by hand, which you can read with
+
+```sh
+docker exec Arrmada-app cat /data/qbittorrent-login.json
+```
+
+or follow [Troubleshooting](troubleshooting.md#qbittorrent-login).
+
 ## What an update does
 
 1. **Checks for a long conversion.** Restarting abandons a conversion in progress, so if one

@@ -50,9 +50,12 @@ type Config struct {
 	// QbittorrentURL is empty and the bundled client registered earlier is switched off
 	// too; switching it back on switches that client back on.
 	AIOQbittorrentURL string
-	// QbittorrentLogin is the all-in-one image's file holding the qBittorrent web UI
-	// login it generated, which admins can look up in Settings → Connections. Empty
-	// everywhere else (the Compose bundle's qBittorrent has no login of Arrmada's).
+	// QbittorrentLogin is the file holding the bundled qBittorrent's web UI login, which
+	// Arrmada signs in with and admins can look up in Settings → Connections. The
+	// all-in-one image points it at the login it seeded (ARRMADA_QBITTORRENT_LOGIN).
+	// Everywhere else it's qbittorrent-login.json in the data folder, which Arrmada writes
+	// when it gives the Compose bundle's qBittorrent a password (download.Service.
+	// SecureBundledQbit), and which doesn't exist before then.
 	QbittorrentLogin string
 	// SABnzbdURL is where the optional bundled SABnzbd answers (docker-compose.yml's
 	// "sabnzbd" profile). Compose always passes it; the client is only registered once the
@@ -158,6 +161,11 @@ func Load() (Config, error) {
 	c.EbooksDir = env("ARRMADA_EBOOKS_DIR", filepath.Join(c.LibraryDir, "ebooks"))
 	c.AudiobooksDir = env("ARRMADA_AUDIOBOOKS_DIR", filepath.Join(c.LibraryDir, "audiobooks"))
 	c.MusicDir = env("ARRMADA_MUSIC_DIR", filepath.Join(c.LibraryDir, "music"))
+
+	// The all-in-one image sets its own (empty while its qBittorrent is switched off).
+	if c.QbittorrentLogin == "" && c.AIOQbittorrentURL == "" {
+		c.QbittorrentLogin = filepath.Join(c.DataDir, "qbittorrent-login.json")
+	}
 
 	port, err := strconv.Atoi(env("ARRMADA_PORT", "7878"))
 	if err != nil {

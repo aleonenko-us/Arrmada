@@ -18,6 +18,32 @@ at the end and saves them in `.env`.
 | Prowlarr          | 9696    | `ARRMADA_PROWLARR_PORT` (only with `--with-prowlarr`) |
 | SABnzbd           | 8085    | `ARRMADA_SABNZBD_PORT` (only with `--with-sabnzbd`) — its own web page, where your Usenet provider goes |
 
+## qBittorrent's login
+
+The bundled qBittorrent asks for a password, like any other web page on your network. Arrmada
+makes one when it first starts (a long random one), signs in with it, and keeps it in its data
+folder (`qbittorrent-login.json`, readable only by the user Arrmada runs as). To open
+qBittorrent's own page, an admin goes to **Settings → Connections**, opens the qBittorrent
+card and clicks **Show its login**; the card links the page too. The login is never in the
+client list, the logs or a support bundle.
+
+Nothing else on the Docker network gets in without it, including FlareSolverr's browser,
+which opens tracker pages. CSRF protection is on, so another site can't send your browser's
+qBittorrent session commands either. If you put qBittorrent's page behind a reverse proxy,
+it has to pass the original `Host` header through (most do; plain nginx needs
+`proxy_set_header Host $host;`).
+
+You can change the password in qBittorrent (Tools → Options → WebUI). Then enter the new one
+on its card in Arrmada (**Edit**), or Arrmada can't get in; **Show its login** keeps showing
+the one Arrmada made.
+
+The "Bypass authentication for clients in whitelisted IP subnets" option is yours to use,
+with one exception: turned back on with the subnets it was installed with (`10.0.0.0/8`,
+`172.16.0.0/12`, `192.168.0.0/16`), Arrmada takes it for its old login-free access and
+switches it off again at its next start. Use your own subnets (just your LAN's, say) and
+it's left alone. An install that already had its own subnets there before this update is
+left alone too.
+
 ## `.env` settings
 
 | Setting | What it's for |

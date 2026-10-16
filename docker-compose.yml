@@ -1,7 +1,8 @@
 # Arrmada + bundled qBittorrent + FlareSolverr. Normally started by ./install.sh, which
 # writes .env and docker-compose.override.yml. A plain `docker compose up -d` also works:
 # it downloads the published image (64-bit Intel/AMD or 64-bit ARM).
-# Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080)
+# Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080, with the login
+# an admin sees on its card in Settings → Connections)
 services:
   arrmada-app:
     # The image the app runs. With nothing in .env it's the published release, downloaded
@@ -77,8 +78,11 @@ services:
       ARRMADA_PLEX_TOKEN: "${ARRMADA_PLEX_TOKEN:-}"
       # The host port above, so the app can show people the address to type.
       ARRMADA_AUDIOBOOK_HOST_PORT: "${ARRMADA_AUDIOBOOK_PORT:-13379}"
-      # The bundled qBittorrent companion; auto-registered as a download client.
+      # The bundled qBittorrent companion; auto-registered as a download client. On its
+      # first start Arrmada gives it a password (kept in the data folder) and signs in with it.
       ARRMADA_QBITTORRENT_URL: "http://arrmada-qbittorrent:8080"
+      # The host port qBittorrent's own page is published on (below), for the link on its card.
+      ARRMADA_QBIT_WEBUI_HOST_PORT: "${ARRMADA_QBIT_WEBUI_PORT:-8080}"
       # Bundled FlareSolverr — used to get past Cloudflare on protected trackers.
       ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
       # Optional Prowlarr companion (started only with `--profile prowlarr`). This
@@ -155,8 +159,9 @@ services:
       - arrmada-media:/media
     restart: "no"
 
-  # One-shot: seed qBittorrent's config the first time (auth-bypass on the
-  # private Docker network + downloads path) so Arrmada connects with no setup.
+  # One-shot: seed qBittorrent's config the first time (downloads path, and login-free
+  # access from the private Docker network just until Arrmada first starts and replaces it
+  # with a password of its own) so Arrmada connects with no setup.
   arrmada-qbittorrent-init:
     image: alpine:3.20
     container_name: Arrmada-qbittorrent-init
@@ -187,6 +192,8 @@ services:
       # qBittorrent's own WebUI ← .env (install.sh auto-picks a free host port so it
       # won't clash with an existing qBit on 8080). Arrmada manages qBit over the
       # internal Docker network, so you rarely need this — it's just for a direct peek.
+      # It asks for the login Arrmada made: an admin sees it on qBittorrent's card in
+      # Settings → Connections ("Show its login").
       - "${ARRMADA_QBIT_WEBUI_PORT:-8080}:8080"
       # BitTorrent incoming-connection port, TCP *and* UDP (peers + DHT/uTP). Set
       # once in .env (ARRMADA_QBIT_PORT — the install script picks a random one);
