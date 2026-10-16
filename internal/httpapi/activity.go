@@ -9,6 +9,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/pipeline"
@@ -260,9 +261,22 @@ func (a *api) finishingFacts(ctx context.Context) finishing {
 	// Unreadable reviews leave a held grab as "held for review" without the reason. Cached
 	// until a review is held or settled.
 	if rvs, err := a.deps.Automation.PendingReviews(ctx); err == nil {
+		// A review someone chose to import is importing, not waiting on anyone: its job is
+		// running or queued. Read only when something is held.
+		var importing map[int64]jobs.Job
+		if len(rvs) > 0 {
+			importing = a.activeReviewImports(ctx)
+		}
 		for _, rv := range rvs {
 			if rv.Hash != "" {
-				f.reviews[strings.ToLower(rv.Hash)] = pipeline.Review{Code: rv.ReasonCode, ExpectedTitle: rv.ExpectedTitle}
+				pr := pipeline.Review{Code: rv.ReasonCode, ExpectedTitle: rv.ExpectedTitle}
+				if j, ok := importing[rv.ID]; ok {
+					pr.Importing = true
+					if strings.HasPrefix(j.Message, "Copying") {
+						pr.Progress = j.Message
+					}
+				}
+				f.reviews[strings.ToLower(rv.Hash)] = pr
 			}
 		}
 	}
