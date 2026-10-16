@@ -2,8 +2,9 @@
 
 ## What you need
 
-- A 64-bit Intel or AMD (x86-64) server running Linux, with **Docker** and **Docker Compose v2**.
-  ARM machines aren't supported: the published image is x86-64 only.
+- A 64-bit Linux server with **Docker** and **Docker Compose v2**: Intel or AMD (x86-64), or
+  64-bit ARM (arm64: a Raspberry Pi 4 or 5, an ARM NAS, Apple Silicon). See [ARM](#arm) for
+  what differs there.
   - **Unraid:** Docker is built in (Settings → Docker). Install the **Docker Compose Manager**
     plugin from the Apps tab for Compose.
   - **Other Linux:** [Docker Engine](https://docs.docker.com/engine/install/) and its
@@ -200,16 +201,28 @@ To change ports or the run-as user there, put the settings from
 
 ### ARM
 
-The image is built for 64-bit Intel/AMD (x86-64) only. On an ARM machine (a Raspberry Pi,
-Apple Silicon, Ampere) the download fails with `no matching manifest for linux/arm64`; from a
-checkout, Compose then tries to compile instead, which fails too.
+The published image covers `linux/amd64` and `linux/arm64` under the same tags, and Docker
+picks the right one by itself. The one-liner and the steps above are the same on ARM.
+
+- **Raspberry Pi:** a Pi 4 or 5 with a **64-bit** OS (Raspberry Pi OS 64-bit, Ubuntu,
+  DietPi 64-bit). A 32-bit OS can't run it, even on a 64-bit Pi; the installer says so.
+  4 GB of memory or more is comfortable.
+- **No GPU acceleration on ARM.** Convert encodes on the CPU (the same x265 and SVT-AV1 as
+  on Intel/AMD), and AI subtitles (whisper) run on the CPU too: on a Pi that's slow, so
+  subtitles from OpenSubtitles or the file itself are the better source there. Intel Quick
+  Sync/VAAPI and the Intel oneAPI subtitle build are x86-64 only; the ARM image doesn't
+  carry them and never offers them. The installer doesn't pass `/dev/dri` through on ARM.
+- Releases up to v0.2.0 were published for x86-64 only. On ARM, those fail with
+  `no matching manifest for linux/arm64`, and the installer compiles instead (see below).
 
 ### Compiling it yourself
 
 `docker compose up -d --build` compiles the code in the folder instead (30–60 minutes the
 first time: the subtitle and GPU tooling are built from source too). It needs **about
 2 GB of memory free for the build** (4 GB is comfortable): the big compiles take turns and
-use as many parallel jobs as the free memory allows. If a compiler is still killed, the
+use as many parallel jobs as the free memory allows. That's only for compiling it yourself;
+the published image needs none of it. On ARM the build is smaller (no GPU tooling) but a
+Raspberry Pi's cores are slower, so expect it to take longer. If a compiler is still killed, the
 build says so plainly (see
 [Troubleshooting](troubleshooting.md#the-build-fails-or-gets-killed)). Put
 `ARRMADA_APP_IMAGE=arrmada:dev` in `.env` first, so your build is kept under its own name

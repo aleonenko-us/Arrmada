@@ -1,6 +1,6 @@
 # Arrmada + bundled qBittorrent + FlareSolverr. Normally started by ./install.sh, which
 # writes .env and docker-compose.override.yml. A plain `docker compose up -d` also works:
-# it downloads the published image (64-bit Intel/AMD servers only).
+# it downloads the published image (64-bit Intel/AMD or 64-bit ARM).
 # Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080)
 services:
   arrmada-app:
