@@ -98,6 +98,20 @@ test.describe("manager", () => {
     await expect(card.getByRole("button", { name: "Import into…" })).toBeEnabled();
   });
 
+  test("a different import while one runs is refused, and the card follows the running one", async ({ page }) => {
+    await page.route("**/api/v1/reviews/1/import", (route) => route.fulfill({
+      status: 409,
+      json: { status: "error", message: "This download is already being imported into Fixture Movie — wait for that to finish.", existing: true, job_id: reviewImportJob.id, title: "Fixture Movie" },
+    }));
+    await answerJob(page, () => running(0.5, "Copying… 1.9 of 3.7 GB"));
+    await page.goto("/activity/needs-you");
+    const card = movieCard(page);
+    await card.getByRole("button", { name: "Import anyway" }).click();
+    await expect(page.getByText("already being imported into Fixture Movie")).toBeVisible();
+    await expect(card.getByTestId("review-importing")).toContainText("Copying… 1.9 of 3.7 GB");
+    await expect(card.getByRole("button", { name: "Import anyway" })).toBeDisabled();
+  });
+
   test("a page opened mid-import finds the running job", async ({ page, api }) => {
     await page.route("**/api/v1/reviews", (route) => route.fulfill({
       json: { reviews: reviews.reviews.map((r) => (r.id === 1 ? { ...r, import_job: running(0.1, "Copying… 0.4 of 3.7 GB") } : r)) },

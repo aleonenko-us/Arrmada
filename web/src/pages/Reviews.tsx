@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, type ImportReview, type Job, type ReviewFile, type ReviewImportStarted, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
+import { ApiError, api, type ImportReview, type Job, type ReviewFile, type ReviewImportStarted, type ReviewKind, type ReviewReason, type ReviewTarget } from "../lib/api";
 import { formatAgo, formatBytes } from "../lib/format";
 import { useLiveRefresh } from "../lib/useLiveQuery";
 import { refreshAttention } from "../lib/useAttention";
@@ -112,7 +112,15 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
       if (jobId) setImports((cur) => ({ ...cur, [id]: { jobId, label: label ?? res.title } }));
       else { drop(id); toast(label ? `Imported into ${label}.` : "Imported."); refreshAttention(); }
     } catch (e) {
-      setImportErrors((cur) => ({ ...cur, [id]: (e as Error).message }));
+      // Another import of this download is already running (another tab asked for a
+      // different title): say so, and follow that one instead.
+      const running = runningImport(e);
+      if (running) {
+        setImports((cur) => ({ ...cur, [id]: running }));
+        toast((e as Error).message, { tone: "error" });
+      } else {
+        setImportErrors((cur) => ({ ...cur, [id]: (e as Error).message }));
+      }
     } finally {
       setBusy(null);
     }
@@ -292,6 +300,16 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
 // A copy onto another drive can run for an hour or more; a card keeps following its import
 // for as long as the server would let it run.
 export const IMPORT_FOLLOW_MS = 12 * 60 * 60 * 1000;
+
+// runningImport is the import a 409 says is already running for this download — a
+// different one than was asked for — so the card can follow it.
+export function runningImport(e: unknown): { jobId: number; label?: string } | null {
+  if (!(e instanceof ApiError) || e.status !== 409) return null;
+  const jobId = Number(e.body?.job_id);
+  if (!jobId) return null;
+  const title = e.body?.title;
+  return { jobId, label: typeof title === "string" && title ? title : undefined };
+}
 
 function without<T>(rec: Record<number, T>, id: number): Record<number, T> {
   const next = { ...rec };

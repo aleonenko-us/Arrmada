@@ -9,7 +9,7 @@ import { loadAttention, refreshAttention, useAttention } from "../lib/useAttenti
 import { jobDone, jobFailed, jobToast, useJob } from "../lib/useJob";
 import { Skeleton, useToast } from "../ui";
 import { CardActions, type CardAction } from "./activity/transfer";
-import { IMPORT_FOLLOW_MS, ImportingLine, ReviewsPanel, TargetPicker, kindLabelOf } from "./Reviews";
+import { IMPORT_FOLLOW_MS, ImportingLine, ReviewsPanel, TargetPicker, kindLabelOf, runningImport } from "./Reviews";
 
 // Activity → Needs you: every stuck download in one place, each with the action that fits
 // it — decide a held import, retry a failing one, try another release for a stalled or
@@ -299,7 +299,14 @@ function UnmanagedCard({ u, onGone }: { u: UnmanagedDownload; onGone: () => void
       if (res.job_id) setJobId(res.job_id);
       else { toast(`Imported into ${label}.`, { ms: 5000 }); onGone(); }
     } catch (e) {
-      setImportError((e as Error).message);
+      // Already importing into another title (another tab): say so and follow that one.
+      const running = runningImport(e);
+      if (running) {
+        setJobId(running.jobId);
+        toast((e as Error).message, { tone: "error", ms: 7000 });
+      } else {
+        setImportError((e as Error).message);
+      }
     } finally {
       setBusy(false);
     }
