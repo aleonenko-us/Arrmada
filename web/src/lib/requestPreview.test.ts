@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewResult, RequestPreview } from "./api";
-import { checkedAgo, grabApplies, previewHeadline, previewLine, reasonsLine, releaseFacts, seasonLine } from "./requestPreview";
+import { checkedAgo, forOtherProfile, grabApplies, previewHeadline, previewLine, reasonsLine, releaseFacts, seasonLine } from "./requestPreview";
 
 const found = (over: Partial<PreviewResult> = {}): PreviewResult => ({
   outcome: "found", reason: "grabbed", profile: "hd", returned: 12, matching: 5, eligible: 3, searched: 2, queries: 1,
@@ -42,13 +42,26 @@ describe("request previews", () => {
   });
 
   it("offers Approve & grab only for the profile and seasons it was checked for", () => {
-    const p = preview(found({ season: 2 }));
-    expect(grabApplies(p, "hd", null)).toBe(true);
-    expect(grabApplies(p, "uhd", null)).toBe(false);
-    expect(grabApplies(p, "hd", [1, 3])).toBe(false);
-    expect(grabApplies(p, "hd", [2, 3])).toBe(true);
-    expect(grabApplies({ ...p, grabbable: false }, "hd", null)).toBe(false);
-    expect(grabApplies(preview(found({ outcome: "none", releases: [] })), "hd", null)).toBe(false);
+    const movie = preview(found());
+    expect(grabApplies(movie, "hd", [])).toBe(true);
+    expect(grabApplies(movie, "uhd", [])).toBe(false);
+    expect(grabApplies({ ...movie, grabbable: false }, "hd", [])).toBe(false);
+    expect(grabApplies(preview(found({ outcome: "none", releases: [] })), "hd", [])).toBe(false);
+    // A show: exactly the seasons it was checked for, in any order; the whole show only as itself.
+    const show = preview(found({ season: 2 }), { seasons: [2, 3, 4] });
+    expect(grabApplies(show, "hd", [4, 3, 2])).toBe(true);
+    expect(grabApplies(show, "hd", [2, 3])).toBe(false);
+    expect(grabApplies(show, "hd", [])).toBe(false);
+    const whole = preview(found({ season: 1 }));
+    expect(grabApplies(whole, "hd", [])).toBe(true);
+    expect(grabApplies(whole, "hd", [1, 2, 3])).toBe(false);
+  });
+
+  it("follows a library title's own profile, whatever is picked", () => {
+    const lib = preview(found({ in_library: true }), { profile: "own" });
+    expect(forOtherProfile(lib, "uhd")).toBe(false);
+    expect(grabApplies(lib, "uhd", [])).toBe(true);
+    expect(forOtherProfile(preview(found()), "uhd")).toBe(true);
   });
 
   it("says how long ago it was checked", () => {

@@ -1614,7 +1614,7 @@ export interface MediaRequest {
   /** Staff only, on a request waiting for approval: the release approving it would grab. */
   preview?: RequestPreview;
   /** On an approval's answer: whether it grabs the previewed release or searches. */
-  approve_grab?: { mode: "preview" | "search"; reason?: "expired" | "profile" | "seasons" | "none" };
+  approve_grab?: { mode: "preview" | "search"; reason?: "expired" | "profile" | "seasons" | "none" | "already queued" };
 }
 
 /** A request's release preview (staff only): what a search would grab, checked in advance. */
@@ -1648,6 +1648,10 @@ export interface PreviewResult {
   queries: number;
   season?: number;
   seasons_note?: string;
+  /** The title is in the library already: ranked under its own profile, whatever the approval picks. */
+  in_library?: boolean;
+  /** A caveat about this preview ("Preview may miss anime not yet in the library"). */
+  note?: string;
 }
 
 export interface PreviewRelease {

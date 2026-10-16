@@ -138,7 +138,9 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
       const r = await requestPreviewApi.approveAndGrab(rq.id, { quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}), folder_id: folder, preview_checked_at: g.checkedAt });
       if (r.approve_grab?.mode === "search") {
         const why = r.approve_grab.reason === "expired" ? "the previewed release has expired"
-          : r.approve_grab.reason === "profile" ? "the preview was for another profile" : "the previewed release can’t be used";
+          : r.approve_grab.reason === "profile" ? "the preview was for another profile"
+          : r.approve_grab.reason === "seasons" ? "the preview was for other seasons"
+          : r.approve_grab.reason === "already queued" ? "a search for it was already queued" : "the previewed release can’t be used";
         msg = `Approved “${rq.title}” — ${why}, so it’s searching instead`;
       }
     }, () => msg, false);

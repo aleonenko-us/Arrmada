@@ -78,15 +78,30 @@ export function checkedAgo(checkedAt: number, nowMs = Date.now()): string {
 }
 
 /**
- * Whether "Approve & grab this" applies to the approval the sheet would make: the preview
- * found something, its tokens are still good, it was ranked under the profile picked, and
- * (a show) the season it covers is still among those being approved.
+ * Whether the preview was ranked under another profile than the approval would search
+ * with. A title already in the library keeps its own profile through approval, so the
+ * picker doesn't change what it would grab.
  */
-export function grabApplies(p: RequestPreview | undefined, profile: string, keep: number[] | null): boolean {
+export function forOtherProfile(p: RequestPreview | undefined, profile: string): boolean {
+  return !!(p?.result && !p.result.in_library && p.profile && profile && p.profile !== profile);
+}
+
+/**
+ * Whether "Approve & grab this" applies to the approval the sheet would make: the preview
+ * found something, its tokens are still good, it was ranked under the profile the search
+ * will use, and (a show) it was checked for exactly the seasons being approved — the
+ * whole show only as the whole show. approved is what the approval sends: the seasons
+ * left ticked, else those the request asked for (none: the whole show).
+ */
+export function grabApplies(p: RequestPreview | undefined, profile: string, approved: number[]): boolean {
   if (!p?.result || p.result.outcome !== "found" || !p.grabbable || p.state === "checking") return false;
-  if (profile && p.profile !== profile) return false;
-  if (keep && p.result.season && !keep.includes(p.result.season)) return false;
-  return true;
+  if (forOtherProfile(p, profile)) return false;
+  return sameSeasons(p.seasons ?? [], approved);
+}
+
+function sameSeasons(a: number[], b: number[]): boolean {
+  const x = [...a].sort((m, n) => m - n), y = [...b].sort((m, n) => m - n);
+  return x.length === y.length && x.every((v, i) => v === y[i]);
 }
 
 /** The list row's one line: "Would grab 1080p · BluRay · 12.0 GB", "Nothing found yet"… */

@@ -195,6 +195,18 @@ describe("RequestSheet", () => {
     expect(await screen.findByText("Not checked yet")).toBeTruthy();
   });
 
+  it("drops Approve & grab once the seasons differ from those the preview was checked for", async () => {
+    me.user = user(1, "admin");
+    open(rq({ media_type: "series", title: "Silo", seasons: [2, 3, 4], preview: {
+      state: "done", checked_at: Math.floor(Date.now() / 1000) - 60, profile: "", stale: false, grabbable: true, seasons: [2, 3, 4],
+      result: { outcome: "found", reason: "grabbed", profile: "", returned: 1, matching: 1, eligible: 1, searched: 1, queries: 1, season: 2,
+        releases: [{ title: "Silo.S02-S04.1080p.WEB-DL", indexer: "TL", summary: "", size_gb: 40, seeders: 9, kind: "pack" }] },
+    } }));
+    await screen.findByRole("button", { name: "Approve & grab this" });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Season 3" }));
+    await vi.waitFor(() => expect(has("Approve & grab this")).toBe(false));
+  });
+
   it("never shows a requester a preview", async () => {
     me.user = user(7, "requester");
     open(rq({ relation: "owner", preview: { state: "done", checked_at: 1, profile: "hd", stale: false, grabbable: true,

@@ -5,7 +5,7 @@ import { requestPreviewApi } from "../lib/requestPreviewApi";
 import { useJob, jobFailed, jobToast } from "../lib/useJob";
 import { useLiveEvent } from "../lib/live";
 import { libraryPath } from "../lib/requestStage";
-import { checkedAgo, grabApplies, previewHeadline, previewLine, reasonsLine, releaseFacts, seasonLine } from "../lib/requestPreview";
+import { checkedAgo, forOtherProfile, grabApplies, previewHeadline, previewLine, reasonsLine, releaseFacts, seasonLine } from "../lib/requestPreview";
 import { Button, StatusChip } from "../ui";
 import { ReleaseExplain } from "./ReleaseExplain";
 
@@ -79,7 +79,7 @@ export function RequestPreviewPanel({ rq, profile, profileName, keep, onGrab }: 
   }, [preview, profile, check]);
 
   const checking = !!jobId || preview?.state === "checking";
-  const applies = !checking && grabApplies(preview, profile, keep);
+  const applies = !checking && grabApplies(preview, profile, keep ?? rq.seasons ?? []);
   const grabRef = useRef(onGrab);
   useEffect(() => { grabRef.current = onGrab; });
   const firstTitle = preview?.result?.releases[0]?.title ?? "";
@@ -89,7 +89,7 @@ export function RequestPreviewPanel({ rq, profile, profileName, keep, onGrab }: 
 
   const r = preview?.result;
   const head = previewHeadline(preview);
-  const otherProfile = !!(preview?.profile && profile && preview.profile !== profile && r);
+  const otherProfile = forOtherProfile(preview, profile);
   const lib = libraryPath(rq);
   const season = r ? seasonLine(r) : "";
   return (
@@ -131,6 +131,10 @@ export function RequestPreviewPanel({ rq, profile, profileName, keep, onGrab }: 
         </ul>
       )}
       {r?.seasons_note && <div className="text-sm text-ink-dim">{r.seasons_note}</div>}
+      {r?.in_library && preview?.profile && (
+        <div className="text-xs text-ink-faint">Already in the library, so it’s searched under its own profile, {profileName(preview.profile)}.</div>
+      )}
+      {r?.note && <div className="text-sm" style={{ color: "var(--avoid-text)" }}>{r.note}</div>}
       {r?.outcome === "busy" && <div className="text-sm text-ink-dim">It’s checked again in a few minutes.</div>}
       {lib && <Link to={lib} className="self-start text-sm font-semibold" style={{ color: "var(--accent-text)" }}>See all releases</Link>}
       {error && <div className="text-sm font-medium" style={{ color: "var(--reject-text)" }} role="alert">{error}</div>}
