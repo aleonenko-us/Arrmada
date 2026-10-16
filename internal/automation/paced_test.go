@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
 
@@ -33,9 +34,14 @@ func TestMissingSweepPacesImportedMovies(t *testing.T) {
 	h := newStallHarness(t)
 	const imported, ordinary = 25, 2
 	for i := 1; i <= imported+ordinary; i++ {
-		id := h.addMovie(t, i, fmt.Sprintf("Film %d", i), 2001)
+		// Out since 2001, so every one is due a search.
+		m, err := movies.NewRepo(h.c.db).Create(h.ctx, movies.Movie{TMDBID: i, Title: fmt.Sprintf("Film %d", i), Year: 2001,
+			Monitored: true, MinAvailability: "announced"})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if i <= imported {
-			if err := h.c.movies.SetSearchPaced(h.ctx, id, true); err != nil {
+			if err := h.c.movies.SetSearchPaced(h.ctx, m.ID, true); err != nil {
 				t.Fatal(err)
 			}
 		}
