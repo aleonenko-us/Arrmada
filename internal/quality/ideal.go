@@ -48,6 +48,10 @@ type IdealFile struct {
 	// Bitrate is the whole file's average bitrate window per resolution ("2160p",
 	// "1080p", "720p", "SD"), in Mb/s — the same figure the library tables show.
 	Bitrate map[string]BitrateWindow `json:"bitrate,omitempty"`
+	// Language is the audio languages a file should carry (lang.go), keyed by base ISO
+	// 639-1 code or LangOriginal (the title's own language). Each entry is needed, preferred
+	// or avoided on its own. Empty is no language rules at all.
+	Language map[string]string `json:"language,omitempty"`
 }
 
 // BitrateWindow is a Mb/s range; a zero bound is open.
@@ -67,11 +71,12 @@ func (f *IdealFile) UnmarshalJSON(b []byte) error {
 		Atmos    bool                     `json:"atmos"`
 		Lossless bool                     `json:"lossless"`
 		Bitrate  map[string]BitrateWindow `json:"bitrate"`
+		Language map[string]string        `json:"language"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
-	*f = IdealFile{Codec: raw.Codec, Audio: raw.Audio, Bitrate: raw.Bitrate}
+	*f = IdealFile{Codec: raw.Codec, Audio: raw.Audio, Bitrate: raw.Bitrate, Language: normLanguageRow(raw.Language)}
 	// The first form's lists meant "these fit"; nothing narrows what fits short of a Must
 	// now, so they read as no opinion — and grabbing is unchanged by reading them.
 	if len(raw.HDR) > 0 && string(raw.HDR) != "null" {
@@ -127,7 +132,17 @@ func (f IdealFile) Empty() bool {
 			return false
 		}
 	}
-	return true
+	return len(normLanguageRow(f.Language)) == 0
+}
+
+// FitEmpty reports whether nothing the library Fit check judges (CheckFit: codec, HDR,
+// audio features, bitrate) is set up — the Audio language row aside, whose verdict is the
+// detail pages' language badges (StoredProfile.LanguageFit). A profile with only language
+// rules has no Fit bars, as before it had any.
+func (f IdealFile) FitEmpty() bool {
+	g := f
+	g.Language = nil
+	return g.Empty()
 }
 
 // targetFormat ties a target option to the built-in format the engine scores it with.
@@ -191,6 +206,9 @@ func (sp *StoredProfile) Compile() {
 	}
 	// The per-resolution windows replace the single ceiling (Migrate copied it in).
 	sp.BitrateCapMbps = 0
+	// The language row has no engine format: the engine reads it from the profile itself
+	// (Profile.Languages), so it is only tidied here.
+	sp.Ideal.Language = normLanguageRow(sp.Ideal.Language)
 	if sp.Ideal.Empty() {
 		sp.Ideal = nil
 	}
@@ -296,6 +314,13 @@ type FileFacts struct {
 	// "FLAC", "LPCM"), so a probed file scores like a release that says so. Probe only.
 	LosslessCodec string  `json:"lossless_codec,omitempty"`
 	BitrateMbps   float64 `json:"bitrate_mbps"`
+	// AudioLangs are the languages of the file's audio tracks (commentary left out): each
+	// track's tag, or for an untagged one the language the subtitle AI heard on it.
+	// AudioUntagged says a track is neither, so the release name has to speak for it. Probe
+	// only; the language rules read them (lang.go fileLangs). Not sent: the library tables
+	// that carry FileFacts don't show them, and the detail pages get their own badges.
+	AudioLangs    []string `json:"-"`
+	AudioUntagged bool     `json:"-"`
 }
 
 // dvOnly reports a Dolby Vision file with nothing under its Dolby Vision layer that the
@@ -622,6 +647,7 @@ func (f IdealFile) summary(allowed []string) []string {
 			parts = append(parts, a.label+" preferred")
 		}
 	}
+	parts = append(parts, languageSummary(f.Language)...)
 	for _, key := range []string{"2160p", "1080p", "720p", "SD"} {
 		w, ok := f.Bitrate[key]
 		if !ok || (w.Min <= 0 && w.Max <= 0) {

@@ -960,6 +960,9 @@ func main() {
 	convertSvc.SetHoldRoots(func() []libroots.Root { return roots.Libraries(context.Background()) }, cfg.DataDir)
 	// "Same as Subtitles" for the subtitle tracks Convert keeps reads the Subtitles list.
 	convertSvc.SetSubtitleLangs(subtitlesSvc.Languages)
+	// An untagged audio track is read as the language the subtitle AI heard on it, for the
+	// language badges and the quality profile's Audio language rules (from its cache only).
+	convertSvc.SetDetectedAudio(subtitlesSvc.DetectedAudio)
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)

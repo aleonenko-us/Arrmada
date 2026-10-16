@@ -108,6 +108,31 @@ func TestLanguages(t *testing.T) {
 		{"Movie.2020.KOREAN.1080p.WEB-DL-GRP", []string{"ko"}, false},
 		{"Movie.2020.ITA.ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
 		{"[Group] Show - 05 (1080p) [Dual Audio] [ABCD1234]", nil, true},
+		// What the audio-language rules (LANG) read as well.
+		{"Movie.2020.Dual.Language.1080p.BluRay.x264-GRP", nil, true},
+		{"Movie.2020.MULTi.GERMAN.DL.1080p.BluRay.x264-GRP", []string{"de"}, true},
+		{"Show.S01E01.German.DL.1080p.WEB.h264-GRP", []string{"de"}, true},
+		{"Movie.2020.PLDUB.1080p.WEB-DL.x264-GRP", []string{"pl"}, false},
+		{"Movie.2020.DUBPL.1080p.WEB-DL.x264-GRP", []string{"pl"}, false},
+		{"Movie.2020.POL.ENG.1080p.BluRay.x264-GRP", []string{"pl", "en"}, false},
+		{"Movie.2020.MULTi.POR.1080p.BluRay.x264-GRP", []string{"pt"}, true},
+		{"Movie.2020.DUT.1080p.WEB-DL.x264-GRP", []string{"nl"}, false},
+		{"Movie.2020.HUN.ENG.1080p.WEB-DL.x264-GRP", []string{"hu", "en"}, false},
+		{"Movie.2020.SPANiSH.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
+		{"Movie.2020.ITA.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		// German TV dubs where an episode title would sit: alone before the technical tokens,
+		// or with a dub tag after it.
+		{"Show.S01E01.German.720p.WEB.h264-GRP", []string{"de"}, false},
+		{"Show.S01E01.German.Dubbed.720p.WEB.h264-GRP", []string{"de"}, false},
+		{"Show.S01E01.German.AC3.720p.WEB.h264-GRP", []string{"de"}, false},
+		{"Show.S01.German.720p.WEB.h264-GRP", []string{"de"}, false},
+		// …but a language word in a longer episode title is part of the title.
+		{"Show.S01E01.Going.Dutch.720p.WEB.h264-GRP", nil, false},
+		{"Show.S02E04.The.German.Spy.1080p.WEB.h264-GRP", nil, false},
+		// Lower-case codes stay words, and so do the codes that are everyday words.
+		{"Movie.2020.1080p.WEB-DL.pol-GRP", nil, false},
+		{"Movie.2020.FIN.1080p.WEB-DL.x264-GRP", nil, false},
+		{"Movie.2020.NOR.1080p.WEB-DL.x264-GRP", nil, false},
 		{"Show.S01E01.FRENCH.1080p.WEB.H264-GRP", []string{"fr"}, false},
 		// Subtitles aren't audio.
 		{"Movie.2020.German.Subbed.1080p.WEB-DL-GRP", nil, false},
@@ -133,6 +158,20 @@ func TestLanguages(t *testing.T) {
 }
 
 // Common tag words must never read as a language, whatever the table knows.
+// DUAL / Dual-Audio is told apart from MULTi: on a foreign film it's original + English.
+func TestDualAudioTag(t *testing.T) {
+	for name, dual := range map[string]bool{
+		"[Group] Show - 05 (1080p) [Dual Audio] [ABCD1234]": true,
+		"Show.S01E05.1080p.BluRay.x264.Dual-Audio-GRP":      true,
+		"Show.S01E05.1080p.WEB.x264.MULTi-GRP":              false,
+		"Movie.2020.German.DL.1080p.BluRay.x264-GRP":        false,
+	} {
+		if r := Parse(name); r.Dual != dual || !r.Multi {
+			t.Errorf("Parse(%q): dual=%v multi=%v, want dual %v and multi", name, r.Dual, r.Multi, dual)
+		}
+	}
+}
+
 func TestTagWordsAreNotLanguages(t *testing.T) {
 	words := []string{"Atmos", "TrueHD", "BluRay", "REMUX", "HDR10", "PROPER", "REPACK", "INTERNAL",
 		"EXTENDED", "IMAX", "UNCUT", "COMPLETE", "Hybrid", "DUBBED", "LIMITED", "UNCENSORED", "CRITERION",

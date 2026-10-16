@@ -1,4 +1,4 @@
-import type { Episode, Job, MovieEvent, SearchAttempt, Season, Series, SeriesNumbering } from "../../src/lib/api";
+import type { AudioLang, Episode, Job, MovieEvent, SearchAttempt, Season, Series, SeriesNumbering } from "../../src/lib/api";
 import type { MockRoute } from "./routes";
 import { NOW, day } from "./clock";
 
@@ -30,9 +30,20 @@ function ep(season: number, n: number, over: Partial<Episode> = {}): Episode {
 
 const missing = { has_file: false, file_path: undefined, size_bytes: 0 } as const;
 
+// Season 1's files have been analysed (issue #12's badges) under a profile that requires
+// German and prefers the original English: E1–E8 carry both, E9 only German (orange), E10
+// English with an untagged track the AI heard as German. Season 2 isn't analysed yet.
+const EN: AudioLang = { code: "en", name: "English" };
+const DE: AudioLang = { code: "de", name: "German" };
+function s1Audio(n: number): Partial<Episode> {
+  if (n === 9) return { audio_langs: [DE], audio_lang_fit: { status: "partial", note: "No English audio, which this profile prefers" } };
+  if (n === 10) return { audio_langs: [EN, { ...DE, detected: true }], audio_lang_fit: { status: "good", note: "Has English and German audio, as this profile asks" } };
+  return { audio_langs: [EN, DE], audio_lang_fit: { status: "good", note: "Has English and German audio, as this profile asks" } };
+}
+
 const harbourSeasons: Season[] = [
   { id: 10, season_number: 0, name: "Specials", monitored: false, episodes: [ep(0, 1, { monitored: false }), ep(0, 2, { ...missing, monitored: false })] },
-  { id: 11, season_number: 1, name: "Season 1", poster_url: "https://image.tmdb.org/t/p/w500/e2e-s1.jpg", monitored: true, episodes: Array.from({ length: 10 }, (_, i) => ep(1, i + 1)) },
+  { id: 11, season_number: 1, name: "Season 1", poster_url: "https://image.tmdb.org/t/p/w500/e2e-s1.jpg", monitored: true, episodes: Array.from({ length: 10 }, (_, i) => ep(1, i + 1, s1Audio(i + 1))) },
   {
     id: 12, season_number: 2, name: "Season 2", poster_url: "https://image.tmdb.org/t/p/w500/e2e-s2.jpg", monitored: true,
     episodes: [

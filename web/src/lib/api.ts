@@ -609,7 +609,14 @@ export interface IdealFile {
   hdr?: Record<string, TargetPref>; // "SDR" | "HDR10" | "HDR10+" | "HLG" | "DV"
   audio?: Record<string, TargetPref>; // "atmos" | "lossless"
   bitrate?: Record<string, { min: number; max: number }>; // per "2160p" | "1080p" | "720p" | "SD", Mb/s
+  // Audio languages: base ISO 639-1 codes or "original" (the title's own) → must/want/avoid.
+  language?: Record<string, TargetPref>;
 }
+// AudioLang is one audio language a library file carries (the detail pages' badges):
+// code "" is a track nothing identified; detected = heard by the AI on an untagged track.
+export interface AudioLang { code: string; name?: string; detected?: boolean }
+// AudioLangFit is a file's languages against its profile's Audio language rules.
+export interface AudioLangFit { status: "good" | "partial" | "bad"; note: string }
 export interface FitCounts { titles: number; files: number; fits: number; over: number; under: number; mismatch: number }
 export interface MusicPreset { name: string; description: string; format_scores: Record<string, number>; min_format_score: number; upgrades_enabled: boolean }
 export interface FileFacts { resolution: string; codec: string; hdr: string; dolby_vision?: boolean; atmos?: boolean; lossless?: boolean; bitrate_mbps: number }
@@ -2064,6 +2071,9 @@ export interface Episode {
   // Kept out of profile-driven upgrades ("keep existing files"); Resume lifts it.
   upgrade_hold?: boolean;
   download?: { state: string; progress: number; hash?: string };
+  // The file's audio languages (detail endpoint only; absent until the file is analysed).
+  audio_langs?: AudioLang[];
+  audio_lang_fit?: AudioLangFit;
 }
 export interface Season {
   id: number;
@@ -3451,6 +3461,9 @@ export interface MovieVersion {
   size_bytes?: number;
   file?: MovieFile;
   upgrade_hold?: boolean; // this track's file is kept out of profile-driven upgrades
+  // The file's audio languages (detail endpoint only; absent until the file is analysed).
+  audio_langs?: AudioLang[];
+  audio_lang_fit?: AudioLangFit;
 }
 
 export interface CastMember {
@@ -3624,6 +3637,9 @@ export interface RankedRelease {
   /** "lower resolution", "fewer seeders"… — against the release ranked just above it. */
   lost_on?: string;
   lost_on_key?: string;
+  /** The audio languages the name carries, as base codes, and a note when they're assumed. */
+  audio_langs?: string[];
+  audio_langs_note?: string;
 }
 
 export interface BlockEntry {

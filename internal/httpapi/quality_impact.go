@@ -55,6 +55,7 @@ func (a *api) filesOnProfile(ctx context.Context, ref, media string) ([]profileF
 				pf := profileFile{table: "movie_versions", id: v.ID, file: quality.ImpactFile{
 					Title: title, Release: automation.UpgradeBaseline(m, v), Bytes: v.SizeBytes, RuntimeMin: m.Runtime, Held: v.UpgradeHold,
 					Facts: facts.lookup(v.FilePath, v.SizeBytes), OrigRelease: v.ConvertedFromRelease, OrigBytes: v.ConvertedFromSize,
+					OrigLanguage: movieOrigLang(m),
 				}}
 				if v.IsDefault {
 					pf.table, pf.id = "movies", m.ID
@@ -79,6 +80,7 @@ func (a *api) filesOnProfile(ctx context.Context, ref, media string) ([]profileF
 			out = append(out, profileFile{table: "episodes", id: e.EpisodeID, file: quality.ImpactFile{
 				Title: e.SeriesTitle, Release: e.SourceRelease, Bytes: e.SizeBytes, RuntimeMin: e.RuntimeMin, Held: e.Held,
 				Facts: facts.lookup(e.Path, e.SizeBytes), OrigRelease: e.ConvertedFromRelease, OrigBytes: e.ConvertedFromSize,
+				OrigLanguage: e.OrigLanguage,
 			},
 				// UpgradeSeries visits monitored shows, and in them monitored episodes with a
 				// file, never specials.
@@ -86,6 +88,15 @@ func (a *api) filesOnProfile(ctx context.Context, ref, media string) ([]profileF
 		}
 	}
 	return out, nil
+}
+
+// movieOrigLang is TMDB's original language for a movie, "" when unknown: what a profile's
+// Audio language rules read "Original language" and an untagged release as.
+func movieOrigLang(m movies.Movie) string {
+	if m.Extra == nil {
+		return ""
+	}
+	return m.Extra.OriginalLanguage
 }
 
 // impactFacts is Convert's analysis for one media type, keyed by path; nil (no Convert, or

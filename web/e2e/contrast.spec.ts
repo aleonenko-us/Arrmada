@@ -34,6 +34,8 @@ const shots: Shot[] = [
     },
   },
   { persona: "admin", path: "/settings/media-servers#jellyfin-server" },
+  // A season whose files carry audio-language badges in each fit colour (issue #12).
+  { persona: "admin", path: "/series/1?season=1", label: "audio languages" },
   // The sidebar as a phone's drawer (its foot: the account row and the version badge
   // with its update dot). On a desktop it's always open and every page above covers it.
   {

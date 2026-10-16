@@ -37,6 +37,29 @@ func TestExplainRowMapsTheEvaluation(t *testing.T) {
 	}
 }
 
+// Every row, refused or not, shows the audio languages its name carries, and a release a
+// language Must refuses says which language it lacks.
+func TestExplainRowShowsAudioLanguages(t *testing.T) {
+	p := quality.Profile{Languages: map[string]string{"de": quality.PrefMust}}
+	d := quality.NewDefaultEngine().Decide(p, []quality.Candidate{
+		quality.NewCandidate("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6, 10).WithLanguage("en"),
+		quality.NewCandidate("Film.2021.1080p.WEB-DL.x264-ENG", 6, 10).WithLanguage("en"),
+	})
+	if len(d.Eligible) != 1 || len(d.Rejected) != 1 {
+		t.Fatalf("eligible %d rejected %d", len(d.Eligible), len(d.Rejected))
+	}
+	ok := explainRow(RankedRelease{Eligible: true}, d.Eligible[0], true)
+	if strings.Join(ok.AudioLangs, ",") != "en,de" || ok.AudioLangsNote != "" {
+		t.Errorf("eligible row = %+v", ok)
+	}
+	ev := d.Rejected[0]
+	no := explainRow(RankedRelease{Eligible: false, RejectReason: ev.RejectReason}, ev, false)
+	if strings.Join(no.AudioLangs, ",") != "en" || !strings.Contains(no.AudioLangsNote, "original") ||
+		!strings.HasPrefix(no.RejectReason, "Missing German audio") {
+		t.Errorf("refused row = %+v", no)
+	}
+}
+
 // Interactive search: every eligible row behind the recommendation names what it lost on,
 // and the list says what the recommendation was chosen over.
 func TestRankReleasesExplainsEachRow(t *testing.T) {

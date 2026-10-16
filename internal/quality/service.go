@@ -331,14 +331,18 @@ func (s *Service) IsQualityUpgrade(ctx context.Context, ref, candRelease string,
 	}
 	// Seeders are irrelevant here and unknown for a file on disk, so both sides get the
 	// same large value rather than letting a seeder term skew the comparison.
-	cand := e.Evaluate(p, NewCandidate(candRelease, candSizeGB, 1_000_000))
-	if bar.intoAvoid(cand) {
+	cand := NewCandidate(candRelease, candSizeGB, 1_000_000)
+	// The title's language reaches the language rules only, as for the file it'd replace
+	// (CurrentFile.candidate): the gate has never run the foreign-only check.
+	cand.ruleLang = strings.TrimSpace(current.OrigLanguage)
+	ev := e.Evaluate(p, cand)
+	if bar.intoAvoid(ev) {
 		return false
 	}
 	// The same verdict the searcher applied (upgradeBar.gain, in the ranking mode in
 	// effect), so a release it grabbed as an upgrade is placed, and one it wouldn't have
 	// grabbed isn't placed as one either.
-	_, ok := bar.gain(sp.UpgradeTrigger, cand)
+	_, ok := bar.gain(sp.UpgradeTrigger, ev)
 	return ok
 }
 

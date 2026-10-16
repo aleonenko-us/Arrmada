@@ -30,6 +30,7 @@ import { CustomFormatsEditor } from "./quality/FormatEditor";
 import { GroupTiersEditor } from "./quality/GroupTiers";
 import { TestName } from "./quality/TestName";
 import { ConflictNotes } from "./quality/ConflictNotes";
+import { AudioLanguageRow } from "./quality/AudioLanguageRow";
 import { ReleaseExplain } from "../components/ReleaseExplain";
 import { formatBytes } from "../lib/format";
 import { invalidate, useQuery } from "../lib/query";
@@ -976,6 +977,12 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
           <ConflictNotes conflicts={conflicts} row={row.row} />
         </div>
       ))}
+
+      <AudioLanguageRow
+        value={ideal.language}
+        onChange={(language) => onIdeal((cur) => ({ ...cur, language }))}
+        picker={(value, onChange, label) => <PrefPicker value={value} onChange={onChange} label={label} />}
+      />
 
       <div className="text-sm font-semibold">Bitrate window</div>
       <div className="mb-2 text-xs text-ink-faint">

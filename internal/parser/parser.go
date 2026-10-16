@@ -132,6 +132,9 @@ type Release struct {
 	Languages []string `json:"languages,omitempty"`
 	// Multi says the release carries several audio languages (MULTi, DUAL, German DL/ML).
 	Multi bool `json:"multi,omitempty"`
+	// Dual says it was a DUAL / Dual-Audio tag (one of the Multi forms): two languages,
+	// which on a foreign film is almost always the original plus English.
+	Dual bool `json:"dual,omitempty"`
 	// Streaming is the streaming service a WEB release was captured from, as the tag is
 	// written: AMZN, NF, ATVP, DSNP, HMAX, MAX, PCOK, PMTP, HULU, iT, CRAV, STAN or MA.
 	Streaming string `json:"streaming,omitempty"`
