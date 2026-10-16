@@ -1234,6 +1234,21 @@ func (r *Repo) SetEpisodeFile(ctx context.Context, seriesID int64, season, episo
 	return err
 }
 
+// SetEpisodeFileIfEmpty records path as an episode's file only when the episode has none:
+// false (no error) when it already had one, or doesn't exist. Adopting files from another
+// app must never replace one Arrmada recorded meanwhile.
+func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ?
+		  WHERE series_id = ? AND season_number = ? AND episode_number = ? AND has_file = 0`,
+		path, size, seriesID, season, episode)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // RepointEpisodeFile moves EVERY episode currently pointing at oldPath to newPath.
 //
 // A single file can serve several episodes — a double-length "S03E01E02" is one file with

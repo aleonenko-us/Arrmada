@@ -21,6 +21,10 @@ type AddOptions struct {
 	// FolderID is the Movies folder chosen for it (0 = the default); nil lets the folder
 	// rules pick, the default when none matches.
 	FolderID *int64
+	// SearchPaced marks a film added without a file to be searched in its turn (a bulk add:
+	// see automation's paced sweeps). Only AddImported reads it, and sets the mark before the
+	// film is monitored.
+	SearchPaced bool
 }
 
 // AddWith pulls full metadata for a TMDB id and adds the movie to the library as o says.
@@ -84,8 +88,12 @@ func (s *Service) InLibrary(ctx context.Context, path string) bool {
 // whole library doesn't queue Convert and Subtitles work or notices for every file. The
 // film belongs to the folder its file is in. ErrExists when it's already in the library.
 //
-// If the file can't be recorded after the film was added, the film is left unmonitored
-// (so the sweeps don't download a film the person already has) and the error says so.
+// The film is created unmonitored and only monitored once it's complete — its file
+// recorded, or (o.SearchPaced) its paced-search mark set — so a sweep running meanwhile
+// never sees a film that wants a file it already has. Everything after the film exists runs
+// to the end even when ctx is cancelled (the import stopped or timed out): the film is left
+// complete, or unmonitored, never wanted by mistake. When a step fails the film stays
+// unmonitored and the error says so.
 func (s *Service) AddImported(ctx context.Context, tmdbID int, o AddOptions, file, source string) (Movie, error) {
 	if file != "" {
 		if !s.InLibrary(ctx, file) {
@@ -94,22 +102,32 @@ func (s *Service) AddImported(ctx context.Context, tmdbID int, o AddOptions, fil
 		id := s.ownerID(ctx, file)
 		o.FolderID = &id
 	}
+	monitor := o.Monitored
+	o.Monitored = false
 	m, err := s.AddWith(ctx, tmdbID, o)
-	if err != nil || file == "" {
+	if err != nil {
 		return m, err
 	}
-	if err := s.setDefaultFile(ctx, m.ID, file); err != nil {
-		if m.Monitored {
-			if uerr := s.repo.SetMonitored(ctx, m.ID, false); uerr == nil {
-				m.Monitored = false
-			}
+	wctx := context.WithoutCancel(ctx)
+	if file != "" {
+		if err := s.setDefaultFile(wctx, m.ID, file); err != nil {
+			return m, fmt.Errorf("added, but its file couldn't be recorded (left unmonitored): %w", err)
 		}
-		return m, fmt.Errorf("added, but its file couldn't be recorded (left unmonitored): %w", err)
+		_ = s.repo.AddEvent(wctx, m.ID, "imported", "Brought over from "+source+": "+filepath.Base(file))
+		// For the UI only, like the library scan's adoption.
+		s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": file, "source": "scan"})
+		m.HasFile, m.MovieFilePath = true, file
+	} else if monitor && o.SearchPaced {
+		if err := s.repo.SetSearchPaced(wctx, m.ID, true); err != nil {
+			return m, fmt.Errorf("added, but couldn't be marked to be searched in its turn (left unmonitored): %w", err)
+		}
 	}
-	_ = s.repo.AddEvent(ctx, m.ID, "imported", "Brought over from "+source+": "+filepath.Base(file))
-	// For the UI only, like the library scan's adoption.
-	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": file, "source": "scan"})
-	m.HasFile, m.MovieFilePath = true, file
+	if monitor {
+		if err := s.repo.SetMonitored(wctx, m.ID, true); err != nil {
+			return m, fmt.Errorf("added, but couldn't be monitored (left unmonitored): %w", err)
+		}
+		m.Monitored = true
+	}
 	return m, nil
 }
 

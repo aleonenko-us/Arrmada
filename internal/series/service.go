@@ -1964,6 +1964,12 @@ func (s *Service) MarkEpisodeImported(ctx context.Context, seriesID int64, seaso
 	return nil
 }
 
+// AdoptEpisodeFile records a file another app had (a Sonarr import) on an episode that has
+// none, where it is: false when the episode already has a file (left as it is).
+func (s *Service) AdoptEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
+	return s.repo.SetEpisodeFileIfEmpty(ctx, seriesID, season, episode, path, size)
+}
+
 // SupersedeEpisodeFile records a newly-imported file and recycles the episode's
 // previous file when it lived at a DIFFERENT path — an upgrade (better quality) or a
 // naming change. Without this, the new file lands at a new name and the old one is

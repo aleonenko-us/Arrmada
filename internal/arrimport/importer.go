@@ -29,7 +29,6 @@ type MovieLibrary interface {
 	InLibrary(ctx context.Context, path string) bool
 	AddImported(ctx context.Context, tmdbID int, o movies.AddOptions, file, source string) (movies.Movie, error)
 	AttachImported(ctx context.Context, id int64, file, source string) error
-	SetSearchPaced(ctx context.Context, id int64, on bool) error
 }
 
 // SeriesLibrary is what the import needs of Arrmada's shows (series.Service).
@@ -42,8 +41,9 @@ type SeriesLibrary interface {
 	SetType(ctx context.Context, id int64, seriesType string) error
 	SetEpisodesMonitored(ctx context.Context, seriesID int64, ids []int64, monitored bool) (int, error)
 	ResolveEpisodes(ctx context.Context, seriesID int64, rel parser.Release) []series.EpisodeRef
-	MarkEpisodeImported(ctx context.Context, seriesID int64, season, episode int, path string, size int64) error
+	AdoptEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error)
 	SetSearchPaced(ctx context.Context, id int64, on bool) error
+	SetMonitored(ctx context.Context, id int64, monitored bool) error
 	AddEvent(ctx context.Context, id int64, event, detail string)
 }
 
@@ -254,12 +254,19 @@ func (imp *Importer) movieIndex(ctx context.Context) (movieIndex, error) {
 	return idx, nil
 }
 
+// noFilePath is a title Radarr says has a file without saying where: it's treated like a file
+// that can't be found, never as a title to download.
+const noFilePath = "Radarr says it has a file but didn't say where"
+
 // movieFile is where a Radarr film's file is inside Arrmada ("" when Radarr has none) and,
 // when Arrmada can't take it, why.
 func (imp *Importer) movieFile(ctx context.Context, m Movie, opts Options, idx movieIndex) (local, problem string) {
+	if !m.HasFile {
+		return "", ""
+	}
 	arr := m.FilePath()
 	if arr == "" {
-		return "", ""
+		return "", noFilePath
 	}
 	local = filepath.FromSlash(Remap(arr, opts.PathMaps))
 	fi, err := imp.stat(local)
@@ -304,7 +311,7 @@ func (imp *Importer) previewMovies(ctx context.Context, snap *Snapshot, opts Opt
 		}
 		seen[m.TMDBID] = true
 		c.New++
-		if m.FilePath() != "" {
+		if m.HasFile {
 			c.WithFiles++
 			if problem == "" {
 				c.FilesFound++
@@ -638,6 +645,8 @@ func (imp *Importer) oneMovie(ctx context.Context, m Movie, opts Options, source
 	}
 	if file == "" {
 		o.FolderID = opts.folderFor(m.Root())
+		// Wanted: marked to be searched in its turn before it's monitored.
+		o.SearchPaced = true
 	}
 	created, err := imp.Movies.AddImported(ctx, m.TMDBID, o, file, source)
 	if errors.Is(err, movies.ErrExists) {
@@ -645,6 +654,10 @@ func (imp *Importer) oneMovie(ctx context.Context, m Movie, opts Options, source
 		return nil
 	}
 	if err != nil {
+		if created.ID > 0 {
+			// Added but not finished: AddImported left it unmonitored, and it's here now.
+			idx.byTMDB[m.TMDBID] = created
+		}
 		return err
 	}
 	idx.byTMDB[m.TMDBID] = created
@@ -653,10 +666,6 @@ func (imp *Importer) oneMovie(ctx context.Context, m Movie, opts Options, source
 		idx.owned[filepath.Clean(file)] = true
 		res.FilesAttached++
 	} else if created.Monitored {
-		if err := imp.Movies.SetSearchPaced(ctx, created.ID, true); err != nil {
-			// Not fatal for the film, but the sweep may search it with everything else.
-			imp.log().Warn("arr import: couldn't mark a film to be searched in its turn", "title", created.Title, "err", err)
-		}
 		res.Paced++
 	}
 	return nil
@@ -706,6 +715,7 @@ func (imp *Importer) showFiles(ctx context.Context, c *Client, s Series, opts Op
 	for _, f := range files {
 		arr := EpisodeFilePath(f, s)
 		if arr == "" {
+			problems = append(problems, "Sonarr lists an episode file without saying where it is")
 			continue
 		}
 		local := filepath.FromSlash(Remap(arr, opts.PathMaps))
@@ -725,18 +735,47 @@ func (imp *Importer) showFiles(ctx context.Context, c *Client, s Series, opts Op
 	return ok, problems, nil
 }
 
+// sameNumbering says, season by season, whether Arrmada numbers the show's episodes the way
+// Sonarr does (TVDB's numbering): always when Arrmada's listing is TVDB's own, else when the
+// season has as many episodes in both. Only there are Sonarr's per-episode choices and its
+// own file-to-episode mapping used; elsewhere monitoring follows the season choice and files
+// go by their names. A season only one side has counts as different.
+func sameNumbering(show series.Series, eps []Episode) map[int]bool {
+	arr := map[int]int{}
+	for _, e := range eps {
+		arr[e.SeasonNumber]++
+	}
+	tvdb := strings.EqualFold(show.NumberingSource, "tvdb")
+	out := map[int]bool{}
+	for _, sn := range show.Seasons {
+		out[sn.SeasonNumber] = tvdb || len(sn.Episodes) == arr[sn.SeasonNumber]
+	}
+	for n := range arr {
+		if _, ok := out[n]; !ok {
+			out[n] = false
+		}
+	}
+	return out
+}
+
+// differing is the regular seasons sameNumbering found numbered differently, in order.
+func differing(same map[int]bool) []int {
+	var out []int
+	for n, ok := range same {
+		if !ok && n > 0 {
+			out = append(out, n)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
 // attachEpisodes records each file on the episodes it holds that have no file yet: the
-// episodes its name resolves to (multi-episode files, anime absolute numbers), else the
-// episodes Sonarr filed it under. It returns how many files it recorded and the names of
-// the ones it couldn't place.
-func (imp *Importer) attachEpisodes(ctx context.Context, id int64, files []episodeFile, arrEps []Episode, idx *seriesIndex) (attached int, unplaced []string, err error) {
-	if len(files) == 0 {
-		return 0, nil, nil
-	}
-	show, err := imp.Series.Get(ctx, id)
-	if err != nil {
-		return 0, nil, err
-	}
+// episodes its name resolves to (multi-episode files, anime absolute numbers), else — in a
+// season numbered the same way (same) — the episodes Sonarr filed it under. An episode that
+// has a file by now keeps it. It returns how many files it recorded and the names of the
+// ones it couldn't place.
+func (imp *Importer) attachEpisodes(ctx context.Context, show series.Series, files []episodeFile, arrEps []Episode, same map[int]bool, idx *seriesIndex) (attached int, unplaced []string, err error) {
 	type slot struct{ season, episode int }
 	have := map[slot]series.Episode{}
 	for _, sn := range show.Seasons {
@@ -745,7 +784,7 @@ func (imp *Importer) attachEpisodes(ctx context.Context, id int64, files []episo
 		}
 	}
 	for _, f := range files {
-		refs := imp.Series.ResolveEpisodes(ctx, id, parser.Parse(filepath.Base(f.local)))
+		refs := imp.Series.ResolveEpisodes(ctx, show.ID, parser.Parse(filepath.Base(f.local)))
 		var slots []slot
 		for _, r := range refs {
 			if _, ok := have[slot{r.Season, r.Episode}]; ok {
@@ -754,7 +793,7 @@ func (imp *Importer) attachEpisodes(ctx context.Context, id int64, files []episo
 		}
 		if len(slots) == 0 {
 			for _, e := range arrEps {
-				if e.EpisodeFileID == f.ID && e.EpisodeFileID > 0 {
+				if e.EpisodeFileID > 0 && e.EpisodeFileID == f.ID && same[e.SeasonNumber] {
 					if _, ok := have[slot{e.SeasonNumber, e.EpisodeNumber}]; ok {
 						slots = append(slots, slot{e.SeasonNumber, e.EpisodeNumber})
 					}
@@ -766,13 +805,17 @@ func (imp *Importer) attachEpisodes(ctx context.Context, id int64, files []episo
 			if have[sl].HasFile {
 				continue
 			}
-			if err := imp.Series.MarkEpisodeImported(ctx, id, sl.season, sl.episode, f.local, f.Size); err != nil {
+			ok, err := imp.Series.AdoptEpisodeFile(ctx, show.ID, sl.season, sl.episode, f.local, f.Size)
+			if err != nil {
 				return attached, unplaced, err
 			}
 			e := have[sl]
-			e.HasFile, e.FilePath = true, f.local
+			e.HasFile = true // recorded now, or it had one by the time we got there
+			if ok {
+				e.FilePath = f.local
+				placed = true
+			}
 			have[sl] = e
-			placed = true
 		}
 		if placed {
 			attached++
@@ -803,6 +846,13 @@ func monitorNew(s Series) bool {
 }
 
 // oneSeries brings one Sonarr show over. An error is the show failing.
+//
+// A new show is added paused (its monitored gate off), so no sweep searches it while it's
+// being set up: its episodes' monitoring is copied, its files recorded and its paced-search
+// mark set, and only then — when every step went through — is it monitored as Sonarr had
+// it. Everything after the show exists runs to the end even when ctx is cancelled (the
+// import stopped or timed out), so a show is left complete, or paused, never wanting
+// episodes the person already has.
 func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Options, source string, idx *seriesIndex, res *Result) error {
 	existing, tmdb, why := imp.showMatch(s, *idx)
 	if existing == 0 && tmdb <= 0 {
@@ -830,14 +880,18 @@ func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Op
 		if err != nil {
 			return fmt.Errorf("couldn't read its episodes from Sonarr: %w", err)
 		}
-		n, _, err := imp.attachEpisodes(ctx, existing, files, eps, idx)
+		show, err := imp.Series.Get(ctx, existing)
 		if err != nil {
-			return fmt.Errorf("couldn't attach its episode files: %w", err)
+			return err
 		}
+		n, _, err := imp.attachEpisodes(ctx, show, files, eps, sameNumbering(show, eps), idx)
 		if n > 0 {
 			res.FilesAttached += n
 			imp.Series.AddEvent(ctx, existing, "imported", fmt.Sprintf("Brought over from %s: %d episode files", source, n))
 			res.note(s.Title, s.Year, "attached", fmt.Sprintf("already in Arrmada — attached %d episode files it didn't have", n))
+		}
+		if err != nil {
+			return fmt.Errorf("couldn't attach all of its episode files: %w", err)
 		}
 		return nil
 	}
@@ -857,7 +911,7 @@ func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Op
 		}
 	}
 	mns := monitorNew(s)
-	o := series.AddOptions{Monitored: s.Monitored, Seasons: seasons, MonitorNewSeasons: &mns}
+	o := series.AddOptions{Monitored: false, Seasons: seasons, MonitorNewSeasons: &mns}
 	if len(files) > 0 {
 		// The show belongs to the TV folder its files are in.
 		if id, ok := imp.Series.LibraryFolderOf(ctx, files[0].local); ok {
@@ -879,49 +933,87 @@ func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Op
 		idx.byTVDB[s.TVDBID] = added.ID
 	}
 	res.Imported++
+	wctx := context.WithoutCancel(ctx)
+	// unsafe names the first step that failed; the show then stays paused.
+	unsafe := ""
 	if strings.EqualFold(s.SeriesType, series.SeriesTypeAnime) && added.SeriesType != series.SeriesTypeAnime {
-		if err := imp.Series.SetType(ctx, added.ID, series.SeriesTypeAnime); err != nil {
+		if err := imp.Series.SetType(wctx, added.ID, series.SeriesTypeAnime); err != nil {
 			res.note(s.Title, s.Year, "imported", "couldn't switch it to anime numbering: "+err.Error())
 		}
 	}
-	if err := imp.copyEpisodeMonitoring(ctx, added.ID, eps); err != nil {
-		res.note(s.Title, s.Year, "imported", "couldn't copy which episodes are monitored: "+err.Error())
-	}
-	n, unplaced, err := imp.attachEpisodes(ctx, added.ID, files, eps, idx)
-	res.FilesAttached += n
+	show, err := imp.Series.Get(wctx, added.ID)
 	if err != nil {
-		res.note(s.Title, s.Year, "imported", "couldn't attach all of its episode files: "+err.Error())
+		unsafe = "couldn't read it back: " + err.Error()
 	}
-	if n > 0 {
-		imp.Series.AddEvent(ctx, added.ID, "imported", fmt.Sprintf("Brought over from %s: %d episode files", source, n))
+	var same map[int]bool
+	if unsafe == "" {
+		same = sameNumbering(show, eps)
+		if diff := differing(same); len(diff) > 0 {
+			res.note(s.Title, s.Year, "imported", fmt.Sprintf("Arrmada numbers season %s differently from Sonarr — there, which episodes are monitored follows the season choice, and files are matched by their names", joinInts(diff)))
+		}
+		if err := imp.copyEpisodeMonitoring(wctx, show, eps, same); err != nil {
+			unsafe = "couldn't copy which episodes are monitored: " + err.Error()
+		}
 	}
-	if len(unplaced) > 0 {
-		res.note(s.Title, s.Year, "imported", fmt.Sprintf("%d episode files didn't match an episode here (%s)", len(unplaced), unplaced[0]))
+	if unsafe == "" {
+		n, unplaced, err := imp.attachEpisodes(wctx, show, files, eps, same, idx)
+		res.FilesAttached += n
+		if n > 0 {
+			imp.Series.AddEvent(wctx, added.ID, "imported", fmt.Sprintf("Brought over from %s: %d episode files", source, n))
+		}
+		if len(unplaced) > 0 {
+			res.note(s.Title, s.Year, "imported", fmt.Sprintf("%d episode files didn't match an episode here (%s)", len(unplaced), unplaced[0]))
+		}
+		if err != nil {
+			unsafe = "couldn't attach all of its episode files: " + err.Error()
+		}
 	}
 	if len(problems) > 0 {
 		res.note(s.Title, s.Year, "imported", fmt.Sprintf("added without %d episode files (%s)", len(problems), problems[0]))
 	}
-	if s.Monitored {
-		if err := imp.Series.SetSearchPaced(ctx, added.ID, true); err != nil {
-			imp.log().Warn("arr import: couldn't mark a show to be searched in its turn", "title", added.Title, "err", err)
-		}
-		res.Paced++
+	if !s.Monitored {
+		return nil
 	}
+	if unsafe == "" {
+		if err := imp.Series.SetSearchPaced(wctx, added.ID, true); err != nil {
+			unsafe = "couldn't mark it to be searched in its turn: " + err.Error()
+		}
+	}
+	if unsafe == "" {
+		if err := imp.Series.SetMonitored(wctx, added.ID, true); err != nil {
+			unsafe = "couldn't monitor it: " + err.Error()
+		}
+	}
+	if unsafe != "" {
+		res.note(s.Title, s.Year, "imported", unsafe+" — left unmonitored, so nothing is downloaded for it; check it and monitor it by hand")
+		return nil
+	}
+	res.Paced++
 	return nil
 }
 
-// copyEpisodeMonitoring makes each episode's monitored flag Sonarr's, where Arrmada has the
-// same episode: the season choice set most of them already; this carries the exceptions
-// (one episode skipped in a monitored season, a special someone wanted).
-func (imp *Importer) copyEpisodeMonitoring(ctx context.Context, id int64, eps []Episode) error {
-	show, err := imp.Series.Get(ctx, id)
-	if err != nil {
-		return err
+func joinInts(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = fmt.Sprint(n)
 	}
+	if len(parts) <= 1 {
+		return strings.Join(parts, "")
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+}
+
+// copyEpisodeMonitoring makes each episode's monitored flag Sonarr's, where Arrmada has the
+// same episode in a season numbered the same way (same): the season choice set most of them
+// already; this carries the exceptions (one episode skipped in a monitored season). Specials
+// are left to the season choice, which never monitors them.
+func (imp *Importer) copyEpisodeMonitoring(ctx context.Context, show series.Series, eps []Episode, same map[int]bool) error {
 	type slot struct{ season, episode int }
 	want := map[slot]bool{}
 	for _, e := range eps {
-		want[slot{e.SeasonNumber, e.EpisodeNumber}] = e.Monitored
+		if e.SeasonNumber > 0 && same[e.SeasonNumber] {
+			want[slot{e.SeasonNumber, e.EpisodeNumber}] = e.Monitored
+		}
 	}
 	var on, off []int64
 	for _, sn := range show.Seasons {
@@ -939,9 +1031,9 @@ func (imp *Importer) copyEpisodeMonitoring(ctx context.Context, id int64, eps []
 	}
 	sort.Slice(on, func(i, j int) bool { return on[i] < on[j] })
 	sort.Slice(off, func(i, j int) bool { return off[i] < off[j] })
-	if _, err := imp.Series.SetEpisodesMonitored(ctx, id, on, true); err != nil {
+	if _, err := imp.Series.SetEpisodesMonitored(ctx, show.ID, on, true); err != nil {
 		return err
 	}
-	_, err = imp.Series.SetEpisodesMonitored(ctx, id, off, false)
+	_, err := imp.Series.SetEpisodesMonitored(ctx, show.ID, off, false)
 	return err
 }

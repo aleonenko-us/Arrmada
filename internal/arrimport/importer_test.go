@@ -81,7 +81,13 @@ func (fakeMovieMeta) GetMovie(_ context.Context, id int) (*metadata.MovieDetails
 	return &metadata.MovieDetails{MovieResult: metadata.MovieResult{TMDBID: id, Title: titles[id], Year: 2000}, Status: "Released", ReleaseDate: "2000-01-01"}, nil
 }
 
-type fakeSeriesMeta struct{ t *testing.T }
+// fakeSeriesMeta's listing is TVDB's (Sonarr's own) unless source says otherwise; short
+// drops the last episode of the seasons it names, the way another source numbers a show.
+type fakeSeriesMeta struct {
+	t      *testing.T
+	source string
+	short  map[int]bool
+}
 
 func (fakeSeriesMeta) Available() bool { return true }
 func (fakeSeriesMeta) SearchSeries(context.Context, string) ([]metadata.SeriesResult, error) {
@@ -108,8 +114,15 @@ func (f fakeSeriesMeta) GetSeries(_ context.Context, id int) (*metadata.SeriesDe
 	for _, e := range eps {
 		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], metadata.EpisodeDetails{EpisodeNumber: e.EpisodeNumber, AirDate: "2010-01-01"})
 	}
-	d := &metadata.SeriesDetails{SeriesResult: metadata.SeriesResult{TMDBID: id, Title: show.title, Year: 2008}, TVDBID: show.tvdb, NumberingSource: "tvdb"}
+	src := f.source
+	if src == "" {
+		src = "tvdb"
+	}
+	d := &metadata.SeriesDetails{SeriesResult: metadata.SeriesResult{TMDBID: id, Title: show.title, Year: 2008}, TVDBID: show.tvdb, NumberingSource: src}
 	for sn, list := range bySeason {
+		if f.short[sn] && len(list) > 1 {
+			list = list[:len(list)-1]
+		}
 		d.Seasons = append(d.Seasons, metadata.SeasonDetails{SeasonNumber: sn, Episodes: list})
 	}
 	sort.Slice(d.Seasons, func(i, j int) bool { return d.Seasons[i].SeasonNumber < d.Seasons[j].SeasonNumber })
@@ -127,6 +140,7 @@ type world struct {
 	anime   int64 // the Anime TV folder's id
 	imp     *Importer
 	ctx     context.Context
+	meta    *fakeSeriesMeta // the stand-in TMDB for shows, to change its numbering
 }
 
 func newWorld(t *testing.T) *world {
@@ -158,9 +172,10 @@ func newWorld(t *testing.T) *world {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mv := movies.NewService(st.DB(), fakeMovieMeta{}, nil, filepath.Join(base, "movies"), "", nil, log)
 	mv.SetFolders(fs)
-	sv := series.NewService(st.DB(), fakeSeriesMeta{t}, filepath.Join(base, "tv"), log)
+	meta := &fakeSeriesMeta{t: t}
+	sv := series.NewService(st.DB(), meta, filepath.Join(base, "tv"), log)
 	sv.SetFolders(fs)
-	return &world{base: base, movies: mv, series: sv, folders: fs, kids: kids.ID, anime: anime.ID, ctx: ctx,
+	return &world{base: base, movies: mv, series: sv, folders: fs, kids: kids.ID, anime: anime.ID, ctx: ctx, meta: meta,
 		imp: &Importer{Movies: mv, Series: sv, Log: log}}
 }
 
