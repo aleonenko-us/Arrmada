@@ -44,7 +44,7 @@ Asked for on Reddit and in GitHub issue #3: people keep separate folders — Mov
 
 ## Not done here / follow-ups
 
-- **Radarr/Sonarr import is folders only.** Arrmada has no Radarr/Sonarr title importer; the card sets up the folders and then the library scan adopts every title, filed under the folder it's in. Importing Radarr's monitored state, profiles or wanted (file-less) titles would be a separate importer.
+- ~~**Radarr/Sonarr import is folders only.**~~ Done in [ARRIMPORT](ARRIMPORT.md): the folders card grew into a full title importer (profiles, monitoring, wanted titles, existing files).
 - **No "make this the default" swap.** The default is the Settings → Library folder; change it there. Swapping a default with an extra folder would have to reassign every title of both in step with a settings write.
 - **Changing an extra folder's path** isn't offered (the titles in it would point at a folder that doesn't hold them): move the titles, remove the folder, add the new one.
 - Existing titles are never re-sorted by a rule added later: rules decide only for new titles; use Move to folder.

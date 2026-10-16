@@ -22,7 +22,7 @@ set up.
 
 ## What it does
 
-- 🎬 **Movies and TV** — search, download, import, rename and upgrade, the way Radarr and Sonarr do. Anime numbering included.
+- 🎬 **Movies and TV** — search, download, import, rename and upgrade, the way Radarr and Sonarr do. Anime numbering included. Moving over? Import your Radarr and Sonarr libraries, files and all.
 - 📚 **Books and audiobooks** — ebooks and audiobooks with series tracking, plus a built-in audiobook server for listening apps like Lissen.
 - 🙋 **Requests** — family and friends browse and request titles, Overseerr-style, and get told when they're ready. Sign in with Plex or Jellyfin.
 - 💬 **Subtitles** — pulls them out of the file, downloads them, or writes them with local AI.

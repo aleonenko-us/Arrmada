@@ -651,6 +651,13 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 		c.log.Warn("automation: movie search sweep skipped — can't read what's already downloading", "err", err)
 		return
 	}
+	// Films added in bulk (a Radarr import) are searched a few per run, not all at once.
+	marked, err := c.movies.PacedSearchIDs(ctx)
+	if err != nil {
+		c.log.Warn("automation: movie search sweep skipped — can't read which imported films wait their turn", "err", err)
+		return
+	}
+	pace := newPacer(marked, func(ctx context.Context, id int64) error { return c.movies.SetSearchPaced(ctx, id, false) }, c.log, "movie")
 	var outage outageTally
 	defer outage.report(c.log, "movie search sweep")
 	for _, m := range all {
@@ -675,6 +682,9 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 				continue
 			}
 		}
+		if pace.hold(m.ID) {
+			continue // imported in bulk: its turn comes in a later run
+		}
 		out, err := c.searchAndGrab(ctx, m)
 		n, searched := out.Grabbed, out.Searched
 		if errors.Is(err, ErrAlreadySearching) {
@@ -687,6 +697,7 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 			}
 			continue
 		}
+		pace.searched(ctx, m.ID)
 		if err != nil {
 			c.log.Warn("automation: search failed", "movie", m.Title, "err", err)
 		}

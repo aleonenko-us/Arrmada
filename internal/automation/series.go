@@ -165,6 +165,13 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 		return
 	}
 	held := &inFlightView{untracked: untracked}
+	// Shows added in bulk (a Sonarr import) are searched a few per run, not all at once.
+	marked, err := c.series.PacedSearchIDs(ctx)
+	if err != nil {
+		c.log.Warn("series: search sweep skipped — can't read which imported shows wait their turn", "err", err)
+		return
+	}
+	pace := newPacer(marked, func(ctx context.Context, id int64) error { return c.series.SetSearchPaced(ctx, id, false) }, c.log, "series")
 	var outage outageTally
 	defer outage.report(c.log, "series search sweep")
 	for _, s := range all {
@@ -186,6 +193,9 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 				continue
 			}
 		}
+		if pace.hold(s.ID) {
+			continue // imported in bulk: its turn comes in a later run
+		}
 		out, err := c.searchSeriesOnceScoped(ctx, s.ID, held)
 		n := out.Grabbed
 		if errors.Is(err, ErrAlreadySearching) {
@@ -198,6 +208,7 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 			}
 			continue
 		}
+		pace.searched(ctx, s.ID)
 		if err != nil {
 			c.log.Warn("series: search failed", "series", s.Title, "err", err)
 		}

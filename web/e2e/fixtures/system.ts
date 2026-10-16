@@ -5,6 +5,7 @@ import type {
 import type { LogLevelState, LogPage } from "../../src/lib/systemApi";
 import type { SetupChecklist } from "../../src/lib/setupApi";
 import type { LibraryFolders } from "../../src/lib/foldersApi";
+import type { ArrPreview, ArrResult } from "../../src/lib/importApi";
 import type { PersonaInfo } from "./users";
 import { NOW } from "./clock";
 
@@ -90,6 +91,44 @@ export const libraryPaths: LibraryPaths = paths;
 export const libraryFolders: LibraryFolders = {
   movie: { multi: false, folders: [{ id: 0, media: "movie", path: paths.movies, label: "Movies", rule: "", position: 0, default: true, titles: 12 }] },
   series: { multi: false, folders: [{ id: 0, media: "series", path: paths.tv, label: "TV", rule: "", position: 0, default: true, titles: 4 }] },
+};
+
+// Settings → Import & migrate → Radarr / Sonarr: what a Radarr with a Movies and a Kids
+// root folder answers (Radarr calls the share /movies, Arrmada /media/movies), and the
+// finished import job.
+export const arrPreview: ArrPreview = {
+  preview: {
+    app: "radarr", media: "movie", name: "Radarr 4K", version: "6.4.4",
+    counts: { titles: 4, existing: 1, new: 3, unmatchable: 0, with_files: 2, files_found: 1, not_found: 1, attachable: 0, wanted: 1 },
+    profiles: [
+      { id: 4, name: "HD-1080p", max_resolution: 1080, titles: 3, suggested: "custom:1" },
+      { id: 5, name: "Ultra-HD", max_resolution: 2160, titles: 1, suggested: "custom:2" },
+      { id: 6, name: "SD", max_resolution: 576, titles: 0, suggested: "custom:1" },
+    ],
+    not_found: [{ title: "Up", year: 2009, path: "/kids/Up (2009)/Up.mkv", reason: "file not found at /kids/Up (2009)/Up.mkv" }],
+    unmatched: [],
+  },
+  roots: [
+    { path: "/kids", titles: 1, free_bytes: 0, folder_id: null, suggested_path: "" },
+    { path: "/movies", titles: 3, free_bytes: 400e9, folder_id: 0, matched_by: "name", suggested_path: "" },
+  ],
+  path_maps: [{ from: "/movies", to: "/media/movies" }],
+  targets: [
+    { key: "custom:1", name: "1080p Sensible", max_resolution: 1080, default: true },
+    { key: "custom:2", name: "4K Sensible", max_resolution: 2160, default: false },
+  ],
+  default_profile: "custom:1",
+  not_ready: "",
+};
+export const arrImportResult: ArrResult = {
+  app: "radarr", media: "movie", name: "Radarr 4K", total: 4, imported: 3, files_attached: 2, existing: 1, skipped: 0, failed: 0, paced: 1,
+  notes: [{ title: "Up", year: 2009, outcome: "imported", reason: "added without its file (file not found at /kids/Up (2009)/Up.mkv)" }],
+};
+export const arrImportJob: Job = {
+  id: 812, kind: "import.arr", target: "arr", trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Imported 3 films · 2 files recorded · 1 already here · 0 skipped · 0 failed · 1 wanted, searched a few at a time", error: "",
+  result: arrImportResult,
+  created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
 };
 
 // Movies with a Kids folder (rule: kids) and TV with an Anime folder (rule: anime).

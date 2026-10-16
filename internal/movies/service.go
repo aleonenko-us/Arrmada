@@ -404,6 +404,17 @@ func (s *Service) RecordSearchMiss(ctx context.Context, id int64) { s.repo.Recor
 // ResetSearchMisses clears the search backoff (a grab succeeded).
 func (s *Service) ResetSearchMisses(ctx context.Context, id int64) { s.repo.ResetSearchMisses(ctx, id) }
 
+// SetSearchPaced marks a film as added in bulk (a Radarr import), so the missing sweep
+// takes it in its turn rather than searching every imported film at once; off clears it.
+func (s *Service) SetSearchPaced(ctx context.Context, id int64, on bool) error {
+	return s.repo.SetSearchPaced(ctx, id, on)
+}
+
+// PacedSearchIDs is every film still waiting its turn after a bulk add.
+func (s *Service) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	return s.repo.PacedSearchIDs(ctx)
+}
+
 // Add pulls full metadata for a TMDB id and adds the movie to the library (available
 // once released). AddWith takes the availability too.
 func (s *Service) Add(ctx context.Context, tmdbID int, qualityProfile string, monitored bool) (Movie, error) {

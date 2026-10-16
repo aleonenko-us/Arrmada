@@ -1,0 +1,311 @@
+[
+ {
+  "title": "Heat",
+  "originalTitle": "Heat",
+  "originalLanguage": {
+   "id": 1,
+   "name": "English"
+  },
+  "secondaryYearSourceId": 0,
+  "sortTitle": "heat",
+  "sizeOnDisk": 918805,
+  "status": "released",
+  "inCinemas": "1995-12-15T00:00:00Z",
+  "physicalRelease": "1996-06-20T00:00:00Z",
+  "digitalRelease": "2002-05-16T00:00:00Z",
+  "releaseDate": "1996-06-20T00:00:00Z",
+  "year": 1995,
+  "studio": "Warner Bros. Pictures",
+  "path": "/media/movies/Heat (1995)",
+  "qualityProfileId": 4,
+  "hasFile": true,
+  "movieFileId": 1,
+  "monitored": true,
+  "minimumAvailability": "released",
+  "isAvailable": true,
+  "folderName": "/media/movies/Heat (1995)",
+  "runtime": 170,
+  "cleanTitle": "heat",
+  "imdbId": "tt0113277",
+  "tmdbId": 949,
+  "titleSlug": "949",
+  "rootFolderPath": "/media/movies",
+  "certification": "R",
+  "genres": [
+   "Crime",
+   "Drama",
+   "Action"
+  ],
+  "tags": [],
+  "added": "2026-10-16T08:44:17Z",
+  "movieFile": {
+   "movieId": 1,
+   "relativePath": "Heat (1995) Bluray-1080p.mkv",
+   "path": "/media/movies/Heat (1995)/Heat (1995) Bluray-1080p.mkv",
+   "size": 918805,
+   "dateAdded": "2026-10-16T08:44:18Z",
+   "edition": "",
+   "languages": [
+    {
+     "id": 1,
+     "name": "English"
+    }
+   ],
+   "quality": {
+    "quality": {
+     "id": 20,
+     "name": "Bluray-480p",
+     "source": "bluray",
+     "resolution": 480,
+     "modifier": "none"
+    },
+    "revision": {
+     "version": 1,
+     "real": 0,
+     "isRepack": false
+    }
+   },
+   "indexerFlags": 0,
+   "mediaInfo": {
+    "audioBitrate": 0,
+    "audioChannels": 1,
+    "audioCodec": "AAC",
+    "audioLanguages": "",
+    "audioStreamCount": 1,
+    "videoBitDepth": 8,
+    "videoBitrate": 0,
+    "videoCodec": "x264",
+    "videoFps": 1,
+    "videoDynamicRange": "",
+    "videoDynamicRangeType": "",
+    "resolution": "64x48",
+    "runTime": "11:40",
+    "scanType": "Progressive",
+    "subtitles": ""
+   },
+   "qualityCutoffNotMet": true,
+   "id": 1
+  },
+  "collection": {
+   "title": "Heat Collection",
+   "tmdbId": 1048282
+  },
+  "statistics": {
+   "movieFileCount": 1,
+   "sizeOnDisk": 918805,
+   "releaseGroups": [],
+   "movieFileQualities": [
+    {
+     "id": 20,
+     "name": "Bluray-480p",
+     "source": "bluray",
+     "resolution": 480,
+     "modifier": "none"
+    }
+   ]
+  },
+  "id": 1
+ },
+ {
+  "title": "Ronin",
+  "originalTitle": "Ronin",
+  "originalLanguage": {
+   "id": 1,
+   "name": "English"
+  },
+  "secondaryYearSourceId": 0,
+  "sortTitle": "ronin",
+  "sizeOnDisk": 0,
+  "status": "released",
+  "inCinemas": "1998-09-25T00:00:00Z",
+  "physicalRelease": "2007-01-24T00:00:00Z",
+  "digitalRelease": "2001-12-14T00:00:00Z",
+  "releaseDate": "2001-12-14T00:00:00Z",
+  "year": 1998,
+  "studio": "United Artists",
+  "path": "/media/movies/Ronin (1998)",
+  "qualityProfileId": 4,
+  "hasFile": false,
+  "movieFileId": 0,
+  "monitored": true,
+  "minimumAvailability": "released",
+  "isAvailable": true,
+  "folderName": "/media/movies/Ronin (1998)",
+  "runtime": 122,
+  "cleanTitle": "ronin",
+  "imdbId": "tt0122690",
+  "tmdbId": 8195,
+  "titleSlug": "8195",
+  "rootFolderPath": "/media/movies",
+  "certification": "R",
+  "genres": [
+   "Action",
+   "Thriller",
+   "Crime"
+  ],
+  "tags": [],
+  "added": "2026-10-16T08:44:18Z",
+  "statistics": {
+   "movieFileCount": 0,
+   "sizeOnDisk": 0,
+   "releaseGroups": [],
+   "movieFileQualities": []
+  },
+  "id": 2
+ },
+ {
+  "title": "Up",
+  "originalTitle": "Up",
+  "originalLanguage": {
+   "id": 1,
+   "name": "English"
+  },
+  "secondaryYearSourceId": 0,
+  "sortTitle": "up",
+  "sizeOnDisk": 918805,
+  "status": "released",
+  "inCinemas": "2009-05-28T00:00:00Z",
+  "physicalRelease": "2009-11-10T00:00:00Z",
+  "digitalRelease": "2009-07-29T00:00:00Z",
+  "releaseDate": "2009-07-29T00:00:00Z",
+  "year": 2009,
+  "studio": "Pixar",
+  "path": "/media/kids-movies/Up (2009)",
+  "qualityProfileId": 5,
+  "hasFile": true,
+  "movieFileId": 2,
+  "monitored": true,
+  "minimumAvailability": "released",
+  "isAvailable": true,
+  "folderName": "/media/kids-movies/Up (2009)",
+  "runtime": 96,
+  "cleanTitle": "up",
+  "imdbId": "tt1049413",
+  "tmdbId": 14160,
+  "titleSlug": "14160",
+  "rootFolderPath": "/media/kids-movies",
+  "certification": "PG",
+  "genres": [
+   "Animation",
+   "Comedy",
+   "Family",
+   "Adventure"
+  ],
+  "tags": [],
+  "added": "2026-10-16T08:44:18Z",
+  "movieFile": {
+   "movieId": 3,
+   "relativePath": "Up (2009) Bluray-2160p.mkv",
+   "path": "/media/kids-movies/Up (2009)/Up (2009) Bluray-2160p.mkv",
+   "size": 918805,
+   "dateAdded": "2026-10-16T08:44:18Z",
+   "edition": "",
+   "languages": [
+    {
+     "id": 1,
+     "name": "English"
+    }
+   ],
+   "quality": {
+    "quality": {
+     "id": 20,
+     "name": "Bluray-480p",
+     "source": "bluray",
+     "resolution": 480,
+     "modifier": "none"
+    },
+    "revision": {
+     "version": 1,
+     "real": 0,
+     "isRepack": false
+    }
+   },
+   "indexerFlags": 0,
+   "mediaInfo": {
+    "audioBitrate": 0,
+    "audioChannels": 1,
+    "audioCodec": "AAC",
+    "audioLanguages": "",
+    "audioStreamCount": 1,
+    "videoBitDepth": 8,
+    "videoBitrate": 0,
+    "videoCodec": "x264",
+    "videoFps": 1,
+    "videoDynamicRange": "",
+    "videoDynamicRangeType": "",
+    "resolution": "64x48",
+    "runTime": "11:40",
+    "scanType": "Progressive",
+    "subtitles": ""
+   },
+   "qualityCutoffNotMet": true,
+   "id": 2
+  },
+  "statistics": {
+   "movieFileCount": 1,
+   "sizeOnDisk": 918805,
+   "releaseGroups": [],
+   "movieFileQualities": [
+    {
+     "id": 20,
+     "name": "Bluray-480p",
+     "source": "bluray",
+     "resolution": 480,
+     "modifier": "none"
+    }
+   ]
+  },
+  "id": 3
+ },
+ {
+  "title": "The Thing",
+  "originalTitle": "The Thing",
+  "originalLanguage": {
+   "id": 1,
+   "name": "English"
+  },
+  "secondaryYearSourceId": 0,
+  "sortTitle": "thing",
+  "sizeOnDisk": 0,
+  "status": "released",
+  "inCinemas": "1982-06-25T00:00:00Z",
+  "physicalRelease": "1987-03-19T00:00:00Z",
+  "digitalRelease": "2001-12-29T00:00:00Z",
+  "releaseDate": "1982-06-25T00:00:00Z",
+  "year": 1982,
+  "studio": "Universal Pictures",
+  "path": "/media/movies/The Thing (1982)",
+  "qualityProfileId": 3,
+  "hasFile": false,
+  "movieFileId": 0,
+  "monitored": false,
+  "minimumAvailability": "announced",
+  "isAvailable": true,
+  "folderName": "/media/movies/The Thing (1982)",
+  "runtime": 109,
+  "cleanTitle": "thething",
+  "imdbId": "tt0084787",
+  "tmdbId": 1091,
+  "titleSlug": "1091",
+  "rootFolderPath": "/media/movies",
+  "certification": "R",
+  "genres": [
+   "Horror",
+   "Mystery",
+   "Science Fiction"
+  ],
+  "tags": [],
+  "added": "2026-10-16T08:44:18Z",
+  "collection": {
+   "title": "The Thing Collection",
+   "tmdbId": 479888
+  },
+  "statistics": {
+   "movieFileCount": 0,
+   "sizeOnDisk": 0,
+   "releaseGroups": [],
+   "movieFileQualities": []
+  },
+  "id": 4
+ }
+]
