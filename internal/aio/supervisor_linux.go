@@ -167,6 +167,12 @@ func (s *Supervisor) runOnce(svc Service) (code int, err error) {
 	s.mu.Unlock()
 
 	err = cmd.Wait()
+	if !svc.Main {
+		// What the companion started dies with it: a FlareSolverr that crashed leaves
+		// its Xvfb and Chromium behind, and every restart would add another set. Its
+		// process group is its own (Setpgid above), so nothing else is in it.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	if pw != nil {
 		pw.flush()
 	}

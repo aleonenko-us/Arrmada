@@ -73,8 +73,13 @@ func prepare(o aio.Options) error {
 		if err := os.MkdirAll(aio.FlareSolverrHome, 0o700); err != nil {
 			return err
 		}
-		if err := aio.ChownTree(aio.FlareSolverrHome, o.UID, o.GID); err != nil {
+		if err := aio.ChownTree(aio.FlareSolverrHome, aio.FlareSolverrUID, aio.FlareSolverrGID); err != nil {
 			return err
+		}
+		// FlareSolverr's user is neither the owner nor in the group of appdata: closing
+		// "others" out of /data keeps the database and qBittorrent's login away from it.
+		if err := aio.CloseToOthers(o.DataDir); err != nil {
+			return fmt.Errorf("closing %s to FlareSolverr: %w", o.DataDir, err)
 		}
 	}
 	return nil

@@ -27,7 +27,13 @@ const (
 	// chromedriver at /app/chromedriver and its Chromium at /app/chrome/chrome.
 	FlareSolverrDir    = "/app"
 	FlareSolverrPython = "/opt/flaresolverr/venv/bin/python"
-	FlareSolverrHome   = "/tmp/flaresolverr" // Chromium's profile and caches; nothing to keep
+	FlareSolverrHome   = "/tmp/flaresolverr" // its working folder, Chromium's profile and caches; nothing to keep
+	// FlareSolverrUID/GID is the image's own flaresolverr user, not PUID:PGID. Its
+	// Chromium opens tracker pages with its sandbox off, so it runs as a user that owns
+	// nothing of the owner's: the supervisor closes /data to it, and the template's
+	// /storage is reachable only as far as the share's own permissions let anyone in.
+	FlareSolverrUID = 8191
+	FlareSolverrGID = 8191
 )
 
 // Plan is the services to run: Arrmada always, and each companion that's switched on.
@@ -62,11 +68,13 @@ func Plan(o Options, environ []string, getenv func(string) string) []Service {
 		})
 	}
 	if o.FlareSolverr {
+		fuid, fgid := FlareSolverrUID, FlareSolverrGID
 		svcs = append(svcs, Service{
 			Name: "flaresolverr",
 			Path: FlareSolverrPython,
 			Args: []string{"-u", FlareSolverrDir + "/flaresolverr.py"},
-			Dir:  FlareSolverrDir,
+			// Its code (root's, read-only) stays in /app; it works in a folder of its own.
+			Dir: FlareSolverrHome,
 			Env: append(append([]string(nil), base...),
 				"HOME="+FlareSolverrHome,
 				"HOST=127.0.0.1",
@@ -77,7 +85,7 @@ func Plan(o Options, environ []string, getenv func(string) string) []Service {
 				"HEADLESS=true",
 				"PYTHONDONTWRITEBYTECODE=1",
 			),
-			UID: &uid, GID: &gid,
+			UID: &fuid, GID: &fgid,
 		})
 	}
 	return svcs

@@ -100,8 +100,17 @@ func TestPlan(t *testing.T) {
 		t.Error("Arrmada lost its own environment")
 	}
 	for _, s := range svcs[1:] {
-		if s.UID == nil || *s.UID != 99 || *s.GID != 100 || s.Main {
-			t.Errorf("%s runs as %v:%v", s.Name, s.UID, s.GID)
+		if s.UID == nil || s.GID == nil || s.Main {
+			t.Fatalf("%s has no user to run as", s.Name)
+		}
+		// qBittorrent writes the owner's downloads, so it's PUID:PGID; FlareSolverr's
+		// sandbox-less Chromium gets a user of its own that owns none of the owner's files.
+		want := [2]int{99, 100}
+		if s.Name == "flaresolverr" {
+			want = [2]int{FlareSolverrUID, FlareSolverrGID}
+		}
+		if got := [2]int{*s.UID, *s.GID}; got != want {
+			t.Errorf("%s runs as %v, want %v", s.Name, got, want)
 		}
 		env := strings.Join(s.Env, "\n")
 		if strings.Contains(env, "secret") {
@@ -114,8 +123,12 @@ func TestPlan(t *testing.T) {
 	if q := svcs[1]; q.Name != "qbittorrent" || strings.Join(q.Args, " ") != "--profile=/data/qbittorrent --webui-port=8080 --confirm-legal-notice" {
 		t.Errorf("qbittorrent = %+v", q)
 	}
-	if f := svcs[2]; f.Name != "flaresolverr" || !strings.Contains(strings.Join(f.Env, " "), "HOST=127.0.0.1") {
+	if f := svcs[2]; f.Name != "flaresolverr" || !strings.Contains(strings.Join(f.Env, " "), "HOST=127.0.0.1") ||
+		f.Dir != FlareSolverrHome || !strings.Contains(strings.Join(f.Env, " "), "HOME="+FlareSolverrHome) {
 		t.Errorf("flaresolverr = %+v", f)
+	}
+	if FlareSolverrUID == 99 || FlareSolverrUID == 1000 || FlareSolverrUID == 0 {
+		t.Errorf("FlareSolverr's user %d is one a PUID commonly is", FlareSolverrUID)
 	}
 	if got := Plan(Options{}, nil, envOf(nil)); len(got) != 1 {
 		t.Errorf("both off still runs %d services", len(got))
@@ -192,6 +205,35 @@ func TestSeedQbittorrent(t *testing.T) {
 	}
 	if l2, _ := ReadLogin(LoginPath(profile)); l2 != login {
 		t.Error("the login changed on a second start")
+	}
+}
+
+// /data loses its "others" bits (and only those), so FlareSolverr's user can't get in.
+func TestCloseToOthers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o775|os.ModeSetgid); err != nil {
+		t.Fatal(err)
+	}
+	if err := CloseToOthers(dir); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ := os.Stat(dir)
+	if fi.Mode().Perm() != 0o770 || fi.Mode()&os.ModeSetgid == 0 {
+		t.Errorf("mode %v, want 0770 with setgid kept", fi.Mode())
+	}
+	// A missing folder is made closed.
+	fresh := filepath.Join(t.TempDir(), "new")
+	if err := CloseToOthers(fresh); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(fresh); fi.Mode().Perm()&0o007 != 0 {
+		t.Errorf("new folder mode %v", fi.Mode())
 	}
 }
 

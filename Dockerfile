@@ -465,13 +465,28 @@ RUN set -eux; \
 
 # x86-64: FlareSolverr and what its Chromium needs (the libraries Google's own Chrome
 # package depends on, fonts, and Xvfb for the hidden display it runs on).
+#
+# The plain image's packages (the GPU, VAAPI and Level Zero libraries above all) stay at
+# exactly the versions the plain image has, so Convert and Whisper behave the same in both
+# images: every installed package is held while the aio's are added (--no-upgrade alone
+# covers only the packages named), so one that would need a newer library fails the
+# build instead of upgrading it quietly.
+#
+# FlareSolverr runs as a user of its own (flaresolverr, 8191:8191, internal/aio's
+# FlareSolverrUID), never PUID: its Chromium opens tracker pages without a sandbox, and
+# that user owns nothing of the owner's.
 FROM arrmada AS aio-amd64
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN groupadd --system --gid 8191 flaresolverr && \
+    useradd --system --uid 8191 --gid 8191 --no-create-home --home-dir /tmp/flaresolverr \
+        --shell /usr/sbin/nologin flaresolverr
+RUN dpkg-query -W -f='${binary:Package}\n' | xargs apt-mark hold >/dev/null && \
+    apt-get update && apt-get install -y --no-install-recommends --no-upgrade \
         libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 \
         libcups2t64 libdbus-1-3 libdrm2 libexpat1 libgbm1 libglib2.0-0t64 libgtk-3-0t64 \
         libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 \
         libxext6 libxfixes3 libxkbcommon0 libxrandr2 libxshmfence1 fonts-liberation \
         xvfb && \
+    apt-mark showhold | xargs -r apt-mark unhold >/dev/null && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=aio-flaresolverr /opt/flaresolverr /opt/flaresolverr
 COPY --from=aio-flaresolverr /app /app
@@ -487,7 +502,10 @@ FROM arrmada AS aio-arm64
 FROM aio-${TARGETARCH} AS aio
 # tini is PID 1: it passes the stop signal to the supervisor and reaps the processes
 # Chromium leaves behind.
-RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+RUN dpkg-query -W -f='${binary:Package}\n' | xargs apt-mark hold >/dev/null && \
+    apt-get update && apt-get install -y --no-install-recommends --no-upgrade tini && \
+    apt-mark showhold | xargs -r apt-mark unhold >/dev/null && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=aio-qbittorrent /qbittorrent-nox /usr/local/bin/qbittorrent-nox
 COPY --from=aio-supervisor /out/arrmada-aio /usr/local/bin/arrmada-aio
 RUN qbittorrent-nox --version

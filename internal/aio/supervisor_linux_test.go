@@ -195,6 +195,35 @@ func TestCompanionRestartsWithBackoff(t *testing.T) {
 	}
 }
 
+// When a companion's own process exits, what it started (FlareSolverr's Xvfb and Chromium)
+// is killed before it's started again, so crashes don't pile up leftovers.
+func TestCompanionLeftoversKilledBeforeRestart(t *testing.T) {
+	dir := t.TempDir()
+	pids := filepath.Join(dir, "pids")
+	out := &syncBuffer{}
+	s := &Supervisor{Out: out, Grace: time.Second, MinBackoff: 300 * time.Millisecond, MaxBackoff: 300 * time.Millisecond, Services: []Service{
+		sh("arrmada", "trap 'exit 0' TERM; while :; do sleep 0.05; done", true),
+		// Starts a child that ignores SIGTERM and closes its output (so the service's
+		// exit isn't held up by the pipe), then exits as if it crashed.
+		sh("flaresolverr", "(trap '' TERM; exec >/dev/null 2>&1; while :; do sleep 0.05; done) & echo $! >> "+pids+"; exit 1", false),
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan int, 1)
+	go func() { done <- s.Run(ctx) }()
+	waitFor(t, "a restart", func() bool {
+		raw, _ := os.ReadFile(pids)
+		return len(strings.Fields(string(raw))) >= 2
+	})
+	raw, _ := os.ReadFile(pids)
+	first := strings.Fields(string(raw))[0]
+	waitFor(t, "the first run's leftover to die", func() bool {
+		st, err := os.ReadFile("/proc/" + first + "/stat")
+		return err != nil || strings.Contains(string(st), ") Z ")
+	})
+	cancel()
+	<-done
+}
+
 // A companion that can't be started at all (a missing binary) is retried and logged;
 // Arrmada keeps running.
 func TestCompanionMissingBinary(t *testing.T) {

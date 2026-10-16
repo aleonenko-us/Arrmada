@@ -191,6 +191,24 @@ func chown(path string, uid, gid int) error {
 	return os.Lchown(path, uid, gid)
 }
 
+// CloseToOthers takes "others" off a folder's permissions (creating it if need be), so
+// only its owner and group get in: what's inside stays out of reach of a user that is
+// neither, however its files' own modes read.
+func CloseToOthers(dir string) error {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if fi.Mode().Perm()&0o007 != 0 {
+		keep := fi.Mode() & (os.ModePerm | os.ModeSetgid | os.ModeSetuid | os.ModeSticky)
+		return os.Chmod(dir, keep&^0o007)
+	}
+	return nil
+}
+
 // ChownTree hands a folder and everything in it to uid:gid (as root only).
 func ChownTree(root string, uid, gid int) error {
 	if os.Geteuid() != 0 {
