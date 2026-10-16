@@ -114,11 +114,13 @@ It installs into the checkout itself (the same questions, minus the folder) and
 ## Unraid without Compose: the template
 
 [templates/arrmada.xml](../templates/arrmada.xml) runs the app container alone from the
-published `stable` image, for people who already run qBittorrent. It keeps the database in
-`/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, and takes your media share at
-`/storage`. Mount the same share at `/storage` in qBittorrent too, then pick each library
-folder and the Downloads folder in the app. The Compose install above bundles qBittorrent
-and FlareSolverr instead.
+published `stable` image, for people who already run qBittorrent or SABnzbd. It keeps the
+database in `/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, puts the web page on port
+7880, and takes your media share at `/storage`. Mount the same share at `/storage` in your
+download client too, then pick each library folder and the Downloads folder in the app.
+The Compose install above bundles qBittorrent and FlareSolverr instead.
+[Arrmada on Unraid](unraid.md) has the details: installing it, connecting your download
+client, the GPU, and updating.
 
 ## What gets installed
 

@@ -1822,6 +1822,8 @@ export interface UpdateStatus {
   ahead?: number | null;
   /** Why the last attempt couldn't check, in words. */
   problem?: string;
+  /** "unraid": Unraid's own Docker manager runs this container, so it updates from Unraid's Docker page. */
+  host?: "unraid";
 }
 
 /**
