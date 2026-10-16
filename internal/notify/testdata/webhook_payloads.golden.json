@@ -1,0 +1,579 @@
+{
+  "book.author_release": {
+    "version": 1,
+    "event": "book.author_release",
+    "event_label": "New books by followed authors",
+    "group": "library",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "New books",
+    "message": "📚 2 new books from Brandon Sanderson: Wind and Truth, Isles of the Emberdark",
+    "url": "https://arrmada.example.com/books/authors/5",
+    "path": "/books/authors/5",
+    "image_url": null,
+    "data": {
+      "author": "Brandon Sanderson",
+      "author_id": 5,
+      "count": 2,
+      "titles": [
+        "Wind and Truth",
+        "Isles of the Emberdark"
+      ]
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "book.imported": {
+    "version": 1,
+    "event": "book.imported",
+    "event_label": "Book imported",
+    "group": "library",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Imported",
+    "message": "📚 Project Hail Mary (audiobook)",
+    "url": "https://arrmada.example.com/books/31",
+    "path": "/books/31",
+    "image_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+    "data": {
+      "author": "Andy Weir",
+      "book_id": 31,
+      "edition": "audiobook",
+      "format": "M4B",
+      "size_bytes": 960000000,
+      "title": "Project Hail Mary",
+      "version": null,
+      "year": 2021
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "convert.failed": {
+    "version": 1,
+    "event": "convert.failed",
+    "event_label": "Convert gave up on a file",
+    "group": "convert",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Convert gave up",
+    "message": "⚠️ Convert gave up on Dune (2021) after 3 tries — ffmpeg exited with status 1: Invalid data found when processing input",
+    "url": "https://arrmada.example.com/convert?tab=problems",
+    "path": "/convert?tab=problems",
+    "image_url": null,
+    "data": {
+      "error": "ffmpeg exited with status 1: Invalid data found when processing input",
+      "item": "movie:12",
+      "title": "Dune (2021)",
+      "tries": 3
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "convert.stalled": {
+    "version": 1,
+    "event": "convert.stalled",
+    "event_label": "Convert is stuck",
+    "group": "convert",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Convert is stuck",
+    "message": "⏸ Convert is waiting for space on the library disk\nIt needs 18 GB free and there's 6 GB.",
+    "url": "https://arrmada.example.com/activity/needs-you",
+    "path": "/activity/needs-you",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": "It needs 18 GB free and there's 6 GB.",
+      "level": "warning",
+      "names": null,
+      "title": "Convert is waiting for space on the library disk"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "convert.summary": {
+    "version": 1,
+    "event": "convert.summary",
+    "event_label": "Daily Convert summary",
+    "group": "convert",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Convert summary",
+    "message": "🎞️ Convert: 7 files, 312 GB freed, 1 problem",
+    "url": "https://arrmada.example.com/convert?tab=problems",
+    "path": "/convert?tab=problems",
+    "image_url": null,
+    "data": {
+      "files": 7,
+      "problems": 1,
+      "saved_bytes": 335000000000,
+      "since": "2027-01-14T04:13:20Z"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "download.failed": {
+    "version": 1,
+    "event": "download.failed",
+    "event_label": "Download failed",
+    "group": "needs_you",
+    "severity": "error",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Download failed",
+    "message": "❌ Dune.2021.2160p.WEB-DL errored in the download client\nqBittorrent: missing files.",
+    "url": "https://arrmada.example.com/activity/needs-you",
+    "path": "/activity/needs-you",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": "qBittorrent: missing files.",
+      "level": "error",
+      "names": null,
+      "title": "Dune.2021.2160p.WEB-DL errored in the download client"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "download.stalled": {
+    "version": 1,
+    "event": "download.stalled",
+    "event_label": "Download stalled",
+    "group": "needs_you",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Download stalled",
+    "message": "🐢 3 downloads have stalled: Dune.2021.2160p.WEB-DL, Severance.S02E03.1080p, Arcane.S02.2160p",
+    "url": "https://arrmada.example.com/activity/needs-you#stalled",
+    "path": "/activity/needs-you#stalled",
+    "image_url": null,
+    "data": {
+      "count": 3,
+      "detail": null,
+      "level": "warning",
+      "names": [
+        "Dune.2021.2160p.WEB-DL",
+        "Severance.S02E03.1080p",
+        "Arcane.S02.2160p"
+      ],
+      "title": null
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "episodes.imported": {
+    "version": 1,
+    "event": "episodes.imported",
+    "event_label": "Episodes imported",
+    "group": "library",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Imported",
+    "message": "📥 House of the Dragon (2 episodes)",
+    "url": "https://arrmada.example.com/series/7",
+    "path": "/series/7",
+    "image_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+    "data": {
+      "codec": "x264",
+      "count": 2,
+      "episodes": [
+        "S02E01",
+        "S02E02"
+      ],
+      "hdr": [],
+      "release": "House.of.the.Dragon.S02.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+      "resolution": "1080p",
+      "series_id": 7,
+      "size_bytes": 8421000000,
+      "source": "WEB-DL",
+      "title": "House of the Dragon",
+      "tmdb_id": 94997,
+      "year": 2022
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "health.problem": {
+    "version": 1,
+    "event": "health.problem",
+    "event_label": "Health problem",
+    "group": "needs_you",
+    "severity": "error",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Health problem",
+    "message": "🔴 qBittorrent can't be reached\nConnection refused at 192.168.1.20:8080.",
+    "url": "https://arrmada.example.com/activity/needs-you",
+    "path": "/activity/needs-you",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": "Connection refused at 192.168.1.20:8080.",
+      "level": "error",
+      "names": null,
+      "title": "qBittorrent can't be reached"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "health.resolved": {
+    "version": 1,
+    "event": "health.resolved",
+    "event_label": "Health problem resolved",
+    "group": "needs_you",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Resolved",
+    "message": "✅ Resolved: qBittorrent can't be reached",
+    "url": "https://arrmada.example.com/settings/status#health",
+    "path": "/settings/status#health",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": null,
+      "level": null,
+      "names": null,
+      "title": "qBittorrent can't be reached"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "import.held": {
+    "version": 1,
+    "event": "import.held",
+    "event_label": "Import held for review",
+    "group": "needs_you",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Held for review",
+    "message": "✋ Dune.2021.2160p.WEB-DL is held for review\nThe release's year doesn't match the movie's.",
+    "url": "https://arrmada.example.com/activity/needs-you",
+    "path": "/activity/needs-you",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": "The release's year doesn't match the movie's.",
+      "level": "warning",
+      "names": null,
+      "title": "Dune.2021.2160p.WEB-DL is held for review"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "import.stuck": {
+    "version": 1,
+    "event": "import.stuck",
+    "event_label": "Import keeps failing",
+    "group": "needs_you",
+    "severity": "error",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Import stuck",
+    "message": "⚠️ Dune.2021.2160p.WEB-DL keeps failing to import\nNo video file found in the download.",
+    "url": "https://arrmada.example.com/activity/needs-you",
+    "path": "/activity/needs-you",
+    "image_url": null,
+    "data": {
+      "count": 1,
+      "detail": "No video file found in the download.",
+      "level": "error",
+      "names": null,
+      "title": "Dune.2021.2160p.WEB-DL keeps failing to import"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "issue.reported": {
+    "version": 1,
+    "event": "issue.reported",
+    "event_label": "Problem reported",
+    "group": "requests",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Problem reported",
+    "message": "Sam reported a problem with Severance S02E03: subtitles.\nNote: “Subtitles are a few seconds late”",
+    "url": "https://arrmada.example.com/requests?tab=issues&issue=9",
+    "path": "/requests?tab=issues&issue=9",
+    "image_url": null,
+    "data": {
+      "category": "subtitles",
+      "episode": 3,
+      "issue_id": 9,
+      "media_type": "series",
+      "note": "Subtitles are a few seconds late",
+      "reported_by": "Sam",
+      "season": 2,
+      "title": "Severance",
+      "tmdb_id": 95396,
+      "year": 2022
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "movie.imported": {
+    "version": 1,
+    "event": "movie.imported",
+    "event_label": "Movie imported",
+    "group": "library",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Imported",
+    "message": "📥 Dune (upgraded)",
+    "url": "https://arrmada.example.com/movies/12",
+    "path": "/movies/12",
+    "image_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+    "data": {
+      "codec": "x265",
+      "file": "/movies/Dune (2021)/Dune (2021) [Remux-2160p DV HDR10 HEVC].mkv",
+      "hdr": [
+        "DV",
+        "HDR10"
+      ],
+      "movie_id": 12,
+      "resolution": "2160p",
+      "source": "Remux",
+      "title": "Dune",
+      "tmdb_id": 438631,
+      "upgrade": true,
+      "version_id": null,
+      "year": 2021
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "music.imported": {
+    "version": 1,
+    "event": "music.imported",
+    "event_label": "Album imported",
+    "group": "library",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Imported",
+    "message": "🎵 Daft Punk — Discovery (14 tracks)",
+    "url": "https://arrmada.example.com/music/album/18",
+    "path": "/music/album/18",
+    "image_url": null,
+    "data": {
+      "album": "Discovery",
+      "album_id": 18,
+      "artist": "Daft Punk",
+      "artist_id": 3,
+      "quality": "FLAC",
+      "tracks": 14
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "plex.buffering": {
+    "version": 1,
+    "event": "plex.buffering",
+    "event_label": "Buffering",
+    "group": "plex",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Buffering",
+    "message": "⏳ Alex’s stream is buffering — Dune",
+    "url": "https://arrmada.example.com/insights?tab=reliability",
+    "path": "/insights?tab=reliability",
+    "image_url": null,
+    "data": {
+      "cause": "network",
+      "decision": "transcode",
+      "item_id": "40001",
+      "location": "wan",
+      "media_type": "movie",
+      "platform": "iOS",
+      "player": "iPhone",
+      "server": "plex",
+      "show_title": null,
+      "title": "Dune",
+      "user": "Alex",
+      "year": 2021
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "plex.stream.started": {
+    "version": 1,
+    "event": "plex.stream.started",
+    "event_label": "Stream started",
+    "group": "plex",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Now playing",
+    "message": "▶️ Sam started Severance · Hello, Ms. Cobel",
+    "url": "https://arrmada.example.com/insights",
+    "path": "/insights",
+    "image_url": null,
+    "data": {
+      "decision": "direct_play",
+      "item_id": "51234",
+      "location": "lan",
+      "media_type": "episode",
+      "platform": "Roku",
+      "player": "Living Room TV",
+      "server": "plex",
+      "show_title": "Severance",
+      "title": "Severance · Hello, Ms. Cobel",
+      "user": "Sam",
+      "year": 2025
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "release.grabbed": {
+    "version": 1,
+    "event": "release.grabbed",
+    "event_label": "Grabbed",
+    "group": "downloads",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Grabbed",
+    "message": "🎬 Dune.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.HEVC.TrueHD.Atmos-GROUP",
+    "url": "https://arrmada.example.com/activity/queue",
+    "path": "/activity/queue",
+    "image_url": null,
+    "data": {
+      "codec": "x265",
+      "hdr": [
+        "DV",
+        "HDR10"
+      ],
+      "indexer": "MyIndexer",
+      "media_type": "movie",
+      "network": "torrent",
+      "release": "Dune.2021.2160p.UHD.BluRay.REMUX.DV.HDR10.HEVC.TrueHD.Atmos-GROUP",
+      "resolution": "2160p",
+      "source": "Remux"
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "request.auto_approved": {
+    "version": 1,
+    "event": "request.auto_approved",
+    "event_label": "Auto-approved request",
+    "group": "requests",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Request auto-approved",
+    "message": "✅ Auto-approved: House of the Dragon (2022) for Alex",
+    "url": "https://arrmada.example.com/discover",
+    "path": "/discover",
+    "image_url": null,
+    "data": {
+      "media_type": "series",
+      "request_id": 43,
+      "requested_by": "Alex",
+      "title": "House of the Dragon",
+      "tmdb_id": 94997,
+      "year": 2022
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  },
+  "request.created": {
+    "version": 1,
+    "event": "request.created",
+    "event_label": "New request",
+    "group": "requests",
+    "severity": "info",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "New request",
+    "message": "Sam requested Dune (2021). It's waiting for your approval.\nNote: “The 4K one if you can”",
+    "url": "https://arrmada.example.com/requests?tab=needs&id=42",
+    "path": "/requests?tab=needs&id=42",
+    "image_url": null,
+    "data": {
+      "decline_reason": "",
+      "media_type": "movie",
+      "note": "The 4K one if you can",
+      "request_id": 42,
+      "requested_by": "Sam",
+      "rerequest": false,
+      "seasons": null,
+      "title": "Dune",
+      "tmdb_id": 438631,
+      "year": 2021
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
+  }
+}
