@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api, type SeriesLookup } from "../../lib/api";
 import { qualityApi } from "../../lib/qualityApi";
+import { FolderSelect } from "../../components/FolderSelect";
 import { Button, Modal } from "../../ui";
 import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "./presets";
 
@@ -16,6 +17,8 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [monitor, setMonitor] = useState<MonitorPreset>(DEFAULT_MONITOR_PRESET);
   const [addingId, setAddingId] = useState<number | null>(null);
+  // The TV folder (undefined: each show goes where the folder rules put it).
+  const [folder, setFolder] = useState<number | undefined>(undefined);
   const profileId = useId();
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +48,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
 
   const add = async (r: SeriesLookup) => {
     setAddingId(r.tmdb_id); setError(null);
-    try { await api.addSeries({ tmdb_id: r.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchOnAdd, monitor }); onAdded(); }
+    try { await api.addSeries({ tmdb_id: r.tmdb_id, quality_profile: profile, monitored: true, search_on_add: searchOnAdd, monitor, folder_id: folder }); onAdded(); }
     catch (e) { setError((e as Error).message); setAddingId(null); }
   };
 
@@ -79,6 +82,8 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
                 {profiles.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
               </select>
             </div>
+            {/* Only with more than one TV folder; otherwise nothing renders. */}
+            <FolderSelect media="series" value={folder} onChange={setFolder} disabled={addingId !== null} inline />
           </div>
         </div>
         <form onSubmit={search} className="mb-3 flex gap-2">

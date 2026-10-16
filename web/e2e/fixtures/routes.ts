@@ -238,6 +238,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Answers like the server: the account as it now stands.
     { method: "PUT", path: /^\/api\/v1\/users\/(\d+)$/, respond: ({ params, body }) => ({ disabled: false, ...sys.users.users.find((u) => u.id === Number(params[0])), id: Number(params[0]), ...(body as object) }) },
     get("/api/v1/system/library", sys.libraryPaths),
+    get("/api/v1/library/folders", sys.libraryFolders),
+    { method: "GET", path: "/api/v1/library/folders/suggest", body: { folder_id: 0 } },
     { method: "GET", path: "/api/v1/system/library/check", respond: ({ url }) => sys.folderCheck(url.searchParams.get("path") ?? "") },
     get("/api/v1/logs", sys.logs),
     get("/api/v1/logs/level", sys.logLevel),

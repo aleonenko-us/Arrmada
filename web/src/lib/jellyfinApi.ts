@@ -45,6 +45,6 @@ export const jellyfinApi = {
   scanView: () => req<PlexScanView>("/api/v1/jellyfin/scan"),
   saveScan: (body: { enabled: boolean; path_map: PlexPathMap[] }) =>
     req<PlexScanView>("/api/v1/jellyfin/scan", { method: "PUT", body: JSON.stringify(body) }),
-  testScan: (kind: "movie" | "show", run: boolean) =>
-    req<{ root: PlexScanRoot; last_scan: PlexScanStatus }>("/api/v1/jellyfin/scan/test", { method: "POST", body: JSON.stringify({ kind, run }) }),
+  testScan: (kind: "movie" | "show", run: boolean, root = "") =>
+    req<{ root: PlexScanRoot; last_scan: PlexScanStatus }>("/api/v1/jellyfin/scan/test", { method: "POST", body: JSON.stringify({ kind, run, root }) }),
 };

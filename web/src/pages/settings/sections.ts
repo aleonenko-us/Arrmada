@@ -59,6 +59,7 @@ export interface SearchEntry {
 export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Media folders", keywords: "movies tv shows ebooks audiobooks music downloads folder path browse scan mount directory unmatched needs review", section: "library", anchor: "media-folders" },
   { label: "Folders that need review", keywords: "scan unmatched needs review identify pick title folder", section: "library", anchor: "needs-review" },
+  { label: "More Movies and TV folders", keywords: "extra second another multiple folders library kids children animation anime cartoons rule root folder move", section: "library", anchor: "more-folders" },
   { label: "Adding titles", keywords: "search on add automatic default", section: "library", anchor: "adding-titles" },
   { label: "Series monitoring", keywords: "series tv show monitor monitoring preset default all future missing existing first latest season new seasons add request", section: "library", anchor: "series-monitoring" },
   { label: "Books", keywords: "book books ebook audiobook language languages english foreign translation mam myanonamouse grab", section: "library", anchor: "books" },
@@ -99,6 +100,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },
+  { label: "Folders from Radarr or Sonarr", keywords: "radarr sonarr root folders migrate import kids anime extra library folders", section: "import", anchor: "arr-folders" },
   { label: "Import from Audiobookshelf", keywords: "audiobookshelf abs absdatabase listening places progress bookmarks migrate import audiobooks", section: "import", anchor: "audiobookshelf-import" },
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },

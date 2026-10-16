@@ -175,11 +175,11 @@ function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; relo
     (media === "movie" ? api.moviesUnmatched() : api.seriesUnmatched()).then(setItems).catch(() => setItems([]));
   useEffect(() => { load(); }, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pick = async (folder: string, tmdb_id: number) => {
+  const pick = async (folder: string, tmdb_id: number, root?: string) => {
     setBusy(true);
     try {
-      await (media === "movie" ? api.importMovieFolder(folder, tmdb_id) : api.importSeriesFolder(folder, tmdb_id));
-      setItems((xs) => (xs ?? []).filter((u) => u.folder !== folder));
+      await (media === "movie" ? api.importMovieFolder(folder, tmdb_id, root) : api.importSeriesFolder(folder, tmdb_id, root));
+      setItems((xs) => (xs ?? []).filter((u) => u.folder !== folder || u.root !== root));
       toast(`Imported “${folder}”.`, { tone: "good" });
     } catch (e) { toast((e as Error).message, { tone: "error", ms: 6000 }); } finally { setBusy(false); }
   };
@@ -198,13 +198,13 @@ function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; relo
         <button onClick={load} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Refresh</button>
       </div>
       <div className="mt-3 flex flex-col gap-2.5">
-        {items.map((u) => <UnmatchedRow key={u.folder} media={media} item={u} busy={busy} onPick={pick} />)}
+        {items.map((u) => <UnmatchedRow key={`${u.root ?? ""}/${u.folder}`} media={media} item={u} busy={busy} onPick={pick} />)}
       </div>
     </div>
   );
 }
 
-function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"; item: UnmatchedFolder; busy: boolean; onPick: (folder: string, tmdb: number) => void }) {
+function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"; item: UnmatchedFolder; busy: boolean; onPick: (folder: string, tmdb: number, root?: string) => void }) {
   const [q, setQ] = useState(item.title);
   const [results, setResults] = useState<MatchCandidate[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -232,7 +232,7 @@ function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"
           <button
             key={c.tmdb_id}
             disabled={busy}
-            onClick={() => onPick(item.folder, c.tmdb_id)}
+            onClick={() => onPick(item.folder, c.tmdb_id, item.root)}
             title={c.overview}
             className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm disabled:opacity-50"
             style={{ border: "1px solid var(--line)", background: "var(--panel)" }}

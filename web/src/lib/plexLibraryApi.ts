@@ -57,6 +57,7 @@ export const plexLibraryApi = {
   saveScan: (body: { enabled: boolean; path_map: PlexPathMap[] }) =>
     req<PlexScanView>("/api/v1/insights/plex/scan", { method: "PUT", body: JSON.stringify(body) }),
   // run=false only resolves the folder (Test); run=true also asks Plex to scan it.
-  testScan: (kind: "movie" | "show", run: boolean) =>
-    req<{ root: PlexScanRoot; last_scan: PlexScanStatus }>("/api/v1/insights/plex/scan/test", { method: "POST", body: JSON.stringify({ kind, run }) }),
+  // root: which of the kind's folders (several when Movies or TV has more than one); "" = the main one.
+  testScan: (kind: "movie" | "show", run: boolean, root = "") =>
+    req<{ root: PlexScanRoot; last_scan: PlexScanStatus }>("/api/v1/insights/plex/scan/test", { method: "POST", body: JSON.stringify({ kind, run, root }) }),
 };

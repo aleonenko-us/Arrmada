@@ -1989,6 +1989,8 @@ export interface MatchCandidate {
 // A library folder the scan couldn't confidently identify, with candidates to pick from.
 export interface UnmatchedFolder {
   folder: string;
+  /** The library folder it was found in (a Movies or TV library can have several). */
+  root?: string;
   title: string;
   year: number;
   candidates: MatchCandidate[];
@@ -2067,6 +2069,8 @@ export interface SceneOverride {
 export interface Series {
   id: number;
   tmdb_id: number;
+  /** The TV folder it belongs to (0: the default), when there are several. */
+  library_folder_id?: number;
   imdb_id?: string;
   title: string;
   year: number;
@@ -2968,8 +2972,9 @@ export const api = {
   scanLibrary: (opts?: { monitor: boolean; quality_profile?: string }) =>
     req<{ status: string } & JobRef>("/api/v1/movies/scan", { method: "POST", ...(opts ? { body: JSON.stringify(opts) } : {}) }),
   moviesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/movies/unmatched").then((r) => r.unmatched),
-  importMovieFolder: (folder: string, tmdb_id: number) =>
-    req<{ status: string }>("/api/v1/movies/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id }) }),
+  // root: the Movies folder the scan found it in (when there are several).
+  importMovieFolder: (folder: string, tmdb_id: number, root?: string) =>
+    req<{ status: string }>("/api/v1/movies/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id, root }) }),
   libraryPaths: () => req<LibraryPaths>("/api/v1/system/library"),
   audioServer: () => req<AudioServerAdmin>("/api/v1/audioserver"),
   setAudioServer: (body: { enabled?: boolean; public_url?: string; trace_hours?: number }) => req<AudioServerAdmin>("/api/v1/audioserver", { method: "PUT", body: JSON.stringify(body) }),
@@ -3029,7 +3034,7 @@ export const api = {
   browseFolders: (path?: string) => req<BrowseResult>(`/api/v1/system/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   // search_on_add applies to this add only; the global default changes only in Settings
   // (or through updateSettings when the dialog's "Remember as default" is ticked).
-  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability }) =>
+  addMovie: (body: { tmdb_id: number; quality_profile: string; monitored?: boolean; search_on_add?: boolean; min_availability?: MinAvailability; folder_id?: number }) =>
     req<Movie>("/api/v1/movies", { method: "POST", body: JSON.stringify(body) }),
   // Several films in one call (a collection's Add all): films already in the library are
   // skipped, each new one's search is queued. search defaults to the search-on-add setting.
@@ -3075,7 +3080,7 @@ export const api = {
   lookupSeries: (q: string) =>
     req<{ results: SeriesLookup[] }>(`/api/v1/series/lookup?q=${encodeURIComponent(q)}`).then((r) => r.results),
   // monitor is a monitoring preset; left out, the server uses Settings' default.
-  addSeries: (body: { tmdb_id: number; quality_profile?: string; monitored?: boolean; search_on_add?: boolean; monitor?: string; monitor_new_seasons?: boolean }) =>
+  addSeries: (body: { tmdb_id: number; quality_profile?: string; monitored?: boolean; search_on_add?: boolean; monitor?: string; monitor_new_seasons?: boolean; folder_id?: number }) =>
     req<Series>("/api/v1/series", { method: "POST", body: JSON.stringify(body) }),
   seriesDetail: (id: number) => req<Series>(`/api/v1/series/${id}`),
   seriesDownloads: (id: number) => req<SeriesEpisodeDownload[]>(`/api/v1/series/${id}/downloads`),
@@ -3143,11 +3148,12 @@ export const api = {
   // body.seasons trims a series request to a subset of what it asked for (the rest isn't
   // approved); empty or absent approves it as asked. A plain string is still accepted as
   // the profile, for older callers.
-  approveRequest: (id: number, body: string | { quality_profile?: string; seasons?: number[] } = {}) => {
+  // folder_id: the library folder staff chose (only offered with several folders).
+  approveRequest: (id: number, body: string | { quality_profile?: string; seasons?: number[]; folder_id?: number } = {}) => {
     const b = typeof body === "string" ? { quality_profile: body } : body;
     return req<MediaRequest>(`/api/v1/requests/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ quality_profile: b.quality_profile ?? "", ...(b.seasons?.length ? { seasons: b.seasons } : {}) }),
+      body: JSON.stringify({ ...b, quality_profile: b.quality_profile ?? "", seasons: b.seasons?.length ? b.seasons : undefined }),
     });
   },
   myQuota: () => req<MyQuota>("/api/v1/me/quota"),
@@ -3333,8 +3339,8 @@ export const api = {
 
   scanSeries: () => req<{ status: string } & JobRef>("/api/v1/series/scan", { method: "POST" }),
   seriesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/series/unmatched").then((r) => r.unmatched),
-  importSeriesFolder: (folder: string, tmdb_id: number) =>
-    req<{ status: string }>("/api/v1/series/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id }) }),
+  importSeriesFolder: (folder: string, tmdb_id: number, root?: string) =>
+    req<{ status: string }>("/api/v1/series/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id, root }) }),
   seriesDuplicates: (id: number) =>
     req<{ duplicates: DuplicateEpisodeFile[]; extra_files: number; reclaimable_bytes: number }>(`/api/v1/series/${id}/duplicates`),
   deleteSeriesDuplicate: (id: number, path: string) =>
@@ -3635,6 +3641,8 @@ export interface ReleaseList {
 export interface Movie {
   id: number;
   tmdb_id: number;
+  /** The Movies folder it belongs to (0: the default), when there are several. */
+  library_folder_id?: number;
   imdb_id?: string;
   title: string;
   year: number;
