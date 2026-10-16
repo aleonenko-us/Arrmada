@@ -1,4 +1,4 @@
-import type { CollectionDetail, CollectionRow, DiscoverCard, DiscoverRow, Genre, MediaDetail, MediaRequest, PersonDetail, PersonResult, RequestList, SeriesSeason, UserNotification, WatchProvider } from "../../src/lib/api";
+import type { CollectionDetail, CollectionRow, DiscoverCard, DiscoverRow, Genre, MediaDetail, MediaRequest, PersonDetail, PersonResult, RequestList, RequestPreview, SeriesSeason, UserNotification, WatchProvider } from "../../src/lib/api";
 import type { PersonaInfo } from "./users";
 
 // Discover's poster rows. The mix covers every badge a card can wear (none, Pending,
@@ -143,11 +143,35 @@ export const readyRequests: RequestList = {
   ],
 };
 
+// saltwindPreview is the waiting request's release preview (staff only, as the server
+// sends it): checked ten minutes ago, a 1080p Blu-ray that Approve & grab can still take.
+export const saltwindPreview: RequestPreview = {
+  state: "done", checked_at: Math.floor(Date.parse(at) / 1000), profile: "hd-1080p", stale: false, grabbable: true,
+  result: {
+    outcome: "found", reason: "grabbed", profile: "hd-1080p", returned: 14, matching: 6, eligible: 3, searched: 2, queries: 1,
+    why: ["Higher resolution than the others on offer"], chosen_over: "Chosen over the 720p WEB-DL — lower resolution",
+    releases: [{ title: "Saltwind.2023.1080p.BluRay.x264-FIXTURE", indexer: "TorrentLeech", summary: "1080p · BluRay", resolution: "1080p", source: "BluRay", codec: "x264", size_gb: 11.8, seeders: 54, transport: "torrent", matched: ["x264"] }],
+  },
+};
+
+// withPreview gives staff the waiting request's preview; a requester never gets one.
+function withPreview(list: MediaRequest[], staff: boolean): MediaRequest[] {
+  return staff ? list.map((r) => (r.id === 1 ? { ...r, preview: saltwindPreview } : r)) : list;
+}
+
 // requestList answers GET /api/v1/requests: the ready section its own row, every other
 // section and the Discover strip the same rows.
-export function requestList(url: URL): RequestList {
-  return url.searchParams.get("section") === "ready" ? readyRequests : requests;
+export function requestList(url: URL, staff = false): RequestList {
+  const list = url.searchParams.get("section") === "ready" ? readyRequests : requests;
+  return { ...list, requests: withPreview(list.requests, staff) };
 }
+
+// previewJob is POST /api/v1/requests/{id}/preview's job, already finished.
+export const previewJob = {
+  id: 7701, kind: "request.preview", target: "request:1", trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Would grab Saltwind.2023.1080p.BluRay.x264-FIXTURE", error: "", result: { state: "done" },
+  created_at: at, started_at: at, finished_at: at,
+};
 
 // person is GET /api/v1/discover/person/{id} (REQ-20): a cast member with a filmography.
 export const person: PersonDetail = {
@@ -202,17 +226,17 @@ export const seasonsRequest: MediaRequest = {
 };
 
 // requestDetail is GET /api/v1/requests/{id}: the listed request with that id.
-export function requestDetail(id: number): { request: MediaRequest; client_health: { ok: boolean } } {
-  const all = [...requests.requests, seasonsRequest];
-  return { request: all.find((r) => r.id === id) ?? requests.requests[0], client_health: { ok: true } };
+export function requestDetail(id: number, staff = false): { request: MediaRequest; client_health: { ok: boolean } } {
+  const all = withPreview([...requests.requests, seasonsRequest], staff);
+  return { request: all.find((r) => r.id === id) ?? all[0], client_health: { ok: true } };
 }
 
 // approved is POST /api/v1/requests/{id}/approve: the request, approved (trimmed to the
-// seasons sent, if any).
+// seasons sent, if any). Approve & grab says it grabbed the previewed release.
 export function approved(id: number, body: unknown): MediaRequest {
-  const r = requestDetail(id).request;
-  const seasons = ((body ?? {}) as { seasons?: number[] }).seasons;
-  return { ...r, status: "approved", tracking: { stage: "searching" }, ...(seasons ? { seasons } : {}) };
+  const r: MediaRequest = { ...requestDetail(id).request, preview: undefined };
+  const b = (body ?? {}) as { seasons?: number[]; grab_preview?: boolean };
+  return { ...r, status: "approved", tracking: { stage: "searching" }, ...(b.seasons ? { seasons: b.seasons } : {}), ...(b.grab_preview ? { approve_grab: { mode: "preview" as const } } : {}) };
 }
 
 // bulk is POST /api/v1/requests/bulk: every id goes through.

@@ -147,6 +147,65 @@ describe("RequestSheet", () => {
     await vi.waitFor(() => expect(approve).toHaveBeenCalledWith(5, { quality_profile: undefined, seasons: [2, 4] }));
   });
 
+  // What approving would grab: staff see it, with Approve & grab for the profile it was
+  // checked under; picking another profile marks it as for the old one and hides the grab.
+  it("shows staff the release preview and approves with exactly that release", async () => {
+    me.user = user(1, "admin");
+    const { requestPreviewApi } = await import("../lib/requestPreviewApi");
+    const grab = vi.spyOn(requestPreviewApi, "approveAndGrab").mockResolvedValue(rq({ status: "approved", approve_grab: { mode: "preview" } }));
+    const refresh = vi.spyOn(requestPreviewApi, "refresh");
+    const checkedAt = Math.floor(Date.now() / 1000) - 600;
+    open(rq({ preview: {
+      state: "done", checked_at: checkedAt, profile: "hd", stale: false, grabbable: true,
+      result: { outcome: "found", reason: "grabbed", profile: "hd", returned: 9, matching: 4, eligible: 2, searched: 1, queries: 1, why: ["Highest resolution on offer"],
+        releases: [{ title: "Heat.1995.1080p.BluRay.x264-GRP", indexer: "TL", summary: "1080p · BluRay", resolution: "1080p", source: "BluRay", size_gb: 12.4, seeders: 40, transport: "torrent" }] },
+    } }));
+    expect(await screen.findByText("Would grab")).toBeTruthy();
+    expect(screen.getByText("Heat.1995.1080p.BluRay.x264-GRP")).toBeTruthy();
+    expect(screen.getByText("40 seeders")).toBeTruthy();
+    expect(screen.getByText(/Highest resolution on offer/)).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled(); // fresh: opening it doesn't search again
+    await screen.findByRole("option", { name: "Ultra-HD 2160p" });
+    fireEvent.click(await screen.findByRole("button", { name: "Approve & grab this" }));
+    await vi.waitFor(() => expect(grab).toHaveBeenCalledWith(5, { quality_profile: "hd", folder_id: undefined, preview_checked_at: checkedAt }));
+  });
+
+  it("marks a preview for another profile and offers to check again", async () => {
+    me.user = user(1, "admin");
+    open(rq({ preview: {
+      state: "done", checked_at: Math.floor(Date.now() / 1000) - 60, profile: "hd", stale: false, grabbable: true,
+      result: { outcome: "found", reason: "grabbed", profile: "hd", returned: 1, matching: 1, eligible: 1, searched: 1, queries: 1,
+        releases: [{ title: "Heat.1995.1080p.BluRay.x264-GRP", indexer: "TL", summary: "", size_gb: 12, seeders: 4 }] },
+    } }));
+    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    await screen.findByRole("button", { name: "Approve & grab this" });
+    fireEvent.change(select, { target: { value: "uhd" } });
+    expect(await screen.findByText("for HD-1080p")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check for Ultra-HD 2160p" })).toBeTruthy();
+    expect(has("Approve & grab this")).toBe(false);
+    expect(has("Approve")).toBe(true);
+  });
+
+  it("checks a missing or old preview when staff open the request", async () => {
+    me.user = user(1, "admin");
+    const { requestPreviewApi } = await import("../lib/requestPreviewApi");
+    const refresh = vi.spyOn(requestPreviewApi, "refresh").mockResolvedValue({});
+    open(rq({ preview: { state: "queued", checked_at: 0, profile: "", stale: true, grabbable: false } }));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledWith(5, undefined));
+    expect(await screen.findByText("Not checked yet")).toBeTruthy();
+  });
+
+  it("never shows a requester a preview", async () => {
+    me.user = user(7, "requester");
+    open(rq({ relation: "owner", preview: { state: "done", checked_at: 1, profile: "hd", stale: false, grabbable: true,
+      result: { outcome: "found", reason: "grabbed", profile: "hd", returned: 1, matching: 1, eligible: 1, searched: 1, queries: 1,
+        releases: [{ title: "Heat.1995.1080p.BluRay.x264-GRP", indexer: "TL", summary: "", size_gb: 12, seeders: 4 }] } } }));
+    await screen.findByRole("button", { name: "Withdraw" });
+    expect(screen.queryByText("Would grab")).toBeNull();
+    expect(screen.queryByTestId("release-preview")).toBeNull();
+    expect(has("Approve & grab this")).toBe(false);
+  });
+
   it("approves a whole-show request as asked unless a season is unticked, and never with none", async () => {
     me.user = user(1, "admin");
     const approve = vi.spyOn(api, "approveRequest").mockResolvedValue(rq({ status: "approved" }));
