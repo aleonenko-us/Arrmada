@@ -57,9 +57,19 @@ Arrmada with qBittorrent and FlareSolverr inside), built on top of the plain ima
 pushed, by digest, and tagged `0.18.0-aio`, `0.18-aio`, `sha-<commit>-aio` and `stable-aio`
 once the plain tags exist. It never holds the plain release back: if it fails, the release
 and its notes are still published, the run shows red, and the `-aio` tags stay where they
-were until the workflow is re-run on the tag. arm64's all-in-one image has qBittorrent only
-(FlareSolverr's Chromium is x86-64 only); Unraid itself is x86-64.
+were. Fix the cause, then open the run and use **Re-run failed jobs**, which runs the
+all-in-one jobs again on the plain image already pushed. Not **Re-run all jobs**: that
+builds and publishes the plain tags again too. arm64's all-in-one image has qBittorrent
+only (FlareSolverr's Chromium is x86-64 only); Unraid itself is x86-64.
 
-Unraid users on the template follow `:stable-aio`, so a release reaches them with nothing
-else to do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in
+**Ordering: the template follows the first `stable-aio`.** The Community Apps template on
+`main` is live (Unraid fetches it from its `TemplateURL`) and runs `:stable`, the app on its
+own, until a release has published `stable-aio`. Switching it to `:stable-aio` (with the
+torrent ports and the built-in switches) is the `feat/unraid-template-aio` branch: merge it
+right after that first release's all-in-one jobs are green and `docker pull
+ghcr.io/tristenlammi/arrmada:stable-aio` works signed out, never before, or new installs
+would point at an image that isn't there.
+
+Unraid users on the template follow its tag, so a release reaches them with nothing else
+to do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in
 Community Apps, and looking after it, is in [Listing Arrmada in Community Apps](unraid-submission.md).
