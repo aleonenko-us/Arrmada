@@ -112,10 +112,12 @@ server ([Following main](docs/updating.md#following-main-developers)).
 
 ## Requirements
 
-- A 64-bit Intel or AMD (x86-64) server running Linux — Unraid, Debian, Ubuntu and the like.
+- A 64-bit Linux server — Unraid, Debian, Ubuntu and the like — on Intel/AMD (x86-64) or
+  64-bit ARM (arm64: a Raspberry Pi 4/5 with a 64-bit OS, ARM NAS boxes). On ARM, Convert and
+  AI subtitles run on the CPU ([what differs](docs/install.md#arm)).
 - Docker with Compose v2.
 - A free [TMDB API key](https://www.themoviedb.org/settings/api) (entered in the app).
-- Optional: Intel or AMD graphics for faster Convert and AI subtitles, and a Plex or Jellyfin server.
+- Optional: Intel or AMD graphics for faster Convert and AI subtitles (x86-64 only), and a Plex or Jellyfin server.
 
 ## Documentation
 

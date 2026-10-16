@@ -92,6 +92,11 @@ If your server has `/dev/dri` (Intel or AMD graphics), the installer passes it t
 Convert and Whisper subtitles use it. Intel Arc and other Gen12+ chips are used through VAAPI
 (HEVC, H.264 and AV1 encoding); `docker exec Arrmada-app vainfo` shows what the container sees.
 
+On ARM (arm64) there's no GPU acceleration: the image carries no GPU encoders or GPU subtitle
+build, Convert and Whisper use the CPU, and the installer doesn't pass `/dev/dri` through.
+Passing it through by hand does no harm; Convert tests every encoder at start-up and only
+offers the ones that work.
+
 ## Convert's scratch folder
 
 Convert encodes into a scratch folder before swapping the result in. The installer puts it at
