@@ -757,6 +757,7 @@ func (c *Coordinator) recordMusicGrab(ctx context.Context, albumID int64, title,
 		return
 	}
 	c.noteHashless("music", title, infoHash)
+	c.noteHandoff(ctx, "music", albumID, title, infoHash)
 }
 
 // pendingMusicGrabTitles returns releases already grabbed for this album and not yet

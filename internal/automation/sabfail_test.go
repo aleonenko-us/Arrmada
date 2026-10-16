@@ -38,6 +38,19 @@ func TestClassifyUsenetFailure(t *testing.T) {
 		{"Unpacking failed, path is too long", UsenetFailEnvironment, true},
 		{"Script exit code is 1", UsenetFailEnvironment, true},
 
+		// A handed-over link SABnzbd couldn't fetch (urlgrabber.py, 5.1.3): the indexer, its
+		// key or its limit — never a reason to blocklist the release for good. Only "File not
+		// on server" (the indexer's 404) and an unreadable file are the release's.
+		{"URL Fetching failed; Maximum retries", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Unauthorized access", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Server could not complete request", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Server name does not resolve", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Server  uses an untrusted HTTPS certificate - https://sabnzbd.org/certificate-errors", UsenetFailEnvironment, true},
+		{"URL Fetching failed; Forbidden", UsenetFailEnvironment, true},
+		{"URL Fetching failed; File not on server", UsenetFailBadRelease, true},
+		{"URL Fetching failed; ", UsenetFailBadRelease, true},
+		{"Unusable NZB file", UsenetFailBadRelease, true},
+
 		// What SABnzbd says with no reason, and a translated reason: the release's fault,
 		// unrecognised.
 		{"SABnzbd marked the download failed", UsenetFailBadRelease, false},
@@ -55,6 +68,9 @@ func TestClassifyUsenetFailure(t *testing.T) {
 		}
 		if got.Environment() != (got.Fix != "") {
 			t.Errorf("%q: an environment failure needs a fix to show, and only it (fix %q)", c.msg, got.Fix)
+		}
+		if fetch := len(c.msg) > 19 && c.msg[:19] == "URL Fetching failed"; got.Fetch != fetch {
+			t.Errorf("%q: Fetch = %v, want %v", c.msg, got.Fetch, fetch)
 		}
 	}
 }

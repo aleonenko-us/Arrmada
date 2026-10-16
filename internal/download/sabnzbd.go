@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -297,8 +298,9 @@ func (s *SABnzbd) Ping(ctx context.Context, dc Client) error {
 
 // --- adding ---------------------------------------------------------------------------
 
-// ErrNZBRequired: SABnzbd is only ever handed the NZB itself. Passing it a link would put
-// the indexer's API key into SABnzbd's history; Arrmada fetches NZBs itself.
+// ErrNZBRequired: SABnzbd is handed the NZB itself. Passing it a link would put the
+// indexer's API key into SABnzbd's history; Arrmada fetches NZBs itself, and only hands over
+// a link when the indexer blocked that (AddRequest.ClientFetches).
 var ErrNZBRequired = errors.New("sabnzbd: Arrmada sends SABnzbd the NZB file itself, not a link")
 
 // Add hands SABnzbd an NZB (see AddKeyed).
@@ -314,7 +316,8 @@ func (s *SABnzbd) Add(ctx context.Context, dc Client, req AddRequest) error {
 // A category SABnzbd doesn't have is refused here: SABnzbd would silently file the job
 // under its default (*) category, where no importer ever looks.
 func (s *SABnzbd) AddKeyed(ctx context.Context, dc Client, req AddRequest) (string, error) {
-	if len(req.File) == 0 {
+	link := len(req.File) == 0 && req.ClientFetches && strings.TrimSpace(req.URL) != ""
+	if len(req.File) == 0 && !link {
 		return "", ErrNZBRequired
 	}
 	if strings.TrimSpace(req.Category) == "" {
@@ -326,6 +329,9 @@ func (s *SABnzbd) AddKeyed(ctx context.Context, dc Client, req AddRequest) (stri
 	}
 	if !hasCategory(cats, req.Category) {
 		return "", missingCategoryError(dc, req.Category)
+	}
+	if link {
+		return s.addURL(ctx, dc, req)
 	}
 
 	var buf bytes.Buffer
@@ -386,6 +392,70 @@ func (s *SABnzbd) AddKeyed(ctx context.Context, dc Client, req AddRequest) (stri
 		return "", errors.New("sabnzbd: it refused the NZB (damaged, empty, or not an NZB)")
 	}
 	return UsenetKey(v.IDs[0]), nil
+}
+
+// addURL has SABnzbd fetch the NZB itself (addurl), for an indexer that blocked Arrmada's
+// own download: the same name, category, priority and pp=3 as addfile. SABnzbd answers
+// with the job's id at once — a placeholder that becomes the job, under the same id, once
+// it has the NZB — so the download key works as for an upload. If SABnzbd can't fetch it
+// either, the job fails into its history like any other ("URL Fetching failed; …") and the
+// usual failure handling takes it from there.
+//
+// The link carries the indexer's key and SABnzbd keeps it (its history shows the link), which
+// is the accepted price of this fallback; nothing here logs it or puts it in an error.
+func (s *SABnzbd) addURL(ctx context.Context, dc Client, req AddRequest) (string, error) {
+	params := url.Values{"name": {req.URL}, "cat": {req.Category}, "pp": {"3"}}
+	if req.Name != "" {
+		params.Set("nzbname", req.Name)
+	}
+	if req.Paused {
+		params.Set("priority", "-2")
+	} else {
+		params.Set("priority", "-100")
+	}
+	form := url.Values{}
+	for k, v := range params {
+		form[k] = v
+	}
+	form.Set("mode", "addurl")
+	form.Set("output", "json")
+	form.Set("apikey", dc.Password)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, sabURL(dc), strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", scrubErr(dc, fmt.Errorf("sabnzbd: bad address: %w", err))
+	}
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	body, err := s.do(dc, s.http, httpReq)
+	if err != nil {
+		return "", scrubLink(err, req.URL)
+	}
+	v, err := decode[struct {
+		Status bool     `json:"status"`
+		IDs    []string `json:"nzo_ids"`
+	}](dc, body, "add")
+	if err != nil {
+		return "", scrubLink(err, req.URL)
+	}
+	if !v.Status || len(v.IDs) == 0 {
+		return "", errors.New("sabnzbd: it refused the NZB link")
+	}
+	return UsenetKey(v.IDs[0]), nil
+}
+
+// scrubLink takes an NZB link (and its query, where the indexer's key sits) out of an
+// error, keeping NeverReached.
+func scrubLink(err error, link string) error {
+	if err == nil || link == "" {
+		return err
+	}
+	msg := hideLinks(strings.ReplaceAll(err.Error(), link, "the NZB link"))
+	if msg == err.Error() {
+		return err
+	}
+	if NeverReached(err) {
+		return notSent(errors.New(msg))
+	}
+	return errors.New(msg)
 }
 
 func hasCategory(cats []string, cat string) bool {
@@ -580,7 +650,7 @@ func queueItem(j sabQueueJob, queuePaused bool) (Item, bool) {
 	}
 	it := Item{
 		Hash:            key,
-		Name:            j.Name,
+		Name:            hideLinks(j.Name),
 		State:           "downloading",
 		Progress:        clamp01(float64(j.Percentage) / 100),
 		SizeBytes:       size,
@@ -613,7 +683,7 @@ func historyItem(j sabHistoryJob) (Item, bool) {
 	size := int64(j.Bytes)
 	it := Item{
 		Hash:            key,
-		Name:            j.Name,
+		Name:            hideLinks(j.Name),
 		SizeBytes:       size,
 		TotalSizeBytes:  size,
 		DownloadedBytes: size,
@@ -634,7 +704,7 @@ func historyItem(j sabHistoryJob) (Item, bool) {
 		it.ContentPath = j.Storage
 	case "Failed":
 		it.State = "error"
-		it.FailMessage = j.FailMessage
+		it.FailMessage = hideLinks(j.FailMessage)
 		if it.FailMessage == "" {
 			it.FailMessage = "SABnzbd marked the download failed"
 		}
@@ -645,6 +715,30 @@ func historyItem(j sabHistoryJob) (Item, bool) {
 		it.Progress = 1
 	}
 	return it, true
+}
+
+// linkRE finds web addresses in what SABnzbd says about a job.
+var linkRE = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>]+`)
+
+// hideLinks cuts the query (and any user info) out of every web address in s. A job SABnzbd
+// fetched from a link (an indexer that blocked Arrmada's own download) is named after that
+// link while it's fetched and when the fetch fails ("Trying to fetch NZB from <link>",
+// "<name> - <link>"), and the link's query holds the indexer's key. What Arrmada shows and
+// logs keeps the address up to its path, never the key.
+func hideLinks(s string) string {
+	if !strings.Contains(strings.ToLower(s), "http") {
+		return s
+	}
+	return linkRE.ReplaceAllStringFunc(s, func(link string) string {
+		u, err := url.Parse(link)
+		if err != nil {
+			return "[link]"
+		}
+		u.User = nil
+		u.RawQuery, u.Fragment, u.RawFragment = "", "", ""
+		u.ForceQuery = false
+		return u.String()
+	})
 }
 
 func clamp01(f float64) float64 {
