@@ -62,13 +62,11 @@ all-in-one jobs again on the plain image already pushed. Not **Re-run all jobs**
 builds and publishes the plain tags again too. arm64's all-in-one image has qBittorrent
 only (FlareSolverr's Chromium is x86-64 only); Unraid itself is x86-64.
 
-**Ordering: the template follows the first `stable-aio`.** The Community Apps template on
-`main` is live (Unraid fetches it from its `TemplateURL`) and runs `:stable`, the app on its
-own, until a release has published `stable-aio`. Switching it to `:stable-aio` (with the
-torrent ports and the built-in switches) is the `feat/unraid-template-aio` branch: merge it
-right after that first release's all-in-one jobs are green and `docker pull
-ghcr.io/tristenlammi/arrmada:stable-aio` works signed out, never before, or new installs
-would point at an image that isn't there.
+**The template runs `:stable-aio`.** The Community Apps template on `main` is live (Unraid
+fetches it from its `TemplateURL`), so it only ever names a tag a release has already
+published: it moved to `:stable-aio` after the first release that built the all-in-one
+image. If the all-in-one jobs ever stop publishing, fix them before changing anything the
+template points at.
 
 Unraid users on the template follow its tag, so a release reaches them with nothing else
 to do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in

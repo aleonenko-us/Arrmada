@@ -4,18 +4,23 @@ package templates
 import (
 	"encoding/xml"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/aio"
 )
 
 type container struct {
-	Repository string `xml:"Repository"`
-	WebUI      string `xml:"WebUI"`
-	Icon       string `xml:"Icon"`
-	Configs    []struct {
+	Repository  string `xml:"Repository"`
+	WebUI       string `xml:"WebUI"`
+	Icon        string `xml:"Icon"`
+	ExtraParams string `xml:"ExtraParams"`
+	Configs     []struct {
 		Name     string `xml:"Name,attr"`
 		Target   string `xml:"Target,attr"`
 		Default  string `xml:"Default,attr"`
+		Mode     string `xml:"Mode,attr"`
 		Type     string `xml:"Type,attr"`
 		Display  string `xml:"Display,attr"`
 		Required string `xml:"Required,attr"`
@@ -24,9 +29,9 @@ type container struct {
 	} `xml:"Config"`
 }
 
-// The template runs the published stable image, keeps the database in appdata at /data
-// with nothing else there, brings media in through /storage, and carries no credential
-// of any kind: keys are only ever entered in the app.
+// The template runs the published stable all-in-one image, keeps the database in appdata
+// at /data with nothing else there, brings media in through /storage, and carries no
+// credential of any kind: keys are only ever entered in the app.
 func TestUnraidTemplate(t *testing.T) {
 	raw, err := os.ReadFile("arrmada.xml")
 	if err != nil {
@@ -36,11 +41,12 @@ func TestUnraidTemplate(t *testing.T) {
 	if err := xml.Unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	if c.Repository != "ghcr.io/tristenlammi/arrmada:stable" {
+	if c.Repository != "ghcr.io/tristenlammi/arrmada:stable-aio" {
 		t.Errorf("repository = %q", c.Repository)
 	}
 	paths := map[string]string{}
 	vars := map[string]string{}
+	ports := map[string]string{} // "8080/tcp" → host port
 	for _, cfg := range c.Configs {
 		up := strings.ToUpper(cfg.Target + " " + cfg.Name)
 		for _, secret := range []string{"KEY", "TOKEN", "PASSWORD", "SECRET", "API_"} {
@@ -63,6 +69,7 @@ func TestUnraidTemplate(t *testing.T) {
 			if cfg.Default == "" || cfg.Value != cfg.Default {
 				t.Errorf("port %q: default %q, value %q", cfg.Name, cfg.Default, cfg.Value)
 			}
+			ports[cfg.Target+"/"+cfg.Mode] = cfg.Default
 		case "Device":
 			// Unraid passes a blank Device as its Default, and Docker refuses to start a
 			// container whose device doesn't exist: a server without a GPU couldn't run it.
@@ -90,6 +97,31 @@ func TestUnraidTemplate(t *testing.T) {
 		if d := vars[v]; d != "/storage" && !strings.HasPrefix(d, "/storage/") {
 			t.Errorf("%s = %q, want a folder under /storage", v, d)
 		}
+	}
+	// The built-in companions: on by default and switchable, the torrent port the same
+	// number on both sides, for TCP and UDP, and in the variable qBittorrent listens on
+	// (it can't know a different host port), and the web UI link following its port.
+	for _, v := range []string{"ARRMADA_BUNDLE_QBITTORRENT", "ARRMADA_BUNDLE_FLARESOLVERR"} {
+		if d, ok := vars[v]; !ok || !strings.HasPrefix(d, "true") {
+			t.Errorf("%s defaults to %q, want on", v, d)
+		}
+	}
+	tp := vars["ARRMADA_QBIT_PORT"]
+	if tp == "" || ports[tp+"/tcp"] != tp || ports[tp+"/udp"] != tp {
+		t.Errorf("torrent port: ARRMADA_QBIT_PORT %q, ports %v", tp, ports)
+	}
+	if tp != strconv.Itoa(aio.DefaultTorrentPort) {
+		t.Errorf("torrent port %s, but the image defaults to %d", tp, aio.DefaultTorrentPort)
+	}
+	if ui := ports[strconv.Itoa(aio.WebUIPort)+"/tcp"]; ui == "" || vars["ARRMADA_QBIT_WEBUI_HOST_PORT"] != ui {
+		t.Errorf("qBittorrent web UI: port %q, ARRMADA_QBIT_WEBUI_HOST_PORT %q", ui, vars["ARRMADA_QBIT_WEBUI_HOST_PORT"])
+	}
+	// FlareSolverr listens inside the container only; no port of its own is published.
+	if _, ok := ports[strconv.Itoa(aio.FlareSolverrPort)+"/tcp"]; ok {
+		t.Error("the template publishes FlareSolverr's port")
+	}
+	if !strings.Contains(c.ExtraParams, "--stop-timeout=") {
+		t.Errorf("ExtraParams %q: qBittorrent needs a stop timeout to save its state", c.ExtraParams)
 	}
 	if c.WebUI != "http://[IP]:[PORT:7878]/" {
 		t.Errorf("WebUI = %q", c.WebUI)
