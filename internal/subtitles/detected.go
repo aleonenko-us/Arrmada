@@ -8,8 +8,8 @@ import (
 	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
-// detectedQueryBatch is how many paths one IN query names; past it the cache's detected
-// rows are read in one pass and filtered here.
+// detectedQueryBatch is how many paths one IN query names (SQLite's bound-parameter limit
+// is far above it).
 const detectedQueryBatch = 200
 
 // DetectedAudio is, for each file in paths (path → its size in bytes as the library
@@ -51,17 +51,26 @@ func (s *Service) DetectedAudio(ctx context.Context, paths map[string]int64) map
 			}
 		}
 	}
-	// Only rows detection wrote to are worth decoding.
-	const base = `SELECT path, size_bytes, info_json FROM subtitle_probe_cache WHERE info_json LIKE '%"detected"%'`
-	if len(paths) > detectedQueryBatch {
-		read(base)
-		return out
+	// The paths are looked up by key, a batch at a time, so a whole library's dry run never
+	// scans the cache; only rows detection wrote to are worth decoding.
+	const base = `SELECT path, size_bytes, info_json FROM subtitle_probe_cache WHERE info_json LIKE '%"detected"%' AND path IN (`
+	batch := make([]any, 0, detectedQueryBatch)
+	flush := func() {
+		if len(batch) > 0 {
+			read(base+strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")+`)`, batch...)
+			batch = batch[:0]
+		}
 	}
-	args := make([]any, 0, len(paths))
 	for p := range paths {
-		args = append(args, p)
+		if ctx.Err() != nil {
+			return out
+		}
+		batch = append(batch, p)
+		if len(batch) == detectedQueryBatch {
+			flush()
+		}
 	}
-	read(base+` AND path IN (`+strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")+`)`, args...)
+	flush()
 	return out
 }
 

@@ -13,7 +13,7 @@ import (
 
 // DetectedAudio reads what detection heard from the probe cache alone: only confident
 // detections on untagged tracks, only for a file whose recorded size is the cached one,
-// and the same answer whether the paths are few (one IN query) or many (one pass).
+// and the same answer whether the paths fit one IN query or take several.
 func TestDetectedAudioFromTheCache(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -34,9 +34,9 @@ func TestDetectedAudioFromTheCache(t *testing.T) {
 	if got := s.DetectedAudio(ctx, paths); !reflect.DeepEqual(got, want) {
 		t.Errorf("few paths: %v, want %v (tagged tracks, unsure answers and a resized file left out)", got, want)
 	}
-	// Past the batch size the cache is read in one pass; the answer is the same.
+	// More paths than one query names: read in batches by key; the answer is the same.
 	many := map[string]int64{"/lib/a.mkv": 100, "/lib/b.mkv": 999}
-	for i := 0; i < detectedQueryBatch+5; i++ {
+	for i := 0; i < 2*detectedQueryBatch+5; i++ {
 		many[fmt.Sprintf("/lib/x%d.mkv", i)] = 1
 	}
 	if got := s.DetectedAudio(ctx, many); !reflect.DeepEqual(got, want) {
