@@ -168,6 +168,8 @@ func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 			size = c.SizeGB
 		}
 		oc := NewCandidate(orig, size, 1_000_000)
+		// Read by its name, with the title's language, like any release on offer.
+		oc.ruleLang = strings.TrimSpace(c.OrigLanguage)
 		o := e.Evaluate(p, oc)
 		if o.Total > b.total {
 			b.total = o.Total

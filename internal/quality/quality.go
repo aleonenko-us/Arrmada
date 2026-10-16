@@ -591,11 +591,16 @@ func NewDefaultEngine() *Engine { return NewEngine(DefaultFormats()) }
 func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	r := c.Release
 	ev := Evaluation{Candidate: c}
-	// The audio languages it carries, for the language rules and for the release row.
-	audio := c.audioLangs()
-	ev.AudioLangs, ev.AudioLangsNote = audio.describe()
-	lv := judgeLangs(p.languageRules(c), audio)
-	ev.langShort = lv.short
+	// The audio languages it carries, for the language rules and for the release row. Book
+	// and music profiles (NoUnwanted) have none: their names are titles, not video tags.
+	var audio langSet
+	var lv langVerdict
+	if !p.NoUnwanted {
+		audio = c.audioLangs()
+		ev.AudioLangs, ev.AudioLangsNote = audio.describe()
+		lv = judgeLangs(p.languageRules(c), audio)
+		ev.langShort = lv.short
+	}
 
 	if len(p.AllowedResolutions) > 0 && !containsRes(p.AllowedResolutions, r.Resolution) {
 		ev.reject(RejectResolution, fmt.Sprintf("Not in profile — %s", resLabel(r.Resolution)))

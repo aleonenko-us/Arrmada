@@ -487,3 +487,27 @@ func TestImpactCountsALanguageMust(t *testing.T) {
 		t.Errorf("replace = %+v, want only the English-only file", got.Replace)
 	}
 }
+
+// Book and music names are titles, not video tags: no languages read, none judged.
+func TestNoLanguagesForBookProfiles(t *testing.T) {
+	p := Profile{NoUnwanted: true, Languages: map[string]string{"de": PrefMust}}
+	ev := NewDefaultEngine().Evaluate(p, NewCandidate("Die Verwandlung German Edition EPUB", 0.01, 5).WithLanguage("de"))
+	if !ev.Eligible || ev.AudioLangs != nil || ev.langPrefs != 0 {
+		t.Errorf("book release judged on audio languages: %+v", ev)
+	}
+}
+
+// A converted file's original is read by its name with the title's language, like any
+// release: preferring German, its untagged original (an English film) doesn't count as
+// German, so a German release is still an upgrade over both.
+func TestConvertedOriginalReadWithTheTitleLanguage(t *testing.T) {
+	s, ctx := testService(t)
+	setRanking(t, s, RankingV2)
+	ref := upgradeProfile(t, s, langStored(map[string]string{"de": PrefWant}, TriggerFormat))
+	cur := onDisk("Film.2021.1080p.BluRay.x265-GRP", nil)
+	cur.OrigRelease, cur.OrigSizeGB = "Film.2021.1080p.BluRay.x264-GRP", 14
+	german := enCand("Film.2021.German.DL.1080p.BluRay.x264-GER", 12)
+	if _, key, ok := s.UpgradePick(ctx, ref, cur, []Candidate{german}); !ok || key != KeyPreferences {
+		t.Errorf("upgrade over a converted English file = %v %s, want the German release on preferences", ok, key)
+	}
+}
