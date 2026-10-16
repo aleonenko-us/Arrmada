@@ -128,6 +128,7 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Features](docs/features.md) | Everything Arrmada does |
+| [Alerts to n8n](docs/n8n.md) | Sending alerts to n8n or any webhook as signed JSON, and every event's fields |
 | [Development](docs/development.md) | Building and testing it yourself |
 | [Releasing](docs/releasing.md) | For maintainers |
 

@@ -178,7 +178,9 @@ func (c *Coordinator) MergeAudiobook(ctx context.Context, bookID int64) error {
 	c.books.AddEvent(bk, b.ID, "merged", detail)
 	c.bookImported(bk, b.ID, books.KindAudiobook) // listening apps see the merged file now
 	if c.bus != nil {
-		c.bus.Publish("book.imported", map[string]any{"title": b.Title, "id": b.ID, "edition": "audiobook"})
+		c.bus.Publish("book.imported", map[string]any{
+			"title": b.Title, "id": b.ID, "edition": "audiobook", "author": b.Author, "year": b.Year, "format": "M4B", "size_bytes": size,
+		})
 	}
 	return markErr
 }

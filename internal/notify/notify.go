@@ -3,7 +3,7 @@
 // catalog (catalog.go) declares. It's a CRUD store of connections — each an Apprise URL
 // plus the events it subscribes to — and a dispatcher that fans each event out to the
 // connections that want it. Apprise is bundled in the image; delivery shells out to the
-// `apprise` CLI.
+// `apprise` CLI. An n8n / Webhook connection (webhook.go) is POSTed signed JSON instead.
 package notify
 
 import (
@@ -13,7 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -115,6 +117,8 @@ type Service struct {
 	// attachTransport sends a message with a poster attached; nil (after SetTransport)
 	// sends through transport without it.
 	attachTransport AttachTransport
+	// webhook sends n8n / Webhook connections' JSON (webhook.go).
+	webhook *http.Client
 }
 
 // Transport sends one message to one Apprise URL. An error's text must not quote the
@@ -126,7 +130,7 @@ type AttachTransport func(ctx context.Context, url, title, body, attach string) 
 
 // NewService wires the notification service.
 func NewService(db *sql.DB, bus *eventbus.Bus, log *slog.Logger) *Service {
-	s := &Service{db: db, bus: bus, log: log, wake: make(chan struct{}, 1), now: time.Now, poll: defaultQueuePoll, streams: newStreamMemory()}
+	s := &Service{db: db, bus: bus, log: log, wake: make(chan struct{}, 1), now: time.Now, poll: defaultQueuePoll, streams: newStreamMemory(), webhook: newWebhookClient()}
 	if p, err := exec.LookPath("apprise"); err == nil {
 		s.apprise = p
 	} else {
@@ -335,13 +339,46 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // Test sends a sample message to a connection to verify it works. It sends straight
 // away rather than through the queue, so the answer is the real outcome; a saved
 // connection's Test is also recorded in its delivery log.
-func (s *Service) Test(ctx context.Context, c Connection) error {
+//
+// event names a catalog event to send a realistic sample of ("" or an unknown key: a plain
+// "this connection works"). A webhook gets that event's whole payload with made-up values
+// and "test": true — what n8n's "Listen for test event" needs to map its fields; a chat
+// connection gets the event's message, its title marked as a test.
+func (s *Service) Test(ctx context.Context, c Connection, event string) error {
 	m := Message{Title: "Arrmada", Body: "✅ Test notification — this connection works.", Link: "/settings/alerts"}
-	err := s.deliver(ctx, c, m)
+	key := "test"
+	var data map[string]any
+	if def, ok := Lookup(event); ok {
+		sample := WebhookSample(event)
+		if fm, ok := def.Format(sample); ok {
+			m, key, data = fm, event, sample
+		}
+	}
+	hook := webhookSend{event: key, id: "test-" + strconv.FormatInt(s.now().UnixNano(), 36), at: s.now()}
+	if IsWebhook(c) {
+		b, err := buildWebhookPayload(webhookInput{key: key, data: data, msg: m, base: s.publicURL(ctx), at: hook.at, test: true})
+		if err != nil {
+			return err
+		}
+		hook.payload = b
+	} else if key != "test" {
+		m.Title = "Test · " + m.Title
+	}
+	err := s.deliver(ctx, c, m, hook)
 	if c.ID > 0 {
 		s.recordTest(context.WithoutCancel(ctx), c, m, err)
 	}
 	return err
+}
+
+// webhookSend is what a webhook connection's send needs beyond the message: the payload
+// built when the alert was queued (nil: build one from the message), the event, the
+// delivery's id for the X-Arrmada-Delivery header, and when it was queued.
+type webhookSend struct {
+	payload []byte
+	event   string
+	id      string
+	at      time.Time
 }
 
 // Run subscribes to every bus topic the catalog names and dispatches each event until
@@ -419,11 +456,19 @@ func plural(n int) string {
 	return "s"
 }
 
-// deliver sends a notification to one connection: Web Push for a push connection,
-// Apprise for everything else. The error never quotes the URL.
-func (s *Service) deliver(ctx context.Context, c Connection, m Message) error {
+// deliver sends a notification to one connection: Web Push for a push connection, a JSON
+// POST for an n8n / Webhook one, Apprise for everything else. The error never quotes the
+// URL.
+func (s *Service) deliver(ctx context.Context, c Connection, m Message, hook webhookSend) error {
 	if c.Kind == KindWebPush {
 		return s.deliverPush(ctx, c, m)
+	}
+	if IsWebhook(c) {
+		body := hook.payload
+		if len(body) == 0 {
+			body = fallbackWebhookPayload(hook.event, m, hook.at, s.publicURL(ctx))
+		}
+		return s.deliverWebhook(ctx, c, body, hook.event, hook.id)
 	}
 	if c.URL == "" {
 		return fmt.Errorf("no Apprise URL configured")
