@@ -52,6 +52,14 @@ request.
 
 ## Unraid Community Apps
 
-Unraid users on the template follow `:stable`, so a release reaches them with nothing else to
-do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in
+The same run also publishes the Unraid all-in-one image (the Dockerfile's `aio` target:
+Arrmada with qBittorrent and FlareSolverr inside), built on top of the plain image it just
+pushed, by digest, and tagged `0.18.0-aio`, `0.18-aio`, `sha-<commit>-aio` and `stable-aio`
+once the plain tags exist. It never holds the plain release back: if it fails, the release
+and its notes are still published, the run shows red, and the `-aio` tags stay where they
+were until the workflow is re-run on the tag. arm64's all-in-one image has qBittorrent only
+(FlareSolverr's Chromium is x86-64 only); Unraid itself is x86-64.
+
+Unraid users on the template follow `:stable-aio`, so a release reaches them with nothing
+else to do; the Updates card tells them to update from Unraid's Docker tab. Listing the template in
 Community Apps, and looking after it, is in [Listing Arrmada in Community Apps](unraid-submission.md).
