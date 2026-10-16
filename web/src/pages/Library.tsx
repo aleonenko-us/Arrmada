@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type UnmatchedFolder, type MatchCandidate } from "../lib/api";
 import { useMe, isAdmin } from "../lib/me";
+import { foldersApi } from "../lib/foldersApi";
 import { fmtBytes } from "../lib/disposal";
 import { announceFoldersSaved } from "../lib/restart";
 import { useAutoSave } from "../lib/useAutoSave";
@@ -178,7 +179,7 @@ function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; relo
   const pick = async (folder: string, tmdb_id: number, root?: string) => {
     setBusy(true);
     try {
-      await (media === "movie" ? api.importMovieFolder(folder, tmdb_id, root) : api.importSeriesFolder(folder, tmdb_id, root));
+      await foldersApi.importFolder(media, folder, tmdb_id, root);
       setItems((xs) => (xs ?? []).filter((u) => u.folder !== folder || u.root !== root));
       toast(`Imported “${folder}”.`, { tone: "good" });
     } catch (e) { toast((e as Error).message, { tone: "error", ms: 6000 }); } finally { setBusy(false); }

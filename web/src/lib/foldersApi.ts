@@ -1,4 +1,4 @@
-import { req, type JobRef } from "./api";
+import { req, type JobRef, type MediaRequest } from "./api";
 
 // More than one folder for Movies and TV (Settings → Library). Staff read the folders —
 // the add, approve and detail pages show a picker only when a library has two or more —
@@ -73,6 +73,15 @@ export const foldersApi = {
   /** Moves the title's files to the folder: a job to follow. */
   move: (media: FolderMedia, id: number, folderId: number) =>
     req<JobRef & { folder?: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/${id}/move`, { method: "POST", body: JSON.stringify({ folder_id: folderId }) }),
+  /** The needs-review manual pick, from the library folder the scan found it in. */
+  importFolder: (media: FolderMedia, folder: string, tmdbId: number, root?: string) =>
+    req<{ status: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/import`, { method: "POST", body: JSON.stringify({ folder, tmdb_id: tmdbId, root }) }),
+  /** Approves a request with the folder staff chose (the approve sheet; requests go through api.approveRequest otherwise). */
+  approve: (id: number, body: { quality_profile?: string; seasons?: number[]; folder_id?: number }) =>
+    req<MediaRequest>(`/api/v1/requests/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ ...body, quality_profile: body.quality_profile ?? "", seasons: body.seasons?.length ? body.seasons : undefined }),
+    }),
   /** Reads a Radarr or Sonarr's root folders (nothing is saved). */
   arrRoots: (app: "radarr" | "sonarr", url: string, apiKey: string) =>
     req<ArrRoots>("/api/v1/import/arr/roots", { method: "POST", body: JSON.stringify({ app, url, api_key: apiKey }) }),

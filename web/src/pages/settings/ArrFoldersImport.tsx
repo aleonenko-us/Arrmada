@@ -51,15 +51,12 @@ export function ArrFoldersImport() {
 
   return (
     <Section id="arr-folders" title="Folders from Radarr or Sonarr" subtitle="Had more than one root folder in Radarr or Sonarr — Movies and Kids, TV and Anime? Read them here, add the ones Arrmada doesn't have yet, then scan: every title found is filed under the folder it's in. Nothing in Radarr or Sonarr changes, and the API key isn't kept.">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-mono text-2xs uppercase text-ink-faint">App</span>
-          <select value={app} onChange={(e) => { setApp(e.target.value as "radarr" | "sonarr"); setFound(null); }} className="rounded-lg px-2.5 py-2 text-base" style={inputStyle}>
-            <option value="radarr">Radarr (movies)</option>
-            <option value="sonarr">Sonarr (TV)</option>
-          </select>
-        </label>
-      </div>
+      <Field label="App">
+        <select value={app} onChange={(e) => { setApp(e.target.value as "radarr" | "sonarr"); setFound(null); }} className="w-fit rounded-lg px-2.5 py-2 text-base" style={inputStyle}>
+          <option value="radarr">Radarr (movies)</option>
+          <option value="sonarr">Sonarr (TV)</option>
+        </select>
+      </Field>
       <Field label={app === "radarr" ? "Radarr URL" : "Sonarr URL"}>
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={app === "radarr" ? "http://192.168.1.10:7878" : "http://192.168.1.10:8989"} className={input} style={inputStyle} autoComplete="off" />
       </Field>

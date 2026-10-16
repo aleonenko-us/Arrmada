@@ -2972,9 +2972,8 @@ export const api = {
   scanLibrary: (opts?: { monitor: boolean; quality_profile?: string }) =>
     req<{ status: string } & JobRef>("/api/v1/movies/scan", { method: "POST", ...(opts ? { body: JSON.stringify(opts) } : {}) }),
   moviesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/movies/unmatched").then((r) => r.unmatched),
-  // root: the Movies folder the scan found it in (when there are several).
-  importMovieFolder: (folder: string, tmdb_id: number, root?: string) =>
-    req<{ status: string }>("/api/v1/movies/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id, root }) }),
+  importMovieFolder: (folder: string, tmdb_id: number) =>
+    req<{ status: string }>("/api/v1/movies/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id }) }),
   libraryPaths: () => req<LibraryPaths>("/api/v1/system/library"),
   audioServer: () => req<AudioServerAdmin>("/api/v1/audioserver"),
   setAudioServer: (body: { enabled?: boolean; public_url?: string; trace_hours?: number }) => req<AudioServerAdmin>("/api/v1/audioserver", { method: "PUT", body: JSON.stringify(body) }),
@@ -3148,12 +3147,11 @@ export const api = {
   // body.seasons trims a series request to a subset of what it asked for (the rest isn't
   // approved); empty or absent approves it as asked. A plain string is still accepted as
   // the profile, for older callers.
-  // folder_id: the library folder staff chose (only offered with several folders).
-  approveRequest: (id: number, body: string | { quality_profile?: string; seasons?: number[]; folder_id?: number } = {}) => {
+  approveRequest: (id: number, body: string | { quality_profile?: string; seasons?: number[] } = {}) => {
     const b = typeof body === "string" ? { quality_profile: body } : body;
     return req<MediaRequest>(`/api/v1/requests/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ ...b, quality_profile: b.quality_profile ?? "", seasons: b.seasons?.length ? b.seasons : undefined }),
+      body: JSON.stringify({ quality_profile: b.quality_profile ?? "", ...(b.seasons?.length ? { seasons: b.seasons } : {}) }),
     });
   },
   myQuota: () => req<MyQuota>("/api/v1/me/quota"),
@@ -3339,8 +3337,8 @@ export const api = {
 
   scanSeries: () => req<{ status: string } & JobRef>("/api/v1/series/scan", { method: "POST" }),
   seriesUnmatched: () => req<{ unmatched: UnmatchedFolder[] }>("/api/v1/series/unmatched").then((r) => r.unmatched),
-  importSeriesFolder: (folder: string, tmdb_id: number, root?: string) =>
-    req<{ status: string }>("/api/v1/series/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id, root }) }),
+  importSeriesFolder: (folder: string, tmdb_id: number) =>
+    req<{ status: string }>("/api/v1/series/import", { method: "POST", body: JSON.stringify({ folder, tmdb_id }) }),
   seriesDuplicates: (id: number) =>
     req<{ duplicates: DuplicateEpisodeFile[]; extra_files: number; reclaimable_bytes: number }>(`/api/v1/series/${id}/duplicates`),
   deleteSeriesDuplicate: (id: number, path: string) =>

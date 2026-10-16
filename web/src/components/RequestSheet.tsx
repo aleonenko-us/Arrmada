@@ -120,7 +120,12 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
       setBusy(null);
     }
   };
-  const approve = () => act("approve", () => api.approveRequest(rq.id, { quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}), folder_id: folder }), `Approved “${rq.title}”${keep ? ` ${formatSeasons(keep)}` : ""} — searching now`, false);
+  // A picked folder (only offered with several) goes through the lazily loaded folder calls.
+  const approveWith = async (body: { quality_profile?: string; seasons?: number[] }) =>
+    folder === undefined
+      ? api.approveRequest(rq.id, body)
+      : (await import("../lib/foldersApi")).foldersApi.approve(rq.id, { ...body, folder_id: folder });
+  const approve = () => act("approve", () => approveWith({ quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}) }), `Approved “${rq.title}”${keep ? ` ${formatSeasons(keep)}` : ""} — searching now`, false);
   const decline = () => act("decline", async () => { await api.declineRequest(rq.id, reason.trim()); setDeclining(false); }, `Declined “${rq.title}”`, false);
   const decided = staff ? decisionLine(rq) : "";
   const remove = async () => {
