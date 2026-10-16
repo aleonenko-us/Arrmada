@@ -186,7 +186,7 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
 // form, then its path mappings and path check. The status is read once, when the card
 // opens: for SABnzbd it's several calls, so it's never polled. A switched-off qBittorrent
 // may not be running at all, so its port isn't asked.
-export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadClient; onSaved: (c: DownloadClient) => void; onChanged?: () => void }) {
+export function ClientEditor({ client, onSaved, onChanged, admin }: { client: DownloadClient; onSaved: (c: DownloadClient) => void; onChanged?: () => void; admin?: boolean }) {
   const usenet = isUsenetClient(client);
   const [port, setPort] = useState(0);
   useEffect(() => {
@@ -206,6 +206,7 @@ export function ClientEditor({ client, onSaved, onChanged }: { client: DownloadC
         </div>
       )}
       {usenet && <UsenetPanel client={client} onChanged={onChanged} />}
+      {client.has_login && client.ui_port && <BuiltInQbit port={client.ui_port} admin={!!admin} />}
       <ClientForm editing={client} onSaved={onSaved} />
       <PathMappings client={client} body={(maps) => clientBody(client, { path_maps: maps })} onChanged={onChanged} />
     </div>
@@ -348,6 +349,48 @@ function OpenBundledSAB({ port, noServer }: { port: string; noServer: boolean })
     <div className="break-words text-sm">
       <span className="text-ink-dim">{noServer ? "Add your Usenet provider in SABnzbd (Config → Servers):" : "SABnzbd's own page:"}</span>{" "}
       <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+    </div>
+  );
+}
+
+// BuiltInQbit is the Unraid all-in-one image's qBittorrent: Arrmada runs and manages it,
+// so nothing here needs setting up. Its own page is on the port the template publishes,
+// behind a login Arrmada made on first start, which an admin can show here.
+function BuiltInQbit({ port, admin }: { port: string; admin: boolean }) {
+  const href = bundledSABLink(port, window.location);
+  const [login, setLogin] = useState<{ username: string; password: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const show = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setLogin(await downloadClientApi.bundledLogin());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <p className="m-0 text-ink-dim">Built into this container: Arrmada starts it, connects to it and keeps its port and folders in step. Switch it off in the container’s settings to use your own.</p>
+      <div className="break-words">
+        <span className="text-ink-dim">qBittorrent’s own page:</span>{" "}
+        <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+      </div>
+      {admin && !login && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void show()} busy={busy} busyLabel="Loading…">Show its login</Button>
+          <span className="text-xs text-ink-faint">The one Arrmada made. If you changed it in qBittorrent, use yours.</span>
+        </div>
+      )}
+      {login && (
+        <div className="font-mono text-sm">
+          <span className="text-ink-dim">user</span> {login.username} · <span className="text-ink-dim">password</span> <span className="select-all">{login.password}</span>
+        </div>
+      )}
+      {error && <p role="alert" className="m-0 break-words text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
     </div>
   );
 }

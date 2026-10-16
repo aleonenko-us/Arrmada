@@ -246,7 +246,7 @@ export function ConnectionsSettings() {
       }
       case "download_client": {
         const c = clientOf(it);
-        return c ? <ClientEditor key={c.id} client={c} onSaved={clientSaved} onChanged={() => void refreshAll()} /> : undefined;
+        return c ? <ClientEditor key={c.id} client={c} onSaved={clientSaved} onChanged={() => void refreshAll()} admin={admin} /> : undefined;
       }
       case "prowlarr":
         return <ProwlarrPanel onSynced={() => void refreshAll()} />;
