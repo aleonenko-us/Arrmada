@@ -108,6 +108,22 @@ func TestLanguages(t *testing.T) {
 		{"Movie.2020.KOREAN.1080p.WEB-DL-GRP", []string{"ko"}, false},
 		{"Movie.2020.ITA.ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
 		{"[Group] Show - 05 (1080p) [Dual Audio] [ABCD1234]", nil, true},
+		// What the audio-language rules (LANG) read as well.
+		{"Movie.2020.Dual.Language.1080p.BluRay.x264-GRP", nil, true},
+		{"Movie.2020.MULTi.GERMAN.DL.1080p.BluRay.x264-GRP", []string{"de"}, true},
+		{"Show.S01E01.German.DL.1080p.WEB.h264-GRP", []string{"de"}, true},
+		{"Movie.2020.PLDUB.1080p.WEB-DL.x264-GRP", []string{"pl"}, false},
+		{"Movie.2020.DUBPL.1080p.WEB-DL.x264-GRP", []string{"pl"}, false},
+		{"Movie.2020.POL.ENG.1080p.BluRay.x264-GRP", []string{"pl", "en"}, false},
+		{"Movie.2020.MULTi.POR.1080p.BluRay.x264-GRP", []string{"pt"}, true},
+		{"Movie.2020.DUT.1080p.WEB-DL.x264-GRP", []string{"nl"}, false},
+		{"Movie.2020.HUN.ENG.1080p.WEB-DL.x264-GRP", []string{"hu", "en"}, false},
+		{"Movie.2020.SPANiSH.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
+		{"Movie.2020.ITA.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		// Lower-case codes stay words, and so do the codes that are everyday words.
+		{"Movie.2020.1080p.WEB-DL.pol-GRP", nil, false},
+		{"Movie.2020.FIN.1080p.WEB-DL.x264-GRP", nil, false},
+		{"Movie.2020.NOR.1080p.WEB-DL.x264-GRP", nil, false},
 		{"Show.S01E01.FRENCH.1080p.WEB.H264-GRP", []string{"fr"}, false},
 		// Subtitles aren't audio.
 		{"Movie.2020.German.Subbed.1080p.WEB-DL-GRP", nil, false},

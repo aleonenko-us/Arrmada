@@ -187,17 +187,21 @@ func detectFullDisc(t tags, languages []string, fansub bool) bool {
 }
 
 // sceneLanguages are the language tags release names use that aren't language names:
-// French dub variants and the Spanish regional words. Mapped to codes the language table
-// knows; everything else is read through it.
+// French dub variants, the Spanish regional words and the Polish dub tags. Mapped to codes
+// the language table knows; everything else is read through it.
 var sceneLanguages = map[string]string{
 	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr",
-	"castellano": "es",
+	"castellano": "es", "pldub": "pl", "dubpl": "pl",
 }
 
 // languageCodes3 are the three-letter codes release names commonly carry as audio tags
-// ("ITA.ENG"). Only these, and only in capitals: most three-letter codes are words too.
+// ("ITA.ENG", "POL.ENG"). Only these, and only in capitals: most three-letter codes are
+// words too, which is why the ones that are everyday tags or words ("NOR", "FIN", "DAN")
+// stay out.
 var languageCodes3 = map[string]bool{
 	"ita": true, "eng": true, "ger": true, "fre": true, "spa": true, "jpn": true, "kor": true, "rus": true,
+	"pol": true, "por": true, "dut": true, "cze": true, "hun": true, "tur": true, "ukr": true,
+	"chi": true, "hin": true, "swe": true, "heb": true,
 }
 
 // subsWords after a language say it names the subtitles, not the audio ("German.Subbed",
@@ -215,12 +219,14 @@ func detectLanguages(t tags) ([]string, bool) {
 	multi := false
 	words := t.all
 	for i, tok := range words {
-		if tok.title && !sceneCased(tok.raw) {
-			continue
-		}
 		next := ""
 		if i+1 < len(words) {
 			next = words[i+1].lc
+		}
+		// German TV names its dubs "Show.S01E01.German.DL.1080p…", with the language where
+		// an episode title would sit; "DL"/"ML" right after it says it's the tag.
+		if tok.title && !sceneCased(tok.raw) && next != "dl" && next != "ml" {
+			continue
 		}
 		if tok.lc == "multi" || tok.lc == "dual" {
 			if !subsWords[next] { // "Multi-Subs" is subtitles
@@ -250,8 +256,9 @@ func detectLanguages(t tags) ([]string, bool) {
 	}
 	if !multi && len(out) > 0 {
 		// German "DL" (dual language) / "ML" (multi language) — but "WEB-DL" is a source.
-		for i, tok := range t.toks {
-			if (tok.lc == "dl" || tok.lc == "ml") && (i == 0 || t.toks[i-1].lc != "web") {
+		// Read over every word: in an episode name the "German.DL" sits where a title would.
+		for i, tok := range words {
+			if (tok.lc == "dl" || tok.lc == "ml") && (i == 0 || words[i-1].lc != "web") {
 				multi = true
 				break
 			}
