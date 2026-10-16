@@ -12,7 +12,6 @@ import { useQuery, invalidate } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { pushSupported, subscribeThisDevice, thisDeviceEndpoint } from "../../lib/webpush";
 import { Button, useConfirm, useToast } from "../../ui";
-import { OutgoingEmail } from "./OutgoingEmail";
 
 // Settings → Alerts: where the owner's own alerts go (a Discord channel, a phone, an
 // inbox). Requesters' "your request is ready" messages are separate — each person sets
@@ -113,8 +112,6 @@ export function AlertsSettings() {
           </>
         )}
       </Section>
-      {/* The mail account Send to Kindle goes out through: a login, so admins only. */}
-      {admin && <OutgoingEmail />}
     </div>
   );
 }

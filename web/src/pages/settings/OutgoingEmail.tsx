@@ -6,8 +6,8 @@ import { useQuery, setQueryData } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { Button, useConfirm, useToast } from "../../ui";
 
-// Settings → Alerts → Outgoing email: the mail account Arrmada sends from (Send to Kindle
-// today). Admin-only. The server, the login and the password are credentials: they're
+// Settings → Book server → Send to Kindle email: the mail account Arrmada sends from (Send
+// to Kindle today; it was "Outgoing email" under Alerts, and kept its #outgoing-email anchor). Admin-only. The server, the login and the password are credentials: they're
 // typed here and never shown again — the card says they're saved, with a short hint, and a
 // blank field keeps what's saved. So unlike the auto-saving cards, this one has a Save.
 
@@ -25,11 +25,11 @@ export function OutgoingEmail() {
   return (
     <Section
       id="outgoing-email"
-      title="Outgoing email"
-      subtitle="The mail account Arrmada sends from — used for Send to Kindle. Use your own provider's SMTP details with an app password, not your normal password."
+      title="Send to Kindle email"
+      subtitle="The mail account Arrmada sends ebooks to Kindles from. It isn't used for alerts. Use your own provider's SMTP details with an app password, not your normal password."
     >
       {error && !data ? (
-        <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load the outgoing email settings — {error.message}</p>
+        <p className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn’t load the Send to Kindle email settings — {error.message}</p>
       ) : !data ? (
         <p className="text-sm text-ink-dim">Loading…</p>
       ) : (
@@ -75,7 +75,7 @@ function MailForm({ view }: { view: SMTPView }) {
       });
       setQueryData(KEY, v);
       setHost(""); setUsername(""); setPassword("");
-      toast("Outgoing email saved", { tone: "good" });
+      toast("Send to Kindle email saved", { tone: "good" });
     } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(false); }
   };
 
@@ -86,7 +86,7 @@ function MailForm({ view }: { view: SMTPView }) {
   };
 
   const removeAll = async () => {
-    const ok = await confirm({ title: "Remove outgoing email?", body: "The server, login and password are forgotten, and Send to Kindle stops until it's set up again.", confirmLabel: "Remove", tone: "danger" });
+    const ok = await confirm({ title: "Remove the Send to Kindle email?", body: "The server, login and password are forgotten, and Send to Kindle stops until it's set up again.", confirmLabel: "Remove", tone: "danger" });
     if (!ok) return;
     try { setQueryData(KEY, await mailApi.clear()); setResult(null); } catch (e) { toast((e as Error).message, { tone: "error" }); }
   };

@@ -5,17 +5,24 @@ import { useMe } from "../../lib/me";
 import { useAutoSave } from "../../lib/useAutoSave";
 import { useToast } from "../../ui";
 import { Card, Loading, card, ghost, primary } from "../audiobooks/shared";
+import { OutgoingEmail } from "./OutgoingEmail";
 
-// Settings → Audiobook server (admin): the switch for the server listening apps connect to,
-// the address they use from outside, and a day of request tracing. It used to be the
-// Audiobooks page's Server tab; that page links here now. Who may connect is in Settings →
+// Settings → Book server (admin): the switch for the server listening apps connect to,
+// the address they use from outside and a day of request tracing (it used to be the
+// Audiobooks page's Server tab; that page links here now), then the mail account Send to
+// Kindle goes out through (it used to be under Alerts). Who may connect is in Settings →
 // People & access.
 export function AudiobookServerSettings() {
   const [data, setData] = useState<AudioServerAdmin | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.audioServer().then(setData).catch((e: Error) => setError(e.message)); }, []);
-  if (!data) return <Loading error={error} />;
-  return <ServerView data={data} setData={setData} />;
+  return (
+    <div className="flex flex-col gap-6">
+      {data ? <ServerView data={data} setData={setData} /> : <Loading error={error} />}
+      {/* Its own load: a server that can't be read doesn't hide the mail card. */}
+      <OutgoingEmail />
+    </div>
+  );
 }
 
 function ServerView({ data, setData }: { data: AudioServerAdmin; setData: (d: AudioServerAdmin) => void }) {
@@ -39,6 +46,8 @@ function ServerView({ data, setData }: { data: AudioServerAdmin; setData: (d: Au
     <div id="audiobook-server" className="flex scroll-mt-20 flex-col gap-4">
       <section className="flex items-center justify-between gap-3 rounded-xl p-4" style={card}>
         <div className="min-w-0">
+          {/* Book server holds the mail card too, so say which server this switch is. */}
+          <div className="text-sm text-ink-dim">Audiobook server</div>
           <div className="flex items-center gap-2 text-md font-bold"><span className="h-2 w-2 rounded-full" style={{ background: dot }} />{state}</div>
           <div className="text-sm text-ink-dim">
             {data.running ? `${data.items} audiobook${data.items === 1 ? "" : "s"} served${data.items_ready < data.items ? ` · reading chapters for ${data.items - data.items_ready}` : ""}.` : data.error ? data.error : "Listening apps can't connect while it's off."}

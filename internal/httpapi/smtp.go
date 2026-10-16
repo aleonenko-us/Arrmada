@@ -12,7 +12,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/mail"
 )
 
-// Outgoing email (Settings → Alerts → Outgoing email): the mail account Arrmada sends
+// Send to Kindle email (Settings → Book server): the mail account Arrmada sends
 // from, for Send to Kindle. The server, the login and the password are credentials: they
 // live in the API key store, are typed in this card only, and only ever come back to the
 // browser as "set" plus a masked hint. Port, security and the From address are ordinary

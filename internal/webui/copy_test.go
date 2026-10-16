@@ -67,7 +67,11 @@ var bannedCopy = []bannedPhrase{
 	phrase(`Settings → System → (Recycle bin|Disk guard|Download disk guard)`, "the recycle bin and disk guard live in Settings → Downloads (LINKS.recycleBin, LINKS.diskGuard)"),
 	webPhrase(`/settings\?tab=`, "each Settings section has its own URL — link through LINKS (/settings/<section>#card)"),
 	// CFG-17: module settings moved out of their pages' Settings tabs into the hub.
-	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles, Settings → Convert and Settings → Audiobook server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
+	phrase(`(Convert|Subtitles) → Settings|Audiobooks → Server`, "module settings live in Settings → Subtitles, Settings → Convert and Settings → Book server (LINKS.convertSettings, LINKS.subtitlesSettings, LINKS.audiobookServer)"),
+	// The Audiobook server section became Book server when the Send to Kindle mail card moved
+	// in from Alerts (where it was "Outgoing email").
+	phrase(`Settings → Audiobook server`, "the section is Settings → Book server (LINKS.audiobookServer)"),
+	phrase(`Alerts → Outgoing email`, "the mail card is Send to Kindle email, in Settings → Book server"),
 	webPhrase(`/(convert|subtitles)\?tab=settings|/audiobooks\?tab=server`, "the old Settings tabs only redirect now — link through LINKS"),
 	// CFG-18: Users became People & access.
 	phrase(`Settings → Users`, "the section is Settings → People & access (LINKS.users)"),
@@ -249,6 +253,8 @@ func TestCopyGuardMatcher(t *testing.T) {
 		`set that in Convert → Settings`,
 		`<Link to="/subtitles?tab=settings">Settings</Link>`,
 		`change them in Settings → Users.`,
+		`Switch it on in Settings → Audiobook server.`,
+		`Set up the mail account under Alerts → Outgoing email first.`,
 		`connect your Plex server in Insights first`,
 		`<Link to="/settings/plex#plex-connection">Plex connection</Link>`,
 		`Who may sign in with Plex is in Settings → Plex.`,

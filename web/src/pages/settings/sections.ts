@@ -29,7 +29,10 @@ export const SECTIONS: readonly SettingsSection[] = [
   // monitoring for managers, sign-in and linked accounts for admins. The connections
   // themselves are the media server cards on Connections. It was "Plex" (/settings/plex).
   { id: "media-servers", label: "Media servers", adminOnly: false },
-  { id: "audiobook-server", label: "Audiobook server", adminOnly: true },
+  // The book servers: the audiobook server listening apps connect to, and the mail account
+  // Send to Kindle goes out through. The id (and so /settings/audiobook-server) predates the
+  // name, which keeps old links and LINKS.audiobookServer working.
+  { id: "audiobook-server", label: "Book server", adminOnly: true },
   // The old Users section: one list of everyone with their access (CFG-18).
   { id: "users", label: "People & access", adminOnly: true },
   // Every one-time migration from the apps Arrmada replaces.
@@ -84,7 +87,8 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Convert", keywords: "convert transcode encode hevc av1 gpu hours schedule audio tracks commentary image subtitles pgs black bars crop transcode folder cpu cores dolby vision dv hdr daily library scan time", section: "convert", anchor: "convert" },
   { label: "Audiobook server", keywords: "audiobooks audiobookshelf lissen listening apps server switch on off address port public url tunnel trace", section: "audiobook-server", anchor: "audiobook-server" },
   { label: "Alerts", keywords: "alert alerts notification notifications apprise discord telegram ntfy email slack pushover push phone message n8n webhook webhooks json automation automations workflow signing secret signature hmac", section: "alerts", anchor: "alerts" },
-  { label: "Outgoing email", keywords: "email mail smtp send outgoing server gmail app password from address kindle test", section: "alerts", anchor: "outgoing-email", adminOnly: true },
+  // It was "Outgoing email" under Alerts; its anchor kept its name, so old links still find it.
+  { label: "Send to Kindle email", keywords: "email mail smtp send outgoing server gmail app password from address kindle ebook test", section: "audiobook-server", anchor: "outgoing-email", adminOnly: true },
   { label: "People & access", keywords: "add user users people accounts roles admin manager requester read-only password auto-approve block delete disable sign in sign out everywhere sessions last seen plex link audiobook access", section: "users", anchor: "users" },
   { label: "Plex server", keywords: "plex server connected status connection change", section: "media-servers", anchor: "plex-server" },
   { label: "Plex watch monitoring", keywords: "plex monitoring record watched insights poll interval seconds activity history", section: "media-servers", anchor: "plex-monitoring" },

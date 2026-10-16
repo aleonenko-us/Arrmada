@@ -1128,7 +1128,7 @@ func main() {
 		scheduler.Label("Check for updates"), scheduler.Description("Asks GitHub every 12 hours whether a newer Arrmada release is out. Switch it off on Settings → Status."))
 
 	// Audiobook server: listening apps (Lissen and other Audiobookshelf clients) connect to
-	// its own port. Off until an admin switches it on in Books → Audiobook server.
+	// its own port. Off until an admin switches it on in Settings → Book server.
 	listenStore := listening.NewStore(st.DB())
 	// A book merge moves everyone's listening places with the book, and queues the kept
 	// book's catalogue refresh and requesters' "ready" in the same transaction.

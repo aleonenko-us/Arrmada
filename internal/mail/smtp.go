@@ -3,7 +3,7 @@
 // Apprise, which can't carry a per-person attachment cleanly; Send to Kindle needs exactly
 // that, so this sends a message with at most one attached file.
 //
-// The settings live in the app (Settings → Alerts → Outgoing email): host, username and
+// The settings live in the app (Settings → Book server → Send to Kindle email): host, username and
 // password in the credentials store, port, security and From address beside them. Nothing
 // here logs; callers log the outcome, never the host, the login or the recipient.
 package mail

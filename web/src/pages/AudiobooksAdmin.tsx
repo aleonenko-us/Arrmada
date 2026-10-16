@@ -7,7 +7,7 @@ import { Card, DailyBars, DaysPicker, Loading, Sessions, card, danger, fmtAgo, f
 // The admin half of Audiobooks: who may connect and everyone's listening (how much and
 // when, never what). It is its own chunk, loaded only when an admin opens one of these
 // tabs, so requesters never download it. The server's own settings live in Settings →
-// Audiobook server, and the Audiobookshelf import in Settings → Import & migrate.
+// Book server, and the Audiobookshelf import in Settings → Import & migrate.
 
 export type AdminTab = "people" | "listening";
 

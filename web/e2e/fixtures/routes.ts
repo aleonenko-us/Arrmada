@@ -191,7 +191,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/books/duplicates", { groups: [], past_merges: [] }),
     get("/api/v1/music/artists", mod.artists),
     get("/api/v1/quality/profiles", media.qualityProfiles),
-    // Settings → Downloads and → Audiobook server (only the full Settings sweep visits them).
+    // Settings → Downloads and → Book server (only the full Settings sweep visits them).
     get("/api/v1/downloads/disk-guard", { enabled: true, measurable: true, path: "/downloads", used_pct: 42, pause_pct: 95, resume_pct: 90, holding: 0, shared_with: [], shared_with_library: false }),
     get("/api/v1/audioserver", { enabled: false, running: false, host_port: "13378", public_url: "", users: [], devices: [], items: 0, items_ready: 0, trace_until: 0 }),
     get(/^\/api\/v1\/quality\/ranking-shadow/, { mode: "v2", decisions: 0, disagreements: 0, days: [], disagreement_rows: [] }),
@@ -254,7 +254,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "POST", path: "/api/v1/notifications", respond: ({ body }) => ({ id: 3, url_set: true, url_hint: "discord://••••", ...(body as object) }) },
     get(/^\/api\/v1\/notifications\/\d+\/deliveries$/, alerts.deliveries),
     { method: "POST", path: /^\/api\/v1\/notifications\/\d+\/test$/, body: { ok: true } },
-    // Settings → Alerts → Outgoing email (admin): not set up yet.
+    // Settings → Book server → Send to Kindle email (admin): not set up yet.
     get("/api/v1/settings/smtp", { configured: false, host_set: false, port: 587, security: "starttls", from: "", username_set: false, password_set: false }),
   ];
 }

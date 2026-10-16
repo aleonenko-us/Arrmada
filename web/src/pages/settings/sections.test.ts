@@ -57,6 +57,14 @@ describe("settingsRedirect", () => {
     expect(settingsRedirect("/settings", "?tab=system", "#api-keys", manager)).toBe("/settings/connections#api-keys");
   });
 
+  it("sends the old Outgoing email card under Alerts to Send to Kindle email on Book server", () => {
+    expect(settingsRedirect("/settings/alerts", "", "#outgoing-email", admin)).toBe("/settings/audiobook-server#outgoing-email");
+    // A manager can't open Book server, and never saw the card: Alerts stays put.
+    expect(settingsRedirect("/settings/alerts", "", "#outgoing-email", manager)).toBeNull();
+    expect(SECTIONS.find((s) => s.id === "audiobook-server")?.label).toBe("Book server");
+    expect(searchSettings("kindle", admin, true).map((e) => e.label)).toEqual(["Send to Kindle email"]);
+  });
+
   it("follows a card that moved and was renamed: the Plex connection is the Plex card on Connections", () => {
     // CFG-16: /settings/plex#plex-connection (the health Fix link, old bookmarks).
     expect(settingsRedirect("/settings/plex", "", "#plex-connection", admin)).toBe("/settings/connections#plex");
