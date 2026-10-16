@@ -63,6 +63,14 @@ type ReleaseRef struct {
 	Season, Episode int
 	UserID          int64
 	ExpiresAt       time.Time
+	// PreviewKey is set on a release preview's token (preview.go): what it was previewed
+	// for ("request:12"). Such a token is spendable only through GrabPreviewed, never by a
+	// grab endpoint.
+	PreviewKey string
+	// SizeGB and Edition are a preview's facts the grab checks again: the room it needs,
+	// and for a book which edition it is.
+	SizeGB  float64
+	Edition string
 }
 
 type releaseTokens struct {
@@ -132,7 +140,7 @@ func (t *releaseTokens) Resolve(token, kind string, mediaID, userID int64) (Rele
 		delete(t.refs, token) // its slot in order is dropped by the next eviction pass
 		return ReleaseRef{}, ErrReleaseExpired
 	}
-	if ref.MediaKind != kind || ref.MediaID != mediaID || ref.UserID != userID {
+	if ref.MediaKind != kind || ref.MediaID != mediaID || ref.UserID != userID || ref.PreviewKey != "" {
 		return ReleaseRef{}, ErrReleaseScope
 	}
 	return ref, nil
@@ -162,6 +170,90 @@ func (c *Coordinator) IssueReleaseToken(ref ReleaseRef) string { return c.Releas
 // ResolveReleaseToken returns the release behind token for this grab (see releaseTokens.Resolve).
 func (c *Coordinator) ResolveReleaseToken(token, kind string, mediaID, userID int64) (ReleaseRef, error) {
 	return c.ReleaseTokens().Resolve(token, kind, mediaID, userID)
+}
+
+// Preview tokens stand for the releases a request's preview would grab (preview.go). They
+// live apart from the interactive ones: they're issued to nobody — the request keeps them,
+// server-side — and live as long as a preview counts as fresh, where an interactive
+// result is good for two hours. Kept separate, the interactive store's insertion order
+// stays its expiry order, and a preview token can never be spent at a grab endpoint.
+const (
+	previewTokenTTL = 7 * time.Hour // a preview is re-checked after six
+	previewTokenCap = 5000          // previews are paced to a few a minute; this is days of them
+)
+
+type previewTokenStore struct {
+	mu   sync.Mutex
+	refs map[string]ReleaseRef
+	now  func() time.Time
+}
+
+func (t *previewTokenStore) issue(ref ReleaseRef) string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("release tokens: crypto/rand: " + err.Error())
+	}
+	tok := base64.RawURLEncoding.EncodeToString(b[:])
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	ref.ExpiresAt = now.Add(previewTokenTTL)
+	// Few enough to sweep in full: drop the expired, then the soonest to expire while full.
+	for k, r := range t.refs {
+		if !now.Before(r.ExpiresAt) {
+			delete(t.refs, k)
+		}
+	}
+	for len(t.refs) >= previewTokenCap {
+		oldest := ""
+		for k, r := range t.refs {
+			if oldest == "" || r.ExpiresAt.Before(t.refs[oldest].ExpiresAt) {
+				oldest = k
+			}
+		}
+		delete(t.refs, oldest)
+	}
+	t.refs[tok] = ref
+	return tok
+}
+
+// resolve returns the releases behind tokens, all or none: an unknown or expired one is
+// ErrReleaseExpired, one issued for another preview or kind is ErrReleaseScope.
+func (t *previewTokenStore) resolve(tokens []string, key, kind string) ([]ReleaseRef, error) {
+	if len(tokens) == 0 || key == "" {
+		return nil, ErrReleaseExpired
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]ReleaseRef, 0, len(tokens))
+	for _, tok := range tokens {
+		ref, ok := t.refs[tok]
+		if !ok || !t.now().Before(ref.ExpiresAt) {
+			return nil, ErrReleaseExpired
+		}
+		if ref.PreviewKey != key || ref.MediaKind != kind {
+			return nil, ErrReleaseScope
+		}
+		out = append(out, ref)
+	}
+	return out, nil
+}
+
+// previewTokens is the coordinator's preview token store, made on first use.
+func (c *Coordinator) previewTokens() *previewTokenStore {
+	c.previewOnce.Do(func() {
+		if c.previewTok == nil {
+			c.previewTok = &previewTokenStore{refs: map[string]ReleaseRef{}, now: time.Now}
+		}
+	})
+	return c.previewTok
+}
+
+// PreviewTokensLive reports whether every one of a preview's tokens still stands for its
+// release: issued for key and kind, not expired, not lost to a restart.
+func (c *Coordinator) PreviewTokensLive(tokens []string, key, kind string) bool {
+	_, err := c.previewTokens().resolve(tokens, key, kind)
+	return err == nil
 }
 
 // secretParams are query parameters that carry a credential on the indexer links we

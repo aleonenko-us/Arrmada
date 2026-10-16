@@ -17,3 +17,10 @@ func IsInteractive(ctx context.Context) bool {
 	v, _ := ctx.Value(interactiveKey{}).(bool)
 	return v
 }
+
+// WithoutInteractive marks ctx as background work even when a caller up the chain marked
+// it a person's search: work that must leave a backing-off indexer alone however it was
+// started (a request's release preview).
+func WithoutInteractive(ctx context.Context) context.Context {
+	return context.WithValue(ctx, interactiveKey{}, false)
+}
