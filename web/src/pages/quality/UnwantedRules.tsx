@@ -14,6 +14,13 @@ const ACTIONS: { v: UnwantedAction; label: string; means: string; bg: string; fg
 
 const DV_NO_FALLBACK = "dv_no_fallback";
 const LOW_QUALITY_GROUP = "low_quality_group";
+const FOREIGN = "foreign";
+
+// languageRulesDecide: the target's Audio language row names a Must or Prefer language, so
+// the server's foreign-only item defers to it (quality/unwanted.go).
+export function languageRulesDecide(ideal: IdealFile | undefined): boolean {
+  return Object.values(ideal?.language ?? {}).some((st) => st === "must" || st === "want");
+}
 
 // effectiveDefault is an item's default for this profile: Dolby Vision without a fallback
 // is allowed when the target prefers or requires Dolby Vision (the server's exception).
@@ -80,6 +87,9 @@ export function UnwantedRules({ value, onChange, catalog, ideal, defaultGroups }
                 <ActionPicker value={cur} onChange={(a) => setAction(item, a)} label={item.label} />
               </div>
               {item.key === LOW_QUALITY_GROUP && cur !== "allow" && <GroupChips groups={groups} onChange={setGroups} />}
+              {item.key === FOREIGN && languageRulesDecide(ideal) && (
+                <div className="mt-1.5 text-xs text-ink-dim" data-testid="foreign-defers">Your Audio language rules say which languages you want, so they decide this instead.</div>
+              )}
             </div>
           );
         })}

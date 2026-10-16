@@ -142,6 +142,37 @@ test.describe("Quality editor", () => {
     await expect(page).toHaveURL(/\/movies$/);
   });
 
+  test("the target's Audio language row: a searched language and Original language, saved with the target", async ({ page, api }) => {
+    await mockEditor(page, api);
+    await page.goto("/quality/movie/hd-1080p");
+    const row = page.getByTestId("audio-language-row");
+    await expect(row).toContainText("No language rules — any audio language is fine.");
+    // Add German from the searchable list: it starts as Prefer; make it a Must.
+    await row.getByRole("combobox", { name: "Add an audio language" }).fill("germ");
+    await page.getByRole("option", { name: /German/ }).click();
+    const german = row.getByRole("radiogroup", { name: "German audio" });
+    await expect(german.getByRole("radio", { name: /^Prefer/ })).toHaveAttribute("aria-checked", "true");
+    await german.getByRole("radio", { name: /^Must/ }).click();
+    // "Original language" is each title's own; it's offered once.
+    await row.getByRole("button", { name: "＋ Original language" }).click();
+    await expect(row.getByRole("button", { name: "＋ Original language" })).toHaveCount(0);
+    await expect(row.getByTestId("audio-language").first()).toHaveAttribute("data-lang", "original");
+    // With a Must or Prefer language, the Unwanted pack's foreign-only item says it defers.
+    await page.getByRole("button", { name: /3 · Rules/ }).click();
+    await expect(page.getByTestId("foreign-defers")).toBeVisible();
+    if (process.env.LANG_SHOTS) {
+      await row.scrollIntoViewIfNeeded();
+      await row.screenshot({ path: `${process.env.LANG_SHOTS}/profile-editor.png` });
+    }
+    // — takes one off again.
+    await row.getByRole("radiogroup", { name: "Original language audio" }).getByRole("radio", { name: /^No opinion/ }).click();
+    await row.getByRole("button", { name: "＋ Original language" }).click();
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/quality/profiles/7").length).toBe(1);
+    const body = api.callsTo("PUT", "/api/v1/quality/profiles/7")[0].body as { ideal?: { language?: Record<string, string> } };
+    expect(body.ideal?.language).toEqual({ de: "must", original: "want" });
+  });
+
   test("Duplicate opens a copy; a failed one says so in a toast", async ({ page, api }) => {
     await mockEditor(page, api);
     await page.goto("/quality");
