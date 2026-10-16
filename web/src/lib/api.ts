@@ -2341,6 +2341,7 @@ export interface SubtitleSettings {
   ai_ready: boolean;
   ai_backend: string; // "sycl" | "vulkan" | "cpu" | "" until the first run
   ai_note: string; // why the Intel oneAPI build was set aside, when it was ("" otherwise)
+  ai_cpu_only?: boolean; // the bundled whisper has no GPU backend (the ARM image)
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;

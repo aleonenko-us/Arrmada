@@ -84,6 +84,23 @@ func TestSyclFallbackIsStickyAndNotedOnce(t *testing.T) {
 	}
 }
 
+// The arm64 image's whisper has no GPU backend and says so through the environment;
+// Settings then explains the CPU as expected instead of pointing at /dev/dri.
+func TestCPUOnlyBuildFromEnvironment(t *testing.T) {
+	t.Setenv("ARRMADA_WHISPER_CPU_ONLY", "1")
+	if !detectWhisper(t.TempDir()).CPUOnly() {
+		t.Error("ARRMADA_WHISPER_CPU_ONLY=1: CPUOnly = false, want true")
+	}
+	t.Setenv("ARRMADA_WHISPER_CPU_ONLY", "")
+	if detectWhisper(t.TempDir()).CPUOnly() {
+		t.Error("unset: CPUOnly = true, want false")
+	}
+	var none *whisperGen
+	if none.CPUOnly() {
+		t.Error("nil whisperGen: CPUOnly = true, want false")
+	}
+}
+
 // A MULTI release carries the dub as well as the original. Transcribing "English" must
 // read the English track whatever ffmpeg would pick by default; a translation reads
 // the default (original) track.
