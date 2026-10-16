@@ -16,11 +16,13 @@ request is ready") can't go to a webhook (see [Security](#security) for why).
 
 ### 1. In n8n: a Webhook node
 
-The quickest start is the example workflow: in n8n, **Workflows → Import from file** and pick
+The quickest start is the example workflow: in n8n, create a workflow, then use its **⋯**
+menu → **Import from File…** and pick
 [`examples/n8n-arrmada-alerts.json`](examples/n8n-arrmada-alerts.json). It has the Webhook
 node, a signature check, and a Switch that sends each kind of alert down its own branch,
-with placeholder steps to replace. (It was tested on n8n 2.43; after importing, open
-**Sign it the same way** and create its Crypto credential — see step 2 below.)
+with placeholder steps to replace. It was tested on n8n 2.43. After importing it, open
+**Sign it the same way** and create its Crypto credential with the signing secret from
+step 2 (see [Without code](#without-code-the-example-workflow)).
 
 To build your own instead, add a **Webhook** node and set:
 
