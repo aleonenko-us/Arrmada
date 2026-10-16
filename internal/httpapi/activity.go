@@ -258,26 +258,33 @@ func (a *api) finishingFacts(ctx context.Context) finishing {
 	if a.deps.Automation == nil {
 		return f
 	}
+	// A download someone chose to import from Needs you (a held one, or one Arrmada didn't
+	// grab) is importing, not waiting on anyone: its job is running or queued.
+	importing, importingHash := a.activeHandImports(ctx)
+	handImport := func(pr *pipeline.Review, j jobs.Job) {
+		pr.Importing = true
+		if strings.HasPrefix(j.Message, "Copying") {
+			pr.Progress = j.Message
+		}
+	}
 	// Unreadable reviews leave a held grab as "held for review" without the reason. Cached
 	// until a review is held or settled.
 	if rvs, err := a.deps.Automation.PendingReviews(ctx); err == nil {
-		// A review someone chose to import is importing, not waiting on anyone: its job is
-		// running or queued. Read only when something is held.
-		var importing map[int64]jobs.Job
-		if len(rvs) > 0 {
-			importing = a.activeReviewImports(ctx)
-		}
 		for _, rv := range rvs {
 			if rv.Hash != "" {
 				pr := pipeline.Review{Code: rv.ReasonCode, ExpectedTitle: rv.ExpectedTitle}
 				if j, ok := importing[rv.ID]; ok {
-					pr.Importing = true
-					if strings.HasPrefix(j.Message, "Copying") {
-						pr.Progress = j.Message
-					}
+					handImport(&pr, j)
 				}
 				f.reviews[strings.ToLower(rv.Hash)] = pr
 			}
+		}
+	}
+	for h, j := range importingHash {
+		if _, held := f.reviews[h]; !held {
+			var pr pipeline.Review
+			handImport(&pr, j)
+			f.reviews[h] = pr
 		}
 	}
 	for _, it := range a.deps.Automation.WrongCategoryDownloads() {

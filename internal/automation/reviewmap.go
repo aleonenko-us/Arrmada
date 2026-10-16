@@ -210,7 +210,7 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 		c.log.Warn("review: some mapped files couldn't be placed", "release", r.Name, "placed", n, "failed", len(failures))
 		err := fmt.Errorf("%w: placed %d episode%s, but %d couldn't be: %s", ErrNothingToImport,
 			n, plural(n), len(failures), strings.Join(failures, "; "))
-		c.reviewImportFailed(ctx, r, s.ID, "mapped by hand", err)
+		c.importFailed(ctx, r, s.ID, "review (mapped by hand)", err)
 		return n, err
 	}
 	c.closeReviewImported(ctx, r)

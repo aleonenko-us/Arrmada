@@ -173,15 +173,12 @@ func (c *Coordinator) itemTitle(ctx context.Context, kind string, id int64) stri
 	return ""
 }
 
-// reviewImportFailed writes a failed review import into the history of the item it was
-// going into, so Activity → History shows it with its reason. The review stays open. how,
-// when set, says how it was imported ("mapped by hand"), as the success line does.
-func (c *Coordinator) reviewImportFailed(ctx context.Context, r Review, dest int64, how string, err error) {
+// importFailed writes a failed hand import into the history of the item it was going
+// into, so Activity → History shows it with its reason. from says where it was asked for
+// ("review", "review (mapped by hand)", "Needs you"), as the success line does. A review
+// stays open.
+func (c *Coordinator) importFailed(ctx context.Context, r Review, dest int64, from string, err error) {
 	// The job may have been stopped; the line is still worth writing.
 	ctx = context.WithoutCancel(ctx)
-	from := "review"
-	if how != "" {
-		from += " (" + how + ")"
-	}
 	c.reviewEvent(ctx, r.MediaType, dest, "failed", fmt.Sprintf("Couldn't import from %s: %v — %s", from, err, r.Name))
 }

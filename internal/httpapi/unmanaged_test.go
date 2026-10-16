@@ -13,9 +13,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/settings"
@@ -27,6 +29,7 @@ import (
 type unmanagedEnv struct {
 	a        *api
 	st       *store.Store
+	runner   *jobs.Runner
 	mu       sync.Mutex
 	torrents []string
 }
@@ -77,7 +80,24 @@ func newUnmanagedEnv(t *testing.T) *unmanagedEnv {
 		Automation: automation.New(mv, nil, dl, nil, st.DB(), nil, log, ""),
 		Config:     cfg,
 	}}
+	// Import into… runs as a job; a real runner records it.
+	runner, err := jobs.New(context.Background(), st.DB(), log, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { runner.Shutdown(5 * time.Second) })
+	e.runner = runner
+	e.a.deps.Jobs = runner
 	return e
+}
+
+// importJob follows an Import into… answer's job to its end.
+func (e *unmanagedEnv) importJob(t *testing.T, rec *httptest.ResponseRecorder) jobs.Job {
+	t.Helper()
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("import = %d %s, want 202", rec.Code, rec.Body.String())
+	}
+	return waitReviewJob(t, e.runner, decodeAccepted(t, rec.Body.String()).JobID)
 }
 
 func (e *unmanagedEnv) list(t *testing.T) (hashes []string, ignored int) {
@@ -203,9 +223,10 @@ func TestImportUnmanagedIntoAMovie(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.set(doneTorrent(strangerA, "Some.Film.2001.1080p.BluRay-GRP", "", src))
-	rec := e.post(t, e.a.handleImportUnmanaged, "/", strangerA, `{"kind":"movie","target_id":1}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("import = %d %s", rec.Code, rec.Body.String())
+	defer library.ForceCopies()() // as onto another drive: the job reports the copy
+	j := e.importJob(t, e.post(t, e.a.handleImportUnmanaged, "/", strangerA, `{"kind":"movie","target_id":1}`))
+	if j.Status != jobs.StatusSucceeded || j.Message != "Imported into Some Film." || j.Kind != downloadImportKind || j.Target != "torrent:"+strangerA {
+		t.Fatalf("job = %+v", j)
 	}
 	if m, _ := e.a.deps.Movies.Get(context.Background(), 1); !m.HasFile {
 		t.Error("the movie has no file after the import")

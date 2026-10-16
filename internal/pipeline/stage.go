@@ -86,8 +86,9 @@ const (
 type Review struct {
 	Code          string // automation.Reason*
 	ExpectedTitle string // what it was grabbed for, when anything
-	// Importing: a person decided it (Import anyway, Choose different…, Map files…) and
-	// the import is running, or waiting its turn. Progress, when it's copying.
+	// Importing: a person decided it (Import anyway, Choose different…, Map files…, or
+	// Import into… for a download Arrmada didn't grab — a Review with no Code) and the
+	// import is running, or waiting its turn. Progress, when it's copying.
 	Importing bool
 	Progress  string
 }

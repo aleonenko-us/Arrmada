@@ -355,7 +355,13 @@ const reviewImportKind = "review.import"
 // The queue is told when it starts and ends, so the download's card there reads Importing
 // at once and leaves Finishing when it's done.
 func (a *api) reviewImportSpec(id int64, hash string, fn func(context.Context, *jobs.Progress) (any, error)) jobs.Spec {
-	return jobs.Spec{Kind: reviewImportKind, Target: jobTarget("review", id), Class: jobs.ClassImport, Timeout: 12 * time.Hour,
+	return a.handImportSpec(reviewImportKind, jobTarget("review", id), hash, fn)
+}
+
+// handImportSpec is an import a person asked for from Needs you (a review's, or a
+// download Arrmada didn't grab), run as a job of kind for target.
+func (a *api) handImportSpec(kind, target, hash string, fn func(context.Context, *jobs.Progress) (any, error)) jobs.Spec {
+	return jobs.Spec{Kind: kind, Target: target, Class: jobs.ClassImport, Timeout: 12 * time.Hour,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			p.Set(0, "Importing…")
 			if hash != "" {
@@ -424,27 +430,35 @@ func (a *api) reviewImportJobs(ctx context.Context) map[int64]jobs.Job {
 	return out
 }
 
-// activeReviewImports is the import jobs running or queued right now, by review id. The
-// queue feed asks on every refresh, so it reads the runner's memory where it can rather
-// than the jobs table.
-func (a *api) activeReviewImports(ctx context.Context) map[int64]jobs.Job {
+// activeHandImports is the hand imports running or queued right now: review imports by
+// review id, Import into… of downloads Arrmada didn't grab by lowercased hash. The queue
+// feed asks on every refresh, so it reads the runner's memory where it can rather than
+// the jobs table.
+func (a *api) activeHandImports(ctx context.Context) (byReview map[int64]jobs.Job, byHash map[string]jobs.Job) {
 	act, ok := a.deps.Jobs.(interface{ Active() []jobs.Job })
 	if !ok {
-		out := a.reviewImportJobs(ctx)
-		for id, j := range out {
+		byReview, byHash = a.reviewImportJobs(ctx), a.downloadImportJobs(ctx)
+		for id, j := range byReview {
 			if jobs.Terminal(j.Status) {
-				delete(out, id)
+				delete(byReview, id)
 			}
 		}
-		return out
+		for h, j := range byHash {
+			if jobs.Terminal(j.Status) {
+				delete(byHash, h)
+			}
+		}
+		return byReview, byHash
 	}
-	out := map[int64]jobs.Job{}
+	byReview, byHash = map[int64]jobs.Job{}, map[string]jobs.Job{}
 	for _, j := range act.Active() {
 		if n, ok := reviewOfJob(j); ok {
-			out[n] = j
+			byReview[n] = j
+		} else if h, ok := strings.CutPrefix(j.Target, "torrent:"); ok && j.Kind == downloadImportKind {
+			byHash[h] = j
 		}
 	}
-	return out
+	return byReview, byHash
 }
 
 // reviewOfJob is the review a review import job is for.

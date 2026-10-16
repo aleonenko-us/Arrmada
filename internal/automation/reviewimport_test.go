@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/library"
 )
 
@@ -66,6 +67,39 @@ func TestReviewImportReportsCopyProgress(t *testing.T) {
 	_ = c.db.QueryRow(`SELECT COUNT(*) FROM movie_events WHERE movie_id = 5 AND event = 'imported'`).Scan(&imported)
 	if imported != 1 {
 		t.Errorf("imported history lines = %d, want 1", imported)
+	}
+}
+
+// Import into… for a download Arrmada didn't grab reports its copy the same way, and its
+// up-front checks refuse what they can before anything runs.
+func TestUnmanagedImportReportsCopyProgress(t *testing.T) {
+	defer library.ForceCopies()()
+	c, _, ctx := reviewTestCoord(t)
+	mustExec(t, c, `INSERT INTO movies (id, tmdb_id, title, year, monitored) VALUES (5, 1, 'Arrival', 2016, 1)`)
+	dl := t.TempDir()
+	const size = 60 << 20
+	sparseVideo(t, filepath.Join(dl, "Arrival.2016.1080p.BluRay.mkv"), size)
+	it := download.Item{Hash: "feed", Name: "Arrival.2016.1080p.BluRay"}
+
+	if _, err := c.CheckUnmanagedImport(ctx, it, filepath.Join(dl, "gone"), "movie", 5); !errors.Is(err, ErrDownloadGone) {
+		t.Errorf("gone files: %v", err)
+	}
+	if _, err := c.CheckUnmanagedImport(ctx, it, dl, "series", 5); !errors.Is(err, ErrModuleOff) {
+		t.Errorf("module off: %v", err)
+	}
+	if title, err := c.CheckUnmanagedImport(ctx, it, dl, "movie", 5); err != nil || title != "Arrival" {
+		t.Fatalf("good import: %q, %v", title, err)
+	}
+	var last [2]int64
+	pctx := WithImportProgress(ctx, func(copied, total int64) { last = [2]int64{copied, total} })
+	if err := c.ImportUnmanaged(pctx, it, dl, "movie", 5); err != nil {
+		t.Fatal(err)
+	}
+	if last != [2]int64{size, size} {
+		t.Errorf("last report = %v, want %d of %d", last, size, size)
+	}
+	if _, err := c.CheckUnmanagedImport(ctx, it, dl, "movie", 5); !errors.Is(err, ErrAlreadyImported) {
+		t.Errorf("second import: %v", err)
 	}
 }
 

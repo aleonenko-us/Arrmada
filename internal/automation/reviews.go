@@ -674,7 +674,7 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 	err = c.importContentInto(ctx, r, dest, "review")
 	stop()
 	if err != nil {
-		c.reviewImportFailed(ctx, r, dest, "", err)
+		c.importFailed(ctx, r, dest, "review", err)
 		return err
 	}
 	// No history line here: every kind's import already writes its own "imported" entry.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -34,6 +35,9 @@ type unmanagedRow struct {
 	Kind string `json:"kind"`
 	// Title is the name parsed into a title, to start the picker's search with.
 	Title string `json:"title,omitempty"`
+	// ImportJob is its Import into… job while that runs, or the last one when it failed,
+	// so a page opened mid-import shows it importing.
+	ImportJob *jobs.Job `json:"import_job,omitempty"`
 }
 
 // unmanagedState is one read of the queue against the record: the unmanaged torrents, and
@@ -174,10 +178,18 @@ func (a *api) handleUnmanaged(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := make([]unmanagedRow, 0, len(st.items))
+	var importJobs map[string]jobs.Job
+	if len(st.items) > 0 {
+		importJobs = a.downloadImportJobs(r.Context())
+	}
 	for _, it := range st.items {
 		p := parser.Parse(it.Name)
-		rows = append(rows, unmanagedRow{Hash: it.Hash, Name: it.Name, SizeBytes: it.SizeBytes, Category: it.Category,
-			AddedOn: it.AddedOn, Kind: guessKind(it, p), Title: p.Title})
+		row := unmanagedRow{Hash: it.Hash, Name: it.Name, SizeBytes: it.SizeBytes, Category: it.Category,
+			AddedOn: it.AddedOn, Kind: guessKind(it, p), Title: p.Title}
+		if j, ok := importJobs[strings.ToLower(it.Hash)]; ok && (!jobs.Terminal(j.Status) || reviewJobFailed(j.Status)) {
+			row.ImportJob = &j
+		}
+		rows = append(rows, row)
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"unmanaged": rows, "ignored": st.ignored})
 }
@@ -216,6 +228,11 @@ func (a *api) handleIgnoreDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := strings.ToLower(it.Hash)
+	// Hiding it mid-import would hide the import too.
+	if j, ok := a.downloadImportJobs(r.Context())[h]; ok && !jobs.Terminal(j.Status) {
+		a.alreadyRunning(w, j.ID, "this download is being imported — wait for the import to finish")
+		return
+	}
 	a.transfers.ignoreMu.Lock()
 	list := a.readIgnored(r.Context())
 	seen := false
@@ -284,17 +301,61 @@ func (a *api) handleImportUnmanaged(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "its files are outside your downloads and library folders, so Arrmada won't import them — "+err.Error())
 		return
 	}
-	if err := a.deps.Automation.ImportUnmanaged(r.Context(), it, src, req.Kind, req.TargetID); err != nil {
-		switch {
-		case errors.Is(err, automation.ErrAlreadyImported):
-			a.writeError(w, http.StatusConflict, err.Error())
-		case errors.Is(err, automation.ErrDownloadGone):
-			a.writeError(w, http.StatusGone, "its files aren't on disk any more")
-		default:
-			a.writeReviewError(w, err, "could not import that download")
-		}
+	// What can be refused is refused now; the import itself — possibly a long copy onto
+	// another drive — is a job, so a proxy's request timeout can't cut it off.
+	title, err := a.deps.Automation.CheckUnmanagedImport(r.Context(), it, src, req.Kind, req.TargetID)
+	if err != nil {
+		a.writeUnmanagedImportError(w, err)
 		return
 	}
-	a.queueChanged(strings.ToLower(it.Hash))
-	a.writeJSON(w, http.StatusOK, map[string]any{"status": "imported"})
+	hash := strings.ToLower(it.Hash)
+	kind, target := req.Kind, req.TargetID
+	jobID, existing, ok := a.submitOr503(w, r, a.handImportSpec(downloadImportKind, "torrent:"+hash, hash, func(ctx context.Context, p *jobs.Progress) (any, error) {
+		if err := a.deps.Automation.ImportUnmanaged(withImportProgress(ctx, p), it, src, kind, target); err != nil {
+			return nil, err // the import's own reason, which the card shows
+		}
+		return importedInto(p, title), nil
+	}))
+	if !ok {
+		return
+	}
+	a.accepted(w, jobID, existing, map[string]any{"status": "importing", "title": title})
+}
+
+// downloadImportKind is the job that imports a download Arrmada didn't grab, one per
+// torrent: a second click, or another tab, joins the import already running.
+const downloadImportKind = "download.import"
+
+// writeUnmanagedImportError answers an Import into… refusal with the status that says
+// whose problem it is.
+func (a *api) writeUnmanagedImportError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, automation.ErrAlreadyImported):
+		a.writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, automation.ErrDownloadGone):
+		a.writeError(w, http.StatusGone, "its files aren't on disk any more")
+	default:
+		a.writeReviewError(w, err, "could not import that download")
+	}
+}
+
+// downloadImportJobs is the newest Import into… job of each torrent that has one, by
+// lowercased hash.
+func (a *api) downloadImportJobs(ctx context.Context) map[string]jobs.Job {
+	out := map[string]jobs.Job{}
+	if a.deps.Jobs == nil {
+		return out
+	}
+	list, err := a.deps.Jobs.List(ctx, jobs.Filter{Kind: downloadImportKind, Limit: 500})
+	if err != nil {
+		return out
+	}
+	for _, j := range list { // newest first
+		if h, ok := strings.CutPrefix(j.Target, "torrent:"); ok && j.Kind == downloadImportKind {
+			if _, seen := out[h]; !seen {
+				out[h] = j
+			}
+		}
+	}
+	return out
 }
