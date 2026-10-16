@@ -62,8 +62,8 @@ services:
       arrmada-flaresolverr: { condition: service_started }
     restart: unless-stopped
 
-  # The download client, already wired up: the init container below lets Arrmada in
-  # without a password from the private Docker network, and Arrmada sets its folders.
+  # The download client, already wired up: on its first start Arrmada gives it a password
+  # (an admin sees it on its card in Settings → Connections) and sets its folders.
   arrmada-qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:5.2.3
     container_name: Arrmada-qbittorrent
@@ -81,6 +81,7 @@ services:
       - "6881:6881/udp"
       # qBittorrent's own web page isn't needed (Arrmada drives it); to peek, add
       # - "8080:8080"
+      # and sign in with the login on its card in Settings → Connections.
     depends_on:
       arrmada-qbittorrent-init: { condition: service_completed_successfully }
       arrmada-media-init: { condition: service_completed_successfully }
@@ -105,7 +106,8 @@ services:
       - arrmada-media:/media
     restart: "no"
 
-  # One-shot: qBittorrent's first settings (only if it has none yet).
+  # One-shot: qBittorrent's first settings (only if it has none yet). The whitelist lets
+  # Arrmada in on its first start, when it gives qBittorrent a password and switches it off.
   arrmada-qbittorrent-init:
     image: alpine:3.20
     container_name: Arrmada-qbittorrent-init
@@ -132,8 +134,8 @@ services:
         [Preferences]
         WebUI\Port=8080
         WebUI\Address=*
-        WebUI\LocalHostAuth=false
-        WebUI\CSRFProtection=false
+        WebUI\LocalHostAuth=true
+        WebUI\CSRFProtection=true
         WebUI\HostHeaderValidation=false
         WebUI\AuthSubnetWhitelistEnabled=true
         WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16

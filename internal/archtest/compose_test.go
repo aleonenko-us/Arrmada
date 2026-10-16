@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -204,6 +205,34 @@ func TestComposeExampleSABnzbdInit(t *testing.T) {
 	}
 }
 
+// TestQbittorrentSeedsAgree: docker-compose.yml copies docker/qbittorrent/qBittorrent.conf,
+// the example writes it inline; both give the same web UI settings. CSRF protection and the
+// localhost login are on from the start; the subnet whitelist is the one Arrmada replaces
+// with a password on its first start (download.SecureBundledQbit recognises exactly it).
+func TestQbittorrentSeedsAgree(t *testing.T) {
+	root := repoRoot(t)
+	webUI := func(lines []string) []string {
+		var out []string
+		for _, l := range lines {
+			if l = strings.TrimSpace(l); strings.HasPrefix(l, `WebUI\`) {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	file := webUI(strings.Split(strings.ReplaceAll(readText(t, filepath.Join(root, "docker", "qbittorrent", "qBittorrent.conf")), "\r\n", "\n"), "\n"))
+	inline := webUI(serviceScript(readText(t, filepath.Join(root, "docker-compose.example.yml")), "arrmada-qbittorrent-init", false))
+	if strings.Join(file, "\n") != strings.Join(inline, "\n") {
+		t.Errorf("the qBittorrent seeds differ:\n--- docker/qbittorrent/qBittorrent.conf\n%s\n--- docker-compose.example.yml\n%s",
+			strings.Join(file, "\n"), strings.Join(inline, "\n"))
+	}
+	for _, want := range []string{`WebUI\LocalHostAuth=true`, `WebUI\CSRFProtection=true`, `WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`} {
+		if !slices.Contains(file, want) {
+			t.Errorf("the qBittorrent seed has no %s", want)
+		}
+	}
+}
+
 // mountTarget is the path inside the container a volume line mounts at.
 func mountTarget(v string) string {
 	parts := strings.Split(v, ":")
@@ -259,15 +288,17 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 
 	// The app's settings: the example sets the same ones to docker-compose.yml's defaults,
 	// except the ones that are API keys (entered in the app), legacy fallbacks, starting
-	// library folders (picked in the setup), last-resort switches, and the update channel
-	// (update.sh's; the example runs the stable release, which the app knows by itself).
+	// library folders (picked in the setup), last-resort switches, the update channel
+	// (update.sh's; the example runs the stable release, which the app knows by itself), and
+	// the host port of qBittorrent's own page (the example publishes none, so its card shows
+	// the login without a link).
 	notInExample := map[string]bool{
 		"ARRMADA_TMDB_API_KEY": true, "ARRMADA_OMDB_API_KEY": true, "ARRMADA_HARDCOVER_API_KEY": true,
 		"ARRMADA_PLEX_URL": true, "ARRMADA_PLEX_TOKEN": true,
 		"ARRMADA_LIBRARY_DIR": true, "ARRMADA_DOWNLOADS_DIR": true, "ARRMADA_MOVIES_DIR": true,
 		"ARRMADA_TV_DIR": true, "ARRMADA_EBOOKS_DIR": true, "ARRMADA_AUDIOBOOKS_DIR": true, "ARRMADA_MUSIC_DIR": true,
 		"ARRMADA_SKIP_MIGRATION_SNAPSHOT": true, "ARRMADA_ALLOW_NEWER_SCHEMA": true,
-		"ARRMADA_CHANNEL": true,
+		"ARRMADA_CHANNEL": true, "ARRMADA_QBIT_WEBUI_HOST_PORT": true,
 	}
 	for _, svc := range []string{"arrmada-app", "arrmada-qbittorrent"} {
 		for k, mv := range main[svc].env {
