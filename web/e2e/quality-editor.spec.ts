@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect, type MockedApi } from "./mockApi";
 import type { StoredProfile } from "../src/lib/api";
+import { qualityProfiles } from "./fixtures/media";
 
 // FE-25: the Quality editor has its own address (/quality/:media/new, /:key, /:key/copy),
 // a refresh reopens it, a deleted profile's address says so, and the unsaved-edits guard
@@ -144,6 +145,11 @@ test.describe("Quality editor", () => {
 
   test("the target's Audio language row: a searched language and Original language, saved with the target", async ({ page, api }) => {
     await mockEditor(page, api);
+    // The list's Unwanted catalog, so Rules shows the foreign-only item.
+    await page.route((u) => u.pathname === "/api/v1/quality/profiles", (route) => route.fulfill({ json: {
+      ...qualityProfiles, unwanted_groups: ["YTS"],
+      unwanted: [{ key: "foreign", label: "Foreign-only audio", description: "Dubbed only into a language that is neither the title's original language nor one you keep", default: "avoid" }],
+    } }));
     await page.goto("/quality/movie/hd-1080p");
     const row = page.getByTestId("audio-language-row");
     await expect(row).toContainText("No language rules — any audio language is fine.");

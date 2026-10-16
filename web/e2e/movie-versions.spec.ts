@@ -111,7 +111,7 @@ test.describe("manager", () => {
     await expect(dcLangs).toHaveAttribute("data-fit", "bad");
     await expect(dcLangs).toHaveAttribute("aria-label", /an unidentified track\. Doesn't fit the language rules: No German audio/);
     await expect(dcLangs).toContainText("?");
-    if (process.env.LANG_SHOTS) await cards.first().screenshot({ path: `${process.env.LANG_SHOTS}/movie-versions.png` });
+    if (process.env.LANG_SHOTS) await cards.first().locator("..").screenshot({ path: `${process.env.LANG_SHOTS}/movie-versions.png` });
 
     // Search from the DC version ranks for it and grabs into it.
     await dc.getByRole("button", { name: "Search", exact: true }).click();

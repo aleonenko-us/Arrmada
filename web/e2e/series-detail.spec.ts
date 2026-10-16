@@ -130,7 +130,7 @@ test.describe("desktop seasons", () => {
     const summary = page.getByTestId("season-audio");
     await expect(summary).toContainText("DE 10/10 · EN 9/10");
     await expect(summary).toHaveAttribute("aria-label", /1 miss a preferred language/);
-    if (process.env.LANG_SHOTS) await page.screenshot({ path: `${process.env.LANG_SHOTS}/series-episodes.png`, fullPage: false });
+    if (process.env.LANG_SHOTS) await page.getByRole("region", { name: "Season 1" }).screenshot({ path: `${process.env.LANG_SHOTS}/series-episodes.png` });
 
     // A season whose files haven't been analysed shows nothing.
     await page.getByRole("button", { name: /^Season 2/ }).click();
