@@ -118,7 +118,7 @@ func TestN8NConnectionRefusals(t *testing.T) {
 	s, _ := newNotifyServer(t)
 	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
 	for name, body := range map[string]string{
-		"a bare link":   `{"name":"x","kind":"n8n","url":"json://192.168.1.10/hook"}`,
+		"a bare link":   `{"name":"x","kind":"n8n","url":"http://192.168.1.10:5678/webhook/a"}`,
 		"no secret":     `{"name":"x","kind":"n8n","fields":{"url":"http://192.168.1.10:5678/webhook/a"}}`,
 		"short secret":  `{"name":"x","kind":"n8n","fields":{"url":"http://192.168.1.10:5678/webhook/a","signing_secret":"abc"}}`,
 		"not http":      `{"name":"x","kind":"n8n","fields":{"url":"gotify://h/t","signing_secret":"` + n8nTestSecret + `"}}`,
@@ -136,16 +136,10 @@ func TestN8NConnectionRefusals(t *testing.T) {
 			t.Errorf("%s refused: HTTP %d %s", u, rec.Code, rec.Body)
 		}
 	}
-	// A saved n8n connection can't be turned into an Apprise link by a raw URL, nor an
-	// Apprise one into a webhook without its fields.
-	if rec := s.doJSON("PUT", "/api/v1/notifications/1", admin, `{"name":"x","kind":"n8n","url":"json://h/x"}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("n8n with a new link: HTTP %d %s", rec.Code, rec.Body)
-	}
-	if rec := s.doJSON("POST", "/api/v1/notifications", admin, `{"name":"d","url":"discord://1/2","enabled":true}`); rec.Code != http.StatusCreated {
-		t.Fatalf("discord: HTTP %d", rec.Code)
-	}
-	if rec := s.doJSON("PUT", "/api/v1/notifications/4", admin, `{"name":"d","kind":"n8n"}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("Apprise → n8n without fields: HTTP %d %s", rec.Code, rec.Body)
+	// A bare http(s) link is never taken as a webhook; the answer explains the fields.
+	if rec := s.doJSON("PUT", "/api/v1/notifications/1", admin, `{"name":"x","kind":"n8n","url":"http://h/x"}`); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), "set up from its fields") {
+		t.Errorf("n8n with a bare http link: HTTP %d %s", rec.Code, rec.Body)
 	}
 	if rec := s.doJSON("POST", "/api/v1/notifications/1/test", admin, `{"event":"no.such.event"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown test event: HTTP %d", rec.Code)
@@ -183,5 +177,87 @@ func TestN8NUnsavedTestSendsSample(t *testing.T) {
 	rec = s.doJSON("POST", "/api/v1/notifications/test", admin, `{"name":"x","kind":"n8n","fields":{"url":"`+url+`/webhook/s3cret-path-zz","signing_secret":"`+n8nTestSecret+`"}}`)
 	if !strings.Contains(rec.Body.String(), `"ok":false`) || strings.Contains(rec.Body.String(), "s3cret-path-zz") {
 		t.Fatalf("dead test: %s", rec.Body)
+	}
+}
+
+// A saved header value goes only to the server it was saved for. Moving the connection to
+// another host (an edit, or a Test of an unsaved edit) with the value left blank is
+// refused, naming the field; a path change on the same server — n8n's test URL to its
+// production URL, the documented flow — keeps it.
+func TestN8NSavedSecretsStayWithTheirServer(t *testing.T) {
+	s, _ := newNotifyServer(t)
+	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	home, other := newN8NCatcher(t), newN8NCatcher(t)
+	create := `{"name":"n8n","kind":"n8n","enabled":true,"events":["movie.imported"],"fields":{"url":"` + home.URL + `/webhook-test/a` +
+		`","auth":"header","header_name":"X-Key","header_value":"` + n8nTestHeader + `","signing_secret":"` + n8nTestSecret + `"}}`
+	if rec := s.doJSON("POST", "/api/v1/notifications", admin, create); rec.Code != http.StatusCreated {
+		t.Fatalf("create: HTTP %d %s", rec.Code, rec.Body)
+	}
+	edit := func(url, headerValue string) string {
+		return `{"id":1,"name":"n8n","kind":"n8n","enabled":true,"fields":{"url":"` + url + `","auth":"header","header_name":"X-Key","header_value":"` + headerValue + `","signing_secret":""}}`
+	}
+
+	// Another server, value left blank: refused, the field named, the secret not sent.
+	rec := s.doJSON("POST", "/api/v1/notifications/test", admin, edit(other.URL+"/webhook/a", ""))
+	if !strings.Contains(rec.Body.String(), `"ok":false`) || !strings.Contains(rec.Body.String(), `"field":"header_value"`) || strings.Contains(rec.Body.String(), n8nTestHeader) {
+		t.Fatalf("unsaved test to another host: %s", rec.Body)
+	}
+	rec = s.doJSON("PUT", "/api/v1/notifications/1", admin, edit(other.URL+"/webhook/a", ""))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"field":"header_value"`) {
+		t.Fatalf("update to another host: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if b, _ := other.got(); len(b) != 0 {
+		t.Fatalf("the other server was sent %d requests", len(b))
+	}
+	c, _ := s.deps.Notify.Get(context.Background(), 1)
+	if f := notify.PresetFields(c); f["url"] != home.URL+"/webhook-test/a" || f["header_value"] != n8nTestHeader {
+		t.Fatalf("a refused update changed the connection: %v", f)
+	}
+
+	// Same server, test URL → production URL: the saved value is kept and sent.
+	rec = s.doJSON("POST", "/api/v1/notifications/test", admin, edit(home.URL+"/webhook/a", ""))
+	if !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("unsaved same-host test: %s", rec.Body)
+	}
+	if _, heads := home.got(); len(heads) != 1 || heads[0].Get("X-Key") != n8nTestHeader {
+		t.Fatalf("same-host test headers: %v", heads)
+	}
+	if rec = s.doJSON("PUT", "/api/v1/notifications/1", admin, edit(home.URL+"/webhook/a", "")); rec.Code != http.StatusOK {
+		t.Fatalf("same-host update: HTTP %d %s", rec.Code, rec.Body)
+	}
+	c, _ = s.deps.Notify.Get(context.Background(), 1)
+	if f := notify.PresetFields(c); f["url"] != home.URL+"/webhook/a" || f["header_value"] != n8nTestHeader || f["signing_secret"] != n8nTestSecret {
+		t.Fatalf("after the same-host update: %v", f)
+	}
+
+	// Another server with the value typed again: fine, and the signing secret carries over.
+	if rec = s.doJSON("PUT", "/api/v1/notifications/1", admin, edit(other.URL+"/webhook/a", "new-value-123")); rec.Code != http.StatusOK {
+		t.Fatalf("update with the value typed again: HTTP %d %s", rec.Code, rec.Body)
+	}
+	c, _ = s.deps.Notify.Get(context.Background(), 1)
+	if f := notify.PresetFields(c); f["url"] != other.URL+"/webhook/a" || f["header_value"] != "new-value-123" || f["signing_secret"] != n8nTestSecret {
+		t.Fatalf("after moving: %v", f)
+	}
+}
+
+// Before the n8n kind, kind was a free-form label: an API script may still send kind
+// "n8n" with an Apprise URL. That's taken as an Apprise connection and delivered through
+// Apprise, as before; only a link that isn't a valid Apprise URL is refused.
+func TestN8NLabelOnAnAppriseURL(t *testing.T) {
+	s, sent := newNotifyServer(t)
+	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	rec := s.doJSON("POST", "/api/v1/notifications", admin, `{"name":"script","kind":"n8n","url":"ntfy://script-topic","enabled":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: HTTP %d %s", rec.Code, rec.Body)
+	}
+	list := listNotifications(t, s, admin)
+	if list[0]["preset"] != "custom" || list[0]["kind"] != "n8n" {
+		t.Fatalf("list = %v", list[0])
+	}
+	if rec = s.doJSON("POST", "/api/v1/notifications/1/test", admin, ``); !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("test: %s", rec.Body)
+	}
+	if got := sent.sent(); len(got) != 1 || got[0] != "ntfy://script-topic" {
+		t.Fatalf("Apprise got %v", got)
 	}
 }

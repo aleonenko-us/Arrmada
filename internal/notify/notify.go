@@ -355,7 +355,7 @@ func (s *Service) Test(ctx context.Context, c Connection, event string) error {
 		}
 	}
 	hook := webhookSend{event: key, id: "test-" + strconv.FormatInt(s.now().UnixNano(), 36), at: s.now()}
-	if c.Kind == KindN8N {
+	if IsWebhook(c) {
 		b, err := buildWebhookPayload(webhookInput{key: key, data: data, msg: m, base: s.publicURL(ctx), at: hook.at, test: true})
 		if err != nil {
 			return err
@@ -463,7 +463,7 @@ func (s *Service) deliver(ctx context.Context, c Connection, m Message, hook web
 	if c.Kind == KindWebPush {
 		return s.deliverPush(ctx, c, m)
 	}
-	if c.Kind == KindN8N {
+	if IsWebhook(c) {
 		body := hook.payload
 		if len(body) == 0 {
 			body = fallbackWebhookPayload(hook.event, m, hook.at, s.publicURL(ctx))

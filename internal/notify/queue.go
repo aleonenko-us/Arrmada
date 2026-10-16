@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"sync"
@@ -71,6 +72,8 @@ type target struct {
 	id   int64
 	kind string
 	opts Options
+	// webhook: an n8n / Webhook connection (IsWebhook), sent JSON rather than text.
+	webhook bool
 }
 
 // dispatch queues m for every enabled connection subscribed to key that also wants it:
@@ -103,7 +106,7 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		queued = 0
 		rows, err := tx.QueryContext(ctx,
-			`SELECT n.id, n.kind, n.options FROM notifications n
+			`SELECT n.id, n.kind, n.options, n.url, n.config FROM notifications n
 			 JOIN notification_subscriptions sub ON sub.connection_id = n.id AND sub.event_key = ?
 			 WHERE n.enabled != 0 ORDER BY n.id`, key)
 		if err != nil {
@@ -112,14 +115,19 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 		var targets []target
 		for rows.Next() {
 			var (
-				t    target
-				opts string
+				t                 target
+				opts, url, config string
 			)
-			if err := rows.Scan(&t.id, &t.kind, &opts); err != nil {
+			if err := rows.Scan(&t.id, &t.kind, &opts, &url, &config); err != nil {
 				rows.Close()
 				return err
 			}
 			t.opts = ParseOptions(opts)
+			t.webhook = isWebhookConfig(t.kind, url, json.RawMessage(config))
+			if t.kind == KindN8N && !t.webhook {
+				// An Apprise row that only says "n8n": its text is written as it always was.
+				t.kind = ""
+			}
 			targets = append(targets, t)
 		}
 		rows.Close()
@@ -132,7 +140,7 @@ func (s *Service) dispatch(ctx context.Context, key, dedupe string, m Message, d
 			}
 			body := bodyFor(t.kind, t.opts, key, vars, m.Body)
 			hook := ""
-			if t.kind == KindN8N {
+			if t.webhook {
 				b, err := webhookPayload()
 				if err != nil {
 					return err

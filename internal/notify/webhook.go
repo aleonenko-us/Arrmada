@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +18,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -88,6 +91,26 @@ var (
 		"x-arrmada-signature": true, "x-arrmada-timestamp": true, "x-arrmada-event": true, "x-arrmada-delivery": true,
 	}
 )
+
+// IsWebhook reports whether a connection is set up as an n8n / Webhook one: kind "n8n"
+// with its preset fields and a plain http(s) URL. Before this kind existed, kind was a
+// free-form label, so a row can say "n8n" over an Apprise URL (an API script's, say);
+// that row keeps going through Apprise exactly as it always did.
+func IsWebhook(c Connection) bool {
+	return isWebhookConfig(c.Kind, c.URL, c.Config)
+}
+
+func isWebhookConfig(kind, rawURL string, config json.RawMessage) bool {
+	if kind != KindN8N {
+		return false
+	}
+	f := PresetFields(Connection{Kind: kind, Config: config})
+	if f == nil || strings.TrimSpace(f["url"]) == "" {
+		return false
+	}
+	u := strings.ToLower(strings.TrimSpace(rawURL))
+	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
+}
 
 // ValidateWebhookURL checks a webhook URL: http or https, a host, no credentials in it
 // (they go under Authentication), no spaces. Any host is allowed — see the top of this
@@ -198,6 +221,68 @@ func plainHeaderValue(v string) error {
 		return errors.New("the authentication value can't contain line breaks or control characters")
 	}
 	return nil
+}
+
+// FieldError is a refusal about one form field, so the page can show it beside that field.
+type FieldError struct {
+	Field string
+	Msg   string
+}
+
+func (e *FieldError) Error() string { return e.Msg }
+
+// WebhookKept is which of a saved webhook's fields may fill the blanks in a new form
+// (an edit, or a Test of an unsaved edit). A saved header value or password only goes to
+// the server it was saved for: when the form's URL points at another scheme, host or
+// port, they're left out, and a form that relies on one gets a FieldError asking for it
+// again. A path change on the same server keeps them — that's n8n's switch from its test
+// URL to its production URL. The signing secret always carries over: it isn't sent, only
+// used to sign.
+func WebhookKept(form, stored map[string]string) (map[string]string, error) {
+	if stored == nil {
+		return nil, nil
+	}
+	newURL := strings.TrimSpace(form["url"])
+	if newURL == "" || sameOrigin(newURL, stored["url"]) {
+		return stored, nil
+	}
+	kept := map[string]string{}
+	for k, v := range stored {
+		if k != "header_value" && k != "password" {
+			kept[k] = v
+		}
+	}
+	const again = " — the saved one isn't sent to a different server than it was saved for, so enter it again"
+	switch strings.TrimSpace(form["auth"]) {
+	case webhookAuthHeader:
+		if strings.TrimSpace(form["header_value"]) == "" && stored["header_value"] != "" {
+			return nil, &FieldError{Field: "header_value", Msg: "Header value: the webhook URL now points at another server" + again}
+		}
+	case webhookAuthBasic:
+		if form["password"] == "" && stored["password"] != "" {
+			return nil, &FieldError{Field: "password", Msg: "Password: the webhook URL now points at another server" + again}
+		}
+	}
+	return kept, nil
+}
+
+// sameOrigin reports whether two URLs share scheme, host and port (a missing port being
+// the scheme's own). Anything unreadable counts as different.
+func sameOrigin(a, b string) bool {
+	ua, errA := url.Parse(strings.TrimSpace(a))
+	ub, errB := url.Parse(strings.TrimSpace(b))
+	if errA != nil || errB != nil || ua.Host == "" || ub.Host == "" {
+		return false
+	}
+	origin := func(u *url.URL) string {
+		scheme := strings.ToLower(u.Scheme)
+		port := u.Port()
+		if port == "" {
+			port = map[string]string{"http": "80", "https": "443"}[scheme]
+		}
+		return scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+	}
+	return origin(ua) == origin(ub)
 }
 
 // webhookFieldsFor keeps only the fields the chosen authentication uses, so switching
@@ -390,6 +475,9 @@ func (s *Service) deliverWebhook(ctx context.Context, c Connection, body []byte,
 	}
 	resp, err := s.webhook.Do(req)
 	if err != nil {
+		// The raw error can quote what the other end sent (a non-HTTP service's banner),
+		// so it stays in the debug log; the delivery log and Test get fixed words.
+		s.log.Debug("notify: webhook send failed", "connection", c.Name, "err", cfg.scrub(err.Error()))
 		return errors.New(cfg.scrub(webhookSendError(err, req.URL.Host)))
 	}
 	defer resp.Body.Close()
@@ -401,25 +489,53 @@ func (s *Service) deliverWebhook(ctx context.Context, c Connection, body []byte,
 	return webhookStatusError(resp.StatusCode)
 }
 
-// webhookSendError says why a request didn't get an answer, naming the server (which the
-// connection's hint shows anyway) but not the URL.
+// webhookSendError says why a request didn't get an answer, in fixed words that name the
+// server (which the connection's hint shows anyway) and nothing else: never the URL, and
+// never the error's own text, which can carry what the other end sent back (an SSH or SMTP
+// banner on the wrong port reads as `malformed HTTP response "<banner>"`).
 func webhookSendError(err error, host string) string {
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
-	var ne net.Error
-	var dnsErr *net.DNSError
-	var opErr *net.OpError
+	var (
+		ne        net.Error
+		dnsErr    *net.DNSError
+		opErr     *net.OpError
+		recordErr tls.RecordHeaderError
+		certErr   *tls.CertificateVerificationError
+		authErr   x509.UnknownAuthorityError
+		nameErr   x509.HostnameError
+		invalid   x509.CertificateInvalidError
+		alertErr  tls.AlertError
+	)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()):
 		return fmt.Sprintf("%s didn't answer within %d seconds", host, int(webhookTimeout.Seconds()))
 	case errors.As(err, &dnsErr):
-		return fmt.Sprintf("couldn't look up %s — check the server name", dnsErr.Name)
+		return fmt.Sprintf("couldn't look up %s — check the server name", hostOnly(host))
+	case errors.As(err, &recordErr):
+		return fmt.Sprintf("%s didn't answer with HTTPS — use http:// for it, or check the port", host)
+	case errors.As(err, &nameErr):
+		return fmt.Sprintf("%s's certificate is for a different name — use the name on its certificate", host)
+	case errors.As(err, &certErr) || errors.As(err, &authErr) || errors.As(err, &invalid):
+		return fmt.Sprintf("%s's certificate isn't trusted (self-signed or expired?) — use a trusted certificate, or http:// on your own network", host)
+	case errors.As(err, &alertErr):
+		return fmt.Sprintf("%s refused the secure connection (TLS) — check it's the right address and port", host)
 	case errors.As(err, &opErr) && opErr.Op == "dial":
 		return fmt.Sprintf("couldn't connect to %s — is n8n running, and can Arrmada reach it from its container?", host)
+	case errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET):
+		return fmt.Sprintf("%s closed the connection without answering — is that the right address and port?", host)
 	}
-	return "couldn't send to the webhook: " + trim(err.Error())
+	return fmt.Sprintf("%s answered with something that isn't HTTP — is that the right address and port?", host)
+}
+
+// hostOnly is host without its port.
+func hostOnly(hostport string) string {
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return hostport
 }
 
 // webhookStatusError is a refusal in words, with the likely fix for the answers n8n gives.

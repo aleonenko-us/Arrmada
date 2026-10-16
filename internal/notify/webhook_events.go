@@ -19,8 +19,9 @@ import (
 //   - people by display name only (the requester's or a Plex viewer's), never an email,
 //     an account id or anything they could sign in with;
 //   - no secrets, tokens, API keys or download links;
-//   - nothing about what anyone listens to: admins see how much and when, never what (no
-//     catalog event is about listening, and none may be).
+//   - nothing about what anyone listens to on Arrmada's audiobook server: admins see how
+//     much and when, never what (no catalog event is about that listening, and none may be).
+//     The Plex/Jellyfin stream events carry what's playing there, as their chat alerts do.
 
 // DataField is one field under "data".
 type DataField struct {

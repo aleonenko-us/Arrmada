@@ -52,7 +52,7 @@ func viewOf(c notify.Connection) notificationView {
 		v.Fields = notify.MaskedFields(c.Kind, fields)
 	}
 	switch {
-	case c.Kind == notify.KindN8N:
+	case notify.IsWebhook(c):
 		// Not an Apprise link: its fields are checked again at every send, and a setting
 		// that no longer passes says so in the delivery log rather than here.
 	case c.URL != "" && c.Kind != notify.KindWebPush:
@@ -63,9 +63,30 @@ func viewOf(c notify.Connection) notificationView {
 	return v
 }
 
-// errWebhookNeedsFields refuses an n8n / Webhook connection sent as a bare link: it's set
-// up from its fields (URL, authentication, signing secret), never an Apprise URL.
+// errWebhookNeedsFields explains a refused bare link labelled "n8n": a webhook is set up
+// from its fields (URL, authentication, signing secret). A bare link that is a valid
+// Apprise URL is still taken, as an Apprise connection — kind was a free-form label before
+// the n8n kind existed, and API scripts may send it.
 const errWebhookNeedsFields = "an n8n / Webhook connection is set up from its fields (url, auth, signing_secret), not a link"
+
+// rawLinkError is the refusal for a bare link that isn't a valid Apprise URL, explaining
+// the n8n fields when that's what the request was labelled.
+func rawLinkError(kind string, err error) string {
+	if kind == notify.KindN8N {
+		return errWebhookNeedsFields
+	}
+	return err.Error()
+}
+
+// fieldErrorBody is a refusal's JSON, naming the form field it's about when there is one
+// (notify.FieldError) so the page can show it beside that field.
+func fieldErrorBody(err error, base map[string]any) map[string]any {
+	var fe *notify.FieldError
+	if errors.As(err, &fe) {
+		base["field"] = fe.Field
+	}
+	return base
+}
 
 // notificationInput is what create and update accept. URL is a pointer so an update can
 // leave it out (or send "") to keep the stored one; Events likewise (a new connection
@@ -99,6 +120,14 @@ type testEventBody struct {
 // presetURL builds a preset connection's URL from the form, filling blank secrets from
 // stored (the same kind's saved fields; nil for a new one). It returns the fields to keep.
 func presetURL(kind string, in, stored map[string]string) (string, map[string]string, error) {
+	if kind == notify.KindN8N {
+		// A saved header value or password is only filled in for the server it was saved
+		// for; a form pointed at another one must type it again (a notify.FieldError).
+		var err error
+		if stored, err = notify.WebhookKept(in, stored); err != nil {
+			return "", nil, err
+		}
+	}
 	fields := notify.MergeSecrets(kind, in, stored)
 	u, err := notify.BuildURL(kind, fields)
 	if err != nil {
@@ -242,10 +271,6 @@ func (a *api) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		c.URL, c.Config = u, notify.PresetConfigFor(c.Kind, fields)
 	} else {
-		if c.Kind == notify.KindN8N {
-			a.writeError(w, http.StatusBadRequest, errWebhookNeedsFields)
-			return
-		}
 		if c.Name == "" || c.URL == "" {
 			a.writeError(w, http.StatusBadRequest, "name and url are required")
 			return
@@ -253,7 +278,7 @@ func (a *api) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
 		// Checked on save, not at send time: a typo or an option-looking string would
 		// otherwise be stored and only fail when an alert is due.
 		if err := notify.ValidateAppriseURL(c.URL); err != nil {
-			a.writeError(w, http.StatusBadRequest, err.Error())
+			a.writeError(w, http.StatusBadRequest, rawLinkError(c.Kind, err))
 			return
 		}
 		c.Config = nil // a raw URL is a custom connection; nothing else is kept
@@ -313,11 +338,6 @@ func (a *api) handleUpdateNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch u := in.url(); {
-	case c.Kind == notify.KindN8N && !in.usesFields() && (stored.Kind != notify.KindN8N || (u != "" && u != notify.URLHint(stored.URL))):
-		// Becoming a webhook, or a new link for one, takes its fields. Renaming one or
-		// ticking its events (no fields, no link) keeps what's stored, below.
-		a.writeError(w, http.StatusBadRequest, errWebhookNeedsFields)
-		return
 	case in.usesFields():
 		// A preset's form: a secret left blank keeps the stored one — but only from the
 		// same kind of preset, so switching Discord to Telegram can't carry a token over.
@@ -327,14 +347,14 @@ func (a *api) handleUpdateNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		built, fields, err := presetURL(c.Kind, in.Fields, kept)
 		if err != nil {
-			a.writeError(w, http.StatusBadRequest, err.Error())
+			a.writeJSON(w, http.StatusBadRequest, fieldErrorBody(err, map[string]any{"status": "error", "message": err.Error()}))
 			return
 		}
 		c.URL, c.Config = built, notify.PresetConfigFor(c.Kind, fields)
 	case u != "" && u != notify.URLHint(stored.URL):
 		// A new raw URL must pass validation; the connection is a custom one from now on.
 		if err := notify.ValidateAppriseURL(u); err != nil {
-			a.writeError(w, http.StatusBadRequest, err.Error())
+			a.writeError(w, http.StatusBadRequest, rawLinkError(c.Kind, err))
 			return
 		}
 		c.URL, c.Config = u, json.RawMessage("{}")
@@ -391,10 +411,6 @@ func (a *api) handleTestNotification(w http.ResponseWriter, r *http.Request) {
 		a.answerTest(w, r, c, in.Event)
 		return
 	}
-	if c.Kind == notify.KindN8N && !in.usesFields() {
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": errWebhookNeedsFields})
-		return
-	}
 	if in.usesFields() {
 		// An edit being tried before it's saved: blank secrets come from the saved
 		// connection of the same kind, server-side, so the browser never needs them.
@@ -406,15 +422,15 @@ func (a *api) handleTestNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		u, fields, err := presetURL(c.Kind, in.Fields, kept)
 		if err != nil {
-			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			a.writeJSON(w, http.StatusOK, fieldErrorBody(err, map[string]any{"ok": false, "error": err.Error()}))
 			return
 		}
 		// A webhook's send reads its auth and secret from the fields, not the URL.
 		c.URL, c.Config = u, notify.PresetConfigFor(c.Kind, fields)
 	}
-	if c.Kind != notify.KindN8N { // a webhook's URL was checked as one by presetURL
+	if !notify.IsWebhook(c) { // a webhook's URL was checked as one by presetURL
 		if err := notify.ValidateAppriseURL(c.URL); err != nil {
-			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": rawLinkError(c.Kind, err)})
 			return
 		}
 	}
