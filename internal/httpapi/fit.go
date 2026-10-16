@@ -63,7 +63,7 @@ func (p *profileIdeals) get(ctx context.Context, ref string) *quality.StoredProf
 		return sp
 	}
 	var out *quality.StoredProfile
-	if sp, err := p.q.GetStored(ctx, ref); err == nil && sp.Ideal != nil {
+	if sp, err := p.q.GetStored(ctx, ref); err == nil && sp.Ideal != nil && !sp.Ideal.FitEmpty() {
 		out = &sp
 	}
 	p.cache[ref] = out

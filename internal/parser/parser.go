@@ -132,6 +132,9 @@ type Release struct {
 	Languages []string `json:"languages,omitempty"`
 	// Multi says the release carries several audio languages (MULTi, DUAL, German DL/ML).
 	Multi bool `json:"multi,omitempty"`
+	// Dual says it was a DUAL / Dual-Audio tag (one of the Multi forms): two languages,
+	// which on a foreign film is almost always the original plus English.
+	Dual bool `json:"dual,omitempty"`
 	// Streaming is the streaming service a WEB release was captured from, as the tag is
 	// written: AMZN, NF, ATVP, DSNP, HMAX, MAX, PCOK, PMTP, HULU, iT, CRAV, STAN or MA.
 	Streaming string `json:"streaming,omitempty"`
@@ -463,6 +466,18 @@ func Parse(name string) Release {
 	if absCut < cut {
 		cut = absCut
 	}
+	// A film released without a year ("PAW.Patrol.Jet.to.the.Rescue.1080p.NORDiC.WEB-DL…"):
+	// nothing above ended the title, so it ran on through every tag and could never match
+	// the film it was grabbed for. End it at the first resolution, source or codec token
+	// instead; trailing release tags left before it ("…Rescue.NORDiC.1080p") are trimmed
+	// by trimTitleTags. Only for names with no year, season or absolute marker at all.
+	qualityCut := false
+	if cut == len(name) && r.Year == 0 && !r.IsTV() {
+		if q := reMovieQualityStart.FindStringIndex(name[titleStart:]); q != nil && q[0] > 0 {
+			cut = titleStart + q[0]
+			qualityCut = true
+		}
+	}
 	if titleStart > cut {
 		titleStart = 0
 	}
@@ -470,6 +485,9 @@ func Parse(name string) Release {
 	// pack evidence; otherwise "The.Box.2009" would lose "Box" to the list.
 	packCtx := r.Complete || len(r.Seasons) > 0 || contains(lc, "complete") || contains(lc, "collection")
 	r.Title = cleanTitle(name[titleStart:cut], packCtx)
+	if qualityCut {
+		r.Title = trimTitleTags(r.Title)
+	}
 
 	// Year-titled shows ("1923", "1984"): when the only year token opens the name,
 	// the year-cut lands at position 0 and leaves no title — the token IS the
@@ -508,7 +526,7 @@ func Parse(name string) Release {
 	// film Cam on WEB. When a year or season marker ends the title, only the tags after it
 	// decide. A name with no marker keeps the whole-name reading — there's no telling its
 	// title from its tags, so "Movie.HDCAM.x264" stays a cam.
-	if r.Source == SourceCAM && cut < len(name) {
+	if r.Source == SourceCAM && cut < len(name) && !qualityCut {
 		tail := name[cut:]
 		if loc := reYear.FindStringIndex(tail); loc != nil && loc[0] == 0 {
 			tail = tail[loc[1]:]
@@ -1004,6 +1022,35 @@ func detectEdition(lc string) string {
 // reQualityStart marks where a release's technical tokens begin, so anything before them
 // (after the episode marker) is the episode title.
 var reQualityStart = regexp.MustCompile(`(?i)\b(\d{3,4}[pi]|web[-. ]?dl|webrip|bluray|blu-ray|hdtv|remux|dvdrip|x26[45]|h[-. ]?26[45]|hevc|avc|xvid|aac|ac3|eac3|dts|ddp|dd\+|truehd|atmos|10bit|8bit|amzn|nf|hmax|dsnp|atvp|repack|proper|internal|complete)\b`)
+
+// reMovieQualityStart ends the title of a film released without a year: the first
+// resolution, source or codec token. Deliberately narrower than reQualityStart — words
+// such as "proper", "internal" or "complete" can sit inside a real title, while a
+// resolution, a source or a codec can't.
+var reMovieQualityStart = regexp.MustCompile(`(?i)\b(\d{3,4}[pi]|web[-. ]?dl|webrip|bluray|blu-ray|bdrip|brrip|hdtv|remux|dvdrip|x26[45]|h[-. ]?26[45]|hevc|xvid)\b`)
+
+// titleTailTags are release tags that sit between a year-less film's title and its
+// resolution ("…Rescue.NORDiC.1080p", "…Movie.PROPER.720p"). trimTitleTags drops them
+// from the END of such a title only, never the last word, so a title word in the middle
+// ("The French Dispatch") is never touched.
+var titleTailTags = map[string]bool{
+	"nordic": true, "multi": true, "multisubs": true, "dual": true, "dl": true, "subbed": true,
+	"dubbed": true, "swesub": true, "dksubs": true, "nosubs": true, "finsub": true, "hc": true,
+	"proper": true, "repack": true, "internal": true, "limited": true, "uhd": true, "hdr": true,
+	"hdr10": true, "dv": true, "imax": true, "extended": true, "uncut": true, "unrated": true,
+	"cam": true, "hdcam": true, "camrip": true, "ts": true, "hdts": true, "telesync": true,
+	"tc": true, "telecine": true, "screener": true, "scr": true, "dvdscr": true,
+}
+
+// trimTitleTags drops titleTailTags from the end of a year-less film's title (see
+// reMovieQualityStart), keeping at least one word.
+func trimTitleTags(title string) string {
+	fields := strings.Fields(title)
+	for len(fields) > 1 && titleTailTags[strings.ToLower(fields[len(fields)-1])] {
+		fields = fields[:len(fields)-1]
+	}
+	return strings.Join(fields, " ")
+}
 
 // reEpisodeQualityStart is reQualityStart without "complete" — see EpisodeTitleFrom.
 var reEpisodeQualityStart = regexp.MustCompile(`(?i)\b(\d{3,4}[pi]|web[-. ]?dl|webrip|bluray|blu-ray|hdtv|remux|dvdrip|x26[45]|h[-. ]?26[45]|hevc|avc|xvid|aac|ac3|eac3|dts|ddp|dd\+|truehd|atmos|10bit|8bit|amzn|nf|hmax|dsnp|atvp|repack|proper|internal)\b`)

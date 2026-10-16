@@ -347,7 +347,9 @@ POST /api/v1/downloadclients/{id}/categories staff -
 POST /api/v1/downloadclients/{id}/test staff -
 POST /api/v1/grab staff -
 POST /api/v1/grab/preview staff -
+POST /api/v1/import/arr/preview admin -
 POST /api/v1/import/arr/roots admin -
+POST /api/v1/import/arr/run admin -
 POST /api/v1/imports/{hash}/retry staff -
 POST /api/v1/indexers staff -
 POST /api/v1/indexers/prowlarr/sync staff -
@@ -437,6 +439,7 @@ POST /api/v1/requests/bulk staff ext
 POST /api/v1/requests/import/overseerr admin ext
 POST /api/v1/requests/{id}/approve staff ext
 POST /api/v1/requests/{id}/decline staff ext
+POST /api/v1/requests/{id}/preview staff ext
 POST /api/v1/reviews/bulk staff -
 POST /api/v1/reviews/{id}/dismiss staff -
 POST /api/v1/reviews/{id}/import staff -

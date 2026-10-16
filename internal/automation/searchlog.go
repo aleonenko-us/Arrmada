@@ -765,6 +765,7 @@ var reasonLabels = map[string]string{
 	quality.RejectMissingRequired: "missing a required format",
 	quality.RejectMinFormatScore:  "below your minimum format score",
 	quality.RejectUnwanted:        "unwanted (disc images, 3D, extras…)",
+	quality.RejectMissingLanguage: "missing an audio language you require",
 }
 
 // Summary is an outcome as one line for a log or a history entry: "37 releases · 22 for

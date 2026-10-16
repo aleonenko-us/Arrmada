@@ -65,6 +65,10 @@ const (
 	// ClassLibraryMove is a title moving to another library folder: a copy onto another
 	// drive can run for hours, so it has its own lane rather than holding up imports.
 	ClassLibraryMove = "library-move"
+	// ClassRequestPreview is a request's release preview checked on demand. It may wait
+	// for a slot in the previews' per-minute budget, so it waits in a lane of its own
+	// rather than holding one other work needs.
+	ClassRequestPreview = "request-preview"
 )
 
 var defaultLimits = map[string]int{
@@ -75,6 +79,7 @@ var defaultLimits = map[string]int{
 	ClassTask:           4,
 	ClassOther:          2,
 	ClassLibraryMove:    1,
+	ClassRequestPreview: 1,
 }
 
 // Errors.
@@ -101,6 +106,10 @@ type Spec struct {
 	// shut down while queued). Work that claims something before submitting (the books
 	// sweep's "running" flag) gives the claim back here.
 	Abandon func()
+	// Finished, when set, is called once the job has ended however it ended — after it
+	// has left Active and its final state is recorded and published — so whatever it
+	// tells (a page that shows what's running) reads it as over.
+	Finished func(status string)
 }
 
 // Job is one row of the jobs table.
@@ -412,6 +421,9 @@ func (r *Runner) finish(e *entry, ctx context.Context, result any, err error) {
 	// event being out (the result is already stored, so a listener that reads it back finds
 	// the job finished).
 	r.publish(e, status, pct, msg, errText)
+	if e.spec.Finished != nil {
+		_ = safego.Call(r.log, "job finished "+e.spec.Kind, func() error { e.spec.Finished(status); return nil })
+	}
 	close(e.done)
 }
 

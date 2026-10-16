@@ -112,6 +112,33 @@ test.describe("desktop seasons", () => {
     await expect(page.getByRole("button", { name: "Grab again" })).toBeVisible();
   });
 
+  test("episodes show their files' audio languages, and the season sums them up", async ({ page }) => {
+    await page.goto("/series/1?season=1");
+    const cards = page.getByTestId("episode-card");
+    await expect(cards).toHaveCount(10);
+    // Each code carries its language in words; the fit is a mark and a sentence, never colour alone.
+    const e1 = cards.first().getByRole("group", { name: /^Audio: English, German\. Languages fit/ });
+    await expect(e1).toBeVisible();
+    await expect(e1).toHaveAttribute("data-fit", "good");
+    await expect(e1).toContainText("EN");
+    await expect(e1.locator("[title='German']")).toHaveText("DE");
+    const e9 = cards.nth(8).getByTestId("audio-langs");
+    await expect(e9).toHaveAttribute("data-fit", "partial");
+    await expect(e9).toHaveAttribute("aria-label", /Missing a preferred language: No English audio/);
+    await expect(cards.nth(9).locator("[title^='German — detected']")).toHaveText("DE");
+    // The season line: languages over its analysed files, and the one that misses.
+    const summary = page.getByTestId("season-audio");
+    await expect(summary).toContainText("DE 10/10 · EN 9/10");
+    await expect(summary).toHaveAttribute("aria-label", /1 miss a preferred language/);
+    if (process.env.LANG_SHOTS) await page.getByRole("region", { name: "Season 1" }).screenshot({ path: `${process.env.LANG_SHOTS}/series-episodes.png` });
+
+    // A season whose files haven't been analysed shows nothing.
+    await page.getByRole("button", { name: /^Season 2/ }).click();
+    await expect(page.getByTestId("episode-card").first()).toBeVisible();
+    await expect(page.getByTestId("audio-langs")).toHaveCount(0);
+    await expect(page.getByTestId("season-audio")).toHaveCount(0);
+  });
+
   test("the season is kept in the address, and Specials have no Grab missing", async ({ page }) => {
     await page.goto("/series/1");
     await page.getByRole("button", { name: /^Season 3/ }).click();

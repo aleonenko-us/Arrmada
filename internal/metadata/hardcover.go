@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // Hardcover is the Books module's preferred metadata source once the user has pasted an
@@ -136,7 +138,7 @@ func (h *Hardcover) queryOnce(ctx context.Context, q string, vars map[string]any
 	}
 	req.Header.Set("Authorization", token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Arrmada (self-hosted media manager)")
+	req.Header.Set("User-Agent", httpua.UserAgent())
 	resp, err := h.http.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("hardcover: %w", err)

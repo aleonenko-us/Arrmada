@@ -243,7 +243,7 @@ func TestTorznabRetryAfter(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	t.Cleanup(srv.Close)
-	_, err := NewTorznabSearcher().get(context.Background(), srv.URL+"/api?t=caps")
+	_, err := NewTorznabSearcher().get(context.Background(), Indexer{Name: "T"}, srv.URL+"/api?t=caps")
 	var he *HTTPStatusError
 	if !errors.As(err, &he) || he.Code != 429 || he.RetryAfter != 600*time.Second {
 		t.Fatalf("got %#v", err)

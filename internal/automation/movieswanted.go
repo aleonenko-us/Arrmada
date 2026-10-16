@@ -42,7 +42,7 @@ func (c *Coordinator) MoviesCutoffUnmet(ctx context.Context) ([]MovieCutoff, err
 			return sp
 		}
 		var out *quality.StoredProfile
-		if sp, err := c.quality.GetStored(ctx, ref); err == nil && sp.Ideal != nil && !sp.Ideal.Empty() {
+		if sp, err := c.quality.GetStored(ctx, ref); err == nil && sp.Ideal != nil && !sp.Ideal.FitEmpty() {
 			out = &sp
 		}
 		stored[ref] = out

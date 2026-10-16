@@ -295,6 +295,11 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
             {age && <span title={rel.published_at ? `Posted ${new Date(rel.published_at).toLocaleString()}` : undefined}>{age} old</span>}
             <span>{rel.indexer}</span>
+            {rel.audio_langs?.length ? (
+              <span data-testid="release-langs" title={`Audio languages the name carries${rel.audio_langs_note ? ` — ${rel.audio_langs_note}` : ""}`}>
+                audio {rel.audio_langs.map((c) => c.toUpperCase()).join("·")}{rel.audio_langs_note ? "*" : ""}
+              </span>
+            ) : null}
             {rel.info_url && <a href={rel.info_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline" style={{ color: "var(--accent-text)" }}>view ↗</a>}
           </div>
           {!rel.eligible && rel.reject_reason && <div className="mt-1.5 text-xs" style={{ color: "var(--avoid-text)" }}>{rel.reject_reason}</div>}

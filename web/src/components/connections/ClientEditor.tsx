@@ -331,6 +331,9 @@ function UsenetPanel({ client, onChanged }: { client: DownloadClient; onChanged?
           ))}
         </ul>
       )}
+      <p className="m-0 text-xs text-ink-faint">
+        Arrmada downloads each NZB itself and hands SABnzbd the file, so your indexers&rsquo; keys stay out of SABnzbd&rsquo;s history. When an indexer blocks Arrmada but lets SABnzbd in (some only allow certain apps), SABnzbd is given the NZB link to fetch instead, and that link, with the indexer&rsquo;s key in it, stays in SABnzbd&rsquo;s history.
+      </p>
     </section>
   );
 }

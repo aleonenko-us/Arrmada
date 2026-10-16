@@ -25,6 +25,7 @@ const get = (path: string | RegExp, body: unknown): MockRoute => ({ method: "GET
 // routes is the fake backend: what each endpoint answers for this persona. Order
 // matters only where a regex could shadow a later exact path.
 export function routes(p: PersonaInfo): MockRoute[] {
+  const staff = p.user.role === "admin" || p.user.role === "manager";
   return [
     // Boot and shell
     get("/api/v1/status", sys.status(p)),
@@ -70,7 +71,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/me/jellyfin", { linked: false, can_unlink: false, available: false, quickconnect: false }),
 
     // Discover (requester and staff)
-    { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url) },
+    // Staff see what approving a waiting request would grab; a requester never does.
+    { method: "GET", path: "/api/v1/requests", respond: ({ url }) => discover.requestList(url, staff) },
     // Answered (not left unmocked) so a spec can assert on it: the tap spec checks
     // this is never called.
     { method: "POST", path: "/api/v1/requests", respond: ({ body }) => discover.created(p, body) },
@@ -79,7 +81,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/issues", { issues: [], total: 0, counts: { open: 0, closed: 0 } }),
     { method: "POST", path: "/api/v1/issues", respond: ({ body }) => ({ issue: { id: 1, status: "open", reporter_count: 1, ...(body as object) }, joined: false }) },
     get(/^\/api\/v1\/issues\/episodes\/\d+$/, { seasons: [{ season: 1, episodes: [{ episode: 3, title: "Low Water" }, { episode: 4, title: "Fog Bank" }] }] }),
-    { method: "GET", path: /^\/api\/v1\/requests\/(\d+)$/, respond: ({ params }) => discover.requestDetail(Number(params[0])) },
+    { method: "GET", path: /^\/api\/v1\/requests\/(\d+)$/, respond: ({ params }) => discover.requestDetail(Number(params[0]), staff) },
+    { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/preview$/, status: 202, body: { job_id: discover.previewJob.id } },
+    get(`/api/v1/jobs/${discover.previewJob.id}`, discover.previewJob),
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/approve$/, respond: ({ params, body }) => discover.approved(Number(params[0]), body) },
     { method: "POST", path: /^\/api\/v1\/requests\/(\d+)\/decline$/, body: { status: "declined" } },
     get("/api/v1/discover/trending", discover.items),
@@ -139,6 +143,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/apikeys", media.apiKeys),
     { method: "GET", path: "/api/v1/history", respond: ({ url }) => (url.searchParams.get("view") === "imports" ? media.importedFiles : media.historyPage(url)) },
     get("/api/v1/reviews", media.reviews),
+    { method: "POST", path: /^\/api\/v1\/reviews\/(\d+)\/(import|map)$/, status: 202, body: media.reviewImportStarted },
+    get(`/api/v1/jobs/${media.reviewImportJob.id}`, media.reviewImportJob),
     // Activity → Needs you's actions.
     { method: "POST", path: /^\/api\/v1\/imports\/([0-9a-f]+)\/retry$/, body: { status: "retrying" } },
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-f]+)\/failover$/, status: 202, body: { status: "searching", job_id: sys.failOverJob.id, existing: false } },
@@ -148,7 +154,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // Finished torrents Arrmada didn't grab (ACQ-31).
     get("/api/v1/downloads/unmanaged", sys.unmanaged),
     { method: "GET", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/targets$/, respond: ({ url }) => sys.unmanagedTargets(url) },
-    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, body: { status: "imported" } },
+    { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/import$/, status: 202, body: sys.unmanagedImportStarted },
+    get(`/api/v1/jobs/${sys.unmanagedImportJob.id}`, sys.unmanagedImportJob),
     { method: "POST", path: /^\/api\/v1\/queue\/([0-9a-z]+)\/ignore$/, body: { status: "ignored" } },
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),
@@ -240,6 +247,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/system/library", sys.libraryPaths),
     get("/api/v1/library/folders", sys.libraryFolders),
     { method: "GET", path: "/api/v1/library/folders/suggest", body: { folder_id: 0 } },
+    { method: "POST", path: "/api/v1/import/arr/preview", body: sys.arrPreview },
+    { method: "POST", path: "/api/v1/import/arr/run", status: 202, body: { status: "started", name: "Radarr 4K", job_id: sys.arrImportJob.id, existing: false } },
+    get(`/api/v1/jobs/${sys.arrImportJob.id}`, sys.arrImportJob),
     { method: "GET", path: "/api/v1/system/library/check", respond: ({ url }) => sys.folderCheck(url.searchParams.get("path") ?? "") },
     get("/api/v1/logs", sys.logs),
     get("/api/v1/logs/level", sys.logLevel),

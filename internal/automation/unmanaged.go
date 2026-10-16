@@ -45,23 +45,50 @@ func (c *Coordinator) GrabbedHashes(ctx context.Context) (map[string]bool, error
 // then recorded as imported, so the queue shows it in the library and the import sweeps
 // leave it alone. No grab is created: seed cleanup still never touches a torrent it
 // didn't grab.
+//
+// It checks everything CheckUnmanagedImport does first (it runs as a job, queued behind
+// other imports). A copy across drives reports its bytes to ctx's ImportProgress, and a
+// failure past the checks is written to the item's history.
 func (c *Coordinator) ImportUnmanaged(ctx context.Context, it download.Item, contentPath, kind string, targetID int64) error {
-	switch kind {
-	case "movie", "series", "book", "music":
-	default:
-		return fmt.Errorf("%w: %q isn't a kind of library item", ErrWrongTargetKind, kind)
+	if _, err := c.CheckUnmanagedImport(ctx, it, contentPath, kind, targetID); err != nil {
+		return err
 	}
-	if targetID <= 0 {
-		return needsTargetError{kindLabel(kind)}
-	}
-	if c.hashAlreadyImported(ctx, it.Hash) {
-		return ErrAlreadyImported
-	}
-	r := Review{Hash: it.Hash, Name: it.Name, ContentPath: contentPath, MediaType: kind, SizeBytes: it.SizeBytes}
-	if err := c.importContentInto(ctx, r, targetID, "Needs you"); err != nil {
+	r := unmanagedReview(it, contentPath, kind)
+	if err := c.importContentInto(withCopyAccounting(ctx, r), r, targetID, "Needs you"); err != nil {
+		c.importFailed(ctx, r, targetID, "Needs you", err)
 		return err
 	}
 	c.recordImportedHash(ctx, r.Hash, r.Name, r.SizeBytes)
 	c.log.Info("imported a download Arrmada didn't grab", "kind", kind, "id", targetID, "release", it.Name)
 	return nil
+}
+
+// CheckUnmanagedImport answers, before anything is touched, whether a torrent Arrmada
+// didn't grab can be imported into targetID of kind: a real kind, a target, not already
+// imported, its files still on disk and the kind's module on. It returns the target's
+// title (empty if unreadable). Each refusal is the error ImportUnmanaged gives.
+func (c *Coordinator) CheckUnmanagedImport(ctx context.Context, it download.Item, contentPath, kind string, targetID int64) (string, error) {
+	switch kind {
+	case "movie", "series", "book", "music":
+	default:
+		return "", fmt.Errorf("%w: %q isn't a kind of library item", ErrWrongTargetKind, kind)
+	}
+	if targetID <= 0 {
+		return "", needsTargetError{kindLabel(kind)}
+	}
+	if c.hashAlreadyImported(ctx, it.Hash) {
+		return "", ErrAlreadyImported
+	}
+	if err := checkDownloadThere(unmanagedReview(it, contentPath, kind)); err != nil {
+		return "", err
+	}
+	if !c.importerWired(kind) {
+		return "", moduleOffError{reviewModuleLabel[kind]}
+	}
+	return c.itemTitle(ctx, kind, targetID), nil
+}
+
+// unmanagedReview is a torrent Arrmada didn't grab in the shape the per-kind import takes.
+func unmanagedReview(it download.Item, contentPath, kind string) Review {
+	return Review{Hash: it.Hash, Name: it.Name, ContentPath: contentPath, MediaType: kind, SizeBytes: it.SizeBytes}
 }

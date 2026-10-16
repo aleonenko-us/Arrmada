@@ -1,6 +1,6 @@
 import type {
   APIKeyStatus, ActivityFeed, BlocklistRow, Book, BookSweepStatus, BookUpgradeStatus, CalendarItem, DashboardData, DeletePreview, DownloadClientList, FitCounts,
-  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
+  FitItem, FormatInfo, Movie, MovieBulkUpdateReply, MovieFile, MovieVersion, MovieDeletePreview, RecycleMode, ReleaseList, SeriesFitSummary, HistoryEvent, HistoryPage, ImportRecord, ImportReview, Indexer, Job, MovieDownloadRow, MovieSummary, MovieWantedRow, MoviesMissing, MyBook, MyRequest, QualityProfileInfo, Series, WantedLists,
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import type { JellyfinConfig, JellyfinSave, JellyfinTestResult } from "../../src/lib/jellyfinApi";
@@ -79,11 +79,22 @@ export const movies: { movies: MovieSummary[]; metadata_available: boolean; clie
 export function movieDetail(id: number): Movie | null {
   const m = movies.movies.find((x) => x.id === id);
   if (!m) return null;
+  // The Cartographer's file is analysed: its audio badges (issue #12) — English and German,
+  // the German one heard by the AI on an untagged track — fit its profile's language rules.
+  const file: MovieFile | undefined = m.id === 1 ? {
+    path: "/media/movies/The Cartographer (2023)/The Cartographer (2023) - 1080p WEB-DL.mkv",
+    filename: "The Cartographer (2023) - 1080p WEB-DL.mkv", size_bytes: 9_000_000_000, quality: "1080p WEB-DL",
+    codec: "x264", audio: ["DTS 5.1"], probed: true, missing: false,
+  } : undefined;
+  const audio: Pick<MovieVersion, "audio_langs" | "audio_lang_fit"> = m.id === 1 ? {
+    audio_langs: [{ code: "en", name: "English" }, { code: "de", name: "German", detected: true }],
+    audio_lang_fit: { status: "good", note: "Has German audio, as this profile asks" },
+  } : {};
   return {
     id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
     quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
-    overview: "A fixture film.", download: m.download,
-    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file }],
+    overview: "A fixture film.", download: m.download, file, movie_file_path: file?.path,
+    versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file, file, file_path: file?.path, ...audio }],
     acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
   };
 }
@@ -367,6 +378,14 @@ export const reviews: { reviews: ImportReview[] } = {
     },
   ],
 };
+// Import anyway / Choose different… / Map files… start a review.import job (202); this is
+// how that job ends by default. Specs swap the job's answer for a running or failed one.
+export const reviewImportJob: Job = {
+  id: 912, kind: "review.import", target: "review:1", trigger: "user:1", status: "succeeded", progress: 1,
+  message: "Imported into Fixture Movie.", error: "",
+  created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
+};
+export const reviewImportStarted = { status: "importing", job_id: reviewImportJob.id, existing: false, title: "Fixture Movie" };
 export const blocklist: { items: BlocklistRow[]; total: number } = {
   items: [
     { id: 2, type: "global", item_id: 0, item_title: "", title: "Totally.Legit.2024.1080p.exe", reason: "rejected in review", created_at: "2026-10-01 12:00:00" },

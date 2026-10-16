@@ -882,6 +882,35 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, seriesID int64) {
 		`UPDATE series SET last_search_at = datetime('now'), search_misses = 0 WHERE id = ?`, seriesID)
 }
 
+// SetSearchPaced marks (or unmarks) a show as added in bulk: the missing sweep searches
+// only a few marked shows per run (migration 0324).
+func (r *Repo) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE series SET search_paced = ? WHERE id = ?`, v, seriesID)
+	return err
+}
+
+// PacedSearchIDs is every show still marked as added in bulk, in one query.
+func (r *Repo) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM series WHERE search_paced = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // SearchCursors returns where the last sweep stopped in the season fan-out and in the
 // anime absolute-number follow-up, so the next one resumes instead of restarting at the
 // lowest season and starving everything past the query budget.
@@ -1205,6 +1234,21 @@ func (r *Repo) SetEpisodeFile(ctx context.Context, seriesID int64, season, episo
 	return err
 }
 
+// SetEpisodeFileIfEmpty records path as an episode's file only when the episode has none:
+// false (no error) when it already had one, or doesn't exist. Adopting files from another
+// app must never replace one Arrmada recorded meanwhile.
+func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ?
+		  WHERE series_id = ? AND season_number = ? AND episode_number = ? AND has_file = 0`,
+		path, size, seriesID, season, episode)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // RepointEpisodeFile moves EVERY episode currently pointing at oldPath to newPath.
 //
 // A single file can serve several episodes — a double-length "S03E01E02" is one file with
@@ -1294,6 +1338,9 @@ type LibraryEpisodeFile struct {
 	// What the file was before Convert first shrank it ("" / 0 when never converted).
 	ConvertedFromRelease string
 	ConvertedFromSize    int64
+	// OrigLanguage is the show's original language (TMDB), for a profile's Audio language
+	// rules; "" when unknown.
+	OrigLanguage string
 }
 
 // LibraryEpisodeFiles lists every episode that has a file, across all shows, in one query —
@@ -1302,7 +1349,8 @@ func (r *Repo) LibraryEpisodeFiles(ctx context.Context) ([]LibraryEpisodeFile, e
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT e.id, e.series_id, s.title, s.quality_profile, s.monitored, e.season_number, e.episode_number,
 		        e.monitored, e.file_path, e.size_bytes, e.source_release, e.runtime, e.upgrade_hold,
-		        e.converted_from_release, e.converted_from_size
+		        e.converted_from_release, e.converted_from_size,
+		        COALESCE(CASE WHEN json_valid(s.extra_json) THEN json_extract(s.extra_json, '$.original_language') END, '')
 		   FROM episodes e JOIN series s ON s.id = e.series_id
 		  WHERE e.has_file = 1
 		  ORDER BY s.title, e.season_number, e.episode_number`)
@@ -1316,7 +1364,7 @@ func (r *Repo) LibraryEpisodeFiles(ctx context.Context) ([]LibraryEpisodeFile, e
 		var smon, emon, hold int
 		if err := rows.Scan(&f.EpisodeID, &f.SeriesID, &f.SeriesTitle, &f.SeriesProfile, &smon, &f.Season, &f.Episode,
 			&emon, &f.Path, &f.SizeBytes, &f.SourceRelease, &f.RuntimeMin, &hold,
-			&f.ConvertedFromRelease, &f.ConvertedFromSize); err != nil {
+			&f.ConvertedFromRelease, &f.ConvertedFromSize, &f.OrigLanguage); err != nil {
 			return nil, err
 		}
 		f.SeriesMonitored, f.Monitored, f.Held = smon != 0, emon != 0, hold != 0

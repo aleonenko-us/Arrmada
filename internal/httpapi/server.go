@@ -172,6 +172,9 @@ type Deps struct {
 	// FolderMover moves a title's files to another folder of its library (a job). nil =
 	// "Move to folder" answers 503.
 	FolderMover *libfolders.Mover
+	// SeriesByTVDB finds a show's TMDB id from its TVDB id (TMDB's /find), for bringing a
+	// Sonarr library over. nil = Sonarr shows without a TMDB id can't be matched.
+	SeriesByTVDB func(ctx context.Context, tvdbID int) (int, error)
 }
 
 type api struct {
@@ -187,6 +190,8 @@ type api struct {
 	wanted wantedCache
 	// kindle counts each person's Send to Kindle emails today (kindle.go).
 	kindle kindleQuota
+	// handImports remembers what each running Needs-you import was asked to do (handimport.go).
+	handImports handImports
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
@@ -259,6 +264,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleRemoveLibraryFolder))
 	// Import & migrate: a Radarr's or Sonarr's root folders, matched to Arrmada's (reads only).
 	mux.HandleFunc("POST /api/v1/import/arr/roots", a.requireRole(auth.RoleAdmin, a.handleArrRoots))
+	// …and their titles: what an import would do (reads only), then the import (a job).
+	mux.HandleFunc("POST /api/v1/import/arr/preview", a.requireRole(auth.RoleAdmin, a.handleArrPreview))
+	mux.HandleFunc("POST /api/v1/import/arr/run", a.requireRole(auth.RoleAdmin, a.handleArrImport))
 	// System → Status: build, database size, last backup and drive space (CFG-26).
 	mux.HandleFunc("GET /api/v1/system/status", a.requireRole(auth.RoleAdmin, a.handleSystemStatus))
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).
@@ -602,6 +610,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/requests/{id}/subscription", a.requireRole(auth.RoleRequester, a.handleUnsubscribeRequest).ext())
 	mux.HandleFunc("POST /api/v1/requests/{id}/approve", a.requireRole(auth.RoleManager, a.handleApproveRequest).ext())
 	mux.HandleFunc("POST /api/v1/requests/{id}/decline", a.requireRole(auth.RoleManager, a.handleDeclineRequest).ext())
+	// What approving a pending request would grab, checked again now (staff only, a job).
+	mux.HandleFunc("POST /api/v1/requests/{id}/preview", a.requireRole(auth.RoleManager, a.handleRequestPreview).ext())
 	mux.HandleFunc("POST /api/v1/requests/bulk", a.requireRole(auth.RoleManager, a.handleBulkRequests).ext())
 	// Owner-withdraw is allowed (own request, still pending), so the route admits
 	// requesters; the handler enforces ownership vs manager.

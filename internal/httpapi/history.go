@@ -41,6 +41,7 @@ const (
 // eventCategories maps each event name the services write to its category.
 var eventCategories = map[string]string{
 	"grabbed":         evGrabbed,
+	"handoff":         evGrabbed, // SABnzbd fetched the NZB the indexer blocked Arrmada from
 	"imported":        evImported,
 	"upgraded":        evUpgraded,
 	"failed":          evFailed,

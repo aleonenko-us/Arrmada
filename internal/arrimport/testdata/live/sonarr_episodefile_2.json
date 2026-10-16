@@ -1,0 +1,52 @@
+[
+ {
+  "seriesId": 2,
+  "seasonNumber": 1,
+  "relativePath": "Season 1/Frieren - S01E01 - The Journey End WEBDL-1080p.mkv",
+  "path": "/media/anime/Frieren/Season 1/Frieren - S01E01 - The Journey End WEBDL-1080p.mkv",
+  "size": 526597,
+  "dateAdded": "2026-10-16T08:44:22Z",
+  "languages": [
+   {
+    "id": 8,
+    "name": "Japanese"
+   }
+  ],
+  "quality": {
+   "quality": {
+    "id": 8,
+    "name": "WEBDL-480p",
+    "source": "web",
+    "resolution": 480
+   },
+   "revision": {
+    "version": 1,
+    "real": 0,
+    "isRepack": false
+   }
+  },
+  "customFormats": [],
+  "customFormatScore": 0,
+  "indexerFlags": 0,
+  "releaseType": "singleEpisode",
+  "mediaInfo": {
+   "audioBitrate": 0,
+   "audioChannels": 1,
+   "audioCodec": "AAC",
+   "audioLanguages": "",
+   "audioStreamCount": 1,
+   "videoBitDepth": 8,
+   "videoBitrate": 0,
+   "videoCodec": "x264",
+   "videoFps": 1,
+   "videoDynamicRange": "",
+   "videoDynamicRangeType": "",
+   "resolution": "64x48",
+   "runTime": "6:40",
+   "scanType": "Progressive",
+   "subtitles": ""
+  },
+  "qualityCutoffNotMet": true,
+  "id": 3
+ }
+]

@@ -5,17 +5,18 @@ import { Field } from "../../ui/Field";
 
 import { importApi } from "../../lib/importApi";
 import { AudiobookshelfImport } from "./AudiobookshelfImport";
-import { ArrFoldersImport } from "./ArrFoldersImport";
+import { ArrImport } from "./ArrImport";
 import { TautulliImport } from "./TautulliImport";
 
 // Settings → Import & migrate (admin only): every one-time migration from the apps Arrmada
-// replaces, in one place — request history from Overseerr, watch history from Tautulli and
-// listening places from Audiobookshelf. Each is safe to run again.
+// replaces, in one place — the library from Radarr and Sonarr, request history from
+// Overseerr, watch history from Tautulli and listening places from Audiobookshelf. Each is
+// safe to run again. The library comes first: requests then find their titles already here.
 export function ImportSettings() {
   return (
     <div className="flex flex-col gap-6">
+      <ArrImport />
       <OverseerrImport />
-      <ArrFoldersImport />
       <TautulliImport />
       <AudiobookshelfImport />
     </div>

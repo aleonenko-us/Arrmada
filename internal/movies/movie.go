@@ -6,6 +6,8 @@ package movies
 import (
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/langs"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -206,6 +208,13 @@ type MovieExtra struct {
 	OriginalTitle string   `json:"original_title,omitempty"`
 	AltTitles     []string `json:"alt_titles,omitempty"`
 	TitlesRead    bool     `json:"titles_read,omitempty"`
+	// LocalTitles are the film's translated titles in the languages Settings → Library →
+	// "Also match titles in" names, for matching folders and downloads named in the
+	// household's language (localtitles.go). LocalLangs are the languages (ISO 639-1)
+	// they were read for: a language added to the setting is read by the titles backfill,
+	// one taken off simply stops counting.
+	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
+	LocalLangs  []string                   `json:"local_langs,omitempty"`
 }
 
 // CastMember is one billed actor.
@@ -236,6 +245,12 @@ type Version struct {
 	// The track's pre-conversion baseline (see Movie.ConvertedFromRelease).
 	ConvertedFromRelease string `json:"converted_from_release,omitempty"`
 	ConvertedFromSize    int64  `json:"converted_from_size,omitempty"`
+	// AudioLangs are the file's audio languages as the detail page badges them, from the
+	// library index (attached by the HTTP layer on the detail endpoints only; nil while the
+	// file hasn't been analysed). AudioLangFit is how they meet the track's profile's Audio
+	// language rules, nil when it has none.
+	AudioLangs   []langs.AudioLang `json:"audio_langs,omitempty"`
+	AudioLangFit *langs.AudioFit   `json:"audio_lang_fit,omitempty"`
 
 	// missingSince is the default track's stored missing flag (Movie.FileMissingSince), so
 	// the detail page's live stat can set or clear it only when it changes.

@@ -33,6 +33,8 @@ type ImpactFile struct {
 	// it ("" / 0 when never converted), the baseline the sweeps measure an upgrade from.
 	OrigRelease string
 	OrigBytes   int64
+	// OrigLanguage is the title's original language, for the Audio language rules.
+	OrigLanguage string
 }
 
 // current is the file as the sweeps' decisions read it.
@@ -41,6 +43,7 @@ func (f ImpactFile) current() CurrentFile {
 	return CurrentFile{
 		Release: f.Release, SizeGB: float64(f.Bytes) / bytesPerGB, RuntimeMin: f.RuntimeMin,
 		Facts: f.Facts, OrigRelease: f.OrigRelease, OrigSizeGB: float64(f.OrigBytes) / bytesPerGB,
+		OrigLanguage: f.OrigLanguage,
 	}
 }
 

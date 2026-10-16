@@ -227,7 +227,7 @@ func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v bo
 	if len(files) == 0 {
 		return false
 	}
-	bi, err := c.imp.ImportBookEdition(b.Author, v.FolderTitle(b.Title), files)
+	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, v.FolderTitle(b.Title), files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
 		return false

@@ -38,6 +38,10 @@ type CurrentFile struct {
 	// bitrate upgrade over the smaller converted file, and got grabbed and converted again.
 	OrigRelease string
 	OrigSizeGB  float64
+	// OrigLanguage is the title's original language (TMDB), for the profile's Audio
+	// language rules ("Original language", and what an untagged track or name is read as).
+	// "" leaves rules about the original language unapplied.
+	OrigLanguage string
 }
 
 // upgradeBar is what a candidate has to beat to be an upgrade of the file.
@@ -69,6 +73,7 @@ type upgradeBar struct {
 // upgrade is never refused when it arrives. The ranking in effect decides how: the summed
 // score under classic ranking (qualityGain, gainKey), the ordered keys under v2 (v2Gain).
 func (b upgradeBar) gain(trigger string, cand Evaluation) (RankKey, bool) {
+	cand = b.creditable(cand)
 	if b.mode == RankingV2 {
 		return b.v2Gain(trigger, cand)
 	}
@@ -76,6 +81,29 @@ func (b upgradeBar) gain(trigger string, cand Evaluation) (RankKey, bool) {
 		return b.gainKey(cand), true
 	}
 	return "", false
+}
+
+// creditable takes back the language credit cand earns for a language the file may already
+// carry (b.ev.langUnknown: nothing to read on it, or an untagged track that might be it).
+// An upgrade is only ever for a language the file is known to lack, so adding a language
+// rule never re-downloads files whose audio nobody has read.
+func (b upgradeBar) creditable(cand Evaluation) Evaluation {
+	n := 0
+	for _, code := range cand.langPrefCodes {
+		if containsStr(b.ev.langUnknown, code) {
+			n++
+		}
+	}
+	if n == 0 {
+		return cand
+	}
+	s := n * preferScore
+	cand.langPrefs -= n
+	cand.PrefCount -= n
+	cand.TargetScore -= s
+	cand.FormatScore -= s
+	cand.Total -= s
+	return cand
 }
 
 // intoAvoid reports a candidate the profile avoids where the file isn't avoided: never an
@@ -94,6 +122,7 @@ func (b upgradeBar) intoAvoid(cand Evaluation) bool {
 // under classic ranking; under v2, ranked no lower than either on the avoid and quality
 // keys, and a torrent someone is seeding.
 func (b upgradeBar) noWorse(cand Evaluation) bool {
+	cand = b.creditable(cand)
 	if b.mode != RankingV2 {
 		return cand.Total >= b.total
 	}
@@ -164,6 +193,8 @@ func (c CurrentFile) upgradeBar(p Profile, e *Engine) upgradeBar {
 			size = c.SizeGB
 		}
 		oc := NewCandidate(orig, size, 1_000_000)
+		// Read by its name, with the title's language, like any release on offer.
+		oc.ruleLang = strings.TrimSpace(c.OrigLanguage)
 		o := e.Evaluate(p, oc)
 		if o.Total > b.total {
 			b.total = o.Total
@@ -302,8 +333,13 @@ func (c CurrentFile) bitrateMbps() float64 {
 
 // candidate is the file as an engine candidate. Seeders are irrelevant for a file on disk
 // and unknown, so it gets a large value rather than letting a seeder rule reject it.
+//
+// It carries the title's language for the language rules only (ruleLang, not OrigLanguage:
+// the Unwanted pack's foreign-only check has never judged files on disk), and the probed
+// facts, whose audio tracks the language rules read over the name.
 func (c CurrentFile) candidate() Candidate {
-	return Candidate{Name: c.Release, Release: c.release(), SizeGB: c.SizeGB, Seeders: 1_000_000}
+	return Candidate{Name: c.Release, Release: c.release(), SizeGB: c.SizeGB, Seeders: 1_000_000,
+		ruleLang: strings.TrimSpace(c.OrigLanguage), onDisk: true, heard: c.Facts}
 }
 
 // known reports whether there is anything to judge the file by.
@@ -447,7 +483,9 @@ func judge(sp *StoredProfile, p Profile, e *Engine, cur CurrentFile) FileVerdict
 	v.Current = e.Evaluate(p, cur.candidate().WithRuntime(cur.RuntimeMin))
 	v.Eligible = v.Current.Eligible
 	if sp != nil {
-		v.TargetMet = sp.TargetMet(v.Facts)
+		// A preferred or required audio language the file lacks (or only avoided ones)
+		// means it isn't the target yet, whatever its picture and bitrate.
+		v.TargetMet = sp.TargetMet(v.Facts) && !v.Current.langShort
 		v.AtCeiling = v.TargetMet || atCeiling(*sp, p, cur)
 	}
 	return v

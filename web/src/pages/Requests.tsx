@@ -36,6 +36,8 @@ import { Page } from "../ui/Page";
 
 // The Issues tab: problems people reported with titles in the library. Its own chunk.
 const IssuesPanel = lazyPage(() => import("../components/IssuesPanel"), "IssuesPanel");
+// What approving a waiting request would grab: staff only, so its own chunk too.
+const RequestPreviewLine = lazyPage(() => import("../components/RequestPreview"), "RequestPreviewLine");
 
 type Tab = "needs" | "active" | "ready" | "declined" | "issues";
 const TAB_SECTION: Record<Exclude<Tab, "issues">, RequestSection> = { needs: "needs_approval", active: "in_progress", ready: "ready", declined: "declined" };
@@ -360,6 +362,7 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
               {staff && decisionLine(rq) ? ` · ${decisionLine(rq)}` : ""}
             </div>
             {staff && rq.rerequest ? <div className="mt-1"><ReRequestFlag rq={rq} /></div> : null}
+            {staff && pending && rq.preview?.result && <Suspense fallback={null}><RequestPreviewLine preview={rq.preview} /></Suspense>}
             {rq.note && (staff || own) && <div className="mt-1 line-clamp-1 text-sm italic text-ink-dim">“{rq.note}”</div>}
           </div>
         </button>

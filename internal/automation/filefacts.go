@@ -57,6 +57,8 @@ func (c *Coordinator) currentMovieFile(ctx context.Context, m movies.Movie, v mo
 		Facts:       c.factsFor(ctx, v.FilePath, size),
 		OrigRelease: v.ConvertedFromRelease,
 		OrigSizeGB:  gbOf(v.ConvertedFromSize),
+		// For the profile's Audio language rules ("Original language", untagged audio).
+		OrigLanguage: movieOrigLanguage(m),
 	}
 }
 
@@ -75,15 +77,15 @@ func (c *Coordinator) CurrentMovieFile(ctx context.Context, m movies.Movie) qual
 // it was imported from — never the renamed library file (see upgradeSeries) — its size,
 // the episode length, Convert's probed facts when they still describe the file, and what
 // it was before a conversion.
-func (c *Coordinator) currentEpisodeFile(ctx context.Context, e series.Episode) quality.CurrentFile {
-	return c.episodeFileOf(ctx, series.EpisodeFile{
+func (c *Coordinator) currentEpisodeFile(ctx context.Context, s series.Series, e series.Episode) quality.CurrentFile {
+	return c.episodeFileOf(ctx, s, series.EpisodeFile{
 		Path: e.FilePath, SizeBytes: e.SizeBytes, SourceRelease: e.SourceRelease, RuntimeMin: e.Runtime,
 		ConvertedFromRelease: e.ConvertedFromRelease, ConvertedFromSize: e.ConvertedFromSize,
 	})
 }
 
-// episodeFileOf is currentEpisodeFile for an EpisodeFile row.
-func (c *Coordinator) episodeFileOf(ctx context.Context, f series.EpisodeFile) quality.CurrentFile {
+// episodeFileOf is currentEpisodeFile for an EpisodeFile row of show s.
+func (c *Coordinator) episodeFileOf(ctx context.Context, s series.Series, f series.EpisodeFile) quality.CurrentFile {
 	return quality.CurrentFile{
 		Release:     f.SourceRelease,
 		SizeGB:      gbOf(f.SizeBytes),
@@ -91,7 +93,17 @@ func (c *Coordinator) episodeFileOf(ctx context.Context, f series.EpisodeFile) q
 		Facts:       c.factsFor(ctx, f.Path, f.SizeBytes),
 		OrigRelease: f.ConvertedFromRelease,
 		OrigSizeGB:  gbOf(f.ConvertedFromSize),
+		// For the profile's Audio language rules ("Original language", untagged audio).
+		OrigLanguage: seriesOrigLanguage(s),
 	}
+}
+
+// seriesOrigLanguage is TMDB's original language for the show, "" when unknown.
+func seriesOrigLanguage(s series.Series) string {
+	if s.Extra == nil {
+		return ""
+	}
+	return s.Extra.OriginalLanguage
 }
 
 // upgradeBaseline is the "what we already have" release string the upgrade comparison scores

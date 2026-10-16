@@ -65,4 +65,50 @@ test.describe("admin", () => {
     await page.goto("/requests?section=pending");
     await expect(page.getByRole("tab", { name: /Needs approval/ })).toHaveAttribute("aria-selected", "true");
   });
+
+  // What approving would grab, looked up in advance: on the row, and in the sheet with
+  // the reason it ranks first, and Approve & grab takes exactly that release.
+  test("shows the previewed release and approves with it", async ({ page, api }) => {
+    await page.goto("/requests?tab=needs");
+    await expect(page.getByTestId("preview-line")).toHaveText("Would grab 1080p · BluRay · x264 · 11.8 GB");
+    await page.getByRole("button", { name: "Open the request for Saltwind" }).click();
+    const sheet = page.getByRole("dialog", { name: "Saltwind" });
+    const preview = sheet.getByTestId("release-preview");
+    await expect(preview.getByText("Would grab")).toBeVisible();
+    await expect(preview.getByText("Saltwind.2023.1080p.BluRay.x264-FIXTURE")).toBeVisible();
+    await expect(preview.getByText("54 seeders")).toBeVisible();
+    await expect(preview.getByText("TorrentLeech")).toBeVisible();
+    await expect(preview.getByText(/Higher resolution than the others on offer/)).toBeVisible();
+    // Fresh: opening it didn't search again.
+    expect(api.callsTo("POST", "/api/v1/requests/1/preview")).toHaveLength(0);
+    await sheet.getByRole("button", { name: "Approve & grab this" }).click();
+    await expect(page.getByText(/Approved “Saltwind” — grabbing Saltwind\.2023/)).toBeVisible();
+    const calls = api.callsTo("POST", "/api/v1/requests/1/approve");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toMatchObject({ grab_preview: true, preview_checked_at: Math.floor(Date.parse("2026-10-01T09:00:00Z") / 1000) });
+  });
+
+  test("Check again re-runs the preview as a job", async ({ page, api }) => {
+    await page.goto("/requests?tab=needs&id=1");
+    const preview = page.getByRole("dialog", { name: "Saltwind" }).getByTestId("release-preview");
+    await preview.getByRole("button", { name: "Check again" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/requests/1/preview").length).toBe(1);
+    await expect.poll(() => api.callsTo("GET", "/api/v1/jobs/7701").length).toBeGreaterThan(0);
+    await expect(preview.getByText("Would grab")).toBeVisible();
+  });
+});
+
+// A requester's own waiting request never says what Arrmada would grab for it.
+test.describe("requester", () => {
+  test.use({ persona: "requester" });
+
+  test("sees no release preview on their pending request", async ({ page, api }) => {
+    await page.goto("/requests?id=1");
+    const sheet = page.getByRole("dialog", { name: "Saltwind" });
+    await expect(sheet.getByRole("button", { name: "Withdraw" })).toBeVisible();
+    await expect(sheet.getByTestId("release-preview")).toHaveCount(0);
+    await expect(page.getByText("Would grab")).toHaveCount(0);
+    await expect(page.getByTestId("preview-line")).toHaveCount(0);
+    expect(api.callsTo("POST", "/api/v1/requests/1/preview")).toHaveLength(0);
+  });
 });

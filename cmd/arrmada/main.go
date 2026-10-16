@@ -427,6 +427,16 @@ func main() {
 	movieSvc.SetNaming(prefs)
 	movieSvc.SetPrefs(prefs)
 	movieSvc.SetOutbox(box) // an import's file record and its follow-up work land together
+	// Every name a title goes by (the import gate's check of a download grabbed for it), and
+	// the extra languages whose translated titles match library-wide (Settings → Library →
+	// "Also match titles in"; empty by default), read per use so a change needs no restart.
+	titleLangs := func() []string {
+		return settings.TitleLanguageBases(settingsSvc.Get(context.Background(), settings.KeyTitleLanguages, ""))
+	}
+	movieSvc.SetTitlesSource(tmdb)
+	movieSvc.SetTitleLanguages(titleLangs)
+	seriesSvc.SetTitlesSource(tmdb)
+	seriesSvc.SetTitleLanguages(titleLangs)
 	// The Unraid all-in-one image runs its qBittorrent inside this container, and it can be
 	// switched off there: its client follows that switch, before the tuning below reads it.
 	if cfg.AIOQbittorrentURL != "" {
@@ -891,12 +901,20 @@ func main() {
 	})
 	// Movies stored before original and alternative titles were kept read them from TMDB,
 	// one every two seconds, so searches and imports match them without a manual refresh.
+	// The same pass (and the series one after it) reads the translated titles of the extra
+	// title languages for titles not yet read for them; saving new languages runs it again.
 	grp.Go("movies: alt titles backfill", func(ctx context.Context) {
 		n, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
 		if err != nil && ctx.Err() == nil {
 			log.Warn("movies: alternative titles backfill failed", "filled", n, "err", err)
 		} else if n > 0 {
 			log.Info("movies: read alternative titles", "movies", n)
+		}
+		n, err = seriesSvc.BackfillLocalTitles(ctx, 2*time.Second)
+		if err != nil && ctx.Err() == nil {
+			log.Warn("series: translated titles backfill failed", "filled", n, "err", err)
+		} else if n > 0 {
+			log.Info("series: read translated titles", "series", n)
 		}
 	})
 	// Reported problems (Requests → Issues): a requester reports a problem with a title in
@@ -926,6 +944,12 @@ func main() {
 	sched.Register("request-ready-sweep", 10*time.Minute, false, func(ctx context.Context) error {
 		return requestsSvc.SweepReadyRequests(ctx)
 	}, scheduler.Label("Tell requesters their request is ready"), scheduler.Description("Catches requests that became available without an import, and lets the requester know."))
+	// Release previews for requests waiting for approval: a dry-run search of a few queued
+	// requests a minute, so whoever approves one sees what it would grab. Paced inside
+	// (requests/preview.go) so a burst of requests can't flood the indexers.
+	sched.Register("request-previews", time.Minute, false, requestsSvc.RunPreviewQueue,
+		scheduler.Label("Preview what pending requests would grab"),
+		scheduler.Description("Looks up the release each request waiting for approval would download, a few a minute, without grabbing anything."))
 
 	// Subtitles module (Bazarr replacement): grabs external SRT sidecars over the
 	// Movies/Series catalogs via OpenSubtitles.
@@ -971,6 +995,9 @@ func main() {
 	convertSvc.SetHoldRoots(func() []libroots.Root { return roots.Libraries(context.Background()) }, cfg.DataDir)
 	// "Same as Subtitles" for the subtitle tracks Convert keeps reads the Subtitles list.
 	convertSvc.SetSubtitleLangs(subtitlesSvc.Languages)
+	// An untagged audio track is read as the language the subtitle AI heard on it, for the
+	// language badges and the quality profile's Audio language rules (from its cache only).
+	convertSvc.SetDetectedAudio(subtitlesSvc.DetectedAudio)
 	// Upgrade decisions judge a library file by what Convert's analysis found in it, not
 	// only by its release name — the same facts the Library fit bars read.
 	coordinator.SetFileFacts(convertSvc)
@@ -1314,6 +1341,7 @@ func main() {
 	srv := httpapi.New(httpapi.Deps{
 		Folders:      libFolders,
 		FolderMover:  folderMover,
+		SeriesByTVDB: tmdb.SeriesByTVDB, // Sonarr imports: TVDB ids → TMDB
 		Config:       cfg,
 		Log:          modLog(log, "api"),
 		Store:        st,

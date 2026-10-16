@@ -4,6 +4,11 @@
 // platform (indexers, download clients, quality) with Movies.
 package series
 
+import (
+	"github.com/tristenlammi/arrmada/internal/langs"
+	"github.com/tristenlammi/arrmada/internal/metadata"
+)
+
 // Series is a TV show in the library.
 type Series struct {
 	ID        int64  `json:"id"`
@@ -90,6 +95,12 @@ type SeriesExtra struct {
 	// ContentRating is the show's US TV rating ("TV-Y7", "TV-MA"), for the Kids folder
 	// rule. Empty for shows not refreshed since it was stored.
 	ContentRating string `json:"content_rating,omitempty"`
+	// LocalTitles are the show's translated titles in the languages Settings → Library →
+	// "Also match titles in" names, for import routing and scans of folders and downloads
+	// named in the household's language (localtitles.go) — never for searches. LocalLangs
+	// are the languages (ISO 639-1) they were read for.
+	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
+	LocalLangs  []string                   `json:"local_langs,omitempty"`
 }
 
 // IsAnime reports whether the series uses anime (absolute) episode numbering.
@@ -169,6 +180,12 @@ type Episode struct {
 	// Download reflects an in-flight download for this episode (attached by the HTTP
 	// layer from the live queue; nil when nothing is downloading).
 	Download *EpisodeDownload `json:"download,omitempty"`
+	// AudioLangs are the file's audio languages as the series page badges them, from the
+	// library index (attached by the HTTP layer on the detail endpoint only; nil while the
+	// file hasn't been analysed). AudioLangFit is how they meet the show's profile's Audio
+	// language rules, nil when it has none.
+	AudioLangs   []langs.AudioLang `json:"audio_langs,omitempty"`
+	AudioLangFit *langs.AudioFit   `json:"audio_lang_fit,omitempty"`
 }
 
 // EpisodeDownload is a lightweight view of an episode's in-flight download.

@@ -16,6 +16,8 @@ import { watchLinksOf } from "./brand/servers";
 // The folder picker is staff-only and shows only with several library folders: it loads
 // on demand, so a requester's sheet never downloads it.
 const FolderSelect = lazy(() => import("./FolderSelect").then((m) => ({ default: m.FolderSelect })));
+// What approving would grab is staff-only too, and lazy for the same reason.
+const RequestPreviewPanel = lazy(() => import("./RequestPreview").then((m) => ({ default: m.RequestPreviewPanel })));
 
 // RequestSheet is one request, opened from the Discover strip, a row on the Requests page
 // or a notification's ?id= link: who asked and when, their note, where it has got to, and
@@ -56,6 +58,8 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
   // Declining: the reason box is open (the Decline button there is the confirmation).
   const [declining, setDeclining] = useState(startDeclining);
   const [reason, setReason] = useState("");
+  // "Approve & grab this": the preview the approver is looking at, while it applies.
+  const [grab, setGrab] = useState<{ checkedAt: number; title: string } | null>(null);
 
   // The fresh copy: tracking moves on, and a list row may be minutes old.
   useEffect(() => {
@@ -103,11 +107,11 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
   const lib = staff && rq.status === "approved" ? libraryPath(rq) : null;
 
   // act runs one action: a toast on success, the server's message inline on failure.
-  const act = async (key: string, fn: () => Promise<unknown>, ok: string, close: boolean) => {
+  const act = async (key: string, fn: () => Promise<unknown>, ok: string | (() => string), close: boolean) => {
     setBusy(key); setError(null);
     try {
       await fn();
-      toast(ok);
+      toast(typeof ok === "function" ? ok() : ok);
       onChanged();
       // A staff Needs-you count may have moved; nothing is asked where nobody shows it.
       refreshAttention();
@@ -126,6 +130,22 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
       ? api.approveRequest(rq.id, body)
       : (await import("../lib/foldersApi")).foldersApi.approve(rq.id, { ...body, folder_id: folder });
   const approve = () => act("approve", () => approveWith({ quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}) }), `Approved “${rq.title}”${keep ? ` ${formatSeasons(keep)}` : ""} — searching now`, false);
+  // Grabs the previewed release when it can still be had; the answer says if it searched instead.
+  const approveGrab = (g: { checkedAt: number; title: string }) => {
+    let msg = `Approved “${rq.title}” — grabbing ${g.title}`;
+    return act("grab", async () => {
+      const { requestPreviewApi } = await import("../lib/requestPreviewApi");
+      const r = await requestPreviewApi.approveAndGrab(rq.id, { quality_profile: profile || undefined, ...(keep ? { seasons: keep } : {}), folder_id: folder, preview_checked_at: g.checkedAt });
+      if (r.approve_grab?.mode === "search") {
+        const why = r.approve_grab.reason === "expired" ? "the previewed release has expired"
+          : r.approve_grab.reason === "profile" ? "the preview was for another profile"
+          : r.approve_grab.reason === "seasons" ? "the preview was for other seasons"
+          : r.approve_grab.reason === "already queued" ? "a search for it was already queued" : "the previewed release can’t be used";
+        msg = `Approved “${rq.title}” — ${why}, so it’s searching instead`;
+      }
+    }, () => msg, false);
+  };
+  const profileName = (key: string) => profiles?.find((p) => p.key === key)?.name ?? key;
   const decline = () => act("decline", async () => { await api.declineRequest(rq.id, reason.trim()); setDeclining(false); }, `Declined “${rq.title}”`, false);
   const decided = staff ? decisionLine(rq) : "";
   const remove = async () => {
@@ -212,6 +232,11 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
           </Suspense>
         )}
         {staff && pending && rq.media_type === "series" && <SeasonTrim rq={rq} disabled={!!busy} onChange={setKeep} />}
+        {staff && pending && (
+          <Suspense fallback={null}>
+            <RequestPreviewPanel rq={rq} profile={profile} profileName={profileName} keep={keep} onGrab={setGrab} />
+          </Suspense>
+        )}
 
         {staff && pending && declining && (
           <div className="flex flex-col gap-2 rounded-lg p-3" style={{ border: "1px solid var(--line)" }}>
@@ -230,6 +255,10 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
           {staff && pending && (
             <>
               <Button variant="primary" className={big} onClick={approve} busy={busy === "approve"} busyLabel="Approving…" disabled={!!busy || keep?.length === 0}>{keep?.length ? `Approve ${formatSeasons(keep)}` : "Approve"}</Button>
+              {grab && (
+                <Button className={big} onClick={() => approveGrab(grab)} busy={busy === "grab"} busyLabel="Approving…" disabled={!!busy || keep?.length === 0}
+                  title={`Approve and grab ${grab.title}, the release previewed above`}>Approve &amp; grab this</Button>
+              )}
               {!declining && <Button className={big} onClick={() => setDeclining(true)} disabled={!!busy}>Decline…</Button>}
             </>
           )}

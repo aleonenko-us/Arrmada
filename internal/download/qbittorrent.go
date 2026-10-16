@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // QBittorrent drives the qBittorrent WebUI API (v2). It logs in (cookie session,
@@ -40,7 +42,7 @@ func base(dc Client) string { return strings.TrimRight(dc.URL, "/") }
 func (q *QBittorrent) login(ctx context.Context, dc Client) (*http.Client, error) {
 	b := base(dc)
 	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	client := &http.Client{Jar: jar, Timeout: 30 * time.Second, Transport: httpua.Transport(nil)}
 
 	form := url.Values{"username": {dc.Username}, "password": {dc.Password}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b+"/api/v2/auth/login", strings.NewReader(form.Encode()))

@@ -58,7 +58,7 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
         </div>
         <AutoToggle
           label="Check for updates"
-          hint="Reads GitHub's public list of Arrmada releases every 12 hours. Nothing about this server is sent."
+          hint="Reads GitHub's public list of Arrmada releases every 12 hours. Only Arrmada's version is sent, nothing about this server."
           save={enabled}
         />
       </div>

@@ -393,8 +393,31 @@ func (c *Coordinator) HoldMovieImport(ctx context.Context, hash, name, contentPa
 		return "couldn't check the movie it was grabbed for", true
 	}
 	parsed := parser.Parse(name)
-	if m, matched := c.movies.Match(ctx, parsed.Title, parsed.Year); matched && m.ID == expected.ID {
+	m, matched := c.movies.Match(ctx, parsed.Title, parsed.Year)
+	if matched && m.ID == expected.ID {
 		return "", false // content matches the movie it was grabbed for
+	}
+	if !matched && c.movieGrabbedByHash(ctx, hash, expected.ID) && !c.movies.NamedInLibrary(ctx, parsed.Title) {
+		// No library film goes by this name, in any year. A download named in another
+		// language — a German tracker's "Der.grosse.Trip.Wild" grabbed for Wild — is still
+		// the film it was grabbed for when the name is one of that film's in any language.
+		// This only confirms the grab's own film; it can never pick another one.
+		//
+		// Not when a library film's own or alternative title is the name (Match decided:
+		// a year-less "Cinderella" with two Cinderellas stays held), and only for a grab
+		// found by its info hash — the importer places the file by hash, so a grab known
+		// only by its name would pass here and then land nowhere. When the names can't be
+		// read it's held for review as before.
+		ok, err := c.movies.KnownAs(ctx, expected, parsed.Title, parsed.Year)
+		if ok {
+			c.log.Info("movie import: download is named by one of the film's other titles",
+				"movie", expected.Title, "release", name)
+			return "", false
+		}
+		if err != nil {
+			c.log.Warn("movie import: couldn't read the film's other titles — holding for review",
+				"movie", expected.Title, "release", name, "err", err)
+		}
 	}
 	reason := fmt.Sprintf("Grabbed for %q but the download looks like %q", titleYear(expected.Title, expected.Year), titleYear(parsed.Title, parsed.Year))
 	c.addReview(ctx, Review{
@@ -659,23 +682,19 @@ func (c *Coordinator) ImportTargets(ctx context.Context, kind, q string, limit i
 // review's own kind: ids are per table, so a movie id applied to a book review files the
 // download under an unrelated book. Empty means "same kind as the review", which keeps
 // a page loaded before this check existed working.
+//
+// It checks everything CheckReviewImport does first (the job that runs it was queued, and
+// the review may have been settled meanwhile). A copy across drives reports its bytes to
+// ctx's ImportProgress (WithImportProgress). A failure past the checks is written to the
+// item's history; the review stays open.
 func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targetKind string) error {
-	r, err := c.pendingReview(ctx, id)
+	t, err := c.CheckReviewImport(ctx, id, targetID, targetKind)
 	if err != nil {
 		return err
 	}
-	if targetKind != "" && targetKind != r.MediaType {
-		return fmt.Errorf("%w: this download is a %s, not a %s", ErrWrongTargetKind,
-			kindLabel(r.MediaType), kindLabel(targetKind))
-	}
-	dest := r.ExpectedID
-	if targetID > 0 {
-		dest = targetID
-	}
-	if dest <= 0 {
-		return needsTargetError{kindLabel(r.MediaType)}
-	}
-	if err := c.importContentInto(ctx, r, dest, "review"); err != nil {
+	r, dest := t.Review, t.Dest
+	if err := c.importContentInto(withCopyAccounting(ctx, r), r, dest, "review"); err != nil {
+		c.importFailed(ctx, r, dest, "review", err)
 		return err
 	}
 	// No history line here: every kind's import already writes its own "imported" entry.
@@ -1286,7 +1305,7 @@ func (c *Coordinator) wantsEpisodeFile(ctx context.Context, s series.Series, sea
 	}
 	// What Convert's analysis found in the file beats both names: a converted file is
 	// AV1 or HEVC whatever it was released as, and its real resolution is known.
-	curFile := c.episodeFileOf(ctx, cur)
+	curFile := c.episodeFileOf(ctx, s, cur)
 	if curFile.Facts != nil {
 		probed := quality.ReleaseWithFacts(curParsed, *curFile.Facts)
 		curParsed.Resolution, curParsed.Codec = probed.Resolution, probed.Codec

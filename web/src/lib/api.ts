@@ -609,7 +609,14 @@ export interface IdealFile {
   hdr?: Record<string, TargetPref>; // "SDR" | "HDR10" | "HDR10+" | "HLG" | "DV"
   audio?: Record<string, TargetPref>; // "atmos" | "lossless"
   bitrate?: Record<string, { min: number; max: number }>; // per "2160p" | "1080p" | "720p" | "SD", Mb/s
+  // Audio languages: base ISO 639-1 codes or "original" (the title's own) → must/want/avoid.
+  language?: Record<string, TargetPref>;
 }
+// AudioLang is one audio language a library file carries (the detail pages' badges):
+// code "" is a track nothing identified; detected = heard by the AI on an untagged track.
+export interface AudioLang { code: string; name?: string; detected?: boolean }
+// AudioLangFit is a file's languages against its profile's Audio language rules.
+export interface AudioLangFit { status: "good" | "partial" | "bad"; note: string }
 export interface FitCounts { titles: number; files: number; fits: number; over: number; under: number; mismatch: number }
 export interface MusicPreset { name: string; description: string; format_scores: Record<string, number>; min_format_score: number; upgrades_enabled: boolean }
 export interface FileFacts { resolution: string; codec: string; hdr: string; dolby_vision?: boolean; atmos?: boolean; lossless?: boolean; bitrate_mbps: number }
@@ -1151,6 +1158,8 @@ export interface AppSettings {
   upgrade_max_grabs_per_sweep: number;
   /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
   books_languages: string[];
+  /** Extra languages whose translated titles scans and imports match (canonical codes); [] = English and original titles only. */
+  match_title_languages: string[];
   /** How releases are ranked: "v2" ordered keys (default) or "v1" classic (the rollback). Admin-only. */
   quality_ranking?: "v1" | "v2";
   /** When a release is on both Usenet and torrents: the better release wins (best, the default), or the preferred network between equals. */
@@ -1613,6 +1622,65 @@ export interface MediaRequest {
   plex_url?: string;
   /** Delivered: a Watch link per media server that has it, the viewer's own server first. */
   watch_links?: WatchLink[];
+  /** Staff only, on a request waiting for approval: the release approving it would grab. */
+  preview?: RequestPreview;
+  /** On an approval's answer: whether it grabs the previewed release or searches. */
+  approve_grab?: { mode: "preview" | "search"; reason?: "expired" | "profile" | "seasons" | "none" | "already queued" };
+}
+
+/** A request's release preview (staff only): what a search would grab, checked in advance. */
+export interface RequestPreview {
+  state: "queued" | "checking" | "done" | "busy";
+  /** Unix seconds of the last finished check; 0 = never. */
+  checked_at: number;
+  /** The quality profile it was ranked under. */
+  profile: string;
+  seasons?: number[];
+  /** Never checked, or more than six hours ago: opening the request checks again. */
+  stale: boolean;
+  /** "Approve & grab this" would take exactly these releases. */
+  grabbable: boolean;
+  result?: PreviewResult;
+}
+
+export interface PreviewResult {
+  outcome: "found" | "none" | "unavailable" | "busy" | "not_wanted";
+  reason: string;
+  profile: string;
+  releases: PreviewRelease[];
+  why?: string[];
+  chosen_over?: string;
+  returned: number;
+  matching: number;
+  eligible: number;
+  top_reasons?: { code: string; label: string; count: number }[];
+  indexer_issues?: IndexerIssue[];
+  searched: number;
+  queries: number;
+  season?: number;
+  seasons_note?: string;
+  /** The title is in the library already: ranked under its own profile, whatever the approval picks. */
+  in_library?: boolean;
+  /** A caveat about this preview ("Preview may miss anime not yet in the library"). */
+  note?: string;
+}
+
+export interface PreviewRelease {
+  title: string;
+  indexer: string;
+  summary: string;
+  resolution?: string;
+  source?: string;
+  codec?: string;
+  hdr?: string[];
+  size_gb: number;
+  seeders: number;
+  transport?: "torrent" | "usenet";
+  kind?: "complete series" | "pack" | "episode" | "ebook" | "audiobook";
+  covers?: string;
+  format?: string;
+  matched?: string[];
+  avoided?: string[];
 }
 
 /** A section of the request list (GET /api/v1/requests?section=). */
@@ -2064,6 +2132,9 @@ export interface Episode {
   // Kept out of profile-driven upgrades ("keep existing files"); Resume lifts it.
   upgrade_hold?: boolean;
   download?: { state: string; progress: number; hash?: string };
+  // The file's audio languages (detail endpoint only; absent until the file is analysed).
+  audio_langs?: AudioLang[];
+  audio_lang_fit?: AudioLangFit;
 }
 export interface Season {
   id: number;
@@ -2848,8 +2919,9 @@ export const api = {
   unmanagedDownloads: () => req<{ unmanaged: UnmanagedDownload[]; ignored: number }>("/api/v1/downloads/unmanaged"),
   unmanagedTargets: (hash: string, kind: ReviewKind, q: string) =>
     req<{ targets: ReviewTarget[]; truncated?: boolean }>(`/api/v1/queue/${hash}/targets?kind=${kind}&q=${encodeURIComponent(q)}`),
+  // What it can refuse it refuses at once; the import itself is a job (202).
   importUnmanaged: (hash: string, kind: ReviewKind, targetId: number) =>
-    req<{ status: string }>(`/api/v1/queue/${hash}/import`, { method: "POST", body: JSON.stringify({ kind, target_id: targetId }) }),
+    req<ReviewImportStarted>(`/api/v1/queue/${hash}/import`, { method: "POST", body: JSON.stringify({ kind, target_id: targetId }) }),
   ignoreDownload: (hash: string) =>
     req<{ status: string }>(`/api/v1/queue/${hash}/ignore`, { method: "POST" }),
   // External service credentials, settable in-app (settings-first, env-fallback). The
@@ -2941,15 +3013,16 @@ export const api = {
   // Clears an "import keeps failing" review so the import sweep tries the download again.
   retryReview: (id: number) => req<{ status: string }>(`/api/v1/reviews/${id}/retry`, { method: "POST" }),
   reviewFiles: (id: number) => req<{ files: ReviewFile[]; truncated: boolean }>(`/api/v1/reviews/${id}/files`),
-  // Imports a held show download by mapping its files to episodes by hand. A big pack
-  // imports as a job (job_id set); a small one answers with how many episodes landed.
+  // Imports a held show download by mapping its files to episodes by hand, as a job
+  // (202 with job_id; the same job when the review is already importing).
   mapReview: (id: number, seriesId: number, files: { rel_path: string; season: number; episodes: number[] }[]) =>
-    req<{ status: string; placed?: number; background?: boolean } & JobRef>(`/api/v1/reviews/${id}/map`, { method: "POST", body: JSON.stringify({ series_id: seriesId, files }) }),
+    req<ReviewImportStarted>(`/api/v1/reviews/${id}/map`, { method: "POST", body: JSON.stringify({ series_id: seriesId, files }) }),
   bulkReviews: (ids: number[], action: "dismiss" | "reject") =>
     req<{ done: number; failed: { id: number; error: string }[] }>("/api/v1/reviews/bulk", { method: "POST", body: JSON.stringify({ ids, action }) }),
-  // targetKind names what targetId is; the server refuses one that isn't the review's own kind.
+  // targetKind names what targetId is; the server refuses one that isn't the review's own
+  // kind. What it can refuse it refuses at once; the import itself is a job (202).
   importReview: (id: number, targetId?: number, targetKind?: ReviewKind) =>
-    req<{ status: string }>(`/api/v1/reviews/${id}/import`, { method: "POST", body: JSON.stringify({ target_id: targetId ?? 0, target_kind: targetKind ?? "" }) }),
+    req<ReviewImportStarted>(`/api/v1/reviews/${id}/import`, { method: "POST", body: JSON.stringify({ target_id: targetId ?? 0, target_kind: targetKind ?? "" }) }),
   // truncated: more items matched than the server lists — the picker asks for a filter.
   reviewTargets: (id: number, q: string) =>
     req<{ targets: ReviewTarget[]; truncated?: boolean }>(`/api/v1/reviews/${id}/targets?q=${encodeURIComponent(q)}`),
@@ -3451,6 +3524,9 @@ export interface MovieVersion {
   size_bytes?: number;
   file?: MovieFile;
   upgrade_hold?: boolean; // this track's file is kept out of profile-driven upgrades
+  // The file's audio languages (detail endpoint only; absent until the file is analysed).
+  audio_langs?: AudioLang[];
+  audio_lang_fit?: AudioLangFit;
 }
 
 export interface CastMember {
@@ -3624,6 +3700,9 @@ export interface RankedRelease {
   /** "lower resolution", "fewer seeders"… — against the release ranked just above it. */
   lost_on?: string;
   lost_on_key?: string;
+  /** The audio languages the name carries, as base codes, and a note when they're assumed. */
+  audio_langs?: string[];
+  audio_langs_note?: string;
 }
 
 export interface BlockEntry {
@@ -3829,6 +3908,8 @@ export interface UnmanagedDownload {
   kind: ReviewKind;
   /** The name parsed into a title, to start the picker's search with. */
   title?: string;
+  /** Its Import into… job while that runs, or the last one when it failed. */
+  import_job?: Job;
 }
 
 // One library item a held download could be imported into (same kind as the review).
@@ -3855,6 +3936,15 @@ export interface ImportReview {
   size_bytes: number;
   indexer: string;
   created_at: string;
+  // Its import job: running or queued (someone chose to import it), or the last one,
+  // when that failed. Absent otherwise.
+  import_job?: Job;
+}
+
+// A review import that started (or was already running: existing).
+export interface ReviewImportStarted extends JobRef {
+  status: string;
+  title?: string; // the library item it goes into
 }
 
 // Why a download is held: content that doesn't match, tied to nothing, unreadable episode

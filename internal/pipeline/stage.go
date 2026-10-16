@@ -86,6 +86,11 @@ const (
 type Review struct {
 	Code          string // automation.Reason*
 	ExpectedTitle string // what it was grabbed for, when anything
+	// Importing: a person decided it (Import anyway, Choose different…, Map files…, or
+	// Import into… for a download Arrmada didn't grab — a Review with no Code) and the
+	// import is running, or waiting its turn. Progress, when it's copying.
+	Importing bool
+	Progress  string
 }
 
 // Failure is an import that has failed and will be retried.
@@ -162,6 +167,13 @@ func Describe(in Input) (stage, why string) {
 		return Seeding, ""
 	}
 	switch {
+	case in.Review != nil && in.Review.Importing:
+		// Still pending until the import lands, but nobody needs to decide anything now.
+		why := "Importing — chosen in Needs you"
+		if in.Review.Progress != "" {
+			why += ": " + in.Review.Progress
+		}
+		return Importing, why
 	case in.Review != nil || in.GrabStatus == "held":
 		return NeedsReview, reviewWhy(in.Review)
 	case in.Failure != nil:

@@ -104,9 +104,11 @@ export function subtitleFile(url: URL): SubFileView {
 
 // A slice of the shared language table (GET /api/v1/languages), regional variants included.
 export const languages: Language[] = [
+  { code: "de", name: "German", regional: false },
   { code: "en", name: "English", regional: false },
   { code: "es", name: "Spanish", regional: false },
   { code: "fr", name: "French", regional: false },
+  { code: "ja", name: "Japanese", regional: false },
   { code: "pt", name: "Portuguese", regional: false },
   { code: "pt-br", name: "Portuguese (Brazil)", regional: true },
   { code: "pt-pt", name: "Portuguese (Portugal)", regional: true },
