@@ -76,6 +76,24 @@ test.describe("admin", () => {
     await expect(card.getByRole("button", { name: /^Save/ })).toHaveCount(0);
   });
 
+  test("a title language picked on Library saves at once, and removes the same way", async ({ page, api }) => {
+    await installExtra(page, api, [putSettings]);
+    await page.goto("/settings/library#title-languages");
+    const card = page.locator("#title-languages");
+    await expect(card.getByText("Also match titles in")).toBeVisible();
+    const picker = card.getByRole("combobox", { name: "Add a title language" });
+    await picker.fill("Fren");
+    await picker.press("Enter");
+    await expect(card.getByText("Saved ✓")).toBeVisible();
+    await expect(card.getByText("French")).toBeVisible();
+    await card.getByRole("button", { name: "Remove French" }).click();
+    await expect(card.getByText("French")).toHaveCount(0);
+    expect(api.callsTo("PUT", "/api/v1/settings").map((c) => c.body)).toEqual([
+      { match_title_languages: ["fr"] },
+      { match_title_languages: [] },
+    ]);
+  });
+
   test("a typed folder saves only that row, and only when confirmed", async ({ page, api }) => {
     await installExtra(page, api, [
       { method: "PUT", path: "/api/v1/system/library", respond: ({ body }) => ({ movies: "/media/movies", tv: "/media/tv", ebooks: "/media/ebooks", audiobooks: "/media/audiobooks", music: "/media/music", downloads: "/media/downloads", ...(body as object) }) },

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
@@ -54,6 +55,16 @@ type Service struct {
 	// libraryChanged is told about a show folder whose files a delete changed, so Plex can
 	// rescan it (plexscan). nil = nobody listening.
 	libraryChanged func(kind, dir string)
+
+	// titles reads every name a show goes by (nil = only the stored titles count), and
+	// titleLangs is the "Also match titles in" setting as ISO 639-1 codes (nil = none).
+	// See localtitles.go.
+	titles     metadata.TitlesSource
+	titleLangs func() []string
+	// titlesPass runs one translated-titles backfill at a time; titlesAgain asks the one
+	// running to go round once more.
+	titlesPass  sync.Mutex
+	titlesAgain atomic.Bool
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a
@@ -138,6 +149,22 @@ func (s *Service) isRoot(dir string) bool {
 		}
 	}
 	return false
+}
+
+// LibraryFolderOf is the TV folder holding path (its id; 0 is the default folder), and
+// whether path is inside any TV folder at all.
+func (s *Service) LibraryFolderOf(ctx context.Context, path string) (int64, bool) {
+	if s.folders != nil {
+		f, ok := s.folders.Owner(ctx, libfolders.MediaSeries, path)
+		return f.ID, ok
+	}
+	root := s.libRoot()
+	if root == "" {
+		return libfolders.DefaultID, false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	ok := err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return libfolders.DefaultID, ok
 }
 
 // RootFor is the TV folder show sr lives in, for importing and renaming its episodes:
@@ -394,6 +421,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 		s.refreshSceneMap(ctx, created.ID, d.TVDBID) // TheXEM scene mapping for split-season anime
 	}
 	s.syncTMDBAliases(ctx, created.ID, d)
+	s.refreshLocalTitles(ctx, created.ID, d.TMDBID, d.Title)
 	var monErr error
 	if opts.Seasons != nil {
 		mns := false
@@ -552,6 +580,7 @@ func (s *Service) refresh(ctx context.Context, id int64, opts RefreshOptions) (S
 		// applyNumbering decided about the episodes.
 		s.refreshShow(ctx, sr, d)
 		s.syncTMDBAliases(ctx, id, d)
+		s.refreshLocalTitles(ctx, id, sr.TMDBID, d.Title)
 		if err := s.repo.MarkRefreshed(ctx, id); err != nil {
 			s.log.Warn("series: could not record the refresh time", "series", sr.Title, "err", err)
 		}
@@ -1810,11 +1839,21 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			continue
 		}
 		results, err := s.meta.SearchSeries(ctx, rel.Title)
-		if err != nil || len(results) == 0 {
+		match, ok := metadata.SeriesResult{}, false
+		if err == nil && len(results) > 0 {
+			match, ok = bestSeriesMatch(results, rel.Title, rel.Year)
+		}
+		if !ok && err == nil {
+			// A folder named in one of the owner's extra title languages ("Haus des
+			// Geldes"): asked again in those languages, exactly one show must be named so.
+			if id, found := s.localizedScanMatch(ctx, rel.Title, rel.Year); found {
+				match, ok = metadata.SeriesResult{TMDBID: id}, true
+			}
+		}
+		if !ok && (err != nil || len(results) == 0) {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
-		match, ok := bestSeriesMatch(results, rel.Title, rel.Year)
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6)})
@@ -1946,6 +1985,12 @@ func (s *Service) MarkEpisodeImported(ctx context.Context, seriesID int64, seaso
 	}
 	s.log.Info("series: episode imported", "series_id", seriesID, "s", season, "e", episode)
 	return nil
+}
+
+// AdoptEpisodeFile records a file another app had (a Sonarr import) on an episode that has
+// none, where it is: false when the episode already has a file (left as it is).
+func (s *Service) AdoptEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
+	return s.repo.SetEpisodeFileIfEmpty(ctx, seriesID, season, episode, path, size)
 }
 
 // SupersedeEpisodeFile records a newly-imported file and recycles the episode's
@@ -2092,6 +2137,17 @@ func (s *Service) RecordSearchMiss(ctx context.Context, seriesID int64) {
 // ResetSearchMisses clears the search backoff (a grab succeeded).
 func (s *Service) ResetSearchMisses(ctx context.Context, seriesID int64) {
 	s.repo.ResetSearchMisses(ctx, seriesID)
+}
+
+// SetSearchPaced marks a show as added in bulk (a Sonarr import), so the missing sweep
+// takes it in its turn rather than searching every imported show at once; off clears it.
+func (s *Service) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
+	return s.repo.SetSearchPaced(ctx, seriesID, on)
+}
+
+// PacedSearchIDs is every show still waiting its turn after a bulk add.
+func (s *Service) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	return s.repo.PacedSearchIDs(ctx)
 }
 
 // SearchCursors returns where the last sweep stopped in the season fan-out and the

@@ -104,6 +104,10 @@ type Coordinator struct {
 	// episode listing couldn't be trusted, keyed by content path (see importSeriesInto).
 	// Also guarded by unmatchedMu, and pruned the same way.
 	metaRetry map[string]int
+	// knownNames remembers, by torrent hash, the show a series download was confirmed for
+	// under one of its names in another language (seriesKnownAs), so a seeding download
+	// isn't re-checked every sweep. Also guarded by unmatchedMu, and pruned the same way.
+	knownNames map[string]int64
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so
@@ -172,6 +176,9 @@ type Coordinator struct {
 	// moving, failures already reported, and finished jobs whose folders were left behind
 	// (usenetlife.go).
 	usenet usenetWatch
+	// handoffs are usenet grabs whose NZB SABnzbd was handed the link to fetch, waiting for
+	// their grab to be recorded (nzbhandoff.go).
+	handoffs handoffNotes
 }
 
 // SetOutbox installs where series and book imports queue their side effects.
@@ -425,9 +432,11 @@ func (c *Coordinator) indexerTransport(ctx context.Context, indexerName string) 
 // grabUsenet hands a usenet release to a usenet client and returns its download key
 // ("sab-…"), which is what the grab records.
 //
-// The NZB is fetched here and sent as a file, never as a link for the client to fetch: an
+// The NZB is fetched here and sent as a file, not as a link for the client to fetch: an
 // indexer's NZB link carries its API key, which would then sit in the client's history.
-// A fetch that yields no NZB file fails the grab rather than falling back to the link.
+// The one exception is an indexer that blocks Arrmada's download (a Cloudflare page where
+// the NZB should be): then the client, which the indexer admits, is handed the link
+// (nzbhandoff.go). Any other failed fetch fails the grab.
 func (c *Coordinator) grabUsenet(ctx context.Context, indexerName, downloadURL, title, category string) (string, error) {
 	if !c.downloads.HasTransport(ctx, download.TransportUsenet) {
 		return "", fmt.Errorf("%q is a usenet indexer and no usenet download client is configured — this release can't be downloaded", indexerName)
@@ -437,6 +446,10 @@ func (c *Coordinator) grabUsenet(ctx context.Context, indexerName, downloadURL, 
 		fetch = c.indexers.Fetch
 	}
 	res, err := fetch(ctx, indexerName, downloadURL)
+	var blocked *indexer.BlockedError
+	if errors.As(err, &blocked) && blocked.ClientLink() != "" {
+		return c.addNZBLink(ctx, blocked, title, category, indexerName)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -651,6 +664,13 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 		c.log.Warn("automation: movie search sweep skipped — can't read what's already downloading", "err", err)
 		return
 	}
+	// Films added in bulk (a Radarr import) are searched a few per run, not all at once.
+	marked, err := c.movies.PacedSearchIDs(ctx)
+	if err != nil {
+		c.log.Warn("automation: movie search sweep skipped — can't read which imported films wait their turn", "err", err)
+		return
+	}
+	pace := newPacer(marked, func(ctx context.Context, id int64) error { return c.movies.SetSearchPaced(ctx, id, false) }, c.log, "movie")
 	var outage outageTally
 	defer outage.report(c.log, "movie search sweep")
 	for _, m := range all {
@@ -675,6 +695,9 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 				continue
 			}
 		}
+		if pace.hold(m.ID) {
+			continue // imported in bulk: its turn comes in a later run
+		}
 		out, err := c.searchAndGrab(ctx, m)
 		n, searched := out.Grabbed, out.Searched
 		if errors.Is(err, ErrAlreadySearching) {
@@ -687,6 +710,7 @@ func (c *Coordinator) SearchMissing(ctx context.Context) {
 			}
 			continue
 		}
+		pace.searched(ctx, m.ID)
 		if err != nil {
 			c.log.Warn("automation: search failed", "movie", m.Title, "err", err)
 		}
@@ -2719,6 +2743,11 @@ func (c *Coordinator) pruneUnmatched(active map[string]bool) {
 	for h := range c.unmatched {
 		if !active[h] {
 			delete(c.unmatched, h)
+		}
+	}
+	for h := range c.knownNames {
+		if !active[h] {
+			delete(c.knownNames, h)
 		}
 	}
 }

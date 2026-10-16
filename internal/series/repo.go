@@ -882,6 +882,35 @@ func (r *Repo) ResetSearchMisses(ctx context.Context, seriesID int64) {
 		`UPDATE series SET last_search_at = datetime('now'), search_misses = 0 WHERE id = ?`, seriesID)
 }
 
+// SetSearchPaced marks (or unmarks) a show as added in bulk: the missing sweep searches
+// only a few marked shows per run (migration 0324).
+func (r *Repo) SetSearchPaced(ctx context.Context, seriesID int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE series SET search_paced = ? WHERE id = ?`, v, seriesID)
+	return err
+}
+
+// PacedSearchIDs is every show still marked as added in bulk, in one query.
+func (r *Repo) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM series WHERE search_paced = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // SearchCursors returns where the last sweep stopped in the season fan-out and in the
 // anime absolute-number follow-up, so the next one resumes instead of restarting at the
 // lowest season and starving everything past the query budget.
@@ -1203,6 +1232,21 @@ func (r *Repo) SetEpisodeFile(ctx context.Context, seriesID int64, season, episo
 		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ? WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
 		path, size, seriesID, season, episode)
 	return err
+}
+
+// SetEpisodeFileIfEmpty records path as an episode's file only when the episode has none:
+// false (no error) when it already had one, or doesn't exist. Adopting files from another
+// app must never replace one Arrmada recorded meanwhile.
+func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ?
+		  WHERE series_id = ? AND season_number = ? AND episode_number = ? AND has_file = 0`,
+		path, size, seriesID, season, episode)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // RepointEpisodeFile moves EVERY episode currently pointing at oldPath to newPath.

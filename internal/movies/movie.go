@@ -6,6 +6,7 @@ package movies
 import (
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -206,6 +207,13 @@ type MovieExtra struct {
 	OriginalTitle string   `json:"original_title,omitempty"`
 	AltTitles     []string `json:"alt_titles,omitempty"`
 	TitlesRead    bool     `json:"titles_read,omitempty"`
+	// LocalTitles are the film's translated titles in the languages Settings → Library →
+	// "Also match titles in" names, for matching folders and downloads named in the
+	// household's language (localtitles.go). LocalLangs are the languages (ISO 639-1)
+	// they were read for: a language added to the setting is read by the titles backfill,
+	// one taken off simply stops counting.
+	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
+	LocalLangs  []string                   `json:"local_langs,omitempty"`
 }
 
 // CastMember is one billed actor.

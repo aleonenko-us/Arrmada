@@ -256,6 +256,9 @@ func usenetFailure(it download.Item, name, h string, f *Frame) (Item, bool) {
 	grabbed := f.grabbed(h)
 	x := Item{Key: KindDownload + ":" + h, Kind: KindDownload, Level: LevelError, Name: name, Hash: h, Grabbed: grabbed}
 	switch {
+	case fail.Environment() && fail.Fetch:
+		x.Title = "SABnzbd couldn't fetch the NZB for " + name + ": " + fail.Reason
+		x.Detail = clip(fail.Fix+". SABnzbd said: "+it.FailMessage, 300)
 	case fail.Environment():
 		x.Title = "SABnzbd couldn't save " + name + ": " + fail.Reason
 		x.Detail = clip(fail.Fix+". SABnzbd said: "+it.FailMessage, 300)

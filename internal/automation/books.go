@@ -1961,6 +1961,7 @@ func (c *Coordinator) recordBookGrab(ctx context.Context, bookID, versionID int6
 		return
 	}
 	c.noteHashless("book", title, infoHash)
+	c.noteHandoff(ctx, "book", bookID, title, infoHash)
 	c.grabbed(ctx, "book", bookID)
 }
 

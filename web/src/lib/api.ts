@@ -1147,6 +1147,8 @@ export interface AppSettings {
   upgrade_max_grabs_per_sweep: number;
   /** Languages automatic book grabs accept (canonical codes); [] = any. Default ["en"]. */
   books_languages: string[];
+  /** Extra languages whose translated titles scans and imports match (canonical codes); [] = English and original titles only. */
+  match_title_languages: string[];
   /** How releases are ranked: "v2" ordered keys (default) or "v1" classic (the rollback). Admin-only. */
   quality_ranking?: "v1" | "v2";
   /** When a release is on both Usenet and torrents: the better release wins (best, the default), or the preferred network between equals. */
@@ -2353,6 +2355,7 @@ export interface SubtitleSettings {
   ai_ready: boolean;
   ai_backend: string; // "sycl" | "vulkan" | "cpu" | "" until the first run
   ai_note: string; // why the Intel oneAPI build was set aside, when it was ("" otherwise)
+  ai_cpu_only?: boolean; // the bundled whisper has no GPU backend (the ARM image)
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;

@@ -4,6 +4,8 @@
 // platform (indexers, download clients, quality) with Movies.
 package series
 
+import "github.com/tristenlammi/arrmada/internal/metadata"
+
 // Series is a TV show in the library.
 type Series struct {
 	ID        int64  `json:"id"`
@@ -90,6 +92,12 @@ type SeriesExtra struct {
 	// ContentRating is the show's US TV rating ("TV-Y7", "TV-MA"), for the Kids folder
 	// rule. Empty for shows not refreshed since it was stored.
 	ContentRating string `json:"content_rating,omitempty"`
+	// LocalTitles are the show's translated titles in the languages Settings → Library →
+	// "Also match titles in" names, for import routing and scans of folders and downloads
+	// named in the household's language (localtitles.go) — never for searches. LocalLangs
+	// are the languages (ISO 639-1) they were read for.
+	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
+	LocalLangs  []string                   `json:"local_langs,omitempty"`
 }
 
 // IsAnime reports whether the series uses anime (absolute) episode numbering.

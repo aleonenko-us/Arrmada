@@ -44,6 +44,25 @@ function BookLanguages() {
   );
 }
 
+// TitleLanguages: the extra languages a folder or a download Arrmada didn't grab may be
+// named in ("Der Pate (1972)" for The Godfather). Empty keeps matching to English and
+// original titles; a grab for a title always imports under any of its names.
+function TitleLanguages() {
+  const save = useSetting("match_title_languages", { equal: sameLangs, keepOnError: false });
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-base font-semibold">Also match titles in</span>
+        <SavedTick save={save} />
+      </div>
+      <span className="text-sm text-ink-faint">
+        Library scans and downloads Arrmada didn't grab also recognise a title by its name in these languages. A name another title already goes by, or one two titles share, is never matched. Adding a language reads the titles in it for your whole library, a little at a time.
+      </span>
+      <LanguagePicker value={save.value} onChange={(next) => void save.commit(next)} label="Add a title language" />
+    </div>
+  );
+}
+
 export function LibrarySettings() {
   const searchOnAdd = useSetting("search_on_add");
   const { booksEnabled } = useMe();
@@ -61,6 +80,9 @@ export function LibrarySettings() {
       </Section>
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">
         <SeriesMonitorDefault />
+      </Section>
+      <Section id="title-languages" title="Titles in other languages" subtitle="For folders and downloads named in your household's language.">
+        <TitleLanguages />
       </Section>
       {booksEnabled && (
         <Section id="books" title="Books" subtitle="How automatic searches choose ebook and audiobook releases.">

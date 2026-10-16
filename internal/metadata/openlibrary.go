@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 const (
@@ -54,7 +56,7 @@ func (o *OpenLibrary) getURL(ctx context.Context, u string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Arrmada/1.0 (self-hosted media manager)")
+	req.Header.Set("User-Agent", httpua.UserAgent())
 	resp, err := o.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
