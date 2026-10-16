@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
@@ -54,6 +55,16 @@ type Service struct {
 	// libraryChanged is told about a show folder whose files a delete changed, so Plex can
 	// rescan it (plexscan). nil = nobody listening.
 	libraryChanged func(kind, dir string)
+
+	// titles reads every name a show goes by (nil = only the stored titles count), and
+	// titleLangs is the "Also match titles in" setting as ISO 639-1 codes (nil = none).
+	// See localtitles.go.
+	titles     metadata.TitlesSource
+	titleLangs func() []string
+	// titlesPass runs one translated-titles backfill at a time; titlesAgain asks the one
+	// running to go round once more.
+	titlesPass  sync.Mutex
+	titlesAgain atomic.Bool
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a
@@ -394,6 +405,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 		s.refreshSceneMap(ctx, created.ID, d.TVDBID) // TheXEM scene mapping for split-season anime
 	}
 	s.syncTMDBAliases(ctx, created.ID, d)
+	s.refreshLocalTitles(ctx, created.ID, d.TMDBID, d.Title)
 	var monErr error
 	if opts.Seasons != nil {
 		mns := false
@@ -552,6 +564,7 @@ func (s *Service) refresh(ctx context.Context, id int64, opts RefreshOptions) (S
 		// applyNumbering decided about the episodes.
 		s.refreshShow(ctx, sr, d)
 		s.syncTMDBAliases(ctx, id, d)
+		s.refreshLocalTitles(ctx, id, sr.TMDBID, d.Title)
 		if err := s.repo.MarkRefreshed(ctx, id); err != nil {
 			s.log.Warn("series: could not record the refresh time", "series", sr.Title, "err", err)
 		}
@@ -1810,11 +1823,21 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			continue
 		}
 		results, err := s.meta.SearchSeries(ctx, rel.Title)
-		if err != nil || len(results) == 0 {
+		match, ok := metadata.SeriesResult{}, false
+		if err == nil && len(results) > 0 {
+			match, ok = bestSeriesMatch(results, rel.Title, rel.Year)
+		}
+		if !ok && err == nil {
+			// A folder named in one of the owner's extra title languages ("Haus des
+			// Geldes"): asked again in those languages, exactly one show must be named so.
+			if id, found := s.localizedScanMatch(ctx, rel.Title, rel.Year); found {
+				match, ok = metadata.SeriesResult{TMDBID: id}, true
+			}
+		}
+		if !ok && (err != nil || len(results) == 0) {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
-		match, ok := bestSeriesMatch(results, rel.Title, rel.Year)
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6)})

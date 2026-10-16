@@ -43,6 +43,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie,
 		MinAvailability: o.MinAvailability,
 		Extra:           extraFrom(details),
 	}
+	s.withLocalTitles(ctx, m.Extra, nil, details.TMDBID, details.Title)
 	if m.LibraryFolderID, err = s.pickFolder(ctx, o.FolderID, m.Extra); err != nil {
 		return Movie{}, err
 	}

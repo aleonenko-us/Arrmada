@@ -187,7 +187,8 @@ func (s Series) userAliasMatches(title string) bool {
 // an import sweep) and finds the show a parsed release belongs to, with the same rules as
 // MatchRelease.
 func (s *Service) ReleaseMatcher(all []Series) func(p parser.Release) (Series, bool, []Series) {
-	return func(p parser.Release) (Series, bool, []Series) { return matchRelease(all, p) }
+	langs := s.localLangs()
+	return func(p parser.Release) (Series, bool, []Series) { return matchRelease(all, p, langs) }
 }
 
 // MatchRelease finds the library show a parsed release belongs to, for import routing.
@@ -198,22 +199,27 @@ func (s *Service) ReleaseMatcher(all []Series) func(p parser.Release) (Series, b
 // When that still leaves more than one — a yearless "Doctor.Who.S01E01" with both Doctor
 // Whos in the library — nothing is matched and the candidates come back, so the caller can
 // name them instead of guessing the newest.
+//
+// Last come the translated titles in the owner's extra title languages (Settings →
+// Library), only for a name no show goes by otherwise (matchLocal).
 func (s *Service) MatchRelease(ctx context.Context, p parser.Release) (Series, bool, []Series) {
 	all, err := s.List(ctx)
 	if err != nil {
 		return Series{}, false, nil
 	}
-	return matchRelease(all, p)
+	return matchRelease(all, p, s.localLangs())
 }
 
-func matchRelease(all []Series, p parser.Release) (Series, bool, []Series) {
+func matchRelease(all []Series, p parser.Release, langs []string) (Series, bool, []Series) {
 	type cand struct {
 		s   Series
 		fit ReleaseFit
 	}
 	var own, alias []cand
+	named := false // some show's own title or alias is this name, whether or not it fits
 	for _, sr := range all {
 		f := FitRelease(p, sr)
+		named = named || f.Title
 		if !f.OK {
 			continue
 		}
@@ -248,7 +254,12 @@ func matchRelease(all []Series, p parser.Release) (Series, bool, []Series) {
 	if len(alias) > 0 {
 		return pick(alias)
 	}
-	return Series{}, false, nil
+	if named || len(langs) == 0 {
+		// A name a show goes by (another year's, another country's) is that show's even
+		// when it doesn't fit: a translation never takes it.
+		return Series{}, false, nil
+	}
+	return matchLocal(all, p, langs)
 }
 
 // DescribeCandidates names same-titled shows for a review reason: "Doctor Who (1963),
