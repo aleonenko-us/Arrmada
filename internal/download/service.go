@@ -283,6 +283,52 @@ func (s *Service) RestoreBundledOf(ctx context.Context, kind Kind, url string) e
 	return s.EnsureBundledOf(ctx, kind, url)
 }
 
+// KeyBundledSwitchedOff says the all-in-one image's built-in qBittorrent was switched off
+// in the container's settings and Arrmada switched its client off to match, so switching
+// it back on there switches the client back on. A client the owner switched off in
+// Arrmada doesn't carry it, and stays off.
+const KeyBundledSwitchedOff = "download_bundled_switched_off"
+
+// SyncBundledSwitch keeps the bundled qBittorrent's client in step with the all-in-one
+// image's switch for it: url is where the built-in qBittorrent answers, on whether it's
+// running. Off, an enabled bundled client still pointing there is switched off (not
+// removed: its torrents are still read, and the owner can switch it back on), so nothing
+// is sent to a qBittorrent that isn't running. On again, a client switched off that way
+// is switched back on. A bundled client the owner pointed somewhere else is left alone.
+func (s *Service) SyncBundledSwitch(ctx context.Context, url string, on bool) error {
+	if s.flags == nil {
+		return nil
+	}
+	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
+	if err != nil || !ok || c.URL != url {
+		return err
+	}
+	paused := s.flags.Get(ctx, KeyBundledSwitchedOff, "") == "1"
+	switch {
+	case on && paused:
+		if !c.Enabled {
+			c.Enabled = true
+			if _, err := s.Update(ctx, c); err != nil {
+				return err
+			}
+			s.log.Info("built-in qBittorrent switched back on; sending downloads to it again", "name", c.Name)
+		}
+		return s.flags.Set(ctx, KeyBundledSwitchedOff, "")
+	case !on && c.Enabled:
+		// The flag first: if the client is switched off without it, it would stay off
+		// when the owner switches qBittorrent back on.
+		if err := s.flags.Set(ctx, KeyBundledSwitchedOff, "1"); err != nil {
+			return err
+		}
+		c.Enabled = false
+		if _, err := s.Update(ctx, c); err != nil {
+			return err
+		}
+		s.log.Info("built-in qBittorrent is switched off in the container settings; its client is switched off too (its torrents are kept)", "name", c.Name)
+	}
+	return nil
+}
+
 // ErrBundledInactive means there's no bundled qBittorrent to tune: it was removed, or it
 // is switched off and so may not be running at all.
 var ErrBundledInactive = errors.New("the bundled qBittorrent is switched off or removed")

@@ -22,9 +22,13 @@ import (
 type clientView struct {
 	download.Client
 	Status *clientStatus `json:"status,omitempty"`
-	// UIPort is the host port the bundled SABnzbd's own web page is published on, for its
-	// card's "Open SABnzbd" link (where the Usenet provider is added). Bundled SABnzbd only.
+	// UIPort is the host port a bundled client's own web page is published on: the
+	// bundled SABnzbd's (its card's "Open SABnzbd" link, where the Usenet provider is
+	// added), and the all-in-one image's built-in qBittorrent's.
 	UIPort string `json:"ui_port,omitempty"`
+	// HasLogin says Arrmada made this client's web UI login and an admin can look it up
+	// (GET /api/v1/downloadclients/bundled-login): the all-in-one image's qBittorrent.
+	HasLogin bool `json:"has_login,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -41,6 +45,11 @@ func (a *api) clientView(c download.Client) clientView {
 	v := clientView{Client: c}
 	if c.Bundled && c.Kind == download.KindSABnzbd {
 		v.UIPort = sabUIPort()
+	}
+	// Only while it's the built-in one: a bundled row the owner pointed at another
+	// qBittorrent isn't that page, and that login isn't its.
+	if cfg := &a.deps.Config; c.Bundled && c.Kind == download.KindQbittorrent && cfg.QbittorrentLogin != "" && c.URL == cfg.QbittorrentURL {
+		v.UIPort, v.HasLogin = qbitUIPort(), true
 	}
 	if st, ok := a.deps.Downloads.Status(c.ID); ok {
 		v.Status = &clientStatus{State: st.Phase(time.Now()), FailingSince: timePtr(st.FailingSince)}

@@ -427,6 +427,13 @@ func main() {
 	movieSvc.SetNaming(prefs)
 	movieSvc.SetPrefs(prefs)
 	movieSvc.SetOutbox(box) // an import's file record and its follow-up work land together
+	// The Unraid all-in-one image runs its qBittorrent inside this container, and it can be
+	// switched off there: its client follows that switch, before the tuning below reads it.
+	if cfg.AIOQbittorrentURL != "" {
+		if err := downloads.SyncBundledSwitch(context.Background(), cfg.AIOQbittorrentURL, cfg.QbittorrentURL == cfg.AIOQbittorrentURL); err != nil {
+			log.Warn("could not match the built-in qBittorrent's client to its on/off setting", "err", err)
+		}
+	}
 	if cfg.QbittorrentURL != "" {
 		if err := downloads.EnsureBundled(context.Background(), cfg.QbittorrentURL); err != nil {
 			log.Warn("could not register bundled qBittorrent", "err", err)
