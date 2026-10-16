@@ -206,7 +206,7 @@ export function ClientEditor({ client, onSaved, onChanged, admin }: { client: Do
         </div>
       )}
       {usenet && <UsenetPanel client={client} onChanged={onChanged} />}
-      {client.has_login && client.ui_port && <BuiltInQbit port={client.ui_port} admin={!!admin} />}
+      {client.has_login && <BuiltInQbit port={client.ui_port} builtIn={!!client.built_in} admin={!!admin} />}
       <ClientForm editing={client} onSaved={onSaved} />
       <PathMappings client={client} body={(maps) => clientBody(client, { path_maps: maps })} onChanged={onChanged} />
     </div>
@@ -353,11 +353,13 @@ function OpenBundledSAB({ port, noServer }: { port: string; noServer: boolean })
   );
 }
 
-// BuiltInQbit is the Unraid all-in-one image's qBittorrent: Arrmada runs and manages it,
-// so nothing here needs setting up. Its own page is on the port the template publishes,
-// behind a login Arrmada made on first start, which an admin can show here.
-function BuiltInQbit({ port, admin }: { port: string; admin: boolean }) {
-  const href = bundledSABLink(port, window.location);
+// BuiltInQbit is the bundled qBittorrent whose login Arrmada made: the Unraid all-in-one
+// image's (builtIn: Arrmada runs it inside its own container) or the Compose install's
+// (its own container, given a password by Arrmada). Nothing here needs setting up. Its own
+// page is on the port the template or docker-compose.yml publishes (the copy-paste Compose
+// file publishes none, so then there's no link), behind that login, which an admin can show.
+function BuiltInQbit({ port, builtIn, admin }: { port?: string; builtIn: boolean; admin: boolean }) {
+  const href = port ? bundledSABLink(port, window.location) : "";
   const [login, setLogin] = useState<{ username: string; password: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -374,11 +376,17 @@ function BuiltInQbit({ port, admin }: { port: string; admin: boolean }) {
   };
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <p className="m-0 text-ink-dim">Built into this container: Arrmada starts it, connects to it and keeps its port and folders in step. Switch it off in the container’s settings to use your own.</p>
-      <div className="break-words">
-        <span className="text-ink-dim">qBittorrent’s own page:</span>{" "}
-        <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
-      </div>
+      {builtIn ? (
+        <p className="m-0 text-ink-dim">Built into this container: Arrmada starts it, connects to it and keeps its port and folders in step. Switch it off in the container’s settings to use your own.</p>
+      ) : (
+        <p className="m-0 text-ink-dim">Installed with Arrmada: it signs in with a password Arrmada made, and Arrmada keeps its port and folders in step.</p>
+      )}
+      {href && (
+        <div className="break-words">
+          <span className="text-ink-dim">qBittorrent’s own page:</span>{" "}
+          <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+        </div>
+      )}
       {admin && !login && (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => void show()} busy={busy} busyLabel="Loading…">Show its login</Button>

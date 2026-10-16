@@ -125,7 +125,7 @@ describe("serversLine", () => {
 // The Unraid all-in-one image's qBittorrent: its card says it's built in, links its own
 // page on the published port, and an admin (only) can show the login Arrmada made.
 describe("built-in qBittorrent", () => {
-  const qb = (over: Partial<DownloadClient> = {}): DownloadClient => ({ id: 1, name: "qBittorrent (bundled)", kind: "qbittorrent", url: "http://127.0.0.1:8080", enabled: true, priority: 25, bundled: true, ui_port: "8091", has_login: true, ...over });
+  const qb = (over: Partial<DownloadClient> = {}): DownloadClient => ({ id: 1, name: "qBittorrent (bundled)", kind: "qbittorrent", url: "http://127.0.0.1:8080", enabled: true, priority: 25, bundled: true, ui_port: "8091", has_login: true, built_in: true, ...over });
 
   it("links its page and shows the login to an admin on request", async () => {
     vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 56881 });
@@ -141,12 +141,31 @@ describe("built-in qBittorrent", () => {
     expect(screen.getByText("s3cret-Pass_word")).toBeTruthy();
   });
 
-  it("doesn't offer the login to a manager, or appear on the Compose bundle's card", () => {
+  it("doesn't offer the login to a manager, or appear on the Compose bundle's card before it has one", () => {
     vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 6881 });
     render(<ClientEditor client={qb()} onSaved={() => {}} />);
     expect(screen.queryByRole("button", { name: "Show its login" })).toBeNull();
     cleanup();
-    render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: undefined, has_login: undefined })} onSaved={() => {}} admin />);
+    render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: undefined, has_login: undefined, built_in: undefined })} onSaved={() => {}} admin />);
     expect(screen.queryByText(/Built into this container/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show its login" })).toBeNull();
+  });
+
+  // The Compose install's qBittorrent once Arrmada gave it a password: its own container,
+  // so not "built into this container"; the login to an admin, the link when a port is published.
+  it("offers the Compose bundle's login, with or without a published page", async () => {
+    vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 6881 });
+    const login = vi.spyOn(downloadClientApi, "bundledLogin").mockResolvedValue({ username: "admin", password: "Compose-Pass_1" });
+    render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: "8081", built_in: undefined })} onSaved={() => {}} admin />);
+    expect(screen.queryByText(/Built into this container/)).toBeNull();
+    expect(screen.getByText(/Installed with Arrmada/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /:8081/ })).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show its login" })); });
+    expect(login).toHaveBeenCalledOnce();
+    expect(screen.getByText("Compose-Pass_1")).toBeTruthy();
+    cleanup();
+    render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: undefined, built_in: undefined })} onSaved={() => {}} admin />);
+    expect(screen.queryByText(/qBittorrent’s own page/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Show its login" })).toBeTruthy();
   });
 });

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -96,25 +97,118 @@ func TestBundledQbitLogin(t *testing.T) {
 	}
 }
 
-// Everywhere but the all-in-one image there's no login to look up, and the Compose
-// bundle's card doesn't offer one.
-func TestBundledQbitLoginOutsideAIO(t *testing.T) {
+// The Compose bundle's qBittorrent: no login to look up until Arrmada has given it a
+// password; after that its card offers it (to admins only) with the published port, and the
+// password is never in the client list.
+func TestBundledQbitLoginCompose(t *testing.T) {
+	t.Setenv("ARRMADA_QBIT_WEBUI_HOST_PORT", "8081")
+	loginPath := filepath.Join(t.TempDir(), "qbittorrent-login.json")
 	var dl *download.Service
 	s := newRouteServer(t, func(d *Deps) {
 		d.Config.QbittorrentURL = bundledQbitURL
+		d.Config.QbittorrentLogin = loginPath
 		dl = download.NewService(d.Store.DB(), d.Log)
 		d.Downloads = dl
 	})
 	dl.SetFlags(s.deps.Settings)
-	if err := dl.EnsureBundled(context.Background(), bundledQbitURL); err != nil {
+	ctx := context.Background()
+	if err := dl.EnsureBundled(ctx, bundledQbitURL); err != nil {
 		t.Fatal(err)
 	}
 	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+
+	// Before the switch: nothing to show.
 	if rec := s.do("GET", "/api/v1/downloadclients/bundled-login", admin); rec.Code != http.StatusNotFound {
-		t.Errorf("HTTP %d", rec.Code)
+		t.Errorf("before: HTTP %d", rec.Code)
 	}
 	rec := s.do("GET", "/api/v1/downloadclients", admin)
 	if strings.Contains(rec.Body.String(), "has_login") || strings.Contains(rec.Body.String(), "ui_port") {
-		t.Errorf("the Compose bundle's card offers a login: %s", rec.Body)
+		t.Errorf("before: the card offers a login: %s", rec.Body)
+	}
+	// Restoring it then brings it back without a login (the whitelist still lets it in).
+	c, _, _ := dl.BundledClient(ctx, download.KindQbittorrent)
+	if rec := s.do("DELETE", "/api/v1/downloadclients/"+strconv.FormatInt(c.ID, 10), mgr); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: HTTP %d", rec.Code)
+	}
+	if rec := s.do("POST", "/api/v1/downloadclients/restore-bundled", mgr); rec.Code != http.StatusOK {
+		t.Fatalf("restore: HTTP %d %s", rec.Code, rec.Body)
+	}
+
+	// After: Arrmada saved the login and gave it to the client.
+	login := aio.Login{Username: "admin", Password: "ComposeLoginPw-77xy"}
+	if err := aio.SaveLogin(loginPath, login); err != nil {
+		t.Fatal(err)
+	}
+	if err := dl.EnsureBundledLogin(ctx, bundledQbitURL, login.Username, login.Password); err != nil {
+		t.Fatal(err)
+	}
+	rec = s.do("GET", "/api/v1/downloadclients", mgr)
+	if strings.Contains(rec.Body.String(), login.Password) {
+		t.Fatal("the client list carries the qBittorrent password")
+	}
+	var l struct {
+		Clients []struct {
+			UIPort   string `json:"ui_port"`
+			HasLogin bool   `json:"has_login"`
+			BuiltIn  bool   `json:"built_in"`
+		} `json:"clients"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &l); err != nil || len(l.Clients) != 1 {
+		t.Fatalf("list: %v %s", err, rec.Body)
+	}
+	if c := l.Clients[0]; c.UIPort != "8081" || !c.HasLogin || c.BuiltIn {
+		t.Errorf("card = %+v", c)
+	}
+	if rec := s.do("GET", "/api/v1/downloadclients/bundled-login", mgr); rec.Code != http.StatusForbidden {
+		t.Errorf("a manager read the login: HTTP %d", rec.Code)
+	}
+	rec = s.do("GET", "/api/v1/downloadclients/bundled-login", admin)
+	var got aio.Login
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil || got != login {
+		t.Fatalf("admin: HTTP %d %s", rec.Code, rec.Body)
+	}
+
+	// Removed and restored after the switch: back with the login.
+	c, _, _ = dl.BundledClient(ctx, download.KindQbittorrent)
+	if rec := s.do("DELETE", "/api/v1/downloadclients/"+strconv.FormatInt(c.ID, 10), mgr); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: HTTP %d", rec.Code)
+	}
+	if rec := s.do("POST", "/api/v1/downloadclients/restore-bundled", mgr); rec.Code != http.StatusOK {
+		t.Fatalf("restore: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if c, ok, _ := dl.BundledClient(ctx, download.KindQbittorrent); !ok || c.Password != login.Password {
+		t.Fatalf("restored without its login: %+v", c)
+	}
+
+	// The copy-paste Compose file publishes no port for it: the login, without a link.
+	t.Setenv("ARRMADA_QBIT_WEBUI_HOST_PORT", "")
+	rec = s.do("GET", "/api/v1/downloadclients", admin)
+	if strings.Contains(rec.Body.String(), "ui_port") || !strings.Contains(rec.Body.String(), `"has_login":true`) {
+		t.Errorf("no published port: %s", rec.Body)
+	}
+}
+
+// The login Arrmada made never leaves in a support bundle, even when the card now has
+// another password (so the download_clients scrub doesn't cover it).
+func TestSupportBundleWithholdsBundledQbitLogin(t *testing.T) {
+	loginPath := filepath.Join(t.TempDir(), "qbittorrent-login.json")
+	const made = "MadeByArrmadaQbit-55qq"
+	if err := aio.SaveLogin(loginPath, aio.Login{Username: "admin", Password: made}); err != nil {
+		t.Fatal(err)
+	}
+	f := newLogFixture(t, func(d *Deps) {
+		d.Config.QbittorrentURL = bundledQbitURL
+		d.Config.QbittorrentLogin = loginPath
+	}, nil)
+	f.log.Warn("qbittorrent: a careless line quoting " + made)
+	rec := f.do("GET", "/api/v1/system/support-bundle", f.admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d", rec.Code)
+	}
+	for name, body := range readZip(t, rec.Body.Bytes()) {
+		if strings.Contains(body, made) {
+			t.Errorf("%s carries the qBittorrent login", name)
+		}
 	}
 }

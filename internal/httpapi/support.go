@@ -246,6 +246,11 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 	for _, v := range []string{cfg.PlexToken, cfg.TMDBAPIKey, cfg.OMDBAPIKey, cfg.OpenSubtitlesAPIKey, cfg.OpenSubtitlesUsername, cfg.OpenSubtitlesPassword} {
 		addSecret(v)
 	}
+	// The bundled qBittorrent's login Arrmada made, even when the client's card now has
+	// another (download_clients' passwords are withheld below).
+	if l, ok := a.bundledQbitLogin(); ok {
+		addSecret(l.Password)
+	}
 
 	names := applog.NewTermScrubber()
 	queries := []struct {

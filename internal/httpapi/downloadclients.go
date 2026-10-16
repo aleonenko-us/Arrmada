@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tristenlammi/arrmada/internal/aio"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
@@ -28,8 +27,12 @@ type clientView struct {
 	// added), and the all-in-one image's built-in qBittorrent's.
 	UIPort string `json:"ui_port,omitempty"`
 	// HasLogin says Arrmada made this client's web UI login and an admin can look it up
-	// (GET /api/v1/downloadclients/bundled-login): the all-in-one image's qBittorrent.
+	// (GET /api/v1/downloadclients/bundled-login): the bundled qBittorrent's, the
+	// all-in-one image's or the Compose bundle's once Arrmada has given it a password.
 	HasLogin bool `json:"has_login,omitempty"`
+	// BuiltIn says it's the all-in-one image's qBittorrent, which runs inside Arrmada's
+	// own container (the Compose bundle's is a container of its own).
+	BuiltIn bool `json:"built_in,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -49,8 +52,10 @@ func (a *api) clientView(c download.Client) clientView {
 	}
 	// Only while it's the built-in one: a bundled row the owner pointed at another
 	// qBittorrent isn't that page, and that login isn't its.
-	if cfg := &a.deps.Config; c.Bundled && c.Kind == download.KindQbittorrent && cfg.QbittorrentLogin != "" && c.URL == cfg.QbittorrentURL {
-		v.UIPort, v.HasLogin = qbitUIPort(), true
+	if cfg := &a.deps.Config; c.Bundled && c.Kind == download.KindQbittorrent && cfg.QbittorrentURL != "" && c.URL == cfg.QbittorrentURL {
+		if _, ok := a.bundledQbitLogin(); ok {
+			v.UIPort, v.HasLogin, v.BuiltIn = a.qbitUIPort(), true, cfg.AIOQbittorrentURL != ""
+		}
 	}
 	if st, ok := a.deps.Downloads.Status(c.ID); ok {
 		v.Status = &clientStatus{State: st.Phase(time.Now()), FailingSince: timePtr(st.FailingSince)}
@@ -327,15 +332,14 @@ func (a *api) handleRestoreBundledClient(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var err error
-	if path := a.deps.Config.QbittorrentLogin; path != "" {
-		// The all-in-one image's qBittorrent comes back with the login Arrmada made for it.
-		login, lerr := aio.ReadLogin(path)
-		if lerr != nil {
-			a.writeError(w, http.StatusInternalServerError, "could not read the built-in qBittorrent's login")
-			return
-		}
+	if login, ok := a.bundledQbitLogin(); ok {
+		// It comes back with the login Arrmada made for it.
 		err = a.deps.Downloads.RestoreBundledLogin(r.Context(), url, login.Username, login.Password)
+	} else if a.deps.Config.AIOQbittorrentURL != "" {
+		a.writeError(w, http.StatusInternalServerError, "could not read the built-in qBittorrent's login")
+		return
 	} else {
+		// The Compose bundle before Arrmada gave it a password: its whitelist lets Arrmada in.
 		err = a.deps.Downloads.RestoreBundled(r.Context(), url)
 	}
 	if err != nil {
