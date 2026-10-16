@@ -1378,6 +1378,7 @@ func (c *Coordinator) recordSeriesGrab(ctx context.Context, seriesID int64, titl
 		return
 	}
 	c.noteHashless("series", title, infoHash)
+	c.noteHandoff(ctx, "series", seriesID, title, infoHash)
 	// What the release covers, worked out now while the show (its aliases, its anime
 	// numbering) is at hand: the in-flight checks hold back by it.
 	s := series.Series{ID: seriesID}

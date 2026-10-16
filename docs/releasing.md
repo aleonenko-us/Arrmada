@@ -47,7 +47,7 @@ packages.
 Settings → Status shows when a newer release is out, with its notes (an install on `main`
 shows how many commits behind `main` it is instead, and a stable install still running a
 build of `main` says whether the latest release includes it yet). It reads GitHub's public list of releases every
-12 hours and sends nothing about the server; switching it off on the same card stops every
+12 hours and sends nothing about the server beyond Arrmada's version (in its User-Agent); switching it off on the same card stops every
 request.
 
 ## Unraid Community Apps

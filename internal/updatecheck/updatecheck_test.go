@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // fakeGitHub stands in for api.github.com. Tests never call the real API.
@@ -109,8 +111,8 @@ func TestUpdateCheckComparesSemver(t *testing.T) {
 	if r.Method != http.MethodGet || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
 		t.Errorf("request = %s %s auth=%q", r.Method, r.URL, r.Header.Get("Authorization"))
 	}
-	if ua := r.Header.Get("User-Agent"); ua != "Arrmada" {
-		t.Errorf("User-Agent = %q, want plain Arrmada (no version)", ua)
+	if ua := r.Header.Get("User-Agent"); ua != httpua.UserAgent() {
+		t.Errorf("User-Agent = %q, want %q", ua, httpua.UserAgent())
 	}
 
 	// The same release, the newest one, and a newer pre-release build aren't updates.
