@@ -22,11 +22,22 @@ const mediaMovie = "movie"
 // was found in (UnmatchedFolder.Root). A finished scan (complete) replaces every row the
 // media had — the list is what the newest scan saw — in one transaction; a scan that
 // stopped early only adds what it found, so the folders it never reached keep their rows.
-func (r *Repo) replaceUnmatched(ctx context.Context, media string, list []UnmatchedFolder, complete bool) error {
+// keep are library folders the scan couldn't read: their rows stay even after a complete
+// scan, since nobody looked at them.
+func (r *Repo) replaceUnmatched(ctx context.Context, media string, list []UnmatchedFolder, complete bool, keep []string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.inTx(ctx, func(tx *sql.Tx, _ *Repo) error {
 		if complete {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM library_unmatched WHERE media = ?`, media); err != nil {
+			q, args := `DELETE FROM library_unmatched WHERE media = ?`, []any{media}
+			if len(keep) > 0 {
+				marks := make([]string, 0, len(keep))
+				for _, k := range keep {
+					marks = append(marks, "?")
+					args = append(args, filepath.Clean(k))
+				}
+				q += ` AND root NOT IN (` + strings.Join(marks, ",") + `)`
+			}
+			if _, err := tx.ExecContext(ctx, q, args...); err != nil {
 				return err
 			}
 		}
@@ -41,7 +52,7 @@ func (r *Repo) replaceUnmatched(ctx context.Context, media string, list []Unmatc
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO library_unmatched (media, root, folder, title, year, candidates_json, scanned_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(media, folder) DO UPDATE SET root = excluded.root, title = excluded.title, year = excluded.year,
+				ON CONFLICT(media, root, folder) DO UPDATE SET title = excluded.title, year = excluded.year,
 					candidates_json = excluded.candidates_json, scanned_at = excluded.scanned_at`,
 				media, filepath.Clean(u.Root), u.Folder, u.Title, u.Year, string(b), now); err != nil {
 				return err
@@ -87,19 +98,20 @@ func (r *Repo) unmatched(ctx context.Context, media string, roots []string) ([]U
 	return out, rows.Err()
 }
 
-// dropUnmatched removes one folder from the media's list (a manual pick settled it).
-func (r *Repo) dropUnmatched(ctx context.Context, media, folder string) error {
-	_, err := r.q().ExecContext(ctx, `DELETE FROM library_unmatched WHERE media = ? AND folder = ?`, media, folder)
+// dropUnmatched removes one folder of one library folder (root) from the media's list (a
+// manual pick settled it); the same name in another library folder stays.
+func (r *Repo) dropUnmatched(ctx context.Context, media, root, folder string) error {
+	_, err := r.q().ExecContext(ctx, `DELETE FROM library_unmatched WHERE media = ? AND root = ? AND folder = ?`, media, filepath.Clean(root), folder)
 	return err
 }
 
 // recordUnmatched saves a scan's unmatched folders. It runs after the scan's own context
 // may have ended (a timeout, a cancel), so it gets a short budget of its own: the folders
-// a stopped scan did look at are still worth keeping.
-func (s *Service) recordUnmatched(ctx context.Context, list []UnmatchedFolder, complete bool) {
+// a stopped scan did look at are still worth keeping. keep: folders it couldn't read.
+func (s *Service) recordUnmatched(ctx context.Context, list []UnmatchedFolder, complete bool, keep []string) {
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	if err := s.repo.replaceUnmatched(wctx, mediaMovie, list, complete); err != nil {
+	if err := s.repo.replaceUnmatched(wctx, mediaMovie, list, complete, keep); err != nil {
 		s.log.Warn("library scan: couldn't save the folders that need review", "err", err)
 	}
 }

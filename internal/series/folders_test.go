@@ -129,4 +129,17 @@ func TestSeriesFoldersScanAndPick(t *testing.T) {
 	if err := svc.ImportFolderAs(ctx, base, "Dandadan (2020)", 2); err == nil {
 		t.Error("imported from a folder that isn't a TV folder")
 	}
+
+	// The Anime share goes away: the scan names it and still scans the main folder.
+	touchEpisode(t, filepath.Join(tv, "Mystery Show", "Season 01", "Mystery Show - S01E01.mkv"))
+	if err := os.RemoveAll(animeDir); err != nil {
+		t.Fatal(err)
+	}
+	res, err = svc.ScanLibrary(ctx, "", nil)
+	if err != nil {
+		t.Fatalf("scan with the Anime folder down = %v", err)
+	}
+	if len(res.FailedFolders) != 1 || res.FailedFolders[0].Root != animeDir || len(res.Unmatched) != 1 {
+		t.Errorf("result = %+v", res)
+	}
 }

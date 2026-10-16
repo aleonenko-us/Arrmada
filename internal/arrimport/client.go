@@ -52,7 +52,11 @@ func New(app, baseURL, key string) (*Client, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("the API key is required")
 	}
-	return &Client{app: app, base: base, key: strings.TrimSpace(key), http: &http.Client{Timeout: 60 * time.Second}}, nil
+	return &Client{app: app, base: base, key: strings.TrimSpace(key), http: &http.Client{
+		Timeout: 60 * time.Second,
+		// Never follow a redirect: it would carry the X-Api-Key header to wherever it points.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}, nil
 }
 
 // Media is which Arrmada library the app's folders belong to ("movie" or "series").
@@ -78,6 +82,8 @@ func (c *Client) get(ctx context.Context, p string, out any) error {
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return ErrBadKey
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		return fmt.Errorf("%s answered with a redirect, which Arrmada doesn't follow (it would send the API key along) — use the app's own address", c.base)
 	case resp.StatusCode == http.StatusNotFound:
 		return fmt.Errorf("%s answered 404 — check the address is the app's own (for example http://host:7878), with its URL base if it has one", c.base)
 	case resp.StatusCode >= 300:

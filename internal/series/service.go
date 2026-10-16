@@ -1721,6 +1721,15 @@ type ScanResult struct {
 	Imported  int               `json:"imported"`
 	Skipped   int               `json:"skipped"`
 	Unmatched []UnmatchedFolder `json:"unmatched,omitempty"`
+	// FailedFolders are TV folders that couldn't be read (with several folders, the scan
+	// skips them and goes on with the rest).
+	FailedFolders []FailedFolder `json:"failed_folders,omitempty"`
+}
+
+// FailedFolder is a library folder a scan couldn't read, and why.
+type FailedFolder struct {
+	Root  string `json:"root"`
+	Error string `json:"error"`
 }
 
 // ScanLibrary finds series already in the library folder and catalogs them: each
@@ -1759,7 +1768,14 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 	for _, root := range roots {
 		entries, err := os.ReadDir(root)
 		if err != nil {
-			return res, err
+			// With one folder that's the scan failing, as it always was. With several, one
+			// unreadable folder (a share that's down) is reported and the rest are scanned.
+			if len(roots) == 1 {
+				return res, err
+			}
+			s.log.Warn("series scan: couldn't read a TV folder — skipped it", "folder", root, "err", err)
+			res.FailedFolders = append(res.FailedFolders, FailedFolder{Root: root, Error: err.Error()})
+			continue
 		}
 		for _, e := range entries {
 			if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
@@ -1767,6 +1783,9 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			}
 			shows = append(shows, showDir{root, e})
 		}
+	}
+	if len(res.FailedFolders) == len(roots) {
+		return res, fmt.Errorf("none of the TV folders could be read (%s)", res.FailedFolders[0].Error)
 	}
 	report := func(done int) {
 		if progress != nil {
@@ -1813,7 +1832,16 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		res.Imported++
 	}
 	report(len(shows))
-	s.setLastUnmatched(res.Unmatched)
+	// A folder that couldn't be read keeps the needs-review rows its last scan left.
+	keep := append([]UnmatchedFolder(nil), res.Unmatched...)
+	for _, u := range s.LastUnmatched() {
+		for _, f := range res.FailedFolders {
+			if filepath.Clean(u.Root) == filepath.Clean(f.Root) {
+				keep = append(keep, u)
+			}
+		}
+	}
+	s.setLastUnmatched(keep)
 	return res, nil
 }
 
@@ -1863,7 +1891,7 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if err := s.importSeriesFolder(ctx, videos, tmdbID); err != nil {
 		return err
 	}
-	s.dropUnmatched(folder)
+	s.dropUnmatched(root, folder)
 	return nil
 }
 
@@ -1887,12 +1915,14 @@ func (s *Service) LastUnmatched() []UnmatchedFolder {
 	return append([]UnmatchedFolder(nil), s.lastUnmatched...)
 }
 
-func (s *Service) dropUnmatched(folder string) {
+// dropUnmatched takes one folder of one TV folder (root) off the list; the same name in
+// another TV folder stays.
+func (s *Service) dropUnmatched(root, folder string) {
 	s.muUnmatched.Lock()
 	defer s.muUnmatched.Unlock()
 	out := s.lastUnmatched[:0]
 	for _, u := range s.lastUnmatched {
-		if u.Folder != folder {
+		if u.Folder != folder || (u.Root != "" && filepath.Clean(u.Root) != filepath.Clean(root)) {
 			out = append(out, u)
 		}
 	}

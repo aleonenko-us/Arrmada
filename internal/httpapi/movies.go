@@ -317,7 +317,19 @@ func movieScanMessage(res movies.ScanResult) string {
 	if n := len(res.Duplicates); n > 0 {
 		msg += "; " + countOf(n, "folder") + " left alone (the movie already has a different file)"
 	}
-	return msg
+	return msg + unreadFolders(len(res.FailedFolders), func(i int) string { return res.FailedFolders[i].Root })
+}
+
+// unreadFolders is the end of a scan message naming library folders it couldn't read.
+func unreadFolders(n int, root func(int) string) string {
+	if n == 0 {
+		return ""
+	}
+	names := make([]string, n)
+	for i := range names {
+		names[i] = root(i)
+	}
+	return "; couldn't read " + strings.Join(names, ", ") + " (is it mounted?), so it wasn't scanned"
 }
 
 // handleScanLibrary scans the library folder for existing movie files and catalogs them

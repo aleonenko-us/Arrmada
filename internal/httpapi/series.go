@@ -703,7 +703,8 @@ func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
 			}
 			a.deps.Log.Info("series library scan complete", "imported", res.Imported, "skipped", res.Skipped, "unmatched", len(res.Unmatched))
 			a.deps.Bus.Publish("library.scanned", map[string]any{"media": "series", "imported": res.Imported, "unmatched": len(res.Unmatched)})
-			p.SetMessage(scanMessage("series", res.Imported, len(res.Unmatched)))
+			p.SetMessage(scanMessage("series", res.Imported, len(res.Unmatched)) +
+				unreadFolders(len(res.FailedFolders), func(i int) string { return res.FailedFolders[i].Root }))
 			return scanSummary{Imported: res.Imported, Skipped: res.Skipped, Unmatched: len(res.Unmatched)}, nil
 		}})
 	if !ok {

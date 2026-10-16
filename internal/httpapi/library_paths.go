@@ -173,16 +173,21 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 			a.writeFolderError(w, f.name, err.Error(), false)
 			return
 		}
-		if *f.value == "" || *f.value == f.current {
-			continue
-		}
 		// A library folder can't land on, in or around an extra Movies or TV folder: one
-		// file must belong to exactly one folder.
-		if a.deps.Folders != nil {
-			if msg := a.deps.Folders.Conflict(r.Context(), *f.value); msg != "" {
+		// file must belong to exactly one folder. A blank save is judged by the folder it
+		// falls back to (the environment's), since that's where the library would be.
+		effective := *f.value
+		if effective == "" {
+			effective = resolvedFolder(a.deps.Config, f.name)
+		}
+		if a.deps.Folders != nil && strings.TrimSpace(effective) != "" && effective != f.current {
+			if msg := a.deps.Folders.Conflict(r.Context(), effective); msg != "" {
 				a.writeFolderError(w, f.name, label+": "+msg+".", false)
 				return
 			}
+		}
+		if *f.value == "" || *f.value == f.current {
+			continue
 		}
 		if !filepath.IsAbs(*f.value) {
 			a.writeFolderError(w, f.name, fmt.Sprintf("%s: use the full path, starting with / (for example /storage/media/%s).", label, f.name), false)

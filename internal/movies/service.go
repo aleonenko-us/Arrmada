@@ -421,6 +421,15 @@ type ScanResult struct {
 	// cut, maybe a stray copy — the owner decides, nothing is changed.
 	Duplicates []ScanDuplicate   `json:"duplicates"`
 	Unmatched  []UnmatchedFolder `json:"unmatched"` // folders TMDB couldn't confidently identify
+	// FailedFolders are library folders that couldn't be read (with several folders, the
+	// scan skips them and goes on with the rest).
+	FailedFolders []FailedFolder `json:"failed_folders,omitempty"`
+}
+
+// FailedFolder is a library folder a scan couldn't read, and why.
+type FailedFolder struct {
+	Root  string `json:"root"`
+	Error string `json:"error"`
 }
 
 // ScanDuplicate is a scanned folder whose film already has a different file.
@@ -525,11 +534,25 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	for _, root := range roots {
 		list, err := ScanFolders(root) // not the recycle bins or other hidden folders
 		if err != nil {
-			return res, err
+			// With one folder that's the scan failing, as it always was. With several, one
+			// unreadable folder (a share that's down) is reported and the rest are scanned.
+			if len(roots) == 1 {
+				return res, err
+			}
+			s.log.Warn("library scan: couldn't read a Movies folder — skipped it", "folder", root, "err", err)
+			res.FailedFolders = append(res.FailedFolders, FailedFolder{Root: root, Error: err.Error()})
+			continue
 		}
 		for _, e := range list {
 			entries = append(entries, scanEntry{root, e})
 		}
+	}
+	if len(res.FailedFolders) == len(roots) {
+		return res, fmt.Errorf("none of the Movies folders could be read (%s)", res.FailedFolders[0].Error)
+	}
+	var unread []string
+	for _, f := range res.FailedFolders {
+		unread = append(unread, f.Root)
 	}
 	progress := opts.Progress
 	if progress == nil {
@@ -599,11 +622,11 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	if err := ctx.Err(); err != nil {
 		// Stopped part-way (a cancel, the time budget, shutdown): keep what it did find,
 		// and don't wipe the review rows of the folders it never reached.
-		s.recordUnmatched(ctx, res.Unmatched, false)
+		s.recordUnmatched(ctx, res.Unmatched, false, unread)
 		return res, fmt.Errorf("the scan stopped after %d of %d folders: %w", done, total, err)
 	}
 	progress(total, total)
-	s.recordUnmatched(ctx, res.Unmatched, true)
+	s.recordUnmatched(ctx, res.Unmatched, true, unread)
 	return res, nil
 }
 
@@ -707,7 +730,7 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	default:
 		return err
 	}
-	if err := s.repo.dropUnmatched(ctx, mediaMovie, folder); err != nil {
+	if err := s.repo.dropUnmatched(ctx, mediaMovie, root, folder); err != nil {
 		s.log.Warn("couldn't take the folder off the needs-review list", "folder", folder, "err", err)
 	}
 	return nil

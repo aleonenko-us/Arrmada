@@ -72,6 +72,29 @@ func TestRootsCountTitlesPerFolder(t *testing.T) {
 	}
 }
 
+// A redirect is never followed: it would carry the API key to wherever it points.
+func TestRedirectNotFollowed(t *testing.T) {
+	var leaked bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "" {
+			leaked = true
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer elsewhere.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer redirector.Close()
+	c, _ := New(Radarr, redirector.URL, "secret")
+	if _, err := c.Roots(context.Background()); err == nil {
+		t.Error("a redirect was answered as if it were Radarr")
+	}
+	if leaked {
+		t.Error("the API key followed the redirect")
+	}
+}
+
 func TestMapMatchesFolders(t *testing.T) {
 	roots := []Root{{Path: "/movies"}, {Path: "/kids-movies"}, {Path: "/anime"}, {Path: "/elsewhere"}}
 	folders := []Folder{{ID: 0, Path: "/movies"}, {ID: 3, Path: "/storage/media/kids-movies"}}
