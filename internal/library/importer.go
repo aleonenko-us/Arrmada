@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -1994,8 +1995,10 @@ func linkOrCopy(src, dst string) (string, error) {
 			}
 		}
 	}
-	if err := linkFn(src, dst); err == nil {
-		return "hardlink", nil
+	if !forceCopy.Load() {
+		if err := linkFn(src, dst); err == nil {
+			return "hardlink", nil
+		}
 	}
 	if err := copyFile(src, dst); err != nil {
 		return "", err
@@ -2006,6 +2009,17 @@ func linkOrCopy(src, dst string) (string, error) {
 // linkFn is os.Link, swappable so tests can force the cross-device (EXDEV) failure that
 // sends an import down the copy branch.
 var linkFn = os.Link
+
+// forceCopy makes every import copy rather than hardlink (ForceCopies).
+var forceCopy atomic.Bool
+
+// ForceCopies makes every import take the copy path, as it does across filesystems, until
+// restore is called. It's for tests in other packages (an import job's copy progress);
+// nothing in the app calls it.
+func ForceCopies() (restore func()) {
+	forceCopy.Store(true)
+	return func() { forceCopy.Store(false) }
+}
 
 // Content comparison. Files up to fullCompareMax are compared byte for byte; larger
 // ones by three sampleSize slices (start, middle, end), which tells two releases apart
@@ -2105,7 +2119,13 @@ func copyFile(src, dst string) error {
 		_ = os.Remove(tmp)
 		return e
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	var size int64
+	if fi, err := in.Stat(); err == nil {
+		size = fi.Size()
+	}
+	// A watched copy (an import running as a job) reports its bytes; any other goes
+	// straight through, keeping the kernel's fast copy.
+	if _, err := io.Copy(out, watchedReader(in, src, size)); err != nil {
 		return fail(err)
 	}
 	if err := out.Sync(); err != nil { // data on disk before the rename publishes it
