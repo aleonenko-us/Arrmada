@@ -69,7 +69,7 @@ test.describe("Me → Personal API keys", () => {
     await expect(form.getByRole("alert")).toHaveText("Your password is wrong");
     await form.getByLabel("Your password").fill("password123");
     await form.getByRole("button", { name: "Make key" }).click();
-    expect(api.callsTo("POST", "/api/v1/me/api-keys").at(-1)?.body).toEqual({ name: "n8n", scope: "full", expires_in_days: 30, password: "password123" });
+    expect(api.callsTo("POST", "/api/v1/me/api-keys").slice(-1)[0]?.body).toEqual({ name: "n8n", scope: "full", expires_in_days: 30, password: "password123" });
 
     // Shown once, with a copy button that puts it on the clipboard.
     const shown = card(page).getByRole("textbox", { name: "API key" });
@@ -119,7 +119,7 @@ test.describe("Me → Personal API keys, stepping up", () => {
     await form.getByLabel("Two-factor code").fill("123456");
     await form.getByRole("button", { name: "Make key" }).click();
     await expect(card(page).getByRole("textbox", { name: "API key" })).toHaveValue(KEY);
-    expect(api.callsTo("POST", "/api/v1/me/api-keys").at(-1)?.body).toMatchObject({ password: "password123", code: "123456" });
+    expect(api.callsTo("POST", "/api/v1/me/api-keys").slice(-1)[0]?.body).toMatchObject({ password: "password123", code: "123456" });
   });
 
   test("a Plex-only account signed in a while ago is asked to sign in again", async ({ page, api }) => {
