@@ -195,8 +195,7 @@ If your server has `/dev/dri` (Intel or AMD graphics), the installer passes it t
 Convert and Whisper subtitles use it (Convert once **Use my GPU** is on in Settings → Convert).
 `docker exec Arrmada-app /usr/lib/jellyfin-ffmpeg/vainfo` shows what the container sees.
 NVIDIA cards can do Convert's encoding through the NVIDIA Container Toolkit. [GPU](gpu.md)
-has the setup for each (AMD needs one extra setting), and where Arrmada shows which encoders
-passed its start-up test.
+has the setup for each, and where Arrmada shows which encoders passed its start-up test.
 
 On ARM (arm64) there's no GPU acceleration: the image carries no GPU encoders or GPU subtitle
 build, Convert and Whisper use the CPU, and the installer doesn't pass `/dev/dri` through.

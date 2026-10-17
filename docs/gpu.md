@@ -74,21 +74,25 @@ afresh.) Where the container can't open them, rootless Docker for example, `vain
 AV1. Both VAAPI and Quick Sync are tried, and VAAPI is preferred where both work (Quick Sync
 fails to start on some Arc setups where VAAPI is fine).
 
-**AMD.** The image sets `LIBVA_DRIVER_NAME=iHD`, Intel's driver, so on an AMD card VAAPI
-can't start (its test frame fails, and Convert stays on the CPU) until the container is told
-to use AMD's driver, which the image also has. Add this to the app's environment (on Unraid,
-a Variable with that name and value):
+**AMD.** Nothing extra to set: Arrmada reads each card's vendor and gives ffmpeg the
+matching VA driver, AMD's (`radeonsi`) for an AMD card and Intel's (`iHD`) for an Intel one,
+both in the image. With an Intel iGPU and an AMD card in one server, the card picked under
+**Advanced → GPU device** decides. (Quick Sync is Intel-only; AV1 encoding needs an RX
+7000-series card or newer.) This hasn't been tested on AMD hardware by the project: the test
+frame and the Logs line tell you whether it works.
+
+**Choosing the driver yourself.** `LIBVA_DRIVER_NAME` set on the container overrides that
+choice for every run, for a card the automatic choice gets wrong:
 
 ```yaml
 services:
   arrmada-app:
     environment:
-      LIBVA_DRIVER_NAME: radeonsi
+      LIBVA_DRIVER_NAME: radeonsi   # or iHD
 ```
 
-Then `vainfo` above should list the card's profiles, and **Use my GPU** appears. (Quick Sync
-is Intel-only; AV1 encoding needs an RX 7000-series card or newer.) This hasn't been tested
-on AMD hardware by the project: the test frame and the Logs line tell you whether it works.
+Images before this change set `LIBVA_DRIVER_NAME=iHD` themselves, so on those an AMD card
+needs exactly this line.
 
 ## NVIDIA
 
