@@ -11,7 +11,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/library"
 )
 
-// Review: a file probed BEFORE the upgrade (row with ino = '') and not listed since the
+// Review: a file probed BEFORE the upgrade (row with ino = ”) and not listed since the
 // upgrade, then renamed: does the id a listener's download holds survive?
 func TestReviewPreUpgradeRowRenamedBeforeListing(t *testing.T) {
 	for _, withRow := range []bool{true, false} {
