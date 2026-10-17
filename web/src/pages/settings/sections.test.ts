@@ -134,6 +134,13 @@ describe("searchSettings", () => {
     expect(labels("naming")).toEqual(["Plex recommended naming", "Movie naming", "Series naming", "Book naming", "Metadata"]);
   });
 
+  // GitHub #3: people looking for a second Movies or TV folder search in their own words.
+  it("finds the extra Movies and TV folders card the way people ask for it", () => {
+    for (const q of ["animation", "kids", "anime", "extra folder", "second folder", "multiple folders", "Kids folder"]) {
+      expect(labels(q), q).toContain("More Movies and TV folders");
+    }
+  });
+
   it("needs every word typed, in any case", () => {
     expect(labels("SERIES episode")).toEqual(["Series naming"]);
     expect(labels("recycle tautulli")).toEqual([]);

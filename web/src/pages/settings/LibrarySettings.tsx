@@ -70,6 +70,11 @@ export function LibrarySettings() {
   return (
     <div className="flex flex-col gap-6">
       <Section id="media-folders" title="Media folders" subtitle="Where each library lives on disk.">
+        {/* People look here first for a second Movies or TV folder (GitHub #3). */}
+        <p className="m-0 text-sm text-ink-dim">
+          Have separate folders for kids, anime…?{" "}
+          <a href="#more-folders" className="font-semibold" style={{ color: "var(--accent-text)" }}>Add them under More Movies and TV folders below ↓</a>
+        </p>
         <LibraryFolders />
       </Section>
       <Section id="more-folders" title="More Movies and TV folders" subtitle="Keep kids', animation or anime titles in folders of their own — often their own Plex or Jellyfin library. New titles go to the first folder whose rule matches, else the main folder.">

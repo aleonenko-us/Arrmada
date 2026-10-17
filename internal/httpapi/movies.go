@@ -13,6 +13,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -335,10 +336,19 @@ func unreadFolders(n int, root func(int) string) string {
 // handleScanLibrary scans the library folder for existing movie files and catalogs them
 // — unmonitored on profile n/a, unless the body asks to monitor them on a profile — and
 // attaches files to films already in the library without one. Runs in the background
-// because TMDB lookups over a large library take a while.
+// because TMDB lookups over a large library take a while. The body's root scans just that
+// Movies folder (a folder just added in Settings → Library); it must be one of them.
 func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
-	var opts movies.ScanOptions
-	if r.ContentLength > 0 && !a.decodeJSON(w, r, &opts) {
+	var in struct {
+		movies.ScanOptions
+		Root string `json:"root"`
+	}
+	if r.ContentLength > 0 && !a.decodeJSON(w, r, &in) {
+		return
+	}
+	opts := in.ScanOptions
+	scope, ok := a.scanScope(w, r, libfolders.MediaMovie, in.Root)
+	if !ok {
 		return
 	}
 	opts.QualityProfile = strings.TrimSpace(opts.QualityProfile)
@@ -355,12 +365,15 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 	// folder outgrows it (one listing of each folder, which the scan reads first anyway);
 	// an unreadable folder gets the minimum and fails in the scan.
 	n := 0
-	for _, root := range a.roots().MovieFolders(r.Context()) {
+	for _, root := range scope.folders(a.roots().MovieFolders(r.Context())) {
 		folders, _ := movies.ScanFolders(root)
 		n += len(folders)
 	}
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: max(libraryScanTimeout, movies.ScanBudget(n)),
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: scope.target(), Class: jobs.ClassLibraryScan, Timeout: max(libraryScanTimeout, movies.ScanBudget(n)),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			if err := scope.recheck(libfolders.MediaMovie); err != nil {
+				return nil, err
+			}
 			// Progress rides the job: the runner records it and announces it as job.updated
 			// (at most once a second) on the one live socket the page already has.
 			opts.Progress = func(done, total int) {
@@ -368,17 +381,20 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s folders", thousands(done), thousands(total)))
 				}
 			}
-			res, err := a.deps.Movies.ScanLibrary(ctx, "", opts)
+			res, err := a.deps.Movies.ScanLibrary(ctx, scope.Root, opts)
 			if err != nil {
 				return nil, err
 			}
 			a.deps.Log.Info("library scan complete", "imported", res.Imported, "attached", res.Attached, "duplicates", len(res.Duplicates),
 				"skipped", res.Skipped, "unmatched", len(res.Unmatched))
-			// The scan just read the whole folder, so the disks are awake: notice files that
+			// The scan just read the whole library, so the disks are awake: notice files that
 			// vanished now rather than at tomorrow's check (it marks nothing if the folder
-			// looks unmounted).
-			if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
-				a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+			// looks unmounted). Not after a scan of one folder: the check covers every folder,
+			// and the others' disks weren't asked whether they're there.
+			if scope.Root == "" {
+				if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
+					a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+				}
 			}
 			a.deps.Bus.Publish("library.scanned", map[string]any{"media": "movie", "imported": res.Imported, "unmatched": len(res.Unmatched),
 				"attached": res.Attached, "duplicates": len(res.Duplicates)})
@@ -393,7 +409,7 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing {
 		// One scan at a time; the page follows the one that's running (job_id).
-		a.alreadyRunning(w, jobID, "a library scan is already running")
+		a.alreadyRunning(w, jobID, scope.running("a library scan is already running"))
 		return
 	}
 	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})

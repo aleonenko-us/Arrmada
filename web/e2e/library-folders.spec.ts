@@ -204,6 +204,116 @@ test.describe("admin", () => {
   });
 });
 
+// GitHub #3: adding a folder doesn't import what's already in it. The card offers a scan of
+// just that folder, follows the job and says what it found; every extra folder can be
+// scanned on its own, says when nothing in it is in the library yet, and a missing one says
+// so instead of offering a scan.
+test.describe("scanning an extra folder (GitHub #3)", () => {
+  test.use({ persona: "admin" });
+
+  const scanJob = (id: number, target: string) => ({
+    id, kind: target === "folder:7" ? "movie.scan" : "series.scan", target, trigger: "user:1", status: "succeeded", progress: 1,
+    message: "Added 3 movies; 1 folder not recognised", error: "", result: { imported: 3, skipped: 0, unmatched: 1, attached: 1, duplicates: 0 },
+    created_at: null, started_at: null, finished_at: null,
+  });
+
+  test("adding a folder that holds titles offers a scan, follows it and says what it found", async ({ page, api }) => {
+    const kids = { id: 7, media: "movie" as const, path: "/media/kids", label: "kids", rule: "" as const, position: 1, default: false, titles: 0 };
+    let state: "none" | "added" | "scanned" = "none";
+    await page.route((u) => u.pathname === "/api/v1/library/folders", async (route) => {
+      const movie = state === "none"
+        ? libraryFoldersMulti.movie.folders.slice(0, 1)
+        : [libraryFoldersMulti.movie.folders[0], { ...kids, titles: state === "scanned" ? 4 : 0, disk: "ok", on_disk: 5 }];
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ movie: { multi: state !== "none", folders: movie }, series: libraryFoldersMulti.series }) });
+    });
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/system/browse", body: { path: "/media/kids", parent: "/media", dirs: [], path_disabled: false } },
+      { method: "POST", path: "/api/v1/system/library/folders", status: 201, body: kids },
+      { method: "POST", path: "/api/v1/movies/scan", status: 202, body: { status: "scanning", job_id: 931, existing: false } },
+    ]);
+    await page.route((u) => u.pathname === "/api/v1/jobs/931", async (route) => {
+      state = "scanned";
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(scanJob(931, "folder:7")) });
+    });
+    await page.route((u) => u.pathname === "/api/v1/system/library/folders", async (route) => {
+      if (route.request().method() === "POST") state = "added";
+      return route.fallback();
+    });
+
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    await card.getByRole("button", { name: "Add a folder…" }).first().click();
+    await page.getByRole("button", { name: "Select this folder" }).click();
+    await expect(card.getByText("This folder has 5 items. Scan it now to add what's already there?")).toBeVisible();
+    const reviewReads = api.callsTo("GET", "/api/v1/movies/unmatched").length;
+    await card.getByRole("button", { name: "Scan now" }).click();
+    await expect(card.getByText("Found 4 titles; 1 needs review")).toBeVisible();
+    // The needs-review list (in Media folders) reloads for what the scan couldn't identify.
+    await expect.poll(() => api.callsTo("GET", "/api/v1/movies/unmatched").length).toBeGreaterThan(reviewReads);
+    await expect(card.getByRole("link", { name: "Review them ↑" })).toHaveAttribute("href", "#needs-review");
+    expect(api.callsTo("POST", "/api/v1/movies/scan").map((c) => c.body)).toEqual([{ root: "/media/kids" }]);
+    // The scan's end reloads the folders: the row counts what it added.
+    const row = card.locator("div.rounded-xl", { has: page.getByLabel("Name of the kids folder") });
+    await expect(row.getByText("4 titles", { exact: true })).toBeVisible();
+  });
+
+  test("each extra folder scans on its own, says what isn't in the library yet, and a missing one says so", async ({ page, api }) => {
+    const folders = {
+      movie: libraryFoldersMulti.movie,
+      series: { multi: true, folders: [
+        libraryFoldersMulti.series.folders[0],
+        { ...libraryFoldersMulti.series.folders[1], titles: 0, on_disk: 12 },
+        { id: 5, media: "series", path: "/mnt/cartoons", label: "Cartoons", rule: "", position: 2, default: false, titles: 3, disk: "missing" },
+        { id: 6, media: "series", path: "/mnt/nas/shows", label: "NAS", rule: "", position: 3, default: false, titles: 8, disk: "unknown" },
+      ] },
+    };
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/library/folders", body: folders },
+      { method: "POST", path: "/api/v1/movies/scan", status: 202, body: { status: "scanning", job_id: 932, existing: false } },
+      { method: "POST", path: "/api/v1/series/scan", status: 202, body: { status: "scanning", job_id: 933, existing: false } },
+      { method: "GET", path: "/api/v1/jobs/932", body: scanJob(932, "folder:3") },
+      { method: "GET", path: "/api/v1/jobs/933", body: { ...scanJob(933, "folder:4"), result: { imported: 12, skipped: 0, unmatched: 0 } } },
+    ]);
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    await expect(card.getByText("12 folders here aren't in the library yet.")).toBeVisible();
+    await expect(card.getByText("Can't find this folder — is its drive or share mounted?")).toBeVisible();
+    await expect(card.getByRole("button", { name: "Scan the Cartoons folder" })).toHaveCount(0);
+    // A dead share (it didn't answer in time) says so and isn't offered a scan either.
+    await expect(card.getByText("This folder is not responding — check its drive or share.")).toBeVisible();
+    await expect(card.getByRole("button", { name: "Scan the NAS folder" })).toHaveCount(0);
+    // The main folders scan from Media folders, not here.
+    await expect(card.getByRole("button", { name: /^Scan the (Movies|TV) folder$/ })).toHaveCount(0);
+
+    await card.getByRole("button", { name: "Scan the Anime folder" }).click();
+    await expect(card.getByText("Found 12 titles.")).toBeVisible();
+    await card.getByRole("button", { name: "Scan the Kids folder" }).click();
+    await expect(card.getByText("Found 4 titles; 1 needs review")).toBeVisible();
+    expect(api.callsTo("POST", "/api/v1/series/scan").map((c) => c.body)).toEqual([{ root: "/media/anime" }]);
+    expect(api.callsTo("POST", "/api/v1/movies/scan").map((c) => c.body)).toEqual([{ root: "/media/kids" }]);
+    // Media folders' own Movies row doesn't take a folder's scan for the library's.
+    await expect(page.locator("#media-folders").getByText(/Found|Done:/)).toHaveCount(0);
+  });
+
+  test("the Media folders card points to the extra folders", async ({ page }) => {
+    await page.goto("/settings/library");
+    await page.locator("#media-folders").getByRole("link", { name: /Add them under More Movies and TV folders below/ }).click();
+    await expect(page).toHaveURL(/\/settings\/library#more-folders$/);
+    await expect(page.locator("#more-folders")).toBeInViewport();
+  });
+
+  test("the settings search finds the extra folders the way people ask for them", async ({ page }) => {
+    await page.goto("/settings/library");
+    const search = page.getByRole("searchbox", { name: "Search settings" });
+    for (const q of ["animation", "kids", "anime", "extra folder", "second folder", "multiple folders"]) {
+      await search.fill(q);
+      await expect(page.getByRole("button", { name: /More Movies and TV folders/ }), q).toBeVisible();
+    }
+    await page.getByRole("button", { name: /More Movies and TV folders/ }).click();
+    await expect(page).toHaveURL(/\/settings\/library#more-folders$/);
+  });
+});
+
 test.describe("manager", () => {
   test.use({ persona: "manager" });
 

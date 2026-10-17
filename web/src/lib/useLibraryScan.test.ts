@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { api, ApiError, type Job, type JobStatus } from "./api";
 import { resetLiveForTests } from "./live";
-import { scanLine, unmatchedOf, useLibraryScan, type LibraryScan } from "./useLibraryScan";
+import { foundLine, scanLine, unmatchedOf, useLibraryScan, type LibraryScan } from "./useLibraryScan";
 
 // CFG-25: Settings → Library follows a scan's job — live progress, then what it found —
 // instead of reloading after a fixed five seconds.
@@ -73,10 +73,36 @@ describe("useLibraryScan", () => {
     expect(result.current.note).toBeNull();
   });
 
+  // GitHub #3: each extra folder follows only its own scan, and the main row only scans of
+  // the whole library.
+  it("follows only scans of its target", async () => {
+    const other = job("running", { id: 9, target: "folder:4", message: "Scanning 1 / 3 show folders" });
+    const mine = job("running", { id: 10, target: "folder:3", message: "Scanning 2 / 5 folders", progress: 0.4 });
+    const jobs = vi.spyOn(api, "jobs").mockResolvedValue([other, mine]);
+    vi.spyOn(api, "job").mockResolvedValue(mine);
+    const { result } = renderHook(() => useLibraryScan("movie.scan", vi.fn(), undefined, "folder:3"));
+    await waitFor(() => expect(result.current.job?.id).toBe(10));
+    expect(jobs).toHaveBeenCalledWith({ kind: "movie.scan", target: "folder:3", limit: 5 });
+
+    vi.spyOn(api, "jobs").mockResolvedValue([other]);
+    const whole = renderHook(() => useLibraryScan("movie.scan", vi.fn(), undefined, "all"));
+    await waitFor(() => expect(api.jobs).toHaveBeenCalledWith({ kind: "movie.scan", target: "all", limit: 5 }));
+    expect(whole.result.current.job).toBeNull();
+    expect(whole.result.current.running).toBe(false);
+  });
+
   it("asks nothing for a row without a scan", () => {
     const jobs = vi.spyOn(api, "jobs").mockResolvedValue([]);
     renderHook(() => useLibraryScan("", vi.fn()));
     expect(jobs).not.toHaveBeenCalled();
+  });
+});
+
+describe("foundLine", () => {
+  it("counts what a folder's scan added and what needs review", () => {
+    expect(foundLine(job("succeeded", { result: { imported: 3, attached: 1, skipped: 0, unmatched: 2 } }))).toBe("Found 4 titles; 2 need review");
+    expect(foundLine(job("succeeded", { result: { imported: 1, skipped: 0, unmatched: 1 } }))).toBe("Found 1 title; 1 needs review");
+    expect(foundLine(job("succeeded", { result: { imported: 0, skipped: 2, unmatched: 0 } }))).toBe("Found 0 titles.");
   });
 });
 
