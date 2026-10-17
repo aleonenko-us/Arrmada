@@ -134,9 +134,9 @@ func TestBookOrganizePreviewAndApply(t *testing.T) {
 	_ = bs.MarkImported(ctx, added[0].ID, books.KindAudiobook, old, "M4B", 2, 1)
 
 	preview := func() (p struct {
-		Counts bookOrganizeCounts           `json:"counts"`
+		Counts bookOrganizeCounts          `json:"counts"`
 		Items  []automation.BookRenameItem `json:"items"`
-		Token  string                       `json:"token"`
+		Token  string                      `json:"token"`
 	}) {
 		t.Helper()
 		rec := s.do("GET", "/api/v1/books/organize", mgr)
@@ -188,7 +188,7 @@ func TestBookOrganizePreviewAndApply(t *testing.T) {
 		t.Errorf("record at %q, want %q", b.Audiobook.Path, want)
 	}
 	// The per-book rename button answers the same way, with nothing left to do.
-	if rec := s.doJSON("POST", "/api/v1/books/"+jsonInt(added[0].ID)+"/rename", mgr, `{}`);rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"renamed":0`) {
+	if rec := s.doJSON("POST", "/api/v1/books/"+jsonInt(added[0].ID)+"/rename", mgr, `{}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"renamed":0`) {
 		t.Errorf("per-book rename: HTTP %d %s", rec.Code, rec.Body)
 	}
 }

@@ -182,14 +182,14 @@ type settingsUpdate struct {
 	NamingAudiobookTrack  *string `json:"naming_audiobook_track"`
 	NamingEbookFolder     *string `json:"naming_ebook_folder"`
 	NamingEbookFile       *string `json:"naming_ebook_file"`
-	WriteNFO             *bool   `json:"write_nfo"`
-	DownloadArtwork      *bool   `json:"download_artwork"`
-	BooksEnabled         *bool   `json:"books_enabled"`
-	MusicEnabled         *bool   `json:"music_enabled"`
-	PlexLoginEnabled     *bool   `json:"plex_login_enabled"`
-	PlexSignInStaff      *bool   `json:"plex_signin_staff"`
-	TMDBRegion           *string `json:"tmdb_region"`
-	PlexLoginAutoApprove *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
+	WriteNFO              *bool   `json:"write_nfo"`
+	DownloadArtwork       *bool   `json:"download_artwork"`
+	BooksEnabled          *bool   `json:"books_enabled"`
+	MusicEnabled          *bool   `json:"music_enabled"`
+	PlexLoginEnabled      *bool   `json:"plex_login_enabled"`
+	PlexSignInStaff       *bool   `json:"plex_signin_staff"`
+	TMDBRegion            *string `json:"tmdb_region"`
+	PlexLoginAutoApprove  *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
 	// PlexLoginAutoApproveTypes wins over the legacy bool when both are sent.
 	PlexLoginAutoApproveTypes *string   `json:"plex_login_auto_approve_types"`
 	JellyfinLoginEnabled      *bool     `json:"jellyfin_login_enabled"`

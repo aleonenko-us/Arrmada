@@ -333,7 +333,7 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"naming_audiobook_track":            `"{Title} {Part}"`,
 		"naming_ebook_folder":               `"{Author}/{Title} ({Year})"`,
 		"naming_ebook_file":                 `"{Title} - {Author}"`,
-		"tmdb_region":                    `"AU"`,
+		"tmdb_region":                       `"AU"`,
 		"plex_login_auto_approve":           `true`,
 		"plex_login_auto_approve_types":     `"movie,series"`,
 		"jellyfin_login_auto_approve_types": `"series,book"`,
