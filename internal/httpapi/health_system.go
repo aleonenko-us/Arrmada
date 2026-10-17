@@ -306,9 +306,10 @@ func tmdbValidate(ctx context.Context, v tmdbValidator) error {
 // app started with), for the library-folders check.
 func (a *api) libraryState(ctx context.Context) health.LibraryState {
 	return health.LibraryState{
-		Folders: a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)),
-		All:     a.healthFolders(ctx, true, true),
-		DataDir: a.deps.Config.DataDir,
+		Folders:  a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)),
+		All:      a.healthFolders(ctx, true, true),
+		DataDir:  a.deps.Config.DataDir,
+		Recorded: a.recordedFilesUnder,
 	}
 }
 

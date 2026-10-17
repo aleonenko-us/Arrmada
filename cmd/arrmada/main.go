@@ -323,7 +323,6 @@ func main() {
 		return env
 	})
 	httpapi.LogLibraryDirs(context.Background(), roots, cfg, log)
-	ensureDefaultFolders(context.Background(), log, roots)
 	logFolders(log, roots.Config(context.Background()),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleBooks, true),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleMusic, settings.ModuleMusicDefault),
@@ -1416,9 +1415,6 @@ func main() {
 		// may be restarting — and each try reads the folder afresh, so of two quick saves
 		// the later one wins.
 		OnFoldersChanged: func(ctx context.Context, changed []string) {
-			// A library put back on its default (a blank save) gets its folder in the managed
-			// volume, as at startup.
-			ensureDefaultFolders(ctx, log, roots)
 			for _, name := range changed {
 				if name != "downloads" || cfg.QbittorrentURL == "" {
 					continue

@@ -129,6 +129,10 @@ type LibraryState struct {
 	Folders []Folder
 	All     []Folder
 	DataDir string
+	// Recorded counts the files Arrmada has on record inside a folder. It's asked only
+	// about a folder that's missing, to tell a share that isn't mounted (it held files)
+	// from one that was never made. nil: unknown.
+	Recorded func(ctx context.Context, folder string) (int, error)
 }
 
 // folderCheckEvery paces the checks that touch the library shares. They run whether or
@@ -166,7 +170,16 @@ func LibraryFoldersCheck(src func(ctx context.Context) LibraryState, probes *Pro
 				if underData[f.Path] {
 					continue // already reported, and nothing is probed inside the data folder
 				}
-				if level, msg := FolderProblem(f, probes.ProbeFolder(f.Path)); msg != "" {
+				probe := probes.ProbeFolder(f.Path)
+				if !probe.Exists && probe.Err == nil {
+					probe.Recorded = RecordedUnknown
+					if st.Recorded != nil {
+						if n, err := st.Recorded(ctx, f.Path); err == nil {
+							probe.Recorded = n
+						}
+					}
+				}
+				if level, msg := FolderProblem(f, probe); msg != "" {
 					out = append(out, Finding{Key: "library." + f.Role, Level: level, Message: msg, Fix: FixLibraryFolders})
 				}
 			}
@@ -175,20 +188,29 @@ func LibraryFoldersCheck(src func(ctx context.Context) LibraryState, probes *Pro
 	}
 }
 
+// RecordedUnknown is FolderState.Recorded when the records couldn't be read.
+const RecordedUnknown = -1
+
 // FolderProblem turns a folder probe into a health line, or "" when the folder is fine.
 // A missing folder whose parent can be written is only a warning — it can still be made —
-// but a missing parent means the share isn't mounted at all.
+// but a missing parent means the share isn't mounted at all, and so does a missing folder
+// Arrmada has files on record in.
 //
 // Imports never make a missing library folder themselves (a share that isn't mounted
 // looks just like one that was never made, and recreating it would put the library on
-// the container's own disk), so the warning points at Create it rather than promising
-// the folder will appear. The download client does make its own folder.
+// the container's own disk). So Create it is suggested only for a folder known to have
+// held nothing; anywhere else the advice is to check the mount. The download client does
+// make its own folder.
 func FolderProblem(f Folder, st FolderState) (level, msg string) {
 	switch {
 	case !st.Exists && st.Err != nil:
 		return LevelError, fmt.Sprintf("Arrmada can't look at the %s folder %s: %v.", f.Label, f.Path, st.Err)
+	case !st.Exists && st.Recorded > 0:
+		return LevelError, fmt.Sprintf("The %s folder %s is missing, but it held %d file%s Arrmada has on record — its share is probably not mounted. Check the mount (or the container's volume mapping); don't create the folder.", f.Label, f.Path, st.Recorded, plural(st.Recorded))
 	case !st.Exists && st.ParentExists && st.ParentWritable && f.Role == "downloads":
 		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet. The download client makes it with the first download; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
+	case !st.Exists && st.ParentExists && st.ParentWritable && st.Recorded == RecordedUnknown:
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist, so nothing can be imported into it. If it should be an existing share, check that it's mounted (and the container's volume mapping); if it's new, create it in Settings → Library.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists && st.ParentWritable:
 		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet, so nothing can be imported into it. Press Create it beside it in Settings → Library; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists:

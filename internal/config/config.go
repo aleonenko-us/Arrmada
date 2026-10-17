@@ -118,8 +118,9 @@ type Config struct {
 	Channel string
 }
 
-// The folder each library defaults to inside LibraryDir (Load), and the ones Arrmada
-// makes at startup inside the managed library volume (libroots.EnsureManagedDefaults).
+// The folder each library defaults to inside LibraryDir. Nothing in the app makes them:
+// a missing library folder may be a share that isn't mounted, so the app never creates
+// one on its own (Create it in Settings → Library does, on request).
 const (
 	SubdirMovies     = "movies"
 	SubdirTV         = "tvshows"

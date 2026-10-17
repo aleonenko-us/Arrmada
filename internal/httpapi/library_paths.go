@@ -161,7 +161,12 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 		{"music", keyLibMusic, req.Music, a.libMusic(r)},
 		{"downloads", keyLibDownloads, req.Downloads, a.libDownloads(r)},
 	}
-	type missingFolder struct{ name, label, path string }
+	// inUse: the folder the library already points at. Only its last step is made, and
+	// only under a parent that's there (see below).
+	type missingFolder struct {
+		name, label, path string
+		inUse             bool
+	}
 	var create []missingFolder
 	for _, f := range folders {
 		if f.value == nil {
@@ -199,7 +204,17 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 				fi, err := os.Stat(*f.value)
 				switch {
 				case errors.Is(err, fs.ErrNotExist):
-					create = append(create, missingFolder{f.name, label, *f.value})
+					// A missing folder in use is also what a share that isn't mounted looks
+					// like. Make only its last step, and only under a parent that's there: a
+					// whole chain made on a dropped share would put the library on the
+					// container's own disk.
+					parent := filepath.Dir(filepath.Clean(*f.value))
+					if pi, perr := os.Stat(parent); perr != nil || !pi.IsDir() {
+						a.writeFolderError(w, f.name, fmt.Sprintf("%s: the folder above it (%s) isn't there either, so its share is probably not mounted. Check the mount (or the container's volume mapping) instead of creating it.",
+							label, parent), false)
+						return
+					}
+					create = append(create, missingFolder{f.name, label, *f.value, true})
 				case err != nil:
 					a.writeFolderError(w, f.name, fmt.Sprintf("%s: Arrmada can't open %s (%v).", label, *f.value, err), false)
 					return
@@ -221,7 +236,7 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 				a.writeFolderError(w, f.name, folderMissing(label, *f.value), true)
 				return
 			}
-			create = append(create, missingFolder{f.name, label, *f.value})
+			create = append(create, missingFolder{f.name, label, *f.value, false})
 		case err != nil:
 			a.writeFolderError(w, f.name, fmt.Sprintf("%s: Arrmada can't open %s (%v).", label, *f.value, err), false)
 			return
@@ -230,11 +245,34 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Folders are made only once every field has passed, as the app user, group-writable
-	// so the download client (often the same PGID) can write into them too.
-	// A failure is logged as well as answered: it's the line a support bundle needs.
+	// A missing folder that Arrmada has files on record in isn't new: it's a share that
+	// isn't mounted. Making it would hide the real files behind an empty folder and send
+	// imports to the wrong disk, so it's refused with what to check instead. Fail closed:
+	// if the records can't be read, nothing is made.
 	for _, c := range create {
-		if err := os.MkdirAll(c.path, 0o775); err != nil {
+		n, err := a.recordedFilesUnder(r.Context(), c.path)
+		if err != nil {
+			a.writeFolderError(w, c.name, fmt.Sprintf("%s: couldn't check whether %s held files before (%v), so it wasn't created. Try again.", c.label, c.path, err), false)
+			return
+		}
+		if n > 0 {
+			if a.deps.Log != nil {
+				a.deps.Log.Warn("library folder: not creating it — files are on record there, the share is probably not mounted", "library", c.name, "path", c.path, "files", n)
+			}
+			a.writeFolderError(w, c.name, fmt.Sprintf("%s: %s held %s Arrmada has on record — its share is probably not mounted. Check the mount (or the container's volume mapping) instead of creating it.",
+				c.label, c.path, countOf(n, "file")), false)
+			return
+		}
+	}
+	// Folders are made only once every field has passed, as the app user, with the same
+	// mode the importer makes its folders with. A failure is logged as well as answered:
+	// it's the line a support bundle needs.
+	for _, c := range create {
+		mk := os.MkdirAll
+		if c.inUse {
+			mk = os.Mkdir // the last step only; the parent was checked above
+		}
+		if err := mk(c.path, 0o755); err != nil {
 			if a.deps.Log != nil {
 				a.deps.Log.Warn("library folder: couldn't create it", "library", c.name, "path", c.path, "err", err)
 			}
@@ -255,6 +293,15 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := a.deps.Settings.Set(ctx, f.key, *f.value); err != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not save library paths")
+			return
+		}
+	}
+	// Confirming the Movies or TV folder — even unchanged, as the wizard does with the
+	// defaults it prefills — is choosing it (librariesChosen), recorded on its own so the
+	// default itself isn't pinned.
+	if req.Movies != nil || req.TV != nil {
+		if err := a.deps.Settings.Set(ctx, libroots.KeyFoldersConfirmed, "true"); err != nil {
 			a.writeError(w, http.StatusInternalServerError, "could not save library paths")
 			return
 		}
