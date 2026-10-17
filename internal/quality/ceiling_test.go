@@ -211,3 +211,43 @@ func upgradeWeighsAMultiEpisodeShare(t *testing.T, mode string) {
 		t.Errorf("sizeOver for a movie = %v, want 8", got)
 	}
 }
+
+// A file short of what the profile asks for is never "at the ceiling", however close its
+// bitrate sits to the cap: a heavy H.264 episode under "Must HEVC" can still be replaced by
+// an HEVC release, so the upgrade sweep must keep searching for it (and the cutoff view
+// mustn't call it done). Once the file has the codec, the ceiling applies again.
+func TestAtCeilingNeedsAFittingFile(t *testing.T) {
+	s, ctx := testService(t)
+	const runtime = 44
+	for _, tc := range []struct {
+		name  string
+		pref  string
+		codec string
+		want  bool
+	}{
+		{"missing a Must", PrefMust, "H.264", false},
+		{"missing a Prefer", PrefWant, "H.264", false},
+		{"has the Must", PrefMust, "x265", true},
+		{"has the Prefer", PrefWant, "x265", true},
+	} {
+		p, err := s.Create(ctx, StoredProfile{
+			MediaType:          MediaSeries,
+			Name:               "1080p HEVC ≤30 " + tc.name,
+			AllowedResolutions: []string{"1080p"},
+			UpgradeMinPercent:  25,
+			UpgradesEnabled:    true,
+			// With a target, the ceiling is the target's own window for the resolution.
+			Ideal: &IdealFile{Codec: map[string]string{"hevc": tc.pref},
+				Bitrate: map[string]BitrateWindow{"1080p": {Max: 30}}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := "custom:" + strconv.FormatInt(p.ID, 10)
+		// 26 × 1.25 = 32.5 > 30: on bitrate alone this file has no headroom left.
+		cur := cf("Show.S01E01.1080p.WEB-DL."+tc.codec+"-GRP", sizeForBitrate(26, runtime), runtime)
+		if got := s.AtCeiling(ctx, ref, cur); got != tc.want {
+			t.Errorf("%s (%s): AtCeiling = %v, want %v", tc.name, tc.codec, got, tc.want)
+		}
+	}
+}
