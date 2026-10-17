@@ -12,6 +12,9 @@ type UpcomingMovie struct {
 	PosterURL   string `json:"poster_url"`
 	HasFile     bool   `json:"has_file"`
 	Monitored   bool   `json:"monitored"`
+	// CanonicalTitle is the film's own (TMDB English) title when Title is its shown one:
+	// the adult filter judges both.
+	CanonicalTitle string `json:"-"`
 }
 
 // Upcoming returns library movies whose release date falls within [from, to] (inclusive,
@@ -34,7 +37,7 @@ func (s *Service) Upcoming(ctx context.Context, from, to string) ([]UpcomingMovi
 		if rd >= from && rd <= to {
 			out = append(out, UpcomingMovie{
 				ReleaseDate: rd, ID: m.ID, TMDBID: m.TMDBID, Title: m.Shown(), Year: m.Year,
-				PosterURL: m.PosterURL, HasFile: m.HasFile, Monitored: m.Monitored,
+				PosterURL: m.PosterURL, HasFile: m.HasFile, Monitored: m.Monitored, CanonicalTitle: m.Title,
 			})
 		}
 	}

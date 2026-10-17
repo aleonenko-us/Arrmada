@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tristenlammi/arrmada/internal/adultfilter"
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/netutil"
 )
@@ -175,7 +174,7 @@ func (a *api) handleCalendarICS(w http.ResponseWriter, r *http.Request) {
 	items = a.markRequestedBy(ctx, items, u.ID, mine)
 	kept := items[:0]
 	for _, it := range items {
-		if !adultfilter.Matches(it.Title) && !adultfilter.Matches(it.EpisodeTitle) {
+		if !calendarAdult(it) {
 			kept = append(kept, it)
 		}
 	}

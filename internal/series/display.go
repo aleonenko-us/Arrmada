@@ -19,8 +19,8 @@ import (
 // here. Matching (FitRelease, MatchRelease, SearchFit) and naming (folders, episode files,
 // renames) never read either: they keep using Title.
 
-// ErrBadOverride is a display-title override that is too long or has control characters.
-var ErrBadOverride = errors.New("a display title is at most 200 characters, on one line")
+// ErrBadOverride is a display-title override CleanOverride refuses (displaytitle).
+var ErrBadOverride = errors.New("a display title is at most 200 characters on one line, with something visible and no control or text-direction characters")
 
 // SetDisplayPolicy installs the "Show titles as" setting, read on every use. Call it at
 // startup; without it every show shows its canonical title (or its override).
@@ -60,62 +60,149 @@ func displayFor(p displaytitle.Policy, sr Series) string {
 }
 
 // storedDisplay is what goes in display_title for a shown title: empty when it is
-// the canonical title, so the default setting stores nothing.
+// the canonical title (surrounding spaces aside), so the default setting stores nothing.
 func storedDisplay(shown, title string) string {
-	if shown == title {
+	if strings.TrimSpace(shown) == strings.TrimSpace(title) {
 		return ""
 	}
 	return shown
 }
 
-// syncDisplay works out one show's shown title again and stores it. Best effort: a
-// failure leaves the previous title shown until the next start (SyncDisplayTitles).
-func (s *Service) syncDisplay(ctx context.Context, id int64) {
-	sr, err := s.repo.Get(ctx, id)
+// displayRow is what a show's shown title is worked out from, exactly as read. The
+// update that stores the result lands only while the row still holds these values, so a
+// pass that read the row before a refresh, an override or newly stored names can never
+// put back a title worked out from the old ones.
+type displayRow struct {
+	id                              int64
+	title, override, display, extra string
+}
+
+// series is the row as the fields displayFor reads.
+func (r displayRow) series() Series {
+	x := Series{ID: r.id, Title: r.title, TitleOverride: r.override, DisplayTitle: r.display}
+	if r.extra != "" {
+		var ex SeriesExtra
+		if json.Unmarshal([]byte(r.extra), &ex) == nil {
+			x.Extra = &ex
+		}
+	}
+	return x
+}
+
+// want is the display_title the row should hold under p.
+func (r displayRow) want(p displaytitle.Policy) string {
+	return storedDisplay(displayFor(p, r.series()), r.title)
+}
+
+// displayRows reads the rows display titles are worked out from: one show (id > 0) or
+// all of them.
+func (r *Repo) displayRows(ctx context.Context, id int64) ([]displayRow, error) {
+	q := `SELECT id, title, title_override, display_title, extra_json FROM series`
+	var args []any
+	if id > 0 {
+		q += ` WHERE id = ?`
+		args = append(args, id)
+	}
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return
+		return nil, err
 	}
-	want := storedDisplay(displayFor(s.policy(), sr), sr.Title)
-	if want == storedDisplay(sr.DisplayTitle, sr.Title) {
-		return
+	defer rows.Close()
+	var out []displayRow
+	for rows.Next() {
+		var d displayRow
+		if err := rows.Scan(&d.id, &d.title, &d.override, &d.display, &d.extra); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
-	if _, err := s.repo.db.ExecContext(ctx, `UPDATE series SET display_title = ? WHERE id = ?`, want, id); err != nil {
-		s.log.Warn("series: couldn't store the display title", "series", sr.Title, "err", err)
+	return out, rows.Err()
+}
+
+// storeDisplayIf stores want as d's display_title only while the row still holds what
+// was read into d, and reports whether it did.
+func storeDisplayIf(ctx context.Context, ex store.Execer, d displayRow, want string) (bool, error) {
+	res, err := ex.ExecContext(ctx, `UPDATE series SET display_title = ?
+		WHERE id = ? AND title = ? AND title_override = ? AND display_title = ? AND extra_json = ?`,
+		want, d.id, d.title, d.override, d.display, d.extra)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// syncDisplay works out one show's shown title again and stores it, after anything it
+// depends on changed (a refresh, an override, newly read names). A row that changes
+// between the read and the write is read again (a few times at most). Best effort: a
+// failure leaves the previous title shown, and the next start puts it right.
+func (s *Service) syncDisplay(ctx context.Context, id int64) {
+	for range 3 {
+		rows, err := s.repo.displayRows(ctx, id)
+		if err != nil || len(rows) == 0 {
+			return
+		}
+		d := rows[0]
+		want := d.want(s.policy())
+		if want == storedDisplay(d.display, d.title) {
+			return
+		}
+		done, err := storeDisplayIf(ctx, s.repo.db, d, want)
+		if err != nil {
+			s.log.Warn("series: couldn't store the display title", "show", d.title, "err", err)
+			return
+		}
+		if done {
+			return
+		}
 	}
 }
 
-// SyncDisplayTitles works out every show's shown title again — at start and whenever the
-// setting changes — and returns how many changed. It only reads the database.
+// SyncDisplayTitles works out every show's shown title again — at start and whenever
+// the setting changes — and returns how many changed. It only reads the database: names
+// not read yet show the best title available now and are filled by the titles backfill.
+// One pass runs at a time; a row that changed while the pass worked is worked out again
+// on its own.
 func (s *Service) SyncDisplayTitles(ctx context.Context) (int, error) {
-	all, err := s.repo.List(ctx)
+	s.displaySync.Lock()
+	defer s.displaySync.Unlock()
+	all, err := s.repo.displayRows(ctx, 0)
 	if err != nil {
 		return 0, err
 	}
 	p := s.policy()
 	type change struct {
-		id   int64
+		row  displayRow
 		want string
 	}
 	var changes []change
-	for _, sr := range all {
-		want := storedDisplay(displayFor(p, sr), sr.Title)
-		if want != storedDisplay(sr.DisplayTitle, sr.Title) {
-			changes = append(changes, change{sr.ID, want})
+	for _, d := range all {
+		if want := d.want(p); want != storedDisplay(d.display, d.title) {
+			changes = append(changes, change{d, want})
 		}
 	}
 	if len(changes) == 0 {
 		return 0, nil
 	}
+	var missed []int64
 	err = store.WithTx(ctx, s.repo.db, func(tx *sql.Tx) error {
+		missed = missed[:0]
 		for _, c := range changes {
-			if _, err := tx.ExecContext(ctx, `UPDATE series SET display_title = ? WHERE id = ?`, c.want, c.id); err != nil {
+			done, err := storeDisplayIf(ctx, tx, c.row, c.want)
+			if err != nil {
 				return err
+			}
+			if !done {
+				missed = append(missed, c.row.id)
 			}
 		}
 		return nil
 	})
 	if err != nil {
 		return 0, err
+	}
+	for _, id := range missed {
+		s.syncDisplay(ctx, id)
 	}
 	return len(changes), nil
 }

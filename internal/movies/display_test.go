@@ -234,3 +234,74 @@ func TestDisplayNeverAffectsMatchingOrNaming(t *testing.T) {
 		}
 	}
 }
+
+// The default setting stores nothing, even for a title with spaces around it, so no page
+// shows it a second time as "the English title".
+func TestDisplayDefaultStoresNothingForSpacedTitle(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := displayFixture(t)
+	m, err := s.repo.Create(ctx, Movie{TMDBID: 77, Title: "  Heat ", Year: 1995})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.showCreated(ctx, &m)
+	if m.DisplayTitle != "  Heat " {
+		t.Errorf("shown %q, want the title as it is", m.DisplayTitle)
+	}
+	if n, err := s.SyncDisplayTitles(ctx); err != nil || n != 0 {
+		t.Errorf("sync changed %d (%v), want nothing", n, err)
+	}
+	var stored string
+	if err := s.repo.db.QueryRowContext(ctx, `SELECT display_title FROM movies WHERE id = ?`, m.ID).Scan(&stored); err != nil || stored != "" {
+		t.Errorf("stored %q (%v), want nothing", stored, err)
+	}
+}
+
+// A pass that read a film before an override (or a refresh, or new names) changed it
+// never writes back the title it worked out from the old row; the film is worked out
+// again instead. Passes running at once don't trip over each other.
+func TestDisplaySyncNeverWritesStale(t *testing.T) {
+	ctx := context.Background()
+	s, _, p := displayFixture(t)
+	m, err := s.repo.Create(ctx, Movie{TMDBID: 10, Title: "The Travelling Players", Year: 1975,
+		Extra: &MovieExtra{DisplayNames: &displaytitle.Names{Original: "Ο Θίασος", OriginalLanguage: "el", Read: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	*p = displaytitle.ParsePolicy("original", "", "")
+	rows, err := s.repo.displayRows(ctx, m.ID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows %v %v", rows, err)
+	}
+	stale := rows[0]
+	// Someone sets an override after the pass read the row.
+	if _, err := s.SetTitleOverride(ctx, m.ID, "Thiasos"); err != nil {
+		t.Fatal(err)
+	}
+	if done, err := storeDisplayIf(ctx, s.repo.db, stale, stale.want(*p)); err != nil || done {
+		t.Fatalf("stale write landed: %v %v", done, err)
+	}
+	if got, _ := s.Get(ctx, m.ID); got.DisplayTitle != "Thiasos" {
+		t.Errorf("shows %q, want the override", got.DisplayTitle)
+	}
+
+	// Concurrent passes and per-film syncs end on the right title.
+	if _, err := s.SetTitleOverride(ctx, m.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	*p = displaytitle.ParsePolicy("", "", "")
+	done := make(chan struct{})
+	for range 4 {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			_, _ = s.SyncDisplayTitles(ctx)
+			s.syncDisplay(ctx, m.ID)
+		}()
+	}
+	for range 4 {
+		<-done
+	}
+	if got, _ := s.Get(ctx, m.ID); got.DisplayTitle != "The Travelling Players" {
+		t.Errorf("after concurrent passes shows %q", got.DisplayTitle)
+	}
+}

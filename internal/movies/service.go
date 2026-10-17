@@ -94,6 +94,8 @@ type Service struct {
 	// displayPolicy is Settings → Library → "Show titles as" (nil = English titles); see
 	// display.go.
 	displayPolicy func() displaytitle.Policy
+	// displaySync runs one SyncDisplayTitles pass at a time.
+	displaySync sync.Mutex
 }
 
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently

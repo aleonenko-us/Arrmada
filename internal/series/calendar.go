@@ -18,6 +18,9 @@ type UpcomingEpisode struct {
 	EpisodeName string `json:"episode_name"`
 	HasFile     bool   `json:"has_file"`
 	Monitored   bool   `json:"monitored"`
+	// CanonicalTitle is the show's own (TMDB English) title when SeriesTitle is its shown
+	// one: the adult filter judges both.
+	CanonicalTitle string `json:"-"`
 }
 
 // UpcomingEpisodes returns library episodes airing within [from, to] (inclusive, YYYY-MM-DD),
@@ -27,7 +30,7 @@ func (s *Service) UpcomingEpisodes(ctx context.Context, from, to string) ([]Upco
 	shown := displaytitle.SQL("s")
 	rows, err := s.repo.db.QueryContext(ctx, `
 		SELECT e.air_date, s.id, s.tmdb_id, `+shown+`, s.poster_url, e.season_number, e.episode_number,
-		       e.title, e.has_file, s.monitored
+		       e.title, e.has_file, s.monitored, s.title
 		FROM episodes e JOIN series s ON s.id = e.series_id
 		WHERE e.season_number > 0 AND e.air_date <> ''
 		      AND date(e.air_date) BETWEEN date(?) AND date(?)
@@ -41,7 +44,7 @@ func (s *Service) UpcomingEpisodes(ctx context.Context, from, to string) ([]Upco
 		var e UpcomingEpisode
 		var hasFile, mon int
 		if err := rows.Scan(&e.AirDate, &e.SeriesID, &e.TMDBID, &e.SeriesTitle, &e.PosterURL, &e.Season, &e.Episode,
-			&e.EpisodeName, &hasFile, &mon); err != nil {
+			&e.EpisodeName, &hasFile, &mon, &e.CanonicalTitle); err != nil {
 			return nil, err
 		}
 		e.HasFile, e.Monitored = hasFile != 0, mon != 0

@@ -71,6 +71,8 @@ type Service struct {
 	// displayPolicy is Settings → Library → "Show titles as" (nil = English titles); see
 	// display.go.
 	displayPolicy func() displaytitle.Policy
+	// displaySync runs one SyncDisplayTitles pass at a time.
+	displaySync sync.Mutex
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a

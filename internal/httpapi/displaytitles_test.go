@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
+	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
+	"github.com/tristenlammi/arrmada/internal/quality"
+	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/series"
 	"github.com/tristenlammi/arrmada/internal/settings"
 )
@@ -187,4 +192,83 @@ func TestDisplayTitleAPI(t *testing.T) {
 	if rec := s.do("GET", "/api/v1/series/11/title-choices", kid); rec.Code != http.StatusForbidden {
 		t.Errorf("requester choices: HTTP %d, want 403", rec.Code)
 	}
+}
+
+// An adult library title shown under a clean display name stays out of every calendar
+// feed: the filter judges the shown title, the title's own name and the episode's.
+func TestCalendarAdultFilterSeesCanonicalTitle(t *testing.T) {
+	ctx := context.Background()
+	s := newRouteServer(t, func(d *Deps) {
+		root := t.TempDir()
+		db := d.Store.DB()
+		policy := func() displaytitle.Policy {
+			return settings.DisplayTitlePolicy(func(key string) string { return d.Settings.Get(context.Background(), key, "") })
+		}
+		d.Books = books.NewService(db, nil, d.Log)
+		d.Quality = quality.NewService(db)
+		ms := movies.NewService(db, offlineMovies{}, nil, root, "", nil, d.Log)
+		ms.SetDisplayPolicy(policy)
+		ss := series.NewService(db, noSeriesMeta{}, root, d.Log)
+		ss.SetDisplayPolicy(policy)
+		d.Movies, d.Series = ms, ss
+		d.Requests = requests.NewService(db, d.Movies, d.Series, d.Books, nil, d.Quality, nil, "", d.Log)
+	})
+	day := func(n int) string { return time.Now().AddDate(0, 0, n).Format("2006-01-02") }
+	for _, q := range []string{
+		`INSERT INTO movies (id, tmdb_id, title, year, monitored, extra_json) VALUES
+			(31, 631, 'Hardcore Porn Night', 2026, 1, '{"release_date":"` + day(10) + `","display_names":{"original":"Καθαρός Τίτλος","original_language":"el","read":true}}'),
+			(32, 632, 'The Cartographer', 2026, 1, '{"release_date":"` + day(11) + `"}')`,
+		`INSERT INTO series (id, tmdb_id, title, monitored, extra_json) VALUES
+			(41, 741, 'Hardcore Porn Tales', 1, '{"original_title":"Racconti Puliti","original_language":"it"}'),
+			(42, 742, 'Harbour Lights', 1, '')`,
+		`INSERT INTO episodes (series_id, season_number, episode_number, title, air_date, monitored, has_file) VALUES
+			(41, 1, 1, 'Pilot', '` + day(3) + `', 1, 0),
+			(42, 1, 1, 'Pilot', '` + day(4) + `', 1, 0)`,
+	} {
+		if _, err := s.st.DB().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.deps.Settings.Set(ctx, settings.KeyDisplayTitleOriginalIn, "el,it"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.deps.Movies.SyncDisplayTitles(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.deps.Series.SyncDisplayTitles(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.deps.Movies.Get(ctx, 31); got.DisplayTitle != "Καθαρός Τίτλος" {
+		t.Fatalf("the adult film shows %q; the test needs it under its clean name", got.DisplayTitle)
+	}
+	_, kid := s.user(t, "kid", auth.RoleRequester)
+	_, mgr := s.user(t, "mgr", auth.RoleManager)
+
+	clean := func(feed, body string) {
+		t.Helper()
+		for _, bad := range []string{"Καθαρός Τίτλος", "Racconti Puliti", "Hardcore Porn"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s shows %q:\n%s", feed, bad, body)
+			}
+		}
+		for _, want := range []string{"The Cartographer", "Harbour Lights"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s lost the clean title %q", feed, want)
+			}
+		}
+	}
+	window := "/api/v1/calendar?start=" + day(-1) + "&end=" + day(30)
+	for _, c := range []*http.Cookie{kid, mgr} {
+		rec := s.do("GET", window, c)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("calendar: HTTP %d %s", rec.Code, rec.Body)
+		}
+		clean("calendar", rec.Body.String())
+	}
+	f := makeFeed(t, s, mgr) // staff feeds carry everything; a requester's only what they asked for
+	rec := s.do("GET", feedPath(t, f.URL), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ics: HTTP %d", rec.Code)
+	}
+	clean("iCal feed", strings.ReplaceAll(rec.Body.String(), "\r\n ", ""))
 }

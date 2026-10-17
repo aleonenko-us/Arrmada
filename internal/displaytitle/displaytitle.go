@@ -14,6 +14,8 @@ package displaytitle
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/metadata"
@@ -293,17 +295,36 @@ func SQL(alias string) string {
 	return "COALESCE(NULLIF(" + alias + ".display_title, ''), " + alias + ".title)"
 }
 
-// CleanOverride trims an override and reports whether it is acceptable: "" (clear) or
-// at most MaxOverride characters with no control characters.
+// CleanOverride trims an override and reports whether it is acceptable: "" (clear), or
+// at most MaxOverride characters on one line that show something. Refused: control
+// characters (C0 and C1), the bidi controls that would reorder the text around it on a
+// page (U+202A–202E, U+2066–2069, U+200E/200F, U+061C), line and paragraph separators,
+// and a title with nothing visible in it (spaces or zero-width characters only).
 func CleanOverride(raw string) (string, bool) {
 	s := strings.TrimSpace(raw)
-	if len([]rune(s)) > MaxOverride {
+	if s == "" {
+		return "", true
+	}
+	if utf8.RuneCountInString(s) > MaxOverride {
 		return "", false
 	}
+	visible := false
 	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) || bidiControl(r) || r == '\u2028' || r == '\u2029' {
 			return "", false
 		}
+		if unicode.IsGraphic(r) && !unicode.IsSpace(r) && !unicode.Is(unicode.Cf, r) {
+			visible = true
+		}
+	}
+	if !visible {
+		return "", false
 	}
 	return s, true
+}
+
+// bidiControl reports whether r is a bidirectional formatting character.
+func bidiControl(r rune) bool {
+	return (r >= '\u202A' && r <= '\u202E') || (r >= '\u2066' && r <= '\u2069') ||
+		r == '\u200E' || r == '\u200F' || r == '\u061C'
 }

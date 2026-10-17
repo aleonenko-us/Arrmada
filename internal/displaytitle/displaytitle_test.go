@@ -206,3 +206,27 @@ func TestSQL(t *testing.T) {
 		t.Errorf("SQL = %s", got)
 	}
 }
+
+// An override must show something and can't carry characters that hide or reorder text.
+func TestCleanOverrideRefusesInvisibleAndBidi(t *testing.T) {
+	for _, bad := range []string{
+		"a\u0085b",             // C1 next line
+		"a\u0007b",             // C0 bell
+		"Title\u202Eevil",      // right-to-left override
+		"\u2066Title\u2069",    // isolates
+		"Title\u200F",          // right-to-left mark
+		"Title\u061C",          // Arabic letter mark
+		"a\u2028b", "a\u2029b", // line and paragraph separators
+		"\u200B\u200B",        // zero-width spaces only
+		"\u200D \u00A0\u3000", // nothing visible
+	} {
+		if _, ok := CleanOverride(bad); ok {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+	for _, good := range []string{"Ο Θίασος", "千と千尋の神隠し", "Amélie", "👨\u200D👩\u200D👧 Family", "Na\u00A0Wspólnej"} {
+		if s, ok := CleanOverride(good); !ok || s != good {
+			t.Errorf("refused %q", good)
+		}
+	}
+}
