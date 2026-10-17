@@ -227,11 +227,11 @@ func TestSearchFitQueryTitle(t *testing.T) {
 	fit := newSearchFit(all, []string{"de"})
 	for id, want := range map[int64]string{
 		1: "Haus des Geldes",
-		2: "",  // no translated title
-		3: "",  // "Haus" is another show's own title
-		4: "",  // shared with Bron
-		5: "",  // shared with The Bridge
-		6: "",  // one short word
+		2: "", // no translated title
+		3: "", // "Haus" is another show's own title
+		4: "", // shared with Bron
+		5: "", // shared with The Bridge
+		6: "", // one short word
 	} {
 		if got := fit.QueryTitle(byID(all, id)); got != want {
 			t.Errorf("%s: %q, want %q", byID(all, id).Title, got, want)
