@@ -486,9 +486,31 @@ func judge(sp *StoredProfile, p Profile, e *Engine, cur CurrentFile) FileVerdict
 		// A preferred or required audio language the file lacks (or only avoided ones)
 		// means it isn't the target yet, whatever its picture and bitrate.
 		v.TargetMet = sp.TargetMet(v.Facts) && !v.Current.langShort
-		v.AtCeiling = v.TargetMet || atCeiling(*sp, p, cur)
+		// The bitrate ceiling only ends the search for a file that already fits: no
+		// missing Must, every Prefer met, nothing the profile avoids. Then a heavier
+		// encode is the one gain left, and the ceiling can rule it out. A file short of a
+		// Must or a Prefer (a heavy H.264 episode under "Must HEVC") can still be beaten
+		// by a release that has it, however close to the ceiling its bitrate sits.
+		v.AtCeiling = v.TargetMet || (!v.Current.langShort &&
+			fitsBesidesBitrate(*sp, v.Facts) && atCeiling(*sp, p, cur))
 	}
 	return v
+}
+
+// fitsBesidesBitrate reports whether a file meets the profile's target in everything but
+// its bitrate window: the right codec, HDR and audio with no Must missing and nothing
+// avoided, and every Prefer met. A profile with no target asks nothing of the file's
+// formats, so it fits.
+func fitsBesidesBitrate(sp StoredProfile, f FileFacts) bool {
+	if sp.Ideal == nil || sp.Ideal.Empty() {
+		return true
+	}
+	for _, is := range CheckFit(*sp.Ideal, sp.AllowedResolutions, f).Issues {
+		if is.Kind != "bitrate" {
+			return false
+		}
+	}
+	return prefersMet(*sp.Ideal, f)
 }
 
 // atCeiling is the bitrate half of AtCeiling (see there): the file is at the best
