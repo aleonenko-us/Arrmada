@@ -270,6 +270,9 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 		// Calendar feed links: only their hashes are stored (the token itself never is, and
 		// a "token=" in any line is blanked by shape), but the hash is withheld too.
 		{`SELECT token_hash FROM calendar_feeds`, func(v []string) { addSecret(v[0]) }},
+		// Two-factor secrets: never logged, but a line quoting one by mistake mustn't
+		// carry it out.
+		{`SELECT secret FROM user_totp`, func(v []string) { addSecret(v[0]) }},
 		{`SELECT username, plex_username, apprise_url, kindle_email, jellyfin_username FROM users`, func(v []string) {
 			names.Add(v[0], "«user»")
 			names.Add(v[1], "«user»")

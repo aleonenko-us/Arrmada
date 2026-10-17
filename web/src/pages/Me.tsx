@@ -15,7 +15,7 @@ const NotificationSettings = lazyPage(() => import("../components/NotificationSe
 const PlexAccountLink = lazy(() => import("../components/PlexAccountLink"));
 // Linking your Jellyfin user (Sign in with Jellyfin lands here), with its sign-in sheet.
 const JellyfinAccountLink = lazy(() => import("../components/JellyfinAccountLink"));
-// Your password and your other devices (every role).
+// Your password, two-factor sign-in and your other devices (every role).
 const AccountSettings = lazyPage(() => import("../components/AccountSettings"), "AccountSettings");
 // Your Kindle's address, for Send to Kindle on My shelf or, for staff, the book page
 // (anyone requester and up).
@@ -40,8 +40,8 @@ const ROLE: Record<UserRole, string> = {
 //                  and your Jellyfin user;
 //   Send to Kindle — your Kindle's address (Books on, requester and up);
 //   Calendar feed — your private link for Google / Apple Calendar (not from outside);
-//   Account      — change your password (or set a first one after Plex sign-in) and sign
-//                  out your other devices;
+//   Account      — change your password (or set a first one after Plex sign-in), two-factor
+//                  sign-in, and sign out your other devices;
 //   More, Sign out.
 export function Me({ chrome = false }: { chrome?: boolean }) {
   const { user, external, booksEnabled } = useMe();

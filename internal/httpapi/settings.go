@@ -125,6 +125,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// The address people reach Arrmada at from outside (https://arrmada.example.com):
 		// alerts link back with it and the calendar feed's link is built from it.
 		"app_public_url": a.deps.Settings.PublicURL(ctx),
+		// Require two-factor for admins: an admin signing in with a password who hasn't
+		// set it up must do so before any session is made (twofactor.go).
+		"two_factor_admins": a.deps.Settings.GetBool(ctx, keyTwoFactorAdmins, false),
 	})
 }
 
@@ -202,6 +205,7 @@ type settingsUpdate struct {
 	QualityRanking            *string   `json:"quality_ranking"`
 	NetworkPreference         *string   `json:"download_network_preference"`
 	PublicURL                 *string   `json:"app_public_url"`
+	TwoFactorAdmins           *bool     `json:"two_factor_admins"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -255,6 +259,8 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 		return "how releases are ranked"
 	case req.PublicURL != nil && publicURLChanged(*req.PublicURL, st.PublicURL(ctx)):
 		return "Arrmada's outside address"
+	case boolChanged(req.TwoFactorAdmins, st.GetBool(ctx, keyTwoFactorAdmins, false)):
+		return "whether admins must use two-factor sign-in"
 	}
 	return ""
 }
@@ -443,6 +449,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.PlexSignInStaff != nil && !save(a.deps.Settings.SetBool(ctx, keyPlexSignInStaff, *req.PlexSignInStaff)) {
+		return
+	}
+	if req.TwoFactorAdmins != nil && !save(a.deps.Settings.SetBool(ctx, keyTwoFactorAdmins, *req.TwoFactorAdmins)) {
 		return
 	}
 	if req.TMDBRegion != nil && !save(a.deps.Settings.Set(ctx, "tmdb_region", region)) {

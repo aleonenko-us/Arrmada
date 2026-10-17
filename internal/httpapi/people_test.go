@@ -20,6 +20,7 @@ var peopleKeys = map[string]bool{
 	"jellyfin_linked": true, "jellyfin_username": true, "jellyfin_only": true, "jellyfin_blocked": true,
 	"sessions": true, "web_last": true, "audio_last": true, "listen_last": true, "last_seen": true,
 	"audio_eligible": true, "audio_allowed": true, "audio_password_set": true, "audio_devices": true,
+	"two_factor": true,
 }
 
 // seedListening gives userID a place, a place history, a play session and a listening-log

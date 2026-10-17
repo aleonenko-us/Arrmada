@@ -181,6 +181,7 @@ type api struct {
 	deps          Deps
 	start         time.Time
 	loginLimiter  *loginLimiter // throttles auth attempts (login/setup/plex-pin)
+	codeLimit     *codeLimiter  // two-factor code attempts per account (twofactor_limit.go)
 	icsLimiter    *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
 	widgetLimiter *loginLimiter // throttles wrong dashboard widget keys per address (widget.go)
 	plexPins      *plexPinGuard // which browser (and account) started each Plex PIN
@@ -200,7 +201,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -340,6 +341,11 @@ func (a *api) registerRoutes(mux *router) {
 	// Auth
 	mux.HandleFunc("POST /api/v1/auth/setup", a.public(a.handleSetup).ext())
 	mux.HandleFunc("POST /api/v1/auth/login", a.public(a.handleLogin).ext())
+	// Two-factor sign-in's second step, with the ticket a right password answered (never a
+	// session): the code, or (an admin the policy requires it of) setting it up first.
+	mux.HandleFunc("POST /api/v1/auth/login/code", a.public(a.handleLoginCode).ext())
+	mux.HandleFunc("POST /api/v1/auth/login/setup", a.public(a.handleLoginSetup).ext())
+	mux.HandleFunc("POST /api/v1/auth/login/setup/confirm", a.public(a.handleLoginSetupConfirm).ext())
 	mux.HandleFunc("POST /api/v1/auth/plex/pin", a.public(a.handlePlexLoginStart).ext())
 	mux.HandleFunc("GET /api/v1/auth/plex/pin/{id}", a.public(a.handlePlexLoginPoll).ext())
 	// Sign in with Jellyfin: username + password (throttled per address and username), or
@@ -387,6 +393,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/me/sessions/revoke-others", a.signedIn(a.handleRevokeMyOtherSessions).ext())
 	mux.HandleFunc("GET /api/v1/me/sessions", a.signedIn(a.handleMySessions).ext())
 	mux.HandleFunc("DELETE /api/v1/me/sessions/{id}", a.signedIn(a.handleRevokeMySession).ext())
+	// Two-factor sign-in for your own password sign-in: set up (password first), confirm
+	// with a code, turn off or make new recovery codes (password and a code).
+	mux.HandleFunc("GET /api/v1/me/2fa", a.signedIn(a.handleMyTwoFactor).ext())
+	mux.HandleFunc("POST /api/v1/me/2fa/setup", a.signedIn(a.handleMyTwoFactorSetup).ext())
+	mux.HandleFunc("POST /api/v1/me/2fa/confirm", a.signedIn(a.handleMyTwoFactorConfirm).ext())
+	mux.HandleFunc("POST /api/v1/me/2fa/disable", a.signedIn(a.handleMyTwoFactorDisable).ext())
+	mux.HandleFunc("POST /api/v1/me/2fa/recovery-codes", a.signedIn(a.handleMyRecoveryCodes).ext())
 
 	// User management (admin only).
 	mux.HandleFunc("GET /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleListUsers))
@@ -398,6 +411,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/users/{id}", a.requireRole(auth.RoleAdmin, a.handleDeleteUser))
 	// "Sign out everywhere": ends every browser session of the account (a count back only).
 	mux.HandleFunc("POST /api/v1/users/{id}/sessions/revoke", a.requireRole(auth.RoleAdmin, a.handleRevokeUserSessions))
+	// Turn off someone's two-factor sign-in (lost phone and recovery codes); logged.
+	mux.HandleFunc("POST /api/v1/users/{id}/2fa/reset", a.requireRole(auth.RoleAdmin, a.handleResetUserTwoFactor))
 	mux.HandleFunc("GET /api/v1/users/plex-blocks", a.requireRole(auth.RoleAdmin, a.handleListPlexBlocks))
 	// Merge a duplicate Plex or Jellyfin requester into the account it belongs with (preview
 	// first). The /plex/merge paths are the old names of the same two.

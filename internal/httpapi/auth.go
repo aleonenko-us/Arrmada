@@ -172,7 +172,8 @@ func (a *api) handleLogin(w http.ResponseWriter, r *http.Request) {
 		l.reset(userKey, "")
 		l.reset(ipKey, name)
 	}
-	a.startSession(w, r, u, http.StatusOK)
+	// A session, or first the two-factor code (twofactor.go).
+	a.finishPasswordSignIn(w, r, u)
 }
 
 // loginAlertAt is how many wrong passwords for one username within an hour raise a

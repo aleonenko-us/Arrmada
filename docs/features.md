@@ -25,6 +25,7 @@ wired up.
 
 - **Discover and requests** — browse and request movies, TV and books, Overseerr-style. Auto-approve per user, and import your existing Overseerr requests.
 - **Users** — admin, manager, requester and read-only roles, with optional Plex or Jellyfin sign-in. Requesters get Discover, Requests, Calendar, Books and Audiobooks; from outside your network, everything but Calendar.
+- **Two-factor sign-in** — anyone who signs in with a password can add a code from an authenticator app (Aegis, 1Password, Google Authenticator…) on their Me page, with ten one-time recovery codes and an optional "trust this device for 30 days". An admin can require it for admins and reset it for someone who lost their phone. It covers Arrmada's own password only: Plex and Jellyfin sign-in are checked by those servers, API keys are separate, and audiobook apps keep their own audiobook password (they can't ask for a code).
 - **Books shelf** — requesters can download any ebook in the library, or send it to their Kindle.
 - **Calendar** — what's coming up.
 - **Notifications** — Apprise alerts for admins, or signed JSON to [n8n or any webhook](n8n.md) for your own automations; an in-app inbox and web push for requesters.

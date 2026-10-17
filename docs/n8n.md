@@ -310,6 +310,14 @@ A health problem you were told about has cleared. Severity: info.
 | `names` | string[] | The items' short names, when count is more than 1. |
 | `level` | string | warning or error. |
 
+#### `security.two_factor_failures` — Wrong two-factor codes
+
+Someone signed in with the right password for an account and then kept getting its two-factor code wrong: the password is likely known to someone else. Severity: warning.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `count` | integer | Wrong two-factor codes for the account in the last hour, each typed after its right password. |
+
 ### Requests
 
 #### `request.created` — New request

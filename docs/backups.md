@@ -61,3 +61,26 @@ It prints a new password once, in your terminal only (never in a log), and signs
 account out everywhere. To choose the password yourself, pipe it in with
 `--password-stdin`. A name that matches no account lists the admin accounts. Anyone with
 shell access to the server can do this, the same as they could edit the database.
+
+Lost the phone with your authenticator app, and the recovery codes too? Turn two-factor
+sign-in off for the account, then sign in with the password and set it up again:
+
+```sh
+docker exec -it Arrmada-app arrmada reset-2fa you@example.com
+```
+
+The password and the account's sessions stay as they are. An admin can do the same for
+anyone else in Settings → People & access.
+
+If the server requires two-factor for admins (Settings → People & access → **Require
+two-factor for admins**), signing in will ask you to set it up again straight away. Without
+an authenticator app to hand, switch that requirement off as well and restart Arrmada:
+
+```sh
+docker exec -it Arrmada-app arrmada reset-2fa you@example.com --policy-off
+docker restart Arrmada-app
+```
+
+**Keep backups private.** A backup is a copy of the whole database, so it holds what the
+database holds: the keys and passwords of your connections and every account's two-factor
+secret. Store and share it as carefully as you would those.

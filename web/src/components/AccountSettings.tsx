@@ -1,18 +1,27 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button, useConfirm, useToast } from "../ui";
 import { accountApi, type MySession } from "../lib/accountApi";
 import { formatAgo } from "../lib/format";
+import { lazyPage } from "../lib/lazyPage";
 import { useMe } from "../lib/me";
 import { invalidate } from "../lib/query";
 
-// The Me page's Account card, for every role: your password and the devices you're signed
-// in on. It is its own chunk, loaded with the Me page.
+// Two-factor sign-in (set up with an authenticator app, recovery codes): its own chunk,
+// with the QR code and setup steps behind it.
+const TwoFactorSettings = lazyPage(() => import("./twofactor/TwoFactorSettings"), "TwoFactorSettings");
+
+// The Me page's Account card, for every role: your password, two-factor sign-in and the
+// devices you're signed in on. It is its own chunk, loaded with the Me page.
 export function AccountSettings() {
   // A password change signs the other devices out: the list reads itself again after one.
+  // So does setting a first password (two-factor then has something to protect).
   const [changes, setChanges] = useState(0);
   return (
     <>
       <PasswordSetting onChanged={() => setChanges((n) => n + 1)} />
+      <Suspense fallback={<div className="px-3.5 py-3 text-sm text-ink-faint" style={{ borderTop: "1px solid var(--line-soft)" }}>Loading…</div>}>
+        <TwoFactorSettings key={changes} />
+      </Suspense>
       <Devices key={changes} />
     </>
   );

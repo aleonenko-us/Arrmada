@@ -400,6 +400,14 @@ var webhookEvents = map[string]webhookEvent{
 		fields: needsYouFields(),
 		sample: map[string]any{"count": 1, "title": "qBittorrent can't be reached", "link": "/settings/status#health"},
 	},
+	// Never which account: its name is what it signs in with.
+	EventTwoFactorFailures: {
+		severity: "warning",
+		fields: []DataField{
+			fInt("count", "Wrong two-factor codes for the account in the last hour, each typed after its right password."),
+		},
+		sample: map[string]any{"count": 5},
+	},
 }
 
 // levelSeverity are the events whose severity is the item's own level ("warning" or
