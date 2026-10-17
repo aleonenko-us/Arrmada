@@ -357,7 +357,7 @@ func TestSetLibraryPathsCreateFailureIsReported(t *testing.T) {
 	a.deps.Config.MusicDir = music
 	for _, tc := range []struct{ field, path string }{
 		{"ebooks", filepath.Join(dangling, "ebooks")}, // a new folder
-		{"music", music},                              // the folder in use
+		{"music", music}, // the folder in use
 	} {
 		w := putPaths(t, a, map[string]any{tc.field: tc.path, "create": true})
 		var body map[string]any
