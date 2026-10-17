@@ -19,9 +19,12 @@ The image's ffmpeg (jellyfin-ffmpeg) has the VAAPI, Quick Sync and NVENC encoder
 At every start, Arrmada looks for each one's device (`/dev/dri` with an Intel or AMD card
 behind it; `/dev/nvidia0` or `nvidia-smi` for NVIDIA) and then **encodes one test frame**
 with it. Only an encoder whose test frame came out is ever used: one that's compiled in, or
-whose device is there, but doesn't actually run is left out before any file is touched. For
-HEVC the order is NVENC, VAAPI, Quick Sync; for AV1 the same. If a hardware encoder fails on
-real files again and again, Convert carries on on the CPU for the rest of that run.
+whose device is there, but doesn't actually run is left out before any file is touched.
+With **Use my GPU** on, the first working one in this order is used: NVENC, VAAPI, Quick
+Sync, for HEVC and for AV1 alike (AV1 only when that encoder exists on the card; otherwise
+GPU mode converts to HEVC). With it off, both encode on the CPU (x265, SVT-AV1). If a
+hardware encoder fails on real files again and again, Convert carries on on the CPU for the
+rest of that run.
 
 ### Seeing what it found
 
@@ -63,11 +66,12 @@ one under `/usr/lib/jellyfin-ffmpeg/`: it's the one that goes with the image's f
 drivers. For a second card add `--display drm --device /dev/dri/renderD129`.
 
 **The render group.** The device on the host usually belongs to a `render` or `video` group,
-and you don't need to add Arrmada to it: the container starts as root, opens the render
-nodes for the user it runs as (`ARRMADA_PUID`), and only then drops to that user. (Adding a
-group with Compose's `group_add` wouldn't help either: that drop sets the user's groups
-afresh.) Where the container can't open them, rootless Docker for example, `vainfo` says
-"permission denied"; then let everyone use the node on the host
+and you don't need to add Arrmada to it: the container starts as root and makes its own
+copies of the render nodes (the ones under the container's `/dev/dri`) readable and
+writable by everyone, then drops to the user it runs as (`ARRMADA_PUID`). The nodes on the
+host aren't changed. (Adding a group with Compose's `group_add` wouldn't help either: that
+drop sets the user's groups afresh.) Where the container can't change them, rootless Docker
+for example, `vainfo` says "permission denied"; then let everyone use the node on the host
 (`sudo chmod 666 /dev/dri/renderD128`, until the next reboot; a udev rule keeps it).
 
 **Intel.** Gen 9 (Skylake) and later encode HEVC; Arc and Core Ultra graphics also encode

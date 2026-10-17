@@ -489,17 +489,33 @@ func TestMediaInitScriptsAgree(t *testing.T) {
 			strings.Join(main, "\n"), strings.Join(ex, "\n"))
 	}
 	joined := strings.Join(main, "\n")
-	// The recursive chown belongs to the managed volume's branch, which exits before the
-	// host-folder part starts.
-	managed, hostPart, ok := strings.Cut(joined, "\nesac\n")
-	if !ok {
-		t.Fatalf("the media init script has no managed/host split:\n%s", joined)
+	// Which branch runs comes from the mount table, never from the variable: a path written
+	// into the compose file, an NFS volume or a Windows path is still a folder of the user's.
+	if !strings.Contains(joined, "/proc/self/mountinfo") || !strings.Contains(joined, "/volumes/[^/]+/_data$$") {
+		t.Errorf("the media init should tell the managed volume from a folder by the mount table:\n%s", joined)
 	}
-	if !strings.Contains(managed, `chown -R "$$PUID:$$PGID" /media`) || !strings.Contains(managed, "exit ;;") {
+	// The managed volume's branch is the block that exits before the host-folder part.
+	const managedStart = "if printf '%s\\n' \"$$mr\" | grep -Eq"
+	before, rest, ok := strings.Cut(joined, managedStart)
+	if !ok {
+		t.Fatalf("the media init script has no managed-volume branch:\n%s", joined)
+	}
+	managed, hostPart, ok := strings.Cut(rest, "\nfi\n")
+	if !ok {
+		t.Fatalf("the media init script's managed branch has no end:\n%s", joined)
+	}
+	if !strings.Contains(managed, `chown -R "$$PUID:$$PGID" /media`) || !strings.Contains(managed, "exit") {
 		t.Errorf("the managed volume should still be handed over whole (chown -R), then exit:\n%s", managed)
 	}
-	if strings.Contains(hostPart, "chown -R") {
-		t.Errorf("the media init chowns a folder of the user's recursively:\n%s", hostPart)
+	if strings.Contains(before, "chown") || strings.Contains(hostPart, "chown -R") {
+		t.Errorf("the media init chowns a folder of the user's recursively:\n%s", joined)
+	}
+	// Refusals come first, so neither branch runs on a relative value or an overlap with the
+	// database's folder (mounted read-only to compare by device and folder).
+	for _, want := range []string{`. | ./* | .. | ../*)`, `$$5 == "/data"`, "overlap=1", "exit 1"} {
+		if !strings.Contains(before, want) {
+			t.Errorf("the media init's checks before either branch have no %q:\n%s", want, before)
+		}
 	}
 	// The managed volume starts with a folder per library (the app no longer makes them: on a
 	// host folder that isn't mounted yet it would make them on the wrong disk); a folder of
@@ -512,9 +528,18 @@ func TestMediaInitScriptsAgree(t *testing.T) {
 			t.Errorf("the media init makes /media/library/%s in a folder of the user's:\n%s", lib, hostPart)
 		}
 	}
-	for _, want := range []string{"$${DATA_HOST%/}", "exit 1", "/media/downloads/incomplete", "/media/library"} {
+	for _, want := range []string{"/media/downloads/incomplete", "/media/library"} {
 		if !strings.Contains(hostPart, want) {
 			t.Errorf("the host-folder part of the media init has no %q:\n%s", want, hostPart)
+		}
+	}
+	// Both files mount the database's folder into the init read-only, the same one the app has.
+	for file, want := range map[string]string{
+		"docker-compose.yml":         "${ARRMADA_DATA_HOST:-arrmada-data}:/data:ro",
+		"docker-compose.example.yml": "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data:ro",
+	} {
+		if !slices.Contains(readCompose(t, filepath.Join(root, file))["arrmada-media-init"].rawVolumes, want) {
+			t.Errorf("%s: arrmada-media-init should mount %s", file, want)
 		}
 	}
 }

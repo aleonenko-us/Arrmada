@@ -13,28 +13,50 @@ import (
 // an Intel iGPU and an AMD card, the device picked in Settings → Convert decides. A value set
 // on the container always wins (the image no longer sets one, so any value is the owner's).
 
-// drmClassDir is where the kernel describes each DRM device (tests point it elsewhere).
-var drmClassDir = "/sys/class/drm"
+// drmClassDir is where the kernel describes each DRM device by name, and sysDevCharDir each
+// character device by its major:minor numbers (tests point both elsewhere).
+var (
+	drmClassDir   = "/sys/class/drm"
+	sysDevCharDir = "/sys/dev/char"
+	// devNum reads a device node's major:minor (devnum_linux.go; tests fake it).
+	devNum = charDevNum
+)
 
 // libvaDriver is the VA driver for a render node, from its PCI vendor: iHD for Intel,
 // radeonsi for AMD (the image carries both), "" when the vendor is unknown or unreadable,
 // which leaves the choice to libva.
+//
+// The node is looked up by its device numbers first: a container's /dev/dri can name a node
+// differently from the host (a single card passed in as renderD128 while the host calls it
+// renderD129), but its numbers are the kernel's own. Its name is the fallback.
 func libvaDriver(device string) string {
-	name := filepath.Base(device)
-	if p, err := filepath.EvalSymlinks(device); err == nil {
-		name = filepath.Base(p) // /dev/dri/by-path/…-render → renderD129
+	vendor := ""
+	if num, ok := devNum(device); ok {
+		vendor = readVendor(filepath.Join(sysDevCharDir, num, "device", "vendor"))
 	}
-	b, err := os.ReadFile(filepath.Join(drmClassDir, name, "device", "vendor"))
-	if err != nil {
-		return ""
+	if vendor == "" {
+		name := filepath.Base(device)
+		if p, err := filepath.EvalSymlinks(device); err == nil {
+			name = filepath.Base(p) // /dev/dri/by-path/…-render → renderD129
+		}
+		vendor = readVendor(filepath.Join(drmClassDir, name, "device", "vendor"))
 	}
-	switch strings.TrimSpace(string(b)) {
+	switch vendor {
 	case "0x8086":
 		return "iHD"
 	case "0x1002":
 		return "radeonsi"
 	}
 	return ""
+}
+
+// readVendor is a sysfs vendor file's PCI id ("0x8086"), or "".
+func readVendor(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 // libvaEnv is the environment for an ffmpeg run with these arguments: the app's own plus

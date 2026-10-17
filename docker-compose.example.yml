@@ -8,9 +8,11 @@
 #   ARRMADA_DATA_HOST=/srv/arrmada/data       Arrmada's database and settings
 #   ARRMADA_STORAGE_HOST=/srv/media           your libraries and downloads (/storage inside)
 #
-# (Or change the defaults in this file itself.) Then `docker compose up -d` and open
-# http://<server>:7878. The first-run setup in the browser takes care of the rest (TMDB key,
-# library folders, Plex, indexers). API keys go there, never in this file or .env.
+# (Folders can also be written into this file in place of the defaults; .env is better, as
+# a newer copy of the file then replaces this one without losing them.) Then
+# `docker compose up -d` and open http://<server>:7878. The first-run setup in the browser
+# takes care of the rest (TMDB key, library folders, Plex, indexers). API keys go there,
+# never in this file or .env.
 #
 # Update:  docker compose pull && docker compose up -d
 #
@@ -107,36 +109,40 @@ services:
     restart: unless-stopped
 
   # One-shot: Arrmada's own downloads/library folders, owned by the user above. The managed
-  # volume also gets a starting folder per library, and all of it is the user's; a folder of
-  # yours (ARRMADA_MEDIA_HOST) keeps its owners, gets no library folders, and only the folders
-  # made here are handed over. Same script as docker-compose.yml's.
+  # volume (told apart by what's really mounted) also gets a starting folder per library, and
+  # all of it is the user's; any other folder keeps its owners, gets no library folders, and
+  # only the folders made here are handed over. Same script as docker-compose.yml's.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
     environment:
       <<: *you
       MEDIA_HOST: "${ARRMADA_MEDIA_HOST:-}"
-      DATA_HOST: "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}"
     command:
       - sh
       - -c
       - |
         case "$$MEDIA_HOST" in
-          /* | ./* | ../* | \~*) ;;
-          *)
-            mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
-              /media/library/ebooks /media/library/audiobooks /media/library/music &&
-              chown -R "$$PUID:$$PGID" /media
-            exit ;;
+          . | ./* | .. | ../*)
+            echo "ARRMADA_MEDIA_HOST=$$MEDIA_HOST is a relative path. Give the full path in .env: a relative one would be inside Arrmada's own folder." >&2
+            exit 1 ;;
         esac
-        m=$${MEDIA_HOST%/}; d=$${DATA_HOST%/}; overlap=""
-        if [ -n "$$d" ]; then
-          case "$$m/" in "$$d/"*) overlap=1 ;; esac
-          case "$$d/" in "$$m/"*) overlap=1 ;; esac
+        m=$$(awk '$$5 == "/media" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        d=$$(awk '$$5 == "/data" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        mr=$${m#* }; mr=$${mr%/}; dr=$${d#* }; dr=$${dr%/}; overlap=""
+        if [ -n "$$m" ] && [ -n "$$d" ] && [ "$${m%% *}" = "$${d%% *}" ]; then
+          case "$$mr/" in "$$dr/"*) overlap=1 ;; esac
+          case "$$dr/" in "$$mr/"*) overlap=1 ;; esac
         fi
         if [ -n "$$overlap" ]; then
-          echo "ARRMADA_MEDIA_HOST ($$m) and ARRMADA_DATA_HOST ($$d) overlap. Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another folder in .env." >&2
+          echo "The media folder and the database's folder overlap (ARRMADA_MEDIA_HOST, ARRMADA_DATA_HOST). Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another one in .env." >&2
           exit 1
+        fi
+        if printf '%s\n' "$$mr" | grep -Eq '/volumes/[^/]+/_data$$'; then
+          mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
+            /media/library/ebooks /media/library/audiobooks /media/library/music &&
+            chown -R "$$PUID:$$PGID" /media
+          exit
         fi
         [ -n "$$(ls -A /media)" ] || chown "$$PUID:$$PGID" /media
         for p in /media/downloads /media/downloads/incomplete /media/library; do
@@ -144,6 +150,7 @@ services:
         done
     volumes:
       - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
+      - "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data:ro"
     restart: "no"
 
   # One-shot: qBittorrent's first settings (only if it has none yet). The whitelist lets

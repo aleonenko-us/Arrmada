@@ -168,7 +168,7 @@ ARRMADA_STORAGE_HOST=/mnt/user/data
 | `ARRMADA_STORAGE_HOST` | `/path/to/your/media` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
 | `ARRMADA_MEDIA_HOST` | the `arrmada-media` volume | Optional: a host folder for `/media`, Arrmada's own downloads and library ([Configuration](configuration.md#media-in-a-folder-of-your-own-env-only)) |
 | `ARRMADA_PUID` / `ARRMADA_PGID` | `1000` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
-| `TZ` | `Etc/UTC` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
+| `TZ` | `Etc/UTC` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it. The same name `docker-compose.yml` and the installer use (not `ARRMADA_`-prefixed); like every variable here, one exported in the shell that runs `docker compose` wins over `.env` |
 | `ARRMADA_PORT` | `7878` | The web page's port; change it if something (Radarr) already has 7878 |
 | `ARRMADA_AUDIOBOOK_PORT` | `13379` | The audiobook server's port, for listening apps |
 | `ARRMADA_QBIT_PORT` | `6881` | BitTorrent's port; forward it on your router (TCP and UDP) |

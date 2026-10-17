@@ -158,8 +158,10 @@ a file has the same path in each and imports hardlink. The paths inside the cont
 change (still `/media/...`), so the folders already saved in the app keep working. When the
 folder is new or empty it's handed to the user Arrmada runs as; when it already holds files,
 only the `downloads` and `library` folders Arrmada makes are, and your own files keep their
-owners. Use a full path. A folder that is, holds or sits inside the `ARRMADA_DATA_HOST`
-folder is refused: media never goes with the database. Don't point it at the folder already
+owners. Which of the two `/media` is comes from what's really mounted, so a folder named
+some other way (written into the compose file, a network volume of your own) is handled as
+yours too. Use a full path: a relative one is refused. A folder that is, holds or sits inside
+the database's folder is refused: media never goes with the database. Don't point it at the folder already
 mounted at `/storage` either: that works, but two mounts of one folder can't hardlink between
 them, so pick one place for each library and its downloads.
 
@@ -174,6 +176,11 @@ docker run --rm -v arrmada_arrmada-media:/from -v /mnt/user/arrmada-media:/to al
 # now add the ARRMADA_MEDIA_HOST line to .env, then start everything on the new folder:
 docker compose up -d
 ```
+
+**A share that isn't mounted yet.** If the folder is a mount point (an NFS or SMB share, an
+Unraid share before the array starts) and the share isn't there when Arrmada starts, Docker
+mounts the empty folder underneath, and Arrmada makes its `downloads` and `library` there,
+on the wrong disk. Start Arrmada after the share is mounted (on Unraid, the array first).
 
 Remove the line (and run `update.sh`) to go back to the volume. Leave it out entirely and
 nothing changes: `/media` stays the `arrmada-media` volume it has always been.

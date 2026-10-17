@@ -152,10 +152,13 @@ services:
     restart: unless-stopped
 
   # One-shot: create the media subfolders and hand them to the user both Arrmada and
-  # qBittorrent run as, so both can write and hardlink. The managed volume is Arrmada's own:
-  # it gets a starting folder per library, and all of it changes owner. A folder of yours
-  # (ARRMADA_MEDIA_HOST) keeps its owners and gets no library folders (you pick those in the
-  # app): only downloads and library are made, and it may not be the database's folder.
+  # qBittorrent run as, so both can write and hardlink. Which kind of /media it is comes from
+  # what's really mounted (the kernel's mount table), not from how it was named: a Docker
+  # volume's folder ends in /volumes/<name>/_data. The managed volume is Arrmada's own: it
+  # gets a starting folder per library, and all of it changes owner. Anything else is a folder
+  # of yours: it keeps its owners and gets no library folders (you pick those in the app),
+  # only downloads and library are made. It may not overlap the database's folder (mounted
+  # here read-only to compare), and a relative ARRMADA_MEDIA_HOST is refused.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
@@ -163,27 +166,31 @@ services:
       PUID: "${ARRMADA_PUID:-1000}"
       PGID: "${ARRMADA_PGID:-1000}"
       MEDIA_HOST: "${ARRMADA_MEDIA_HOST:-}"
-      DATA_HOST: "${ARRMADA_DATA_HOST:-}"
     command:
       - sh
       - -c
       - |
         case "$$MEDIA_HOST" in
-          /* | ./* | ../* | \~*) ;;
-          *)
-            mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
-              /media/library/ebooks /media/library/audiobooks /media/library/music &&
-              chown -R "$$PUID:$$PGID" /media
-            exit ;;
+          . | ./* | .. | ../*)
+            echo "ARRMADA_MEDIA_HOST=$$MEDIA_HOST is a relative path. Give the full path in .env: a relative one would be inside Arrmada's own folder." >&2
+            exit 1 ;;
         esac
-        m=$${MEDIA_HOST%/}; d=$${DATA_HOST%/}; overlap=""
-        if [ -n "$$d" ]; then
-          case "$$m/" in "$$d/"*) overlap=1 ;; esac
-          case "$$d/" in "$$m/"*) overlap=1 ;; esac
+        m=$$(awk '$$5 == "/media" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        d=$$(awk '$$5 == "/data" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        mr=$${m#* }; mr=$${mr%/}; dr=$${d#* }; dr=$${dr%/}; overlap=""
+        if [ -n "$$m" ] && [ -n "$$d" ] && [ "$${m%% *}" = "$${d%% *}" ]; then
+          case "$$mr/" in "$$dr/"*) overlap=1 ;; esac
+          case "$$dr/" in "$$mr/"*) overlap=1 ;; esac
         fi
         if [ -n "$$overlap" ]; then
-          echo "ARRMADA_MEDIA_HOST ($$m) and ARRMADA_DATA_HOST ($$d) overlap. Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another folder in .env." >&2
+          echo "The media folder and the database's folder overlap (ARRMADA_MEDIA_HOST, ARRMADA_DATA_HOST). Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another one in .env." >&2
           exit 1
+        fi
+        if printf '%s\n' "$$mr" | grep -Eq '/volumes/[^/]+/_data$$'; then
+          mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
+            /media/library/ebooks /media/library/audiobooks /media/library/music &&
+            chown -R "$$PUID:$$PGID" /media
+          exit
         fi
         [ -n "$$(ls -A /media)" ] || chown "$$PUID:$$PGID" /media
         for p in /media/downloads /media/downloads/incomplete /media/library; do
@@ -191,6 +198,7 @@ services:
         done
     volumes:
       - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
+      - ${ARRMADA_DATA_HOST:-arrmada-data}:/data:ro
     restart: "no"
 
   # One-shot: seed qBittorrent's config the first time (downloads path, and login-free

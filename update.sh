@@ -280,6 +280,28 @@ env_get() {
   grep -E "^$1=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true
 }
 
+# A relative ARRMADA_MEDIA_HOST would put the media inside this folder, where a download of
+# newer files, or a build, would meet it. Refused before anything happens.
+MEDIA_HOST=$(env_get ARRMADA_MEDIA_HOST)
+case "$MEDIA_HOST" in
+  . | ./* | .. | ../*)
+    say "✗ ARRMADA_MEDIA_HOST=$MEDIA_HOST in .env is a relative path. Give the folder's full path" >&2
+    say "  (e.g. /mnt/user/arrmada-media), then run ./update.sh again. Nothing was changed." >&2
+    exit 1 ;;
+esac
+
+# media_source CONTAINER -> what CONTAINER has at /media: a host folder, or a volume's name.
+media_source() {
+  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/media"}}{{if .Name}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "$1" 2>/dev/null || true
+}
+# media_name SOURCE -> how to say it: the folder, or "the Docker volume NAME".
+media_name() {
+  case "$1" in
+    /*) say "$1" ;;
+    *) say "the Docker volume $1" ;;
+  esac
+}
+
 # ── which image compose runs ────────────────────────────────────────────────────
 # docker-compose.yml runs ARRMADA_APP_IMAGE, and without it the published release, so a
 # plain `docker compose up -d` in a fresh checkout downloads rather than compiles. This
@@ -825,8 +847,28 @@ stay_put() {
     say "  Every ./update.sh checks again, and moves to the published releases once one includes this build."
   fi
   say "  To follow main instead (compiled here on every update): add ARRMADA_CHANNEL=main to .env, then ./update.sh."
+  media_waits
   if [ "$1" = schema ]; then exit 1; fi
   exit 0
+}
+
+# media_waits: when Arrmada stays on its build, nothing is restarted, so a media folder
+# changed in .env (ARRMADA_MEDIA_HOST) isn't in use yet. Say so, and how to apply it now.
+media_waits() {
+  _now=$(media_source Arrmada-app)
+  [ -n "$_now" ] || return 0
+  _want=${MEDIA_HOST%/}
+  case "$_want" in \~/*) _want="${HOME:-/root}/${_want#\~/}" ;; esac
+  case "$_want" in
+    "") case "$_now" in /*) ;; *) return 0 ;; esac ;;
+    "$_now") return 0 ;;
+    /*) ;;
+    *) case "$_now" in *"_$_want") return 0 ;; esac ;; # a named volume, project_name
+  esac
+  say ""
+  say "! The media folder in .env (ARRMADA_MEDIA_HOST) isn't in use yet: Arrmada still has"
+  say "  $(media_name "$_now"). It applies on the next update that restarts Arrmada, or now, on the"
+  say "  build it's running, with: docker compose up -d"
 }
 
 # choose_channel: an install without ARRMADA_CHANNEL that compiles here (made before the
@@ -973,6 +1015,20 @@ if [ -z "$PULL_IMAGE" ]; then
   export ARRMADA_VERSION ARRMADA_COMMIT
 fi
 
+# With ARRMADA_MEDIA_HOST in .env (media somewhere other than the managed volume), the
+# media init runs before anything is replaced. It only makes the downloads and library
+# folders that aren't there yet, so a folder newly set in .env has them before the app
+# starts on it, and it refuses a folder that overlaps the database's. When it refuses,
+# nothing has changed yet, the rollback target included.
+if [ -n "$MEDIA_HOST" ]; then
+  if ! docker compose run --rm --no-deps -T arrmada-media-init </dev/null; then
+    say "" >&2
+    say "✗ Couldn't set up the media folder (ARRMADA_MEDIA_HOST in .env; see above). Nothing was" >&2
+    say "  replaced: Arrmada is still running the version it was. Fix the line, then run ./update.sh again." >&2
+    exit 1
+  fi
+fi
+
 # Keep the build that's running as arrmada:previous, for --rollback. It has to be
 # tagged before the build: once the new build takes arrmada:dev and the old container
 # is replaced, an untagged image can be deleted on the spot (Docker's containerd image
@@ -1002,20 +1058,6 @@ fi
 # the name docker-compose.yml runs, so the rollback tags and every step after this one
 # work on it exactly as they do on a local build. A switch to the releases runs as the
 # stable channel straight away; its .env lines are written once it's up.
-#
-# One exception: with ARRMADA_MEDIA_HOST in .env (media in a folder of yours rather than
-# the managed volume), the media init runs first. It only makes the downloads and library
-# folders that aren't there yet, so a folder newly set in .env has them before the app
-# starts on it, and it refuses a folder that overlaps the database's.
-case "$(env_get ARRMADA_MEDIA_HOST)" in
-  /* | ./* | ../* | \~*)
-    if ! docker compose run --rm --no-deps -T arrmada-media-init </dev/null; then
-      say "" >&2
-      say "✗ Couldn't set up the media folder (ARRMADA_MEDIA_HOST in .env; see above). Arrmada is" >&2
-      say "  still running the version it was. Fix the line, then run ./update.sh again." >&2
-      exit 1
-    fi ;;
-esac
 UP_OK=1
 if [ -n "$MIGRATE" ]; then
   ARRMADA_CHANNEL=stable
@@ -1148,17 +1190,6 @@ fi
 # still on the old one is recreated on the new one (that one container, nothing else). One
 # that's stopped is left stopped: `docker compose up -d` gives it the new folder when it
 # next starts it.
-# media_source CONTAINER -> what CONTAINER has at /media: a host folder, or a volume's name.
-media_source() {
-  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/media"}}{{if .Name}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "$1" 2>/dev/null || true
-}
-# media_name SOURCE -> how to say it: the folder, or "the Docker volume NAME".
-media_name() {
-  case "$1" in
-    /*) say "$1" ;;
-    *) say "the Docker volume $1" ;;
-  esac
-}
 _app_media=$(media_source Arrmada-app)
 if [ -n "$_app_media" ]; then
   for _c in arrmada-qbittorrent:Arrmada-qbittorrent arrmada-sabnzbd:Arrmada-sabnzbd; do
