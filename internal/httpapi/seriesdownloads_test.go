@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
@@ -71,5 +74,22 @@ func TestEpisodeDownloadsCompleteAndAbsolute(t *testing.T) {
 	idx = indexEpisodeDownloads(queue, series.Series{Title: "Show"}, parser.Parse)
 	if d := idx.lookup(3, 7); d == nil || d.Progress != 0.5 {
 		t.Errorf("S03E07 = %+v, want the complete pack", d)
+	}
+}
+
+// A download a search took by the show's German title lights its episode, by the search's
+// own rule (series.SearchFit); without the setting it doesn't.
+func TestEpisodeDownloadsByTranslatedTitle(t *testing.T) {
+	heist := series.Series{ID: 1, TMDBID: 71446, Title: "Money Heist", Year: 2017, Extra: &series.SeriesExtra{
+		LocalLangs: []string{"de"}, LocalTitles: []metadata.TranslatedTitle{{Lang: "de", Title: "Haus des Geldes"}}}}
+	heist.Seasons = []series.Season{{SeasonNumber: 1, Episodes: []series.Episode{{SeasonNumber: 1, EpisodeNumber: 1}}}}
+	queue := []download.Item{{Name: "Haus.des.Geldes.S01E01.German.DL.1080p.WEB.x264-GRP", Category: download.CategoryTV, State: "downloading", Progress: 0.5}}
+	svc := series.NewService(nil, nil, t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if d := indexEpisodeDownloadsFit(queue, heist, parser.Parse, svc.SearchFitFor([]series.Series{heist})).lookup(1, 1); d != nil {
+		t.Errorf("setting empty: %+v", d)
+	}
+	svc.SetTitleLanguages(func() []string { return []string{"de"} })
+	if d := indexEpisodeDownloadsFit(queue, heist, parser.Parse, svc.SearchFitFor([]series.Series{heist})).lookup(1, 1); d == nil || d.Progress != 0.5 {
+		t.Errorf("S01E01 = %+v, want the German download", d)
 	}
 }
