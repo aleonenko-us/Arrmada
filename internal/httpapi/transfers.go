@@ -135,7 +135,7 @@ func (a *api) loadTitleCard(ctx context.Context, kind string, id int64) titleCar
 		if err != nil {
 			break
 		}
-		card := titleCard{found: true, title: m.Title, year: m.Year, poster: m.PosterURL}
+		card := titleCard{found: true, title: m.Shown(), year: m.Year, poster: m.PosterURL}
 		if vs, err := a.deps.Movies.VersionRows(ctx, id); err == nil {
 			card.versions = map[int64]string{}
 			for _, v := range vs {
@@ -153,7 +153,7 @@ func (a *api) loadTitleCard(ctx context.Context, kind string, id int64) titleCar
 		if err != nil {
 			break
 		}
-		return titleCard{found: true, title: s.Title, year: s.Year, poster: s.PosterURL}
+		return titleCard{found: true, title: s.Shown(), year: s.Year, poster: s.PosterURL}
 	case "book":
 		if a.deps.Books == nil {
 			break

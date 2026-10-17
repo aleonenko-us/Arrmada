@@ -585,6 +585,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/movies/{id}/releases", a.requireRole(auth.RoleManager, a.handleMovieReleases))
 	mux.HandleFunc("GET /api/v1/movies/{id}/history", a.requireRole(auth.RoleManager, a.handleMovieHistory))
 	mux.HandleFunc("GET /api/v1/movies/{id}/collection", a.requireRole(auth.RoleManager, a.handleMovieCollection))
+	// The title the page shows (the display-title override) and the names it may pick from.
+	mux.HandleFunc("PUT /api/v1/movies/{id}/display-title", a.requireRole(auth.RoleManager, a.handleSetMovieDisplayTitle))
+	mux.HandleFunc("GET /api/v1/movies/{id}/title-choices", a.requireRole(auth.RoleManager, a.handleMovieTitleChoices))
 
 	// Series (TV).
 	mux.HandleFunc("GET /api/v1/series", a.requireRole(auth.RoleManager, a.handleListSeries))
@@ -616,6 +619,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/series/{id}/monitor", a.requireRole(auth.RoleManager, a.handleSetSeriesMonitored))
 	mux.HandleFunc("PUT /api/v1/series/{id}/profile", a.requireRole(auth.RoleManager, a.handleSetSeriesProfile))
 	mux.HandleFunc("PUT /api/v1/series/{id}/type", a.requireRole(auth.RoleManager, a.handleSetSeriesType))
+	// The title the page shows (the display-title override) and the names it may pick from.
+	mux.HandleFunc("PUT /api/v1/series/{id}/display-title", a.requireRole(auth.RoleManager, a.handleSetSeriesDisplayTitle))
+	mux.HandleFunc("GET /api/v1/series/{id}/title-choices", a.requireRole(auth.RoleManager, a.handleSeriesTitleChoices))
 	// Manual scene-season mapping (anime whose cours don't match TMDB numbering).
 	mux.HandleFunc("GET /api/v1/series/{id}/scene-map", a.requireRole(auth.RoleManager, a.handleListSceneOverrides))
 	mux.HandleFunc("PUT /api/v1/series/{id}/scene-map", a.requireRole(auth.RoleManager, a.handleSetSceneOverride))

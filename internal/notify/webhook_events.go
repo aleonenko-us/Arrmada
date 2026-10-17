@@ -244,7 +244,7 @@ var webhookEvents = map[string]webhookEvent{
 		fields: append([]DataField{
 			fID("movie_id", "id", "The movie's id in Arrmada."),
 			fID("tmdb_id", "tmdb_id", "TMDB id."),
-			fStr("title", "The movie's title."),
+			fStr("title", "The movie's title as Arrmada shows it (Settings → Library → Show titles as)."),
 			DataField{Name: "year", Type: "integer", ZeroNull: true, Doc: "Release year."},
 			fID("version_id", "version_id", "The extra version (e.g. a Director's Cut) the file belongs to; null for the main file."),
 			fBool("upgrade", "true when it replaced a file of lower quality."),
@@ -259,7 +259,7 @@ var webhookEvents = map[string]webhookEvent{
 		fields: append([]DataField{
 			fID("series_id", "id", "The show's id in Arrmada."),
 			fID("tmdb_id", "tmdb_id", "TMDB id."),
-			fStr("title", "The show's title."),
+			fStr("title", "The show's title as Arrmada shows it (Settings → Library → Show titles as)."),
 			DataField{Name: "year", Type: "integer", ZeroNull: true, Doc: "The show's first-air year."},
 			fInt("count", "How many episodes were imported."),
 			fList("episodes", "The episodes imported, as S01E02."),

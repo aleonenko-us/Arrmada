@@ -32,6 +32,10 @@ type discoverCard struct {
 	// Wanted: in the library, monitored and missing files, so the server is already
 	// after it. An in-library title nobody monitors isn't, and can still be requested.
 	Wanted bool `json:"wanted,omitempty"`
+	// DisplayTitle is the title as the library shows it (Settings → Library → "Show
+	// titles as"), for a title in the library under another name than TMDB's. Title stays
+	// TMDB's.
+	DisplayTitle string `json:"display_title,omitempty"`
 }
 
 // discoverEnrichSnap holds the precomputed lookup maps enrichDiscover needs: library
@@ -43,6 +47,7 @@ type discoverEnrichSnap struct {
 	serWanted      map[int]bool       // monitored, with aired or upcoming wanted episodes
 	prog           map[string]float64 // "movie:123" / "series:123" -> progress 0..1
 	reqStatus      map[string]string  // "movie:123" / "series:123" -> status
+	shown          map[string]string  // "movie:123" / "series:123" -> the library's shown title, when it isn't TMDB's
 }
 
 // enrichSnapTTL: a Discover page render fires ~6 row requests at once and the frontend
@@ -86,7 +91,7 @@ func (a *api) buildDiscoverSnapshot(ctx context.Context) (snap *discoverEnrichSn
 		movIn: map[int]bool{}, movHave: map[int]bool{},
 		serIn: map[int]bool{}, serHave: map[int]bool{},
 		movWanted: map[int]bool{}, serWanted: map[int]bool{},
-		prog: map[string]float64{}, reqStatus: map[string]string{},
+		prog: map[string]float64{}, reqStatus: map[string]string{}, shown: map[string]string{},
 	}
 	complete = true
 	queue, err := a.deps.Downloads.Queue(ctx)
@@ -110,6 +115,9 @@ func (a *api) buildDiscoverSnapshot(ctx context.Context) (snap *discoverEnrichSn
 			snap.movIn[m.TMDBID] = true
 			snap.movHave[m.TMDBID] = m.HasFile
 			snap.movWanted[m.TMDBID] = m.Monitored && !m.HasFile
+			if m.Shown() != m.Title {
+				snap.shown["movie:"+strconv.Itoa(m.TMDBID)] = m.Shown()
+			}
 			if d := movieDownload(m, movAcqs[m.ID], byHash, queue); d != nil {
 				snap.prog["movie:"+strconv.Itoa(m.TMDBID)] = d.Progress
 			}
@@ -122,6 +130,9 @@ func (a *api) buildDiscoverSnapshot(ctx context.Context) (snap *discoverEnrichSn
 			snap.serIn[s.TMDBID] = true
 			snap.serHave[s.TMDBID] = s.Stats != nil && s.Stats.HaveFiles > 0
 			snap.serWanted[s.TMDBID] = s.Monitored && s.Stats != nil && (s.Stats.Missing > 0 || s.Stats.NextAirDate != "")
+			if s.Shown() != s.Title {
+				snap.shown["series:"+strconv.Itoa(s.TMDBID)] = s.Shown()
+			}
 			if it, ok := inProgress(serAcqs[s.ID], byHash, queue); ok {
 				snap.prog["series:"+strconv.Itoa(s.TMDBID)] = it.Progress
 			}
@@ -166,6 +177,7 @@ func (a *api) enrichCards(ctx context.Context, items []metadata.DiscoverItem) []
 		}
 		c.RequestStatus = snap.reqStatus[it.MediaType+":"+strconv.Itoa(it.TMDBID)]
 		c.DownloadProgress = snap.prog[it.MediaType+":"+strconv.Itoa(it.TMDBID)]
+		c.DisplayTitle = snap.shown[it.MediaType+":"+strconv.Itoa(it.TMDBID)]
 		cards = append(cards, c)
 	}
 	return cards

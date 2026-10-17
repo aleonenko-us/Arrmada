@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/library"
 )
 
@@ -83,18 +84,20 @@ func eventsOf(cats map[string]bool) []string {
 	return out
 }
 
-// eventBranch is one media type's event table, joined to its titles for the name and
-// poster. rank orders the kinds within the same second, so paging is stable.
+// eventBranch is one media type's event table, joined to its titles (alias i) for the name
+// and poster. title is the SQL for the name shown — a film's or show's display title — and
+// alt the canonical one a search also matches ("" when they're the same). rank orders the
+// kinds within the same second, so paging is stable.
 type eventBranch struct {
-	kind, table, fk, items, title, poster string
-	rank                                  int
+	kind, table, fk, items, title, alt, poster string
+	rank                                       int
 }
 
 var eventBranches = []eventBranch{
-	{kind: "movie", table: "movie_events", fk: "movie_id", items: "movies", title: "title", poster: "poster_url", rank: 4},
-	{kind: "series", table: "series_events", fk: "series_id", items: "series", title: "title", poster: "poster_url", rank: 3},
-	{kind: "book", table: "book_events", fk: "book_id", items: "books", title: "title", poster: "cover_url", rank: 2},
-	{kind: "music", table: "artist_events", fk: "artist_id", items: "artists", title: "name", poster: "image_url", rank: 1},
+	{kind: "movie", table: "movie_events", fk: "movie_id", items: "movies", title: displaytitle.SQL("i"), alt: "i.title", poster: "poster_url", rank: 4},
+	{kind: "series", table: "series_events", fk: "series_id", items: "series", title: displaytitle.SQL("i"), alt: "i.title", poster: "poster_url", rank: 3},
+	{kind: "book", table: "book_events", fk: "book_id", items: "books", title: "i.title", poster: "cover_url", rank: 2},
+	{kind: "music", table: "artist_events", fk: "artist_id", items: "artists", title: "i.name", poster: "image_url", rank: 1},
 }
 
 func branchFor(kind string) (eventBranch, bool) {
@@ -247,8 +250,15 @@ func eventsFeedSQL(f eventsFilter) (string, []any) {
 			bargs = append(bargs, eventArgs...)
 		}
 		if like != "" {
-			conds = append(conds, `(i.`+b.title+` LIKE ? ESCAPE '\' OR e.detail LIKE ? ESCAPE '\')`)
-			bargs = append(bargs, like, like)
+			// The shown title, the canonical one (a search by either finds it) and the line.
+			alt, n := "", 2
+			if b.alt != "" {
+				alt, n = ` OR `+b.alt+` LIKE ? ESCAPE '\'`, 3
+			}
+			conds = append(conds, `(`+b.title+` LIKE ? ESCAPE '\'`+alt+` OR e.detail LIKE ? ESCAPE '\')`)
+			for range n {
+				bargs = append(bargs, like)
+			}
 		}
 		if c := f.Before; c != nil {
 			at := time.UnixMilli(c.AtMS).UTC().Format(sqliteStamp)
@@ -270,7 +280,7 @@ func eventsFeedSQL(f eventsFilter) (string, []any) {
 			where = " WHERE " + strings.Join(conds, " AND ")
 		}
 		parts = append(parts, `SELECT * FROM (SELECT '`+b.kind+`' AS kind, `+strconv.Itoa(b.rank)+` AS krank, e.id AS eid,
-		i.id AS item_id, i.`+b.title+` AS title, i.`+b.poster+` AS poster, e.event AS event, e.detail AS detail,
+		i.id AS item_id, `+b.title+` AS title, i.`+b.poster+` AS poster, e.event AS event, e.detail AS detail,
 		CAST(e.created_at AS TEXT) AS at
 		  FROM `+b.table+` e JOIN `+b.items+` i ON i.id = e.`+b.fk+where+`
 		 ORDER BY e.created_at DESC, e.id DESC LIMIT ?)`)

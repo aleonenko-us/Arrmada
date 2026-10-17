@@ -59,11 +59,11 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 	if f.Offset < 0 {
 		f.Offset = 0
 	}
-	// Each kind's title comes from its own table: ids are only unique per table, so the
-	// join must be on the row's own kind.
+	// Each kind's title comes from its own table (a film's or show's shown title): ids are
+	// only unique per table, so the join must be on the row's own kind.
 	const item = `CASE b.media_type
-			WHEN 'movie' THEN COALESCE(m.title, '')
-			WHEN 'series' THEN COALESCE(s.title, '')
+			WHEN 'movie' THEN COALESCE(NULLIF(m.display_title, ''), m.title, '')
+			WHEN 'series' THEN COALESCE(NULLIF(s.display_title, ''), s.title, '')
 			WHEN 'book' THEN COALESCE(bk.title, '')
 			WHEN 'music' THEN COALESCE(al.title, '')
 			ELSE '' END`

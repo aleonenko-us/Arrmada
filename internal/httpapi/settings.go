@@ -129,6 +129,10 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// set it up must do so before any session is made (twofactor.go).
 		"two_factor_admins": a.deps.Settings.GetBool(ctx, keyTwoFactorAdmins, false),
 	}
+	// "Show titles as" (displaytitles.go).
+	for k, v := range a.displaySettings(ctx) {
+		out[k] = v
+	}
 	// The audiobook and ebook folder/file templates (books_naming.go).
 	for k, v := range a.bookNamingSettings(ctx) {
 		out[k] = v
@@ -213,6 +217,9 @@ type settingsUpdate struct {
 	DefaultCategories         *bool     `json:"indexer_default_categories"`
 	BookLanguages             *[]string `json:"books_languages"`
 	TitleLanguages            *[]string `json:"match_title_languages"`
+	DisplayTitleMode          *string   `json:"display_title_mode"`
+	DisplayTitleLanguage      *string   `json:"display_title_language"`
+	DisplayTitleOriginalIn    *[]string `json:"display_title_original_in"`
 	QualityRanking            *string   `json:"quality_ranking"`
 	NetworkPreference         *string   `json:"download_network_preference"`
 	PublicURL                 *string   `json:"app_public_url"`
@@ -399,6 +406,11 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	display, msg := a.parseDisplayUpdate(ctx, &req)
+	if msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	// ISO 3166-1 alpha-2 ("AU"), or empty to go back to TMDB's global lists. Checked up
 	// here with the rest, so a bad region doesn't leave the keys before it saved.
 	var region string
@@ -534,6 +546,13 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.titleLanguagesChanged()
+	}
+	// The page sends one control's keys per save: only a real change re-works titles.
+	if displayChanged, ok := a.saveDisplay(ctx, display); !ok {
+		a.writeError(w, http.StatusInternalServerError, "could not save settings")
+		return
+	} else if displayChanged {
+		a.displayPolicyChanged()
 	}
 	if req.QualityRanking != nil && !save(a.deps.Settings.Set(ctx, quality.KeyRanking, strings.TrimSpace(*req.QualityRanking))) {
 		return

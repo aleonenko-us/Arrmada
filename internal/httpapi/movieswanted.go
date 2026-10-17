@@ -132,7 +132,7 @@ func (a *api) missingVersionRows(ctx context.Context, queueKnown bool) ([]movieW
 			continue
 		}
 		row := movieWantedRow{
-			wantedRow: wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Title, Year: m.Year,
+			wantedRow: wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Shown(), Year: m.Year,
 				PosterURL: m.PosterURL, QualityProfile: names(m.QualityProfile), Missing: tracks, State: wantedSearching},
 			Tracks: tracks, Queued: a.deps.Automation.MovieSearchBusy(m.ID),
 		}
@@ -227,7 +227,7 @@ func (a *api) moviesWantedCutoff(ctx context.Context) ([]movieWantedRow, bool, e
 	for _, c := range cuts {
 		m, v := c.Movie, c.Track
 		row := movieWantedRow{
-			wantedRow: wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Title, Year: m.Year,
+			wantedRow: wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Shown(), Year: m.Year,
 				PosterURL: m.PosterURL, QualityProfile: c.ProfileName},
 			Queued: a.deps.Automation.MovieSearchBusy(m.ID), VersionID: v.ID, Detail: cutoffDetail(c),
 			Issues: c.Fit.Issues, WillUpgrade: c.WillUpgrade, WhyNot: c.WhyNot,
