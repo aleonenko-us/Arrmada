@@ -119,7 +119,10 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
           <div className="text-md font-semibold">{row.label}</div>
           <div className="text-xs text-ink-faint">{row.hint}</div>
         </div>
-        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        <div className="flex items-center gap-2">
+          {canScan && scan.running && scan.job && <button onClick={() => void scan.stop()} aria-label={`Stop the ${row.label} scan`} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Stop</button>}
+          {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        </div>
       </div>
       {(line || scan.note) && (
         <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">

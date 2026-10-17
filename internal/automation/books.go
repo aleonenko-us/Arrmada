@@ -1614,10 +1614,19 @@ type BookScanResult struct {
 // ScanBookLibrary catalogs books already in the library folder. Each book folder is
 // matched to Open Library, added unmonitored, and assigned the profile that matches the
 // editions found on disk (ebook-only → Ebook, audio-only → Audiobook, both → both).
-func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookRoot string) BookScanResult {
+//
+// progress, when set, hears how many book folders have been looked up out of how many
+// there are. A cancelled or timed-out scan stops between folders and returns an error
+// saying how far it got: a book it started adding is finished (so it never sits in the
+// library without the files the scan found for it), nothing after it is touched, and
+// the folders whose lookups were cut short aren't reported as unrecognised.
+func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookRoot string, progress func(done, total int)) (BookScanResult, error) {
 	var res BookScanResult
 	if c.books == nil || c.imp == nil || !c.books.MetadataAvailable() {
-		return res
+		return res, nil
+	}
+	if progress == nil {
+		progress = func(int, int) {}
 	}
 	// By every key a library book has had, so a folder the catalogue still answers with
 	// a book's old key backfills that book instead of trying to add it again.
@@ -1644,7 +1653,14 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 	}
 	byKey := map[string]*pending{}
 	var order []string
-	for _, bf := range folders {
+	stopped := func(done, total int, what string) (BookScanResult, error) {
+		return res, fmt.Errorf("the scan stopped after %d of %d %s: %w", done, total, what, ctx.Err())
+	}
+	for i, bf := range folders {
+		progress(i, len(folders))
+		if ctx.Err() != nil {
+			return stopped(i, len(folders), "book folders")
+		}
 		if bf.Title == "" || (len(bf.Ebooks) == 0 && len(bf.Audiobooks) == 0) {
 			continue
 		}
@@ -1653,7 +1669,7 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		// audiobook on file yet, record the full-cast production as the standard one.
 		if vb, v, ok := versionForScanFolder(bf.Title, allBooks); ok {
 			if v.File == nil && len(bf.Audiobooks) > 0 {
-				c.recordVersionFiles(ctx, vb, v, bf.Audiobooks, "during a library scan")
+				c.recordVersionFiles(context.WithoutCancel(ctx), vb, v, bf.Audiobooks, "during a library scan")
 				res.Imported++
 			} else {
 				res.Skipped++
@@ -1678,6 +1694,10 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		if !matched {
 			var err error
 			results, err = c.books.Lookup(ctx, query)
+			if ctx.Err() != nil {
+				// Cut short, not unrecognised: say how far it got instead.
+				return stopped(i, len(folders), "book folders")
+			}
 			if err != nil || len(results) == 0 {
 				res.Unmatched = append(res.Unmatched, bf.Title)
 				continue
@@ -1705,7 +1725,14 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		p.audio = append(p.audio, bf.Audiobooks...)
 	}
 
-	for _, key := range order {
+	progress(len(folders), len(folders))
+	for i, key := range order {
+		if ctx.Err() != nil {
+			return stopped(i, len(order), "matched books")
+		}
+		// Each book is finished once started: adding it and recording its files is one
+		// step, so a cancel can't leave a book in the library without its editions.
+		wctx := context.WithoutCancel(ctx)
 		p := byKey[key]
 		hasE, hasA := len(p.ebooks) > 0, len(p.audio) > 0
 		if b, ok := existing[key]; ok {
@@ -1713,18 +1740,18 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			// yet recorded (e.g. the ebook when only the audiobook was found before).
 			merged := false
 			if hasE && b.Ebook == nil {
-				c.recordEdition(ctx, b.ID, books.KindEbook, p.ebooks)
+				c.recordEdition(wctx, b.ID, books.KindEbook, p.ebooks)
 				merged = true
 			}
 			if hasA && b.Audiobook == nil {
-				c.recordEdition(ctx, b.ID, books.KindAudiobook, p.audio)
+				c.recordEdition(wctx, b.ID, books.KindAudiobook, p.audio)
 				merged = true
 			}
 			if merged {
 				// Widen the profile so both on-disk editions count as wanted/included.
 				wantE := hasE || b.Ebook != nil
 				wantA := hasA || b.Audiobook != nil
-				_ = c.books.SetQualityProfile(ctx, b.ID, c.bookProfileFor(ctx, wantE, wantA))
+				_ = c.books.SetQualityProfile(wctx, b.ID, c.bookProfileFor(wctx, wantE, wantA))
 				res.Imported++
 				c.log.Info("book scan: added missing edition", "title", b.Title, "ebook", hasE, "audio", hasA)
 			} else {
@@ -1732,15 +1759,15 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			}
 			continue
 		}
-		profile := c.bookProfileFor(ctx, hasE, hasA)
-		added, err := c.books.Add(ctx, p.match.Key, profile, false, p.match)
+		profile := c.bookProfileFor(wctx, hasE, hasA)
+		added, err := c.books.Add(wctx, p.match.Key, profile, false, p.match)
 		if errors.Is(err, books.ErrExists) && added.ID > 0 {
 			// Same book, different catalogue key: file the editions under the existing row.
 			if hasE && added.Ebook == nil {
-				c.recordEdition(ctx, added.ID, books.KindEbook, p.ebooks)
+				c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
 			}
 			if hasA && added.Audiobook == nil {
-				c.recordEdition(ctx, added.ID, books.KindAudiobook, p.audio)
+				c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
 			}
 			res.Imported++
 			c.log.Info("book scan: matched an existing book under another catalogue key", "title", added.Title, "key", p.match.Key)
@@ -1750,12 +1777,12 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			res.Unmatched = append(res.Unmatched, p.match.Title)
 			continue
 		}
-		c.recordEdition(ctx, added.ID, books.KindEbook, p.ebooks)
-		c.recordEdition(ctx, added.ID, books.KindAudiobook, p.audio)
+		c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
+		c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
 		res.Imported++
 		c.log.Info("book scan: imported", "title", added.Title, "ebooks", len(p.ebooks), "audio", len(p.audio))
 	}
-	return res
+	return res, nil
 }
 
 // bookProfileFor returns the book profile ref whose wanted editions match the files

@@ -14,6 +14,8 @@ const FOLLOW_SCAN_MS = 12 * 60 * 60 * 1000;
 
 export interface LibraryScan {
   start: () => Promise<void>;
+  /** Stop the scan being followed. It ends as stopped and keeps what it finished. */
+  stop: () => Promise<void>;
   /** Starting, waiting for its turn or scanning. */
   running: boolean;
   /** The job being followed (live progress and message) or, once it ends, the finished one. */
@@ -75,7 +77,21 @@ export function useLibraryScan(kind: string, begin: () => Promise<{ job_id?: num
     }
   };
 
-  return { start, running: starting || followed.running, job: followed.job ?? finished, note };
+  // A scan may run for hours on a big library, so it can be stopped from its row. The call
+  // is staff-only, so it loads with the stop, not with anyone's first page.
+  const stop = async () => {
+    const id = followed.job?.id ?? jobId;
+    if (!id) return;
+    try {
+      const { systemApi } = await import("./systemApi");
+      await systemApi.cancelJob(id);
+    } catch (e) {
+      // Already over: its end arrives as job.updated like any other.
+      if (!(e instanceof ApiError && e.status === 409)) setNote({ text: (e as Error).message, error: true });
+    }
+  };
+
+  return { start, stop, running: starting || followed.running, job: followed.job ?? finished, note };
 }
 
 // scanLine is the one line a library row shows about its scan, or null when there's

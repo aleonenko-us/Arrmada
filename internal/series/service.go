@@ -1868,6 +1868,11 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 				match, ok = metadata.SeriesResult{TMDBID: id}, true
 			}
 		}
+		if err := ctx.Err(); err != nil {
+			// The lookup was cut short, which says nothing about the folder: stop here
+			// rather than file it as needing review.
+			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
+		}
 		if !ok && (err != nil || len(results) == 0) {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
@@ -1881,7 +1886,10 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			res.Skipped++
 			continue
 		}
-		if err := s.importSeriesFolder(ctx, videos, match.TMDBID); err != nil {
+		// Once matched, the show is added and its episode files marked as one step, even if
+		// the scan is stopped meanwhile: a show added without its files would be skipped by
+		// every later scan (it's "already in the library") and never get them.
+		if err := s.importSeriesFolder(context.WithoutCancel(ctx), videos, match.TMDBID); err != nil {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}

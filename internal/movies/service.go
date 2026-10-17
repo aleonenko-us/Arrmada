@@ -614,6 +614,12 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 				match, ok = metadata.MovieResult{TMDBID: id}, true
 			}
 		}
+		if ctx.Err() != nil {
+			// The lookup was cut short, which says nothing about the folder: it isn't one
+			// that needs review, and it isn't done.
+			done--
+			break
+		}
 		if !ok && (err != nil || len(results) == 0) {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 			continue
@@ -628,7 +634,8 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 			case owned[filepath.Clean(video)]:
 				res.Skipped++
 			case !m.HasFile:
-				if err := s.attachExisting(ctx, m, video, "Attached during library scan: "); err != nil {
+				// A folder started is finished, even if the scan is stopped meanwhile.
+				if err := s.attachExisting(context.WithoutCancel(ctx), m, video, "Attached during library scan: "); err != nil {
 					s.log.Warn("library scan: couldn't attach the file to the film already in the library",
 						"title", m.Title, "path", video, "err", err)
 					res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
@@ -643,7 +650,9 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 			}
 			continue
 		}
-		created, err := s.importMovieFile(ctx, video, match.TMDBID, opts)
+		// Adding the film and recording its file is one step: a stop between the two would
+		// leave a film without the file the scan found for it.
+		created, err := s.importMovieFile(context.WithoutCancel(ctx), video, match.TMDBID, opts)
 		if err != nil {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: name, Root: root, Title: rel.Title, Year: rel.Year})
 			continue

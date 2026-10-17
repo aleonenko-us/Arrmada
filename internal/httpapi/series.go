@@ -692,7 +692,7 @@ func (a *api) handleSeriesHistory(w http.ResponseWriter, r *http.Request) {
 // handleScanSeriesLibrary catalogs series already present in the library folders (every
 // TV folder, when there are several).
 func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: 10 * time.Minute,
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			// Progress rides the job (job.updated on the live socket), as the movie scan's does.
 			res, err := a.deps.Series.ScanLibrary(ctx, "", func(done, total int) {
