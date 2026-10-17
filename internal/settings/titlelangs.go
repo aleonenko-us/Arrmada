@@ -8,7 +8,8 @@ import (
 
 // KeyTitleLanguages is Settings → Library's "Also match titles in": the extra languages
 // whose translated titles library scans and downloads Arrmada didn't grab may be named
-// in (a German household's "Der Pate" folder for The Godfather). A comma list of
+// in (a German household's "Der Pate" folder for The Godfather), and that TV searches
+// also find and take a show's releases by (series/searchtitles.go). A comma list of
 // canonical language codes; empty — the default — matches English and original titles
 // only, as before the setting existed.
 const KeyTitleLanguages = "match_title_languages"

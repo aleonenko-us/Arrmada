@@ -150,6 +150,9 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	// One search rule for the sweep, over the library it already holds: each show's search
+	// would otherwise read the library again for it.
+	ctx = withFit(ctx, c.series.SearchFitFor(all))
 	// One queue read for the whole sweep: a series with a download already in flight is
 	// skipped, so we don't re-grab the same winner every tick while a pack downloads.
 	// (RSSSyncSeries and UpgradeSeries already do this; the missing sweep didn't.)
@@ -282,6 +285,7 @@ func (c *Coordinator) searchSeriesOnceScoped(ctx context.Context, seriesID int64
 	// search_attempts row; the broad, alias, per-season and absolute passes are one attempt.
 	ctx, notes := newSearchNotes(ctx)
 	defer func() { c.recordAttempt(ctx, notes, AttemptSeries, seriesID, "", &out, err) }()
+	ctx = c.withSeriesFit(ctx)
 	release, ok := c.claims.claim(seriesKey(seriesID))
 	if !ok {
 		return SearchOutcome{Reason: ReasonAlreadySearching}, ErrAlreadySearching
@@ -342,6 +346,12 @@ func (c *Coordinator) searchSeriesOnceScoped(ctx context.Context, seriesID int64
 	} else if wanted, _ := wantedEpisodes(s); len(wanted) > 0 {
 		remaining = sortedKeys(setOf(wanted))
 	}
+	// What's still missing, asked for once more by the show's translated title in the
+	// owner's extra title languages, when it has one worth asking by.
+	n, left, returned, matched := c.searchTranslated(ctx, s, remaining)
+	grabbed, remaining = grabbed+n, left
+	out.Returned += returned
+	out.Matching += matched
 	grabbed += c.searchByAbsolute(ctx, s, remaining)
 	out.Grabbed = grabbed
 	out.Usable = out.Matching
@@ -583,13 +593,14 @@ func (c *Coordinator) grabSeriesScoped(ctx context.Context, s series.Series, rel
 	var exampleWrongTitle string
 	rts := newRuntimeIndex(s)
 	notes := notesFrom(ctx)
+	fit := c.seriesFit(ctx)
 	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		if blocked[normTitle(rel.Title)] || exclude[normTitle(rel.Title)] {
 			nBlocked++
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !seriesTitleMatches(rel.Title, s) {
+		if !searchTitleMatches(fit, rel.Title, s) {
 			// A different show that merely shares a title prefix ("Below Deck
 			// Mediterranean" for "Below Deck") — or, for anime, the same show under its
 			// romaji name, which only matches once the series is flagged as anime.
