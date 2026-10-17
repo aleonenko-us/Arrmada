@@ -89,6 +89,9 @@ func cmdResetPassword(ctx context.Context, c *cli, args []string) int {
 		fmt.Fprintln(c.stdout, "It's shown only here, once. Sign in with it, then change it.")
 	}
 	fmt.Fprintln(c.stdout, "Every session this account had has been signed out.")
+	if on, err := svc.TwoFactorEnabled(ctx, u.ID); err == nil && on {
+		fmt.Fprintf(c.stdout, "Two-factor sign-in is still on: signing in asks for a code too. If the authenticator and recovery codes are lost as well, run: arrmada reset-2fa %s\n", u.Username)
+	}
 	if u.Disabled {
 		fmt.Fprintln(c.stdout, "This account is disabled, so it can't sign in until an admin enables it again.")
 	}
@@ -144,4 +147,64 @@ func generatePassword(n int) (string, error) {
 		b[i] = passwordAlphabet[k.Int64()]
 	}
 	return string(b), nil
+}
+
+// cmdResetTwoFactor turns off two-factor sign-in for an account from the server's shell,
+// for an owner whose phone and recovery codes are both gone (an admin can do it for anyone
+// else in People & access). Like reset-password, whoever can run commands in the container
+// could edit the database by hand anyway.
+//
+// The password stays as it is and so do the account's sessions: the password still opens
+// it, now without a code. Its recovery codes and trusted devices go with the secret.
+func cmdResetTwoFactor(ctx context.Context, c *cli, args []string) int {
+	fs := newFlags(c, "reset-2fa")
+	pos, stop, code := parseFlags(fs, args)
+	if stop {
+		return code
+	}
+	if len(pos) != 1 {
+		fmt.Fprintln(c.stderr, "Usage: arrmada reset-2fa <email>")
+		return exitUsage
+	}
+	login := strings.TrimSpace(pos[0])
+
+	st, err := store.OpenNoMigrate(c.cfg.DataDir)
+	if err != nil {
+		fmt.Fprintf(c.stderr, "arrmada reset-2fa: %v\n", err)
+		return exitFail
+	}
+	defer func() { _ = st.Close() }()
+	if s, err := st.Schema(ctx); err != nil {
+		fmt.Fprintf(c.stderr, "arrmada reset-2fa: %v\n", err)
+		return exitFail
+	} else if len(s.Unknown) > 0 && !c.cfg.AllowNewerSchema {
+		fmt.Fprintln(c.stderr, "arrmada reset-2fa: a newer Arrmada has upgraded this database; run reset-2fa from that build (update Arrmada first).")
+		return exitFail
+	}
+
+	svc := auth.NewService(st.DB())
+	u, err := svc.UserByUsername(ctx, login)
+	if errors.Is(err, auth.ErrInvalidCredentials) {
+		fmt.Fprintf(c.stderr, "arrmada reset-2fa: no account is called %q.\n", login)
+		listAdmins(ctx, c.stderr, svc)
+		return exitFail
+	}
+	if err != nil {
+		fmt.Fprintf(c.stderr, "arrmada reset-2fa: %v\n", err)
+		return exitFail
+	}
+	was, err := svc.DisableTwoFactor(ctx, u.ID)
+	if err != nil {
+		fmt.Fprintf(c.stderr, "arrmada reset-2fa: %v\n", err)
+		return exitFail
+	}
+	if !was {
+		fmt.Fprintf(c.stdout, "Two-factor sign-in wasn't on for %s; nothing to turn off.\n", u.Username)
+		return exitOK
+	}
+	fmt.Fprintf(c.stdout, "Two-factor sign-in is off for %s. Sign in with the password, then set it up again from your Me page.\n", u.Username)
+	if u.Disabled {
+		fmt.Fprintln(c.stdout, "This account is disabled, so it can't sign in until an admin enables it again.")
+	}
+	return exitOK
 }

@@ -129,3 +129,73 @@ func TestCLIResetPasswordUnknownEmail(t *testing.T) {
 		t.Errorf("no email: exit %d, want 2", code)
 	}
 }
+
+// reset-2fa turns two-factor off for a locked-out owner: the secret, recovery codes and
+// trusted devices go; the password and sessions stay. reset-password says it's still on.
+func TestCLIResetTwoFactor(t *testing.T) {
+	dir := testDataDir(t)
+	ctx := context.Background()
+	withAuth(t, dir, func(a *auth.Service) {
+		if _, err := a.CreateUser(ctx, "owner@example.com", "old-password", auth.RoleAdmin, true); err != nil {
+			t.Fatal(err)
+		}
+	})
+	// Turned on as setup would leave it (the code checks are the auth package's tests).
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO user_totp (user_id, secret, enabled) SELECT id, 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', 1 FROM users`,
+		`INSERT INTO user_recovery_codes (user_id, code_hash) SELECT id, '$2a$04$x' FROM users`,
+	} {
+		if _, err := st.DB().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = st.Close()
+
+	code, stdout, stderr := runTestCLI(t, "", "reset-password", "owner@example.com")
+	if code != exitOK || !strings.Contains(stdout, "arrmada reset-2fa owner@example.com") {
+		t.Errorf("reset-password with two-factor on: exit %d %q %q", code, stdout, stderr)
+	}
+	var session, trusted string
+	withAuth(t, dir, func(a *auth.Service) {
+		u, _ := a.UserByUsername(ctx, "owner@example.com")
+		session, _, _ = a.CreateSession(ctx, u.ID)
+		trusted, _, _ = a.TrustDevice(ctx, u.ID)
+	})
+
+	code, stdout, stderr = runTestCLI(t, "", "reset-2fa", "Owner@Example.com")
+	if code != exitOK || !strings.Contains(stdout, "Two-factor sign-in is off for owner@example.com") {
+		t.Fatalf("exit %d: %q %q", code, stdout, stderr)
+	}
+	withAuth(t, dir, func(a *auth.Service) {
+		u, _ := a.UserByUsername(ctx, "owner@example.com")
+		if on, err := a.TwoFactorEnabled(ctx, u.ID); err != nil || on {
+			t.Errorf("still on: %v %v", on, err)
+		}
+		if st, _ := a.TwoFactor(ctx, u.ID); st.RecoveryCodesLeft != 0 {
+			t.Errorf("recovery codes left: %d", st.RecoveryCodesLeft)
+		}
+		if a.DeviceTrusted(ctx, u.ID, trusted) {
+			t.Error("a trusted device survived reset-2fa")
+		}
+		if _, err := a.ValidateSession(ctx, session); err != nil {
+			t.Errorf("reset-2fa signed the session out: %v", err)
+		}
+		if _, err := a.Authenticate(ctx, "owner@example.com", "old-password"); err == nil {
+			t.Error("reset-2fa should leave the password reset-password set, not the old one")
+		}
+	})
+	// Again: nothing to do, still fine.
+	if code, stdout, _ := runTestCLI(t, "", "reset-2fa", "owner@example.com"); code != exitOK || !strings.Contains(stdout, "wasn't on") {
+		t.Errorf("second run: exit %d %q", code, stdout)
+	}
+	if code, _, stderr := runTestCLI(t, "", "reset-2fa", "nobody@example.com"); code != exitFail || !strings.Contains(stderr, "owner@example.com") {
+		t.Errorf("unknown name: exit %d %q", code, stderr)
+	}
+	if code, _, _ := runTestCLI(t, "", "reset-2fa"); code != exitUsage {
+		t.Errorf("no email: exit %d, want 2", code)
+	}
+}

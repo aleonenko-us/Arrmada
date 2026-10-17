@@ -89,7 +89,8 @@ func (a *api) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "signed_out": ended})
 }
 
-// handleRevokeMyOtherSessions signs the caller out of every other browser, keeping this one.
+// handleRevokeMyOtherSessions signs the caller out of every other browser, keeping this
+// one, and forgets the other browsers trusted to skip the two-factor code.
 func (a *api) handleRevokeMyOtherSessions(w http.ResponseWriter, r *http.Request) {
 	u, ok := userFrom(r)
 	if !ok || u == nil {
@@ -101,6 +102,13 @@ func (a *api) handleRevokeMyOtherSessions(w http.ResponseWriter, r *http.Request
 		a.writeError(w, http.StatusInternalServerError, "could not sign out your other devices")
 		return
 	}
-	a.deps.Log.Info("account: signed out of other devices", "user_id", u.ID, "sessions_ended", n)
+	// Other browsers trusted to skip the two-factor code ask for it again; this one keeps
+	// its trust.
+	forgot, err := a.deps.Auth.ForgetTrustedDevices(r.Context(), u.ID, trustToken(r))
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not sign out your other devices")
+		return
+	}
+	a.deps.Log.Info("account: signed out of other devices", "user_id", u.ID, "sessions_ended", n, "trusted_devices_forgotten", forgot)
 	a.writeJSON(w, http.StatusOK, map[string]any{"signed_out": n})
 }

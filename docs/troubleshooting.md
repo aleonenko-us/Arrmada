@@ -48,6 +48,12 @@ Use the address the installer printed — it may not be 7878 if something else h
 `docker exec -it Arrmada-app arrmada reset-password you@example.com` — see
 [Backups → Locked out?](backups.md#locked-out).
 
+**I lost the phone with my two-factor codes.**
+Use one of your recovery codes on the sign-in page (**Use a recovery code**). Without those,
+an admin can reset it in Settings → People & access, or run
+`docker exec -it Arrmada-app arrmada reset-2fa you@example.com` — see
+[Backups → Locked out?](backups.md#locked-out).
+
 <a id="qbittorrent-login"></a>
 **qBittorrent's page asks for a username and password.**
 Arrmada gave it a password ([Configuration → qBittorrent's login](configuration.md#qbittorrents-login)).
