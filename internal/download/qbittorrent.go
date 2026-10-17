@@ -242,6 +242,12 @@ func (q *QBittorrent) Add(ctx context.Context, dc Client, req AddRequest) error 
 		// (and hardlinking, if it points off the shared volume).
 		if req.SavePath != "" {
 			_ = w.WriteField("savepath", req.SavePath)
+			// Explicitly manual: with "Automatic torrent management" on by default
+			// (qBittorrent's Default Torrent Management Mode = Automatic), a torrent added
+			// without autoTMM is auto-managed, and qBittorrent then ignores savepath and
+			// saves to the category's folder — never a library folder's own downloads
+			// folder. Manual also means a later category change never moves the files.
+			_ = w.WriteField("autoTMM", "false")
 		}
 		_ = w.WriteField("paused", strconv.FormatBool(req.Paused))
 		_ = w.Close()
@@ -324,7 +330,15 @@ var errCategoryMissing = errors.New("qbittorrent: category does not exist")
 // only takes a category it already has, and Arrmada's are created by the first download
 // filed under each, so a missing one is created (with no save path of its own) and the
 // move tried once more.
+//
+// Automatic torrent management is switched off first: an auto-managed torrent (one added
+// by hand with qBittorrent's default mode on Automatic) would otherwise be moved to the
+// new category's folder, out from under its seeding files and away from the disk its
+// library is on. Manual keeps it exactly where it is; Arrmada imports from wherever it is.
 func (q *QBittorrent) SetCategory(ctx context.Context, dc Client, hash, category string) error {
+	if err := q.postForm(ctx, dc, "/api/v2/torrents/setAutoManagement", url.Values{"hashes": {hash}, "enable": {"false"}}); err != nil {
+		return err
+	}
 	form := url.Values{"hashes": {hash}, "category": {category}}
 	err := q.postFormStatus(ctx, dc, "/api/v2/torrents/setCategory", form)
 	if !errors.Is(err, errCategoryMissing) {

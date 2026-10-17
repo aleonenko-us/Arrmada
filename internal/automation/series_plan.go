@@ -246,7 +246,7 @@ func (g *seriesGrabber) try(ctx context.Context, name, label string) bool {
 		return true
 	}
 	// Space guard — the movie path has had this; TV (where packs are far bigger) did not.
-	if !c.diskOKFor(ctx, g.grabbedGB+rel.SizeGB()) {
+	if !c.diskOKFor(ctx, rel.Indexer, g.grabbedGB+rel.SizeGB()) {
 		c.log.Warn("series: skipping grab — not enough free space in the downloads dir",
 			"series", s.Title, "release", rel.Title, "release_gb", rel.SizeGB(), "already_queued_gb", g.grabbedGB)
 		return false

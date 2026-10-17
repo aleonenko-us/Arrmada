@@ -105,7 +105,7 @@ func (c *Coordinator) tryPreviewedMovie(ctx context.Context, id int64, ref Relea
 	if !c.previewGrabbable(ctx, "movie", id, ref) {
 		return "", false, nil
 	}
-	if !c.diskOKFor(ctx, ref.SizeGB) {
+	if !c.diskOKFor(ctx, ref.Indexer, ref.SizeGB) {
 		return "", false, nil // the search says why
 	}
 	hash, err := c.Grab(ctx, ref.Indexer, ref.DownloadURL, ref.Title)
@@ -197,7 +197,7 @@ func (c *Coordinator) tryPreviewedSeries(ctx context.Context, id int64, refs []R
 		if r.Kind() != parser.KindEpisode && !packIsProportionate(seasonsOf(needed), packSeasonsOf(r, seriesSeasons)) {
 			continue // more seasons than the approval wants
 		}
-		if !c.previewGrabbable(ctx, "series", id, ref) || !c.diskOKFor(ctx, gb+ref.SizeGB) {
+		if !c.previewGrabbable(ctx, "series", id, ref) || !c.diskOKFor(ctx, ref.Indexer, gb+ref.SizeGB) {
 			continue
 		}
 		// An automatic pick, not a hand-picked one: the import gate still applies.

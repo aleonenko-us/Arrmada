@@ -653,6 +653,9 @@ func (s *Service) Remove(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	if d := strings.TrimSpace(f.Downloads); d != "" {
+		s.rememberDownloads(ctx, d) // torrents there may still be imported by hand
+	}
 	return s.reload(ctx)
 }
 

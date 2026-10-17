@@ -213,6 +213,33 @@ func TestGrabFollowsTheFolderTheFilesAreIn(t *testing.T) {
 	}
 }
 
+// The free-space check before a grab measures where that release would actually land: a
+// torrent for a Kids film the Kids downloads folder's disk, a usenet job for the same film
+// the Downloads folder's.
+func TestDiskCheckFollowsTheReleasesNetwork(t *testing.T) {
+	ctx := context.Background()
+	r := newFolderRig(t)
+	if _, err := r.c.indexers.Create(ctx, indexer.Indexer{Name: "Usenet", Kind: indexer.KindNewznab, URL: "http://127.0.0.1:1", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.c.indexers.Create(ctx, indexer.Indexer{Name: "Tracker", Kind: indexer.KindTorznab, URL: "http://127.0.0.1:1", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	// The Kids disk is full; the Downloads folder's has room.
+	free := map[string]float64{r.dlKids: 1, r.dl: 500}
+	r.c.freeGBFn = func(p string) (float64, bool) { v, ok := free[p]; return v, ok }
+	kids := r.c.forMovieID(ctx, 1)
+	if r.c.diskOKFor(kids, "Tracker", 10) {
+		t.Error("a torrent for the Kids film passed the check on its full disk")
+	}
+	if !r.c.diskOKFor(kids, "Usenet", 10) {
+		t.Error("a usenet job for the Kids film was judged by the Kids disk, where it never saves")
+	}
+	if got := r.c.grabSavePath(kids, "Usenet"); got != r.dl {
+		t.Errorf("usenet grab path = %q, want %q", got, r.dl)
+	}
+}
+
 // Usenet: SABnzbd has no folder per job, so an NZB always goes to the Downloads folder,
 // even for a title whose folder has its own downloads folder (torrents only).
 func TestGrabUsenetIgnoresFolderDownloads(t *testing.T) {

@@ -2,6 +2,7 @@ package libfolders
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -116,9 +117,36 @@ func (s *Service) SetDownloads(ctx context.Context, media string, id int64, path
 			return DownloadsResult{}, err
 		}
 	}
+	if old := strings.TrimSpace(lib.Downloads); old != "" && filepath.Clean(old) != path {
+		s.rememberDownloads(ctx, old)
+	}
 	out := DownloadsResult{Warning: DownloadsWarning(path, lib.Path)}
 	out.Folder, _ = s.Get(ctx, media, id)
 	return out, nil
+}
+
+// maxFormerDownloads bounds the former downloads folders remembered.
+const maxFormerDownloads = 20
+
+// rememberDownloads keeps a downloads folder that was cleared, replaced or removed with
+// its library folder as one manual import may still read from (libroots.KeyFormerDownloads):
+// torrents already saved there keep seeding there, and Needs you and Import into… must
+// still be able to import them. It was vetted like any downloads folder when it was set
+// (clear of the data folder and every library), so it widens nothing new. Best effort:
+// without a settings writer, or if the save fails, only those imports are refused.
+func (s *Service) rememberDownloads(ctx context.Context, p string) {
+	if s.set == nil || s.roots == nil {
+		return
+	}
+	p = filepath.Clean(p)
+	list := []string{p}
+	for _, q := range s.roots.FormerDownloads(ctx) {
+		if filepath.Clean(q) != p && len(list) < maxFormerDownloads {
+			list = append(list, q)
+		}
+	}
+	b, _ := json.Marshal(list)
+	_ = s.set(ctx, libroots.KeyFormerDownloads, string(b))
 }
 
 // checkDownloads vets a downloads folder for a library folder.

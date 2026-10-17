@@ -61,6 +61,8 @@ type Coordinator struct {
 	// folderDownloadsFn is a library folder's own downloads folder ("" = none): torrent
 	// grabs for a title in that folder save there (grabfolder.go). nil = none anywhere.
 	folderDownloadsFn func(ctx context.Context, media, root string) string
+	// freeGBFn overrides diskspace.FreeGB in tests; nil measures the real disk.
+	freeGBFn func(path string) (float64, bool)
 
 	// removeTorrent overrides downloads.Remove in tests; nil uses the real client.
 	removeTorrent func(ctx context.Context, hash string, deleteData bool) error
@@ -1406,7 +1408,7 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 			notesFrom(ctx).mark(winner.Title, DropPending)
 			continue // already grabbed this exact release and it's still in flight — don't loop
 		}
-		if !c.diskOKFor(ctx, grabbedGB+decision.Winner.Candidate.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+decision.Winner.Candidate.SizeGB) {
 			c.log.Warn("automation: low disk, skipping grab", "movie", m.Title, "need_gb", decision.Winner.Candidate.SizeGB, "already_queued_gb", grabbedGB)
 			c.movies.AddEvent(ctx, m.ID, "failed", "Not enough free disk space to grab "+winner.Title)
 			continue
@@ -1432,15 +1434,31 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 
 // diskOKFor reports whether there's room to grab a release of the given size,
 // keeping a small safety buffer. If free space can't be measured (e.g. non-Linux
-// dev), it doesn't block. It measures the folder the grab will save to (savePath): a
-// title whose library folder has its own downloads folder fills that disk, not the
-// Downloads folder's.
-func (c *Coordinator) diskOKFor(ctx context.Context, sizeGB float64) bool {
-	free, ok := diskspace.FreeGB(c.savePath(ctx))
+// dev), it doesn't block. It measures the folder the grab will save to: a torrent for a
+// title whose library folder has its own downloads folder fills that disk, a usenet job
+// (from indexerName's network) the Downloads folder's whatever the title.
+func (c *Coordinator) diskOKFor(ctx context.Context, indexerName string, sizeGB float64) bool {
+	free, ok := c.freeGB(c.grabSavePath(ctx, indexerName))
 	if !ok {
 		return true
 	}
 	return free >= sizeGB+diskBufferGB
+}
+
+// grabSavePath is the folder a release from indexerName would save to under ctx.
+func (c *Coordinator) grabSavePath(ctx context.Context, indexerName string) string {
+	if c.indexerTransport(ctx, indexerName) == download.TransportUsenet {
+		return c.usenetSavePath(ctx)
+	}
+	return c.savePath(ctx)
+}
+
+// freeGB measures free space (diskspace.FreeGB; a test swaps it via freeGBFn).
+func (c *Coordinator) freeGB(path string) (float64, bool) {
+	if c.freeGBFn != nil {
+		return c.freeGBFn(path)
+	}
+	return diskspace.FreeGB(path)
 }
 
 const diskBufferGB = 2.0
@@ -1720,7 +1738,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		if pending[normTitle(winner.Title)] {
 			return false // this exact upgrade is already in flight — don't stack a second copy
 		}
-		if !c.diskOKFor(ctx, grabbedGB+u.pick.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+u.pick.SizeGB) {
 			c.log.Warn("automation: low disk, skipping upgrade", "movie", m.Title, "need_gb", u.pick.SizeGB)
 			return false
 		}
@@ -1888,7 +1906,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 		if grabbed[winner.DownloadURL] {
 			continue
 		}
-		if !c.diskOKFor(ctx, grabbedGB+decision.Winner.Candidate.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+decision.Winner.Candidate.SizeGB) {
 			c.log.Warn("automation: low disk, skipping regrab", "movie", m.Title, "need_gb", decision.Winner.Candidate.SizeGB)
 			continue
 		}

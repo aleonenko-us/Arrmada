@@ -2,6 +2,7 @@ package libroots
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -24,6 +25,10 @@ const (
 	// environment fallback: it's an option, not a folder every install has.
 	KeyMoviesDownloads = "lib_movies_downloads_dir"
 	KeyTVDownloads     = "lib_tv_downloads_dir"
+	// KeyFormerDownloads lists (JSON) library folders' downloads folders that were cleared,
+	// replaced or removed: manual import may still read from them, for the torrents left
+	// seeding there. Nothing saves into them any more.
+	KeyFormerDownloads = "lib_former_downloads_dirs"
 )
 
 // Getter reads one setting (settings.Service.Get).
@@ -286,6 +291,21 @@ func (r *Roots) OwnDownloads(ctx context.Context, media, root string) string {
 		}
 	}
 	return ""
+}
+
+// FormerDownloads is the downloads folders library folders no longer use (cleared,
+// replaced or removed), most recent first. Only manual import reads it: the torrents
+// already saved there can still be imported. Unreadable is none.
+func (r *Roots) FormerDownloads(ctx context.Context) []string {
+	raw := r.resolve(ctx, KeyFormerDownloads, "")
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 // All is Libraries plus every downloads folder (DownloadFolders), last.

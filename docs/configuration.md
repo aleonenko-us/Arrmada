@@ -174,6 +174,12 @@ What to expect:
 - qBittorrent's own "keep incomplete torrents in" folder, if you've switched it on, is one
   folder for everything: a download sits there until it finishes and is then moved to the
   library's downloads folder. Arrmada's bundled qBittorrent has it off.
+- Arrmada adds its torrents with automatic torrent management off, so a qBittorrent whose
+  default mode is Automatic still saves them where Arrmada asked, and re-filing one into
+  another category never moves its files.
+- Clearing or changing a folder's downloads folder (or removing the library folder) doesn't
+  strand what's already there: those torrents keep seeding, and they can still be imported
+  by hand or from Needs you.
 
 ### Other layouts
 

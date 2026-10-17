@@ -197,6 +197,9 @@ func checkPaths(c Client, save string, newest *Item, env PathEnv) PathReport {
 	}
 	rep.OK = saveCheck.Visible && (dl == nil || dl.Visible || dl.Gone)
 
+	// Only a torrent client saves into a library folder's own downloads folder; a usenet
+	// client's jobs always go to its own folders, so it's judged against those.
+	torrent := c.Kind.Transport() == TransportTorrent
 	for _, root := range env.Libraries {
 		if root == "" || !isDir(root) {
 			continue
@@ -204,7 +207,7 @@ func checkPaths(c Client, save string, newest *Item, env PathEnv) PathReport {
 		// A library with its own downloads folder gets its torrents there, not in the
 		// client's default folder: that's the pair that has to hardlink.
 		from := saveLocal
-		if own := strings.TrimSpace(env.FolderDownloads[filepath.Clean(root)]); own != "" {
+		if own := strings.TrimSpace(env.FolderDownloads[filepath.Clean(root)]); torrent && own != "" {
 			from = own
 		} else if !saveCheck.Visible {
 			continue
@@ -238,7 +241,11 @@ func suggestMapping(c Client, save PathCheck, dl *PathCheck, env PathEnv) *PathM
 			parts := strings.Split(strings.Trim(rp.p, "/"), "/")
 			// The newest download may have saved into a library folder's own downloads
 			// folder rather than the Downloads folder: look for it in each.
-			for _, local := range append([]string{env.Downloads}, env.ownDownloads()...) {
+			locals := []string{env.Downloads}
+			if c.Kind.Transport() == TransportTorrent {
+				locals = append(locals, env.ownDownloads()...)
+			}
+			for _, local := range locals {
 				if sug != nil || !isDir(local) {
 					continue
 				}

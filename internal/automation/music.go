@@ -368,7 +368,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 			"candidates", len(cands))
 		return albumOutcome{Code: outcomeBelowProfile, Detail: fmt.Sprintf("%d match(es), none accepted by %q", len(cands), sp.Name)}
 	}
-	if !c.diskOKFor(ctx, float64(best.SizeBytes)/(1<<30)) {
+	if !c.diskOKFor(ctx, best.Indexer, float64(best.SizeBytes)/(1<<30)) {
 		c.log.Warn("music: not enough free space for this release", "album", al.Title, "release", best.Title)
 		return albumOutcome{Code: outcomeNoSpace, Release: best.Title}
 	}
@@ -844,7 +844,7 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 	if best == nil {
 		return fmt.Errorf("found discography releases for %q, but none met the quality profile", a.Name)
 	}
-	if !c.diskOKFor(ctx, float64(best.SizeBytes)/(1<<30)) {
+	if !c.diskOKFor(ctx, best.Indexer, float64(best.SizeBytes)/(1<<30)) {
 		return fmt.Errorf("not enough free space for %q (%.1f GB)", best.Title, float64(best.SizeBytes)/(1<<30))
 	}
 	hash, err := c.grabMusic(ctx, best.Indexer, best.DownloadURL, best.Title, musicCategory)

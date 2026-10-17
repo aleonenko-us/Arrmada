@@ -1,9 +1,13 @@
 package download
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -35,10 +39,49 @@ func TestCheckPathsJudgesALibraryByItsOwnDownloads(t *testing.T) {
 
 	env := PathEnv{Downloads: save, Libraries: []string{movies, tv, kids, anime},
 		FolderDownloads: map[string]string{filepath.Clean(kids): kidsDL, filepath.Clean(anime): animeDL}}
-	rep := checkPaths(Client{Name: "qb"}, save, nil, env)
+	rep := checkPaths(Client{Name: "qb", Kind: KindQbittorrent}, save, nil, env)
 	got := strings.Join(rep.OtherDrive, ",")
 	if want := strings.Join([]string{tv, anime}, ","); got != want {
 		t.Errorf("other drive = %s, want %s", got, want)
+	}
+	// SABnzbd never saves into them (torrents only): its jobs are judged against its own
+	// folder, so Kids (on b, with a/ as SAB's folder) is on another drive and Anime isn't.
+	rep = checkPaths(Client{Name: "sab", Kind: KindSABnzbd}, save, nil, env)
+	got = strings.Join(rep.OtherDrive, ",")
+	if want := strings.Join([]string{tv, kids}, ","); got != want {
+		t.Errorf("usenet other drive = %s, want %s", got, want)
+	}
+}
+
+// An add with a save path is explicitly manual (autoTMM=false): with qBittorrent's default
+// mode on Automatic, a torrent added without it is auto-managed and saves to the
+// category's folder, ignoring savepath. An add without a save path leaves the mode alone.
+func TestQBittorrentAddWithSavePathIsManual(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	var logins int32
+	srv := qbitTestServer(t, &logins, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/torrents/add" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("form: %v", err)
+		}
+		mu.Lock()
+		got = append(got, r.FormValue("savepath")+"|"+r.FormValue("autoTMM"))
+		mu.Unlock()
+		fmt.Fprint(w, "Ok.")
+	})
+	q := NewQBittorrent()
+	dc := Client{ID: 1, URL: srv.URL}
+	for _, sp := range []string{"/storage/disk2/downloads", ""} {
+		if err := q.Add(context.Background(), dc, AddRequest{URL: "magnet:?xt=urn:btih:abc", Category: "arrmada", SavePath: sp}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(got) != 2 || got[0] != "/storage/disk2/downloads|false" || got[1] != "|" {
+		t.Errorf("adds = %q", got)
 	}
 }
 

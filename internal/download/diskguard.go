@@ -28,6 +28,9 @@ const (
 	// keyDiskGuardHeld is internal bookkeeping, not a preference — the hashes the
 	// guard paused and therefore owns.
 	keyDiskGuardHeld = "downloads_disk_guard_held"
+	// keyDiskGuardHeldDirs is bookkeeping too: per held hash, the downloads folder whose
+	// volume it was held for, when there's more than one (JSON object).
+	keyDiskGuardHeldDirs = "downloads_disk_guard_held_dirs"
 )
 
 // Defaults. On by default: an unguarded full disk is a failure nobody opts into
@@ -49,6 +52,15 @@ type DiskGuard struct {
 	dirFn func() string
 	// dirsFn lists every downloads folder (SetDirsFunc); nil = the one above only.
 	dirsFn func() []string
+	// recorded is, per held hash, the downloads folder whose volume it was held for (per
+	// volume only; persisted beside the held set), and carry the held hashes a pass leaves
+	// alone that every save must keep. Both are set at the start of each Check (under mu).
+	recorded map[string]string
+	carry    []string
+	// unlisted counts, per held hash, the passes in a row the queue didn't list it (a
+	// client that's down): per volume, such a download is released after the same grace
+	// as a deleted one once its volume has drained. Memory only, under mu.
+	unlisted map[string]int
 	// usage measures the volume. diskspace.Of in production; a test swaps it to put the
 	// guard on either side of its thresholds without filling a real disk.
 	usage func(path string) (diskspace.Usage, bool)
@@ -213,6 +225,7 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 	defer g.mu.Unlock()
 
 	held := g.held(ctx)
+	g.carry, g.recorded = nil, nil
 
 	if !g.settings.GetBool(ctx, KeyDiskGuard, DefaultDiskGuard) {
 		// Turning the guard off must not strand whatever it was holding.
@@ -224,6 +237,12 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 	}
 
 	dirs := g.paths()
+	pause, resume := g.thresholds(ctx)
+	// What each held download was held for, and the ones held for a downloads folder no
+	// longer watched (a library folder's own one, cleared or removed while it was full):
+	// those are judged by their own volume, never released with the rest.
+	g.carry, g.recorded = nil, g.heldDirs(ctx)
+	held = g.releaseStrays(ctx, held, dirs, resume)
 	if len(dirs) > 1 {
 		g.checkVolumes(ctx, held, dirs)
 		return nil
@@ -235,7 +254,6 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 		// perfectly healthy queue or give false assurance.
 		return nil
 	}
-	pause, resume := g.thresholds(ctx)
 
 	switch {
 	case u.UsedPct >= float64(pause):
@@ -389,7 +407,11 @@ func (g *DiskGuard) held(ctx context.Context) []string {
 	return out
 }
 
+// save stores the held set: hashes plus whatever this pass carries (g.carry), and, for
+// those that have one, the folder each was held for.
 func (g *DiskGuard) save(ctx context.Context, hashes []string) {
+	hashes = dedupe(append(append([]string(nil), hashes...), g.carry...))
+	g.saveDirs(ctx, hashes)
 	if len(hashes) == 0 {
 		if err := g.settings.Set(ctx, keyDiskGuardHeld, ""); err != nil {
 			g.log.Warn("disk guard: could not clear the held set", "err", err)
@@ -410,6 +432,85 @@ func (g *DiskGuard) save(ctx context.Context, hashes []string) {
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
 
+func dedupe(xs []string) []string {
+	seen := map[string]bool{}
+	out := xs[:0]
+	for _, x := range xs {
+		if x != "" && !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// heldDirs reads, per held hash, the downloads folder it was held for ({} when none).
+func (g *DiskGuard) heldDirs(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	if raw := g.settings.Get(ctx, keyDiskGuardHeldDirs, ""); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &out)
+	}
+	return out
+}
+
+// saveDirs stores g.recorded trimmed to the hashes still held.
+func (g *DiskGuard) saveDirs(ctx context.Context, hashes []string) {
+	keep := map[string]string{}
+	for _, h := range hashes {
+		if d := g.recorded[h]; d != "" {
+			keep[h] = d
+		}
+	}
+	g.recorded = keep
+	val := ""
+	if len(keep) > 0 {
+		b, _ := json.Marshal(keep)
+		val = string(b)
+	}
+	if val == g.settings.Get(ctx, keyDiskGuardHeldDirs, "") {
+		return
+	}
+	if err := g.settings.Set(ctx, keyDiskGuardHeldDirs, val); err != nil {
+		g.log.Warn("disk guard: could not record which disks it's holding downloads for", "err", err)
+	}
+}
+
+// releaseStrays deals with held downloads recorded for a downloads folder that is no
+// longer watched (a library folder's own one, cleared or removed while its disk was
+// full): each stays held while that folder's volume is still above the resume line, and
+// is released once it has drained — or can't be measured any more, since nothing would
+// ever release it then. They're carried through the rest of the pass untouched; the rest
+// of held is returned for the pass to judge as usual.
+func (g *DiskGuard) releaseStrays(ctx context.Context, held, dirs []string, resume int) []string {
+	watched := map[string]bool{}
+	for _, d := range dirs {
+		watched[filepath.Clean(d)] = true
+	}
+	var rest []string
+	released := 0
+	for _, h := range held {
+		d := g.recorded[h]
+		if d == "" || watched[filepath.Clean(d)] {
+			rest = append(rest, h)
+			continue
+		}
+		if u, ok := g.usage(d); ok && u.UsedPct > float64(resume) {
+			g.carry = append(g.carry, h)
+			continue
+		}
+		if err := g.svc.Resume(ctx, h); err != nil {
+			g.log.Debug("disk guard: could not resume a download", "hash", h, "err", err)
+		}
+		released++
+	}
+	if released > 0 {
+		g.log.Info("disk guard: resumed downloads held for a downloads folder no longer watched — its disk has room again",
+			"torrents", released)
+		g.save(ctx, rest)
+	}
+	return rest
+}
+
 // checkVolumes is Check with several downloads folders (a library folder's own downloads
 // folder on another disk, GitHub #11). Each volume is judged on its own: a download is
 // held while the volume it saves onto is over the pause line, and released once that
@@ -417,6 +518,11 @@ func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
 // by its content path; one in none of the folders counts as the Downloads folder's, the
 // client's default. A volume that can't be measured holds nothing and releases nothing,
 // as with one folder.
+//
+// A held download is judged by the folder it was held for (recorded), else by where its
+// content is. One the queue doesn't list — its client is down — is released after the
+// same grace a deleted one gets (pruneAfterMisses passes) once that folder's volume has
+// drained, as the single-folder guard would; it isn't held for ever on a client's say.
 func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
 	pause, resume := g.thresholds(ctx)
 	use := map[string]diskspace.Usage{}
@@ -435,7 +541,12 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
 		if full {
 			g.log.Warn("disk guard: could not read the queue", "err", err)
 		}
-		return
+		// Nothing can be paused, but a held download whose client stays down is still
+		// released below once its volume has drained.
+		items, whole = nil, false
+	}
+	if g.recorded == nil {
+		g.recorded = map[string]string{}
 	}
 	kept, missed := prunedHeld(held, items, whole, g.missed)
 	g.missed = missed
@@ -471,6 +582,7 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
 			continue
 		}
 		pausedNow[h] = true
+		g.recorded[h] = d
 		if owned[h] {
 			g.log.Warn("disk guard: paused a download again that was resumed while its volume is still too full",
 				"name", it.Name, "used_pct", round1(u.UsedPct), "pause_at_pct", pause, "path", d)
@@ -482,17 +594,44 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
 		owned[h] = true
 	}
 
-	// Release what was held on a volume that has drained. One the queue doesn't list (a
-	// partial read, a client restarting) stays held until it's seen or pruned.
+	// Release what was held on a volume that has drained: the folder it was held for when
+	// that's known, else the one its content is in.
+	drained := func(h string, it *Item) bool {
+		d := g.recorded[h]
+		if d == "" && it != nil {
+			d, _, _ = volumeOf(*it)
+		}
+		if d == "" {
+			d = dirs[0]
+		}
+		u, ok := use[d]
+		return ok && u.UsedPct <= float64(resume)
+	}
+	unlisted := map[string]int{}
 	var still []string
 	released := 0
 	for _, h := range append(kept, newly...) {
-		it, listed := byHash[h]
-		if !listed || pausedNow[h] {
+		if pausedNow[h] {
 			still = append(still, h)
 			continue
 		}
-		if _, u, ok := volumeOf(it); ok && u.UsedPct <= float64(resume) {
+		it, listed := byHash[h]
+		if !listed {
+			// A partial read or a client restarting: held until it's seen again, or for a
+			// client that stays down, released after the grace once its volume drained.
+			n := g.unlisted[h] + 1
+			if n < pruneAfterMisses || !drained(h, nil) {
+				unlisted[h] = n
+				still = append(still, h)
+				continue
+			}
+			if err := g.svc.Resume(ctx, h); err != nil {
+				g.log.Debug("disk guard: could not resume a download its client didn't list", "hash", h, "err", err)
+			}
+			released++
+			continue
+		}
+		if drained(h, &it) {
 			if err := g.svc.Resume(ctx, it.Hash); err != nil {
 				g.log.Debug("disk guard: could not resume a download", "hash", h, "err", err)
 			}
@@ -501,10 +640,11 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
 		}
 		still = append(still, h)
 	}
+	g.unlisted = unlisted
 	if released > 0 {
 		g.log.Info("disk guard: space recovered, resuming downloads", "resume_at_pct", resume, "torrents", released)
 	}
-	if len(newly) > 0 || released > 0 || len(still) != len(held) {
+	if len(pausedNow) > 0 || released > 0 || len(still) != len(held) {
 		g.save(ctx, still)
 	}
 }

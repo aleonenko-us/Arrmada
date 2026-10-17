@@ -111,6 +111,53 @@ func TestFolderDownloadsAPI(t *testing.T) {
 	}
 }
 
+// A downloads folder cleared, replaced, or removed with its library folder still holds
+// torrents seeding there: manual import, Needs you and Import into… can still read them.
+// A folder that was never a downloads folder stays refused.
+func TestFormerFolderDownloadsStayImportable(t *testing.T) {
+	a, _, base := foldersAPI(t)
+	a.deps.Folders.SetSettingWriter(a.deps.Settings.Set)
+	ctx := context.Background()
+	kids, err := a.deps.Folders.Add(ctx, libfolders.AddInput{Media: libfolders.MediaMovie, Path: filepath.Join(base, "kids")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := a.deps.Folders.Add(ctx, libfolders.AddInput{Media: libfolders.MediaSeries, Path: filepath.Join(base, "anime")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := func(p string) string {
+		if err := os.MkdirAll(filepath.Join(base, p, "Film.2020"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return filepath.Join(base, p)
+	}
+	disk2, disk3, disk4, never := dir("disk2"), dir("disk3"), dir("disk4"), dir("never")
+	for _, s := range []struct {
+		id   int64
+		m, p string
+	}{{kids.ID, "movie", disk2}, {kids.ID, "movie", disk3}, {kids.ID, "movie", ""}, {anime.ID, "series", disk4}} {
+		if _, err := a.deps.Folders.SetDownloads(ctx, s.m, s.id, s.p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.deps.Folders.Remove(ctx, anime.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{disk2, disk3, disk4} { // replaced, cleared, removed with its folder
+		if _, err := a.checkImportPath(ctx, filepath.Join(p, "Film.2020")); err != nil {
+			t.Errorf("a download left in former downloads folder %s refused: %v", p, err)
+		}
+	}
+	if _, err := a.checkImportPath(ctx, filepath.Join(never, "Film.2020")); err == nil {
+		t.Error("a folder that was never a downloads folder was accepted")
+	}
+	// Nothing saves there any more.
+	if got := a.roots().DownloadFolders(ctx); len(got) != 1 {
+		t.Errorf("DownloadFolders = %+v, want only the Downloads folder", got)
+	}
+}
+
 // Every reader of "the downloads folder" sees the library folders' own ones: manual import
 // accepts them, the health and disk panels list them (once each), and the download client
 // path check judges a library against its own downloads folder.

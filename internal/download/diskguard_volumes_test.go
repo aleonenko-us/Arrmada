@@ -1,6 +1,7 @@
 package download
 
 import (
+	"errors"
 	"sort"
 	"testing"
 
@@ -82,6 +83,116 @@ func TestGuardJudgesEachDownloadsVolume(t *testing.T) {
 	}
 	if len(g.held(ctx)) != 0 || len(fake.resumed) != 3 {
 		t.Errorf("held %v, resumed %v — want all released", g.held(ctx), fake.resumed)
+	}
+}
+
+// A library folder's own downloads folder cleared (or removed) while the guard holds a
+// download on its full disk: the Downloads folder having room doesn't release it. It
+// stays held until its own disk drains — or that disk can't be measured any more.
+func TestGuardKeepsHoldingForAClearedFolder(t *testing.T) {
+	g, fake, _, ctx := guardFixture(t, []Item{
+		{Hash: "main1", State: "downloading", ContentPath: "/dl/main1"},
+		{Hash: "disk2a", State: "downloading", ContentPath: "/mnt/disk2/downloads/disk2a"},
+	})
+	dirs := []string{"/dl", "/mnt/disk2/downloads"}
+	g.SetDirFunc(func() string { return "/dl" })
+	g.SetDirsFunc(func() []string { return dirs })
+	used := map[string]float64{"/dl": 90, "/mnt/disk2/downloads": 91}
+	g.usage = func(p string) (diskspace.Usage, bool) {
+		u, ok := used[p]
+		return diskspace.Usage{UsedPct: u}, ok
+	}
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.held(ctx)) != 2 {
+		t.Fatalf("held %v, want both", g.held(ctx))
+	}
+	// The Kids folder's downloads folder is cleared; the Downloads drive drains.
+	dirs = []string{"/dl"}
+	used["/dl"] = 50
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.resumed) != 1 || fake.resumed[0] != "main1" {
+		t.Fatalf("resumed %v, want only the Downloads drive's download", fake.resumed)
+	}
+	if h := g.held(ctx); len(h) != 1 || h[0] != "disk2a" {
+		t.Fatalf("held %v, want the one on the still-full disk", h)
+	}
+	// Its disk drains: released, and the bookkeeping is gone with it.
+	used["/mnt/disk2/downloads"] = 60
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.resumed) != 2 || fake.resumed[1] != "disk2a" || len(g.held(ctx)) != 0 {
+		t.Errorf("resumed %v, held %v", fake.resumed, g.held(ctx))
+	}
+	if raw := g.settings.Get(ctx, keyDiskGuardHeldDirs, ""); raw != "" {
+		t.Errorf("held dirs left behind: %q", raw)
+	}
+
+	// A folder that can't be measured any more (gone from the host) releases, rather than
+	// holding the download for ever.
+	fake.items[1].State = "downloading"
+	dirs = []string{"/dl", "/mnt/disk2/downloads"}
+	used["/mnt/disk2/downloads"] = 95
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dirs = []string{"/dl"}
+	delete(used, "/mnt/disk2/downloads")
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.held(ctx)) != 0 || fake.resumed[len(fake.resumed)-1] != "disk2a" {
+		t.Errorf("held %v, resumed %v — an unmeasurable folder must release", g.held(ctx), fake.resumed)
+	}
+}
+
+// Per volume, a held download whose client stays down is released after the usual grace
+// once its volume has drained — not held for ever because the client can't list it.
+func TestGuardReleasesForADownClientAfterTheGrace(t *testing.T) {
+	g, fake, _, ctx := guardFixture(t, []Item{
+		{Hash: "disk2a", State: "downloading", ContentPath: "/mnt/disk2/downloads/disk2a"},
+	})
+	g.SetDirFunc(func() string { return "/dl" })
+	g.SetDirsFunc(func() []string { return []string{"/dl", "/mnt/disk2/downloads"} })
+	used := map[string]float64{"/dl": 50, "/mnt/disk2/downloads": 91}
+	g.usage = func(p string) (diskspace.Usage, bool) {
+		u, ok := used[p]
+		return diskspace.Usage{UsedPct: u}, ok
+	}
+	if err := g.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.held(ctx)) != 1 {
+		t.Fatalf("held %v", g.held(ctx))
+	}
+	fake.listErr = errors.New("connection refused")
+	pass := func() {
+		g.svc.InvalidateSnapshot()
+		if err := g.Check(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Still full: held however long the client is down.
+	pass()
+	pass()
+	pass()
+	if len(fake.resumed) != 0 || len(g.held(ctx)) != 1 {
+		t.Fatalf("released while its disk is full: resumed %v", fake.resumed)
+	}
+	// Drained: one pass of grace, then released.
+	used["/mnt/disk2/downloads"] = 60
+	g.unlisted = nil
+	pass()
+	if len(fake.resumed) != 0 {
+		t.Fatalf("released on the first unlisted pass: %v", fake.resumed)
+	}
+	pass()
+	if len(fake.resumed) != 1 || len(g.held(ctx)) != 0 {
+		t.Errorf("after the grace: resumed %v, held %v", fake.resumed, g.held(ctx))
 	}
 }
 
