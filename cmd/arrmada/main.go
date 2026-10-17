@@ -631,6 +631,11 @@ func main() {
 	coordinator.SetSeries(seriesSvc, bookImporter)
 	// Books share the importer set above; ebooks land in their own category.
 	coordinator.SetBooks(booksSvc)
+	// A book rename a crash or power cut stopped part way is rolled back now, before any
+	// import, scan or rename touches book files again.
+	if n := coordinator.RecoverBookRenames(runCtx); n > 0 {
+		log.Warn("rolled back interrupted book renames", "editions", n)
+	}
 	// Music shares the same importer; albums land in their own category.
 	coordinator.SetMusic(musicSvc)
 	// Switching Music off in Settings stops its searches, imports and manual actions on the

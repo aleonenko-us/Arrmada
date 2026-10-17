@@ -148,7 +148,7 @@ export function BookNamingSettings() {
       <p className="m-0 text-xs text-ink-faint">
         A folder that comes out empty is left out, and so is a separator next to an empty token: <code className="font-mono">{"{Author}/{Series}/{Series Position} - {Title}"}</code> puts a book in no series straight under its author.
         Wrap a part in <code className="font-mono">{"< >"}</code> to write it only when its tokens have values, and use <code className="font-mono">|</code> for an alternative — <code className="font-mono">{"{Author}/<{Series}|Standalone>/<{Series Position} - >{Title}"}</code>.
-        Pad numbers with zeros: <code className="font-mono">{"{Series Position:00}"}</code>. Every book gets a folder of its own, so the last folder needs <code className="font-mono">{"{Title}"}</code>. A second audiobook version (“Full cast”) is always kept apart in “Title (Full cast)” unless the folder names <code className="font-mono">{"{Edition}"}</code>.
+        Pad numbers with zeros: <code className="font-mono">{"{Series Position:00}"}</code>. Every book gets a folder of its own, so the last folder needs <code className="font-mono">{"{Title}"}</code>. A second audiobook version (“Full cast”) is always kept apart in “Title (Full cast)” unless the folder names <code className="font-mono">{"{Edition}"}</code> outside any <code className="font-mono">{"< >"}</code>.
       </p>
       <div className="flex flex-wrap items-center gap-2.5 text-sm text-ink-faint">
         <Button size="sm" variant="secondary" onClick={() => setOrganizing(true)}>Preview book rename…</Button>

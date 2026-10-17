@@ -232,6 +232,12 @@ func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v bo
 		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
 		return false
 	}
+	unlock, ok := c.tryLockBook(b.ID)
+	if !ok {
+		c.log.Info("book: import waits for the next sweep — the book's files are being changed", "title", b.Title, "version", v.Label)
+		return false
+	}
+	defer unlock()
 	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
@@ -284,8 +290,13 @@ func (c *Coordinator) recordVersionFiles(ctx context.Context, b books.Book, v bo
 // know about yet (dropped in by hand, or imported before a restore).
 func (c *Coordinator) rescanAudioVersions(ctx context.Context, b books.Book) {
 	for _, v := range b.AudioVersions {
+		keep, err := c.notOthersFilter(ctx, editionKey(b.ID, v.ID, books.KindAudiobook))
+		if err != nil {
+			c.log.Warn("book rescan: couldn't read the library", "book_id", b.ID, "err", err)
+			return
+		}
 		var audio []library.FoundFile
-		for _, f := range c.imp.BookLibraryFiles(bookName(b, &v, true), "", editionFormat(v.File)) {
+		for _, f := range keepFiles(c.imp.BookLibraryFiles(bookName(b, &v, true), "", editionFormat(v.File)), keep) {
 			if library.IsAudiobookFile(f.Path) {
 				audio = append(audio, f)
 			}

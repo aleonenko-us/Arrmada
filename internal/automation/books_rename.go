@@ -101,7 +101,7 @@ func bookName(b books.Book, v *books.AudioVersion, audio bool) library.BookName 
 	if audio {
 		n.Narrator = b.AudiobookNarrator
 		if v != nil {
-			n.Edition, n.Narrator = v.Label, v.Narrator
+			n.Edition, n.Narrator, n.VersionID = v.Label, v.Narrator, v.ID
 		}
 	}
 	return n
@@ -198,9 +198,11 @@ func (p *bookPlaces) add(path string, book int64, folder bool) {
 	p.sorted = false
 }
 
-// nests says why a book's edition can't live in dir, or "" when it can. folder says the
-// edition is a folder of files (everything under dir would be read as its own).
-func (p *bookPlaces) nests(dir string, folder bool, book int64) string {
+// nests says why a book's edition can't live in dir, or "" when it can: dir is inside
+// another book's multi-file folder, or another book's files are already in or under dir.
+// The second holds for a single-file edition too — its folder is the one a rescan reads,
+// and a later second file would make it a folder edition holding the other book's files.
+func (p *bookPlaces) nests(dir string, book int64) string {
 	dir = filepath.Clean(dir)
 	for d := dir; ; {
 		if other, ok := p.folders[d]; ok && other != book {
@@ -211,9 +213,6 @@ func (p *bookPlaces) nests(dir string, folder bool, book int64) string {
 			break
 		}
 		d = parent
-	}
-	if !folder {
-		return ""
 	}
 	if !p.sorted {
 		sort.Slice(p.paths, func(i, j int) bool { return p.paths[i].path < p.paths[j].path })
@@ -318,6 +317,11 @@ func (p *bookPlanner) plan(e bookEdition) BookRenameItem {
 		}
 		it.Proposed = newDir
 		it.Status, it.Reason = p.judge(&it, root, rels)
+		if it.Status == BookRenameOK {
+			if why := occupiedBy(newDir, audio, files); why != "" {
+				it.Status, it.Reason = BookRenameConflict, why
+			}
+		}
 	} else {
 		to := filepath.Join(library.BookFolderPath(root, nm, audio, name, library.BookFileFormat(it.Current)), library.BookFileName(nm, audio, name, it.Current))
 		it.Files = []BookRenameFile{{From: it.Current, To: to}}
@@ -384,7 +388,7 @@ func (p *bookPlanner) judge(it *BookRenameItem, root string, rels []string) (str
 			return BookRenameConflict, "couldn't check the new name: " + err.Error()
 		}
 	}
-	if why := p.places.nests(dir, it.folder, it.BookID); why != "" {
+	if why := p.places.nests(dir, it.BookID); why != "" {
 		return BookRenameConflict, "the new name would put it " + why
 	}
 	return BookRenameOK, ""
@@ -496,6 +500,12 @@ func (c *Coordinator) ApplyBookRename(ctx context.Context, items []BookRenameIte
 
 func (c *Coordinator) applyBookEdition(ctx context.Context, p *bookPlanner, asked BookRenameItem) BookRenameResult {
 	res := BookRenameResult{BookID: asked.BookID, VersionID: asked.VersionID, Kind: asked.Kind, From: asked.Current, To: asked.Proposed, Files: len(asked.Files)}
+	unlock, ok := c.tryLockBook(asked.BookID)
+	if !ok {
+		res.Reason = errBookBusy.Error()
+		return res
+	}
+	defer unlock()
 	b, err := c.books.Get(ctx, asked.BookID)
 	if err != nil {
 		res.Reason = bookReasonGone
@@ -543,23 +553,39 @@ func sameMoves(a, b []BookRenameFile) bool {
 // can't be moved, or the record can't be written, the files already moved are put back,
 // so the record and the disk never disagree.
 func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it BookRenameItem, res BookRenameResult) BookRenameResult {
-	var done []books.PathMove
+	var planned []books.PathMove
 	for _, f := range it.Files {
-		if f.From == f.To {
-			continue
+		if f.From != f.To {
+			planned = append(planned, books.PathMove{From: f.From, To: f.To})
 		}
-		if err := c.imp.Move(f.From, f.To); err != nil {
+	}
+	// The moves are written down before the first one, so a crash part way through is
+	// undone at the next start (RecoverBookRenames) instead of leaving a book split
+	// between two folders with its record pointing at one.
+	if err := c.books.JournalRename(ctx, it.BookID, it.VersionID, it.Kind, planned); err != nil {
+		res.Reason = "couldn't note the rename before starting it: " + err.Error()
+		return res
+	}
+	// From the first move on, nothing waits on the request: the record, the clean-up and
+	// the catalogue refresh must happen even if the caller has gone.
+	wctx := context.WithoutCancel(ctx)
+	var done []books.PathMove
+	for _, m := range planned {
+		if err := c.imp.Move(m.From, m.To); err != nil {
 			if errors.Is(err, library.ErrTargetExists) {
 				res.Reason = bookReasonTaken
 			} else {
-				res.Reason = "couldn't move " + filepath.Base(f.From) + ": " + err.Error()
+				res.Reason = "couldn't move " + filepath.Base(m.From) + ": " + err.Error()
 			}
 			if berr := c.putBookFilesBack(done); berr != nil {
-				res.Reason += fmt.Sprintf("; %d file(s) already moved couldn't be put back (%v) — rescan the book", len(done), berr)
+				res.Reason += "; " + splitMessage(it, done, berr)
+				c.bookFilesChanged(wctx, it.BookID)
+				return res
 			}
+			_ = c.books.ClearRenameJournal(wctx, it.BookID, it.VersionID, it.Kind)
 			return res
 		}
-		done = append(done, books.PathMove{From: f.From, To: f.To})
+		done = append(done, m)
 	}
 	what := "ebook"
 	if e.audio() {
@@ -569,26 +595,72 @@ func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it Boo
 		}
 	}
 	detail := fmt.Sprintf("Renamed the %s to the naming scheme: %s → %s", what, filepath.Base(it.Current), filepath.Base(it.Proposed))
-	if err := c.books.RepointEdition(ctx, it.BookID, it.VersionID, it.Kind, it.Proposed, done, detail); err != nil {
+	if err := c.books.RepointEdition(wctx, it.BookID, it.VersionID, it.Kind, it.Proposed, done, detail); err != nil {
 		if berr := c.putBookFilesBack(done); berr == nil {
+			_ = c.books.ClearRenameJournal(wctx, it.BookID, it.VersionID, it.Kind)
 			res.Reason = "couldn't record the new name, so the files were put back: " + err.Error()
 		} else {
-			c.log.Error("book rename: the record couldn't be written and the files couldn't be put back — the book points at the old name",
+			c.log.Error("book rename: the record couldn't be written and the files couldn't all be put back",
 				"book_id", it.BookID, "old", it.Current, "new", it.Proposed, "err", err, "move_back_err", berr)
-			res.Reason = fmt.Sprintf("couldn't record the new name (%v); the files are at %s — rescan the book to pick them up", err, it.Proposed)
+			res.Reason = fmt.Sprintf("couldn't record the new name (%v); %s", err, splitMessage(it, done, berr))
 		}
-		c.bookFilesChanged(ctx, it.BookID)
+		c.bookFilesChanged(wctx, it.BookID)
 		return res
 	}
 	oldDir, newDir := it.Current, it.Proposed
 	if !it.folder {
 		oldDir, newDir = filepath.Dir(it.Current), filepath.Dir(it.Proposed)
 	}
-	c.leaveOldBookFolder(oldDir, newDir, c.imp.BookRoot(e.audio()))
+	c.leaveOldBookFolder(oldDir, newDir, c.imp.BookRoot(e.audio()), it.folder)
 	c.log.Info("book renamed", "book_id", it.BookID, "edition", it.Kind, "files", len(done))
-	c.bookFilesChanged(ctx, it.BookID)
+	c.bookFilesChanged(wctx, it.BookID)
 	res.Renamed = true
 	return res
+}
+
+// splitMessage says where a book's files are after a rename that could neither finish nor
+// be undone: some in the new folder, the rest in the old, with the record on the old. A
+// rescan alone can't fix that — it would record whichever half is in the scheme's folder.
+func splitMessage(it BookRenameItem, done []books.PathMove, berr error) string {
+	oldDir, newDir := it.Current, it.Proposed
+	if !it.folder {
+		oldDir, newDir = filepath.Dir(it.Current), filepath.Dir(it.Proposed)
+	}
+	return fmt.Sprintf("moving the files back failed too (%v), so up to %d of them are in %s and the rest in %s, and the book still points at %s — move them back into %s by hand",
+		berr, len(done), newDir, oldDir, it.Current, oldDir)
+}
+
+// occupiedBy says why a multi-file edition can't move into dir, or "": dir already holds
+// book files of its kind that aren't the edition's own. They'd become part of the book —
+// listed, played and deleted with it. Own files are recognised with os.SameFile, so a
+// case-only change on a case-insensitive disk (the same files, another spelling) is fine.
+func occupiedBy(dir string, audio bool, own []string) string {
+	if _, err := os.Stat(dir); err != nil {
+		return ""
+	}
+	var mine []os.FileInfo
+	for _, p := range own {
+		if fi, err := os.Stat(p); err == nil {
+			mine = append(mine, fi)
+		}
+	}
+	for _, p := range editionFiles(dir, audio) {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		ours := false
+		for _, m := range mine {
+			if os.SameFile(m, fi) {
+				ours = true
+				break
+			}
+		}
+		if !ours {
+			return "its new folder already has other files in it (" + filepath.Base(p) + "), which would become part of this book"
+		}
+	}
+	return ""
 }
 
 // putBookFilesBack undoes a part-done rename, newest move first.
@@ -616,7 +688,7 @@ var bookFolderSidecars = []string{
 // folders the move emptied are removed — sub-folders, the book folder, then empty series
 // and author folders above it, never the library folder itself. Only empty folders are
 // ever removed.
-func (c *Coordinator) leaveOldBookFolder(oldDir, newDir, root string) {
+func (c *Coordinator) leaveOldBookFolder(oldDir, newDir, root string, folderEdition bool) {
 	oldDir, newDir = filepath.Clean(oldDir), filepath.Clean(newDir)
 	if oldDir == newDir || root == "" || oldDir == filepath.Clean(root) || !library.PathWithin(oldDir, root) {
 		return
@@ -639,7 +711,7 @@ func (c *Coordinator) leaveOldBookFolder(oldDir, newDir, root string) {
 	// The cover and metadata follow only from a folder that was the book's own. One that
 	// still has folders in it is something else's — an author folder a flat layout kept
 	// its files in — and its cover.jpg is the author's.
-	if !hasSubdir(oldDir) {
+	if !hasSubdir(oldDir) && (folderEdition || depthUnder(oldDir, root) >= 2) {
 		for _, name := range bookFolderSidecars {
 			from := filepath.Join(oldDir, name)
 			if _, err := os.Lstat(from); err != nil {
@@ -657,6 +729,15 @@ func (c *Coordinator) leaveOldBookFolder(oldDir, newDir, root string) {
 		}
 		c.imp.RemoveDirIfEmpty(d)
 	}
+}
+
+// depthUnder is how many folders down from root dir is ("Author" 1, "Author/Title" 2).
+func depthUnder(dir, root string) int {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == "." {
+		return 0
+	}
+	return len(strings.Split(filepath.ToSlash(rel), "/"))
 }
 
 // hasSubdir reports whether dir has a folder in it (or can't be read: then assume so).
@@ -718,18 +799,25 @@ func editionFormat(f *books.BookFile) string {
 }
 
 // bookPathIndex is every recorded book file and multi-file folder, for a library scan to
-// recognise folders it has nothing to add from.
+// recognise folders it has nothing to add from. A folder is known per kind: an ebook
+// dropped into a recorded audiobook's folder (they share one under the default scheme) is
+// still news to the scan.
 type bookPathIndex struct {
 	files   map[string]bool
-	folders map[string]bool
+	folders map[folderKind]bool
+}
+
+type folderKind struct {
+	path  string
+	audio bool
 }
 
 func knownBookPaths(all []books.Book) bookPathIndex {
-	k := bookPathIndex{files: map[string]bool{}, folders: map[string]bool{}}
+	k := bookPathIndex{files: map[string]bool{}, folders: map[folderKind]bool{}}
 	for _, b := range all {
 		for _, e := range editionsOf(b) {
 			if e.file.FileCount > 1 {
-				k.folders[filepath.Clean(e.file.Path)] = true
+				k.folders[folderKind{filepath.Clean(e.file.Path), e.audio()}] = true
 			} else {
 				k.files[filepath.Clean(e.file.Path)] = true
 			}
@@ -748,8 +836,9 @@ func (k bookPathIndex) covers(bf library.BookFolder) bool {
 		if k.files[p] {
 			return true
 		}
+		audio := library.IsAudiobookFile(p)
 		for d := filepath.Dir(p); ; d = filepath.Dir(d) {
-			if k.folders[d] {
+			if k.folders[folderKind{d, audio}] {
 				return true
 			}
 			if filepath.Dir(d) == d {
@@ -790,7 +879,7 @@ func (c *Coordinator) bookImportRefusal(ctx context.Context, b books.Book, n lib
 	if err != nil {
 		return fmt.Errorf("couldn't check where the book's folder would go: %w", err)
 	}
-	if why := newBookPlaces(all).nests(dir, len(files) > 1, b.ID); why != "" {
+	if why := newBookPlaces(all).nests(dir, b.ID); why != "" {
 		return fmt.Errorf("the book naming scheme would put %q %s — change the book folder template in Settings → Naming & metadata", b.Title, why)
 	}
 	return nil

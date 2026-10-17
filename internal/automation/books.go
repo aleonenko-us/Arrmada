@@ -1158,6 +1158,12 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
 		return false
 	}
+	unlock, ok := c.tryLockBook(b.ID)
+	if !ok {
+		c.log.Info("book: import waits for the next sweep — the book's files are being changed", "title", b.Title, "edition", kind)
+		return false
+	}
+	defer unlock()
 	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
@@ -1377,12 +1383,23 @@ func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) {
 	if c.books == nil || c.imp == nil {
 		return
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		c.log.Info("book rescan skipped: the book's files are being changed", "book_id", bookID)
+		return
+	}
+	defer unlock()
 	b, err := c.books.Get(ctx, bookID)
 	if err != nil {
 		return
 	}
+	keep, err := c.notOthersFilter(ctx, editionKey(b.ID, 0, books.KindEbook), editionKey(b.ID, 0, books.KindAudiobook))
+	if err != nil {
+		c.log.Warn("book rescan: couldn't read the library", "book_id", bookID, "err", err)
+		return
+	}
 	var ebooks, audio []library.FoundFile
-	for _, f := range c.imp.BookLibraryFiles(bookName(b, nil, true), editionFormat(b.Ebook), editionFormat(b.Audiobook)) {
+	for _, f := range keepFiles(c.imp.BookLibraryFiles(bookName(b, nil, true), editionFormat(b.Ebook), editionFormat(b.Audiobook)), keep) {
 		if library.IsAudiobookFile(f.Path) {
 			audio = append(audio, f)
 		} else {
@@ -1465,6 +1482,11 @@ func (c *Coordinator) ManualImportBook(ctx context.Context, bookID, versionID in
 	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
 		return err
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return errBookBusy
+	}
+	defer unlock()
 	bi, err := c.imp.ImportBook(name, files)
 	if err != nil {
 		return err

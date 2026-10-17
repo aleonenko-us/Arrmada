@@ -99,6 +99,11 @@ func (c *Coordinator) MergeAudiobook(ctx context.Context, bookID int64) error {
 		c.log.Warn("book: audiobook merge failed — the original files are untouched", "book_id", bookID, "title", title, "reason", reason)
 		return errString("merge failed: " + reason)
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return fail(errBookBusy.Error())
+	}
+	defer unlock()
 	b, paths, err := c.audiobookMergeSources(ctx, bookID)
 	if err != nil {
 		if errors.Is(err, books.ErrNotFound) {

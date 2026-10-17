@@ -6,10 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
+	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 )
 
 type renameNaming struct{}
@@ -47,7 +50,7 @@ func TestBookRenameKeepsItemOrderAndPlace(t *testing.T) {
 		}
 		return sizes, names, firstIno
 	}
-	before, _, _ := files()
+	before, _, inoBefore := files()
 	if len(before) != 3 || before[0] != 12000 || before[2] != 3000 {
 		t.Fatalf("before the rename: sizes %v", before)
 	}
@@ -83,6 +86,9 @@ func TestBookRenameKeepsItemOrderAndPlace(t *testing.T) {
 	h.srv.OnBookChanged(ctx, h.book.ID, nil)
 
 	after, names, ino := files()
+	if ino != inoBefore {
+		t.Errorf("the first file's id changed with its name: %s → %s", inoBefore, ino)
+	}
 	for i := range before {
 		if after[i] != before[i] {
 			t.Fatalf("play order changed: sizes %v → %v", before, after)
@@ -102,5 +108,81 @@ func TestBookRenameKeepsItemOrderAndPlace(t *testing.T) {
 	}
 	if code, _ := h.do("GET", "/api/items/"+key+"/file/"+ino, nil, nil); code != 200 {
 		t.Errorf("the renamed first file should stream: HTTP %d", code)
+	}
+}
+
+type fileNaming struct{}
+
+func (fileNaming) AudiobookNaming() library.BookNaming {
+	return library.BookNaming{Folder: library.DefaultAudiobookFolder, File: "{Author} - {Title}", Track: library.DefaultAudiobookTrack}
+}
+func (fileNaming) EbookNaming() library.BookNaming { return library.DefaultEbookNaming }
+
+// A renamed file keeps the id listening apps know it by: the item's files, a new play
+// session's tracks and a session opened before the rename all reach it the same way, so a
+// phone's download and a book playing right now carry on. The id it gets is the one its
+// name always gave it, so nothing anyone already holds changed when ids began to be kept.
+func TestRenamedFileKeepsItsID(t *testing.T) {
+	h := newHarness(t)
+	h.signIn()
+	ctx := context.Background()
+	root := filepath.Dir(filepath.Dir(h.book.Audiobook.Path))
+	added, _ := h.srv.books.AddWorks(ctx, []metadata.BookResult{{Key: "hc:2", Title: "Project Hail Mary", Author: "Andy Weir"}}, "", true)
+	if len(added) != 1 {
+		t.Fatal("book not added")
+	}
+	src := filepath.Join(root, "Andy Weir", "Project Hail Mary", "Project Hail Mary.m4b")
+	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, bytes.Repeat([]byte("phm"), 4000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.srv.books.MarkImported(ctx, added[0].ID, books.KindAudiobook, src, "M4B", 12000, 1); err != nil {
+		t.Fatal(err)
+	}
+	h.srv.Invalidate()
+	key := itemKeyFor(added[0].ID, 0)
+	itemIno := func() string {
+		media := obj1(t, h.json("GET", "/api/items/"+key, nil)["media"])
+		return obj1(t, list1(t, media["audioFiles"])[0])["ino"].(string)
+	}
+	trackURL := func() string {
+		play := h.json("POST", "/api/items/"+key+"/play", map[string]any{
+			"deviceInfo": map[string]string{"clientName": "Lissen", "deviceId": "dev-1", "deviceName": "Pixel 8"},
+		})
+		return obj1(t, list1(t, play["audioTracks"])[0])["contentUrl"].(string)
+	}
+	before := itemIno()
+	if before != inoFor("Project Hail Mary.m4b") {
+		t.Fatalf("a first listing must give the id the name always gave: %s", before)
+	}
+	oldURL := trackURL()
+	if !strings.HasSuffix(oldURL, "/file/"+before) {
+		t.Fatalf("track URL %q doesn't name file %s", oldURL, before)
+	}
+
+	imp := library.NewImporter("", slog.Default())
+	imp.SetRoots("", "", root, root)
+	imp.SetBookNaming(fileNaming{})
+	c := automation.New(nil, nil, nil, nil, h.srv.db, nil, slog.Default(), "")
+	c.SetSeries(nil, imp)
+	c.SetBooks(h.srv.books)
+	moved, skipped, err := c.RenameBookFiles(ctx, added[0].ID)
+	if err != nil || moved != 1 {
+		t.Fatalf("rename: moved %d, skipped %+v, err %v", moved, skipped, err)
+	}
+	h.srv.OnBookChanged(ctx, added[0].ID, nil)
+	if _, err := os.Stat(filepath.Join(filepath.Dir(src), "Andy Weir - Project Hail Mary.m4b")); err != nil {
+		t.Fatalf("the file should have its new name: %v", err)
+	}
+	if after := itemIno(); after != before {
+		t.Errorf("the item's file id changed with the rename: %s → %s", before, after)
+	}
+	if u := trackURL(); u != oldURL {
+		t.Errorf("a new session's track URL changed: %s → %s", oldURL, u)
+	}
+	if code, _ := h.do("GET", oldURL, nil, nil); code != 200 {
+		t.Errorf("the track URL from before the rename should still stream: HTTP %d", code)
 	}
 }

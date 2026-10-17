@@ -101,6 +101,9 @@ type BookName struct {
 	// " (<label>)" added to its last folder and its file, which is the name versions have
 	// always had.
 	Edition string
+	// VersionID is the audiobook version's id, used only to name a version whose label
+	// has nothing a file name can hold.
+	VersionID int64
 }
 
 // Where a template is used. Each place allows different tokens.
@@ -436,6 +439,14 @@ func (r bookRender) value(n bnNode, top bool) string {
 		v = cleanValue(r.n.Narrator)
 	case tokEdition:
 		v = cleanValue(r.n.Edition)
+		if v == "" && strings.TrimSpace(r.n.Edition) != "" {
+			// A label made only of characters a file name can't hold ("???") would leave
+			// the version in the standard edition's folder: name it by its id instead.
+			v = "Version"
+			if r.n.VersionID > 0 {
+				v += " " + strconv.FormatInt(r.n.VersionID, 10)
+			}
+		}
 	case tokFormat:
 		v = cleanValue(r.format)
 	case tokPart:
@@ -606,9 +617,10 @@ func tidySkeleton(seg string) string {
 	}
 }
 
-// maxNameBytes keeps each folder or file name under the 255-byte limit filesystems have,
-// with room for an extension.
-const maxNameBytes = 240
+// maxNameBytes is the 255-byte limit filesystems put on one folder or file name. Only a
+// name over it is shortened (a file's together with its extension): such a name could
+// never have been created, so every name that worked before renders exactly as it did.
+const maxNameBytes = 255
 
 // truncateName shortens a name to at most n bytes on a character boundary.
 func truncateName(s string, n int) string {
@@ -653,7 +665,17 @@ func withEdition(tpl string, n BookName) string {
 	if strings.TrimSpace(n.Edition) == "" {
 		return tpl
 	}
-	if nodes, err := parseBookTemplate(tpl); err == nil && templateHasToken(nodes, tokEdition) {
+	// Only an {Edition} outside every optional part counts: one inside a part that drops
+	// out (with an empty narrator, say) would leave the version in the standard folder.
+	top := false
+	if nodes, err := parseBookTemplate(tpl); err == nil {
+		walkTokens(nodes, true, func(n bnNode, isTop bool) {
+			if isTop && n.tok == tokEdition {
+				top = true
+			}
+		})
+	}
+	if top {
 		return tpl
 	}
 	return tpl + " ({Edition})"

@@ -55,6 +55,10 @@ func TestBookNamingDefaultUnchanged(t *testing.T) {
 		{"Jay Kristoff", "Empire of the Vampire", "GraphicAudio: Dramatized"},
 		{"Ünïcødé Àuthor", "日本語のタイトル", ""},
 		{"- Leading Dash", "[Bracketed] (Paren) - - Dashes -", ""},
+		// Long names that fit the 255-byte limit render byte for byte as before: 125
+		// Cyrillic letters are 250 bytes, 251 with ".m4b" four more.
+		{strings.Repeat("Ж", 120), strings.Repeat("Ж", 125), ""},
+		{"Автор", strings.Repeat("Ж", 122), ""},
 	}
 	for _, audio := range []bool{true, false} {
 		for _, c := range cases {
@@ -395,5 +399,35 @@ func TestFindBookFoldersReadsTheScheme(t *testing.T) {
 	im.SetBookNaming(fixedBookNaming{audio: abs.Audiobook, ebook: abs.Ebook})
 	if got := read(im); got["Golden Son"] != "Pierce Brown" || got["Project Hail Mary"] != "Andy Weir" {
 		t.Errorf("Audiobookshelf scheme: %v", got)
+	}
+}
+
+// A name over the 255-byte limit (which could never have been created) is shortened to fit,
+// on a character boundary, keeping its extension.
+func TestBookNamesOverTheLimitAreShortened(t *testing.T) {
+	long := strings.Repeat("Ж", 200) // 400 bytes
+	dir := BookFolderPath("/r", DefaultAudiobookNaming, true, BookName{Author: "A", Title: long}, "M4B")
+	if b := filepath.Base(dir); len(b) > 255 || !strings.HasPrefix(long, b) {
+		t.Errorf("folder %d bytes", len(b))
+	}
+	f := BookFileName(DefaultAudiobookNaming, true, BookName{Title: long}, "x.m4b")
+	if len(f) > 255 || !strings.HasSuffix(f, ".m4b") {
+		t.Errorf("file %d bytes", len(f))
+	}
+}
+
+// A version always gets a folder apart from the standard edition's: an {Edition} inside an
+// optional part that drops out doesn't count, and a label with nothing printable is named
+// by the version's id.
+func TestVersionFolderNeverSharesTheStandardOne(t *testing.T) {
+	nm := BookNaming{Folder: "{Author}/{Title}< [{Narrator} {Edition}]>", File: "{Title}", Track: "{Original}"}
+	std := BookFolderPath("/r", nm, true, BookName{Author: "A", Title: "T"}, "")
+	ver := BookFolderPath("/r", nm, true, BookName{Author: "A", Title: "T", Edition: "Full cast", VersionID: 3}, "")
+	if std == ver || filepath.Base(ver) != "T (Full cast)" {
+		t.Errorf("standard %q, version %q", std, ver)
+	}
+	odd := BookFolderPath("/r", DefaultAudiobookNaming, true, BookName{Author: "A", Title: "T", Edition: "???", VersionID: 9}, "")
+	if filepath.Base(odd) != "T (Version 9)" {
+		t.Errorf("unprintable label: %q", odd)
 	}
 }

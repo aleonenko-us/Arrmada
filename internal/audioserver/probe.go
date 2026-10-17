@@ -196,16 +196,65 @@ func (p *prober) listFor(ctx context.Context, path, author string, probe bool) (
 		if err != nil {
 			continue
 		}
-		af := AudioFile{Index: i + 1, Ino: inoFor(relTo(base, fp)), Path: fp, Name: filepath.Base(fp),
+		af := AudioFile{Index: i + 1, Ino: p.storedIno(ctx, fp), Path: fp, Name: filepath.Base(fp),
 			Ext: strings.ToLower(filepath.Ext(fp)), Size: fi.Size(), MTimeMs: fi.ModTime().UnixMilli()}
-		if probe {
-			p.meta(ctx, &af, author)
-		} else {
-			p.cached(ctx, &af)
-		}
 		out = append(out, af)
 	}
+	// A file's id is stored the first time it's listed, and from then on it's the file's,
+	// whatever it's renamed to (a book rename carries the row along). A new id is the one
+	// the file's name has always given it — so nothing anyone already holds changes — made
+	// unique within the item, since a renamed file keeps the id its old name gave and a new
+	// file could arrive under that old name.
+	used := map[string]bool{}
+	for _, af := range out {
+		if af.Ino != "" {
+			used[af.Ino] = true
+		}
+	}
+	for i := range out {
+		if out[i].Ino != "" {
+			continue
+		}
+		rel := relTo(base, out[i].Path)
+		ino := inoFor(rel)
+		for n := 2; used[ino]; n++ {
+			ino = inoFor(rel + "#" + strconv.Itoa(n))
+		}
+		used[ino] = true
+		out[i].Ino = ino
+		p.storeIno(ctx, out[i].Path, ino)
+	}
+	for i := range out {
+		af := &out[i]
+		if probe {
+			p.meta(ctx, af, author)
+		} else {
+			p.cached(ctx, af)
+		}
+	}
 	return out, nil
+}
+
+// storedIno is the id stored for a file, "" when none is yet.
+func (p *prober) storedIno(ctx context.Context, path string) string {
+	if p.db == nil {
+		return ""
+	}
+	var ino string
+	_ = p.db.QueryRowContext(ctx, `SELECT ino FROM audio_file_meta WHERE path = ?`, path).Scan(&ino)
+	return ino
+}
+
+// storeIno keeps a file's id. A file not probed yet gets a row holding only its id: size
+// -1 matches no file on disk, so the row reads as "not probed" until a probe fills it in
+// (which leaves the id alone).
+func (p *prober) storeIno(ctx context.Context, path, ino string) {
+	if p.db == nil {
+		return
+	}
+	_, _ = p.db.ExecContext(ctx,
+		`INSERT INTO audio_file_meta (path, size, mtime, ino) VALUES (?, -1, 0, ?)
+		 ON CONFLICT(path) DO UPDATE SET ino = excluded.ino WHERE audio_file_meta.ino = ''`, path, ino)
 }
 
 // cached fills in probed details only if they are already known.
