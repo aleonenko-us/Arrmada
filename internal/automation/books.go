@@ -1382,7 +1382,7 @@ func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) {
 		return
 	}
 	var ebooks, audio []library.FoundFile
-	for _, f := range c.imp.BookLibraryFiles(bookName(b, nil, false), editionFormat(b.Ebook), editionFormat(b.Audiobook)) {
+	for _, f := range c.imp.BookLibraryFiles(bookName(b, nil, true), editionFormat(b.Ebook), editionFormat(b.Audiobook)) {
 		if library.IsAudiobookFile(f.Path) {
 			audio = append(audio, f)
 		} else {

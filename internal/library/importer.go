@@ -401,12 +401,15 @@ func relOrBase(base, p string) string {
 // BookLibraryFiles returns the book files present in a book's library folders (rescan):
 // the ebook folder and the audiobook folder the naming scheme gives it, which may be under
 // different roots (deduped when they're one folder). The formats are the editions'
-// recorded ones, for a scheme that names {Format} in a folder ("" when there's none).
+// recorded ones, for a scheme that names {Format} in a folder ("" when there's none). n is
+// named as the audiobook (its narrator, if typed); the ebook folder is named without it.
 func (im *Importer) BookLibraryFiles(n BookName, ebookFormat, audioFormat string) []FoundFile {
 	var out []FoundFile
 	eDir := ""
 	if r := im.ebookDir(); r != "" {
-		eDir = BookFolderPath(r, im.BookNamingFor(false), false, n, ebookFormat)
+		en := n
+		en.Narrator = "" // an ebook has no narrator, so its folder is named without one
+		eDir = BookFolderPath(r, im.BookNamingFor(false), false, en, ebookFormat)
 		out = FindBookFiles(eDir)
 	}
 	if r := im.audiobookDir(); r != "" {

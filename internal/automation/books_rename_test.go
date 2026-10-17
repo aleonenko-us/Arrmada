@@ -277,7 +277,7 @@ func TestBookRenameAppliesSchemeAndKeepsPlaces(t *testing.T) {
 		}
 	}
 	// And a rescan finds the book where the scheme put it.
-	if got := r.c.imp.BookLibraryFiles(bookName(gs2, nil, false), "EPUB", "M4B"); len(got) != 2 {
+	if got := r.c.imp.BookLibraryFiles(bookName(gs2, nil, true), "EPUB", "M4B"); len(got) != 2 {
 		t.Errorf("rescan should find the ebook and the audiobook in their scheme folders: %+v", got)
 	}
 }
