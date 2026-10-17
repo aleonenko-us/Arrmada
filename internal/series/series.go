@@ -17,12 +17,6 @@ type Series struct {
 	TVDBID    int    `json:"tvdb_id,omitempty"`
 	IMDBID    string `json:"imdb_id,omitempty"`
 	Title     string `json:"title"`
-	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
-	// TitleOverride): presentation only. Title stays the canonical name matching, naming
-	// and scripts use. Never empty.
-	DisplayTitle string `json:"display_title"`
-	// TitleOverride is the per-show "Display title…" pick ("" follows the setting).
-	TitleOverride string `json:"title_override,omitempty"`
 	Year      int    `json:"year"`
 	Overview  string `json:"overview,omitempty"`
 	PosterURL string `json:"poster_url,omitempty"`
@@ -51,6 +45,11 @@ type Series struct {
 	// LibraryFolderID is the TV folder the show belongs to when there's more than one
 	// (internal/libfolders): 0 is the default folder.
 	LibraryFolderID int64 `json:"library_folder_id"`
+	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
+	// TitleOverride, the per-show "Display title…" pick; "" follows the setting):
+	// presentation only. Title stays the canonical name matching, naming and scripts use.
+	DisplayTitle  string `json:"display_title"`
+	TitleOverride string `json:"title_override,omitempty"`
 
 	Extra *SeriesExtra `json:"extra,omitempty"`
 	// Aliases are the other titles this show is released under. Populated on read so

@@ -29,14 +29,14 @@ const (
 // These answer a narrower question — "is this download the film it was grabbed for?" — or
 // supply the few languages the owner asked to match in.
 type Titles struct {
-	Title         string            `json:"title"`
-	OriginalTitle string            `json:"original_title,omitempty"`
+	Title         string `json:"title"`
+	OriginalTitle string `json:"original_title,omitempty"`
 	// OriginalLanguage is TMDB's original_language (ISO 639-1, "el"): which language the
 	// original title is in, for the display-title setting.
 	OriginalLanguage string            `json:"original_language,omitempty"`
-	Year          int               `json:"year,omitempty"`
-	Alternatives  []AltTitle        `json:"alternatives,omitempty"`
-	Translations  []TranslatedTitle `json:"translations,omitempty"`
+	Year             int               `json:"year,omitempty"`
+	Alternatives     []AltTitle        `json:"alternatives,omitempty"`
+	Translations     []TranslatedTitle `json:"translations,omitempty"`
 }
 
 // TranslatedTitle is a title's name in one language (TMDB's translations).
@@ -187,10 +187,10 @@ func parseTMDBTitles(body []byte) (*Titles, error) {
 		return strings.TrimSpace(b)
 	}
 	t := &Titles{
-		Title:         first(p.Title, p.Name),
+		Title:            first(p.Title, p.Name),
 		OriginalTitle:    first(p.OriginalTitle, p.OriginalName),
 		OriginalLanguage: strings.ToLower(strings.TrimSpace(p.OriginalLanguage)),
-		Year:          yearOf(first(p.ReleaseDate, p.FirstAirDate)),
+		Year:             yearOf(first(p.ReleaseDate, p.FirstAirDate)),
 	}
 	for _, a := range append(p.AlternativeTitles.Titles, p.AlternativeTitles.Results...) {
 		if title := strings.TrimSpace(a.Title); title != "" {

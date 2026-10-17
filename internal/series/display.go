@@ -34,8 +34,8 @@ func (s *Service) policy() displaytitle.Policy {
 	return s.displayPolicy()
 }
 
-// shownTitle is the stored display_title, or the canonical title when it's '' (the
-// default, and rows not worked out yet).
+// shownTitle is the stored display_title, or the canonical title when it's empty
+// (the default, and rows not worked out yet).
 func shownTitle(display, title string) string {
 	if strings.TrimSpace(display) != "" {
 		return display
@@ -59,8 +59,8 @@ func displayFor(p displaytitle.Policy, sr Series) string {
 	return p.Resolve(t)
 }
 
-// storedDisplay is what goes in display_title for a shown title: '' when it is the
-// canonical title, so the default setting stores nothing.
+// storedDisplay is what goes in display_title for a shown title: empty when it is
+// the canonical title, so the default setting stores nothing.
 func storedDisplay(shown, title string) string {
 	if shown == title {
 		return ""

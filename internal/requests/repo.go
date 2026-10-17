@@ -31,12 +31,9 @@ type Request struct {
 	OLKey            string  `json:"ol_key,omitempty"`  // books (Open Library work key)
 	BookID           int64   `json:"book_id,omitempty"` // books: the library row it became; survives that row's key changing
 	Title            string  `json:"title"`
-	// DisplayTitle is the title as the library shows it (Settings → Library → "Show
-	// titles as"), when the movie or show is in the library under another name than
-	// Title. Computed at read time, never stored; Title stays what was asked for.
-	DisplayTitle     string  `json:"display_title,omitempty"`
-	Author           string  `json:"author,omitempty"`  // books
-	Formats          string  `json:"formats,omitempty"` // books: ebook | audiobook | both; "" = from before the choice (formats.go)
+	DisplayTitle     string  `json:"display_title,omitempty"` // the library's name for it when not Title; read time only (displaytitle.go)
+	Author           string  `json:"author,omitempty"`        // books
+	Formats          string  `json:"formats,omitempty"`       // books: ebook | audiobook | both; "" = from before the choice (formats.go)
 	Year             int     `json:"year"`
 	PosterURL        string  `json:"poster_url,omitempty"`
 	Overview         string  `json:"overview,omitempty"`

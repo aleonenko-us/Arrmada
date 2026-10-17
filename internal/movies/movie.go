@@ -18,12 +18,8 @@ type Movie struct {
 	TMDBID          int    `json:"tmdb_id"`
 	IMDBID          string `json:"imdb_id,omitempty"`
 	Title           string `json:"title"`
-	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
-	// TitleOverride): presentation only. Title stays the canonical name matching, naming
-	// and scripts use. Never empty.
-	DisplayTitle string `json:"display_title"`
-	// TitleOverride is the per-title "Display title…" pick ("" follows the setting).
-	TitleOverride   string `json:"title_override,omitempty"`
+	DisplayTitle    string `json:"display_title"`            // what the app shows; Title stays canonical (display.go)
+	TitleOverride   string `json:"title_override,omitempty"` // the "Display title…" pick; "" follows the setting
 	Year            int    `json:"year"`
 	Overview        string `json:"overview,omitempty"`
 	PosterURL       string `json:"poster_url,omitempty"`

@@ -286,9 +286,9 @@ func Choices(canonical string, names *Names, all *metadata.Titles) []Choice {
 }
 
 // SQL is the shown title of a movies or series row in a query, under its table alias
-// ("m" → COALESCE(NULLIF(m.display_title, ''), m.title)): the stored display title, or
-// the canonical title when none is stored. For feeds that read titles straight from SQL
-// (the calendar, history, the blocklist). Never for matching.
+// ("m"): m's display_title, or its title when display_title is empty. For feeds that
+// read titles straight from SQL (the calendar, history, the blocklist). Never for
+// matching.
 func SQL(alias string) string {
 	return "COALESCE(NULLIF(" + alias + ".display_title, ''), " + alias + ".title)"
 }
