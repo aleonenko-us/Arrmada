@@ -21,9 +21,10 @@ import (
 //     names, stored per show and used by import routing (MatchRelease) and library scans
 //     for a name no show goes by otherwise, only when exactly one show fits.
 //
-// Neither touches searching. FitRelease — the rule searches, RSS and upgrades accept a
-// release by — still knows only the show's own titles and aliases: a translated title
-// there would let a search for one show take another show's releases.
+// FitRelease itself still knows only the show's own titles and aliases. Searches, RSS and
+// upgrades judge by SearchFit (searchtitles.go), which also takes a release named by a
+// stored translated title, under stricter rules than import routing's: there a translated
+// title could otherwise let a search for one show take another show's releases.
 
 // ErrNoTitles is KnownAs unable to read a show's names (no TMDB key, no TMDB id).
 var ErrNoTitles = errors.New("the show's other titles can't be read")
