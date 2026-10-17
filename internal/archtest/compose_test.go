@@ -501,6 +501,17 @@ func TestMediaInitScriptsAgree(t *testing.T) {
 	if strings.Contains(hostPart, "chown -R") {
 		t.Errorf("the media init chowns a folder of the user's recursively:\n%s", hostPart)
 	}
+	// The managed volume starts with a folder per library (the app no longer makes them: on a
+	// host folder that isn't mounted yet it would make them on the wrong disk); a folder of
+	// the user's never gets any, the libraries there are picked in the app.
+	for _, lib := range []string{"movies", "tvshows", "ebooks", "audiobooks", "music"} {
+		if !strings.Contains(managed, "/media/library/"+lib) {
+			t.Errorf("the managed volume's init should make /media/library/%s:\n%s", lib, managed)
+		}
+		if strings.Contains(hostPart, "/media/library/"+lib) {
+			t.Errorf("the media init makes /media/library/%s in a folder of the user's:\n%s", lib, hostPart)
+		}
+	}
 	for _, want := range []string{"$${DATA_HOST%/}", "exit 1", "/media/downloads/incomplete", "/media/library"} {
 		if !strings.Contains(hostPart, want) {
 			t.Errorf("the host-folder part of the media init has no %q:\n%s", want, hostPart)

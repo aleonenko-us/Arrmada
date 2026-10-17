@@ -152,9 +152,10 @@ services:
     restart: unless-stopped
 
   # One-shot: create the media subfolders and hand them to the user both Arrmada and
-  # qBittorrent run as, so both can write and hardlink. The managed volume is Arrmada's own,
-  # so all of it changes owner. A folder of yours (ARRMADA_MEDIA_HOST) keeps its owners:
-  # only the folders made here are handed over, and it may not be the database's folder.
+  # qBittorrent run as, so both can write and hardlink. The managed volume is Arrmada's own:
+  # it gets a starting folder per library, and all of it changes owner. A folder of yours
+  # (ARRMADA_MEDIA_HOST) keeps its owners and gets no library folders (you pick those in the
+  # app): only downloads and library are made, and it may not be the database's folder.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
@@ -170,7 +171,8 @@ services:
         case "$$MEDIA_HOST" in
           /* | ./* | ../* | \~*) ;;
           *)
-            mkdir -p /media/downloads/incomplete /media/library &&
+            mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
+              /media/library/ebooks /media/library/audiobooks /media/library/music &&
               chown -R "$$PUID:$$PGID" /media
             exit ;;
         esac

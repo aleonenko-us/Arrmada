@@ -106,9 +106,10 @@ services:
       LOG_LEVEL: "info"
     restart: unless-stopped
 
-  # One-shot: Arrmada's own downloads/library folders, owned by the user above. In the
-  # managed volume all of it is; a folder of yours (ARRMADA_MEDIA_HOST) keeps its owners and
-  # only the folders made here are handed over. Same script as docker-compose.yml's.
+  # One-shot: Arrmada's own downloads/library folders, owned by the user above. The managed
+  # volume also gets a starting folder per library, and all of it is the user's; a folder of
+  # yours (ARRMADA_MEDIA_HOST) keeps its owners, gets no library folders, and only the folders
+  # made here are handed over. Same script as docker-compose.yml's.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
@@ -123,7 +124,8 @@ services:
         case "$$MEDIA_HOST" in
           /* | ./* | ../* | \~*) ;;
           *)
-            mkdir -p /media/downloads/incomplete /media/library &&
+            mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
+              /media/library/ebooks /media/library/audiobooks /media/library/music &&
               chown -R "$$PUID:$$PGID" /media
             exit ;;
         esac
