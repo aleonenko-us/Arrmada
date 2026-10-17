@@ -65,6 +65,8 @@ type Service struct {
 	// running to go round once more.
 	titlesPass  sync.Mutex
 	titlesAgain atomic.Bool
+	// unreadLogged: the search rule has said once that it waits for unread titles.
+	unreadLogged atomic.Bool
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a
