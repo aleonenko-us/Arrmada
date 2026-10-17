@@ -345,7 +345,7 @@ func (a *api) attachEpisodeDownloads(ctx context.Context, s *series.Series) {
 	if err != nil || len(queue) == 0 {
 		return
 	}
-	idx := indexEpisodeDownloads(queue, *s, parser.Parse)
+	idx := indexEpisodeDownloadsFit(queue, *s, parser.Parse, a.deps.Series.SearchFit(ctx))
 	for si := range s.Seasons {
 		for ei := range s.Seasons[si].Episodes {
 			e := &s.Seasons[si].Episodes[ei]
@@ -375,6 +375,12 @@ type seasonDownloads struct {
 // romaji-named download counts and another show's never does), each parsed once. parse is
 // injectable so a test can count the parses.
 func indexEpisodeDownloads(queue []download.Item, s series.Series, parse func(string) parser.Release) episodeDownloads {
+	return indexEpisodeDownloadsFit(queue, s, parse, nil)
+}
+
+// indexEpisodeDownloadsFit is indexEpisodeDownloads by a search's rule (series.SearchFit):
+// a download a search took by the show's translated title shows on its episodes too.
+func indexEpisodeDownloadsFit(queue []download.Item, s series.Series, parse func(string) parser.Release, fit *series.SearchFit) episodeDownloads {
 	idx := episodeDownloads{seasons: map[int]*seasonDownloads{}}
 	season := func(n int) *seasonDownloads {
 		sd := idx.seasons[n]
@@ -389,7 +395,7 @@ func indexEpisodeDownloads(queue []download.Item, s series.Series, parse func(st
 			continue // finished (import handles it, or it's seeding), or not a TV grab
 		}
 		p := parse(it.Name)
-		if !series.FitRelease(p, s).OK {
+		if !fit.Fit(p, s).OK {
 			continue
 		}
 		d := &series.EpisodeDownload{State: it.State, Progress: it.Progress, Hash: it.Hash}

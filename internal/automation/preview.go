@@ -488,12 +488,13 @@ func (c *Coordinator) previewSeries(ctx context.Context, in PreviewInput) (Previ
 	byName := map[string]indexer.Release{}
 	var cands []quality.Candidate
 	rts := newRuntimeIndex(s)
+	fit := c.seriesFit(ctx)
 	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		if blocked[normTitle(rel.Title)] {
 			notes.mark(rel.Title, DropBlocklisted)
 			continue
 		}
-		if !seriesTitleMatches(rel.Title, s) {
+		if !searchTitleMatches(fit, rel.Title, s) {
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
 		}

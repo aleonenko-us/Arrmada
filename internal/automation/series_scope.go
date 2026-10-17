@@ -240,6 +240,7 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 		ctx = WithDefaultSearchTrigger(ctx, TriggerManual)
 	}
 	ctx, notes := newSearchNotes(ctx)
+	ctx = c.withSeriesFit(ctx)
 	// Every click leaves a trace in the history, a failed search included, and a
 	// search_attempts row under its season or episode.
 	defer func() {
@@ -287,6 +288,7 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 	byName := make(map[string]indexer.Release, len(releases))
 	cands := make([]quality.Candidate, 0, len(releases))
 	rts := newRuntimeIndex(s)
+	fit := c.seriesFit(ctx)
 	// Specials found by title rather than S00Exx, each grabbed under its own special's
 	// scope so the import knows where its unnumbered file goes.
 	byTitle := map[string]GrabScope{}
@@ -307,7 +309,7 @@ func (c *Coordinator) GrabForScope(ctx context.Context, seriesID int64, sc Serie
 			byName[rel.Title] = rel
 			byTitle[rel.Title] = GrabScope{Season: 0, Episode: special}
 			cands = append(cands, c.specialCandidate(c.newSeriesCandidate(ctx, s, rts, rel), rts, special))
-		case !seriesTitleMatches(rel.Title, s):
+		case !searchTitleMatches(fit, rel.Title, s):
 			out.WrongShow++
 			notes.mark(rel.Title, DropWrongTitle)
 		case !c.releaseMatchesScope(ctx, s, parser.Parse(rel.Title), sc.Season, sc.Episode):
