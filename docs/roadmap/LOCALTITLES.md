@@ -52,6 +52,20 @@ One text query by the translated title (`SearchFit.QueryTitle`: the first title,
 
 A torrent added to the client by hand is told apart by the same rule in the sweeps' in-flight check and on the Wanted page, as the episode download indicator shows it.
 
+## Display titles (GitHub #27)
+
+A separate, later feature that reads the same TMDB names (`TMDB.Titles`, one cached request
+per title) for a different purpose: which name the app SHOWS. Settings → Library → Display
+titles (`display_title_mode` english/original/language, `display_title_language`,
+`display_title_original_in`) plus a per-title override (`title_override` column, migration
+0333). The names it needs — the original title in every script, the original language and
+the translations in the chosen language — are stored as `extra_json.display_names` by add,
+refresh and the same throttled titles backfill; the shown title is worked out from the row
+and stored in `display_title` ('' = the canonical title), so lists, the calendar and alerts
+read it without TMDB. It never feeds matching or naming: `TitleKeys`, `FitRelease`,
+`MatchRelease`, the importer and renames keep `title`. Code: `internal/displaytitle`,
+`movies/display.go`, `series/display.go`, `httpapi/displaytitles.go`.
+
 ## Checklist
 
 - [x] `series.SearchFit` (`Fit`, `QueryTitle`; lazy library read, fails closed) with tests: setting empty is `FitRelease` for every show and release; German release taken; another show's title, a shared title, a library show's own name refused; year and country; short words; languages not set; library not fully read.
