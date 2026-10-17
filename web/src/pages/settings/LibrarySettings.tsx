@@ -45,7 +45,8 @@ function BookLanguages() {
 }
 
 // TitleLanguages: the extra languages a folder or a download Arrmada didn't grab may be
-// named in ("Der Pate (1972)" for The Godfather). Empty keeps matching to English and
+// named in ("Der Pate (1972)" for The Godfather), and that TV searches also find a show's
+// releases by ("Haus des Geldes" for Money Heist). Empty keeps matching to English and
 // original titles; a grab for a title always imports under any of its names.
 function TitleLanguages() {
   const save = useSetting("match_title_languages", { equal: sameLangs, keepOnError: false });
@@ -56,7 +57,7 @@ function TitleLanguages() {
         <SavedTick save={save} />
       </div>
       <span className="text-sm text-ink-faint">
-        Library scans and downloads Arrmada didn't grab also recognise a title by its name in these languages. A name another title already goes by, or one two titles share, is never matched. Adding a language reads the titles in it for your whole library, a little at a time.
+        Library scans and downloads Arrmada didn't grab also recognise a title by its name in these languages, and TV searches also look for and take a show's releases by it. A name another title already goes by, or one two shows share, is never matched. Adding a language reads the titles in it for your whole library, a little at a time; TV searches start using them once every show's are read.
       </span>
       <LanguagePicker value={save.value} onChange={(next) => void save.commit(next)} label="Add a title language" />
     </div>
@@ -81,7 +82,7 @@ export function LibrarySettings() {
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">
         <SeriesMonitorDefault />
       </Section>
-      <Section id="title-languages" title="Titles in other languages" subtitle="For folders and downloads named in your household's language.">
+      <Section id="title-languages" title="Titles in other languages" subtitle="For folders, downloads and TV releases named in your household's language.">
         <TitleLanguages />
       </Section>
       {booksEnabled && (
