@@ -237,6 +237,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "DELETE", path: /^\/api\/v1\/insights\/import\/runs\/(\d+)\/rows$/, status: 202, body: { job_id: mod.removeImportJob.id, existing: false } },
     get(`/api/v1/jobs/${mod.removeImportJob.id}`, mod.removeImportJob),
     get("/api/v1/settings", sys.settings),
+    // Settings → Naming & metadata → Book naming: the presets, and a live preview answered
+    // from the templates sent, so a spec can type and watch it follow.
+    get("/api/v1/books/naming/presets", sys.bookNamingPresets),
+    { method: "GET", path: "/api/v1/books/naming/preview", respond: ({ url }) => sys.bookNamingPreview(url) },
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
     get("/api/v1/users/jellyfin-blocks", { blocks: [] }),

@@ -1120,6 +1120,12 @@ export interface AppSettings {
   naming_series_folder: string;
   naming_series_season: string;
   naming_series_episode: string;
+  /** Book naming: folder ("/" between levels), single file, and each file of a multi-file audiobook. */
+  naming_audiobook_folder: string;
+  naming_audiobook_file: string;
+  naming_audiobook_track: string;
+  naming_ebook_folder: string;
+  naming_ebook_file: string;
   write_nfo: boolean;
   download_artwork: boolean;
   books_enabled: boolean;
@@ -3323,7 +3329,8 @@ export const api = {
     req<{ status: string }>(`/api/v1/books/${id}/audio-versions/${vid}/file`, { method: "DELETE" }),
   searchAudioVersion: (id: number, vid: number) =>
     req<{ grabbed: boolean; message?: string; outcome?: SearchOutcome }>(`/api/v1/books/${id}/audio-versions/${vid}/search`, { method: "POST" }),
-  renameBook: (id: number) => req<{ renamed: number }>(`/api/v1/books/${id}/rename`, { method: "POST" }),
+  // Renames the book's editions to the book naming scheme; skipped says which couldn't be, and why.
+  renameBook: (id: number) => req<{ renamed: number; skipped?: { kind: string; reason?: string }[] }>(`/api/v1/books/${id}/rename`, { method: "POST" }),
   deleteBookFile: (id: number, edition: "ebook" | "audiobook") =>
     req<{ status: string }>(`/api/v1/books/${id}/file?edition=${edition}`, { method: "DELETE" }),
   scanBooks: () => req<{ status: string } & JobRef>("/api/v1/books/scan", { method: "POST" }),

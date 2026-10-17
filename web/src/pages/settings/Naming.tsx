@@ -2,6 +2,7 @@ import { useState } from "react";
 import { OrganizeModal } from "../../components/OrganizeModal";
 import { AutoText, AutoToggle } from "../../components/settings/auto";
 import { Preview, Section, TokenList } from "../../components/settings/ui";
+import { BookNamingSettings } from "./BookNaming";
 import { Button, useConfirm, useToast } from "../../ui";
 import { renderNaming, seriesIdFormat } from "../../lib/naming";
 import { useSetting } from "../../lib/useSettings";
@@ -135,6 +136,7 @@ export function NamingSettings() {
         </p>
         <TokenList tokens={SERIES_TOKENS} />
       </Section>
+      <BookNamingSettings />
       <Section id="metadata" title="Metadata" subtitle="Written into each movie folder for Plex, Jellyfin, Emby and Kodi.">
         <AutoToggle label="Write movie.nfo" hint="A metadata sidecar with title, plot, ids, ratings." save={writeNFO} />
         <AutoToggle label="Download artwork" hint="Save poster.jpg and fanart.jpg next to the movie." save={artwork} />

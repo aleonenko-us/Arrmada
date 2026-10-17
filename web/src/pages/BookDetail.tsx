@@ -470,7 +470,9 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
 
   const rename = async () => {
     const res = await api.renameBook(book.id);
-    toast(res.renamed > 0 ? `Renamed ${res.renamed} file${res.renamed === 1 ? "" : "s"}.` : "Files already named correctly.");
+    const skipped = res.skipped ?? [];
+    if (skipped.length > 0) toast(`${res.renamed > 0 ? "Renamed some files, but not all" : "Not renamed"}: ${skipped[0].reason ?? "see the book's history"}.`, { tone: "error" });
+    else toast(res.renamed > 0 ? "Renamed to the book naming scheme." : "Files already named correctly.");
     onChange();
   };
   const group = (label: string, items: MenuItem[]) => (
