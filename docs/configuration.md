@@ -93,7 +93,8 @@ folder mounted into the container — under `/storage` with the rest, or added t
 `docker-compose.override.yml` (see the example file). Moving from Radarr or Sonarr with several
 root folders? **Settings → Import & migrate → Import from Radarr / Sonarr** sets up the same
 folders as part of the import (below). With one folder per library, nothing about folders shows
-anywhere.
+anywhere. A folder on another disk can have its own downloads folder, so its imports hardlink
+([Libraries on separate disks](#libraries-on-separate-disks)).
 
 ### Moving from Radarr and Sonarr
 
@@ -135,6 +136,44 @@ land on the same physical disk; otherwise the import falls back to a copy (the l
 "imported by COPY"). If a share suddenly refuses new folders ("permission denied" on a
 library that used to work), one disk's copy of the folder is owned by root — fix it through
 the share path: `chown 99:100` and `chmod 775` on the library parent folders.
+
+### Libraries on separate disks
+
+With Movies on one disk and TV on another, one Downloads folder means one of them always
+imports by copying, and the copy takes the space twice while the torrent seeds. Give that
+library folder a downloads folder **on its own disk** instead: in **Settings → Library → More
+Movies and TV folders**, use **Download to a folder on this disk…** on the folder (the main
+Movies and TV folders have it too; with one folder per library, open it with **Libraries on
+different disks?** first). Torrents for titles in that folder then save there and import as
+hardlinks. Anything without one keeps using the Downloads folder.
+
+1. Make a downloads folder on each disk, next to its library — for example
+   `/mnt/disk1/media/movies` with `/mnt/disk1/torrents`, and `/mnt/disk2/media/tv` with
+   `/mnt/disk2/torrents`.
+2. Mount both disks into Arrmada's container (the installer's `--media` folder, or extra
+   mounts in `docker-compose.override.yml`).
+3. **If qBittorrent runs in its own container, mount the same folders into it at the same
+   paths.** Arrmada tells qBittorrent where to save by path; qBittorrent has to see that path,
+   and Arrmada has to see the finished files at the same one. (Different paths need a path
+   mapping on the qBittorrent card in Settings → Connections.)
+4. Pick each downloads folder. It must exist, be writable, and sit outside every library
+   folder and Arrmada's data folder. If it isn't on the same filesystem as its library folder
+   the save goes through with a warning, and the health panel keeps a note of it — imports from
+   it would still copy.
+
+What to expect:
+
+- **Torrents only.** SABnzbd files jobs by category, not by folder, so usenet downloads keep
+  going to SABnzbd's own folders. A usenet download is deleted once it's imported, so it never
+  takes the space twice for long.
+- The disk guard watches every downloads folder and pauses only the downloads saving onto a
+  full disk; the health panel checks each one exists, is writable and has free space.
+- **Move to folder** moves the title's library files, not a download that's still seeding:
+  that keeps seeding where it is (its hardlink keeps the data). New downloads and upgrades for
+  the title go to the new folder's downloads folder.
+- qBittorrent's own "keep incomplete torrents in" folder, if you've switched it on, is one
+  folder for everything: a download sits there until it finishes and is then moved to the
+  library's downloads folder. Arrmada's bundled qBittorrent has it off.
 
 ### Other layouts
 
